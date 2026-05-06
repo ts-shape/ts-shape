@@ -106,6 +106,10 @@ Traceability:
   - station_statistics: Dwell-time stats per station/step.
   - routing_paths: Most common routing path sequences.
 
+- ContinuousProcessAlignmentEvents: Align multi-station readings on a continuous line
+  to a common material reference time using speed-based transport lag compensation.
+  Methods: align_to_reference, segment_by_cut, lag_profile, alignment_quality.
+
 - MultiProcessTraceabilityEvents: Multi-station topology with parallel paths and handovers.
   - build_timeline: Full timeline with parallel-station awareness.
   - lead_time: End-to-end lead time with parallel flag.
@@ -184,6 +188,7 @@ from .micro_stop_detection import MicroStopEvents
 from .duty_cycle import DutyCycleEvents
 
 # Traceability
+from .continuous_process_alignment import ContinuousProcessAlignmentEvents
 from .order_traceability import ValueTraceabilityEvents, OrderTraceabilityEvents
 from .routing_traceability import RoutingTraceabilityEvents
 from .multi_process_traceability import MultiProcessTraceabilityEvents
@@ -222,6 +227,7 @@ __all__ = [
     "MicroStopEvents",
     "DutyCycleEvents",
     # Traceability
+    "ContinuousProcessAlignmentEvents",
     "ValueTraceabilityEvents",
     "OrderTraceabilityEvents",  # backwards-compatible alias
     "RoutingTraceabilityEvents",
