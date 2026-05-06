@@ -17,6 +17,13 @@ Classes:
   - fetch_data_as_dataframe: Return a combined DataFrame.
 
 - AzureBlobParquetLoader: Load parquet from Azure Blob Storage.
+
+- AzureBlobEnergyLoader: Load CSV energy timeseries and series metadata from Azure Blob.
+  - load_series_metadata: Download .meta/series.csv as a DataFrame.
+  - load_by_time_range: Load CSVs by date range, optional series filter.
+  - load_by_series_ids: Load specific series by ID, optional date filter.
+  - stream_by_time_range: Yield (series_id, DataFrame) incrementally.
+  - list_series: List all series IDs available in the blob store.
   - load_all_files: Load all parquet under an optional prefix.
   - load_by_time_range: Load hourly folders between start and end.
   - load_files_by_time_range_and_uuids: Load per-hour per-UUID parquet files.
