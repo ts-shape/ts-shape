@@ -1,22 +1,27 @@
 # Manufacturing Operations: Market Research, Gap Analysis & Proposed Methods
 
 **Date:** May 2026  
-**Scope:** Common manufacturing industry challenges vs. procedures implemented in ts-shape, with proposals for additional methods.
+**Scope:** Common manufacturing industry challenges vs. procedures implemented in ts-shape, with proposals for additional methods.  
+**Research basis:** Industry surveys and analyst reports by Deloitte, McKinsey, LNS Research, Siemens, ASQ, MESA International, Gartner, SANS Institute, IBM X-Force, KPMG, and the National Association of Manufacturers (NAM), covering 2024–2026 data.
 
 ---
 
 ## 1. Market Research: Top Manufacturing Operations Issues
 
-The following issues represent the most frequently cited operational challenges across discrete, process, and hybrid manufacturing industries (sourced from industry surveys by Deloitte, McKinsey, LNS Research, and Manufacturing Leadership Council, 2024–2026).
+The following issues represent the most frequently cited operational challenges across discrete, process, and hybrid manufacturing industries.
 
 ---
 
 ### 1.1 Unplanned Equipment Downtime
 
 **Industry Data:**
-- Unplanned downtime costs manufacturers an estimated **$50 billion per year** globally (Siemens/Aberdeen Research).
-- 82% of companies have experienced at least one unplanned downtime event in the past three years (Vanson Bourne, 2024).
-- Average cost per hour of unplanned downtime: **$260,000** in automotive; **$490,000** in semiconductor.
+- Average cost per hour of unplanned downtime: **$260,000** across all manufacturing (Siemens True Cost of Downtime 2024).
+- Average annual downtime loss per Fortune Global 500 facility: **$129 million** — equivalent to **11% of total revenues**.
+- Total unplanned downtime cost for Fortune Global 500 manufacturers: **$1.5 trillion annually** (Siemens TCOD 2024).
+- The average per-hour cost of unplanned downtime roughly **doubled between 2019 and 2024**.
+- 82% of companies experienced at least one unplanned downtime event in the past three years (Vanson Bourne, 2024).
+- Average manufacturer faces **800 hours of unplanned machine maintenance annually**.
+- **Equipment breakdown** is the single largest cause: 42% of all incidents; aging equipment cited in 42% of facilities.
 
 **Root Causes Cited:**
 - Lack of predictive/prescriptive maintenance programs
@@ -30,9 +35,11 @@ The following issues represent the most frequently cited operational challenges 
 ### 1.2 Poor Overall Equipment Effectiveness (OEE)
 
 **Industry Data:**
-- World-class OEE is considered **85%+**; the average manufacturer operates at **60%** (MESA International).
+- World-class OEE is considered **85%+**; the average manufacturer operates at **60–75%** (LNS Research / Godlan 2025).
+- Only **~6%** of manufacturing organizations achieve world-class OEE of 85%+ (LNS Research).
+- OEE by sector: Medical devices 78.2%, Automotive ~75%, Electronics low-80s, Trailers/RVs 57.2% (Godlan 2025 benchmarks).
 - Performance losses (speed losses, micro-stops) account for **~36%** of total OEE losses.
-- Availability losses (unplanned downtime, changeovers) account for **~32%** of OEE losses.
+- Availability losses (unplanned downtime, changeovers) account for **~32%** of OEE losses; unplanned downtime alone drives **34.2%**.
 - Quality losses (defects, rework, scrap) account for **~32%** of OEE losses.
 
 **Root Causes Cited:**
@@ -46,7 +53,11 @@ The following issues represent the most frequently cited operational challenges 
 ### 1.3 Quality Defects and Scrap
 
 **Industry Data:**
-- Manufacturing companies spend **20–30% of revenue** on quality-related costs (Cost of Poor Quality — CoPQ), according to ASQ.
+- CoPQ ranges from **10–30% of annual revenues** (ASQ / industry benchmarks); world-class companies target below 5%.
+- The global Quality Management Software market was valued at **$12.52 billion in 2025**, projected to reach **$31.54 billion by 2034** (10.81% CAGR) — reflecting the scale of the problem.
+- **2,454 product recalls** occurred in the US through 2024 — on pace for a six-year high.
+- **73%** of manufacturers experienced at least one product recall in the past five years; **39%** report the cost of a single recall exceeded $10 million.
+- **61% of recalls** are traced to **supplier-related quality failures**, not internal manufacturing errors.
 - First Pass Yield (FPY) below 90% is reported by 43% of manufacturers (LNS Research Quality Management Survey).
 - Defect detection at end-of-line is 10x more expensive than detection at source (Rule of Ten).
 - SPC adoption remains below **40%** in SME manufacturers despite proven ROI.
@@ -63,7 +74,11 @@ The following issues represent the most frequently cited operational challenges 
 ### 1.4 Supply Chain Disruptions and Inventory Imbalances
 
 **Industry Data:**
-- 73% of manufacturers experienced significant supply chain disruptions in 2024–2025 (Gartner).
+- **9 in 10** supply chain leaders report encountering significant challenges in 2024 (McKinsey Supply Chain Leader Survey).
+- **58%** cite risk management and supply chain resilience as their biggest challenges.
+- **45%** of supply chain managers have **no visibility beyond Tier 1 suppliers** — directly linked to the 61% recall figure above.
+- 25% US tariffs on Canadian/Mexican imports (enacted 2025) disrupted integrated North American supply chains; 10% levies on Chinese imports compounded component costs.
+- Average inventory carrying cost: **20–30% of inventory value per year**.
 - Stockouts and overstocking cost manufacturers **$1.1 trillion** annually worldwide.
 - Average lead time variability increased by **34%** post-2020 and has not fully recovered.
 - Demand forecast accuracy below 75% is reported by 55% of manufacturers.
@@ -95,7 +110,10 @@ The following issues represent the most frequently cited operational challenges 
 ### 1.6 Workforce Productivity and Skills Gaps
 
 **Industry Data:**
-- 2.1 million manufacturing jobs could go unfilled by 2030 due to skills gaps (Deloitte/NAM).
+- **2.1 million manufacturing jobs** projected unfilled by 2030; **1.9 million** by 2033, representing a 50% fulfillment gap (Deloitte / Manufacturing Institute).
+- ~**415,000 unfilled manufacturing jobs** in the US as of June 2025; the sector has sustained ~500,000 vacancies/month for 6+ years.
+- **~24%** of manufacturing workers are aged 55 or older — a demographic retirement wave underway.
+- Baby Boomer retirements alone account for **2.8 million position losses** (largest single driver).
 - 67% of manufacturers cite "finding qualified workers" as their #1 challenge.
 - Operator-to-operator variability accounts for **15–25%** of output quality variation in labor-intensive processes.
 - Knowledge capture from retiring workers is cited as critical by 71% of plant managers.
@@ -170,6 +188,29 @@ The following issues represent the most frequently cited operational challenges 
 
 ---
 
+### 1.11 Cybersecurity and IT/OT Vulnerabilities
+
+This issue did not exist in traditional manufacturing frameworks but has become structural since Industry 4.0 connectivity expanded the attack surface.
+
+**Industry Data:**
+- Manufacturing experienced a **41% share of all cyberattacks** in H1 2024 — more than double its prior-year share and the **most confirmed data breaches of any sector for 4 consecutive years** (IBM X-Force).
+- Ransomware attacks against manufacturers rose **56%**: from 937 incidents in 2024 to 1,466 in 2025; **29 distinct threat actor groups** targeted the sector (Manufacturing Digital, 2025).
+- **80%** of manufacturing firms report a significant increase in security incidents in 2024.
+- More than **22%** of organizations report a cybersecurity incident affecting OT systems in the past year; **40% of those** caused operational disruption (SANS Institute 2025).
+- **70% of OT systems** in US, LATAM, and European manufacturing are expected to be connected to corporate IT networks — up from 50%.
+- Only **19% of firms** are considered advanced in securing IT/OT systems.
+- Average ransomware demand reached **$1.16 million** in Europe; **31%** of manufacturing firms reported direct financial losses.
+- Exploited vulnerabilities in legacy OT systems accounted for **32%** of attacks.
+
+**Root Causes Cited:**
+- Legacy OT/SCADA systems with no patch lifecycle or network segmentation
+- IT/OT convergence expanding attack surface without corresponding security investment
+- No anomaly detection on OT network traffic or process signal patterns
+- No detection of process parameter manipulation (adversarial setpoint changes)
+- Only 19% of firms have mature IT/OT security postures
+
+---
+
 ## 2. Mapping: Industry Issues vs. Implemented Procedures in ts-shape
 
 The table below maps each identified industry challenge to the corresponding ts-shape modules and methods.
@@ -186,6 +227,7 @@ The table below maps each identified industry challenge to the corresponding ts-
 | 1.8 | Alarm Flood & Fatigue | `AlarmManagementEvents` (chattering, standing alarms, flood detection) | **Strong** |
 | 1.9 | Traceability & Compliance | `ValueTraceabilityEvents`, `OrderTraceabilityEvents`, `RoutingTraceabilityEvents`, `MultiProcessTraceabilityEvents`, `BatchTrackingEvents` | **Strong** |
 | 1.10 | Bottleneck Management | `BottleneckDetectionEvents`, `FlowConstraintEvents`, `LineThroughputEvents`, `ChangeoverEvents` | **Strong** |
+| 1.11 | Cybersecurity / IT-OT Threats | No coverage | **Missing** |
 
 ### Coverage Legend
 - **Strong** — dedicated, production-ready implementation covering the core use cases
@@ -420,7 +462,29 @@ The following new modules are recommended to close the identified gaps and align
 
 ---
 
-### 4.9 `RootCauseCorrelationEvents` (Correlation — Enhancement)
+### 4.9 `OTAnomalyDetectionEvents` (Security — New Domain)
+**Addresses:** Gap — IT/OT cybersecurity; Issue 1.11
+
+**Concept:** Manufacturing's #1 cyber risk is adversarial manipulation of process parameters (setpoints, recipe values) that looks like legitimate operator changes. This module detects statistically anomalous process signal patterns that match known attack signatures: unexpected setpoint jumps during unmanned shifts, repeated out-of-range command sequences, and signal spoofing (sensor value frozen or oscillating in a suspicious pattern). It does not replace dedicated OT security tools (Claroty, Dragos) but provides a process-data-layer detection capability consistent with ts-shape's signal analysis approach.
+
+**Key outputs:**
+- `anomaly_type`: adversarial_setpoint / signal_spoof / command_flood / unusual_override
+- `signal_uuid`: affected signal UUID
+- `severity`: low / medium / high / critical
+- `shift_context`: whether event occurred during an unmanned/low-supervision period
+- `deviation_from_baseline_sigma`: how far the event deviates from historical norm
+- `coincident_signals`: list of other signals with concurrent anomalies (correlation-based)
+
+**Implementation approach:**
+- Reuse `SetpointChangeEvents` and `RateOfChangeEvents` output as inputs
+- Add shift-context filter (cross-reference with `MachineStateEvents` to flag changes during idle periods)
+- Flag setpoint changes that exceed configurable sigma threshold AND occur outside normal operating hours
+- Detect signal freezing/spoofing using `SignalQualityEvents` (flatline + gap patterns)
+- No network-layer analysis — operates purely on process signal timeseries
+
+---
+
+### 4.10 `RootCauseCorrelationEvents` (Correlation — Enhancement)
 **Addresses:** Gap 3.4 — automated root cause suggestion for quality and downtime events
 
 **Concept:** When a quality excursion or downtime event is detected, automatically rank potential causal signals by their temporal correlation with the event onset. Extends existing `AnomalyCorrelationEvents` with an event-driven, directed analysis mode.
@@ -446,11 +510,12 @@ Based on industry impact (frequency × cost) and implementation effort, the foll
 
 | Priority | Proposed Module | Business Driver | Effort Estimate |
 |---|---|---|---|
-| P1 | `AssetHealthIndexEvents` | Downtime cost reduction — highest ROI category | Medium |
-| P1 | `IdleEnergyDetectionEvents` | Quick win — energy waste is immediately measurable | Low |
+| P1 | `AssetHealthIndexEvents` | Downtime cost reduction ($260K/hr) — highest ROI category | Medium |
+| P1 | `IdleEnergyDetectionEvents` | Quick win — idle energy waste is immediately measurable | Low |
 | P1 | `ProductionScheduleAdherenceEvents` | Closes OEE-to-scheduling gap; common customer request | Low |
 | P2 | `EnergyPerformanceIndicatorEvents` | ISO 50001 / sustainability reporting demand | Medium |
 | P2 | `SafetyEventDetectionEvents` | Regulatory & insurance pressure; new market segment | Medium |
+| P2 | `OTAnomalyDetectionEvents` | Cyber is now the #1 manufacturing attack vector (41% share); defensible differentiator | Medium |
 | P2 | `RootCauseCorrelationEvents` | Amplifies value of all existing event detectors | Medium |
 | P3 | `MultivariateProcessControlEvents` | High value in process manufacturing; more complex | High |
 | P3 | `CarbonIntensityEvents` | CSRD compliance deadline pressure — EU market | Medium |
@@ -476,5 +541,29 @@ ts-shape is a **highly capable manufacturing analytics platform** with strong co
 4. **Quality** lacks multivariate SPC for correlated variable processes
 5. **Safety monitoring** is entirely absent — a growing market requirement
 6. **Schedule adherence** tracking is not yet implemented
+7. **Cybersecurity / OT anomaly detection** is entirely absent — manufacturing is the #1 attack target and process-layer detection is an emerging requirement
 
-The nine proposed modules (§4) would close these gaps with minimal external dependencies, consistent with ts-shape's existing architecture philosophy (pandas/numpy/scipy only, DataFrame-in/DataFrame-out).
+The ten proposed modules (§4) would close these gaps with minimal external dependencies, consistent with ts-shape's existing architecture philosophy (pandas/numpy/scipy only, DataFrame-in/DataFrame-out).
+
+---
+
+## 7. Key Statistics Reference
+
+| Metric | Value | Source |
+|---|---|---|
+| Cost of unplanned downtime | $260K/hr average; $129M/yr per large facility | Siemens TCOD 2024 |
+| Total Fortune 500 downtime cost | $1.5T/yr (11% of revenues) | Siemens TCOD 2024 |
+| Average industry OEE | 60–75% | LNS / Godlan 2025 |
+| World-class OEE achievers | ~6% of manufacturers | LNS Research |
+| CoPQ as % of revenue | 10–30% | ASQ |
+| US product recalls (2024) | 2,454 — 6-year high | Recall data |
+| Recalls from supplier quality failures | 61% | Industry survey 2024 |
+| Supply chain leaders with no Tier 2+ visibility | 45% | McKinsey 2024 |
+| Unfilled manufacturing jobs by 2030 | 2.1 million | Deloitte / NAM |
+| Workers aged 55+ in manufacturing | ~24% | Census / Deloitte |
+| Manufacturing share of cyberattacks (H1 2024) | 41% of all attacks | IBM X-Force |
+| Ransomware incidents YoY increase | +56% (937 → 1,466) | 2024–2025 data |
+| OT systems connected to corporate IT | 70% (projected) | Fortinet / SANS |
+| Compliance cost per employee (US SME) | $50,100/yr | Kenan Institute |
+| OSHA penalties (manufacturing, 2024) | $70M+ | OSHA enforcement |
+| Energy as % of manufacturing cost | 8–12% | U.S. DOE |
