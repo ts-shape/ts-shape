@@ -7,6 +7,11 @@ Event Detection Classes:
   - detect_run_idle: Intervalize run/idle with optional min duration.
   - transition_events: Point events on idle→run and run→idle changes.
 
+- LongDowntimeEvents: Detect idle/stopped intervals exceeding a minimum duration, and
+  count production events between consecutive long-downtime boundaries.
+  - detect_long_downtime: Find downtime segments >= min_gap (default 3 h).
+  - count_events_between_gaps: Count/sum/transitions in each inter-gap production window.
+
 - LineThroughputEvents: Throughput metrics and takt adherence.
   - count_parts: Parts per fixed window from a counter uuid.
   - takt_adherence: Cycle time violations vs. a takt time.
@@ -158,6 +163,7 @@ Performance and Target Tracking:
 
 # Event Detection Classes
 from .machine_state import MachineStateEvents
+from .long_downtime_events import LongDowntimeEvents
 from .line_throughput import LineThroughputEvents
 from .changeover import ChangeoverEvents
 from .flow_constraints import FlowConstraintEvents
@@ -197,6 +203,7 @@ from .period_summary import PeriodSummary
 __all__ = [
     # Event Detection
     "MachineStateEvents",
+    "LongDowntimeEvents",
     "LineThroughputEvents",
     "ChangeoverEvents",
     "FlowConstraintEvents",
