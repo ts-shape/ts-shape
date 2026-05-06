@@ -22,6 +22,13 @@ Classes:
   - stream_files_by_time_range_and_uuids: Yield per-UUID frames incrementally.
   - list_structure: List folders and files under a prefix.
 
+- AzureBlobEnergyLoader: Load CSV energy timeseries and series metadata from Azure Blob.
+  - load_series_metadata: Download .meta/series.csv as a DataFrame.
+  - load_by_time_range: Load CSVs by date range, optional series filter.
+  - load_by_series_ids: Load specific series by ID, optional date filter.
+  - stream_by_time_range: Yield (series_id, DataFrame) incrementally.
+  - list_series: List all series IDs available in the blob store.
+
 - AzureBlobFlexibleFileLoader: Load arbitrary file types from Azure Blob Storage.
   - list_files_by_time_range: List matching files (by extension) under hourly folders.
   - iter_file_names_by_time_range: Generator of names without downloading.

@@ -13,11 +13,25 @@ class EnergyConsumptionEvents(Base):
 
     Analyze energy consumption patterns from meter/sensor signals.
 
+    Supports two data models via constructor parameters:
+
+    - Standard (ts-shape default)::
+
+        EnergyConsumptionEvents(df)
+        # expects: systime | uuid | value_double
+
+    - Raw CSV (time + id + value)::
+
+        EnergyConsumptionEvents(df, time_column="time", uuid_column="id")
+        # expects: time | id | value
+        # pass value_column="value" to each method
+
     Methods:
     - consumption_by_window: Aggregate energy per time window from a meter UUID.
     - peak_demand_detection: Flag windows where consumption exceeds a threshold.
     - consumption_baseline_deviation: Compare actual vs rolling baseline.
     - energy_per_unit: Energy per production unit when paired with a counter.
+    - normalize: Static helper to convert raw CSV format to standard schema.
     """
 
     def __init__(
@@ -26,10 +40,49 @@ class EnergyConsumptionEvents(Base):
         *,
         event_uuid: str = "energy:consumption",
         time_column: str = "systime",
+        uuid_column: str = "uuid",
     ) -> None:
         super().__init__(dataframe, column_name=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
+        self._uuid_column = uuid_column
+
+    @staticmethod
+    def normalize(
+        df: pd.DataFrame,
+        *,
+        series_id: str,
+        time_column: str = "time",
+        value_column: str = "value",
+        id_column: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """Convert a raw energy DataFrame to the standard ts-shape schema.
+
+        Handles two input formats:
+
+        - Two-column CSV: (time, value) — ``series_id`` is assigned as uuid.
+        - Three-column with explicit id: (time, id_column, value) — values from
+          ``id_column`` are used as uuid; ``series_id`` is ignored.
+
+        Args:
+            df: Raw DataFrame.
+            series_id: UUID to assign when no id_column is provided.
+            time_column: Name of the timestamp column in df.
+            value_column: Name of the value column in df.
+            id_column: Optional column name whose values become the uuid.
+
+        Returns:
+            DataFrame with columns: systime, uuid, value_double, is_delta
+        """
+        out = pd.DataFrame()
+        out["systime"] = pd.to_datetime(df[time_column])
+        if id_column and id_column in df.columns:
+            out["uuid"] = df[id_column].astype(str)
+        else:
+            out["uuid"] = series_id
+        out["value_double"] = pd.to_numeric(df[value_column], errors="coerce")
+        out["is_delta"] = True
+        return out.sort_values("systime").reset_index(drop=True)
 
     def consumption_by_window(
         self,
@@ -51,7 +104,7 @@ class EnergyConsumptionEvents(Base):
             DataFrame: window_start, uuid, source_uuid, is_delta, consumption
         """
         s = (
-            self.dataframe[self.dataframe["uuid"] == meter_uuid]
+            self.dataframe[self.dataframe[self._uuid_column] == meter_uuid]
             .copy()
             .sort_values(self.time_column)
         )
@@ -205,7 +258,7 @@ class EnergyConsumptionEvents(Base):
 
         # Get production counts
         counter = (
-            self.dataframe[self.dataframe["uuid"] == counter_uuid]
+            self.dataframe[self.dataframe[self._uuid_column] == counter_uuid]
             .copy()
             .sort_values(self.time_column)
         )
