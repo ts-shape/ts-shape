@@ -34,6 +34,7 @@ nav:
   - Product Traceability: guides/traceability.md
   - Process Engineering: guides/engineering.md
   - Shift Reports & KPIs: guides/reporting.md
+  - Event Log (XES & OCEL): guides/eventlog.md
 - Pipelines:
   - Overview: pipelines/index.md
   - OEE Dashboard: pipelines/oee-dashboard.md
@@ -131,6 +132,7 @@ nav:
   - Cycle Extractor: examples/cycle-extractor.md
   - Context Enricher: examples/context-enricher.md
   - Statistics (Basic): examples/statistics-basic.md
+  - Event Log (XES & OCEL): examples/eventlog.md
 - API Reference: reference/
 - Development:
   - Contributing: contributing.md

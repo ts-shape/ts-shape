@@ -161,6 +161,14 @@ Pick the stage that matches where you are in your analysis.
 
     `PerformanceLossTracking` | `ScrapTracking` | `TargetTracking` | `SetupTimeTracking` | +4 more
 
+-   :material-graph-outline:{ .lg .middle } **[Event Log (XES & OCEL)](eventlog.md)**
+
+    ---
+
+    Normalize any detector's output into a canonical event log with OCEL 2.0 / XES column names. Concatenate logs across detectors, then export per-asset / per-batch / per-cycle traces for pm4py, Disco, or Celonis.
+
+    `to_event_log` | `concat` | `to_flat_df` | `to_ocel_tables`
+
 </div>
 
 ---

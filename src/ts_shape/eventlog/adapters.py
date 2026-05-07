@@ -1,0 +1,323 @@
+"""Shape-driven adapters that convert legacy detector DataFrames into the
+canonical :class:`~ts_shape.eventlog.model.EventLog`.
+
+There is one adapter implementation per *shape* (point, interval, summary,
+static). The per-method specifics live in
+:mod:`ts_shape.eventlog.taxonomy` (the ``REGISTRY``). A custom adapter for
+a specific ``(class, method)`` pair can be registered with
+``@register_adapter(...)`` to override the shape-driven default — useful
+for the few detectors whose legacy schema does not fit any standard shape.
+"""
+from __future__ import annotations
+
+import uuid as _uuid
+from typing import Callable, Mapping, Sequence
+
+import pandas as pd
+
+from . import schema
+from .model import EventLog
+from .taxonomy import LabelRule, render_activity
+
+
+# ----------------------------------------------------------------------------
+# Registry of optional per-method overrides
+# ----------------------------------------------------------------------------
+
+AdapterFn = Callable[..., EventLog]
+_OVERRIDES: dict[tuple[str, str], AdapterFn] = {}
+
+
+def register_adapter(class_name: str, method_name: str) -> Callable[[AdapterFn], AdapterFn]:
+    """Register a custom adapter for a specific ``(class, method)``.
+
+    The function will be called with ``(legacy_df, *, rule, detector,
+    objects, qualifiers)``.
+    """
+    def deco(fn: AdapterFn) -> AdapterFn:
+        _OVERRIDES[(class_name, method_name)] = fn
+        return fn
+    return deco
+
+
+def get_override(class_name: str, method_name: str) -> AdapterFn | None:
+    return _OVERRIDES.get((class_name, method_name))
+
+
+# ----------------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------------
+
+_NAMESPACE = _uuid.UUID("8a4d3f1c-9b2e-4d3a-8f1e-c0ffee123456")
+
+
+def _eid(detector: str, ts: pd.Timestamp, key: str) -> str:
+    return "e-" + str(_uuid.uuid5(_NAMESPACE, f"{detector}|{ts.isoformat()}|{key}"))
+
+
+def _to_utc_ts(value: object) -> pd.Timestamp | pd._libs.tslibs.nattype.NaTType:
+    if value is None:
+        return pd.NaT
+    ts = pd.Timestamp(value)
+    if ts is pd.NaT:
+        return pd.NaT
+    if ts.tz is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts
+
+
+def _pick_time_col(df: pd.DataFrame, candidates: Sequence[str]) -> str | None:
+    for c in candidates:
+        if c in df.columns:
+            return c
+    # Fall back to first datetime-like column.
+    for c in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df[c]):
+            return c
+    return None
+
+
+_POINT_CANDIDATES = (
+    "systime", "timestamp", "time", "event_time", "ts", "datetime",
+    "window_start", "window_end", "period_start", "period_end", "date",
+)
+
+
+def _classify_severity(value: object) -> str | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, str):
+        return value
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v >= 4.5:
+        return "critical"
+    if v >= 3.0:
+        return "warn"
+    return "info"
+
+
+def _build_attrs_columns(
+    legacy: pd.DataFrame,
+    *,
+    pack: str,
+    drop: set[str],
+) -> dict[str, pd.Series]:
+    """Return a dict of ``"<pack>:<col>" -> Series`` for non-canonical columns."""
+    out: dict[str, pd.Series] = {}
+    for col in legacy.columns:
+        if col in drop:
+            continue
+        out[f"{pack}:{col}"] = legacy[col].reset_index(drop=True)
+    return out
+
+
+def _resolve_objects(
+    legacy: pd.DataFrame,
+    rule: LabelRule,
+    user_objects: Mapping[str, object] | None,
+) -> dict[str, pd.Series]:
+    """Produce ``object_type -> Series-of-oids`` aligned with legacy rows.
+
+    Auto-extracts types declared in ``rule.produces_objects`` from the
+    legacy DataFrame's standard columns (e.g. ``source_uuid -> asset``).
+    Caller-supplied bindings via ``user_objects`` are always honored —
+    object types not declared by the adapter are treated as contextual
+    annotations the caller knows about (e.g. "this outlier happened
+    during batch B-2026-117").
+    """
+    declared = set(rule.produces_objects)
+    bindings: dict[str, pd.Series] = {}
+
+    def _bind(otype: str, value: object) -> None:
+        if isinstance(value, str):
+            if value not in legacy.columns:
+                return  # silently skip; column not present
+            bindings[otype] = legacy[value].reset_index(drop=True).astype("string")
+        elif callable(value):
+            bindings[otype] = pd.Series(
+                [value(r) for r in legacy.to_dict("records")], dtype="string"
+            )
+        elif isinstance(value, pd.Series):
+            bindings[otype] = value.reset_index(drop=True).astype("string")
+        else:
+            # Scalar broadcast.
+            bindings[otype] = pd.Series([str(value)] * len(legacy), dtype="string")
+
+    if user_objects:
+        for otype, val in user_objects.items():
+            _bind(otype, val)
+
+    # Defaults: asset = source_uuid if column exists.
+    if "asset" in declared and "asset" not in bindings:
+        if "source_uuid" in legacy.columns:
+            bindings["asset"] = legacy["source_uuid"].reset_index(drop=True).astype("string")
+
+    # Drop empty / all-NaN bindings.
+    return {k: v for k, v in bindings.items() if not v.isna().all()}
+
+
+def _to_relations(
+    eids: pd.Series,
+    object_bindings: Mapping[str, pd.Series],
+    qualifiers: Mapping[str, str] | None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if not object_bindings:
+        return schema.empty_objects(), schema.empty_relations()
+
+    qualifiers = qualifiers or {}
+    rel_frames: list[pd.DataFrame] = []
+    obj_pairs: list[tuple[str, str]] = []
+    for otype, oids in object_bindings.items():
+        oids = oids.reset_index(drop=True)
+        mask = oids.notna() & (oids.astype(str) != "") & (oids.astype(str) != "<NA>")
+        if not mask.any():
+            continue
+        rel_frames.append(pd.DataFrame({
+            schema.OCEL_EID: eids[mask].reset_index(drop=True).astype("string"),
+            schema.OCEL_OID: oids[mask].astype("string").reset_index(drop=True),
+            schema.OCEL_TYPE: pd.Series([otype] * int(mask.sum()), dtype="string"),
+            schema.OCEL_QUALIFIER: pd.Series(
+                [qualifiers.get(otype)] * int(mask.sum()), dtype="string"
+            ),
+        }))
+        for o in oids[mask].astype(str).unique():
+            obj_pairs.append((o, otype))
+
+    relations = (pd.concat(rel_frames, ignore_index=True)
+                 if rel_frames else schema.empty_relations())
+    if obj_pairs:
+        obj_df = pd.DataFrame(obj_pairs, columns=[schema.OCEL_OID, schema.OCEL_TYPE])
+        obj_df = obj_df.drop_duplicates().reset_index(drop=True)
+        obj_df[schema.OCEL_OID] = obj_df[schema.OCEL_OID].astype("string")
+        obj_df[schema.OCEL_TYPE] = obj_df[schema.OCEL_TYPE].astype("string")
+    else:
+        obj_df = schema.empty_objects()
+    return obj_df, relations
+
+
+_RESERVED = {"start", "end", "systime", "uuid", "source_uuid"}
+
+
+def _value_series(legacy: pd.DataFrame, rule: LabelRule) -> pd.Series:
+    if rule.value_field and rule.value_field in legacy.columns:
+        return pd.to_numeric(legacy[rule.value_field], errors="coerce")
+    for c in ("value", "value_double", "value_integer", "ts_shape:value"):
+        if c in legacy.columns:
+            return pd.to_numeric(legacy[c], errors="coerce")
+    return pd.Series([float("nan")] * len(legacy), dtype="float64")
+
+
+def _severity_series(legacy: pd.DataFrame, rule: LabelRule) -> pd.Series:
+    if rule.severity_field and rule.severity_field in legacy.columns:
+        col = legacy[rule.severity_field]
+        return col.map(_classify_severity).astype("string")
+    if "severity" in legacy.columns:
+        return legacy["severity"].astype("string")
+    return pd.Series([pd.NA] * len(legacy), dtype="string")
+
+
+# ----------------------------------------------------------------------------
+# The shape-driven adapter
+# ----------------------------------------------------------------------------
+
+def adapt(
+    legacy: pd.DataFrame,
+    *,
+    rule: LabelRule,
+    detector: str,
+    objects: Mapping[str, object] | None = None,
+    qualifiers: Mapping[str, str] | None = None,
+) -> EventLog:
+    """Convert one detector's output into a canonical :class:`EventLog`."""
+    if legacy is None or len(legacy) == 0:
+        return EventLog()
+
+    legacy = legacy.reset_index(drop=True)
+    n = len(legacy)
+
+    # Resolve timestamps based on shape.
+    if rule.shape == "interval":
+        start_col = _pick_time_col(legacy, ("start", "window_start", "period_start"))
+        end_col = _pick_time_col(legacy, ("end", "window_end", "period_end"))
+        if start_col is None or end_col is None:
+            # Fall back to point shape if data lacks interval columns.
+            return adapt(legacy, rule=LabelRule(
+                template=rule.template, pack=rule.pack, shape="point",
+                produces_objects=rule.produces_objects,
+                severity_field=rule.severity_field, value_field=rule.value_field,
+                drop_fields=rule.drop_fields,
+            ), detector=detector, objects=objects, qualifiers=qualifiers)
+        ts_end = legacy[end_col].apply(_to_utc_ts)
+        ts_start = legacy[start_col].apply(_to_utc_ts)
+        duration = (ts_end - ts_start).dt.total_seconds() if len(legacy) else pd.Series(dtype="float64")
+        time_cols_used = {start_col, end_col}
+    elif rule.shape in {"point", "summary"}:
+        time_col = _pick_time_col(legacy, _POINT_CANDIDATES)
+        if time_col is None:
+            ts_end = pd.Series([pd.Timestamp.utcnow()] * n)
+            time_cols_used = set()
+        else:
+            ts_end = legacy[time_col].apply(_to_utc_ts)
+            time_cols_used = {time_col}
+        # Summary may have a window_start / period_start counterpart.
+        start_col = _pick_time_col(legacy, ("window_start", "period_start", "start"))
+        if rule.shape == "summary" and start_col is not None and start_col != time_col:
+            ts_start = legacy[start_col].apply(_to_utc_ts)
+            time_cols_used.add(start_col)
+            duration = (ts_end - ts_start).dt.total_seconds()
+        else:
+            ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
+            duration = pd.Series([float("nan")] * n, dtype="float64")
+    elif rule.shape == "static":
+        # No natural time. Use a single fixed reference (now-UTC) for all rows.
+        now = pd.Timestamp.utcnow().tz_convert("UTC") if pd.Timestamp.utcnow().tz else pd.Timestamp.utcnow().tz_localize("UTC")
+        ts_end = pd.Series([now] * n)
+        ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
+        duration = pd.Series([float("nan")] * n, dtype="float64")
+        time_cols_used = set()
+    else:
+        raise ValueError(f"unknown shape {rule.shape!r}")
+
+    # Render activity name (template substitution per row).
+    activities = legacy.apply(lambda r: render_activity(rule, r), axis=1).astype("string")
+
+    # Build canonical event ids.
+    eids = pd.Series(
+        [_eid(detector, ts_end.iloc[i], f"{i}|{activities.iloc[i]}") for i in range(n)],
+        dtype="string",
+    )
+
+    severity = _severity_series(legacy, rule)
+    value = _value_series(legacy, rule)
+
+    # Drop time columns + columns redundantly captured elsewhere from attrs.
+    drop = set(time_cols_used) | set(rule.drop_fields)
+    if rule.severity_field:
+        drop.add(rule.severity_field)
+    if rule.value_field:
+        drop.add(rule.value_field)
+    # Don't dump huge object columns (`is_delta` etc are kept as attrs).
+    attrs = _build_attrs_columns(legacy, pack=rule.pack, drop=drop)
+
+    events = pd.DataFrame({
+        schema.OCEL_EID: eids,
+        schema.OCEL_ACTIVITY: activities,
+        schema.OCEL_TIMESTAMP: ts_end.astype("datetime64[ns, UTC]"),
+        schema.TS_START_TIMESTAMP: ts_start.astype("datetime64[ns, UTC]"),
+        schema.TS_DURATION_S: duration.astype("float64"),
+        schema.TS_DETECTOR: pd.Series([detector] * n, dtype="string"),
+        schema.TS_PACK: pd.Series([rule.pack] * n, dtype="string"),
+        schema.TS_SEVERITY: severity.astype("string"),
+        schema.TS_VALUE: value.astype("float64"),
+        **attrs,
+    })
+
+    object_bindings = _resolve_objects(legacy, rule, objects)
+    objects_df, relations_df = _to_relations(eids, object_bindings, qualifiers)
+
+    return EventLog(events=events, objects=objects_df, relations=relations_df)
