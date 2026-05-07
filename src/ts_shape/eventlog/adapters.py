@@ -221,6 +221,47 @@ def _severity_series(legacy: pd.DataFrame, rule: LabelRule) -> pd.Series:
     return pd.Series([pd.NA] * len(legacy), dtype="string")
 
 
+def _apply_standard_attrs(
+    legacy: pd.DataFrame,
+    rule: LabelRule,
+    n: int,
+) -> tuple[dict[str, pd.Series], set[str]]:
+    """Resolve LabelRule.standard_attrs into typed columns.
+
+    Returns ``(extra_columns, source_columns_consumed)``. The caller adds
+    ``source_columns_consumed`` to the drop set so the legacy column does
+    not also appear under its ``<pack>:<col>`` prefix.
+    """
+    extras: dict[str, pd.Series] = {}
+    consumed: set[str] = set()
+    if not rule.standard_attrs:
+        return extras, consumed
+
+    for std_key, source in rule.standard_attrs.items():
+        target_dtype = schema.STANDARD_ATTR_TYPES.get(std_key, "string")
+
+        if source is None:
+            continue
+        if isinstance(source, str) and source in legacy.columns:
+            # String matching a legacy column → rename / coerce.
+            series = legacy[source].reset_index(drop=True)
+            consumed.add(source)
+        else:
+            # Literal scalar (or string that doesn't match a column,
+            # which is the common case for ts_shape:method = "zscore"
+            # and similar enum-like values). Broadcast to every row.
+            series = pd.Series([source] * n)
+
+        if target_dtype == "Int64":
+            extras[std_key] = pd.to_numeric(series, errors="coerce").astype("Int64")
+        elif target_dtype == "float64":
+            extras[std_key] = pd.to_numeric(series, errors="coerce").astype("float64")
+        else:
+            extras[std_key] = series.astype("string")
+
+    return extras, consumed
+
+
 # ----------------------------------------------------------------------------
 # The shape-driven adapter
 # ----------------------------------------------------------------------------
@@ -251,6 +292,7 @@ def adapt(
                 produces_objects=rule.produces_objects,
                 severity_field=rule.severity_field, value_field=rule.value_field,
                 drop_fields=rule.drop_fields,
+                standard_attrs=rule.standard_attrs,
             ), detector=detector, objects=objects, qualifiers=qualifiers)
         ts_end = legacy[end_col].apply(_to_utc_ts)
         ts_start = legacy[start_col].apply(_to_utc_ts)
@@ -295,8 +337,13 @@ def adapt(
     severity = _severity_series(legacy, rule)
     value = _value_series(legacy, rule)
 
+    # Resolve standard attribute extension (ts_shape:method, baseline,
+    # threshold_low/high, etc). Source columns get added to ``drop`` so
+    # they don't double-up under their ``<pack>:<col>`` prefix.
+    standard_extras, std_consumed = _apply_standard_attrs(legacy, rule, n)
+
     # Drop time columns + columns redundantly captured elsewhere from attrs.
-    drop = set(time_cols_used) | set(rule.drop_fields)
+    drop = set(time_cols_used) | set(rule.drop_fields) | std_consumed
     if rule.severity_field:
         drop.add(rule.severity_field)
     if rule.value_field:
@@ -314,6 +361,7 @@ def adapt(
         schema.TS_PACK: pd.Series([rule.pack] * n, dtype="string"),
         schema.TS_SEVERITY: severity.astype("string"),
         schema.TS_VALUE: value.astype("float64"),
+        **standard_extras,
         **attrs,
     })
 

@@ -181,6 +181,19 @@ def main() -> None:
     print("--- events (head) ---")
     print(log.events[cols].to_string(index=False))
     print()
+
+    print("--- standard attribute extension columns ---")
+    std_cols = [c for c in log.events.columns
+                if c.startswith("ts_shape:") and c not in {
+                    "ts_shape:start_timestamp", "ts_shape:duration_s",
+                    "ts_shape:detector", "ts_shape:pack",
+                    "ts_shape:severity", "ts_shape:value",
+                }]
+    if std_cols:
+        print(log.events[["ocel:activity"] + std_cols].to_string(index=False))
+    else:
+        print("(no standard attrs populated)")
+    print()
     print("--- objects ---")
     print(log.objects.to_string(index=False))
     print()

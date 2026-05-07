@@ -359,6 +359,113 @@ consistency:
 | `measured_by` | `sensor` | The sensor producing the reading. |
 | `governed_by` | `recipe` | The recipe in effect. |
 
+### Standard attribute extension
+
+In addition to the canonical event columns, every method's `LabelRule`
+declares a `standard_attrs` mapping that pins detector-specific values to
+a **fixed vocabulary** of attribute keys. This is what makes
+cross-detector aggregation possible — two detectors that conceptually
+emit the same thing emit it under the same column name.
+
+The full vocabulary (defined in `ts_shape.eventlog.schema.STANDARD_ATTR_KEYS`):
+
+| Key | Type | Used for |
+|---|---|---|
+| `ts_shape:method` | string | Algorithm name. Always literal. e.g. `"zscore"`, `"iqr"`, `"western_electric_rule_1"`, `"cusum"`. |
+| `ts_shape:baseline` | float | Expected / nominal value (SPC centerline, setpoint target, baseline mean). |
+| `ts_shape:threshold_low` | float | Lower bound. `NaN` if one-sided. |
+| `ts_shape:threshold_high` | float | Upper bound. `NaN` if one-sided. |
+| `ts_shape:deviation` | float | Signed `value - baseline`. |
+| `ts_shape:deviation_pct` | float | `(value - baseline) / baseline`. |
+| `ts_shape:direction` | string | `above` / `below` / `up` / `down` / `outside` / `inside` / `lead` / `lag` / `shift`. |
+| `ts_shape:confidence` | float | 0..1, for ML / probabilistic detectors. |
+| `ts_shape:sample_count` | int | Number of underlying observations rolled into this row. |
+| `ts_shape:outcome` | string | Categorical outcome: `ok` / `nok` / `rework` / `scrap` / `pass` / `fail`, or a normalized reason code. |
+| `ts_shape:lifecycle_state` | string | XES-style: `raised` / `cleared` / `predicted` / state names (`run`, `idle`). |
+| `ts_shape:lifecycle_pair_id` | string | Pairs raise/clear into a single occurrence. |
+
+Each entry in `standard_attrs` maps a key to either:
+
+* a **legacy column name** (string matching a column in the detector
+  output) — the adapter renames it and coerces to the declared type,
+* a **literal scalar** (string / float / int) — broadcast to every
+  row. This is the common case for `ts_shape:method = "zscore"`.
+* `None` — explicitly declares the attribute is not applicable for this
+  method (used for archetype-required keys when the detector has no
+  natural source).
+
+Example for `OutlierDetectionEvents.detect_outliers_zscore`:
+
+```python
+LabelRule(
+    template="quality.outlier.zscore",
+    pack="quality",
+    shape="point",
+    severity_field="severity_score",
+    standard_attrs={
+        "ts_shape:method": "zscore",          # literal — always "zscore"
+        "ts_shape:direction": "outside",      # literal
+    },
+)
+```
+
+And for an aggregate KPI like `CycleTimeTracking.cycle_time_statistics`:
+
+```python
+LabelRule(
+    template="production.cycle_time.statistics",
+    pack="production",
+    shape="summary",
+    standard_attrs={
+        "ts_shape:sample_count": "count",     # rename legacy `count` column
+    },
+)
+```
+
+### Required keys per archetype
+
+The coverage test `test_required_standard_attrs_per_archetype` enforces
+this mapping at CI time — every method in `REGISTRY` must populate at
+least its archetype's required keys.
+
+| Archetype | Required keys | Typical optional keys |
+|---|---|---|
+| `threshold` | `method`, `direction` | `baseline`, `threshold_low`, `threshold_high`, `deviation`, `deviation_pct`, `confidence` |
+| `interval` | `lifecycle_state` | `lifecycle_pair_id`, `sample_count`, `direction` |
+| `aggregate` | `sample_count` | `baseline`, `threshold_low`, `threshold_high`, `method` |
+| `outcome` | `outcome` | `sample_count`, `method` |
+| `static` | `method` | `sample_count`, `baseline`, `threshold_low`, `threshold_high` |
+| `trace` | `lifecycle_state`, `direction` | `sample_count` |
+| `forecast` | `method`, `confidence` | `baseline`, `threshold_low`, `threshold_high` |
+| `correlation` | `method` | `direction`, `confidence`, `sample_count` |
+
+The archetype assignment for every detector method lives in
+`ts_shape.eventlog.archetypes.ARCHETYPE_BY_METHOD` and is enforced by
+`test_archetype_assignment_is_complete` — every entry in `REGISTRY` has
+exactly one archetype.
+
+### Why this matters — cross-detector aggregation
+
+Once every event log emits `ts_shape:method`, `ts_shape:direction`,
+`ts_shape:deviation_pct`, `ts_shape:sample_count`, `ts_shape:outcome`,
+queries like these become trivial:
+
+```python
+# All threshold violations grouped by algorithm.
+log.events.groupby("ts_shape:method")["ocel:eid"].count()
+
+# All "above-threshold" events with > 10% deviation.
+log.events.query(
+    "`ts_shape:direction` == 'above' and `ts_shape:deviation_pct` > 0.10"
+)
+
+# Pareto by outcome reason across scrap, rework, NOK.
+log.events.groupby("ts_shape:outcome")["ts_shape:sample_count"].sum().sort_values()
+```
+
+No per-detector dispatch — the column names are stable across all 264
+methods.
+
 ### Adding a new detector method
 
 1. Add a `LabelRule` entry to `REGISTRY` in
@@ -372,15 +479,25 @@ consistency:
 3. If the legacy output uses a non-standard column name for severity
    or value, set `severity_field=` / `value_field=` on the
    `LabelRule`.
-4. Run the coverage test:
+4. Classify the method in `ts_shape.eventlog.archetypes.ARCHETYPE_BY_METHOD`
+   (one of `threshold`, `interval`, `aggregate`, `outcome`, `static`,
+   `trace`, `forecast`, `correlation`). Populate the
+   [required `standard_attrs`](#standard-attribute-extension) keys for
+   that archetype.
+5. Run the coverage test:
 
     ```bash
     pytest tests/eventlog/test_adapter_coverage.py -q
     ```
 
-    It enforces both directions — every detector method has a rule,
-    and every rule maps to an existing method.
-5. If your detector's shape is exotic (multiple events per row,
+    It enforces:
+
+    * every detector method has a rule, and every rule maps to a method
+      (no orphans),
+    * every key in `standard_attrs` is in the fixed vocabulary,
+    * every method has an archetype, and the archetype's required keys
+      are populated.
+6. If your detector's shape is exotic (multiple events per row,
    nested data, runtime-dependent objects), [register a custom
    adapter](#custom-adapters) instead of fighting the generic one.
 
