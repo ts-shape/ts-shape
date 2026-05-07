@@ -240,17 +240,16 @@ def _apply_standard_attrs(
     for std_key, source in rule.standard_attrs.items():
         target_dtype = schema.STANDARD_ATTR_TYPES.get(std_key, "string")
 
+        if source is None:
+            continue
         if isinstance(source, str) and source in legacy.columns:
+            # String matching a legacy column → rename / coerce.
             series = legacy[source].reset_index(drop=True)
             consumed.add(source)
-        elif source is None:
-            continue
-        elif isinstance(source, str):
-            # Source column missing — skip silently. Standard attrs are
-            # optional enrichments; absent legacy data should not raise.
-            continue
         else:
-            # Literal scalar: broadcast.
+            # Literal scalar (or string that doesn't match a column,
+            # which is the common case for ts_shape:method = "zscore"
+            # and similar enum-like values). Broadcast to every row.
             series = pd.Series([source] * n)
 
         if target_dtype == "Int64":

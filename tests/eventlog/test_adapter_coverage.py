@@ -32,10 +32,8 @@ _REQUIRED_KEYS_BY_ARCHETYPE: dict[str, frozenset[str]] = {
 }
 
 
-# Set this to ``True`` once Phase 8 lands. Until then, the required-keys
-# test runs in lenient mode (passes regardless) so the framework can ship
-# before the per-pack populations are complete.
-_ENFORCE_REQUIRED_KEYS = False
+# All 264 methods have been populated; enforcement is on.
+_ENFORCE_REQUIRED_KEYS = True
 
 
 # Methods inherited from utils.base.Base that are not detector outputs.
