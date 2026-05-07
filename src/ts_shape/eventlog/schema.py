@@ -94,6 +94,44 @@ STANDARD_OBJECT_TYPES: tuple[str, ...] = (
 _OBJECT_TYPES: set[str] = set(STANDARD_OBJECT_TYPES)
 
 
+# ---- Standard attribute extension ------------------------------------------
+#
+# Every detector method's LabelRule may declare a ``standard_attrs`` mapping
+# from these fixed keys to either a legacy column name (string) or a literal
+# scalar value. The adapter renames / broadcasts and coerces to the type
+# below. Adding a new standard key requires updating this tuple AND the
+# corresponding entry in ``STANDARD_ATTR_TYPES``.
+STANDARD_ATTR_KEYS: tuple[str, ...] = (
+    "ts_shape:method",
+    "ts_shape:baseline",
+    "ts_shape:threshold_low",
+    "ts_shape:threshold_high",
+    "ts_shape:deviation",
+    "ts_shape:deviation_pct",
+    "ts_shape:direction",
+    "ts_shape:confidence",
+    "ts_shape:sample_count",
+    "ts_shape:outcome",
+    "ts_shape:lifecycle_state",
+    "ts_shape:lifecycle_pair_id",
+)
+
+STANDARD_ATTR_TYPES: dict[str, str] = {
+    "ts_shape:method": "string",
+    "ts_shape:baseline": "float64",
+    "ts_shape:threshold_low": "float64",
+    "ts_shape:threshold_high": "float64",
+    "ts_shape:deviation": "float64",
+    "ts_shape:deviation_pct": "float64",
+    "ts_shape:direction": "string",
+    "ts_shape:confidence": "float64",
+    "ts_shape:sample_count": "Int64",
+    "ts_shape:outcome": "string",
+    "ts_shape:lifecycle_state": "string",
+    "ts_shape:lifecycle_pair_id": "string",
+}
+
+
 def register_object_type(name: str) -> None:
     """Register a custom OCEL object type so adapters can emit it."""
     if not name or ":" in name:

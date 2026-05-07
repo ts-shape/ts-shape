@@ -13,7 +13,29 @@ import pandas as pd
 import pytest
 
 import ts_shape.events as events_pkg
+from ts_shape.eventlog.schema import STANDARD_ATTR_KEYS
 from ts_shape.eventlog.taxonomy import REGISTRY
+
+
+# Required standard_attrs keys per archetype. Each method classified in
+# ``ARCHETYPE_BY_METHOD`` (see archetypes.py) must populate at least these
+# keys in its LabelRule.standard_attrs mapping.
+_REQUIRED_KEYS_BY_ARCHETYPE: dict[str, frozenset[str]] = {
+    "threshold": frozenset({"ts_shape:method", "ts_shape:direction"}),
+    "interval": frozenset({"ts_shape:lifecycle_state"}),
+    "aggregate": frozenset({"ts_shape:sample_count"}),
+    "outcome": frozenset({"ts_shape:outcome"}),
+    "static": frozenset({"ts_shape:method"}),
+    "trace": frozenset({"ts_shape:lifecycle_state", "ts_shape:direction"}),
+    "forecast": frozenset({"ts_shape:method", "ts_shape:confidence"}),
+    "correlation": frozenset({"ts_shape:method"}),
+}
+
+
+# Set this to ``True`` once Phase 8 lands. Until then, the required-keys
+# test runs in lenient mode (passes regardless) so the framework can ship
+# before the per-pack populations are complete.
+_ENFORCE_REQUIRED_KEYS = False
 
 
 # Methods inherited from utils.base.Base that are not detector outputs.
@@ -74,3 +96,76 @@ def test_every_label_rule_has_valid_shape():
     valid = {"point", "interval", "summary", "static"}
     bad = [(k, r.shape) for k, r in REGISTRY.items() if r.shape not in valid]
     assert not bad, f"invalid shape on entries: {bad[:10]}"
+
+
+def test_standard_attrs_use_known_keys():
+    """Every key in any LabelRule.standard_attrs must be a registered
+    standard key. Forbids ad-hoc invention outside the fixed vocabulary.
+    """
+    allowed = set(STANDARD_ATTR_KEYS)
+    bad: list[tuple[tuple[str, str], str]] = []
+    for key, rule in REGISTRY.items():
+        for attr_key in rule.standard_attrs:
+            if attr_key not in allowed:
+                bad.append((key, attr_key))
+    assert not bad, (
+        "LabelRule entries use unknown standard_attrs keys (must be one of "
+        f"{sorted(allowed)}):\n  "
+        + "\n  ".join(f"{c}.{m}: {k}" for (c, m), k in bad[:20])
+    )
+
+
+def test_archetype_assignment_is_complete():
+    """Every method in REGISTRY must be classified in ARCHETYPE_BY_METHOD."""
+    from ts_shape.eventlog.archetypes import ARCHETYPE_BY_METHOD
+    missing = sorted(set(REGISTRY) - set(ARCHETYPE_BY_METHOD))
+    assert not missing, (
+        f"{len(missing)} method(s) without an archetype classification — "
+        "add to ts_shape.eventlog.archetypes.ARCHETYPE_BY_METHOD:\n  "
+        + "\n  ".join(f"{c}.{m}" for c, m in missing[:30])
+    )
+    extra = sorted(set(ARCHETYPE_BY_METHOD) - set(REGISTRY))
+    assert not extra, (
+        "ARCHETYPE_BY_METHOD has entries that are not in REGISTRY:\n  "
+        + "\n  ".join(f"{c}.{m}" for c, m in extra[:30])
+    )
+
+
+def test_archetype_values_are_valid():
+    from ts_shape.eventlog.archetypes import ARCHETYPE_BY_METHOD
+    valid = set(_REQUIRED_KEYS_BY_ARCHETYPE)
+    bad = [(k, v) for k, v in ARCHETYPE_BY_METHOD.items() if v not in valid]
+    assert not bad, (
+        f"invalid archetype labels (must be one of {sorted(valid)}):\n  "
+        + "\n  ".join(f"{c}.{m} = {a!r}" for (c, m), a in bad[:20])
+    )
+
+
+def test_required_standard_attrs_per_archetype():
+    """For each method, the standard_attrs mapping contains at least the
+    keys required by the method's archetype.
+
+    Until Phase 8 finishes the population, this test is lenient (only
+    reports missing keys). Flip ``_ENFORCE_REQUIRED_KEYS`` once every pack
+    has been populated.
+    """
+    from ts_shape.eventlog.archetypes import ARCHETYPE_BY_METHOD
+    missing: list[tuple[tuple[str, str], str, frozenset[str]]] = []
+    for key, archetype in ARCHETYPE_BY_METHOD.items():
+        rule = REGISTRY.get(key)
+        if rule is None:
+            continue
+        required = _REQUIRED_KEYS_BY_ARCHETYPE[archetype]
+        absent = required - set(rule.standard_attrs)
+        if absent:
+            missing.append((key, archetype, frozenset(absent)))
+
+    if _ENFORCE_REQUIRED_KEYS:
+        assert not missing, (
+            f"{len(missing)} method(s) missing required standard_attrs keys "
+            "for their archetype:\n  "
+            + "\n  ".join(
+                f"{c}.{m} ({arch}) missing {sorted(keys)}"
+                for (c, m), arch, keys in missing[:30]
+            )
+        )

@@ -37,6 +37,11 @@ class LabelRule:
     severity_field: str | None = None
     value_field: str | None = None
     drop_fields: tuple[str, ...] = ()
+    # Standard attribute extension: maps fixed keys (see
+    # ts_shape.eventlog.schema.STANDARD_ATTR_KEYS) to either a legacy column
+    # name to rename, or a literal scalar to broadcast. Keys outside that
+    # tuple raise in the coverage test.
+    standard_attrs: Mapping[str, object] = field(default_factory=dict)
 
 
 # Aliases used while building the registry below to keep entries terse.
