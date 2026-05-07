@@ -123,26 +123,17 @@ def _resolve_objects(
 ) -> dict[str, pd.Series]:
     """Produce ``object_type -> Series-of-oids`` aligned with legacy rows.
 
-    Only object types declared in ``rule.produces_objects`` are honored.
-    A user-provided binding overrides defaults for a given type.
+    Auto-extracts types declared in ``rule.produces_objects`` from the
+    legacy DataFrame's standard columns (e.g. ``source_uuid -> asset``).
+    Caller-supplied bindings via ``user_objects`` are always honored —
+    object types not declared by the adapter are treated as contextual
+    annotations the caller knows about (e.g. "this outlier happened
+    during batch B-2026-117").
     """
     declared = set(rule.produces_objects)
-    if not declared:
-        if user_objects:
-            raise ValueError(
-                f"adapter for {rule.template!r} declares no objects "
-                f"but caller supplied bindings: {list(user_objects)!r}"
-            )
-        return {}
-
     bindings: dict[str, pd.Series] = {}
 
     def _bind(otype: str, value: object) -> None:
-        if otype not in declared:
-            raise ValueError(
-                f"object type {otype!r} not declared by adapter "
-                f"(declared: {sorted(declared)})"
-            )
         if isinstance(value, str):
             if value not in legacy.columns:
                 return  # silently skip; column not present

@@ -29,8 +29,10 @@ def to_event_log(
     * a ``pd.Series`` aligned with ``df`` rows,
     * a scalar broadcast to every row.
 
-    Only object types declared by the adapter (``LabelRule.produces_objects``)
-    are honored; binding an undeclared type raises ``ValueError``.
+    Caller-supplied bindings are always honored. Types listed in the
+    adapter's ``LabelRule.produces_objects`` are *also* auto-extracted from
+    standard legacy columns (e.g. ``source_uuid -> asset``) when no explicit
+    binding is given.
     """
     if "." not in detector:
         raise ValueError(

@@ -15,10 +15,12 @@ A :class:`LabelRule` describes:
   ``"interval"``   → has ``start``/``end`` columns,
   ``"summary"``    → a windowed/aggregate row (uses end column or any datetime),
   ``"static"``     → no time semantics; uses ``ts_shape:fallback_now``.
-* ``produces_objects`` — declared object types this method can emit. Empty
-  tuple means "events only, no objects". The default is ``("asset",)`` if
-  the legacy DataFrame carries a ``source_uuid`` (or equivalent) column,
-  else ``()``.
+* ``produces_objects`` — object types the adapter *auto-extracts* from
+  the legacy DataFrame's standard columns (e.g. ``source_uuid -> asset``).
+  Callers can always attach additional contextual object types (batch,
+  shift, operator, ...) via the ``objects=`` argument to
+  :func:`~ts_shape.eventlog.to_event_log`. Empty tuple means "no
+  auto-extraction; objects only appear if the caller binds them".
 """
 from __future__ import annotations
 

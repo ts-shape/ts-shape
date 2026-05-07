@@ -117,19 +117,25 @@ def test_bad_detector_spec_raises():
         to_event_log(pd.DataFrame(), detector="missing_dot")
 
 
-# ---------- objects= rejects undeclared types -------------------------------
+# ---------- caller-supplied objects= ----------------------------------------
 
-def test_objects_undeclared_type_raises(outlier_df):
+def test_caller_can_supply_contextual_object_types(outlier_df):
+    """The adapter only auto-extracts ``asset`` from ``source_uuid``, but a
+    caller can attach contextual types like ``batch`` via ``objects=``."""
     legacy = OutlierDetectionEvents(
         outlier_df, value_column="value_double"
     ).detect_outliers_zscore()
-    # OutlierDetectionEvents.detect_outliers_zscore declares ("asset",)
-    with pytest.raises(ValueError, match="not declared"):
-        to_event_log(
-            legacy,
-            detector="OutlierDetectionEvents.detect_outliers_zscore",
-            objects={"batch": "uuid"},
-        )
+    legacy = legacy.assign(batch_id="B-2026-117")
+    log = to_event_log(
+        legacy,
+        detector="OutlierDetectionEvents.detect_outliers_zscore",
+        objects={"batch": "batch_id"},
+        qualifiers={"asset": "produced_on", "batch": "during_batch"},
+    )
+    types = set(log.objects[OCEL_TYPE])
+    assert {"asset", "batch"} <= types
+    # qualifier propagated to relations.
+    assert "during_batch" in set(log.relations["ocel:qualifier"].dropna())
 
 
 # ---------- severity bucket mapping -----------------------------------------
