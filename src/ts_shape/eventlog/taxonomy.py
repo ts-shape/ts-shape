@@ -24,8 +24,12 @@ A :class:`LabelRule` describes:
 """
 from __future__ import annotations
 
+import re
+import string
 from dataclasses import dataclass, field
 from typing import Mapping
+
+import pandas as pd
 
 
 @dataclass(frozen=True)
@@ -41,7 +45,17 @@ class LabelRule:
     # ts_shape.eventlog.schema.STANDARD_ATTR_KEYS) to either a legacy column
     # name to rename, or a literal scalar to broadcast. Keys outside that
     # tuple raise in the coverage test.
-    standard_attrs: Mapping[str, object] = field(default_factory=dict)
+    standard_attrs: Mapping[str, str | float | int | bool | None] = field(
+        default_factory=dict
+    )
+
+
+_TEMPLATE_FIELD_RE = re.compile(r"\{([^{}]+)\}")
+
+
+def template_fields(template: str) -> tuple[str, ...]:
+    """Return the placeholder field names in a template, in order."""
+    return tuple(_TEMPLATE_FIELD_RE.findall(template))
 
 
 # Aliases used while building the registry below to keep entries terse.
@@ -1144,36 +1158,36 @@ def get(class_name: str, method_name: str) -> LabelRule | None:
     return REGISTRY.get((class_name, method_name))
 
 
+class _MissingSafeFormatter(string.Formatter):
+    """``string.Formatter`` that returns ``"unknown"`` for missing or NaN
+    values, instead of raising ``KeyError`` / rendering the literal
+    ``"nan"``.
+    """
+
+    def get_value(self, key, args, kwargs):  # type: ignore[override]
+        try:
+            val = kwargs[key] if isinstance(key, str) else args[key]
+        except (KeyError, IndexError):
+            return "unknown"
+        if val is None:
+            return "unknown"
+        try:
+            if pd.isna(val):
+                return "unknown"
+        except (TypeError, ValueError):
+            pass
+        return val
+
+
+_FORMATTER = _MissingSafeFormatter()
+
+
 def render_activity(rule: LabelRule, row: Mapping[str, object]) -> str:
     """Substitute ``{field}`` placeholders in ``rule.template`` from ``row``.
 
-    Missing fields render as ``unknown`` rather than raising — adapters
-    should not crash on partial input data.
+    Missing or NaN values render as ``"unknown"`` rather than raising or
+    leaking pandas' ``"nan"`` repr.
     """
-    template = rule.template
-    if "{" not in template:
-        return template
-    out = template
-    # Minimal templating: scan for {name} occurrences.
-    i = 0
-    parts: list[str] = []
-    while i < len(template):
-        j = template.find("{", i)
-        if j == -1:
-            parts.append(template[i:])
-            break
-        parts.append(template[i:j])
-        k = template.find("}", j + 1)
-        if k == -1:
-            parts.append(template[j:])
-            break
-        field_name = template[j + 1:k]
-        val = row.get(field_name) if hasattr(row, "get") else None  # type: ignore[arg-type]
-        if val is None:
-            try:
-                val = row[field_name]  # type: ignore[index]
-            except (KeyError, TypeError):
-                val = "unknown"
-        parts.append(str(val))
-        i = k + 1
-    return "".join(parts)
+    if "{" not in rule.template:
+        return rule.template
+    return _FORMATTER.vformat(rule.template, (), dict(row))
