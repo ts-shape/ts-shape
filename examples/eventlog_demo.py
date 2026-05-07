@@ -29,11 +29,32 @@ import pandas as pd
 from ts_shape.events.production.machine_state import MachineStateEvents
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 from ts_shape.eventlog import (
+    EventLog,
     concat,
+    register_adapter,
     to_event_log,
     to_flat_df,
     to_ocel_tables,
 )
+from ts_shape.eventlog import schema as S
+from ts_shape.eventlog import taxonomy
+from ts_shape.eventlog.taxonomy import REGISTRY, LabelRule
+
+
+def _print_label_rule(class_name: str, method_name: str) -> None:
+    """Pretty-print the LabelRule that drives a detector's adapter."""
+    rule = taxonomy.get(class_name, method_name)
+    if rule is None:
+        print(f"  (no LabelRule for {class_name}.{method_name})")
+        return
+    print(f"--- LabelRule for {class_name}.{method_name} ---")
+    print(f"  template:           {rule.template}")
+    print(f"  pack:               {rule.pack}")
+    print(f"  shape:              {rule.shape}")
+    print(f"  produces_objects:   {rule.produces_objects}")
+    print(f"  severity_field:     {rule.severity_field}")
+    print(f"  value_field:        {rule.value_field}")
+    print(f"  drop_fields:        {rule.drop_fields}")
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +100,21 @@ def synth_inputs() -> tuple[pd.DataFrame, pd.DataFrame]:
 def main() -> None:
     state_df, torque_df = synth_inputs()
 
+    # ---------------------------------------------------------------------
+    # 2a. Inspect the LabelRule that drives each adapter.
+    # ---------------------------------------------------------------------
+    # Each detector method is registered with a LabelRule in
+    # ts_shape.eventlog.taxonomy.REGISTRY. The generic adapter consults
+    # this entry to know the activity name template, shape, severity
+    # source column, etc.
+    print("=" * 70)
+    print("Adapter inputs — registry entries that drive normalization")
+    print("=" * 70)
+    _print_label_rule("MachineStateEvents", "detect_run_idle")
+    print()
+    _print_label_rule("OutlierDetectionEvents", "detect_outliers_zscore")
+    print()
+
     # --- machine state: interval events ------------------------------------
     state_legacy = MachineStateEvents(
         state_df, run_state_uuid="asset-A"
@@ -89,6 +125,31 @@ def main() -> None:
         state_legacy,
         detector="MachineStateEvents.detect_run_idle",
     )
+
+    # ---------------------------------------------------------------------
+    # 2b. Show the column-by-column mapping for one row.
+    # ---------------------------------------------------------------------
+    # This is what the "Concrete walkthrough" table in the guide describes,
+    # made concrete on actual data.
+    print("=" * 70)
+    print("Adapter output — column mapping for the first run/idle row")
+    print("=" * 70)
+    legacy_row = state_legacy.iloc[0]
+    canonical_row = state_log.events.iloc[0]
+
+    print("legacy DataFrame row:")
+    for col, val in legacy_row.items():
+        print(f"  {col:24s} = {val!r}")
+    print()
+    print("canonical EventLog row (lands in the events table):")
+    for col, val in canonical_row.items():
+        print(f"  {col:32s} = {val!r}")
+    print()
+    print("relations row (link to objects table):")
+    rel_row = state_log.relations.iloc[0]
+    for col, val in rel_row.items():
+        print(f"  {col:24s} = {val!r}")
+    print()
 
     # --- outlier: point events with severity -------------------------------
     outlier_legacy = OutlierDetectionEvents(
@@ -147,6 +208,73 @@ def main() -> None:
     xes_batch = to_flat_df(log, case_object_type="batch")
     print(xes_batch[
         ["case:concept:name", "concept:name", "time:timestamp"]
+    ].to_string(index=False))
+    print()
+
+    # ---------------------------------------------------------------------
+    # 3b. Custom adapter override — when the generic shape adapter is not
+    #     enough. This is purely illustrative; real detectors register the
+    #     LabelRule in src/ts_shape/eventlog/taxonomy.py.
+    # ---------------------------------------------------------------------
+
+    print("=" * 70)
+    print("Custom adapter — emit two events per legacy row")
+    print("=" * 70)
+
+    # 1. Make the registry aware of the (otherwise unknown) method.
+    REGISTRY[("MyDetector", "alarm_pair")] = LabelRule(
+        template="production.custom.{kind}",
+        pack="production",
+        shape="point",
+        produces_objects=("asset",),
+    )
+
+    # 2. Register an override that produces *two* events per legacy row.
+    @register_adapter("MyDetector", "alarm_pair")
+    def _expand_pairs(legacy_df, *, rule, detector, objects, qualifiers):
+        rows: list[dict] = []
+        rels: list[dict] = []
+        for i, row in legacy_df.iterrows():
+            for kind in ("raised", "cleared"):
+                eid = f"e-MyDetector-{i}-{kind}"
+                rows.append({
+                    S.OCEL_EID: eid,
+                    S.OCEL_ACTIVITY: f"production.custom.{kind}",
+                    S.OCEL_TIMESTAMP: pd.Timestamp(row[f"{kind}_at"], tz="UTC"),
+                    S.TS_DETECTOR: detector,
+                    S.TS_PACK: rule.pack,
+                })
+                rels.append({
+                    S.OCEL_EID: eid,
+                    S.OCEL_OID: row["asset_id"],
+                    S.OCEL_TYPE: "asset",
+                    S.OCEL_QUALIFIER: "produced_on",
+                })
+        events = pd.concat(
+            [S.empty_events(), pd.DataFrame(rows)], ignore_index=True
+        )
+        relations = pd.concat(
+            [S.empty_relations(), pd.DataFrame(rels)], ignore_index=True
+        )
+        objects = pd.DataFrame({
+            S.OCEL_OID: legacy_df["asset_id"].astype("string").unique(),
+            S.OCEL_TYPE: "asset",
+        })
+        return EventLog(events=events, objects=objects, relations=relations)
+
+    # 3. Pretend a detector returned this two-row legacy DataFrame.
+    pair_legacy = pd.DataFrame({
+        "asset_id":   ["asset-A", "asset-A"],
+        "raised_at":  ["2026-05-07T08:10:00Z", "2026-05-07T08:25:00Z"],
+        "cleared_at": ["2026-05-07T08:11:30Z", "2026-05-07T08:26:15Z"],
+    })
+
+    # 4. Same to_event_log() entry point — the override is dispatched
+    #    automatically based on the detector name.
+    pair_log = to_event_log(pair_legacy, detector="MyDetector.alarm_pair")
+    print("two legacy rows in →", len(pair_log.events), "events out:")
+    print(pair_log.events[
+        ["ocel:eid", "ocel:activity", "ocel:timestamp"]
     ].to_string(index=False))
     print()
 
