@@ -20,7 +20,12 @@ import pandas as pd
 
 from . import schema
 from .model import EventLog
-from .taxonomy import LabelRule, render_activity, template_fields
+from .taxonomy import (
+    _TEMPLATE_FIELD_RE,
+    LabelRule,
+    render_activity,
+    template_fields,
+)
 
 
 # ----------------------------------------------------------------------------
@@ -45,6 +50,37 @@ def register_adapter(class_name: str, method_name: str) -> Callable[[AdapterFn],
 
 def get_override(class_name: str, method_name: str) -> AdapterFn | None:
     return _OVERRIDES.get((class_name, method_name))
+
+
+def has_override(class_name: str, method_name: str) -> bool:
+    """Return True iff a custom adapter is registered for ``(class, method)``."""
+    return (class_name, method_name) in _OVERRIDES
+
+
+def clear_overrides(
+    class_name: str | None = None,
+    method_name: str | None = None,
+) -> None:
+    """Remove registered override(s).
+
+    * No arguments → clear every registration (typical pytest fixture
+      teardown).
+    * Both arguments → clear that specific ``(class, method)`` only.
+    * Class name only → clear every override on that class.
+
+    Has no effect if the targeted entries are already absent.
+    """
+    if class_name is None and method_name is None:
+        _OVERRIDES.clear()
+        return
+    if class_name is not None and method_name is not None:
+        _OVERRIDES.pop((class_name, method_name), None)
+        return
+    if class_name is not None:
+        for key in [k for k in _OVERRIDES if k[0] == class_name]:
+            _OVERRIDES.pop(key, None)
+        return
+    raise ValueError("pass class_name when method_name is given")
 
 
 # ----------------------------------------------------------------------------
@@ -306,10 +342,23 @@ def _apply_standard_attrs(
 # The shape-driven adapter
 # ----------------------------------------------------------------------------
 
+# Sentinel timestamp used as the eid-hash input for ``static`` shape rows.
+# The events table still surfaces ``pd.Timestamp.now(tz="UTC")`` for those
+# rows so they sort sensibly next to real events, but the eid is hashed on
+# this stable sentinel so re-running a static-shape detector on the same
+# input produces the same eids (idempotency).
+_STATIC_EID_SENTINEL = pd.Timestamp("1970-01-01T00:00:00", tz="UTC")
+
+
 def _resolve_timestamps(
     legacy: pd.DataFrame, rule: LabelRule, n: int,
-) -> tuple[pd.Series, pd.Series, pd.Series, set[str], LabelRule | None]:
-    """Return ``(ts_end, ts_start, duration_s, consumed_cols, fallback_rule)``.
+) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series, set[str], LabelRule | None]:
+    """Return ``(ts_end, ts_start, duration_s, ts_for_eid, consumed_cols,
+    fallback_rule)``.
+
+    ``ts_for_eid`` is what gets hashed into the event id. For most shapes it
+    equals ``ts_end``; for ``static`` it is a fixed sentinel so re-runs are
+    idempotent (the user-visible ``ocel:timestamp`` is still ``now``).
 
     ``fallback_rule`` is non-None when the rule was ``interval`` but the
     legacy DataFrame lacks start/end columns — caller should re-dispatch
@@ -323,17 +372,18 @@ def _resolve_timestamps(
                                  ("end", "window_end", "period_end"),
                                  strict=True)
         if start_col is None or end_col is None:
+            empty_dt = pd.Series(dtype="datetime64[ns, UTC]")
             return (
-                pd.Series(dtype="datetime64[ns, UTC]"),
-                pd.Series(dtype="datetime64[ns, UTC]"),
+                empty_dt, empty_dt,
                 pd.Series(dtype="float64"),
+                empty_dt,
                 set(),
                 dataclasses.replace(rule, shape="point"),
             )
         ts_end = _to_utc_series(legacy[end_col])
         ts_start = _to_utc_series(legacy[start_col])
         duration = (ts_end - ts_start).dt.total_seconds()
-        return ts_end, ts_start, duration, {start_col, end_col}, None
+        return ts_end, ts_start, duration, ts_end, {start_col, end_col}, None
 
     if rule.shape in {"point", "summary"}:
         time_col = _pick_time_col(legacy, _POINT_CANDIDATES)
@@ -355,14 +405,16 @@ def _resolve_timestamps(
         else:
             ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
             duration = pd.Series([float("nan")] * n, dtype="float64")
-        return ts_end, ts_start, duration, consumed, None
+        return ts_end, ts_start, duration, ts_end, consumed, None
 
     if rule.shape == "static":
         now = pd.Timestamp.now(tz="UTC")
         ts_end = pd.Series([now] * n, dtype="datetime64[ns, UTC]")
         ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
         duration = pd.Series([float("nan")] * n, dtype="float64")
-        return ts_end, ts_start, duration, set(), None
+        ts_for_eid = pd.Series([_STATIC_EID_SENTINEL] * n,
+                               dtype="datetime64[ns, UTC]")
+        return ts_end, ts_start, duration, ts_for_eid, set(), None
 
     raise ValueError(f"unknown shape {rule.shape!r}")
 
@@ -390,7 +442,9 @@ def _render_activities(legacy: pd.DataFrame, rule: LabelRule, n: int) -> pd.Seri
     out = pd.Series([""] * n, dtype="string")
     for literal, field_name in chunks:
         if field_name is None:
-            out = out.str.cat(pd.Series([literal] * n, dtype="string"))
+            # String + literal is vectorised on string dtype; cheaper than
+            # allocating a fresh Series of repeats.
+            out = out + literal
             continue
         if field_name in legacy.columns:
             col = legacy[field_name].astype("string")
@@ -399,9 +453,6 @@ def _render_activities(legacy: pd.DataFrame, rule: LabelRule, n: int) -> pd.Seri
             col = pd.Series(["unknown"] * n, dtype="string")
         out = out.str.cat(col)
     return out
-
-
-_TEMPLATE_FIELD_RE = re.compile(r"\{([^{}]+)\}")
 
 
 def _build_eids(detector: str, ts_end: pd.Series, activities: pd.Series) -> pd.Series:
@@ -437,15 +488,14 @@ def adapt(
     legacy = legacy.reset_index(drop=True)
     n = len(legacy)
 
-    ts_end, ts_start, duration, time_cols_used, fallback_rule = _resolve_timestamps(
-        legacy, rule, n,
-    )
+    (ts_end, ts_start, duration, ts_for_eid,
+     time_cols_used, fallback_rule) = _resolve_timestamps(legacy, rule, n)
     if fallback_rule is not None:
         return adapt(legacy, rule=fallback_rule, detector=detector,
                      objects=objects, qualifiers=qualifiers)
 
     activities = _render_activities(legacy, rule, n)
-    eids = _build_eids(detector, ts_end, activities)
+    eids = _build_eids(detector, ts_for_eid, activities)
 
     severity = _severity_series(legacy, rule)
     value = _value_series(legacy, rule)
