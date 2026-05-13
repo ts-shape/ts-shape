@@ -74,9 +74,17 @@ def test_every_detector_method_has_label_rule():
 
 
 def test_no_orphan_registry_entries():
-    """Every registry entry should match a real detector method."""
+    """Every registry entry should match a real detector method.
+
+    Lambda-rule entries (class name starting with ``Lambda``) are exempt:
+    they are registered dynamically by
+    :func:`ts_shape.eventlog.register_lambda_rule` and intentionally have
+    no Python class on disk.
+    """
     discovered = set(_walk_detector_methods())
-    orphans = sorted(set(REGISTRY) - discovered)
+    orphans = sorted(
+        k for k in set(REGISTRY) - discovered if not k[0].startswith("Lambda")
+    )
     assert not orphans, (
         "Registry entries with no corresponding detector method:\n  "
         + "\n  ".join(f"{c}.{m}" for c, m in orphans[:30])

@@ -118,22 +118,41 @@ Timeseries analytics for manufacturing — from raw signals to production KPIs.
 </div>
 
 ```mermaid
-flowchart LR
-    subgraph Input
-        A1[Parquet]
-        A2[S3 / Azure]
-        A3[TimescaleDB]
+flowchart TB
+    subgraph IN["Sources"]
+        S1[Time-series stores<br/><i>Parquet · S3/Azure · TimescaleDB</i>]
+        S2[Object &amp; context<br/><i>batches · shifts · assets</i>]
     end
-
-    A1 --> L[Load & Enrich]
-    A2 --> L
-    A3 --> L
-
-    L --> T[Transform & Filter]
-    T --> F[Features & Statistics]
-    F --> E[Event Detection]
-    E --> O[Production KPIs & Reports]
+    subgraph LOAD["Load &amp; Enrich"]
+        L1[Loaders]
+        L2[Transforms · Features · Statistics]
+    end
+    subgraph DETECT["Detection Layer"]
+        D1["Built-in detectors<br/>(290 methods, 68 classes)"]
+        D2["Lambda rules<br/>(YAML / DSL)"]
+        D3["Gen-AI authoring<br/><i>roadmap</i>"]
+    end
+    subgraph EVENTLOG["Canonical EventLog (OCEL 2.0)"]
+        E1[Events]
+        E2[Objects]
+        E3[Relations]
+    end
+    subgraph OUT["Consumers"]
+        O1[XES / pm4py]
+        O2[OCEL viewers]
+        O3[KPIs &amp; reports]
+    end
+    IN --> LOAD --> DETECT
+    D1 --> EVENTLOG
+    D2 --> EVENTLOG
+    D3 -.-> D2
+    EVENTLOG --> OUT
+    style DETECT fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
+    style EVENTLOG fill:#3d2a0f,stroke:#fbbf24,color:#fef3c7
+    style D3 stroke-dasharray: 4 3
 ```
+
+The detection layer is intentionally pluggable: hand-coded detector classes for the curated industry library, YAML-declared [lambda rules](guides/lambda-rules.md) for user-authored or per-site customizations, and (roadmap) gen-AI authoring that emits lambda rules — so it inherits the same AST-sandbox safety net. Whichever path a detection comes from, the output lands in the same canonical event log.
 
 ---
 

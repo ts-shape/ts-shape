@@ -26,6 +26,19 @@ Typical use::
 from .adapters import register_adapter
 from .concat import concat
 from .flat import to_flat_df
+from .lambda_rules import (
+    BacktestResult,
+    LambdaDetector,
+    RuleSpec,
+    TriggerSpec,
+    UnsafeExpression,
+    compile_expression,
+    load_dicts,
+    load_yaml,
+    register_lambda_rule,
+    run_backtest,
+    unregister_lambda_rule,
+)
 from .model import EventLog
 from .normalizer import to_event_log
 from .ocel import to_ocel_tables
@@ -53,15 +66,26 @@ from .schema import (
 from .taxonomy import REGISTRY, LabelRule
 
 __all__ = [
+    "BacktestResult",
     "EventLog",
     "LabelRule",
+    "LambdaDetector",
     "REGISTRY",
+    "RuleSpec",
+    "TriggerSpec",
+    "UnsafeExpression",
+    "compile_expression",
     "concat",
+    "load_dicts",
+    "load_yaml",
     "register_adapter",
+    "register_lambda_rule",
     "register_object_type",
+    "run_backtest",
     "to_event_log",
     "to_flat_df",
     "to_ocel_tables",
+    "unregister_lambda_rule",
     "validate",
     "OCEL_ACTIVITY",
     "OCEL_EID",

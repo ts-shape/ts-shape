@@ -4,53 +4,41 @@ ts-shape is a lightweight toolkit for shaping timeseries data into analysis-read
 
 ## Architecture
 
+A layered, abstract view of the pipeline. The detection layer is intentionally pluggable — see [Lambda Rules](guides/lambda-rules.md) for the user-authored path.
+
 ```mermaid
-flowchart LR
-    subgraph ACQ["<b>Data Acquisition</b><br/><i>8 loaders</i>"]
-        L1["Parquet"]
-        L2["S3 / Azure"]
-        L3["TimescaleDB"]
-        L4["Metadata"]
+flowchart TB
+    subgraph IN["Sources"]
+        S1[Time-series stores<br/><i>Parquet · S3/Azure · TimescaleDB</i>]
+        S2[Object &amp; context<br/><i>batches · shifts · assets</i>]
     end
-
-    subgraph COND["<b>Signal Conditioning</b><br/><i>9 classes</i>"]
-        T["Filters &<br/>Calculations"]
+    subgraph LOAD["Load &amp; Enrich"]
+        L1[Loaders]
+        L2[Transforms · Features · Statistics]
     end
-
-    subgraph ANA["<b>Signal Analytics</b><br/><i>5 classes</i>"]
-        F["Statistics &<br/>Cycles"]
+    subgraph DETECT["Detection Layer"]
+        D1["Built-in detectors<br/>(290 methods, 68 classes)"]
+        D2["Lambda rules<br/>(YAML / DSL)"]
+        D3["Gen-AI authoring<br/><i>roadmap</i>"]
     end
-
-    subgraph EVT["<b>Event Detection</b>"]
-        E1["Quality & SPC<br/><i>9 classes</i>"]
-        E2["Production<br/><i>26 classes</i>"]
-        E3["Engineering<br/><i>13 classes</i>"]
-        E4["Maintenance /<br/>Energy / Supply<br/><i>10 classes</i>"]
+    subgraph EVENTLOG["Canonical EventLog (OCEL 2.0)"]
+        E1[Events]
+        E2[Objects]
+        E3[Relations]
     end
-
-    subgraph RPT["<b>Reports</b>"]
-        R1["Shift Handover"]
-        R2["Period Summary"]
+    subgraph OUT["Consumers"]
+        O1[XES / pm4py]
+        O2[OCEL viewers]
+        O3[KPIs &amp; reports]
     end
-
-    L1 --> T
-    L2 --> T
-    L3 --> T
-    L4 --> T
-
-    T --> F --> E1
-    F --> E2
-    F --> E3
-    F --> E4
-
-    E2 --> R1
-    E2 --> R2
-
-    style ACQ fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
-    style COND fill:#1a3a4a,stroke:#2dd4bf,color:#e0f2fe
-    style ANA fill:#1a3a4a,stroke:#2dd4bf,color:#e0f2fe
-    style EVT fill:#1a3a4a,stroke:#f59e0b,color:#fef3c7
-    style RPT fill:#14532d,stroke:#22c55e,color:#dcfce7
+    IN --> LOAD --> DETECT
+    D1 --> EVENTLOG
+    D2 --> EVENTLOG
+    D3 -.-> D2
+    EVENTLOG --> OUT
+    style DETECT fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
+    style EVENTLOG fill:#3d2a0f,stroke:#fbbf24,color:#fef3c7
+    style D3 stroke-dasharray: 4 3
 ```
 
 ## Core Principles

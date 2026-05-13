@@ -26,9 +26,12 @@ flowchart LR
     style NORM fill:#3d2a0f,stroke:#fbbf24,color:#fef3c7
 ```
 
-- One adapter layer normalizes **all 264** public DataFrame-returning detector methods into the same schema.
+- One adapter layer normalizes **all 290+** public DataFrame-returning detector methods into the same schema. User-authored detectors via the [Lambda Rules](lambda-rules.md) subsystem flow through the same adapter without any extra plumbing.
 - The event log keeps OCEL's separation of **events**, **objects**, and **event-to-object relations** — no single "case" is forced.
 - `to_flat_df(case_object_type=...)` defers the case-id question to export time: flatten the same log per asset, per batch, per cycle, etc.
+
+!!! tip "Need a rule without writing a Python class?"
+    The [Lambda Rules guide](lambda-rules.md) walks through declaring detectors in YAML. They register dynamically with the same taxonomy and flow through the same adapter described below.
 
 ---
 
