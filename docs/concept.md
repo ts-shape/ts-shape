@@ -4,54 +4,144 @@ ts-shape is a lightweight toolkit for shaping timeseries data into analysis-read
 
 ## Architecture
 
+A layered, abstract view of the pipeline. The detection layer is intentionally pluggable — see [Lambda Rules](guides/lambda-rules.md) for the user-authored path.
+
 ```mermaid
-flowchart LR
-    subgraph ACQ["<b>Data Acquisition</b><br/><i>8 loaders</i>"]
-        L1["Parquet"]
-        L2["S3 / Azure"]
-        L3["TimescaleDB"]
-        L4["Metadata"]
+flowchart TB
+    subgraph IN["Sources"]
+        S1[Time-series stores<br/><i>Parquet · S3/Azure · TimescaleDB</i>]
+        S2[Object &amp; context<br/><i>batches · shifts · assets</i>]
     end
-
-    subgraph COND["<b>Signal Conditioning</b><br/><i>9 classes</i>"]
-        T["Filters &<br/>Calculations"]
+    subgraph LOAD["Load &amp; Enrich"]
+        L1[Loaders]
+        L2[Transforms · Features · Statistics]
     end
-
-    subgraph ANA["<b>Signal Analytics</b><br/><i>5 classes</i>"]
-        F["Statistics &<br/>Cycles"]
+    subgraph DETECT["Detection Layer"]
+        D1["Built-in detectors<br/>(290 methods, 68 classes)"]
+        D2["Lambda rules<br/>(YAML / DSL)"]
+        D3["Gen-AI authoring<br/><i>roadmap</i>"]
     end
-
-    subgraph EVT["<b>Event Detection</b>"]
-        E1["Quality & SPC<br/><i>9 classes</i>"]
-        E2["Production<br/><i>26 classes</i>"]
-        E3["Engineering<br/><i>13 classes</i>"]
-        E4["Maintenance /<br/>Energy / Supply<br/><i>10 classes</i>"]
+    subgraph EVENTLOG["Canonical EventLog (OCEL 2.0)"]
+        E1[Events]
+        E2[Objects]
+        E3[Relations]
     end
-
-    subgraph RPT["<b>Reports</b>"]
-        R1["Shift Handover"]
-        R2["Period Summary"]
+    subgraph OUT["Consumers"]
+        O1[XES / pm4py]
+        O2[OCEL viewers]
+        O3[KPIs &amp; reports]
     end
-
-    L1 --> T
-    L2 --> T
-    L3 --> T
-    L4 --> T
-
-    T --> F --> E1
-    F --> E2
-    F --> E3
-    F --> E4
-
-    E2 --> R1
-    E2 --> R2
-
-    style ACQ fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
-    style COND fill:#1a3a4a,stroke:#2dd4bf,color:#e0f2fe
-    style ANA fill:#1a3a4a,stroke:#2dd4bf,color:#e0f2fe
-    style EVT fill:#1a3a4a,stroke:#f59e0b,color:#fef3c7
-    style RPT fill:#14532d,stroke:#22c55e,color:#dcfce7
+    IN --> LOAD --> DETECT
+    D1 --> EVENTLOG
+    D2 --> EVENTLOG
+    D3 -.-> D2
+    EVENTLOG --> OUT
+    style DETECT fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
+    style EVENTLOG fill:#3d2a0f,stroke:#fbbf24,color:#fef3c7
+    style D3 stroke-dasharray: 4 3
 ```
+
+## Full library architecture
+
+A more detailed map showing every top-level package, the key classes inside each, and how they hand data to one another. The five top rows mirror the abstract pipeline above; the bottom row is the canonical event log + exporters that every detector funnels into. For how a single detection actually flows through these layers, see [Event Handling — Visual Overview](guides/event-handling-flow.md).
+
+```mermaid
+flowchart TB
+    subgraph LOADER["ts_shape.loader — data acquisition"]
+        direction LR
+        L_TS["<b>timeseries/</b><br/>ParquetLoader · S3Loader<br/>AzureBlobLoader · TimescaleLoader"]
+        L_MD["<b>metadata/</b><br/>MetadataJsonLoader<br/>MetadataCsvLoader"]
+        L_CX["<b>context/</b><br/>ContextLoader · BatchContextLoader"]
+        L_CM["<b>combine/</b><br/>JoinLoaders · MergeOnTime"]
+    end
+
+    subgraph TRANSFORM["ts_shape.transform — signal conditioning"]
+        direction LR
+        T_FN["<b>functions/</b><br/>resample · interpolate · clip"]
+        T_FT["<b>filter/</b><br/>RangeFilter · DeltaFilter<br/>NullFilter · UuidFilter"]
+        T_CA["<b>calculator/</b><br/>UnitConvert · Derivatives<br/>SignalArithmetic"]
+        T_TM["<b>time_functions/</b><br/>shift · align · gap_fill"]
+        T_HM["harmonization.py"]
+    end
+
+    subgraph FEATURE["ts_shape.features — analytics"]
+        direction LR
+        F_ST["<b>stats/</b><br/>WindowedStats · RollingAgg"]
+        F_TS["<b>time_stats/</b><br/>seasonal · trend · changepoint"]
+        F_CY["<b>cycles/</b><br/>CycleExtractor · CycleStats"]
+        F_SE["<b>segment_analysis/</b><br/>regime detection"]
+        F_CR["<b>cross_signal.py</b> · <b>pattern_recognition.py</b>"]
+    end
+
+    subgraph CONTEXT["ts_shape.context"]
+        CX["value_mapping.py — categorical lookups, code → label"]
+    end
+
+    subgraph EVENTS["ts_shape.events — detector library (290 methods, 68 classes)"]
+        direction LR
+        EV_Q["<b>quality/</b> · 11 classes<br/>OutlierDetection · SPC · ToleranceDeviation<br/>SensorDrift · GaugeRepeatability · ValueDistribution<br/>AnomalyClassification · CapabilityTrending<br/>DataGapAnalysis · MultiSensorValidation · SignalQuality"]
+        EV_P["<b>production/</b> · 30 classes<br/>MachineState · OEECalculator · DowntimeTracking<br/>CycleTime · ChangeoverEvents · BatchTracking<br/>QualityTracking · ScrapTracking · ShiftReporting<br/>OrderTraceability · …"]
+        EV_E["<b>engineering/</b> · 12 classes<br/>ControlLoopHealth · ProcessStability<br/>SetpointChange · StartupDetection · SteadyState<br/>ThresholdMonitoring · WarmUpCoolDown · …"]
+        EV_M["<b>maintenance/</b> · 3 classes<br/>DegradationDetection<br/>FailurePrediction · VibrationAnalysis"]
+        EV_EN["<b>energy/</b> · 5 classes<br/>EnergyConsumption · EnergyEfficiency<br/>CarbonIntensity · IdleEnergyDetection<br/>EnergyPerformanceIndicator"]
+        EV_CO["<b>correlation/</b> · 2 classes<br/>SignalCorrelation · AnomalyCorrelation"]
+        EV_SC["<b>supplychain/</b> · 3 classes<br/>DemandPattern · InventoryMonitoring<br/>LeadTimeAnalysis"]
+    end
+
+    subgraph EVENTLOG["ts_shape.eventlog — canonical OCEL 2.0 layer"]
+        direction LR
+        EL_M["<b>model.py</b><br/>EventLog (events · objects · relations)"]
+        EL_S["<b>schema.py</b><br/>OCEL columns · STANDARD_ATTR_KEYS<br/>register_object_type · validate"]
+        EL_T["<b>taxonomy.py</b><br/>LabelRule · REGISTRY (290+ entries)"]
+        EL_A["<b>adapters.py</b> · <b>archetypes.py</b><br/>shape-driven adapter · ARCHETYPE_BY_METHOD"]
+        EL_N["<b>normalizer.py</b><br/>to_event_log(df, detector=…)"]
+        EL_FO["<b>flat.py · ocel.py · concat.py</b><br/>to_flat_df (XES) · to_ocel_tables · concat"]
+        EL_LR["<b>lambda_rules/</b><br/>RuleSpec · TriggerSpec · LambdaDetector<br/>compile_expression (AST-restricted)<br/>register_lambda_rule · load_yaml<br/>run_backtest"]
+    end
+
+    subgraph UTILS["ts_shape.utils"]
+        U["base.py — Base class (get_dataframe, common ctor)"]
+    end
+
+    subgraph CONSUMERS["Consumers"]
+        direction LR
+        C_XES["pm4py / Disco / Celonis<br/>(XES)"]
+        C_OCEL["OCEL 2.0 viewers"]
+        C_KPI["BI · dashboards · reports"]
+    end
+
+    LOADER --> TRANSFORM --> FEATURE
+    FEATURE --> EVENTS
+    CONTEXT -.enriches.-> EVENTS
+    U -.base class.-> EVENTS
+    EVENTS -.legacy DataFrames.-> EL_N
+    EL_T --> EL_N
+    EL_A --> EL_N
+    EL_S --> EL_N
+    EL_N --> EL_M
+    EL_LR -.registers in.-> EL_T
+    EL_LR -.runs through.-> EL_N
+    EL_M --> EL_FO
+    EL_FO --> CONSUMERS
+
+    style LOADER fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
+    style TRANSFORM fill:#1a3a4a,stroke:#2dd4bf,color:#ccfbf1
+    style FEATURE fill:#1a3a4a,stroke:#2dd4bf,color:#ccfbf1
+    style CONTEXT fill:#1a3a4a,stroke:#2dd4bf,color:#ccfbf1
+    style EVENTS fill:#3d2a0f,stroke:#f59e0b,color:#fef3c7
+    style EVENTLOG fill:#3d2a0f,stroke:#fbbf24,color:#fef3c7
+    style UTILS fill:#27272a,stroke:#a1a1aa,color:#e4e4e7
+    style CONSUMERS fill:#14532d,stroke:#22c55e,color:#dcfce7
+    style EL_LR stroke:#a78bfa,stroke-width:2px
+```
+
+**How to read it.**
+
+- **Top to bottom** = data direction. A pipeline reads `loader → transform → feature → events → eventlog`.
+- **`utils.base.Base`** is the lone shared parent for nearly every detector class (provides `__init__(dataframe, column_names, ...)` and `get_dataframe()`). Dashed arrow.
+- **`eventlog/`** is the convergence point — every detector method maps to a `LabelRule` in `REGISTRY` and is normalized by the shape-driven adapter into the same `EventLog` schema.
+- **`lambda_rules/`** (purple-bordered) coexists with the 290 built-in detectors. It registers dynamically in `REGISTRY`, then runs through `normalizer.to_event_log` exactly like a hand-coded class.
+- **No detector class imports another detector class.** All cross-detector composition happens at the `EventLog` level via `concat()`.
 
 ## Core Principles
 

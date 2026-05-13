@@ -1,0 +1,36 @@
+dsl_version: "0.1.0"
+rules:
+  # Case 1 — simple point/threshold rule.
+  - id: high_torque
+    class_name: LambdaToolWearDemo
+    method_name: high_torque
+    pack: maintenance
+    shape: point
+    archetype: threshold
+    template: "maintenance.tool.high_torque"
+    produces_objects: [asset]
+    severity_field: severity_score
+    value_field: torque
+    trigger:
+      expression: "(torque > 75) & (state == 'run')"
+    standard_attrs:
+      ts_shape:method: lambda_threshold
+      ts_shape:direction: above
+      ts_shape:threshold_high: 75.0
+
+  # Case 2 — interval rule with hysteresis + group-by per asset.
+  - id: bearing_hot
+    class_name: LambdaBearingDemo
+    method_name: hot_window
+    pack: maintenance
+    shape: interval
+    archetype: interval
+    template: "maintenance.bearing.hot"
+    produces_objects: [asset]
+    value_field: bearing_temp_c
+    trigger:
+      expression: "bearing_temp_c > 85"
+      min_duration_s: 30
+      group_by: [source_uuid]
+    standard_attrs:
+      ts_shape:lifecycle_state: hot
