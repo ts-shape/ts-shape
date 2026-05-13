@@ -1,6 +1,5 @@
 import pytest
 import pandas as pd
-import numpy as np
 from ts_shape.events.production.bottleneck_detection import BottleneckDetectionEvents
 
 

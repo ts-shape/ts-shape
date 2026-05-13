@@ -1,6 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 

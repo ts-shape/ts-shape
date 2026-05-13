@@ -1,7 +1,6 @@
 """Tests for TargetTracking module."""
 
 import pandas as pd
-import pytest
 
 from ts_shape.events.production.target_tracking import TargetTracking
 

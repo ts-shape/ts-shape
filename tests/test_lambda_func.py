@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd  # type: ignore
 from ts_shape.transform.functions.lambda_func import LambdaProcessor
 

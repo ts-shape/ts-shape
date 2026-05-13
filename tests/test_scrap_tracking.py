@@ -1,7 +1,6 @@
 """Tests for ScrapTracking module."""
 
 import pandas as pd
-import pytest
 
 from ts_shape.events.production.scrap_tracking import ScrapTracking
 

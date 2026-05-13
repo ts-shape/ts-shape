@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)

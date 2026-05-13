@@ -12,8 +12,7 @@ identifier to its own UUID.  This module joins those signals to answer
 
 import logging
 import pandas as pd  # type: ignore
-import numpy as np
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 from ts_shape.utils.base import Base
 

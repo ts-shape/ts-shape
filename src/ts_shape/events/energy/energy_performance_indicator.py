@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Optional
+from typing import List
 
 from ts_shape.utils.base import Base
 

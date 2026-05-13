@@ -8,8 +8,6 @@ import pytest
 from ts_shape.eventlog import (
     OCEL_ACTIVITY,
     OCEL_EID,
-    OCEL_OID,
-    OCEL_TIMESTAMP,
     OCEL_TYPE,
     TS_DETECTOR,
     TS_DURATION_S,

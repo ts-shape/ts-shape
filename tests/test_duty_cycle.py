@@ -1,6 +1,5 @@
 import pytest
 import pandas as pd
-import numpy as np
 from ts_shape.events.production.duty_cycle import DutyCycleEvents
 
 

@@ -20,7 +20,6 @@ being processed.  Handover signals between cells confirm the transfer.
 
 import logging
 import pandas as pd  # type: ignore
-import numpy as np
 from typing import List, Dict, Any, Optional
 
 from ts_shape.utils.base import Base

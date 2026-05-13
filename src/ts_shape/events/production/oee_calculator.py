@@ -10,7 +10,6 @@ Industry-standard metric for manufacturing productivity:
 
 import logging
 import pandas as pd  # type: ignore
-import numpy as np
 from typing import Optional
 
 from ts_shape.utils.base import Base

@@ -1,7 +1,6 @@
 """Tests for OperatorPerformanceTracking module."""
 
 import pandas as pd
-import pytest
 
 from ts_shape.events.production.operator_performance import OperatorPerformanceTracking
 

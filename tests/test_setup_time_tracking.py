@@ -1,7 +1,6 @@
 """Tests for SetupTimeTracking module."""
 
 import pandas as pd
-import pytest
 
 from ts_shape.events.production.setup_time_tracking import SetupTimeTracking
 

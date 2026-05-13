@@ -11,7 +11,6 @@ import pkgutil
 from typing import Iterator
 
 import pandas as pd
-import pytest
 
 import ts_shape.events as events_pkg
 from ts_shape.eventlog.schema import STANDARD_ATTR_KEYS

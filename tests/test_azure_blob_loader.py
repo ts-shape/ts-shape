@@ -1,4 +1,3 @@
-import pytest
 import pandas as pd  # type: ignore
 from types import SimpleNamespace
 

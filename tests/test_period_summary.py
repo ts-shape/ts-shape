@@ -1,7 +1,6 @@
 """Tests for PeriodSummary module."""
 
 import pandas as pd
-import pytest
 from datetime import date
 
 from ts_shape.events.production.period_summary import PeriodSummary

@@ -1,5 +1,4 @@
 import pytest
-import pandas as pd  # type: ignore
 
 sqlalchemy = pytest.importorskip("sqlalchemy")
 

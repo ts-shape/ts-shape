@@ -1,5 +1,4 @@
 import pandas as pd  # type: ignore
-import numpy as np  # type: ignore
 
 from ts_shape.events.engineering.material_balance import MaterialBalanceEvents
 

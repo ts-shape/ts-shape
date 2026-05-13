@@ -2,7 +2,6 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 import pytest
 
 # Ensure `src` is on the Python path so tests can import `ts_shape`

@@ -3,7 +3,7 @@ from ts_shape.utils.base import Base
 import pandas as pd  # type: ignore
 import numpy as np
 import operator
-from typing import Callable, Optional, Dict, Tuple
+from typing import Callable, Optional, Dict
 
 logger = logging.getLogger(__name__)
 

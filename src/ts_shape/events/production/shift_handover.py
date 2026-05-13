@@ -13,9 +13,7 @@ Two modes of operation:
 
 import logging
 import pandas as pd  # type: ignore
-import numpy as np
 from typing import Optional, Dict, List
-from datetime import date as DateType
 
 from ts_shape.utils.base import Base
 

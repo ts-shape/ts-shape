@@ -2,7 +2,7 @@ import logging
 import pandas as pd  # type: ignore
 import numpy as np
 from scipy.stats import zscore
-from typing import Callable, Union, Optional
+from typing import Optional
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)

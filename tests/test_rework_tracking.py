@@ -1,7 +1,6 @@
 """Tests for ReworkTracking module."""
 
 import pandas as pd
-import pytest
 
 from ts_shape.events.production.rework_tracking import ReworkTracking
 

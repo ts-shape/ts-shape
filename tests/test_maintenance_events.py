@@ -1,6 +1,5 @@
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-import pytest
 
 from ts_shape.events.maintenance import (
     DegradationDetectionEvents,

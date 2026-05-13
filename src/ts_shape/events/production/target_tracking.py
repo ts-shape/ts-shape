@@ -8,7 +8,6 @@ Generic module for comparing any metric to targets:
 
 import logging
 import pandas as pd  # type: ignore
-import numpy as np
 from typing import Optional, Dict, Union
 
 from ts_shape.utils.base import Base

@@ -9,7 +9,6 @@ Essential module for daily downtime analysis:
 
 import logging
 import pandas as pd  # type: ignore
-import numpy as np
 from typing import Optional, Dict
 
 from ts_shape.utils.base import Base

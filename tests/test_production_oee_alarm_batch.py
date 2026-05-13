@@ -1,9 +1,8 @@
 """Tests for OEECalculator, AlarmManagementEvents, and BatchTrackingEvents."""
 
 import pandas as pd  # type: ignore
-import numpy as np
 import pytest
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from ts_shape.events.production import (
     OEECalculator,

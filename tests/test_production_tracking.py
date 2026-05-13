@@ -1,6 +1,5 @@
 import pandas as pd  # type: ignore
 import pytest
-from datetime import datetime, timedelta
 
 from ts_shape.events.production import (
     PartProductionTracking,

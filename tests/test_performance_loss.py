@@ -1,7 +1,6 @@
 """Tests for PerformanceLossTracking module."""
 
 import pandas as pd
-import pytest
 
 from ts_shape.events.production.performance_loss import PerformanceLossTracking
 
