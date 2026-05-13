@@ -1,6 +1,6 @@
 """Tests for AzureBlobEnergyLoader."""
-import io
-from unittest.mock import MagicMock, patch, call
+
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -60,34 +60,48 @@ def _make_loader(container_client, **kwargs) -> AzureBlobEnergyLoader:
 
 # ── Init / Auth ──────────────────────────────────────────────────────────────
 
+
 class TestAzureBlobEnergyLoaderInit:
     def test_missing_auth_raises(self):
-        with patch("ts_shape.loader.timeseries.azure_blob_energy_loader.AzureBlobEnergyLoader.__init__") as mock_init:
+        with patch(
+            "ts_shape.loader.timeseries.azure_blob_energy_loader.AzureBlobEnergyLoader.__init__"
+        ) as mock_init:
             mock_init.side_effect = ValueError
             with pytest.raises(ValueError):
                 AzureBlobEnergyLoader()
 
     def test_normalize_df_static(self):
-        raw = pd.DataFrame({
-            "time": ["2026-01-13T00:00:00Z", "2026-01-13T00:15:00Z"],
-            "value": [107.6, 184.09],
-        })
+        raw = pd.DataFrame(
+            {
+                "time": ["2026-01-13T00:00:00Z", "2026-01-13T00:15:00Z"],
+                "value": [107.6, 184.09],
+            }
+        )
         out = AzureBlobEnergyLoader._normalize_df(raw, "sensor_001")
         assert list(out.columns) == ["systime", "uuid", "value_double", "is_delta"]
         assert (out["uuid"] == "sensor_001").all()
-        assert (out["is_delta"] == True).all()
+        assert (
+            out["is_delta"] == True  # noqa: E712 pandas-series-bool-comparison
+        ).all()  # noqa: E712 pandas-series-bool-comparison
         assert out["value_double"].iloc[0] == pytest.approx(107.6)
 
     def test_series_id_from_blob_name(self):
-        assert AzureBlobEnergyLoader._series_id_from_blob_name(
-            "csv/2026/01/13/sensor_001.csv"
-        ) == "sensor_001"
-        assert AzureBlobEnergyLoader._series_id_from_blob_name(
-            "prefix/csv/2026/01/14/meter-42.csv"
-        ) == "meter-42"
+        assert (
+            AzureBlobEnergyLoader._series_id_from_blob_name(
+                "csv/2026/01/13/sensor_001.csv"
+            )
+            == "sensor_001"
+        )
+        assert (
+            AzureBlobEnergyLoader._series_id_from_blob_name(
+                "prefix/csv/2026/01/14/meter-42.csv"
+            )
+            == "meter-42"
+        )
 
 
 # ── Metadata ─────────────────────────────────────────────────────────────────
+
 
 class TestLoadSeriesMetadata:
     def test_returns_expected_columns(self):
@@ -111,6 +125,7 @@ class TestLoadSeriesMetadata:
 
 # ── load_by_time_range ────────────────────────────────────────────────────────
 
+
 class TestLoadByTimeRange:
     def test_single_day_returns_standard_schema(self):
         client = _make_container_client()
@@ -128,7 +143,9 @@ class TestLoadByTimeRange:
             ]
         )
         loader = _make_loader(client)
-        df = loader.load_by_time_range("2026-01-13", "2026-01-13", series_ids=["sensor_001"])
+        df = loader.load_by_time_range(
+            "2026-01-13", "2026-01-13", series_ids=["sensor_001"]
+        )
         assert (df["uuid"] == "sensor_001").all()
 
     def test_empty_range_returns_empty_df(self):
@@ -155,11 +172,14 @@ class TestLoadByTimeRange:
 
 # ── load_by_series_ids ────────────────────────────────────────────────────────
 
+
 class TestLoadBySeriesIds:
     def test_with_date_range_lists_by_day(self):
         client = _make_container_client()
         loader = _make_loader(client)
-        df = loader.load_by_series_ids(["sensor_001"], start="2026-01-13", end="2026-01-13")
+        df = loader.load_by_series_ids(
+            ["sensor_001"], start="2026-01-13", end="2026-01-13"
+        )
         assert len(df) == 3
 
     def test_without_dates_lists_all(self):
@@ -176,6 +196,7 @@ class TestLoadBySeriesIds:
 
 
 # ── stream_by_time_range ──────────────────────────────────────────────────────
+
 
 class TestStreamByTimeRange:
     def test_yields_tuples(self):
@@ -195,6 +216,7 @@ class TestStreamByTimeRange:
 
 
 # ── list_series ───────────────────────────────────────────────────────────────
+
 
 class TestListSeries:
     def test_returns_sorted_series_ids(self):
@@ -217,9 +239,12 @@ class TestListSeries:
 
 # ── _normalize_df edge cases ──────────────────────────────────────────────────
 
+
 class TestNormalizeDf:
     def test_bad_values_become_nan(self):
-        raw = pd.DataFrame({"time": ["2026-01-13T00:00:00Z"], "value": ["not_a_number"]})
+        raw = pd.DataFrame(
+            {"time": ["2026-01-13T00:00:00Z"], "value": ["not_a_number"]}
+        )
         out = AzureBlobEnergyLoader._normalize_df(raw, "s1")
         assert pd.isna(out["value_double"].iloc[0])
 
@@ -229,10 +254,12 @@ class TestNormalizeDf:
         assert out.empty
 
     def test_sorted_by_systime(self):
-        raw = pd.DataFrame({
-            "time": ["2026-01-13T01:00:00Z", "2026-01-13T00:00:00Z"],
-            "value": [2.0, 1.0],
-        })
+        raw = pd.DataFrame(
+            {
+                "time": ["2026-01-13T01:00:00Z", "2026-01-13T00:00:00Z"],
+                "value": [2.0, 1.0],
+            }
+        )
         out = AzureBlobEnergyLoader._normalize_df(raw, "s1")
         assert out["value_double"].iloc[0] == pytest.approx(1.0)
 

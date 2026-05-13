@@ -9,18 +9,22 @@ def _times(start: str, count: int, freq: str) -> pd.DatetimeIndex:
 
 
 def _make_two_signal_df(t, ref_vals, act_vals) -> pd.DataFrame:
-    ref = pd.DataFrame({
-        "uuid": ["ref"] * len(t),
-        "systime": t,
-        "value_double": ref_vals,
-        "is_delta": [True] * len(t),
-    })
-    act = pd.DataFrame({
-        "uuid": ["act"] * len(t),
-        "systime": t,
-        "value_double": act_vals,
-        "is_delta": [True] * len(t),
-    })
+    ref = pd.DataFrame(
+        {
+            "uuid": ["ref"] * len(t),
+            "systime": t,
+            "value_double": ref_vals,
+            "is_delta": [True] * len(t),
+        }
+    )
+    act = pd.DataFrame(
+        {
+            "uuid": ["act"] * len(t),
+            "systime": t,
+            "value_double": act_vals,
+            "is_delta": [True] * len(t),
+        }
+    )
     return pd.concat([ref, act], ignore_index=True)
 
 
@@ -74,7 +78,9 @@ def test_tracking_error_trend_stable():
     comp = SignalComparisonEvents(df, "ref")
     trend = comp.tracking_error_trend("act", window="20min")
     assert not trend.empty
-    assert all(d in ("stable", "improving", "worsening") for d in trend["trend_direction"])
+    assert all(
+        d in ("stable", "improving", "worsening") for d in trend["trend_direction"]
+    )
 
 
 def test_correlation_windows_identical():

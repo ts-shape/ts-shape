@@ -33,11 +33,13 @@ def bimodal_df():
             val = 50.0 + np.random.normal(0, 3)
         else:
             val = 150.0 + np.random.normal(0, 3)
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=i),
-            "uuid": "sensor_1",
-            "value_double": val,
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=i),
+                "uuid": "sensor_1",
+                "value_double": val,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -49,18 +51,22 @@ def mode_shift_df():
     rows = []
     # First hour: mode around 100
     for i in range(3600):
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=i),
-            "uuid": "sensor_1",
-            "value_double": 100.0 + np.random.normal(0, 2),
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=i),
+                "uuid": "sensor_1",
+                "value_double": 100.0 + np.random.normal(0, 2),
+            }
+        )
     # Second hour: mode around 200
     for i in range(3600):
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=3600 + i),
-            "uuid": "sensor_1",
-            "value_double": 200.0 + np.random.normal(0, 2),
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=3600 + i),
+                "uuid": "sensor_1",
+                "value_double": 200.0 + np.random.normal(0, 2),
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -70,7 +76,10 @@ class TestDetectModeChanges:
         result = det.detect_mode_changes(window="1h")
         assert len(result) == 2
         # Second window should show a mode change
-        assert result.iloc[1]["mode_changed"] == True
+        assert (
+            result.iloc[1]["mode_changed"]  # noqa: E712 pandas-series-bool-comparison
+            == True  # noqa: E712 pandas-series-bool-comparison
+        )  # noqa: E712 pandas-series-bool-comparison
 
     def test_stable_mode(self, normal_df):
         det = ValueDistributionEvents(normal_df, "sensor_1")
@@ -78,7 +87,10 @@ class TestDetectModeChanges:
         assert len(result) == 2
         # No mode changes expected in a stable normal signal
         # First window can't detect change (no previous), second should be stable
-        assert result.iloc[0]["mode_changed"] == False
+        assert (
+            result.iloc[0]["mode_changed"]  # noqa: E712 pandas-series-bool-comparison
+            == False  # noqa: E712 pandas-series-bool-comparison
+        )  # noqa: E712 pandas-series-bool-comparison
 
     def test_empty_signal(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_double"])
@@ -91,7 +103,10 @@ class TestDetectBimodal:
         det = ValueDistributionEvents(bimodal_df, "sensor_1")
         result = det.detect_bimodal()
         assert len(result) == 1
-        assert result.iloc[0]["is_bimodal"] == True
+        assert (
+            result.iloc[0]["is_bimodal"]  # noqa: E712 pandas-series-bool-comparison
+            == True  # noqa: E712 pandas-series-bool-comparison
+        )  # noqa: E712 pandas-series-bool-comparison
         assert result.iloc[0]["dip_score"] > 0.5
         assert result.iloc[0]["mode_1"] is not None
         assert result.iloc[0]["mode_2"] is not None
@@ -100,12 +115,19 @@ class TestDetectBimodal:
         det = ValueDistributionEvents(normal_df, "sensor_1")
         result = det.detect_bimodal()
         assert len(result) == 1
-        assert result.iloc[0]["is_bimodal"] == False
+        assert (
+            result.iloc[0]["is_bimodal"]  # noqa: E712 pandas-series-bool-comparison
+            == False  # noqa: E712 pandas-series-bool-comparison
+        )  # noqa: E712 pandas-series-bool-comparison
 
     def test_too_few_samples(self):
         base = pd.Timestamp("2024-01-01")
         rows = [
-            {"systime": base + pd.Timedelta(seconds=i), "uuid": "s1", "value_double": float(i)}
+            {
+                "systime": base + pd.Timedelta(seconds=i),
+                "uuid": "s1",
+                "value_double": float(i),
+            }
             for i in range(5)
         ]
         df = pd.DataFrame(rows)

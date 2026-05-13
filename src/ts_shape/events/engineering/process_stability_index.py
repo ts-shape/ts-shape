@@ -80,8 +80,13 @@ class ProcessStabilityIndex(Base):
             grade.
         """
         cols = [
-            "window_start", "stability_score", "variance_score",
-            "bias_score", "excursion_score", "smoothness_score", "grade",
+            "window_start",
+            "stability_score",
+            "variance_score",
+            "bias_score",
+            "excursion_score",
+            "smoothness_score",
+            "grade",
         ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
@@ -105,7 +110,11 @@ class ProcessStabilityIndex(Base):
             variance_score = 25.0 * (1.0 - var_ratio)
 
             # Bias score: 25 * (1 - clamp(|mean - target| / half_range, 0, 1))
-            bias_ratio = min(abs(mean - self.target) / half_range, 1.0) if half_range > 0 else 1.0
+            bias_ratio = (
+                min(abs(mean - self.target) / half_range, 1.0)
+                if half_range > 0
+                else 1.0
+            )
             bias_score = 25.0 * (1.0 - bias_ratio)
 
             # Excursion score: 25 * (1 - pct_out_of_spec / 100)
@@ -131,15 +140,17 @@ class ProcessStabilityIndex(Base):
             else:
                 grade = "F"
 
-            events.append({
-                "window_start": window_start,
-                "stability_score": round(total, 1),
-                "variance_score": round(variance_score, 1),
-                "bias_score": round(bias_score, 1),
-                "excursion_score": round(excursion_score, 1),
-                "smoothness_score": round(smoothness_score, 1),
-                "grade": grade,
-            })
+            events.append(
+                {
+                    "window_start": window_start,
+                    "stability_score": round(total, 1),
+                    "variance_score": round(variance_score, 1),
+                    "bias_score": round(bias_score, 1),
+                    "excursion_score": round(excursion_score, 1),
+                    "smoothness_score": round(smoothness_score, 1),
+                    "grade": grade,
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -155,8 +166,11 @@ class ProcessStabilityIndex(Base):
             rolling_avg, trend_direction, score_change.
         """
         cols = [
-            "window_start", "stability_score", "rolling_avg",
-            "trend_direction", "score_change",
+            "window_start",
+            "stability_score",
+            "rolling_avg",
+            "trend_direction",
+            "score_change",
         ]
         scores = self.stability_score(window)
         if scores.empty or len(scores) < 2:
@@ -164,14 +178,13 @@ class ProcessStabilityIndex(Base):
 
         result = scores[["window_start", "stability_score"]].copy()
         result["rolling_avg"] = (
-            result["stability_score"]
-            .rolling(n_windows, min_periods=1)
-            .mean()
+            result["stability_score"].rolling(n_windows, min_periods=1).mean()
         )
         result["score_change"] = result["stability_score"].diff()
         result["trend_direction"] = np.where(
-            result["score_change"] > 2, "improving",
-            np.where(result["score_change"] < -2, "degrading", "stable")
+            result["score_change"] > 2,
+            "improving",
+            np.where(result["score_change"] < -2, "degrading", "stable"),
         )
 
         return result[cols].dropna(subset=["score_change"]).reset_index(drop=True)
@@ -189,8 +202,12 @@ class ProcessStabilityIndex(Base):
             primary_issue.
         """
         cols = [
-            "window_start", "stability_score", "variance_score",
-            "bias_score", "excursion_score", "smoothness_score",
+            "window_start",
+            "stability_score",
+            "variance_score",
+            "bias_score",
+            "excursion_score",
+            "smoothness_score",
             "primary_issue",
         ]
         scores = self.stability_score(window)
@@ -200,14 +217,21 @@ class ProcessStabilityIndex(Base):
         sorted_scores = scores.sort_values("stability_score").head(n).copy()
 
         # Identify primary issue = lowest sub-score
-        sub_cols = ["variance_score", "bias_score", "excursion_score", "smoothness_score"]
+        sub_cols = [
+            "variance_score",
+            "bias_score",
+            "excursion_score",
+            "smoothness_score",
+        ]
         issue_map = {
             "variance_score": "high_variance",
             "bias_score": "off_target",
             "excursion_score": "excursions",
             "smoothness_score": "rough_signal",
         }
-        sorted_scores["primary_issue"] = sorted_scores[sub_cols].idxmin(axis=1).map(issue_map)
+        sorted_scores["primary_issue"] = (
+            sorted_scores[sub_cols].idxmin(axis=1).map(issue_map)
+        )
 
         return sorted_scores[cols].reset_index(drop=True)
 
@@ -219,8 +243,11 @@ class ProcessStabilityIndex(Base):
             best_score, gap_to_best, pct_of_best.
         """
         cols = [
-            "window_start", "stability_score", "best_score",
-            "gap_to_best", "pct_of_best",
+            "window_start",
+            "stability_score",
+            "best_score",
+            "gap_to_best",
+            "pct_of_best",
         ]
         scores = self.stability_score(window)
         if scores.empty:

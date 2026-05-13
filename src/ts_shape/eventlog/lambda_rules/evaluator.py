@@ -10,6 +10,7 @@ Whatever the shape, the returned frame is fed verbatim to
 adapter, EID generation, severity bucketing, object auto-extraction and
 schema validation as built-in detectors. No parallel pipeline.
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -17,9 +18,13 @@ import pandas as pd
 from .expression import compile_expression
 from .spec import RuleSpec
 
-
 _POINT_TIME_CANDIDATES = (
-    "systime", "timestamp", "time", "event_time", "ts", "datetime",
+    "systime",
+    "timestamp",
+    "time",
+    "event_time",
+    "ts",
+    "datetime",
 )
 
 
@@ -83,8 +88,9 @@ def _evaluate_interval(
     group_by = list(spec.trigger.group_by)
     if group_by:
         grouped = work.groupby(group_by, sort=False, dropna=False)
-        iterator = ((tuple(k) if not isinstance(k, tuple) else k, g)
-                    for k, g in grouped)
+        iterator = (
+            (tuple(k) if not isinstance(k, tuple) else k, g) for k, g in grouped
+        )
     else:
         iterator = iter([((), work)])
 
@@ -97,8 +103,10 @@ def _evaluate_interval(
             start_ts = pd.Timestamp(run[time_col].iloc[0])
             end_ts = pd.Timestamp(run[time_col].iloc[-1])
             duration_s = (end_ts - start_ts).total_seconds()
-            if (spec.trigger.min_duration_s is not None
-                    and duration_s < spec.trigger.min_duration_s):
+            if (
+                spec.trigger.min_duration_s is not None
+                and duration_s < spec.trigger.min_duration_s
+            ):
                 continue
             row: dict[str, object] = {
                 "start": start_ts,

@@ -1,4 +1,5 @@
 """Concatenate multiple :class:`EventLog` instances into one."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -10,9 +11,9 @@ from .model import EventLog
 def concat(*logs: EventLog) -> EventLog:
     if not logs:
         return EventLog()
-    events = pd.concat([l.events for l in logs], ignore_index=True)
-    objects = pd.concat([l.objects for l in logs], ignore_index=True)
-    relations = pd.concat([l.relations for l in logs], ignore_index=True)
+    events = pd.concat([log.events for log in logs], ignore_index=True)
+    objects = pd.concat([log.objects for log in logs], ignore_index=True)
+    relations = pd.concat([log.relations for log in logs], ignore_index=True)
 
     if not objects.empty:
         objects = objects.drop_duplicates(

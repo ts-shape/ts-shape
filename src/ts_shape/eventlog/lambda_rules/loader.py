@@ -14,6 +14,7 @@ coverage test ``test_no_orphan_registry_entries`` is configured to
 exempt entries whose class name starts with ``Lambda``, so registered
 lambda rules do not need a real Python class on disk.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,7 +25,6 @@ from ..schema import STANDARD_ATTR_KEYS
 from ..taxonomy import REGISTRY, LabelRule
 from .detector import LambdaDetector
 from .spec import RuleSpec, TriggerSpec
-
 
 # Required ``standard_attrs`` keys per archetype, mirroring the contract
 # enforced by ``tests/eventlog/test_adapter_coverage.py``. Kept here so
@@ -104,9 +104,11 @@ def _spec_from_dict(entry: Mapping[str, Any]) -> RuleSpec:
     trigger_raw = dict(entry.get("trigger", {}))
     trigger = TriggerSpec(
         expression=str(trigger_raw["expression"]),
-        min_duration_s=(float(trigger_raw["min_duration_s"])
-                        if trigger_raw.get("min_duration_s") is not None
-                        else None),
+        min_duration_s=(
+            float(trigger_raw["min_duration_s"])
+            if trigger_raw.get("min_duration_s") is not None
+            else None
+        ),
         group_by=tuple(trigger_raw.get("group_by", ())),
     )
     return RuleSpec(
@@ -146,7 +148,5 @@ def load_yaml(path: str | Path) -> list[LambdaDetector]:
         ) from exc
     raw = yaml.safe_load(Path(path).read_text())
     if not isinstance(raw, Mapping) or "rules" not in raw:
-        raise ValueError(
-            f"YAML file {path!s} must define a top-level 'rules:' list"
-        )
+        raise ValueError(f"YAML file {path!s} must define a top-level 'rules:' list")
     return load_dicts(raw["rules"])

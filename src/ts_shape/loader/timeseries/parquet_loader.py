@@ -4,6 +4,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 class ParquetLoader:
     """
     This class provides class methods to load parquet files from a specified directory structure.
@@ -56,7 +57,9 @@ class ParquetLoader:
         return pd.concat(dataframes, ignore_index=True)
 
     @classmethod
-    def load_by_time_range(cls, base_path: str, start_time: pd.Timestamp, end_time: pd.Timestamp) -> pd.DataFrame:
+    def load_by_time_range(
+        cls, base_path: str, start_time: pd.Timestamp, end_time: pd.Timestamp
+    ) -> pd.DataFrame:
         """
         Loads parquet files that fall within a specified time range based on the directory structure.
 
@@ -79,7 +82,9 @@ class ParquetLoader:
         for file in parquet_files:
             try:
                 # Extract the timestamp from the file's relative path
-                folder_parts = file.relative_to(base_path).parts[:4]  # Extract YYYY/MM/DD/HH parts
+                folder_parts = file.relative_to(base_path).parts[
+                    :4
+                ]  # Extract YYYY/MM/DD/HH parts
                 folder_time_str = "/".join(folder_parts)
                 file_time = pd.to_datetime(folder_time_str, format="%Y/%m/%d/%H")
 
@@ -132,7 +137,13 @@ class ParquetLoader:
         return pd.concat(dataframes, ignore_index=True)
 
     @classmethod
-    def load_files_by_time_range_and_uuids(cls, base_path: str, start_time: pd.Timestamp, end_time: pd.Timestamp, uuid_list: list) -> pd.DataFrame:
+    def load_files_by_time_range_and_uuids(
+        cls,
+        base_path: str,
+        start_time: pd.Timestamp,
+        end_time: pd.Timestamp,
+        uuid_list: list,
+    ) -> pd.DataFrame:
         """
         Loads parquet files that fall within a specified time range and match any UUID in the list.
 
@@ -156,7 +167,9 @@ class ParquetLoader:
         for file in parquet_files:
             try:
                 # Extract the timestamp from the file's relative path
-                folder_parts = file.relative_to(base_path).parts[:4]  # Extract YYYY/MM/DD/HH parts
+                folder_parts = file.relative_to(base_path).parts[
+                    :4
+                ]  # Extract YYYY/MM/DD/HH parts
                 folder_time_str = "/".join(folder_parts)
                 file_time = pd.to_datetime(folder_time_str, format="%Y/%m/%d/%H")
 

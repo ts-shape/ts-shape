@@ -9,7 +9,9 @@ from ts_shape.loader.timeseries.energy_api_loader import EnergyAPILoader
 
 @pytest.fixture
 def loader():
-    return EnergyAPILoader(base_url="https://api.example.com/v1", headers={"Authorization": "Bearer test"})
+    return EnergyAPILoader(
+        base_url="https://api.example.com/v1", headers={"Authorization": "Bearer test"}
+    )
 
 
 def _mock_response(json_data, status_code=200):
@@ -23,10 +25,12 @@ def _mock_response(json_data, status_code=200):
 class TestFetchDataAsDataframe:
     @patch("ts_shape.loader.timeseries.energy_api_loader.requests.get")
     def test_basic_list_response(self, mock_get, loader):
-        mock_get.return_value = _mock_response([
-            {"timestamp": "2024-01-01T08:00:00", "value": 100.5},
-            {"timestamp": "2024-01-01T09:00:00", "value": 110.2},
-        ])
+        mock_get.return_value = _mock_response(
+            [
+                {"timestamp": "2024-01-01T08:00:00", "value": 100.5},
+                {"timestamp": "2024-01-01T09:00:00", "value": 110.2},
+            ]
+        )
         df = loader.fetch_data_as_dataframe("/readings", uuid_value="meter:001")
         assert len(df) == 2
         assert list(df.columns) == ["systime", "uuid", "value_double", "is_delta"]
@@ -36,15 +40,20 @@ class TestFetchDataAsDataframe:
 
     @patch("ts_shape.loader.timeseries.energy_api_loader.requests.get")
     def test_data_root_key(self, mock_get, loader):
-        mock_get.return_value = _mock_response({
-            "status": "ok",
-            "readings": [
-                {"ts": "2024-01-01T10:00:00", "kw": 55.0},
-            ],
-        })
+        mock_get.return_value = _mock_response(
+            {
+                "status": "ok",
+                "readings": [
+                    {"ts": "2024-01-01T10:00:00", "kw": 55.0},
+                ],
+            }
+        )
         df = loader.fetch_data_as_dataframe(
-            "/readings", time_key="ts", value_key="kw",
-            uuid_value="meter:002", data_root="readings",
+            "/readings",
+            time_key="ts",
+            value_key="kw",
+            uuid_value="meter:002",
+            data_root="readings",
         )
         assert len(df) == 1
         assert df["value_double"].iloc[0] == 55.0
@@ -64,20 +73,24 @@ class TestFetchDataAsDataframe:
 
     @patch("ts_shape.loader.timeseries.energy_api_loader.requests.get")
     def test_missing_value_key(self, mock_get, loader):
-        mock_get.return_value = _mock_response([
-            {"timestamp": "2024-01-01T08:00:00"},
-        ])
+        mock_get.return_value = _mock_response(
+            [
+                {"timestamp": "2024-01-01T08:00:00"},
+            ]
+        )
         df = loader.fetch_data_as_dataframe("/readings", value_key="nonexistent")
         assert len(df) == 1
         assert pd.isna(df["value_double"].iloc[0])
 
     @patch("ts_shape.loader.timeseries.energy_api_loader.requests.get")
     def test_sorted_output(self, mock_get, loader):
-        mock_get.return_value = _mock_response([
-            {"timestamp": "2024-01-01T12:00:00", "value": 3.0},
-            {"timestamp": "2024-01-01T08:00:00", "value": 1.0},
-            {"timestamp": "2024-01-01T10:00:00", "value": 2.0},
-        ])
+        mock_get.return_value = _mock_response(
+            [
+                {"timestamp": "2024-01-01T12:00:00", "value": 3.0},
+                {"timestamp": "2024-01-01T08:00:00", "value": 1.0},
+                {"timestamp": "2024-01-01T10:00:00", "value": 2.0},
+            ]
+        )
         df = loader.fetch_data_as_dataframe("/readings")
         assert df["value_double"].tolist() == [1.0, 2.0, 3.0]
 
@@ -88,9 +101,13 @@ class TestFetchMultipleMeters:
         def side_effect(url, **kwargs):
             mid = kwargs.get("params", {}).get("meter_id", "")
             if mid == "A":
-                return _mock_response([{"timestamp": "2024-01-01T08:00:00", "value": 10.0}])
+                return _mock_response(
+                    [{"timestamp": "2024-01-01T08:00:00", "value": 10.0}]
+                )
             else:
-                return _mock_response([{"timestamp": "2024-01-01T09:00:00", "value": 20.0}])
+                return _mock_response(
+                    [{"timestamp": "2024-01-01T09:00:00", "value": 20.0}]
+                )
 
         mock_get.side_effect = side_effect
         df = loader.fetch_multiple_meters("/readings", ["A", "B"])

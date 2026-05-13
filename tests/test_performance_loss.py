@@ -1,7 +1,6 @@
 """Tests for PerformanceLossTracking module."""
 
 import pandas as pd
-import pytest
 
 from ts_shape.events.production.performance_loss import PerformanceLossTracking
 
@@ -17,11 +16,13 @@ def _make_cycle_df(n_cycles=20, base_cycle_time=45.0, jitter=5.0):
         times.append(t)
         t += pd.Timedelta(seconds=base_cycle_time + rng.uniform(-jitter, jitter))
 
-    df = pd.DataFrame({
-        "systime": times,
-        "uuid": "cycle_counter",
-        "value_integer": list(range(100, 100 + n_cycles)),
-    })
+    df = pd.DataFrame(
+        {
+            "systime": times,
+            "uuid": "cycle_counter",
+            "value_integer": list(range(100, 100 + n_cycles)),
+        }
+    )
     return df
 
 

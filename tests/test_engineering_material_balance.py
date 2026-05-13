@@ -1,5 +1,4 @@
 import pandas as pd  # type: ignore
-import numpy as np  # type: ignore
 
 from ts_shape.events.engineering.material_balance import MaterialBalanceEvents
 
@@ -9,12 +8,14 @@ def _times(start: str, count: int, freq: str) -> pd.DatetimeIndex:
 
 
 def _make_signal(uuid: str, times, values) -> pd.DataFrame:
-    return pd.DataFrame({
-        "uuid": [uuid] * len(times),
-        "systime": times,
-        "value_double": values,
-        "is_delta": [True] * len(times),
-    })
+    return pd.DataFrame(
+        {
+            "uuid": [uuid] * len(times),
+            "systime": times,
+            "value_double": values,
+            "is_delta": [True] * len(times),
+        }
+    )
 
 
 def test_balance_check_balanced():
@@ -56,7 +57,9 @@ def test_imbalance_trend():
     result = mb.imbalance_trend(window="1h")
     assert not result.empty
     assert "trend_direction" in result.columns
-    assert all(d in ("growing", "shrinking", "stable") for d in result["trend_direction"])
+    assert all(
+        d in ("growing", "shrinking", "stable") for d in result["trend_direction"]
+    )
 
 
 def test_detect_balance_exceedance():
@@ -67,7 +70,9 @@ def test_detect_balance_exceedance():
     df = pd.concat([inp, out], ignore_index=True)
 
     mb = MaterialBalanceEvents(df, ["in1"], ["out1"])
-    result = mb.detect_balance_exceedance(window="1h", tolerance_pct=5.0, min_duration="2h")
+    result = mb.detect_balance_exceedance(
+        window="1h", tolerance_pct=5.0, min_duration="2h"
+    )
     assert not result.empty
     assert result["likely_cause"].iloc[0] == "accumulation"
 

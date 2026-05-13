@@ -1,4 +1,5 @@
 """The :class:`EventLog` dataclass — three DataFrames in OCEL 2.0 shape."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -39,14 +40,20 @@ class EventLog:
         eids = set(events[schema.OCEL_EID])
         relations = self.relations[self.relations[schema.OCEL_EID].isin(eids)]
         used = set(zip(relations[schema.OCEL_OID], relations[schema.OCEL_TYPE]))
-        objects = self.objects[
-            self.objects.apply(
-                lambda r: (r[schema.OCEL_OID], r[schema.OCEL_TYPE]) in used, axis=1
-            )
-        ] if used else schema.empty_objects()
-        return EventLog(events.reset_index(drop=True),
-                        objects.reset_index(drop=True),
-                        relations.reset_index(drop=True))
+        objects = (
+            self.objects[
+                self.objects.apply(
+                    lambda r: (r[schema.OCEL_OID], r[schema.OCEL_TYPE]) in used, axis=1
+                )
+            ]
+            if used
+            else schema.empty_objects()
+        )
+        return EventLog(
+            events.reset_index(drop=True),
+            objects.reset_index(drop=True),
+            relations.reset_index(drop=True),
+        )
 
     def filter_by_object(self, oid: str, type_: str | None = None) -> "EventLog":
         rel = self.relations
@@ -57,11 +64,17 @@ class EventLog:
         events = self.events[self.events[schema.OCEL_EID].isin(eids)]
         relations = self.relations[self.relations[schema.OCEL_EID].isin(eids)]
         used = set(zip(relations[schema.OCEL_OID], relations[schema.OCEL_TYPE]))
-        objects = self.objects[
-            self.objects.apply(
-                lambda r: (r[schema.OCEL_OID], r[schema.OCEL_TYPE]) in used, axis=1
-            )
-        ] if used else schema.empty_objects()
-        return EventLog(events.reset_index(drop=True),
-                        objects.reset_index(drop=True),
-                        relations.reset_index(drop=True))
+        objects = (
+            self.objects[
+                self.objects.apply(
+                    lambda r: (r[schema.OCEL_OID], r[schema.OCEL_TYPE]) in used, axis=1
+                )
+            ]
+            if used
+            else schema.empty_objects()
+        )
+        return EventLog(
+            events.reset_index(drop=True),
+            objects.reset_index(drop=True),
+            relations.reset_index(drop=True),
+        )

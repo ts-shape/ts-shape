@@ -6,7 +6,6 @@ import logging
 import pandas as pd  # type: ignore
 
 logger = logging.getLogger(__name__)
- 
 
 
 class AzureBlobParquetLoader:
@@ -89,19 +88,31 @@ class AzureBlobParquetLoader:
             self.container_client = ContainerClient.from_container_url(sas_url)
         elif account_url or (credential is not None and not connection_string):
             if not account_url:
-                raise ValueError("account_url must be provided when using AAD credential auth")
+                raise ValueError(
+                    "account_url must be provided when using AAD credential auth"
+                )
             if credential is None:
-                raise ValueError("credential must be provided when using AAD credential auth")
+                raise ValueError(
+                    "credential must be provided when using AAD credential auth"
+                )
             if not container_name:
-                raise ValueError("container_name is required when using account_url + credential")
-            self.container_client = ContainerClient(account_url=account_url, container_name=container_name, credential=credential)
+                raise ValueError(
+                    "container_name is required when using account_url + credential"
+                )
+            self.container_client = ContainerClient(
+                account_url=account_url,
+                container_name=container_name,
+                credential=credential,
+            )
         else:
             if not connection_string:
                 raise ValueError(
                     "Provide one of: sas_url, connection_string, or (account_url + credential)"
                 )
             if not container_name:
-                raise ValueError("container_name is required when using connection_string")
+                raise ValueError(
+                    "container_name is required when using connection_string"
+                )
             try:
                 self.container_client = ContainerClient.from_connection_string(
                     conn_str=connection_string, container_name=container_name
@@ -143,7 +154,9 @@ class AzureBlobParquetLoader:
         """
         account_url = f"https://{account_name}.{endpoint_suffix}"
         if credential is None:
-            raise ValueError("credential must be provided when using AAD credential auth")
+            raise ValueError(
+                "credential must be provided when using AAD credential auth"
+            )
         return cls(
             container_name=container_name,
             account_url=account_url,
@@ -159,7 +172,9 @@ class AzureBlobParquetLoader:
         Uses server-side prefix filtering when `self.prefix` is provided to reduce listing.
         """
         # Stream listing to handle large containers efficiently
-        blob_iter = self.container_client.list_blobs(name_starts_with=self.prefix or None)
+        blob_iter = self.container_client.list_blobs(
+            name_starts_with=self.prefix or None
+        )
         for blob in blob_iter:  # type: ignore[attr-defined]
             name: str = blob.name  # type: ignore[attr-defined]
             if not name.endswith(".parquet"):
@@ -183,7 +198,9 @@ class AzureBlobParquetLoader:
 
     # ---- Helpers for time-structured containers parquet/YYYY/MM/DD/HH ----
     @staticmethod
-    def _hourly_slots(start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp) -> Iterable[pd.Timestamp]:
+    def _hourly_slots(
+        start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
+    ) -> Iterable[pd.Timestamp]:
         start = pd.to_datetime(start_timestamp)
         end = pd.to_datetime(end_timestamp)
         # Ensure inclusive range per hour
@@ -199,8 +216,7 @@ class AzureBlobParquetLoader:
         if base and not base.endswith("/"):
             base += "/"
         sub = (
-            self.hour_pattern
-            .replace("{Y}", y)
+            self.hour_pattern.replace("{Y}", y)
             .replace("{m}", m)
             .replace("{d}", d)
             .replace("{H}", h)
@@ -216,14 +232,19 @@ class AzureBlobParquetLoader:
             if none are found.
         """
         # List all parquet blob names using optional prefix for server-side filtering
-        blob_iter = self.container_client.list_blobs(name_starts_with=self.prefix or None)
+        blob_iter = self.container_client.list_blobs(
+            name_starts_with=self.prefix or None
+        )
         blob_names = [b.name for b in blob_iter if str(b.name).endswith(".parquet")]  # type: ignore[attr-defined]
         if not blob_names:
             return pd.DataFrame()
 
         frames: List[pd.DataFrame] = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_name = {executor.submit(self._download_parquet, name): name for name in blob_names}
+            future_to_name = {
+                executor.submit(self._download_parquet, name): name
+                for name in blob_names
+            }
             for future in as_completed(future_to_name):
                 df = future.result()
                 if df is not None and not df.empty:
@@ -231,14 +252,19 @@ class AzureBlobParquetLoader:
 
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-    def load_by_time_range(self, start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp) -> pd.DataFrame:
+    def load_by_time_range(
+        self, start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
+    ) -> pd.DataFrame:
         """
         Load all parquet blobs under hourly folders within [start, end].
 
         Assumes container structure: prefix/year/month/day/hour/{file}.parquet
         Listing is constrained per-hour for speed.
         """
-        hour_prefixes = [self._hour_prefix(ts) for ts in self._hourly_slots(start_timestamp, end_timestamp)]
+        hour_prefixes = [
+            self._hour_prefix(ts)
+            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+        ]
         blob_names: List[str] = []
         for pfx in hour_prefixes:
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
@@ -249,7 +275,10 @@ class AzureBlobParquetLoader:
 
         frames: List[pd.DataFrame] = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_name = {executor.submit(self._download_parquet, name): name for name in blob_names}
+            future_to_name = {
+                executor.submit(self._download_parquet, name): name
+                for name in blob_names
+            }
             for future in as_completed(future_to_name):
                 df = future.result()
                 if df is not None and not df.empty:
@@ -257,13 +286,18 @@ class AzureBlobParquetLoader:
 
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-    def stream_by_time_range(self, start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp) -> Iterator[Tuple[str, pd.DataFrame]]:
+    def stream_by_time_range(
+        self, start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
+    ) -> Iterator[Tuple[str, pd.DataFrame]]:
         """
         Stream parquet DataFrames under hourly folders within [start, end].
 
         Yields (blob_name, DataFrame) one by one to avoid holding everything in memory.
         """
-        hour_prefixes = [self._hour_prefix(ts) for ts in self._hourly_slots(start_timestamp, end_timestamp)]
+        hour_prefixes = [
+            self._hour_prefix(ts)
+            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+        ]
 
         def _names_iter() -> Iterator[str]:
             for pfx in hour_prefixes:
@@ -337,10 +371,15 @@ class AzureBlobParquetLoader:
                     seen.add(v)
                     variants_ordered.append(v)
 
-        hour_prefixes = [self._hour_prefix(ts) for ts in self._hourly_slots(start_timestamp, end_timestamp)]
+        hour_prefixes = [
+            self._hour_prefix(ts)
+            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+        ]
 
         # 1) Fast path: build direct blob names
-        direct_names = [f"{pfx}{u}.parquet" for pfx in hour_prefixes for u in variants_ordered]
+        direct_names = [
+            f"{pfx}{u}.parquet" for pfx in hour_prefixes for u in variants_ordered
+        ]
 
         # 2) Robust path: list each hour prefix and filter by basename match
         basenames = {f"{u}.parquet" for u in variants_ordered}
@@ -367,7 +406,10 @@ class AzureBlobParquetLoader:
 
         frames: List[pd.DataFrame] = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_name = {executor.submit(self._download_parquet, name): name for name in all_blob_names}
+            future_to_name = {
+                executor.submit(self._download_parquet, name): name
+                for name in all_blob_names
+            }
             for future in as_completed(future_to_name):
                 df = future.result()
                 if df is not None and not df.empty:
@@ -401,8 +443,13 @@ class AzureBlobParquetLoader:
                     seen.add(v)
                     variants_ordered.append(v)
 
-        hour_prefixes = [self._hour_prefix(ts) for ts in self._hourly_slots(start_timestamp, end_timestamp)]
-        direct_names = [f"{pfx}{u}.parquet" for pfx in hour_prefixes for u in variants_ordered]
+        hour_prefixes = [
+            self._hour_prefix(ts)
+            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+        ]
+        direct_names = [
+            f"{pfx}{u}.parquet" for pfx in hour_prefixes for u in variants_ordered
+        ]
 
         basenames = {f"{u}.parquet" for u in variants_ordered}
 
@@ -451,7 +498,9 @@ class AzureBlobParquetLoader:
                 except StopIteration:
                     pass
 
-    def list_structure(self, parquet_only: bool = True, limit: Optional[int] = None) -> Dict[str, List[str]]:
+    def list_structure(
+        self, parquet_only: bool = True, limit: Optional[int] = None
+    ) -> Dict[str, List[str]]:
         """
         List folder prefixes (hours) and blob names under the configured `prefix`.
 
@@ -468,7 +517,9 @@ class AzureBlobParquetLoader:
         files: List[str] = []
         collected = 0
 
-        blob_iter = self.container_client.list_blobs(name_starts_with=self.prefix or None)
+        blob_iter = self.container_client.list_blobs(
+            name_starts_with=self.prefix or None
+        )
         for b in blob_iter:
             name = str(b.name)
             if parquet_only and not name.endswith(".parquet"):
@@ -537,19 +588,31 @@ class AzureBlobFlexibleFileLoader:
             self.container_client = ContainerClient.from_container_url(sas_url)
         elif account_url or (credential is not None and not connection_string):
             if not account_url:
-                raise ValueError("account_url must be provided when using AAD credential auth")
+                raise ValueError(
+                    "account_url must be provided when using AAD credential auth"
+                )
             if credential is None:
-                raise ValueError("credential must be provided when using AAD credential auth")
+                raise ValueError(
+                    "credential must be provided when using AAD credential auth"
+                )
             if not container_name:
-                raise ValueError("container_name is required when using account_url + credential")
-            self.container_client = ContainerClient(account_url=account_url, container_name=container_name, credential=credential)
+                raise ValueError(
+                    "container_name is required when using account_url + credential"
+                )
+            self.container_client = ContainerClient(
+                account_url=account_url,
+                container_name=container_name,
+                credential=credential,
+            )
         else:
             if not connection_string:
                 raise ValueError(
                     "Provide one of: sas_url, connection_string, or (account_url + credential)"
                 )
             if not container_name:
-                raise ValueError("container_name is required when using connection_string")
+                raise ValueError(
+                    "container_name is required when using connection_string"
+                )
             try:
                 self.container_client = ContainerClient.from_connection_string(
                     conn_str=connection_string, container_name=container_name
@@ -572,7 +635,9 @@ class AzureBlobFlexibleFileLoader:
 
     # ---- Shared helpers with Parquet loader ----
     @staticmethod
-    def _hourly_slots(start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp) -> Iterable[pd.Timestamp]:
+    def _hourly_slots(
+        start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
+    ) -> Iterable[pd.Timestamp]:
         start = pd.to_datetime(start_timestamp)
         end = pd.to_datetime(end_timestamp)
         return pd.date_range(start=start, end=end, freq="h")
@@ -586,8 +651,7 @@ class AzureBlobFlexibleFileLoader:
         if base and not base.endswith("/"):
             base += "/"
         sub = (
-            self.hour_pattern
-            .replace("{Y}", y)
+            self.hour_pattern.replace("{Y}", y)
             .replace("{m}", m)
             .replace("{d}", d)
             .replace("{H}", h)
@@ -611,8 +675,8 @@ class AzureBlobFlexibleFileLoader:
             s = str(e).strip().lower()
             if not s:
                 continue
-            if not s.startswith('.'):
-                s = '.' + s
+            if not s.startswith("."):
+                s = "." + s
             norm.add(s)
         return norm or None
 
@@ -620,15 +684,15 @@ class AzureBlobFlexibleFileLoader:
     @classmethod
     def register_parser(cls, extension: str, func: Callable[[bytes, str], Any]) -> None:
         ext = extension.lower()
-        if not ext.startswith('.'):
-            ext = '.' + ext
+        if not ext.startswith("."):
+            ext = "." + ext
         cls._parsers[ext] = func
 
     @classmethod
     def unregister_parser(cls, extension: str) -> None:
         ext = extension.lower()
-        if not ext.startswith('.'):
-            ext = '.' + ext
+        if not ext.startswith("."):
+            ext = "." + ext
         cls._parsers.pop(ext, None)
 
     @classmethod
@@ -641,16 +705,17 @@ class AzureBlobFlexibleFileLoader:
         import json
 
         def parse_json(content: bytes, name: str) -> Any:
-            return json.loads(content.decode('utf-8'))
+            return json.loads(content.decode("utf-8"))
 
-        cls._parsers.setdefault('.json', parse_json)
+        cls._parsers.setdefault(".json", parse_json)
 
         # Parquet via pandas (already imported at module level)
         def parse_parquet(content: bytes, name: str) -> Any:
             from io import BytesIO as _BytesIO
+
             return pd.read_parquet(_BytesIO(content))
 
-        cls._parsers.setdefault('.parquet', parse_parquet)
+        cls._parsers.setdefault(".parquet", parse_parquet)
 
         # Optional: NumPy npy/npz
         try:
@@ -658,14 +723,16 @@ class AzureBlobFlexibleFileLoader:
 
             def parse_npy(content: bytes, name: str) -> Any:
                 from io import BytesIO as _BytesIO
+
                 return _np.load(_BytesIO(content), allow_pickle=False)
 
             def parse_npz(content: bytes, name: str) -> Any:
                 from io import BytesIO as _BytesIO
+
                 return _np.load(_BytesIO(content), allow_pickle=False)
 
-            cls._parsers.setdefault('.npy', parse_npy)
-            cls._parsers.setdefault('.npz', parse_npz)
+            cls._parsers.setdefault(".npy", parse_npy)
+            cls._parsers.setdefault(".npz", parse_npz)
         except Exception:
             pass
 
@@ -675,16 +742,17 @@ class AzureBlobFlexibleFileLoader:
 
             def parse_image(content: bytes, name: str) -> Any:
                 from io import BytesIO as _BytesIO
+
                 return _Image.open(_BytesIO(content))
 
-            for ext in ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif', '.webp'):
+            for ext in (".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".gif", ".webp"):
                 cls._parsers.setdefault(ext, parse_image)
         except Exception:
             pass
 
     @classmethod
     def _parse_bytes(cls, blob_name: str, content: bytes) -> Any:
-        ext = '.' + blob_name.lower().rsplit('.', 1)[-1] if '.' in blob_name else ''
+        ext = "." + blob_name.lower().rsplit(".", 1)[-1] if "." in blob_name else ""
         parser = cls._parsers.get(ext)
         if parser is None:
             return content
@@ -712,7 +780,10 @@ class AzureBlobFlexibleFileLoader:
         allowed_exts = self._normalize_exts(extensions)
         names: List[str] = []
         collected = 0
-        for pfx in (self._hour_prefix(ts) for ts in self._hourly_slots(start_timestamp, end_timestamp)):
+        for pfx in (
+            self._hour_prefix(ts)
+            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+        ):
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             for b in blob_iter:  # type: ignore[attr-defined]
                 name = str(b.name)
@@ -738,7 +809,10 @@ class AzureBlobFlexibleFileLoader:
         Uses server-side prefix listing and client-side extension filtering.
         """
         allowed_exts = self._normalize_exts(extensions)
-        for pfx in (self._hour_prefix(ts) for ts in self._hourly_slots(start_timestamp, end_timestamp)):
+        for pfx in (
+            self._hour_prefix(ts)
+            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+        ):
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             for b in blob_iter:  # type: ignore[attr-defined]
                 name = str(b.name)
@@ -760,17 +834,23 @@ class AzureBlobFlexibleFileLoader:
         Returns a dict mapping blob_name -> parsed object (if parse=True and a parser exists),
         otherwise raw bytes.
         """
-        blob_names = self.list_files_by_time_range(start_timestamp, end_timestamp, extensions=extensions)
+        blob_names = self.list_files_by_time_range(
+            start_timestamp, end_timestamp, extensions=extensions
+        )
         if not blob_names:
             return {}
         results: Dict[str, Any] = {}
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_name = {executor.submit(self._download_bytes, n): n for n in blob_names}
+            future_to_name = {
+                executor.submit(self._download_bytes, n): n for n in blob_names
+            }
             for fut in as_completed(future_to_name):
                 name = future_to_name[fut]
                 content = fut.result()
                 if content is not None:
-                    results[name] = self._parse_bytes(name, content) if parse else content
+                    results[name] = (
+                        self._parse_bytes(name, content) if parse else content
+                    )
         return results
 
     def stream_files_by_time_range(
@@ -785,7 +865,9 @@ class AzureBlobFlexibleFileLoader:
         Stream matching files as (blob_name, bytes-or-parsed) within [start, end].
         Maintains up to `max_workers` concurrent downloads while yielding incrementally.
         """
-        names_iter = self.iter_file_names_by_time_range(start_timestamp, end_timestamp, extensions=extensions)
+        names_iter = self.iter_file_names_by_time_range(
+            start_timestamp, end_timestamp, extensions=extensions
+        )
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_name: Dict[Any, str] = {}
@@ -806,7 +888,10 @@ class AzureBlobFlexibleFileLoader:
                     except Exception:
                         content = None
                     if content is not None:
-                        yield (name, self._parse_bytes(name, content) if parse else content)
+                        yield (
+                            name,
+                            self._parse_bytes(name, content) if parse else content,
+                        )
 
                 # Refill
                 try:
@@ -833,14 +918,19 @@ class AzureBlobFlexibleFileLoader:
         base_set = {str(b).strip() for b in basenames if str(b).strip()}
         allowed_exts = self._normalize_exts(extensions)
         candidates: List[str] = []
-        for pfx in (self._hour_prefix(ts) for ts in self._hourly_slots(start_timestamp, end_timestamp)):
+        for pfx in (
+            self._hour_prefix(ts)
+            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+        ):
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             for b in blob_iter:  # type: ignore[attr-defined]
                 name = str(b.name)
-                base = name.rsplit('/', 1)[-1]
+                base = name.rsplit("/", 1)[-1]
                 if base not in base_set:
                     continue
-                if allowed_exts is not None and not any(name.lower().endswith(ext) for ext in allowed_exts):
+                if allowed_exts is not None and not any(
+                    name.lower().endswith(ext) for ext in allowed_exts
+                ):
                     continue
                 candidates.append(name)
 
@@ -849,12 +939,16 @@ class AzureBlobFlexibleFileLoader:
 
         results: Dict[str, Any] = {}
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_name = {executor.submit(self._download_bytes, n): n for n in candidates}
+            future_to_name = {
+                executor.submit(self._download_bytes, n): n for n in candidates
+            }
             for fut in as_completed(future_to_name):
                 name = future_to_name[fut]
                 content = fut.result()
                 if content is not None:
-                    results[name] = self._parse_bytes(name, content) if parse else content
+                    results[name] = (
+                        self._parse_bytes(name, content) if parse else content
+                    )
         return results
 
     def stream_files_by_time_range_and_basenames(
@@ -874,14 +968,19 @@ class AzureBlobFlexibleFileLoader:
         allowed_exts = self._normalize_exts(extensions)
 
         def _names_iter() -> Iterator[str]:
-            for pfx in (self._hour_prefix(ts) for ts in self._hourly_slots(start_timestamp, end_timestamp)):
+            for pfx in (
+                self._hour_prefix(ts)
+                for ts in self._hourly_slots(start_timestamp, end_timestamp)
+            ):
                 blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
                 for b in blob_iter:  # type: ignore[attr-defined]
                     name = str(b.name)
-                    base = name.rsplit('/', 1)[-1]
+                    base = name.rsplit("/", 1)[-1]
                     if base not in base_set:
                         continue
-                    if allowed_exts is not None and not any(name.lower().endswith(ext) for ext in allowed_exts):
+                    if allowed_exts is not None and not any(
+                        name.lower().endswith(ext) for ext in allowed_exts
+                    ):
                         continue
                     yield name
 
@@ -904,7 +1003,10 @@ class AzureBlobFlexibleFileLoader:
                     except Exception:
                         content = None
                     if content is not None:
-                        yield (name, self._parse_bytes(name, content) if parse else content)
+                        yield (
+                            name,
+                            self._parse_bytes(name, content) if parse else content,
+                        )
 
                 try:
                     while len(future_to_name) < self.max_workers:

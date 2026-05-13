@@ -1,4 +1,5 @@
 """Public ``to_event_log`` entry point — looks up the adapter and runs it."""
+
 from __future__ import annotations
 
 from typing import Mapping
@@ -35,9 +36,7 @@ def to_event_log(
     binding is given.
     """
     if "." not in detector:
-        raise ValueError(
-            f"detector must be 'ClassName.method_name', got {detector!r}"
-        )
+        raise ValueError(f"detector must be 'ClassName.method_name', got {detector!r}")
     class_name, method_name = detector.split(".", 1)
 
     rule = taxonomy.get(class_name, method_name)
@@ -49,11 +48,13 @@ def to_event_log(
 
     override = adapters.get_override(class_name, method_name)
     if override is not None:
-        log = override(df, rule=rule, detector=detector,
-                       objects=objects, qualifiers=qualifiers)
+        log = override(
+            df, rule=rule, detector=detector, objects=objects, qualifiers=qualifiers
+        )
     else:
-        log = adapters.adapt(df, rule=rule, detector=detector,
-                             objects=objects, qualifiers=qualifiers)
+        log = adapters.adapt(
+            df, rule=rule, detector=detector, objects=objects, qualifiers=qualifiers
+        )
 
     if validate:
         schema.validate(log)

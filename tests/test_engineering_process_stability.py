@@ -9,12 +9,14 @@ def _times(start: str, count: int, freq: str) -> pd.DatetimeIndex:
 
 
 def _make_df(uuid: str, times, values) -> pd.DataFrame:
-    return pd.DataFrame({
-        "uuid": [uuid] * len(times),
-        "systime": times,
-        "value_double": values,
-        "is_delta": [True] * len(times),
-    })
+    return pd.DataFrame(
+        {
+            "uuid": [uuid] * len(times),
+            "systime": times,
+            "value_double": values,
+            "is_delta": [True] * len(times),
+        }
+    )
 
 
 def test_stability_score_stable_signal():
@@ -23,7 +25,9 @@ def test_stability_score_stable_signal():
     vals = [50.0] * len(t)
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(df, "sensor", target=50.0, lower_spec=40.0, upper_spec=60.0)
+    psi = ProcessStabilityIndex(
+        df, "sensor", target=50.0, lower_spec=40.0, upper_spec=60.0
+    )
     result = psi.stability_score(window="8h")
     assert not result.empty
     assert result["stability_score"].iloc[0] >= 90
@@ -37,7 +41,9 @@ def test_stability_score_noisy_signal():
     vals = 50 + rng.normal(0, 15, len(t))  # high noise
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(df, "sensor", target=50.0, lower_spec=40.0, upper_spec=60.0)
+    psi = ProcessStabilityIndex(
+        df, "sensor", target=50.0, lower_spec=40.0, upper_spec=60.0
+    )
     result = psi.stability_score(window="8h")
     assert not result.empty
     assert result["stability_score"].iloc[0] < 90
@@ -52,7 +58,12 @@ def test_stability_score_subscores():
     psi = ProcessStabilityIndex(df, "sensor")
     result = psi.stability_score(window="8h")
     assert not result.empty
-    sub = result["variance_score"] + result["bias_score"] + result["excursion_score"] + result["smoothness_score"]
+    sub = (
+        result["variance_score"]
+        + result["bias_score"]
+        + result["excursion_score"]
+        + result["smoothness_score"]
+    )
     assert abs(sub.iloc[0] - result["stability_score"].iloc[0]) < 0.2
 
 
@@ -66,7 +77,9 @@ def test_score_trend():
     result = psi.score_trend(window="4h")
     assert not result.empty
     assert "trend_direction" in result.columns
-    assert all(d in ("improving", "degrading", "stable") for d in result["trend_direction"])
+    assert all(
+        d in ("improving", "degrading", "stable") for d in result["trend_direction"]
+    )
 
 
 def test_worst_periods():
@@ -76,7 +89,9 @@ def test_worst_periods():
     vals = 50 + rng.normal(0, 5, len(t))
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(df, "sensor", target=50.0, lower_spec=40.0, upper_spec=60.0)
+    psi = ProcessStabilityIndex(
+        df, "sensor", target=50.0, lower_spec=40.0, upper_spec=60.0
+    )
     result = psi.worst_periods(window="1h", n=3)
     assert not result.empty
     assert len(result) <= 3

@@ -7,10 +7,10 @@ import pytest
 from ts_shape.events.energy.consumption_analysis import EnergyConsumptionEvents
 from ts_shape.events.energy.efficiency_tracking import EnergyEfficiencyEvents
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_energy_df(hours: int = 48) -> pd.DataFrame:
     """Create a realistic energy + production timeseries."""
@@ -27,15 +27,17 @@ def _make_energy_df(hours: int = 48) -> pd.DataFrame:
         else:
             energy = 10 + np.random.normal(0, 2)  # ~10 kWh/min idle
 
-        rows.append({
-            "systime": t,
-            "uuid": "meter:main",
-            "value_double": max(0, energy),
-            "value_integer": None,
-            "value_bool": None,
-            "value_string": None,
-            "is_delta": True,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "meter:main",
+                "value_double": max(0, energy),
+                "value_integer": None,
+                "value_bool": None,
+                "value_string": None,
+                "is_delta": True,
+            }
+        )
 
         # Production counter (monotonically increasing during day shifts)
         if 6 <= hour < 22:
@@ -43,27 +45,31 @@ def _make_energy_df(hours: int = 48) -> pd.DataFrame:
         else:
             counter = 100 + (hour * 60 if hour < 6 else 22 * 60)
 
-        rows.append({
-            "systime": t,
-            "uuid": "counter:line1",
-            "value_double": None,
-            "value_integer": counter,
-            "value_bool": None,
-            "value_string": None,
-            "is_delta": True,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "counter:line1",
+                "value_double": None,
+                "value_integer": counter,
+                "value_bool": None,
+                "value_string": None,
+                "is_delta": True,
+            }
+        )
 
         # Machine state (boolean: True=running)
         running = 6 <= hour < 22
-        rows.append({
-            "systime": t,
-            "uuid": "state:machine1",
-            "value_double": None,
-            "value_integer": None,
-            "value_bool": running,
-            "value_string": None,
-            "is_delta": True,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "state:machine1",
+                "value_double": None,
+                "value_integer": None,
+                "value_bool": running,
+                "value_string": None,
+                "is_delta": True,
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -77,6 +83,7 @@ def energy_df():
 # ---------------------------------------------------------------------------
 # EnergyConsumptionEvents
 # ---------------------------------------------------------------------------
+
 
 class TestEnergyConsumptionEvents:
 
@@ -93,7 +100,13 @@ class TestEnergyConsumptionEvents:
         ec = EnergyConsumptionEvents(energy_df)
         result = ec.consumption_by_window("nonexistent:uuid")
         assert result.empty
-        assert list(result.columns) == ["window_start", "uuid", "source_uuid", "is_delta", "consumption"]
+        assert list(result.columns) == [
+            "window_start",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "consumption",
+        ]
 
     def test_consumption_agg_mean(self, energy_df):
         ec = EnergyConsumptionEvents(energy_df)
@@ -127,9 +140,7 @@ class TestEnergyConsumptionEvents:
 
     def test_energy_per_unit(self, energy_df):
         ec = EnergyConsumptionEvents(energy_df)
-        result = ec.energy_per_unit(
-            "meter:main", "counter:line1", window="1h"
-        )
+        result = ec.energy_per_unit("meter:main", "counter:line1", window="1h")
         assert not result.empty
         assert "energy_per_unit" in result.columns
         assert "units_produced" in result.columns
@@ -143,6 +154,7 @@ class TestEnergyConsumptionEvents:
 # ---------------------------------------------------------------------------
 # EnergyEfficiencyEvents
 # ---------------------------------------------------------------------------
+
 
 class TestEnergyEfficiencyEvents:
 

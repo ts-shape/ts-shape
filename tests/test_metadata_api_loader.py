@@ -1,9 +1,8 @@
 import pytest
-import pandas as pd  # type: ignore
 
 requests = pytest.importorskip("requests")
 
-from ts_shape.loader.metadata.metadata_api_loader import DatapointAPI
+from ts_shape.loader.metadata.metadata_api_loader import DatapointAPI  # noqa: E402
 
 BASE = "http://api"
 
@@ -11,15 +10,41 @@ BASE = "http://api"
 # Shared fixture data
 # ---------------------------------------------------------------------------
 
-DATATRONS = [{"id": 1, "name": "DT-1", "serialNumber": "SN-001", "deviceUUID": "dt-uuid-1", "model": "ModelX"}]
+DATATRONS = [
+    {
+        "id": 1,
+        "name": "DT-1",
+        "serialNumber": "SN-001",
+        "deviceUUID": "dt-uuid-1",
+        "model": "ModelX",
+    }
+]
 DEVICES = [
     {"id": 10, "name": "Device A", "serialNumber": "DEV-A", "deviceUUID": "dev-uuid-a"},
     {"id": 11, "name": "Device B", "serialNumber": "DEV-B", "deviceUUID": "dev-uuid-b"},
 ]
 DATAPOINTS = [
-    {"uuid": "u1", "label": "Temperature", "config": {"x": 1}, "enabled": True, "unit": "°C"},
-    {"uuid": "u2", "label": "Pressure",    "config": {"x": 2}, "enabled": False, "unit": "bar"},
-    {"uuid": "u3", "label": "Temp Extra",  "config": {"x": 3}, "enabled": True, "unit": "°C"},
+    {
+        "uuid": "u1",
+        "label": "Temperature",
+        "config": {"x": 1},
+        "enabled": True,
+        "unit": "°C",
+    },
+    {
+        "uuid": "u2",
+        "label": "Pressure",
+        "config": {"x": 2},
+        "enabled": False,
+        "unit": "bar",
+    },
+    {
+        "uuid": "u3",
+        "label": "Temp Extra",
+        "config": {"x": 3},
+        "enabled": True,
+        "unit": "°C",
+    },
 ]
 
 
@@ -43,7 +68,11 @@ def make_fake_get(datatrons=None, devices=None, datapoints=None):
     def fake_get(url, headers=None):
         if "data_points" in url:
             return DummyResp(dp)
-        if "/devices" in url and url.split("/devices")[1].lstrip("/").isdigit() is False and url.endswith("devices"):
+        if (
+            "/devices" in url
+            and url.split("/devices")[1].lstrip("/").isdigit() is False
+            and url.endswith("devices")
+        ):
             return DummyResp(dv)
         if "/devices" in url:
             return DummyResp(dv)
@@ -56,6 +85,7 @@ def make_fake_get(datatrons=None, devices=None, datapoints=None):
 # ---------------------------------------------------------------------------
 # Core GET methods
 # ---------------------------------------------------------------------------
+
 
 def test_get_datatrons(monkeypatch):
     monkeypatch.setattr(requests, "get", make_fake_get())
@@ -81,6 +111,7 @@ def test_get_datapoints(monkeypatch):
 # ---------------------------------------------------------------------------
 # Search methods
 # ---------------------------------------------------------------------------
+
 
 def test_search_datatrons(monkeypatch):
     monkeypatch.setattr(requests, "get", make_fake_get())
@@ -136,6 +167,7 @@ def test_search_datapoints_case_insensitive(monkeypatch):
 # Cross-hierarchy find methods
 # ---------------------------------------------------------------------------
 
+
 def test_find_devices(monkeypatch):
     monkeypatch.setattr(requests, "get", make_fake_get())
     api = DatapointAPI(device_names=[], base_url=BASE, api_token="tok")
@@ -173,6 +205,7 @@ def test_find_datapoints_no_match(monkeypatch):
 # ---------------------------------------------------------------------------
 # High-level _api_access / get_all_uuids (original behaviour preserved)
 # ---------------------------------------------------------------------------
+
 
 def test_metadata_api_loader_monkeypatched(monkeypatch, tmp_path):
     monkeypatch.setattr(requests, "get", make_fake_get())
@@ -212,8 +245,11 @@ def test_bearer_token_in_headers(monkeypatch):
 
     def capturing_get(url, headers=None):
         captured["headers"] = headers
-        return DummyResp(DATATRONS if "devices" not in url and "data_points" not in url
-                         else DEVICES if "data_points" not in url else DATAPOINTS)
+        return DummyResp(
+            DATATRONS
+            if "devices" not in url and "data_points" not in url
+            else DEVICES if "data_points" not in url else DATAPOINTS
+        )
 
     monkeypatch.setattr(requests, "get", capturing_get)
     api = DatapointAPI(device_names=[], base_url=BASE, api_token="my-jwt-token")

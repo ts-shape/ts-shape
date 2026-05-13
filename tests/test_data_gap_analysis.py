@@ -11,27 +11,33 @@ def gapped_df():
     base = pd.Timestamp("2024-01-01")
     # Segment 1: 0-99s  (100 samples at 1 Hz)
     for i in range(100):
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=i),
-            "uuid": "sensor_1",
-            "value_double": 50.0 + np.sin(i / 10.0),
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=i),
+                "uuid": "sensor_1",
+                "value_double": 50.0 + np.sin(i / 10.0),
+            }
+        )
     # Gap of 30s (100s to 130s missing)
     # Segment 2: 130-199s  (70 samples)
     for i in range(70):
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=130 + i),
-            "uuid": "sensor_1",
-            "value_double": 50.0 + np.sin((130 + i) / 10.0),
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=130 + i),
+                "uuid": "sensor_1",
+                "value_double": 50.0 + np.sin((130 + i) / 10.0),
+            }
+        )
     # Gap of 120s (200s to 320s missing)
     # Segment 3: 320-419s  (100 samples)
     for i in range(100):
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=320 + i),
-            "uuid": "sensor_1",
-            "value_double": 50.0 + np.sin((320 + i) / 10.0),
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=320 + i),
+                "uuid": "sensor_1",
+                "value_double": 50.0 + np.sin((320 + i) / 10.0),
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -118,7 +124,12 @@ class TestInterpolationCandidates:
         assert len(cands) == 1
         assert cands.iloc[0]["gap_duration_seconds"] >= 29
         # Smooth sine signal — should be safe to interpolate
-        assert cands.iloc[0]["safe_to_interpolate"] == True
+        assert (
+            cands.iloc[0][  # noqa: E712 pandas-series-bool-comparison
+                "safe_to_interpolate"
+            ]  # noqa: E712 pandas-series-bool-comparison
+            == True  # noqa: E712 pandas-series-bool-comparison
+        )  # noqa: E712 pandas-series-bool-comparison
 
     def test_large_max_gap_returns_both(self, gapped_df):
         det = DataGapAnalysisEvents(gapped_df, "sensor_1")

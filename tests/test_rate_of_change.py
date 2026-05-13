@@ -14,11 +14,13 @@ def step_df():
     values[101:] = 100.0  # Stays at new level
     rows = []
     for i in range(n):
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=i),
-            "uuid": "pressure",
-            "value_double": values[i],
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=i),
+                "uuid": "pressure",
+                "value_double": values[i],
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -30,11 +32,13 @@ def ramp_df():
     values = np.linspace(0, 30, n)  # 0.1 units/second
     rows = []
     for i in range(n):
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=i),
-            "uuid": "pressure",
-            "value_double": values[i],
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=i),
+                "uuid": "pressure",
+                "value_double": values[i],
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -47,11 +51,13 @@ def stable_df():
     values = 50.0 + np.random.randn(n) * 0.001
     rows = []
     for i in range(n):
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=i),
-            "uuid": "pressure",
-            "value_double": values[i],
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=i),
+                "uuid": "pressure",
+                "value_double": values[i],
+            }
+        )
     return pd.DataFrame(rows)
 
 

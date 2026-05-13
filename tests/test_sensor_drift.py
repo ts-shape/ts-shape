@@ -13,11 +13,13 @@ def drifting_sensor_df():
     rows = []
     for i in range(n):
         drift = (i / 60) * 0.5  # 0.5 per hour
-        rows.append({
-            "systime": base + pd.Timedelta(minutes=i),
-            "uuid": "sensor_1",
-            "value_double": 100.0 + drift + np.random.randn() * 0.1,
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(minutes=i),
+                "uuid": "sensor_1",
+                "value_double": 100.0 + drift + np.random.randn() * 0.1,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -30,16 +32,20 @@ def sensor_with_reference_df():
     rows = []
     for i in range(n):
         drift = (i / 60) * 0.3
-        rows.append({
-            "systime": base + pd.Timedelta(minutes=i),
-            "uuid": "sensor_1",
-            "value_double": 50.0 + drift + np.random.randn() * 0.05,
-        })
-        rows.append({
-            "systime": base + pd.Timedelta(minutes=i),
-            "uuid": "reference",
-            "value_double": 50.0,
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(minutes=i),
+                "uuid": "sensor_1",
+                "value_double": 50.0 + drift + np.random.randn() * 0.05,
+            }
+        )
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(minutes=i),
+                "uuid": "reference",
+                "value_double": 50.0,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -51,18 +57,21 @@ def stable_sensor_df():
     base = pd.Timestamp("2024-01-01")
     rows = []
     for i in range(n):
-        rows.append({
-            "systime": base + pd.Timedelta(minutes=i),
-            "uuid": "sensor_1",
-            "value_double": 50.0 + np.random.randn() * 0.1,
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(minutes=i),
+                "uuid": "sensor_1",
+                "value_double": 50.0 + np.random.randn() * 0.1,
+            }
+        )
     return pd.DataFrame(rows)
 
 
 class TestDetectZeroDrift:
     def test_detects_drift_with_reference(self, sensor_with_reference_df):
         det = SensorDriftEvents(
-            sensor_with_reference_df, "sensor_1",
+            sensor_with_reference_df,
+            "sensor_1",
             reference_uuid="reference",
         )
         result = det.detect_zero_drift(window="2h")
@@ -73,7 +82,8 @@ class TestDetectZeroDrift:
 
     def test_detects_drift_with_float_reference(self, drifting_sensor_df):
         det = SensorDriftEvents(
-            drifting_sensor_df, "sensor_1",
+            drifting_sensor_df,
+            "sensor_1",
             reference_value=100.0,
         )
         result = det.detect_zero_drift(window="4h")
@@ -83,7 +93,8 @@ class TestDetectZeroDrift:
 
     def test_stable_sensor_low_severity(self, stable_sensor_df):
         det = SensorDriftEvents(
-            stable_sensor_df, "sensor_1",
+            stable_sensor_df,
+            "sensor_1",
             reference_value=50.0,
         )
         result = det.detect_zero_drift(window="2h")
@@ -99,7 +110,8 @@ class TestDetectZeroDrift:
 class TestDetectSpanDrift:
     def test_with_reference_uuid(self, sensor_with_reference_df):
         det = SensorDriftEvents(
-            sensor_with_reference_df, "sensor_1",
+            sensor_with_reference_df,
+            "sensor_1",
             reference_uuid="reference",
         )
         result = det.detect_span_drift(window="2h")
@@ -109,7 +121,8 @@ class TestDetectSpanDrift:
 
     def test_with_float_reference(self, drifting_sensor_df):
         det = SensorDriftEvents(
-            drifting_sensor_df, "sensor_1",
+            drifting_sensor_df,
+            "sensor_1",
             reference_value=100.0,
         )
         result = det.detect_span_drift(window="4h")
@@ -146,7 +159,8 @@ class TestDriftTrend:
 class TestCalibrationHealth:
     def test_healthy_sensor(self, stable_sensor_df):
         det = SensorDriftEvents(
-            stable_sensor_df, "sensor_1",
+            stable_sensor_df,
+            "sensor_1",
             reference_value=50.0,
         )
         result = det.calibration_health(window="2h", tolerance=1.0)
@@ -155,7 +169,8 @@ class TestCalibrationHealth:
 
     def test_drifting_sensor_lower_health(self, sensor_with_reference_df):
         det = SensorDriftEvents(
-            sensor_with_reference_df, "sensor_1",
+            sensor_with_reference_df,
+            "sensor_1",
             reference_uuid="reference",
         )
         result = det.calibration_health(window="2h", tolerance=1.0)

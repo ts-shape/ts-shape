@@ -23,11 +23,10 @@ forecast       Future / projected value: RUL, capability forecast, stockout.
 correlation    Cross-signal pair metric: lag, rolling correlation, cascade.
 ============== ==============================================================
 """
+
 from __future__ import annotations
 
-
 ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
-
     # ---- correlation -------------------------------------------------------
     ("AnomalyCorrelationEvents", "cascade_detection"): "correlation",
     ("AnomalyCorrelationEvents", "coincident_anomalies"): "correlation",
@@ -35,7 +34,6 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("SignalCorrelationEvents", "correlation_breakdown"): "correlation",
     ("SignalCorrelationEvents", "lag_correlation"): "correlation",
     ("SignalCorrelationEvents", "rolling_correlation"): "correlation",
-
     # ---- energy ------------------------------------------------------------
     ("CarbonIntensityEvents", "carbon_intensity_per_unit"): "aggregate",
     ("CarbonIntensityEvents", "emission_factor_audit"): "aggregate",
@@ -57,7 +55,6 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("IdleEnergyDetectionEvents", "idle_energy_by_shift"): "aggregate",
     ("IdleEnergyDetectionEvents", "idle_energy_by_window"): "aggregate",
     ("IdleEnergyDetectionEvents", "idle_energy_trend"): "aggregate",
-
     # ---- engineering -------------------------------------------------------
     ("ControlLoopHealthEvents", "detect_oscillation"): "interval",
     ("ControlLoopHealthEvents", "error_integrals"): "aggregate",
@@ -118,7 +115,6 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("WarmUpCoolDownEvents", "detect_warmup"): "interval",
     ("WarmUpCoolDownEvents", "time_to_target"): "aggregate",
     ("WarmUpCoolDownEvents", "warmup_consistency"): "aggregate",
-
     # ---- maintenance -------------------------------------------------------
     ("DegradationDetectionEvents", "detect_level_shift"): "threshold",
     ("DegradationDetectionEvents", "detect_trend_degradation"): "interval",
@@ -130,7 +126,6 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("VibrationAnalysisEvents", "bearing_health_indicators"): "aggregate",
     ("VibrationAnalysisEvents", "detect_amplitude_growth"): "threshold",
     ("VibrationAnalysisEvents", "detect_rms_exceedance"): "threshold",
-
     # ---- production --------------------------------------------------------
     ("AlarmManagementEvents", "alarm_duration_stats"): "aggregate",
     ("AlarmManagementEvents", "alarm_frequency"): "aggregate",
@@ -240,7 +235,6 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("ShiftReporting", "shift_targets"): "aggregate",
     ("TargetTracking", "compare_to_target"): "aggregate",
     ("TargetTracking", "target_achievement_summary"): "aggregate",
-
     # ---- quality -----------------------------------------------------------
     ("AnomalyClassificationEvents", "classify_anomalies"): "outcome",
     ("AnomalyClassificationEvents", "detect_drift"): "threshold",
@@ -276,7 +270,10 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("SignalQualityEvents", "sampling_regularity"): "aggregate",
     ("StatisticalProcessControlRuleBased", "apply_rules_vectorized"): "threshold",
     ("StatisticalProcessControlRuleBased", "calculate_control_limits"): "static",
-    ("StatisticalProcessControlRuleBased", "calculate_dynamic_control_limits"): "aggregate",
+    (
+        "StatisticalProcessControlRuleBased",
+        "calculate_dynamic_control_limits",
+    ): "aggregate",
     ("StatisticalProcessControlRuleBased", "detect_cusum_shifts"): "threshold",
     ("StatisticalProcessControlRuleBased", "interpret_violations"): "outcome",
     ("StatisticalProcessControlRuleBased", "process"): "threshold",
@@ -293,7 +290,6 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("ValueDistributionEvents", "detect_mode_changes"): "threshold",
     ("ValueDistributionEvents", "normality_windows"): "aggregate",
     ("ValueDistributionEvents", "percentile_tracking"): "aggregate",
-
     # ---- supplychain -------------------------------------------------------
     ("DemandPatternEvents", "demand_by_period"): "aggregate",
     ("DemandPatternEvents", "detect_demand_spikes"): "threshold",

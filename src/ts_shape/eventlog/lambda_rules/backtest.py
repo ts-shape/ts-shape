@@ -7,6 +7,7 @@ caller can inspect any individual hit and run their own downstream
 analysis (e.g. ``to_flat_df`` for pm4py, ``filter_by_pack`` for
 domain-specific drill-down).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -57,8 +58,7 @@ def run_backtest(
     if not log.relations.empty:
         asset_rel = log.relations[log.relations[OCEL_TYPE] == "asset"]
         by_asset = {
-            str(k): int(v)
-            for k, v in asset_rel[OCEL_OID].value_counts().items()
+            str(k): int(v) for k, v in asset_rel[OCEL_OID].value_counts().items()
         }
 
     return BacktestResult(

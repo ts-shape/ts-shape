@@ -1,7 +1,6 @@
 """Tests for OperatorPerformanceTracking module."""
 
 import pandas as pd
-import pytest
 
 from ts_shape.events.production.operator_performance import OperatorPerformanceTracking
 
@@ -16,7 +15,9 @@ def _make_operator_df():
         rows.append({"systime": t, "uuid": "operator_id", "value_string": op})
     # Production counter (monotonic)
     for i, t in enumerate(times):
-        rows.append({"systime": t, "uuid": "part_counter", "value_integer": 100 + i * 10})
+        rows.append(
+            {"systime": t, "uuid": "part_counter", "value_integer": 100 + i * 10}
+        )
     # OK parts counter
     for i, t in enumerate(times):
         rows.append({"systime": t, "uuid": "ok_parts", "value_integer": 90 + i * 9})

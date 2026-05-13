@@ -97,7 +97,9 @@ class TestComputeDataframe:
 
         # Column names should contain '::' separators from the flattening logic
         for col in result.columns:
-            assert "::" in col, f"Expected flattened column name with '::' but got '{col}'"
+            assert (
+                "::" in col
+            ), f"Expected flattened column name with '::' but got '{col}'"
 
 
 class TestOverallStats:

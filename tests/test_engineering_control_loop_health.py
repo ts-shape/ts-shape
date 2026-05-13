@@ -10,12 +10,33 @@ def _times(start: str, count: int, freq: str) -> pd.DatetimeIndex:
 
 def _make_loop_df(t, sp_vals, pv_vals, out_vals=None) -> pd.DataFrame:
     frames = [
-        pd.DataFrame({"uuid": ["sp"] * len(t), "systime": t, "value_double": sp_vals, "is_delta": True}),
-        pd.DataFrame({"uuid": ["pv"] * len(t), "systime": t, "value_double": pv_vals, "is_delta": True}),
+        pd.DataFrame(
+            {
+                "uuid": ["sp"] * len(t),
+                "systime": t,
+                "value_double": sp_vals,
+                "is_delta": True,
+            }
+        ),
+        pd.DataFrame(
+            {
+                "uuid": ["pv"] * len(t),
+                "systime": t,
+                "value_double": pv_vals,
+                "is_delta": True,
+            }
+        ),
     ]
     if out_vals is not None:
         frames.append(
-            pd.DataFrame({"uuid": ["out"] * len(t), "systime": t, "value_double": out_vals, "is_delta": True})
+            pd.DataFrame(
+                {
+                    "uuid": ["out"] * len(t),
+                    "systime": t,
+                    "value_double": out_vals,
+                    "is_delta": True,
+                }
+            )
         )
     return pd.concat(frames, ignore_index=True)
 

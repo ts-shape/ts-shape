@@ -26,6 +26,7 @@ Typical use::
 See :doc:`/guides/lambda-rules` for the full walkthrough including a
 threshold case and an interval-with-hysteresis case.
 """
+
 from .backtest import BacktestResult, run_backtest
 from .detector import LambdaDetector
 from .expression import UnsafeExpression, compile_expression

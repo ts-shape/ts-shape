@@ -6,14 +6,21 @@ from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
+
 class S3ProxyDataAccess:
     """
-    A class to access timeseries data via an S3 proxy. This class retrieves 
-    data for specified UUIDs within a defined time range, with the option to 
+    A class to access timeseries data via an S3 proxy. This class retrieves
+    data for specified UUIDs within a defined time range, with the option to
     output data as Parquet files or as a single combined DataFrame.
     """
 
-    def __init__(self, start_timestamp: str, end_timestamp: str, uuids: List[str], s3_config: Dict[str, str]):
+    def __init__(
+        self,
+        start_timestamp: str,
+        end_timestamp: str,
+        uuids: List[str],
+        s3_config: Dict[str, str],
+    ):
         """
         Initialize the S3ProxyDataAccess object.
         :param start_timestamp: Start timestamp in "Year-Month-Day Hour:Minute:Second" format.
@@ -32,7 +39,7 @@ class S3ProxyDataAccess:
             key=s3_config["key"],
             secret=s3_config["secret"],
             use_ssl=s3_config["use_ssl"],
-            version_aware=s3_config["version_aware"]
+            version_aware=s3_config["version_aware"],
         )
         self.s3_path_base = s3_config["s3_path_base"]
 
@@ -42,8 +49,15 @@ class S3ProxyDataAccess:
         between start_timestamp and end_timestamp.
         :return: A generator yielding paths in the format year/month/day/hour.
         """
-        for timeslot in pd.date_range(start=self.start_timestamp, end=self.end_timestamp, freq="h"):
-            timeslot_dir = Path(str(timeslot.year), str(timeslot.month).zfill(2), str(timeslot.day).zfill(2), str(timeslot.hour).zfill(2))
+        for timeslot in pd.date_range(
+            start=self.start_timestamp, end=self.end_timestamp, freq="h"
+        ):
+            timeslot_dir = Path(
+                str(timeslot.year),
+                str(timeslot.month).zfill(2),
+                str(timeslot.day).zfill(2),
+                str(timeslot.hour).zfill(2),
+            )
             yield timeslot_dir
 
     def _fetch_parquet(self, uuid: str, timeslot_dir: Path):
@@ -80,7 +94,13 @@ class S3ProxyDataAccess:
         Retrieves timeseries data from S3 and returns it as a single DataFrame.
         :return: A combined DataFrame with data for all specified UUIDs and time slots.
         """
-        data_frames = [self._fetch_parquet(uuid, timeslot_dir) 
-                       for timeslot_dir in self._generate_timeslot_paths()
-                       for uuid in set(self.uuids)]
-        return pd.concat([df for df in data_frames if df is not None], ignore_index=True) if data_frames else pd.DataFrame()
+        data_frames = [
+            self._fetch_parquet(uuid, timeslot_dir)
+            for timeslot_dir in self._generate_timeslot_paths()
+            for uuid in set(self.uuids)
+        ]
+        return (
+            pd.concat([df for df in data_frames if df is not None], ignore_index=True)
+            if data_frames
+            else pd.DataFrame()
+        )

@@ -59,10 +59,16 @@ class ThresholdMonitoringEvents(Base):
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
 
         # Sort levels: for 'above', process from highest to lowest
-        sorted_levels = sorted(levels.items(), key=lambda x: x[1], reverse=(direction == "above"))
+        sorted_levels = sorted(
+            levels.items(), key=lambda x: x[1], reverse=(direction == "above")
+        )
 
         all_events: List[Dict[str, Any]] = []
 
@@ -82,22 +88,29 @@ class ThresholdMonitoringEvents(Base):
                     continue
                 start = seg[self.time_column].iloc[0]
                 end = seg[self.time_column].iloc[-1]
-                peak = float(seg[self.value_column].max() if direction == "above"
-                            else seg[self.value_column].min())
+                peak = float(
+                    seg[self.value_column].max()
+                    if direction == "above"
+                    else seg[self.value_column].min()
+                )
 
-                all_events.append({
-                    "start_time": start,
-                    "end_time": end,
-                    "duration": end - start,
-                    "level": level_name,
-                    "peak_value": peak,
-                })
+                all_events.append(
+                    {
+                        "start_time": start,
+                        "end_time": end,
+                        "duration": end - start,
+                        "level": level_name,
+                        "peak_value": peak,
+                    }
+                )
 
-        return pd.DataFrame(all_events, columns=cols) if all_events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(all_events, columns=cols)
+            if all_events
+            else pd.DataFrame(columns=cols)
+        )
 
-    def threshold_with_hysteresis(
-        self, high: float, low: float
-    ) -> pd.DataFrame:
+    def threshold_with_hysteresis(self, high: float, low: float) -> pd.DataFrame:
         """Alarm intervals with hysteresis to prevent chattering.
 
         Enter alarm when signal crosses `high`, exit when it drops below `low`.
@@ -113,7 +126,11 @@ class ThresholdMonitoringEvents(Base):
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         values = sig[self.value_column].values
         times = sig[self.time_column].values
 
@@ -132,25 +149,32 @@ class ThresholdMonitoringEvents(Base):
             else:
                 peak = max(peak, v)
                 if v < low:
-                    events.append({
-                        "start_time": pd.Timestamp(alarm_start),
-                        "end_time": pd.Timestamp(times[i]),
-                        "duration": pd.Timestamp(times[i]) - pd.Timestamp(alarm_start),
-                        "peak_value": float(peak),
-                    })
+                    events.append(
+                        {
+                            "start_time": pd.Timestamp(alarm_start),
+                            "end_time": pd.Timestamp(times[i]),
+                            "duration": pd.Timestamp(times[i])
+                            - pd.Timestamp(alarm_start),
+                            "peak_value": float(peak),
+                        }
+                    )
                     in_alarm = False
                     peak = -np.inf
 
         # Close open alarm at end of data
         if in_alarm and alarm_start is not None:
-            events.append({
-                "start_time": pd.Timestamp(alarm_start),
-                "end_time": pd.Timestamp(times[-1]),
-                "duration": pd.Timestamp(times[-1]) - pd.Timestamp(alarm_start),
-                "peak_value": float(peak),
-            })
+            events.append(
+                {
+                    "start_time": pd.Timestamp(alarm_start),
+                    "end_time": pd.Timestamp(times[-1]),
+                    "duration": pd.Timestamp(times[-1]) - pd.Timestamp(alarm_start),
+                    "peak_value": float(peak),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def time_above_threshold(
         self, threshold: float, window: str = "1h"
@@ -188,14 +212,18 @@ class ThresholdMonitoringEvents(Base):
                 continue
             pct = round(row["above_frac"] * 100, 2)
             time_above_seconds = row["above_frac"] * window_td.total_seconds()
-            events.append({
-                "window_start": ts,
-                "time_above": round(time_above_seconds, 2),
-                "pct_above": pct,
-                "exceedance_count": int(row["exceedance_count"]),
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "time_above": round(time_above_seconds, 2),
+                    "pct_above": pct,
+                    "exceedance_count": int(row["exceedance_count"]),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def threshold_exceedance_trend(
         self, threshold: float, window: str = "1D"

@@ -1,9 +1,8 @@
 import pytest
-import pandas as pd  # type: ignore
 
 sqlalchemy = pytest.importorskip("sqlalchemy")
 
-from ts_shape.loader.metadata.metadata_db_loader import DatapointDB
+from ts_shape.loader.metadata.metadata_db_loader import DatapointDB  # noqa: E402
 
 
 class DummyResult:
@@ -49,7 +48,9 @@ def test_metadata_db_loader_monkeypatched(monkeypatch, tmp_path):
 
     db = DatapointDB(
         device_names=["Device A"],
-        db_user="u", db_pass="p", db_host="h",
+        db_user="u",
+        db_pass="p",
+        db_host="h",
         output_path=str(tmp_path),
         required_uuid_list=["u1"],
         filter_enabled=True,

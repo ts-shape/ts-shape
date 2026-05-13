@@ -62,8 +62,11 @@ class DataGapAnalysisEvents(Base):
             samples_before_gap, samples_after_gap.
         """
         cols = [
-            "gap_start", "gap_end", "gap_duration_seconds",
-            "samples_before_gap", "samples_after_gap",
+            "gap_start",
+            "gap_end",
+            "gap_duration_seconds",
+            "samples_before_gap",
+            "samples_after_gap",
         ]
         if self.signal.empty or len(self.signal) < 2:
             return pd.DataFrame(columns=cols)
@@ -76,15 +79,19 @@ class DataGapAnalysisEvents(Base):
         for i, d in enumerate(diffs):
             gap = pd.Timedelta(d)
             if gap >= threshold:
-                events.append({
-                    "gap_start": pd.Timestamp(times[i]),
-                    "gap_end": pd.Timestamp(times[i + 1]),
-                    "gap_duration_seconds": round(gap.total_seconds(), 3),
-                    "samples_before_gap": i + 1,
-                    "samples_after_gap": len(times) - (i + 1),
-                })
+                events.append(
+                    {
+                        "gap_start": pd.Timestamp(times[i]),
+                        "gap_end": pd.Timestamp(times[i + 1]),
+                        "gap_duration_seconds": round(gap.total_seconds(), 3),
+                        "samples_before_gap": i + 1,
+                        "samples_after_gap": len(times) - (i + 1),
+                    }
+                )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def gap_summary(self, min_gap: str = "5s") -> pd.DataFrame:
         """Aggregate statistics across all gaps.
@@ -98,9 +105,13 @@ class DataGapAnalysisEvents(Base):
             data_span_seconds, gap_fraction.
         """
         cols = [
-            "total_gaps", "total_missing_seconds", "longest_gap_seconds",
-            "shortest_gap_seconds", "mean_gap_seconds",
-            "data_span_seconds", "gap_fraction",
+            "total_gaps",
+            "total_missing_seconds",
+            "longest_gap_seconds",
+            "shortest_gap_seconds",
+            "mean_gap_seconds",
+            "data_span_seconds",
+            "gap_fraction",
         ]
         gaps = self.find_gaps(min_gap=min_gap)
         if gaps.empty:
@@ -120,15 +131,17 @@ class DataGapAnalysisEvents(Base):
             span = (last - first).total_seconds()
 
         return pd.DataFrame(
-            [{
-                "total_gaps": len(gaps),
-                "total_missing_seconds": round(total_missing, 3),
-                "longest_gap_seconds": round(float(durations.max()), 3),
-                "shortest_gap_seconds": round(float(durations.min()), 3),
-                "mean_gap_seconds": round(float(durations.mean()), 3),
-                "data_span_seconds": round(span, 3),
-                "gap_fraction": round(total_missing / span, 4) if span > 0 else 0.0,
-            }],
+            [
+                {
+                    "total_gaps": len(gaps),
+                    "total_missing_seconds": round(total_missing, 3),
+                    "longest_gap_seconds": round(float(durations.max()), 3),
+                    "shortest_gap_seconds": round(float(durations.min()), 3),
+                    "mean_gap_seconds": round(float(durations.mean()), 3),
+                    "data_span_seconds": round(span, 3),
+                    "gap_fraction": round(total_missing / span, 4) if span > 0 else 0.0,
+                }
+            ],
             columns=cols,
         )
 
@@ -151,8 +164,11 @@ class DataGapAnalysisEvents(Base):
             coverage_pct, gap_count, gap_seconds.
         """
         cols = [
-            "period_start", "sample_count", "coverage_pct",
-            "gap_count", "gap_seconds",
+            "period_start",
+            "sample_count",
+            "coverage_pct",
+            "gap_count",
+            "gap_seconds",
         ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
@@ -189,8 +205,7 @@ class DataGapAnalysisEvents(Base):
             gap_count = 0
             if not all_gaps.empty:
                 overlapping = all_gaps[
-                    (all_gaps["gap_start"] < window_end) &
-                    (all_gaps["gap_end"] > ts)
+                    (all_gaps["gap_start"] < window_end) & (all_gaps["gap_end"] > ts)
                 ]
                 gap_count = len(overlapping)
                 for _, g in overlapping.iterrows():
@@ -200,15 +215,19 @@ class DataGapAnalysisEvents(Base):
                     gap_secs += (clip_end - clip_start).total_seconds()
 
             coverage = max(0.0, min(100.0, (1.0 - gap_secs / window_secs) * 100))
-            events.append({
-                "period_start": ts,
-                "sample_count": int(count),
-                "coverage_pct": round(coverage, 2),
-                "gap_count": gap_count,
-                "gap_seconds": round(gap_secs, 3),
-            })
+            events.append(
+                {
+                    "period_start": ts,
+                    "sample_count": int(count),
+                    "coverage_pct": round(coverage, 2),
+                    "gap_count": gap_count,
+                    "gap_seconds": round(gap_secs, 3),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def interpolation_candidates(
         self, max_gap: str = "10s", min_gap: str = "0s"
@@ -226,8 +245,12 @@ class DataGapAnalysisEvents(Base):
             gap is within 2 standard deviations of the signal.
         """
         cols = [
-            "gap_start", "gap_end", "gap_duration_seconds",
-            "value_before", "value_after", "value_jump",
+            "gap_start",
+            "gap_end",
+            "gap_duration_seconds",
+            "value_before",
+            "value_after",
+            "value_jump",
             "safe_to_interpolate",
         ]
         if self.signal.empty or len(self.signal) < 2:
@@ -256,18 +279,20 @@ class DataGapAnalysisEvents(Base):
             else:
                 jump = float("nan")
 
-            safe = (
-                not np.isnan(jump) and jump <= safe_threshold
+            safe = not np.isnan(jump) and jump <= safe_threshold
+
+            events.append(
+                {
+                    "gap_start": pd.Timestamp(times[i]),
+                    "gap_end": pd.Timestamp(times[i + 1]),
+                    "gap_duration_seconds": round(gap.total_seconds(), 3),
+                    "value_before": val_before,
+                    "value_after": val_after,
+                    "value_jump": round(jump, 6) if not np.isnan(jump) else None,
+                    "safe_to_interpolate": safe,
+                }
             )
 
-            events.append({
-                "gap_start": pd.Timestamp(times[i]),
-                "gap_end": pd.Timestamp(times[i + 1]),
-                "gap_duration_seconds": round(gap.total_seconds(), 3),
-                "value_before": val_before,
-                "value_after": val_after,
-                "value_jump": round(jump, 6) if not np.isnan(jump) else None,
-                "safe_to_interpolate": safe,
-            })
-
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )

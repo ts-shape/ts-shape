@@ -56,11 +56,24 @@ class VibrationAnalysisEvents(Base):
             DataFrame with columns: start, end, uuid, is_delta,
             rms_value, baseline_rms, ratio, duration_seconds.
         """
-        cols = ["start", "end", "uuid", "is_delta", "rms_value", "baseline_rms", "ratio", "duration_seconds"]
+        cols = [
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "rms_value",
+            "baseline_rms",
+            "ratio",
+            "duration_seconds",
+        ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         window_td = pd.to_timedelta(window)
         threshold = baseline_rms * threshold_factor
 
@@ -74,7 +87,7 @@ class VibrationAnalysisEvents(Base):
             if len(win) == 0:
                 rms_values.append(np.nan)
             else:
-                rms_values.append(float(np.sqrt(np.mean(win.values ** 2))))
+                rms_values.append(float(np.sqrt(np.mean(win.values**2))))
 
         sig["rms"] = rms_values
         exceeded = (sig["rms"] >= threshold).fillna(False)
@@ -92,18 +105,22 @@ class VibrationAnalysisEvents(Base):
             start_time = seg[self.time_column].iloc[0]
             end_time = seg[self.time_column].iloc[-1]
             avg_rms = float(seg["rms"].mean())
-            events.append({
-                "start": start_time,
-                "end": end_time,
-                "uuid": self.event_uuid,
-                "is_delta": True,
-                "rms_value": avg_rms,
-                "baseline_rms": baseline_rms,
-                "ratio": avg_rms / baseline_rms if baseline_rms > 0 else None,
-                "duration_seconds": (end_time - start_time).total_seconds(),
-            })
+            events.append(
+                {
+                    "start": start_time,
+                    "end": end_time,
+                    "uuid": self.event_uuid,
+                    "is_delta": True,
+                    "rms_value": avg_rms,
+                    "baseline_rms": baseline_rms,
+                    "ratio": avg_rms / baseline_rms if baseline_rms > 0 else None,
+                    "duration_seconds": (end_time - start_time).total_seconds(),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def detect_amplitude_growth(
         self,
@@ -122,11 +139,22 @@ class VibrationAnalysisEvents(Base):
             DataFrame with columns: window_start, uuid, is_delta,
             amplitude, baseline_amplitude, growth_pct.
         """
-        cols = ["window_start", "uuid", "is_delta", "amplitude", "baseline_amplitude", "growth_pct"]
+        cols = [
+            "window_start",
+            "uuid",
+            "is_delta",
+            "amplitude",
+            "baseline_amplitude",
+            "growth_pct",
+        ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         window_td = pd.to_timedelta(window)
 
         # Generate non-overlapping windows
@@ -155,14 +183,16 @@ class VibrationAnalysisEvents(Base):
         rows: List[Dict[str, Any]] = []
         for a in amplitudes:
             growth_pct = (a["amplitude"] - baseline_amp) / baseline_amp
-            rows.append({
-                "window_start": a["window_start"],
-                "uuid": self.event_uuid,
-                "is_delta": True,
-                "amplitude": a["amplitude"],
-                "baseline_amplitude": amplitudes[0]["amplitude"],
-                "growth_pct": round(growth_pct, 6),
-            })
+            rows.append(
+                {
+                    "window_start": a["window_start"],
+                    "uuid": self.event_uuid,
+                    "is_delta": True,
+                    "amplitude": a["amplitude"],
+                    "baseline_amplitude": amplitudes[0]["amplitude"],
+                    "growth_pct": round(growth_pct, 6),
+                }
+            )
 
         return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
 
@@ -181,11 +211,23 @@ class VibrationAnalysisEvents(Base):
             DataFrame with columns: window_start, uuid, is_delta,
             rms, peak, crest_factor, kurtosis.
         """
-        cols = ["window_start", "uuid", "is_delta", "rms", "peak", "crest_factor", "kurtosis"]
+        cols = [
+            "window_start",
+            "uuid",
+            "is_delta",
+            "rms",
+            "peak",
+            "crest_factor",
+            "kurtosis",
+        ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         window_td = pd.to_timedelta(window)
 
         # Generate non-overlapping windows
@@ -202,19 +244,23 @@ class VibrationAnalysisEvents(Base):
                 continue
 
             values = win.values
-            rms_val = float(np.sqrt(np.mean(values ** 2)))
+            rms_val = float(np.sqrt(np.mean(values**2)))
             peak_val = float(np.max(np.abs(values)))
             crest_factor = peak_val / rms_val if rms_val > 0 else None
             kurt_val = float(kurtosis(values, fisher=True))
 
-            rows.append({
-                "window_start": ws,
-                "uuid": self.event_uuid,
-                "is_delta": True,
-                "rms": round(rms_val, 6),
-                "peak": round(peak_val, 6),
-                "crest_factor": round(crest_factor, 6) if crest_factor is not None else None,
-                "kurtosis": round(kurt_val, 6),
-            })
+            rows.append(
+                {
+                    "window_start": ws,
+                    "uuid": self.event_uuid,
+                    "is_delta": True,
+                    "rms": round(rms_val, 6),
+                    "peak": round(peak_val, 6),
+                    "crest_factor": (
+                        round(crest_factor, 6) if crest_factor is not None else None
+                    ),
+                    "kurtosis": round(kurt_val, 6),
+                }
+            )
 
         return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)

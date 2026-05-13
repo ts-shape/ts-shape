@@ -1,7 +1,9 @@
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
 
-from ts_shape.events.engineering.steady_state_detection import SteadyStateDetectionEvents
+from ts_shape.events.engineering.steady_state_detection import (
+    SteadyStateDetectionEvents,
+)
 
 
 def _times(start: str, count: int, freq: str) -> pd.DatetimeIndex:
@@ -9,12 +11,14 @@ def _times(start: str, count: int, freq: str) -> pd.DatetimeIndex:
 
 
 def _make_df(uuid: str, times, values) -> pd.DataFrame:
-    return pd.DataFrame({
-        "uuid": [uuid] * len(times),
-        "systime": times,
-        "value_double": values,
-        "is_delta": [True] * len(times),
-    })
+    return pd.DataFrame(
+        {
+            "uuid": [uuid] * len(times),
+            "systime": times,
+            "value_double": values,
+            "is_delta": [True] * len(times),
+        }
+    )
 
 
 def test_detect_steady_state_flat_signal():
@@ -61,7 +65,9 @@ def test_steady_state_statistics():
     df = _make_df("temp", t, vals)
 
     det = SteadyStateDetectionEvents(df, "temp")
-    stats = det.steady_state_statistics(window="1m", std_threshold=1.0, min_duration="5m")
+    stats = det.steady_state_statistics(
+        window="1m", std_threshold=1.0, min_duration="5m"
+    )
     assert stats["num_steady_periods"] > 0
     assert stats["steady_pct"] > 0
 
@@ -73,7 +79,9 @@ def test_steady_state_value_bands():
     df = _make_df("temp", t, vals)
 
     det = SteadyStateDetectionEvents(df, "temp")
-    bands = det.steady_state_value_bands(window="1m", std_threshold=1.0, min_duration="5m")
+    bands = det.steady_state_value_bands(
+        window="1m", std_threshold=1.0, min_duration="5m"
+    )
     assert not bands.empty
     assert "lower_band" in bands.columns
     assert "upper_band" in bands.columns

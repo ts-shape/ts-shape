@@ -7,8 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 logger = logging.getLogger(__name__)
 
 # Valid sentinel values that can be used in keyword arguments
-_VALID_SENTINELS = frozenset({'$prev', '$input'})
-
+_VALID_SENTINELS = frozenset({"$prev", "$input"})
 
 
 class FeaturePipeline:
@@ -119,9 +118,9 @@ class FeaturePipeline:
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        time_column: str = 'systime',
-        uuid_column: str = 'uuid',
-        value_column: str = 'value_double',
+        time_column: str = "systime",
+        uuid_column: str = "uuid",
+        value_column: str = "value_double",
     ) -> None:
         """Initialize the pipeline with input data.
 
@@ -154,7 +153,7 @@ class FeaturePipeline:
         self,
         method: Callable[..., pd.DataFrame],
         **kwargs: Any,
-    ) -> 'FeaturePipeline':
+    ) -> "FeaturePipeline":
         """Add a stateless classmethod step (Pattern 1).
 
         The pipeline passes the current DataFrame as the first positional
@@ -190,13 +189,11 @@ class FeaturePipeline:
                           dataframe='$input', time_ranges='$prev')
         """
         if not callable(method):
-            raise TypeError(
-                f"method must be callable, got {type(method).__name__}."
-            )
+            raise TypeError(f"method must be callable, got {type(method).__name__}.")
         _guard_instance_method(method)
         _validate_sentinels(kwargs)
         name = _method_label(method)
-        self._steps.append(('classmethod', name, (method, kwargs)))
+        self._steps.append(("classmethod", name, (method, kwargs)))
         return self
 
     def add_instance_step(
@@ -205,7 +202,7 @@ class FeaturePipeline:
         call: str,
         init_kwargs: Optional[Dict[str, Any]] = None,
         **method_kwargs: Any,
-    ) -> 'FeaturePipeline':
+    ) -> "FeaturePipeline":
         """Add a stateful instance-class step (Pattern 2).
 
         The pipeline automatically:
@@ -253,8 +250,9 @@ class FeaturePipeline:
             )
         if not hasattr(cls, call):
             available = [
-                m for m in dir(cls)
-                if not m.startswith('_') and callable(getattr(cls, m, None))
+                m
+                for m in dir(cls)
+                if not m.startswith("_") and callable(getattr(cls, m, None))
             ]
             raise AttributeError(
                 f"{cls.__name__} has no method '{call}'. "
@@ -264,18 +262,20 @@ class FeaturePipeline:
         if init_kwargs:
             _validate_sentinels(init_kwargs)
         name = f"{cls.__name__}.{call}"
-        self._steps.append((
-            'instance',
-            name,
-            (cls, call, init_kwargs or {}, method_kwargs),
-        ))
+        self._steps.append(
+            (
+                "instance",
+                name,
+                (cls, call, init_kwargs or {}, method_kwargs),
+            )
+        )
         return self
 
     def add_lambda_step(
         self,
         func: Callable[[pd.DataFrame], pd.DataFrame],
         name: Optional[str] = None,
-    ) -> 'FeaturePipeline':
+    ) -> "FeaturePipeline":
         """Add a custom function step (Pattern 3).
 
         Use this for one-off transformations that don't map to a ts-shape
@@ -300,11 +300,9 @@ class FeaturePipeline:
             )
         """
         if not callable(func):
-            raise TypeError(
-                f"func must be callable, got {type(func).__name__}."
-            )
-        label = name or getattr(func, '__name__', 'lambda')
-        self._steps.append(('lambda', label, func))
+            raise TypeError(f"func must be callable, got {type(func).__name__}.")
+        label = name or getattr(func, "__name__", "lambda")
+        self._steps.append(("lambda", label, func))
         return self
 
     # ------------------------------------------------------------------
@@ -343,7 +341,7 @@ class FeaturePipeline:
         if not self._steps:
             lines.append("  (no steps registered)")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Execution
@@ -379,13 +377,13 @@ class FeaturePipeline:
         if not self._steps:
             logger.warning("No steps registered. Returning input DataFrame.")
             if capture_intermediates:
-                return {'input': self._dataframe.copy()}
+                return {"input": self._dataframe.copy()}
             return self._dataframe.copy()
 
         df = self._dataframe.copy()
         intermediates: Dict[str, pd.DataFrame] = {}
         if capture_intermediates:
-            intermediates['input'] = df.copy()
+            intermediates["input"] = df.copy()
 
         prev_result: Optional[pd.DataFrame] = None
         total_start = time.time()
@@ -396,11 +394,11 @@ class FeaturePipeline:
             logger.info(f"Step {step_num}/{len(self._steps)}: {name}")
 
             try:
-                if step_type == 'classmethod':
+                if step_type == "classmethod":
                     df = self._run_classmethod_step(payload, df, prev_result)
-                elif step_type == 'instance':
+                elif step_type == "instance":
                     df = self._run_instance_step(payload, df, prev_result, name)
-                elif step_type == 'lambda':
+                elif step_type == "lambda":
                     df = self._run_lambda_step(payload, df, name)
             except RuntimeError:
                 raise
@@ -460,7 +458,8 @@ class FeaturePipeline:
         cls, call, init_kwargs, method_kwargs = payload
         resolved = self._resolve_kwargs(method_kwargs, prev_result)
         instance = _build_instance(
-            cls, df,
+            cls,
+            df,
             time_column=self._time_column,
             uuid_column=self._uuid_column,
             value_column=self._value_column,
@@ -497,14 +496,14 @@ class FeaturePipeline:
             if not isinstance(value, str):
                 resolved[key] = value
                 continue
-            if value == '$prev':
+            if value == "$prev":
                 if prev_result is None:
                     raise ValueError(
                         f"'{key}=$prev' but there is no previous step result. "
                         f"'$prev' can only be used from the second step onward."
                     )
                 resolved[key] = prev_result
-            elif value == '$input':
+            elif value == "$input":
                 resolved[key] = self._dataframe.copy()
             else:
                 resolved[key] = value
@@ -515,10 +514,11 @@ class FeaturePipeline:
 # Registration-time validation
 # ------------------------------------------------------------------
 
+
 def _validate_sentinels(kwargs: Dict[str, Any]) -> None:
     """Reject invalid sentinel strings (e.g. '$PREV', '$foo') at registration."""
     for key, value in kwargs.items():
-        if isinstance(value, str) and value.startswith('$'):
+        if isinstance(value, str) and value.startswith("$"):
             if value not in _VALID_SENTINELS:
                 raise ValueError(
                     f"Unknown sentinel '{value}' for argument '{key}'. "
@@ -534,17 +534,17 @@ def _guard_instance_method(method: Any) -> None:
     method (which requires ``add_instance_step``) or a ``@classmethod`` /
     ``@staticmethod`` (which works with ``add_step``).
     """
-    if not hasattr(method, '__qualname__'):
+    if not hasattr(method, "__qualname__"):
         return
 
-    parts = method.__qualname__.split('.')
+    parts = method.__qualname__.split(".")
     if len(parts) < 2:
         return
 
     owner_name = parts[-2]
 
     # For bound classmethods, __self__ is the class itself
-    if hasattr(method, '__self__') and isinstance(method.__self__, type):
+    if hasattr(method, "__self__") and isinstance(method.__self__, type):
         return  # It's a proper @classmethod — fine for add_step
 
     # Resolve the owner class and inspect the raw attribute
@@ -564,11 +564,11 @@ def _guard_instance_method(method: Any) -> None:
 
 def _resolve_owner_class(method: Any) -> Optional[type]:
     """Try to resolve the class that owns a method."""
-    qualname = getattr(method, '__qualname__', '')
+    qualname = getattr(method, "__qualname__", "")
     module = inspect.getmodule(method)
     if module is None:
         return None
-    parts = qualname.split('.')
+    parts = qualname.split(".")
     if len(parts) < 2:
         return None
     cls_name = parts[-2]
@@ -596,6 +596,7 @@ def _validate_step_output(result: Any, step_name: str) -> None:
 # Helpers
 # ------------------------------------------------------------------
 
+
 def _first_param_name(method: Any) -> Optional[str]:
     """Return the name of the first non-cls/self parameter of a method."""
     try:
@@ -603,7 +604,7 @@ def _first_param_name(method: Any) -> Optional[str]:
     except (ValueError, TypeError):
         return None
     for p in sig.parameters.values():
-        if p.name in ('cls', 'self'):
+        if p.name in ("cls", "self"):
             continue
         return p.name
     return None
@@ -611,41 +612,41 @@ def _first_param_name(method: Any) -> Optional[str]:
 
 def _method_label(method: Any) -> str:
     """Build a human-readable label for a method."""
-    cls_name = ''
-    if hasattr(method, '__self__'):
-        cls_name = method.__self__.__name__ + '.'
-    elif hasattr(method, '__qualname__'):
-        parts = method.__qualname__.split('.')
+    cls_name = ""
+    if hasattr(method, "__self__"):
+        cls_name = method.__self__.__name__ + "."
+    elif hasattr(method, "__qualname__"):
+        parts = method.__qualname__.split(".")
         if len(parts) >= 2:
-            cls_name = parts[-2] + '.'
+            cls_name = parts[-2] + "."
     return f"{cls_name}{method.__name__}"
 
 
 def _step_type_tag(step_type: str) -> str:
     """Short tag for describe() output."""
     return {
-        'classmethod': 'step',
-        'instance': 'instance',
-        'lambda': 'func',
+        "classmethod": "step",
+        "instance": "instance",
+        "lambda": "func",
     }[step_type]
 
 
 def _format_params(step_type: str, payload: Any) -> str:
     """Format the parameters of a step for describe() output."""
-    if step_type == 'classmethod':
+    if step_type == "classmethod":
         _, kwargs = payload
         if not kwargs:
-            return ''
+            return ""
         parts = [f"{k}={v!r}" for k, v in kwargs.items()]
-        return ', '.join(parts)
-    elif step_type == 'instance':
+        return ", ".join(parts)
+    elif step_type == "instance":
         _, _, init_kwargs, method_kwargs = payload
         all_kw = {**init_kwargs, **method_kwargs}
         if not all_kw:
-            return ''
+            return ""
         parts = [f"{k}={v!r}" for k, v in all_kw.items()]
-        return ', '.join(parts)
-    return ''
+        return ", ".join(parts)
+    return ""
 
 
 def _build_instance(
@@ -658,16 +659,18 @@ def _build_instance(
 ) -> Any:
     """Instantiate an instance-based class, passing column names it accepts."""
     sig = inspect.signature(cls.__init__)
-    params = set(sig.parameters.keys()) - {'self'}
+    params = set(sig.parameters.keys()) - {"self"}
 
     init_kwargs: Dict[str, Any] = {}
 
     # The first positional param (after self) is always the dataframe
     positional = [
-        p for p in sig.parameters.values()
-        if p.name != 'self'
+        p
+        for p in sig.parameters.values()
+        if p.name != "self"
         and p.default is inspect.Parameter.empty
-        and p.kind in (
+        and p.kind
+        in (
             inspect.Parameter.POSITIONAL_ONLY,
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
         )
@@ -677,10 +680,10 @@ def _build_instance(
 
     # Pass column-name params the constructor accepts
     col_mapping = {
-        'time_column': time_column,
-        'uuid_column': uuid_column,
-        'value_column': value_column,
-        'column_name': time_column,
+        "time_column": time_column,
+        "uuid_column": uuid_column,
+        "value_column": value_column,
+        "column_name": time_column,
     }
     for param_name, value in col_mapping.items():
         if param_name in params and param_name not in extra_kwargs:

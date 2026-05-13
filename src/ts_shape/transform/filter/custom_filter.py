@@ -4,9 +4,12 @@ import pandas as pd  # type: ignore
 
 logger = logging.getLogger(__name__)
 
+
 class CustomFilter(Base):
     @classmethod
-    def filter_custom_conditions(cls, dataframe: pd.DataFrame, conditions: str) -> pd.DataFrame:
+    def filter_custom_conditions(
+        cls, dataframe: pd.DataFrame, conditions: str
+    ) -> pd.DataFrame:
         """
         Filters the DataFrame based on a set of user-defined conditions passed as a string.
 

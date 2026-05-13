@@ -65,39 +65,58 @@ class FlowConstraintEvents(Base):
         dn = self._align_bool(roles["downstream_run"])  # time, state
         if up.empty or dn.empty:
             return pd.DataFrame(
-                columns=["start", "end", "uuid", "source_uuid", "is_delta", "type",
-                        "time_alignment_quality", "duration", "severity"]
+                columns=[
+                    "start",
+                    "end",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "type",
+                    "time_alignment_quality",
+                    "duration",
+                    "severity",
+                ]
             )
 
         # Use directional tolerances if provided, otherwise use single tolerance
-        tol_before = pd.to_timedelta(tolerance_before) if tolerance_before else pd.to_timedelta(tolerance)
-        tol_after = pd.to_timedelta(tolerance_after) if tolerance_after else pd.to_timedelta(tolerance)
+        tol_before = (
+            pd.to_timedelta(tolerance_before)
+            if tolerance_before
+            else pd.to_timedelta(tolerance)
+        )
+        tol_after = (
+            pd.to_timedelta(tolerance_after)
+            if tolerance_after
+            else pd.to_timedelta(tolerance)
+        )
         max_tol = max(tol_before, tol_after)
 
         # Merge with maximum tolerance and track time differences
         merged = pd.merge_asof(
-            up, dn,
+            up,
+            dn,
             on=self.time_column,
             suffixes=("_up", "_dn"),
             tolerance=max_tol,
-            direction="nearest"
+            direction="nearest",
         )
 
         # Store original upstream time for quality calculation
-        merged['time_up'] = up[self.time_column].values
+        merged["time_up"] = up[self.time_column].values
 
         # Apply directional tolerance filtering if asymmetric tolerances are specified
         if tolerance_before or tolerance_after:
-            time_diff = merged[self.time_column + '_dn'] - merged[self.time_column]
+            time_diff = merged[self.time_column + "_dn"] - merged[self.time_column]
             # Keep only records within directional tolerance bounds
             valid_mask = (
-                ((time_diff <= pd.Timedelta(0)) & (time_diff.abs() <= tol_before)) |
-                ((time_diff >= pd.Timedelta(0)) & (time_diff <= tol_after))
-            )
-            merged.loc[~valid_mask, 'state_dn'] = pd.NA
+                (time_diff <= pd.Timedelta(0)) & (time_diff.abs() <= tol_before)
+            ) | ((time_diff >= pd.Timedelta(0)) & (time_diff <= tol_after))
+            merged.loc[~valid_mask, "state_dn"] = pd.NA
 
         # Calculate alignment quality (percentage of records with matches)
-        alignment_quality = merged['state_dn'].notna().sum() / len(merged) if len(merged) > 0 else 0.0
+        alignment_quality = (
+            merged["state_dn"].notna().sum() / len(merged) if len(merged) > 0 else 0.0
+        )
 
         cond = merged["state_up"] & (~merged["state_dn"].fillna(False))
         gid = (cond.ne(cond.shift())).cumsum()
@@ -161,39 +180,58 @@ class FlowConstraintEvents(Base):
         dn = self._align_bool(roles["downstream_run"])  # time, state
         if up.empty or dn.empty:
             return pd.DataFrame(
-                columns=["start", "end", "uuid", "source_uuid", "is_delta", "type",
-                        "time_alignment_quality", "duration", "severity"]
+                columns=[
+                    "start",
+                    "end",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "type",
+                    "time_alignment_quality",
+                    "duration",
+                    "severity",
+                ]
             )
 
         # Use directional tolerances if provided, otherwise use single tolerance
-        tol_before = pd.to_timedelta(tolerance_before) if tolerance_before else pd.to_timedelta(tolerance)
-        tol_after = pd.to_timedelta(tolerance_after) if tolerance_after else pd.to_timedelta(tolerance)
+        tol_before = (
+            pd.to_timedelta(tolerance_before)
+            if tolerance_before
+            else pd.to_timedelta(tolerance)
+        )
+        tol_after = (
+            pd.to_timedelta(tolerance_after)
+            if tolerance_after
+            else pd.to_timedelta(tolerance)
+        )
         max_tol = max(tol_before, tol_after)
 
         # Merge with maximum tolerance and track time differences
         merged = pd.merge_asof(
-            dn, up,
+            dn,
+            up,
             on=self.time_column,
             suffixes=("_dn", "_up"),
             tolerance=max_tol,
-            direction="nearest"
+            direction="nearest",
         )
 
         # Store original downstream time for quality calculation
-        merged['time_dn'] = dn[self.time_column].values
+        merged["time_dn"] = dn[self.time_column].values
 
         # Apply directional tolerance filtering if asymmetric tolerances are specified
         if tolerance_before or tolerance_after:
-            time_diff = merged[self.time_column + '_up'] - merged[self.time_column]
+            time_diff = merged[self.time_column + "_up"] - merged[self.time_column]
             # Keep only records within directional tolerance bounds
             valid_mask = (
-                ((time_diff <= pd.Timedelta(0)) & (time_diff.abs() <= tol_before)) |
-                ((time_diff >= pd.Timedelta(0)) & (time_diff <= tol_after))
-            )
-            merged.loc[~valid_mask, 'state_up'] = pd.NA
+                (time_diff <= pd.Timedelta(0)) & (time_diff.abs() <= tol_before)
+            ) | ((time_diff >= pd.Timedelta(0)) & (time_diff <= tol_after))
+            merged.loc[~valid_mask, "state_up"] = pd.NA
 
         # Calculate alignment quality (percentage of records with matches)
-        alignment_quality = merged['state_up'].notna().sum() / len(merged) if len(merged) > 0 else 0.0
+        alignment_quality = (
+            merged["state_up"].notna().sum() / len(merged) if len(merged) > 0 else 0.0
+        )
 
         cond = merged["state_dn"] & (~merged["state_up"].fillna(False))
         gid = (cond.ne(cond.shift())).cumsum()
@@ -321,13 +359,23 @@ class FlowConstraintEvents(Base):
             summary["blocked_count"] = len(blocked_df)
             summary["blocked_total_duration"] = blocked_df["duration"].sum()
             summary["blocked_avg_duration"] = blocked_df["duration"].mean()
-            summary["blocked_severity_breakdown"] = blocked_df["severity"].value_counts().to_dict()
-            blocked_alignment_quality = blocked_df["time_alignment_quality"].iloc[0] if len(blocked_df) > 0 else 0.0
+            summary["blocked_severity_breakdown"] = (
+                blocked_df["severity"].value_counts().to_dict()
+            )
+            blocked_alignment_quality = (
+                blocked_df["time_alignment_quality"].iloc[0]
+                if len(blocked_df) > 0
+                else 0.0
+            )
         else:
             summary["blocked_count"] = 0
             summary["blocked_total_duration"] = pd.Timedelta(0)
             summary["blocked_avg_duration"] = pd.Timedelta(0)
-            summary["blocked_severity_breakdown"] = {"minor": 0, "moderate": 0, "severe": 0}
+            summary["blocked_severity_breakdown"] = {
+                "minor": 0,
+                "moderate": 0,
+                "severe": 0,
+            }
             blocked_alignment_quality = 0.0
 
         # Starved events statistics
@@ -335,25 +383,38 @@ class FlowConstraintEvents(Base):
             summary["starved_count"] = len(starved_df)
             summary["starved_total_duration"] = starved_df["duration"].sum()
             summary["starved_avg_duration"] = starved_df["duration"].mean()
-            summary["starved_severity_breakdown"] = starved_df["severity"].value_counts().to_dict()
-            starved_alignment_quality = starved_df["time_alignment_quality"].iloc[0] if len(starved_df) > 0 else 0.0
+            summary["starved_severity_breakdown"] = (
+                starved_df["severity"].value_counts().to_dict()
+            )
+            starved_alignment_quality = (
+                starved_df["time_alignment_quality"].iloc[0]
+                if len(starved_df) > 0
+                else 0.0
+            )
         else:
             summary["starved_count"] = 0
             summary["starved_total_duration"] = pd.Timedelta(0)
             summary["starved_avg_duration"] = pd.Timedelta(0)
-            summary["starved_severity_breakdown"] = {"minor": 0, "moderate": 0, "severe": 0}
+            summary["starved_severity_breakdown"] = {
+                "minor": 0,
+                "moderate": 0,
+                "severe": 0,
+            }
             starved_alignment_quality = 0.0
 
         # Overall alignment quality (average of both)
         quality_values = [blocked_alignment_quality, starved_alignment_quality]
-        summary["overall_alignment_quality"] = sum(quality_values) / len(quality_values) if quality_values else 0.0
+        summary["overall_alignment_quality"] = (
+            sum(quality_values) / len(quality_values) if quality_values else 0.0
+        )
 
         # Total events
-        summary["total_constraint_events"] = summary["blocked_count"] + summary["starved_count"]
+        summary["total_constraint_events"] = (
+            summary["blocked_count"] + summary["starved_count"]
+        )
 
         return {
             "blocked_events": blocked_df,
             "starved_events": starved_df,
             "summary": summary,
         }
-

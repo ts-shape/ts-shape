@@ -74,8 +74,7 @@ class DatapointAPI:
     ) -> List[Dict]:
         q = query.lower()
         return [
-            r for r in records
-            if any(q in str(r.get(f, "")).lower() for f in fields)
+            r for r in records if any(q in str(r.get(f, "")).lower() for f in fields)
         ]
 
     # ------------------------------------------------------------------
@@ -93,9 +92,7 @@ class DatapointAPI:
     def get_datapoints(self, datatron_id, device_id) -> List[Dict]:
         """GET /api/datatrons/{datatron_id}/devices/{device_id}/data_points."""
         return self._get(
-            self._DATAPOINTS_PATH.format(
-                datatron_id=datatron_id, device_id=device_id
-            )
+            self._DATAPOINTS_PATH.format(datatron_id=datatron_id, device_id=device_id)
         )
 
     # ------------------------------------------------------------------
@@ -181,7 +178,12 @@ class DatapointAPI:
             metadata_df = pd.DataFrame(metadata)
             if not metadata_df.empty:
                 if self.filter_enabled:
-                    metadata_df = metadata_df[metadata_df["enabled"] == True]
+                    metadata_df = metadata_df[
+                        metadata_df[  # noqa: E712 pandas-series-bool-comparison
+                            "enabled"
+                        ]  # noqa: E712 pandas-series-bool-comparison
+                        == True  # noqa: E712 pandas-series-bool-comparison
+                    ]  # noqa: E712 pandas-series-bool-comparison
 
                 metadata_df = metadata_df[["uuid", "label", "config"]]
 
@@ -196,7 +198,9 @@ class DatapointAPI:
 
     def _export_json(self, data_points: List[Dict], device_name: str) -> None:
         """Write data points to a JSON file for the specified device."""
-        file_name = f"{self.output_path}/{device_name.replace(' ', '_')}_data_points.json"
+        file_name = (
+            f"{self.output_path}/{device_name.replace(' ', '_')}_data_points.json"
+        )
         with open(file_name, "w") as f:
             json.dump(data_points, f, indent=2)
 

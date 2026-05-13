@@ -105,7 +105,9 @@ class MetadataJsonLoader:
         if not df["uuid"].is_unique:
             if self.strict:
                 dups = df["uuid"][df["uuid"].duplicated()].unique().tolist()
-                raise ValueError(f"UUIDs are not unique: {dups[:5]}{'...' if len(dups) > 5 else ''}")
+                raise ValueError(
+                    f"UUIDs are not unique: {dups[:5]}{'...' if len(dups) > 5 else ''}"
+                )
             # keep first occurrence
             df = df[~df["uuid"].duplicated(keep="first")]
 
@@ -124,12 +126,18 @@ class MetadataJsonLoader:
         """
         # Case 1: list of records
         if isinstance(data, list):
-            return [self._normalize_record(rec) for rec in data if isinstance(rec, dict)]
+            return [
+                self._normalize_record(rec) for rec in data if isinstance(rec, dict)
+            ]
 
         # Case 2: dict inputs
         if isinstance(data, dict):
             # 2a: dict of lists (columnar)
-            if all(isinstance(v, list) for v in data.values()) and {"uuid", "label", "config"}.issubset(data.keys()):
+            if all(isinstance(v, list) for v in data.values()) and {
+                "uuid",
+                "label",
+                "config",
+            }.issubset(data.keys()):
                 lengths = {k: len(v) for k, v in data.items() if isinstance(v, list)}
                 if len(set(lengths.values())) > 1:
                     if self.strict:
@@ -139,25 +147,39 @@ class MetadataJsonLoader:
                 out: List[Dict[str, Any]] = []
                 for i in range(n):
                     out.append(
-                        self._normalize_record({
-                            "uuid": data.get("uuid", [None] * n)[i],
-                            "label": data.get("label", [None] * n)[i],
-                            "config": data.get("config", [None] * n)[i],
-                        })
+                        self._normalize_record(
+                            {
+                                "uuid": data.get("uuid", [None] * n)[i],
+                                "label": data.get("label", [None] * n)[i],
+                                "config": data.get("config", [None] * n)[i],
+                            }
+                        )
                     )
                 return out
 
             # 2b: dict of dicts with string indices
-            if all(isinstance(v, dict) for v in data.values()) and {"uuid", "label", "config"}.issubset(data.keys()):
-                keys = set(data["uuid"]).intersection(data["label"]).intersection(data["config"])
+            if all(isinstance(v, dict) for v in data.values()) and {
+                "uuid",
+                "label",
+                "config",
+            }.issubset(data.keys()):
+                keys = (
+                    set(data["uuid"])
+                    .intersection(data["label"])
+                    .intersection(data["config"])
+                )
                 # numeric-sort if possible
-                ordered_keys = sorted(keys, key=lambda k: int(k) if str(k).isdigit() else str(k))
+                ordered_keys = sorted(
+                    keys, key=lambda k: int(k) if str(k).isdigit() else str(k)
+                )
                 return [
-                    self._normalize_record({
-                        "uuid": data["uuid"].get(k),
-                        "label": data["label"].get(k),
-                        "config": data["config"].get(k),
-                    })
+                    self._normalize_record(
+                        {
+                            "uuid": data["uuid"].get(k),
+                            "label": data["label"].get(k),
+                            "config": data["config"].get(k),
+                        }
+                    )
                     for k in ordered_keys
                 ]
 

@@ -10,7 +10,6 @@ Industry-standard metric for manufacturing productivity:
 
 import logging
 import pandas as pd  # type: ignore
-import numpy as np
 from typing import Optional
 
 from ts_shape.utils.base import Base
@@ -124,14 +123,18 @@ class OEECalculator(Base):
             else:
                 planned_seconds = grp["duration"].sum()
 
-            availability = (run_seconds / planned_seconds * 100.0) if planned_seconds > 0 else 0.0
+            availability = (
+                (run_seconds / planned_seconds * 100.0) if planned_seconds > 0 else 0.0
+            )
 
-            results.append({
-                "date": date,
-                "run_seconds": round(run_seconds, 2),
-                "planned_seconds": round(planned_seconds, 2),
-                "availability_pct": round(min(availability, 100.0), 2),
-            })
+            results.append(
+                {
+                    "date": date,
+                    "run_seconds": round(run_seconds, 2),
+                    "planned_seconds": round(planned_seconds, 2),
+                    "availability_pct": round(min(availability, 100.0), 2),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -177,7 +180,13 @@ class OEECalculator(Base):
 
         if counter_data.empty:
             return pd.DataFrame(
-                columns=["date", "actual_parts", "ideal_parts", "run_seconds", "performance_pct"]
+                columns=[
+                    "date",
+                    "actual_parts",
+                    "ideal_parts",
+                    "run_seconds",
+                    "performance_pct",
+                ]
             )
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
@@ -201,7 +210,9 @@ class OEECalculator(Base):
             if date in run_per_day:
                 run_seconds = run_per_day[date]
             else:
-                span = (grp[self.time_column].iloc[-1] - grp[self.time_column].iloc[0]).total_seconds()
+                span = (
+                    grp[self.time_column].iloc[-1] - grp[self.time_column].iloc[0]
+                ).total_seconds()
                 run_seconds = max(span, 0)
 
             if run_seconds > 0 and ideal_cycle_time > 0:
@@ -211,13 +222,15 @@ class OEECalculator(Base):
                 ideal_parts = 0.0
                 performance = 0.0
 
-            results.append({
-                "date": date,
-                "actual_parts": int(actual_parts),
-                "ideal_parts": round(ideal_parts, 2),
-                "run_seconds": round(run_seconds, 2),
-                "performance_pct": round(min(performance, 100.0), 2),
-            })
+            results.append(
+                {
+                    "date": date,
+                    "actual_parts": int(actual_parts),
+                    "ideal_parts": round(ideal_parts, 2),
+                    "run_seconds": round(run_seconds, 2),
+                    "performance_pct": round(min(performance, 100.0), 2),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -260,7 +273,13 @@ class OEECalculator(Base):
 
         if total_data.empty:
             return pd.DataFrame(
-                columns=["date", "total_parts", "reject_parts", "good_parts", "quality_pct"]
+                columns=[
+                    "date",
+                    "total_parts",
+                    "reject_parts",
+                    "good_parts",
+                    "quality_pct",
+                ]
             )
 
         total_data[self.time_column] = pd.to_datetime(total_data[self.time_column])
@@ -268,11 +287,15 @@ class OEECalculator(Base):
 
         reject_by_day = {}
         if not reject_data.empty:
-            reject_data[self.time_column] = pd.to_datetime(reject_data[self.time_column])
+            reject_data[self.time_column] = pd.to_datetime(
+                reject_data[self.time_column]
+            )
             reject_data["date"] = reject_data[self.time_column].dt.date
             for date, grp in reject_data.groupby("date"):
                 grp = grp.sort_values(self.time_column)
-                reject_by_day[date] = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
+                reject_by_day[date] = max(
+                    0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
+                )
 
         results = []
         for date, grp in total_data.groupby("date"):
@@ -282,13 +305,15 @@ class OEECalculator(Base):
             good_parts = max(0, total_parts - reject_parts)
             quality = (good_parts / total_parts * 100.0) if total_parts > 0 else 0.0
 
-            results.append({
-                "date": date,
-                "total_parts": int(total_parts),
-                "reject_parts": int(reject_parts),
-                "good_parts": int(good_parts),
-                "quality_pct": round(min(quality, 100.0), 2),
-            })
+            results.append(
+                {
+                    "date": date,
+                    "total_parts": int(total_parts),
+                    "reject_parts": int(reject_parts),
+                    "good_parts": int(good_parts),
+                    "quality_pct": round(min(quality, 100.0), 2),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -341,7 +366,13 @@ class OEECalculator(Base):
 
         if avail_df.empty and perf_df.empty:
             return pd.DataFrame(
-                columns=["date", "availability_pct", "performance_pct", "quality_pct", "oee_pct"]
+                columns=[
+                    "date",
+                    "availability_pct",
+                    "performance_pct",
+                    "quality_pct",
+                    "oee_pct",
+                ]
             )
 
         # Merge on date
@@ -369,4 +400,16 @@ class OEECalculator(Base):
             / 10000.0  # three percentages multiplied: /100 /100
         ).round(2)
 
-        return merged[["date", "availability_pct", "performance_pct", "quality_pct", "oee_pct"]].sort_values("date").reset_index(drop=True)
+        return (
+            merged[
+                [
+                    "date",
+                    "availability_pct",
+                    "performance_pct",
+                    "quality_pct",
+                    "oee_pct",
+                ]
+            ]
+            .sort_values("date")
+            .reset_index(drop=True)
+        )

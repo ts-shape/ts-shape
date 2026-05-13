@@ -6,6 +6,7 @@ distinct ``(class_name, method_name)`` pair and explicitly cleans up
 via :func:`unregister_lambda_rule`, so the rest of the eventlog test
 suite (notably ``test_adapter_coverage.py``) sees a pristine REGISTRY.
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -36,19 +37,21 @@ from ts_shape.eventlog import (
 from ts_shape.eventlog.archetypes import ARCHETYPE_BY_METHOD
 from ts_shape.eventlog.taxonomy import REGISTRY
 
-
 # ---------- fixtures -------------------------------------------------------
+
 
 @pytest.fixture()
 def torque_df() -> pd.DataFrame:
     """A 10-row torque/state frame with 2 obvious overload events."""
-    return pd.DataFrame({
-        "systime": pd.date_range("2026-05-07", periods=10, freq="1min", tz="UTC"),
-        "torque": [60.0, 62.0, 70.0, 78.0, 80.0, 72.0, 50.0, 90.0, 65.0, 60.0],
-        "state": ["run"] * 8 + ["idle", "idle"],
-        "severity_score": [1.0, 1.0, 2.0, 3.5, 4.7, 2.0, 1.0, 4.9, 1.0, 1.0],
-        "source_uuid": ["asset-A"] * 10,
-    })
+    return pd.DataFrame(
+        {
+            "systime": pd.date_range("2026-05-07", periods=10, freq="1min", tz="UTC"),
+            "torque": [60.0, 62.0, 70.0, 78.0, 80.0, 72.0, 50.0, 90.0, 65.0, 60.0],
+            "state": ["run"] * 8 + ["idle", "idle"],
+            "severity_score": [1.0, 1.0, 2.0, 3.5, 4.7, 2.0, 1.0, 4.9, 1.0, 1.0],
+            "source_uuid": ["asset-A"] * 10,
+        }
+    )
 
 
 @pytest.fixture()
@@ -58,24 +61,50 @@ def bearing_df() -> pd.DataFrame:
     # asset-A: 1 isolated >85 sample later → dropped
     # asset-B: 0 >85 samples → no events
     ts = pd.date_range("2026-05-07", periods=24, freq="15s", tz="UTC")
-    df_a = pd.DataFrame({
-        "systime": ts,
-        "bearing_temp_c": [
-            82, 83, 86, 88, 87, 86, 80, 82,  # rows 0-7: long hot window rows 2-5
-            83, 84, 90, 83, 83, 82, 81, 80,  # rows 8-15: short hot at row 10
-            83, 84, 82, 81, 80, 82, 83, 81,
-        ],
-        "source_uuid": ["asset-A"] * 24,
-    })
-    df_b = pd.DataFrame({
-        "systime": ts,
-        "bearing_temp_c": [80] * 24,
-        "source_uuid": ["asset-B"] * 24,
-    })
+    df_a = pd.DataFrame(
+        {
+            "systime": ts,
+            "bearing_temp_c": [
+                82,
+                83,
+                86,
+                88,
+                87,
+                86,
+                80,
+                82,  # rows 0-7: long hot window rows 2-5
+                83,
+                84,
+                90,
+                83,
+                83,
+                82,
+                81,
+                80,  # rows 8-15: short hot at row 10
+                83,
+                84,
+                82,
+                81,
+                80,
+                82,
+                83,
+                81,
+            ],
+            "source_uuid": ["asset-A"] * 24,
+        }
+    )
+    df_b = pd.DataFrame(
+        {
+            "systime": ts,
+            "bearing_temp_c": [80] * 24,
+            "source_uuid": ["asset-B"] * 24,
+        }
+    )
     return pd.concat([df_a, df_b], ignore_index=True)
 
 
 # ---------- expression compiler -------------------------------------------
+
 
 def test_compile_expression_rejects_unsafe():
     for expr in [
@@ -114,11 +143,16 @@ def test_compile_expression_nan_treated_as_false():
 
 # ---------- spec validation ------------------------------------------------
 
+
 def test_rule_spec_requires_lambda_prefix():
     with pytest.raises(ValueError, match="class_name must start with 'Lambda'"):
         RuleSpec(
-            id="bad", class_name="MyDetector", method_name="foo",
-            pack="maintenance", shape="point", archetype="threshold",
+            id="bad",
+            class_name="MyDetector",
+            method_name="foo",
+            pack="maintenance",
+            shape="point",
+            archetype="threshold",
             template="x.y.z",
             trigger=TriggerSpec(expression="x > 1"),
         )
@@ -127,23 +161,33 @@ def test_rule_spec_requires_lambda_prefix():
 def test_rule_spec_validates_pack_shape_archetype():
     with pytest.raises(ValueError, match="pack must be one of"):
         RuleSpec(
-            id="x", class_name="LambdaX", method_name="m",
-            pack="bogus", shape="point", archetype="threshold",
-            template="x.y.z", trigger=TriggerSpec(expression="x > 1"),
+            id="x",
+            class_name="LambdaX",
+            method_name="m",
+            pack="bogus",
+            shape="point",
+            archetype="threshold",
+            template="x.y.z",
+            trigger=TriggerSpec(expression="x > 1"),
         )
 
 
 def test_rule_spec_interval_requires_interval_archetype():
     with pytest.raises(ValueError, match="archetype='interval'"):
         RuleSpec(
-            id="x", class_name="LambdaX", method_name="m",
-            pack="maintenance", shape="interval", archetype="threshold",
+            id="x",
+            class_name="LambdaX",
+            method_name="m",
+            pack="maintenance",
+            shape="interval",
+            archetype="threshold",
             template="x.y.z",
             trigger=TriggerSpec(expression="x > 1", min_duration_s=10),
         )
 
 
 # ---------- registration --------------------------------------------------
+
 
 def _spec_high_torque(class_name: str = "LambdaToolWear") -> RuleSpec:
     return RuleSpec(
@@ -237,7 +281,8 @@ def test_register_lambda_rule_rejects_unknown_standard_attrs():
         template="maintenance.x.y",
         trigger=TriggerSpec(expression="x > 1"),
         standard_attrs={
-            "ts_shape:method": "x", "ts_shape:direction": "above",
+            "ts_shape:method": "x",
+            "ts_shape:direction": "above",
             "ts_shape:unknown_key": 1,
         },
     )
@@ -246,6 +291,7 @@ def test_register_lambda_rule_rejects_unknown_standard_attrs():
 
 
 # ---------- end-to-end: point ---------------------------------------------
+
 
 def test_point_rule_end_to_end(torque_df):
     spec = _spec_high_torque("LambdaPoint1")
@@ -275,6 +321,7 @@ def test_point_rule_end_to_end(torque_df):
 
 # ---------- end-to-end: interval ------------------------------------------
 
+
 def test_interval_rule_coalesces(bearing_df):
     spec = _spec_bearing_hot("LambdaInterval1")
     try:
@@ -297,11 +344,13 @@ def test_interval_rule_coalesces(bearing_df):
 
 
 def test_interval_rule_drops_runs_shorter_than_min_duration():
-    df = pd.DataFrame({
-        "systime": pd.date_range("2026-05-07", periods=4, freq="5s", tz="UTC"),
-        "bearing_temp_c": [86, 87, 88, 80],  # 3 samples × 5s = 15s window
-        "source_uuid": ["asset-A"] * 4,
-    })
+    df = pd.DataFrame(
+        {
+            "systime": pd.date_range("2026-05-07", periods=4, freq="5s", tz="UTC"),
+            "bearing_temp_c": [86, 87, 88, 80],  # 3 samples × 5s = 15s window
+            "source_uuid": ["asset-A"] * 4,
+        }
+    )
     spec = _spec_bearing_hot("LambdaInterval2")
     try:
         det = register_lambda_rule(spec)
@@ -313,6 +362,7 @@ def test_interval_rule_drops_runs_shorter_than_min_duration():
 
 
 # ---------- canonical-pipeline round-trips ---------------------------------
+
 
 def test_lambda_log_passes_schema_validation(torque_df):
     """to_event_log validates by default; reaching the assert means OK."""
@@ -348,9 +398,10 @@ def test_lambda_log_round_trips_to_flat_and_ocel(torque_df, bearing_df):
 
 # ---------- coverage-test compatibility ------------------------------------
 
+
 def test_adapter_coverage_orphan_check_exempts_lambdas(torque_df):
     """Registering a lambda rule must not break test_no_orphan_registry_entries."""
-    from tests.eventlog.test_adapter_coverage import test_no_orphan_registry_entries
+    from .test_adapter_coverage import test_no_orphan_registry_entries
 
     spec = _spec_high_torque("LambdaCoverage1")
     try:
@@ -362,9 +413,7 @@ def test_adapter_coverage_orphan_check_exempts_lambdas(torque_df):
 
 
 def test_adapter_coverage_archetype_completeness_with_lambdas():
-    from tests.eventlog.test_adapter_coverage import (
-        test_archetype_assignment_is_complete,
-    )
+    from .test_adapter_coverage import test_archetype_assignment_is_complete
 
     spec = _spec_bearing_hot("LambdaCoverage2")
     try:
@@ -375,6 +424,7 @@ def test_adapter_coverage_archetype_completeness_with_lambdas():
 
 
 # ---------- load_dicts (YAML-equivalent in-process) -----------------------
+
 
 def test_load_dicts_registers_multiple_rules(torque_df, bearing_df):
     entries = [
@@ -422,6 +472,7 @@ def test_load_dicts_registers_multiple_rules(torque_df, bearing_df):
 
 # ---------- backtest -------------------------------------------------------
 
+
 def test_backtest_hit_count(torque_df):
     spec = _spec_high_torque("LambdaBacktest1")
     try:
@@ -436,6 +487,7 @@ def test_backtest_hit_count(torque_df):
 
 
 # ---------- to_event_log dispatch via taxonomy ----------------------------
+
 
 def test_to_event_log_resolves_lambda_via_registry(torque_df):
     """Confirms LambdaDetector goes through the same dispatch as built-ins."""

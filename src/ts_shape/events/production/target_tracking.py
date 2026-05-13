@@ -8,7 +8,6 @@ Generic module for comparing any metric to targets:
 
 import logging
 import pandas as pd  # type: ignore
-import numpy as np
 from typing import Optional, Dict, Union
 
 from ts_shape.utils.base import Base
@@ -101,8 +100,15 @@ class TargetTracking(Base):
         )
         if data.empty:
             return pd.DataFrame(
-                columns=["date", "shift", "actual", "target",
-                         "variance", "achievement_pct", "status"]
+                columns=[
+                    "date",
+                    "shift",
+                    "actual",
+                    "target",
+                    "variance",
+                    "achievement_pct",
+                    "status",
+                ]
             )
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
@@ -125,15 +131,17 @@ class TargetTracking(Base):
             else:
                 status = "below_target"
 
-            results.append({
-                "date": date,
-                "shift": shift,
-                "actual": int(actual),
-                "target": target,
-                "variance": round(variance, 1),
-                "achievement_pct": round(achievement, 1),
-                "status": status,
-            })
+            results.append(
+                {
+                    "date": date,
+                    "shift": shift,
+                    "actual": int(actual),
+                    "target": target,
+                    "variance": round(variance, 1),
+                    "achievement_pct": round(achievement, 1),
+                    "status": status,
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -162,8 +170,14 @@ class TargetTracking(Base):
         )
         if data.empty:
             return pd.DataFrame(
-                columns=["date", "actual", "target", "variance",
-                         "achievement_pct", "status"]
+                columns=[
+                    "date",
+                    "actual",
+                    "target",
+                    "variance",
+                    "achievement_pct",
+                    "status",
+                ]
             )
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
@@ -184,14 +198,16 @@ class TargetTracking(Base):
             else:
                 status = "below_target"
 
-            results.append({
-                "date": date,
-                "actual": int(actual),
-                "target": daily_target,
-                "variance": round(variance, 1),
-                "achievement_pct": round(achievement, 1),
-                "status": status,
-            })
+            results.append(
+                {
+                    "date": date,
+                    "actual": int(actual),
+                    "target": daily_target,
+                    "variance": round(variance, 1),
+                    "achievement_pct": round(achievement, 1),
+                    "status": status,
+                }
+            )
 
         return pd.DataFrame(results)
 

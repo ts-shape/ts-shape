@@ -7,10 +7,10 @@ import pytest
 from ts_shape.events.correlation.signal_correlation import SignalCorrelationEvents
 from ts_shape.events.correlation.anomaly_correlation import AnomalyCorrelationEvents
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_correlated_df(n: int = 500) -> pd.DataFrame:
     """Create two correlated signals + one with injected anomalies."""
@@ -38,24 +38,30 @@ def _make_correlated_df(n: int = 500) -> pd.DataFrame:
     for i in range(n):
         t = base + pd.Timedelta(minutes=i)
 
-        rows.append({
-            "systime": t,
-            "uuid": "signal:temperature",
-            "value_double": values_a[i],
-            "is_delta": True,
-        })
-        rows.append({
-            "systime": t,
-            "uuid": "signal:pressure",
-            "value_double": values_b[i],
-            "is_delta": True,
-        })
-        rows.append({
-            "systime": t,
-            "uuid": "signal:vibration",
-            "value_double": values_c[i],
-            "is_delta": True,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "signal:temperature",
+                "value_double": values_a[i],
+                "is_delta": True,
+            }
+        )
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "signal:pressure",
+                "value_double": values_b[i],
+                "is_delta": True,
+            }
+        )
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "signal:vibration",
+                "value_double": values_c[i],
+                "is_delta": True,
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -69,13 +75,16 @@ def correlated_df():
 # SignalCorrelationEvents
 # ---------------------------------------------------------------------------
 
+
 class TestSignalCorrelationEvents:
 
     def test_rolling_correlation(self, correlated_df):
         sc = SignalCorrelationEvents(correlated_df)
         result = sc.rolling_correlation(
-            "signal:temperature", "signal:pressure",
-            resample="1min", window=30,
+            "signal:temperature",
+            "signal:pressure",
+            resample="1min",
+            window=30,
         )
         assert not result.empty
         assert "correlation" in result.columns
@@ -92,8 +101,11 @@ class TestSignalCorrelationEvents:
     def test_correlation_breakdown(self, correlated_df):
         sc = SignalCorrelationEvents(correlated_df)
         result = sc.correlation_breakdown(
-            "signal:temperature", "signal:pressure",
-            resample="1min", window=30, threshold=0.5,
+            "signal:temperature",
+            "signal:pressure",
+            resample="1min",
+            window=30,
+            threshold=0.5,
         )
         # There should be at least one breakdown in the divergence zone
         assert not result.empty
@@ -105,16 +117,21 @@ class TestSignalCorrelationEvents:
         sc = SignalCorrelationEvents(correlated_df)
         # Very low threshold should yield no breakdowns
         result = sc.correlation_breakdown(
-            "signal:temperature", "signal:pressure",
-            resample="1min", window=30, threshold=-1.0,
+            "signal:temperature",
+            "signal:pressure",
+            resample="1min",
+            window=30,
+            threshold=-1.0,
         )
         assert result.empty
 
     def test_lag_correlation(self, correlated_df):
         sc = SignalCorrelationEvents(correlated_df)
         result = sc.lag_correlation(
-            "signal:temperature", "signal:pressure",
-            resample="1min", max_lag=10,
+            "signal:temperature",
+            "signal:pressure",
+            resample="1min",
+            max_lag=10,
         )
         assert not result.empty
         assert "lag_periods" in result.columns
@@ -131,6 +148,7 @@ class TestSignalCorrelationEvents:
 # ---------------------------------------------------------------------------
 # AnomalyCorrelationEvents
 # ---------------------------------------------------------------------------
+
 
 class TestAnomalyCorrelationEvents:
 
@@ -156,8 +174,10 @@ class TestAnomalyCorrelationEvents:
     def test_cascade_detection(self, correlated_df):
         ac = AnomalyCorrelationEvents(correlated_df)
         result = ac.cascade_detection(
-            "signal:temperature", "signal:vibration",
-            z_threshold=2.5, max_delay="10min",
+            "signal:temperature",
+            "signal:vibration",
+            z_threshold=2.5,
+            max_delay="10min",
         )
         assert "leader_time" in result.columns or result.empty
         if not result.empty:

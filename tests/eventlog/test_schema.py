@@ -1,4 +1,5 @@
 """Schema-level tests: required columns, validation, empty frames."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -33,28 +34,37 @@ def test_missing_required_column_raises():
 
 def test_duplicate_eid_raises():
     events = S.empty_events()
-    events = pd.concat([
-        events,
-        pd.DataFrame({
-            OCEL_EID: ["e-1", "e-1"],
-            OCEL_ACTIVITY: ["a", "a"],
-            OCEL_TIMESTAMP: pd.to_datetime(["2026-01-01", "2026-01-02"], utc=True),
-            TS_DETECTOR: ["x", "x"],
-            TS_PACK: ["quality", "quality"],
-        }),
-    ], ignore_index=True)
+    events = pd.concat(
+        [
+            events,
+            pd.DataFrame(
+                {
+                    OCEL_EID: ["e-1", "e-1"],
+                    OCEL_ACTIVITY: ["a", "a"],
+                    OCEL_TIMESTAMP: pd.to_datetime(
+                        ["2026-01-01", "2026-01-02"], utc=True
+                    ),
+                    TS_DETECTOR: ["x", "x"],
+                    TS_PACK: ["quality", "quality"],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
     log = EventLog(events=events)
     with pytest.raises(ValueError, match="duplicate"):
         validate(log)
 
 
 def test_relation_to_unknown_event_raises():
-    relations = pd.DataFrame({
-        OCEL_EID: ["e-missing"],
-        OCEL_OID: ["o-1"],
-        OCEL_TYPE: ["asset"],
-        S.OCEL_QUALIFIER: [pd.NA],
-    })
+    relations = pd.DataFrame(
+        {
+            OCEL_EID: ["e-missing"],
+            OCEL_OID: ["o-1"],
+            OCEL_TYPE: ["asset"],
+            S.OCEL_QUALIFIER: [pd.NA],
+        }
+    )
     log = EventLog(relations=relations)
     with pytest.raises(ValueError, match="unknown"):
         validate(log)

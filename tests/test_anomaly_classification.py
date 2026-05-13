@@ -15,11 +15,13 @@ def spike_df():
     # Inject spikes at positions 100 and 300
     values[100] = 50.0
     values[300] = -50.0
-    return pd.DataFrame({
-        "systime": times,
-        "uuid": "sensor_1",
-        "value_double": values,
-    })
+    return pd.DataFrame(
+        {
+            "systime": times,
+            "uuid": "sensor_1",
+            "value_double": values,
+        }
+    )
 
 
 @pytest.fixture
@@ -31,11 +33,13 @@ def flatline_df():
     values = np.random.randn(n) * 0.5
     # Inject flatline from 100 to 200
     values[100:200] = 5.0
-    return pd.DataFrame({
-        "systime": times,
-        "uuid": "sensor_1",
-        "value_double": values,
-    })
+    return pd.DataFrame(
+        {
+            "systime": times,
+            "uuid": "sensor_1",
+            "value_double": values,
+        }
+    )
 
 
 @pytest.fixture
@@ -45,11 +49,13 @@ def oscillation_df():
     base = pd.Timestamp("2024-01-01")
     times = [base + pd.Timedelta(seconds=i) for i in range(n)]
     values = np.sin(np.linspace(0, 100 * np.pi, n))  # Very rapid oscillation
-    return pd.DataFrame({
-        "systime": times,
-        "uuid": "sensor_1",
-        "value_double": values,
-    })
+    return pd.DataFrame(
+        {
+            "systime": times,
+            "uuid": "sensor_1",
+            "value_double": values,
+        }
+    )
 
 
 @pytest.fixture
@@ -59,11 +65,13 @@ def drift_df():
     base = pd.Timestamp("2024-01-01")
     times = [base + pd.Timedelta(seconds=i) for i in range(n)]
     values = np.linspace(0, 10, n) + np.random.randn(n) * 0.01
-    return pd.DataFrame({
-        "systime": times,
-        "uuid": "sensor_1",
-        "value_double": values,
-    })
+    return pd.DataFrame(
+        {
+            "systime": times,
+            "uuid": "sensor_1",
+            "value_double": values,
+        }
+    )
 
 
 class TestDetectFlatline:

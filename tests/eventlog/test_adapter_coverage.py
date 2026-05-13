@@ -2,6 +2,7 @@
 class under ``ts_shape.events.*`` must have a taxonomy entry. CI fails if a
 new detector method ships without a registered LabelRule.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -10,12 +11,10 @@ import pkgutil
 from typing import Iterator
 
 import pandas as pd
-import pytest
 
 import ts_shape.events as events_pkg
 from ts_shape.eventlog.schema import STANDARD_ATTR_KEYS
 from ts_shape.eventlog.taxonomy import REGISTRY
-
 
 # Required standard_attrs keys per archetype. Each method classified in
 # ``ARCHETYPE_BY_METHOD`` (see archetypes.py) must populate at least these
@@ -85,15 +84,23 @@ def test_no_orphan_registry_entries():
     orphans = sorted(
         k for k in set(REGISTRY) - discovered if not k[0].startswith("Lambda")
     )
-    assert not orphans, (
-        "Registry entries with no corresponding detector method:\n  "
-        + "\n  ".join(f"{c}.{m}" for c, m in orphans[:30])
+    assert (
+        not orphans
+    ), "Registry entries with no corresponding detector method:\n  " + "\n  ".join(
+        f"{c}.{m}" for c, m in orphans[:30]
     )
 
 
 def test_every_label_rule_has_valid_pack():
-    valid = {"quality", "production", "engineering",
-             "maintenance", "supplychain", "energy", "correlation"}
+    valid = {
+        "quality",
+        "production",
+        "engineering",
+        "maintenance",
+        "supplychain",
+        "energy",
+        "correlation",
+    }
     bad = [(k, r.pack) for k, r in REGISTRY.items() if r.pack not in valid]
     assert not bad, f"invalid pack on entries: {bad[:10]}"
 
@@ -124,6 +131,7 @@ def test_standard_attrs_use_known_keys():
 def test_archetype_assignment_is_complete():
     """Every method in REGISTRY must be classified in ARCHETYPE_BY_METHOD."""
     from ts_shape.eventlog.archetypes import ARCHETYPE_BY_METHOD
+
     missing = sorted(set(REGISTRY) - set(ARCHETYPE_BY_METHOD))
     assert not missing, (
         f"{len(missing)} method(s) without an archetype classification — "
@@ -131,19 +139,22 @@ def test_archetype_assignment_is_complete():
         + "\n  ".join(f"{c}.{m}" for c, m in missing[:30])
     )
     extra = sorted(set(ARCHETYPE_BY_METHOD) - set(REGISTRY))
-    assert not extra, (
-        "ARCHETYPE_BY_METHOD has entries that are not in REGISTRY:\n  "
-        + "\n  ".join(f"{c}.{m}" for c, m in extra[:30])
+    assert (
+        not extra
+    ), "ARCHETYPE_BY_METHOD has entries that are not in REGISTRY:\n  " + "\n  ".join(
+        f"{c}.{m}" for c, m in extra[:30]
     )
 
 
 def test_archetype_values_are_valid():
     from ts_shape.eventlog.archetypes import ARCHETYPE_BY_METHOD
+
     valid = set(_REQUIRED_KEYS_BY_ARCHETYPE)
     bad = [(k, v) for k, v in ARCHETYPE_BY_METHOD.items() if v not in valid]
-    assert not bad, (
-        f"invalid archetype labels (must be one of {sorted(valid)}):\n  "
-        + "\n  ".join(f"{c}.{m} = {a!r}" for (c, m), a in bad[:20])
+    assert (
+        not bad
+    ), f"invalid archetype labels (must be one of {sorted(valid)}):\n  " + "\n  ".join(
+        f"{c}.{m} = {a!r}" for (c, m), a in bad[:20]
     )
 
 
@@ -156,6 +167,7 @@ def test_required_standard_attrs_per_archetype():
     has been populated.
     """
     from ts_shape.eventlog.archetypes import ARCHETYPE_BY_METHOD
+
     missing: list[tuple[tuple[str, str], str, frozenset[str]]] = []
     for key, archetype in ARCHETYPE_BY_METHOD.items():
         rule = REGISTRY.get(key)

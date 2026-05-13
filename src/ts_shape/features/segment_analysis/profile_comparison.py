@@ -33,10 +33,17 @@ class ProfileComparison(Base):
         metric_columns: Optional[List[str]] = None,
     ) -> List[str]:
         """Identify numeric metric columns from a profiles DataFrame."""
-        non_metric = {'uuid', 'segment_value', 'segment_index', 'window_start',
-                      'window_end', 'sample_count'}
+        non_metric = {
+            "uuid",
+            "segment_value",
+            "segment_index",
+            "window_start",
+            "window_end",
+            "sample_count",
+        }
         available = [
-            c for c in df.columns
+            c
+            for c in df.columns
             if c not in non_metric and pd.api.types.is_numeric_dtype(df[c])
         ]
         if metric_columns is not None:
@@ -50,9 +57,9 @@ class ProfileComparison(Base):
     def compute_distance_matrix(
         cls,
         metric_profiles: pd.DataFrame,
-        group_column: str = 'uuid',
+        group_column: str = "uuid",
         metric_columns: Optional[List[str]] = None,
-        distance_metric: str = 'euclidean',
+        distance_metric: str = "euclidean",
         normalize: bool = True,
     ) -> pd.DataFrame:
         """Compute pairwise distance matrix between metric profile vectors.
@@ -83,9 +90,9 @@ class ProfileComparison(Base):
             matrix = (matrix - matrix.mean(axis=0)) / col_std
 
         metric_map = {
-            'euclidean': 'euclidean',
-            'cosine': 'cosine',
-            'manhattan': 'cityblock',
+            "euclidean": "euclidean",
+            "cosine": "cosine",
+            "manhattan": "cityblock",
         }
         if distance_metric not in metric_map:
             raise ValueError(
@@ -103,7 +110,7 @@ class ProfileComparison(Base):
         distance_matrix: pd.DataFrame,
         n_clusters: int = 3,
         distance_threshold: Optional[float] = None,
-        linkage_method: str = 'average',
+        linkage_method: str = "average",
     ) -> pd.DataFrame:
         """Group items by metric similarity using hierarchical clustering.
 
@@ -119,17 +126,17 @@ class ProfileComparison(Base):
         labels = distance_matrix.index.tolist()
 
         if len(labels) < 2:
-            return pd.DataFrame({'label': labels, 'cluster': [1] * len(labels)})
+            return pd.DataFrame({"label": labels, "cluster": [1] * len(labels)})
 
         condensed = squareform(distance_matrix.values, checks=False)
         Z = linkage(condensed, method=linkage_method)
 
         if distance_threshold is not None:
-            clusters = fcluster(Z, t=distance_threshold, criterion='distance')
+            clusters = fcluster(Z, t=distance_threshold, criterion="distance")
         else:
-            clusters = fcluster(Z, t=n_clusters, criterion='maxclust')
+            clusters = fcluster(Z, t=n_clusters, criterion="maxclust")
 
-        return pd.DataFrame({'label': labels, 'cluster': clusters.astype(int)})
+        return pd.DataFrame({"label": labels, "cluster": clusters.astype(int)})
 
     @classmethod
     def find_similar(
@@ -153,11 +160,13 @@ class ProfileComparison(Base):
 
         distances = distance_matrix.loc[target].drop(target)
         sorted_dists = distances.sort_values().head(top_k)
-        return pd.DataFrame({
-            'label': sorted_dists.index,
-            'distance': sorted_dists.values,
-            'rank': range(1, len(sorted_dists) + 1),
-        }).reset_index(drop=True)
+        return pd.DataFrame(
+            {
+                "label": sorted_dists.index,
+                "distance": sorted_dists.values,
+                "rank": range(1, len(sorted_dists) + 1),
+            }
+        ).reset_index(drop=True)
 
     @classmethod
     def detect_anomalous(
@@ -188,19 +197,21 @@ class ProfileComparison(Base):
         else:
             z_scores = (mean_dists - global_mean) / global_std
 
-        return pd.DataFrame({
-            'label': labels,
-            'anomaly_score': mean_dists,
-            'z_score': z_scores,
-            'is_anomalous': z_scores > threshold,
-        })
+        return pd.DataFrame(
+            {
+                "label": labels,
+                "anomaly_score": mean_dists,
+                "z_score": z_scores,
+                "is_anomalous": z_scores > threshold,
+            }
+        )
 
     @classmethod
     def detect_changes(
         cls,
         metric_profiles: pd.DataFrame,
-        uuid_column: str = 'uuid',
-        group_column: str = 'segment_index',
+        uuid_column: str = "uuid",
+        group_column: str = "segment_index",
         metric_columns: Optional[List[str]] = None,
         normalize: bool = True,
     ) -> pd.DataFrame:
@@ -235,22 +246,24 @@ class ProfileComparison(Base):
             segments = group[group_column].values
             for i in range(1, len(matrix)):
                 dist = float(np.linalg.norm(matrix[i] - matrix[i - 1]))
-                rows.append({
-                    uuid_column: uuid_val,
-                    group_column: segments[i],
-                    'change_score': dist,
-                })
+                rows.append(
+                    {
+                        uuid_column: uuid_val,
+                        group_column: segments[i],
+                        "change_score": dist,
+                    }
+                )
 
         if not rows:
-            return pd.DataFrame(columns=[uuid_column, group_column, 'change_score'])
+            return pd.DataFrame(columns=[uuid_column, group_column, "change_score"])
         return pd.DataFrame(rows).reset_index(drop=True)
 
     @classmethod
     def find_similar_pairs(
         cls,
         metric_profiles: pd.DataFrame,
-        uuid_column: str = 'uuid',
-        group_column: str = 'segment_value',
+        uuid_column: str = "uuid",
+        group_column: str = "segment_value",
         metric_columns: Optional[List[str]] = None,
         normalize: bool = True,
         top_k: int = 10,
@@ -283,14 +296,21 @@ class ProfileComparison(Base):
         uuids = metric_profiles[uuid_column].values
         groups = metric_profiles[group_column].values
 
-        condensed = pdist(matrix, metric='euclidean')
+        condensed = pdist(matrix, metric="euclidean")
         n = len(matrix)
 
         k = min(top_k, len(condensed))
         if k == 0:
-            return pd.DataFrame(columns=[
-                'uuid_a', 'group_a', 'uuid_b', 'group_b', 'distance', 'rank',
-            ])
+            return pd.DataFrame(
+                columns=[
+                    "uuid_a",
+                    "group_a",
+                    "uuid_b",
+                    "group_b",
+                    "distance",
+                    "rank",
+                ]
+            )
 
         if len(condensed) <= top_k:
             sorted_indices = np.argsort(condensed)
@@ -301,24 +321,22 @@ class ProfileComparison(Base):
         rows = []
         for rank, idx in enumerate(sorted_indices, 1):
             i, j = cls._condensed_to_square(idx, n)
-            rows.append({
-                'uuid_a': uuids[i],
-                'group_a': groups[i],
-                'uuid_b': uuids[j],
-                'group_b': groups[j],
-                'distance': float(condensed[idx]),
-                'rank': rank,
-            })
+            rows.append(
+                {
+                    "uuid_a": uuids[i],
+                    "group_a": groups[i],
+                    "uuid_b": uuids[j],
+                    "group_b": groups[j],
+                    "distance": float(condensed[idx]),
+                    "rank": rank,
+                }
+            )
 
         return pd.DataFrame(rows)
 
     @staticmethod
     def _condensed_to_square(idx: int, n: int):
         """Convert a condensed distance matrix index to (row, col) pair."""
-        i = int(n - 2 - np.floor(
-            np.sqrt(-8 * idx + 4 * n * (n - 1) - 7) / 2.0 - 0.5
-        ))
-        j = int(
-            idx + i + 1 - n * (n - 1) // 2 + (n - i) * ((n - i) - 1) // 2
-        )
+        i = int(n - 2 - np.floor(np.sqrt(-8 * idx + 4 * n * (n - 1) - 7) / 2.0 - 0.5))
+        j = int(idx + i + 1 - n * (n - 1) // 2 + (n - i) * ((n - i) - 1) // 2)
         return i, j

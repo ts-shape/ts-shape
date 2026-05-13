@@ -6,8 +6,15 @@ from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
+
 class TimescaleDBDataAccess:
-    def __init__(self, start_timestamp: str, end_timestamp: str, uuids: List[str], db_config: Dict[str, str]):
+    def __init__(
+        self,
+        start_timestamp: str,
+        end_timestamp: str,
+        uuids: List[str],
+        db_config: Dict[str, str],
+    ):
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
         self.uuids = uuids
@@ -29,22 +36,29 @@ class TimescaleDBDataAccess:
     def fetch_data_as_parquet(self, output_dir: str):
         for uuid in self.uuids:
             hourly_data = {}
-            
+
             for chunk in self._fetch_data(uuid):
                 if not chunk.empty:
                     # Group the data by hour to accumulate rows for each hour
-                    chunk['hour'] = chunk['systime'].dt.floor('h')
-                    grouped = chunk.groupby('hour')
-                    
+                    chunk["hour"] = chunk["systime"].dt.floor("h")
+                    grouped = chunk.groupby("hour")
+
                     for hour, group in grouped:
                         if hour not in hourly_data:
                             hourly_data[hour] = group
                         else:
-                            hourly_data[hour] = pd.concat([hourly_data[hour], group], ignore_index=True)
-            
+                            hourly_data[hour] = pd.concat(
+                                [hourly_data[hour], group], ignore_index=True
+                            )
+
             # Write each hour's data to a single Parquet file
             for hour, data in hourly_data.items():
-                timeslot_dir = Path(str(hour.year), str(hour.month).zfill(2), str(hour.day).zfill(2), str(hour.hour).zfill(2))
+                timeslot_dir = Path(
+                    str(hour.year),
+                    str(hour.month).zfill(2),
+                    str(hour.day).zfill(2),
+                    str(hour.hour).zfill(2),
+                )
                 output_path = Path(output_dir, timeslot_dir)
                 output_path.mkdir(parents=True, exist_ok=True)
                 data.to_parquet(output_path / f"{uuid}.parquet", index=False)
