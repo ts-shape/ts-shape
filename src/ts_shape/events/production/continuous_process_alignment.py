@@ -394,11 +394,11 @@ class ContinuousProcessAlignmentEvents(Base):
                 piece_id += 1
 
         # Build cut boundary array (material_ref_time of each cut)
-        cut_ref_times = np.array(
+        _cut_ref_times = np.array(
             [r["_piece_cut_ref_time"] for r in piece_rows], dtype="datetime64[ns]"
         )
         # Unique boundaries for searchsorted (first occurrence per piece)
-        unique_cut_boundaries = np.array(
+        _unique_cut_boundaries = np.array(
             [piece_rows[0]["_piece_cut_ref_time"]]
             + [
                 piece_rows[i]["_piece_cut_ref_time"]

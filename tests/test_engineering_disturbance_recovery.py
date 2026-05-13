@@ -54,7 +54,9 @@ def test_recovery_time_quick_recovery():
     result = det.recovery_time(baseline_window="5m", threshold_sigma=2.0)
     if not result.empty:
         assert (
-            result["recovered"].iloc[0] is True or result["recovered"].iloc[0] == True
+            result["recovered"].iloc[0] is True
+            or result["recovered"].iloc[0]  # noqa: E712 pandas-series-bool-comparison
+            == True  # noqa: E712 pandas-series-bool-comparison
         )
 
 

@@ -220,13 +220,15 @@ class TestLeadTime:
         lead = tracer.lead_time()
         sn001 = lead[lead["item_id"] == "SN-001"].iloc[0]
         assert sn001["stations_visited"] == 3
-        assert sn001["has_parallel"] == False
+        assert (
+            sn001["has_parallel"] == False  # noqa: E712 pandas-series-bool-comparison
+        )  # noqa: E712 pandas-series-bool-comparison
         assert sn001["lead_time_seconds"] > 0
 
     def test_parallel_item_flagged(self, tracer):
         lead = tracer.lead_time()
         sn003 = lead[lead["item_id"] == "SN-003"].iloc[0]
-        assert sn003["has_parallel"] == True
+        assert sn003["has_parallel"] == True  # noqa: E712 pandas-series-bool-comparison
 
     def test_empty_data(self):
         tracer = MultiProcessTraceabilityEvents(
@@ -409,7 +411,10 @@ class TestEdgeCases:
         timeline = tracer.build_timeline()
         assert len(timeline) == 1
         assert timeline.iloc[0]["item_id"] == "ITEM-A"
-        assert timeline.iloc[0]["is_parallel"] == False
+        assert (
+            timeline.iloc[0]["is_parallel"]  # noqa: E712 pandas-series-bool-comparison
+            == False  # noqa: E712 pandas-series-bool-comparison
+        )  # noqa: E712 pandas-series-bool-comparison
 
     def test_many_parallel_cells(self):
         """3 parallel cells of the same station type."""

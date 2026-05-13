@@ -151,7 +151,7 @@ def test_feature_matrix_empty_df_returns_empty():
 # CycleExtractor — edge cases
 # ---------------------------------------------------------------------------
 
-from ts_shape.features.cycles.cycles_extractor import CycleExtractor
+from ts_shape.features.cycles.cycles_extractor import CycleExtractor  # noqa: E402
 
 
 def make_cycle_df():
@@ -201,7 +201,9 @@ def test_cycle_extractor_no_ends_marks_incomplete():
     )
     ce = CycleExtractor(df, start_uuid="start")
     result = ce.process_persistent_cycle()
-    assert result["is_complete"].all() == False
+    assert (
+        result["is_complete"].all() == False  # noqa: E712 pandas-series-bool-comparison
+    )  # noqa: E712 pandas-series-bool-comparison
 
 
 def test_cycle_extractor_stats_populated():

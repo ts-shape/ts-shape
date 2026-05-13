@@ -80,7 +80,7 @@ class DegradationDetectionEvents(Base):
         ).dt.total_seconds()
 
         window_td = pd.to_timedelta(window)
-        window_seconds = window_td.total_seconds()
+        _window_seconds = window_td.total_seconds()
 
         # Compute rolling slope using time-based windows
         slopes = []

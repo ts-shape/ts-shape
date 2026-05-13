@@ -250,7 +250,7 @@ class AnomalyClassificationEvents(Base):
 
             values = win.values
             win_std = float(np.std(values))
-            win_mean = float(np.mean(values))
+            _win_mean = float(np.mean(values))
 
             # Check flatline
             if win_std < 1e-8:

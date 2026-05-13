@@ -288,7 +288,7 @@ class TestSegmentByCut:
         lengths = result["piece_length_m"].dropna().unique()
         assert len(lengths) > 0
         assert all(
-            abs(l - 0.8) < 0.01 for l in lengths
+            abs(length - 0.8) < 0.01 for length in lengths
         ), f"Expected all lengths ~0.8 m, got {lengths}"
 
     def test_length_uuid_only_no_counter(self, aligner):
@@ -297,7 +297,7 @@ class TestSegmentByCut:
         assert "piece_id" in result.columns
         assert result["piece_id"].dropna().astype(int).is_monotonic_increasing or True
         lengths = result["piece_length_m"].dropna().unique()
-        assert all(abs(l - 0.8) < 0.01 for l in lengths)
+        assert all(abs(length - 0.8) < 0.01 for length in lengths)
 
     def test_no_cut_params_raises(self, aligner):
         aligned = aligner.align_to_reference(station_uuids=["station:a"])
@@ -383,7 +383,10 @@ class TestAlignmentQuality:
         gap_windows = result[
             (result["window_start"] >= base) & (result["window_start"] < gap_end)
         ]
-        assert (gap_windows["has_speed_data"] == False).any()
+        assert (
+            gap_windows["has_speed_data"]  # noqa: E712 pandas-series-bool-comparison
+            == False  # noqa: E712 pandas-series-bool-comparison
+        ).any()  # noqa: E712 pandas-series-bool-comparison
 
 
 # ---------------------------------------------------------------------------

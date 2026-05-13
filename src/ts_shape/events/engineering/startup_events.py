@@ -336,7 +336,7 @@ class StartupDetectionEvents(Base):
                 ]
             )
 
-        window_td = pd.to_timedelta(baseline_window)
+        _window_td = pd.to_timedelta(baseline_window)
         min_above_td = pd.to_timedelta(min_above)
 
         s = self.series[[self.time_column, self.value_column]].copy()

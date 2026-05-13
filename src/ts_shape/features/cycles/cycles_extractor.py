@@ -56,16 +56,26 @@ class CycleExtractor(Base):
     def process_persistent_cycle(self) -> pd.DataFrame:
         """Processes cycles where the value of the variable stays true during the cycle."""
         # Assuming dataframe is pre-filtered
-        cycle_starts = self.df[self.df["value_bool"] == True]
-        cycle_ends = self.df[self.df["value_bool"] == False]
+        cycle_starts = self.df[
+            self.df["value_bool"] == True  # noqa: E712 pandas-series-bool-comparison
+        ]  # noqa: E712 pandas-series-bool-comparison
+        cycle_ends = self.df[
+            self.df["value_bool"] == False  # noqa: E712 pandas-series-bool-comparison
+        ]  # noqa: E712 pandas-series-bool-comparison
 
         return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
 
     def process_trigger_cycle(self) -> pd.DataFrame:
         """Processes cycles where the value of the variable goes from true to false during the cycle."""
         # Assuming dataframe is pre-filtered
-        cycle_starts = self.df[self.df["value_bool"] == True]
-        cycle_ends = self.df[self.df["value_bool"] == False].shift(-1)
+        cycle_starts = self.df[
+            self.df["value_bool"] == True  # noqa: E712 pandas-series-bool-comparison
+        ]  # noqa: E712 pandas-series-bool-comparison
+        cycle_ends = self.df[
+            self.df["value_bool"] == False  # noqa: E712 pandas-series-bool-comparison
+        ].shift(  # noqa: E712 pandas-series-bool-comparison
+            -1
+        )  # noqa: E712 pandas-series-bool-comparison
 
         return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
 
@@ -78,14 +88,28 @@ class CycleExtractor(Base):
         """
         if "uuid" in self.df.columns and self.start_uuid != self.end_uuid:
             cycle_starts = self.df[
-                (self.df["uuid"] == self.start_uuid) & (self.df["value_bool"] == True)
+                (self.df["uuid"] == self.start_uuid)
+                & (
+                    self.df["value_bool"]  # noqa: E712 pandas-series-bool-comparison
+                    == True  # noqa: E712 pandas-series-bool-comparison
+                )  # noqa: E712 pandas-series-bool-comparison
             ]
             cycle_ends = self.df[
-                (self.df["uuid"] == self.end_uuid) & (self.df["value_bool"] == True)
+                (self.df["uuid"] == self.end_uuid)
+                & (
+                    self.df["value_bool"]  # noqa: E712 pandas-series-bool-comparison
+                    == True  # noqa: E712 pandas-series-bool-comparison
+                )  # noqa: E712 pandas-series-bool-comparison
             ]
         else:
-            cycle_starts = self.df[self.df["value_bool"] == True]
-            cycle_ends = self.df[self.df["value_bool"] == True]
+            cycle_starts = self.df[
+                self.df["value_bool"]  # noqa: E712 pandas-series-bool-comparison
+                == True  # noqa: E712 pandas-series-bool-comparison
+            ]  # noqa: E712 pandas-series-bool-comparison
+            cycle_ends = self.df[
+                self.df["value_bool"]  # noqa: E712 pandas-series-bool-comparison
+                == True  # noqa: E712 pandas-series-bool-comparison
+            ]  # noqa: E712 pandas-series-bool-comparison
 
         return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
 
@@ -135,8 +159,14 @@ class CycleExtractor(Base):
         )
 
         # Define cycle starts and ends based on changes
-        cycle_starts = self.df[self.df["value_change"] == True]
-        cycle_ends = self.df[self.df["value_change"] == True].shift(-1)
+        cycle_starts = self.df[
+            self.df["value_change"] == True  # noqa: E712 pandas-series-bool-comparison
+        ]  # noqa: E712 pandas-series-bool-comparison
+        cycle_ends = self.df[
+            self.df["value_change"] == True  # noqa: E712 pandas-series-bool-comparison
+        ].shift(  # noqa: E712 pandas-series-bool-comparison
+            -1
+        )  # noqa: E712 pandas-series-bool-comparison
 
         return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
 

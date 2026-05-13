@@ -320,7 +320,7 @@ class StatisticalProcessControlRuleBased(Base):
 
         # Pre-compute values used across multiple rules
         values = df[self.value_column]
-        mean = values.mean()
+        _mean = values.mean()
         upper_3sigma = limits["3sigma_upper"].values[0]
         lower_3sigma = limits["3sigma_lower"].values[0]
         upper_2sigma = limits["2sigma_upper"].values[0]

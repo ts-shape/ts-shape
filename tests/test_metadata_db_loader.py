@@ -2,7 +2,7 @@ import pytest
 
 sqlalchemy = pytest.importorskip("sqlalchemy")
 
-from ts_shape.loader.metadata.metadata_db_loader import DatapointDB
+from ts_shape.loader.metadata.metadata_db_loader import DatapointDB  # noqa: E402
 
 
 class DummyResult:

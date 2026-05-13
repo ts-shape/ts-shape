@@ -55,7 +55,7 @@ _EN = "energy"
 _CO = "correlation"
 
 P = "point"
-I = "interval"
+I = "interval"  # noqa: E741 — one-letter shape alias used in the REGISTRY literal below
 S = "summary"
 ST = "static"
 
@@ -2052,7 +2052,6 @@ def render_activity(rule: LabelRule, row: Mapping[str, object]) -> str:
     template = rule.template
     if "{" not in template:
         return template
-    out = template
     # Minimal templating: scan for {name} occurrences.
     i = 0
     parts: list[str] = []

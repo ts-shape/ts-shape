@@ -435,7 +435,7 @@ class SetpointChangeEvents(Base):
         for _, r in changes.iterrows():
             t0 = r[self.time_column]
             s_new = float(r[self.value_column])
-            s_prev = float(r["prev"]) if pd.notna(r["prev"]) else s_new
+            _s_prev = float(r["prev"]) if pd.notna(r["prev"]) else s_new
             delta = float(r["delta"]) if pd.notna(r["delta"]) else 0.0
             win = actual[
                 (actual[self.time_column] >= t0)

@@ -23,7 +23,9 @@ class BooleanStatistics(Base):
         cls, dataframe: pd.DataFrame, column_name: str = "value_bool"
     ) -> int:
         """Returns the count of False values in the boolean column."""
-        return (dataframe[column_name] == False).sum()
+        return (
+            dataframe[column_name] == False  # noqa: E712 pandas-series-bool-comparison
+        ).sum()  # noqa: E712 pandas-series-bool-comparison
 
     @classmethod
     def count_null(

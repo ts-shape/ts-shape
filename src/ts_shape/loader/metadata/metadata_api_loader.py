@@ -178,7 +178,12 @@ class DatapointAPI:
             metadata_df = pd.DataFrame(metadata)
             if not metadata_df.empty:
                 if self.filter_enabled:
-                    metadata_df = metadata_df[metadata_df["enabled"] == True]
+                    metadata_df = metadata_df[
+                        metadata_df[  # noqa: E712 pandas-series-bool-comparison
+                            "enabled"
+                        ]  # noqa: E712 pandas-series-bool-comparison
+                        == True  # noqa: E712 pandas-series-bool-comparison
+                    ]  # noqa: E712 pandas-series-bool-comparison
 
                 metadata_df = metadata_df[["uuid", "label", "config"]]
 

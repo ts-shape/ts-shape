@@ -80,7 +80,9 @@ class TestAzureBlobEnergyLoaderInit:
         out = AzureBlobEnergyLoader._normalize_df(raw, "sensor_001")
         assert list(out.columns) == ["systime", "uuid", "value_double", "is_delta"]
         assert (out["uuid"] == "sensor_001").all()
-        assert (out["is_delta"] == True).all()
+        assert (
+            out["is_delta"] == True  # noqa: E712 pandas-series-bool-comparison
+        ).all()  # noqa: E712 pandas-series-bool-comparison
         assert out["value_double"].iloc[0] == pytest.approx(107.6)
 
     def test_series_id_from_blob_name(self):

@@ -201,7 +201,7 @@ class TestFailurePredictionEvents:
         assert "rate_of_change" in result.columns
         assert "estimated_time_seconds" in result.columns
         # Later points should have shorter time to threshold
-        last = result.iloc[-1]
+        _last = result.iloc[-1]
         first_with_est = result.dropna(subset=["estimated_time_seconds"])
         if not first_with_est.empty:
             assert first_with_est.iloc[-1]["estimated_time_seconds"] >= 0

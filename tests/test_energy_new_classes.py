@@ -208,7 +208,7 @@ class TestIdleEnergyDetectionEvents:
         result = self.events.idle_energy_trend(
             "meter:main", "state:machine1", window="1h", trend_window=3
         )
-        valid = {"improving", "stable", "worsening", None}
+        _valid = {"improving", "stable", "worsening", None}
         assert set(result["trend_direction"].dropna().unique()).issubset(
             {"improving", "stable", "worsening"}
         )

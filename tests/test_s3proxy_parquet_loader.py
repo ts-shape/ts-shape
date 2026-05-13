@@ -3,7 +3,9 @@ import pandas as pd  # type: ignore
 
 s3fs = pytest.importorskip("s3fs")
 
-from ts_shape.loader.timeseries.s3proxy_parquet_loader import S3ProxyDataAccess
+from ts_shape.loader.timeseries.s3proxy_parquet_loader import (  # noqa: E402 pandas-series-bool-comparison
+    S3ProxyDataAccess,
+)  # noqa: E402
 
 
 class DummyS3:

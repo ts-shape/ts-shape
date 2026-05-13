@@ -111,7 +111,7 @@ class NumericStatistics(Base):
         cls, dataframe: pd.DataFrame, column_name: str
     ) -> Dict[str, Union[float, int]]:
         """Returns a dictionary with comprehensive numeric statistics for the specified column."""
-        series = dataframe[column_name]
+        _series = dataframe[column_name]
         return {
             "min": cls.column_min(dataframe, column_name),
             "max": cls.column_max(dataframe, column_name),
