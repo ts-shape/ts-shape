@@ -58,12 +58,26 @@ class DegradationDetectionEvents(Base):
             DataFrame with columns: start, end, uuid, is_delta, avg_slope,
             total_change, duration_seconds.
         """
-        cols = ["start", "end", "uuid", "is_delta", "avg_slope", "total_change", "duration_seconds"]
+        cols = [
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "avg_slope",
+            "total_change",
+            "duration_seconds",
+        ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
-        sig["t_seconds"] = (sig[self.time_column] - sig[self.time_column].iloc[0]).dt.total_seconds()
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
+        sig["t_seconds"] = (
+            sig[self.time_column] - sig[self.time_column].iloc[0]
+        ).dt.total_seconds()
 
         window_td = pd.to_timedelta(window)
         window_seconds = window_td.total_seconds()
@@ -110,19 +124,25 @@ class DegradationDetectionEvents(Base):
             start_time = seg[self.time_column].iloc[0]
             end_time = seg[self.time_column].iloc[-1]
             avg_slope = float(seg["slope"].mean())
-            total_change = float(seg[self.value_column].iloc[-1] - seg[self.value_column].iloc[0])
+            total_change = float(
+                seg[self.value_column].iloc[-1] - seg[self.value_column].iloc[0]
+            )
             duration = (end_time - start_time).total_seconds()
-            events.append({
-                "start": start_time,
-                "end": end_time,
-                "uuid": self.event_uuid,
-                "is_delta": True,
-                "avg_slope": avg_slope,
-                "total_change": total_change,
-                "duration_seconds": duration,
-            })
+            events.append(
+                {
+                    "start": start_time,
+                    "end": end_time,
+                    "uuid": self.event_uuid,
+                    "is_delta": True,
+                    "avg_slope": avg_slope,
+                    "total_change": total_change,
+                    "duration_seconds": duration,
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def detect_variance_increase(
         self,
@@ -141,11 +161,23 @@ class DegradationDetectionEvents(Base):
             DataFrame with columns: start, end, uuid, is_delta,
             baseline_variance, current_variance, ratio.
         """
-        cols = ["start", "end", "uuid", "is_delta", "baseline_variance", "current_variance", "ratio"]
+        cols = [
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "baseline_variance",
+            "current_variance",
+            "ratio",
+        ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         window_td = pd.to_timedelta(window)
 
         # Compute baseline variance from first window
@@ -184,17 +216,21 @@ class DegradationDetectionEvents(Base):
             seg_exc = exceeded.loc[seg.index]
             if not seg_exc.iloc[0]:
                 continue
-            events.append({
-                "start": seg[self.time_column].iloc[0],
-                "end": seg[self.time_column].iloc[-1],
-                "uuid": self.event_uuid,
-                "is_delta": True,
-                "baseline_variance": baseline_var,
-                "current_variance": float(seg["current_variance"].mean()),
-                "ratio": float(seg["ratio"].mean()),
-            })
+            events.append(
+                {
+                    "start": seg[self.time_column].iloc[0],
+                    "end": seg[self.time_column].iloc[-1],
+                    "uuid": self.event_uuid,
+                    "is_delta": True,
+                    "baseline_variance": baseline_var,
+                    "current_variance": float(seg["current_variance"].mean()),
+                    "ratio": float(seg["ratio"].mean()),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def detect_level_shift(
         self,
@@ -212,11 +248,22 @@ class DegradationDetectionEvents(Base):
             DataFrame with columns: systime, uuid, is_delta,
             shift_magnitude, prev_mean, new_mean.
         """
-        cols = ["systime", "uuid", "is_delta", "shift_magnitude", "prev_mean", "new_mean"]
+        cols = [
+            "systime",
+            "uuid",
+            "is_delta",
+            "shift_magnitude",
+            "prev_mean",
+            "new_mean",
+        ]
         if self.signal.empty or len(self.signal) < 3:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         hold_td = pd.to_timedelta(hold)
 
         values = sig[self.value_column].values
@@ -248,21 +295,25 @@ class DegradationDetectionEvents(Base):
                     new_mean = float(post_data.mean())
                     shift_mag = new_mean - prev_mean
                     if abs(shift_mag) >= abs(min_shift):
-                        events.append({
-                            "systime": pd.Timestamp(times[i]),
-                            "uuid": self.event_uuid,
-                            "is_delta": True,
-                            "shift_magnitude": shift_mag,
-                            "prev_mean": prev_mean,
-                            "new_mean": new_mean,
-                        })
+                        events.append(
+                            {
+                                "systime": pd.Timestamp(times[i]),
+                                "uuid": self.event_uuid,
+                                "is_delta": True,
+                                "shift_magnitude": shift_mag,
+                                "prev_mean": prev_mean,
+                                "new_mean": new_mean,
+                            }
+                        )
                         # Reset CUSUM and update running mean
                         running_mean = new_mean
                         last_shift_idx = i
                         cusum_pos = 0.0
                         cusum_neg = 0.0
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def health_score(
         self,
@@ -281,12 +332,26 @@ class DegradationDetectionEvents(Base):
             DataFrame with columns: systime, uuid, is_delta,
             health_score, mean_drift_pct, variance_ratio, trend_slope.
         """
-        cols = ["systime", "uuid", "is_delta", "health_score", "mean_drift_pct", "variance_ratio", "trend_slope"]
+        cols = [
+            "systime",
+            "uuid",
+            "is_delta",
+            "health_score",
+            "mean_drift_pct",
+            "variance_ratio",
+            "trend_slope",
+        ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
-        sig["t_seconds"] = (sig[self.time_column] - sig[self.time_column].iloc[0]).dt.total_seconds()
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
+        sig["t_seconds"] = (
+            sig[self.time_column] - sig[self.time_column].iloc[0]
+        ).dt.total_seconds()
 
         window_td = pd.to_timedelta(window)
         baseline_td = pd.to_timedelta(baseline_window)
@@ -326,20 +391,24 @@ class DegradationDetectionEvents(Base):
             win = sig.loc[mask]
 
             if len(win) < 2:
-                rows.append({
-                    "systime": t_end,
-                    "uuid": self.event_uuid,
-                    "is_delta": True,
-                    "health_score": 100.0,
-                    "mean_drift_pct": 0.0,
-                    "variance_ratio": 1.0,
-                    "trend_slope": 0.0,
-                })
+                rows.append(
+                    {
+                        "systime": t_end,
+                        "uuid": self.event_uuid,
+                        "is_delta": True,
+                        "health_score": 100.0,
+                        "mean_drift_pct": 0.0,
+                        "variance_ratio": 1.0,
+                        "trend_slope": 0.0,
+                    }
+                )
                 continue
 
             current_mean = float(win[self.value_column].mean())
             current_var = float(win[self.value_column].var())
-            mean_drift_pct = abs(current_mean - baseline_mean) / abs(baseline_mean_for_pct) * 100.0
+            mean_drift_pct = (
+                abs(current_mean - baseline_mean) / abs(baseline_mean_for_pct) * 100.0
+            )
             variance_ratio = current_var / baseline_var
 
             # Compute slope
@@ -355,18 +424,27 @@ class DegradationDetectionEvents(Base):
             # Each component maps to 0-33.3 penalty
             drift_penalty = min(mean_drift_pct / 100.0, 1.0) * 33.3
             var_penalty = min(max(variance_ratio - 1.0, 0.0) / 5.0, 1.0) * 33.3
-            slope_penalty = min(abs(trend_slope) * 3600.0 / (abs(baseline_mean_for_pct) + 1e-9), 1.0) * 33.4
+            slope_penalty = (
+                min(
+                    abs(trend_slope) * 3600.0 / (abs(baseline_mean_for_pct) + 1e-9), 1.0
+                )
+                * 33.4
+            )
 
-            score = max(0.0, min(100.0, 100.0 - drift_penalty - var_penalty - slope_penalty))
+            score = max(
+                0.0, min(100.0, 100.0 - drift_penalty - var_penalty - slope_penalty)
+            )
 
-            rows.append({
-                "systime": t_end,
-                "uuid": self.event_uuid,
-                "is_delta": True,
-                "health_score": round(score, 2),
-                "mean_drift_pct": round(mean_drift_pct, 4),
-                "variance_ratio": round(variance_ratio, 4),
-                "trend_slope": round(trend_slope, 8),
-            })
+            rows.append(
+                {
+                    "systime": t_end,
+                    "uuid": self.event_uuid,
+                    "is_delta": True,
+                    "health_score": round(score, 2),
+                    "mean_drift_pct": round(mean_drift_pct, 4),
+                    "variance_ratio": round(variance_ratio, 4),
+                    "trend_slope": round(trend_slope, 8),
+                }
+            )
 
         return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)

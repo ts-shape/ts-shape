@@ -41,7 +41,9 @@ def shifting_bottleneck_df():
 class TestStationUtilization:
     def test_correct_utilization(self, three_station_df):
         detector = BottleneckDetectionEvents(three_station_df)
-        util = detector.station_utilization(["station_a", "station_b", "station_c"], window="1h")
+        util = detector.station_utilization(
+            ["station_a", "station_b", "station_c"], window="1h"
+        )
         assert len(util) > 0
         a_util = util[util["uuid"] == "station_a"]["utilization_pct"].values[0]
         b_util = util[util["uuid"] == "station_b"]["utilization_pct"].values[0]

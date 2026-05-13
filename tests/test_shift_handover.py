@@ -23,8 +23,16 @@ def _make_handover_df():
         t = pd.Timestamp(f"2024-01-01 {hour:02d}:00:00")
         rows.append({"systime": t, "uuid": "nok_counter", "value_integer": i * 2})
     # Machine state
-    states = (["Running"] * 3 + ["Stopped"] + ["Running"] * 3 + ["Stopped"] +
-              ["Running"] * 3 + ["Stopped"] + ["Running"] * 3 + ["Stopped"])
+    states = (
+        ["Running"] * 3
+        + ["Stopped"]
+        + ["Running"] * 3
+        + ["Stopped"]
+        + ["Running"] * 3
+        + ["Stopped"]
+        + ["Running"] * 3
+        + ["Stopped"]
+    )
     for hour, state in zip(range(6, 22), states):
         t = pd.Timestamp(f"2024-01-01 {hour:02d}:00:00")
         rows.append({"systime": t, "uuid": "machine_state", "value_string": state})
@@ -102,18 +110,46 @@ class TestShiftHandoverReport:
     def test_from_shift_data_pipeline(self):
         """Test the pipeline entry-point: from_shift_data()."""
         # Simulate upstream module outputs
-        production_df = pd.DataFrame([
-            {"date": date(2024, 1, 1), "shift": "shift_1", "quantity": 400},
-            {"date": date(2024, 1, 1), "shift": "shift_2", "quantity": 380},
-        ])
-        quality_df = pd.DataFrame([
-            {"date": date(2024, 1, 1), "shift": "shift_1", "ok_parts": 390, "nok_parts": 10, "quality_pct": 97.5},
-            {"date": date(2024, 1, 1), "shift": "shift_2", "ok_parts": 365, "nok_parts": 15, "quality_pct": 96.1},
-        ])
-        downtime_df = pd.DataFrame([
-            {"date": date(2024, 1, 1), "shift": "shift_1", "availability_pct": 92.0, "downtime_minutes": 38.4},
-            {"date": date(2024, 1, 1), "shift": "shift_2", "availability_pct": 85.0, "downtime_minutes": 72.0},
-        ])
+        production_df = pd.DataFrame(
+            [
+                {"date": date(2024, 1, 1), "shift": "shift_1", "quantity": 400},
+                {"date": date(2024, 1, 1), "shift": "shift_2", "quantity": 380},
+            ]
+        )
+        quality_df = pd.DataFrame(
+            [
+                {
+                    "date": date(2024, 1, 1),
+                    "shift": "shift_1",
+                    "ok_parts": 390,
+                    "nok_parts": 10,
+                    "quality_pct": 97.5,
+                },
+                {
+                    "date": date(2024, 1, 1),
+                    "shift": "shift_2",
+                    "ok_parts": 365,
+                    "nok_parts": 15,
+                    "quality_pct": 96.1,
+                },
+            ]
+        )
+        downtime_df = pd.DataFrame(
+            [
+                {
+                    "date": date(2024, 1, 1),
+                    "shift": "shift_1",
+                    "availability_pct": 92.0,
+                    "downtime_minutes": 38.4,
+                },
+                {
+                    "date": date(2024, 1, 1),
+                    "shift": "shift_2",
+                    "availability_pct": 85.0,
+                    "downtime_minutes": 72.0,
+                },
+            ]
+        )
 
         result = ShiftHandoverReport.from_shift_data(
             production_df=production_df,
@@ -132,9 +168,11 @@ class TestShiftHandoverReport:
 
     def test_from_shift_data_partial(self):
         """Test from_shift_data with only production data (no quality/downtime)."""
-        production_df = pd.DataFrame([
-            {"date": date(2024, 1, 1), "shift": "shift_1", "quantity": 400},
-        ])
+        production_df = pd.DataFrame(
+            [
+                {"date": date(2024, 1, 1), "shift": "shift_1", "quantity": 400},
+            ]
+        )
         result = ShiftHandoverReport.from_shift_data(production_df=production_df)
         assert not result.empty
         assert result["production"].iloc[0] == 400

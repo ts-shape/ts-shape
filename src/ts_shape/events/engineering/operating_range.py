@@ -51,8 +51,13 @@ class OperatingRangeEvents(Base):
             mean_value, p95, max_value, range_width.
         """
         cols = [
-            "window_start", "min_value", "p5", "mean_value",
-            "p95", "max_value", "range_width",
+            "window_start",
+            "min_value",
+            "p5",
+            "mean_value",
+            "p95",
+            "max_value",
+            "range_width",
         ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
@@ -69,15 +74,17 @@ class OperatingRangeEvents(Base):
                 continue
             p5 = float(np.percentile(vals, 5))
             p95 = float(np.percentile(vals, 95))
-            events.append({
-                "window_start": window_start,
-                "min_value": float(vals.min()),
-                "p5": p5,
-                "mean_value": float(vals.mean()),
-                "p95": p95,
-                "max_value": float(vals.max()),
-                "range_width": float(vals.max() - vals.min()),
-            })
+            events.append(
+                {
+                    "window_start": window_start,
+                    "min_value": float(vals.min()),
+                    "p5": p5,
+                    "mean_value": float(vals.mean()),
+                    "p95": p95,
+                    "max_value": float(vals.max()),
+                    "range_width": float(vals.max() - vals.min()),
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -96,8 +103,13 @@ class OperatingRangeEvents(Base):
             prev_mean, new_mean, shift_magnitude.
         """
         cols = [
-            "start", "end", "uuid", "is_delta",
-            "prev_mean", "new_mean", "shift_magnitude",
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "prev_mean",
+            "new_mean",
+            "shift_magnitude",
         ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
@@ -110,11 +122,13 @@ class OperatingRangeEvents(Base):
             vals = group.dropna()
             if len(vals) < 2:
                 continue
-            window_stats.append({
-                "window_start": window_start,
-                "mean": float(vals.mean()),
-                "std": float(vals.std()),
-            })
+            window_stats.append(
+                {
+                    "window_start": window_start,
+                    "mean": float(vals.mean()),
+                    "std": float(vals.std()),
+                }
+            )
 
         if len(window_stats) < 2:
             return pd.DataFrame(columns=cols)
@@ -128,15 +142,17 @@ class OperatingRangeEvents(Base):
                 pooled_std = 1e-10
             shift_mag = abs(curr["mean"] - prev["mean"]) / pooled_std
             if shift_mag >= shift_threshold:
-                events.append({
-                    "start": prev["window_start"],
-                    "end": curr["window_start"],
-                    "uuid": self.event_uuid,
-                    "is_delta": False,
-                    "prev_mean": prev["mean"],
-                    "new_mean": curr["mean"],
-                    "shift_magnitude": float(shift_mag),
-                })
+                events.append(
+                    {
+                        "start": prev["window_start"],
+                        "end": curr["window_start"],
+                        "uuid": self.event_uuid,
+                        "is_delta": False,
+                        "prev_mean": prev["mean"],
+                        "new_mean": curr["mean"],
+                        "shift_magnitude": float(shift_mag),
+                    }
+                )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -168,12 +184,14 @@ class OperatingRangeEvents(Base):
             in_range = ((vals >= lower) & (vals <= upper)).sum()
             below = (vals < lower).sum()
             above = (vals > upper).sum()
-            events.append({
-                "window_start": window_start,
-                "time_in_range_pct": float(in_range / n * 100),
-                "time_below_pct": float(below / n * 100),
-                "time_above_pct": float(above / n * 100),
-            })
+            events.append(
+                {
+                    "window_start": window_start,
+                    "time_in_range_pct": float(in_range / n * 100),
+                    "time_below_pct": float(below / n * 100),
+                    "time_above_pct": float(above / n * 100),
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -200,12 +218,14 @@ class OperatingRangeEvents(Base):
         for i in range(len(counts)):
             c = int(counts[i])
             cum += c
-            events.append({
-                "bin_lower": float(bin_edges[i]),
-                "bin_upper": float(bin_edges[i + 1]),
-                "count": c,
-                "pct": float(c / total * 100) if total > 0 else 0.0,
-                "cumulative_pct": float(cum / total * 100) if total > 0 else 0.0,
-            })
+            events.append(
+                {
+                    "bin_lower": float(bin_edges[i]),
+                    "bin_upper": float(bin_edges[i + 1]),
+                    "count": c,
+                    "pct": float(c / total * 100) if total > 0 else 0.0,
+                    "cumulative_pct": float(cum / total * 100) if total > 0 else 0.0,
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)

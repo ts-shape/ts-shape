@@ -84,13 +84,19 @@ class SignalCorrelationEvents(Base):
         if aligned.empty or len(aligned) < window:
             return pd.DataFrame(
                 columns=[
-                    "systime", "uuid", "source_uuid_a", "source_uuid_b",
-                    "is_delta", "correlation",
+                    "systime",
+                    "uuid",
+                    "source_uuid_a",
+                    "source_uuid_b",
+                    "is_delta",
+                    "correlation",
                 ]
             )
 
-        corr = aligned["signal_a"].rolling(window=window, min_periods=max(2, window // 2)).corr(
-            aligned["signal_b"]
+        corr = (
+            aligned["signal_a"]
+            .rolling(window=window, min_periods=max(2, window // 2))
+            .corr(aligned["signal_b"])
         )
         out = pd.DataFrame(
             {
@@ -136,8 +142,14 @@ class SignalCorrelationEvents(Base):
         if corr_df.empty:
             return pd.DataFrame(
                 columns=[
-                    "start", "end", "uuid", "source_uuid_a", "source_uuid_b",
-                    "is_delta", "min_correlation", "duration_seconds",
+                    "start",
+                    "end",
+                    "uuid",
+                    "source_uuid_a",
+                    "source_uuid_b",
+                    "is_delta",
+                    "min_correlation",
+                    "duration_seconds",
                 ]
             )
 
@@ -198,7 +210,7 @@ class SignalCorrelationEvents(Base):
             if lag < 0:
                 corr = np.corrcoef(a[:lag], b[-lag:])[0, 1]
             elif lag > 0:
-                corr = np.corrcoef(a[lag:], b[:n - lag])[0, 1]
+                corr = np.corrcoef(a[lag:], b[: n - lag])[0, 1]
             else:
                 corr = np.corrcoef(a, b)[0, 1]
 

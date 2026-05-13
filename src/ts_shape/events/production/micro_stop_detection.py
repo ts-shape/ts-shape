@@ -57,12 +57,14 @@ class MicroStopEvents(Base):
             state = bool(seg["state"].iloc[0])
             start = seg[self.time_column].iloc[0]
             end = seg[self.time_column].iloc[-1]
-            rows.append({
-                "start": start,
-                "end": end,
-                "state": "run" if state else "idle",
-                "duration": end - start,
-            })
+            rows.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "state": "run" if state else "idle",
+                    "duration": end - start,
+                }
+            )
 
         return pd.DataFrame(rows)
 
@@ -104,14 +106,18 @@ class MicroStopEvents(Base):
                 if prev["state"] == "run":
                     preceding_run = prev["duration"]
 
-            events.append({
-                "start_time": row["start"],
-                "end_time": row["end"],
-                "duration": dur,
-                "preceding_run_duration": preceding_run,
-            })
+            events.append(
+                {
+                    "start_time": row["start"],
+                    "end_time": row["end"],
+                    "duration": dur,
+                    "preceding_run_duration": preceding_run,
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def micro_stop_frequency(
         self, window: str = "1h", max_duration: str = "30s"
@@ -145,10 +151,12 @@ class MicroStopEvents(Base):
         )
 
         result = resampled.reset_index()
-        result = result.rename(columns={
-            "start_time": "window_start",
-            "total_lost_seconds": "total_lost_time",
-        })
+        result = result.rename(
+            columns={
+                "start_time": "window_start",
+                "total_lost_seconds": "total_lost_time",
+            }
+        )
 
         return result[cols]
 
@@ -165,7 +173,12 @@ class MicroStopEvents(Base):
             DataFrame with columns: window_start, total_run_time,
             total_micro_stop_time, availability_loss_pct.
         """
-        cols = ["window_start", "total_run_time", "total_micro_stop_time", "availability_loss_pct"]
+        cols = [
+            "window_start",
+            "total_run_time",
+            "total_micro_stop_time",
+            "availability_loss_pct",
+        ]
 
         intervals = self._intervalize()
         if intervals.empty:
@@ -175,18 +188,30 @@ class MicroStopEvents(Base):
         window_td = pd.to_timedelta(window)
 
         intervals["dur_seconds"] = intervals["duration"].dt.total_seconds()
-        intervals["is_micro_stop"] = (intervals["state"] == "idle") & (intervals["duration"] <= max_td)
+        intervals["is_micro_stop"] = (intervals["state"] == "idle") & (
+            intervals["duration"] <= max_td
+        )
         intervals["is_run"] = intervals["state"] == "run"
 
         intervals_indexed = intervals.set_index("start")
 
-        run_time = intervals_indexed.loc[intervals_indexed["is_run"], "dur_seconds"].resample(window).sum()
-        micro_time = intervals_indexed.loc[intervals_indexed["is_micro_stop"], "dur_seconds"].resample(window).sum()
+        run_time = (
+            intervals_indexed.loc[intervals_indexed["is_run"], "dur_seconds"]
+            .resample(window)
+            .sum()
+        )
+        micro_time = (
+            intervals_indexed.loc[intervals_indexed["is_micro_stop"], "dur_seconds"]
+            .resample(window)
+            .sum()
+        )
 
-        combined = pd.DataFrame({
-            "total_run_time": run_time,
-            "total_micro_stop_time": micro_time,
-        }).fillna(0)
+        combined = pd.DataFrame(
+            {
+                "total_run_time": run_time,
+                "total_micro_stop_time": micro_time,
+            }
+        ).fillna(0)
 
         total_active = combined["total_run_time"] + combined["total_micro_stop_time"]
         combined["availability_loss_pct"] = np.where(
@@ -199,7 +224,9 @@ class MicroStopEvents(Base):
         result = result.rename(columns={"start": "window_start"})
         return result[cols]
 
-    def micro_stop_patterns(self, hour_grouping: bool = True, max_duration: str = "30s") -> pd.DataFrame:
+    def micro_stop_patterns(
+        self, hour_grouping: bool = True, max_duration: str = "30s"
+    ) -> pd.DataFrame:
         """Group micro-stops by hour-of-day to find clustering patterns.
 
         Args:
@@ -222,20 +249,30 @@ class MicroStopEvents(Base):
             stops["group"] = stops["start_time"].dt.hour
             stops["date"] = stops["start_time"].dt.date
 
-            daily_counts = stops.groupby(["date", "group"]).agg(
-                count=("duration_seconds", "count"),
-                lost_time=("duration_seconds", "sum"),
-            ).reset_index()
+            daily_counts = (
+                stops.groupby(["date", "group"])
+                .agg(
+                    count=("duration_seconds", "count"),
+                    lost_time=("duration_seconds", "sum"),
+                )
+                .reset_index()
+            )
 
-            result = daily_counts.groupby("group").agg(
-                avg_count=("count", "mean"),
-                avg_lost_time=("lost_time", "mean"),
-            ).reset_index().rename(columns={"group": "hour"})
+            result = (
+                daily_counts.groupby("group")
+                .agg(
+                    avg_count=("count", "mean"),
+                    avg_lost_time=("lost_time", "mean"),
+                )
+                .reset_index()
+                .rename(columns={"group": "hour"})
+            )
 
             result["avg_count"] = result["avg_count"].round(2)
             result["avg_lost_time"] = result["avg_lost_time"].round(2)
             return result
         else:
+
             def assign_shift(hour: int) -> str:
                 if 6 <= hour < 14:
                     return "morning"
@@ -247,15 +284,24 @@ class MicroStopEvents(Base):
             stops["group"] = stops["start_time"].dt.hour.apply(assign_shift)
             stops["date"] = stops["start_time"].dt.date
 
-            daily_counts = stops.groupby(["date", "group"]).agg(
-                count=("duration_seconds", "count"),
-                lost_time=("duration_seconds", "sum"),
-            ).reset_index()
+            daily_counts = (
+                stops.groupby(["date", "group"])
+                .agg(
+                    count=("duration_seconds", "count"),
+                    lost_time=("duration_seconds", "sum"),
+                )
+                .reset_index()
+            )
 
-            result = daily_counts.groupby("group").agg(
-                avg_count=("count", "mean"),
-                avg_lost_time=("lost_time", "mean"),
-            ).reset_index().rename(columns={"group": "shift"})
+            result = (
+                daily_counts.groupby("group")
+                .agg(
+                    avg_count=("count", "mean"),
+                    avg_lost_time=("lost_time", "mean"),
+                )
+                .reset_index()
+                .rename(columns={"group": "shift"})
+            )
 
             result["avg_count"] = result["avg_count"].round(2)
             result["avg_lost_time"] = result["avg_lost_time"].round(2)

@@ -19,15 +19,22 @@ from datetime import datetime, timedelta
 
 from ts_shape.events.production import MultiProcessTraceabilityEvents
 
-
 # ============================================================================
 # Helpers
 # ============================================================================
 
+
 def _empty_df():
     return pd.DataFrame(
-        columns=["systime", "uuid", "value_bool", "value_integer",
-                 "value_double", "value_string", "is_delta"]
+        columns=[
+            "systime",
+            "uuid",
+            "value_bool",
+            "value_integer",
+            "value_double",
+            "value_string",
+            "is_delta",
+        ]
     )
 
 
@@ -46,6 +53,7 @@ def _row(t, uuid, val_str=None, val_int=None):
 # ============================================================================
 # Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def parallel_data():
@@ -78,12 +86,12 @@ def parallel_data():
     # SN-001 path (sequential: weld1 -> painting -> assembly)
     _add_id("serial_weld1", "SN-001", 0, 10)
     _add_id("serial_paint", "SN-001", 12, 20)
-    _add_id("serial_assy",  "SN-001", 22, 30)
+    _add_id("serial_assy", "SN-001", 22, 30)
 
     # SN-002 path (sequential: weld2 -> painting -> assembly, after SN-001 finishes)
     _add_id("serial_weld2", "SN-002", 5, 15)
     _add_id("serial_paint", "SN-002", 21, 29)
-    _add_id("serial_assy",  "SN-002", 31, 39)
+    _add_id("serial_assy", "SN-002", 31, 39)
 
     # SN-003: parallel welding (both cells simultaneously)
     _add_id("serial_weld1", "SN-003", 40, 48)
@@ -109,12 +117,24 @@ def tracer(parallel_data):
             {"id_uuid": "serial_weld1", "station": "Welding Cell 1"},
             {"id_uuid": "serial_weld2", "station": "Welding Cell 2"},
             {"id_uuid": "serial_paint", "station": "Painting"},
-            {"id_uuid": "serial_assy",  "station": "Assembly"},
+            {"id_uuid": "serial_assy", "station": "Assembly"},
         ],
         handovers=[
-            {"uuid": "ho_w1_paint",   "from_station": "Welding Cell 1", "to_station": "Painting"},
-            {"uuid": "ho_w2_paint",   "from_station": "Welding Cell 2", "to_station": "Painting"},
-            {"uuid": "ho_paint_assy", "from_station": "Painting",       "to_station": "Assembly"},
+            {
+                "uuid": "ho_w1_paint",
+                "from_station": "Welding Cell 1",
+                "to_station": "Painting",
+            },
+            {
+                "uuid": "ho_w2_paint",
+                "from_station": "Welding Cell 2",
+                "to_station": "Painting",
+            },
+            {
+                "uuid": "ho_paint_assy",
+                "from_station": "Painting",
+                "to_station": "Assembly",
+            },
         ],
     )
 
@@ -122,6 +142,7 @@ def tracer(parallel_data):
 # ============================================================================
 # Tests: build_timeline
 # ============================================================================
+
 
 class TestBuildTimeline:
 
@@ -133,9 +154,16 @@ class TestBuildTimeline:
     def test_timeline_columns(self, tracer):
         timeline = tracer.build_timeline()
         expected = {
-            "item_id", "station", "id_uuid",
-            "start", "end", "duration_seconds", "sample_count",
-            "step_sequence", "is_parallel", "uuid",
+            "item_id",
+            "station",
+            "id_uuid",
+            "start",
+            "end",
+            "duration_seconds",
+            "sample_count",
+            "step_sequence",
+            "is_parallel",
+            "uuid",
         }
         assert set(timeline.columns) == expected
 
@@ -177,6 +205,7 @@ class TestBuildTimeline:
 # Tests: lead_time
 # ============================================================================
 
+
 class TestLeadTime:
 
     def test_lead_time_row_count(self, tracer):
@@ -212,6 +241,7 @@ class TestLeadTime:
 # Tests: parallel_activity
 # ============================================================================
 
+
 class TestParallelActivity:
 
     def test_finds_overlap(self, tracer):
@@ -245,6 +275,7 @@ class TestParallelActivity:
 # Tests: handover_log
 # ============================================================================
 
+
 class TestHandoverLog:
 
     def test_handover_events_detected(self, tracer):
@@ -254,8 +285,13 @@ class TestHandoverLog:
     def test_handover_columns(self, tracer):
         log = tracer.handover_log()
         expected = {
-            "timestamp", "item_id", "from_station", "to_station",
-            "handover_uuid", "handover_value", "uuid",
+            "timestamp",
+            "item_id",
+            "from_station",
+            "to_station",
+            "handover_uuid",
+            "handover_value",
+            "uuid",
         }
         assert set(log.columns) == expected
 
@@ -286,6 +322,7 @@ class TestHandoverLog:
 # ============================================================================
 # Tests: station_statistics
 # ============================================================================
+
 
 class TestStationStatistics:
 
@@ -322,6 +359,7 @@ class TestStationStatistics:
 # Tests: routing_paths
 # ============================================================================
 
+
 class TestRoutingPaths:
 
     def test_paths_detected(self, tracer):
@@ -331,9 +369,12 @@ class TestRoutingPaths:
     def test_path_columns(self, tracer):
         paths = tracer.routing_paths()
         expected = {
-            "station_path", "item_count",
-            "avg_lead_time_seconds", "min_lead_time_seconds",
-            "max_lead_time_seconds", "has_parallel_steps",
+            "station_path",
+            "item_count",
+            "avg_lead_time_seconds",
+            "min_lead_time_seconds",
+            "max_lead_time_seconds",
+            "has_parallel_steps",
         }
         assert set(paths.columns) == expected
 
@@ -354,11 +395,14 @@ class TestRoutingPaths:
 # Tests: edge cases
 # ============================================================================
 
+
 class TestEdgeCases:
 
     def test_single_station_single_item(self):
         base = pd.Timestamp("2024-01-15 08:00:00")
-        rows = [_row(base + timedelta(minutes=m), "id1", val_str="ITEM-A") for m in range(5)]
+        rows = [
+            _row(base + timedelta(minutes=m), "id1", val_str="ITEM-A") for m in range(5)
+        ]
         tracer = MultiProcessTraceabilityEvents(
             pd.DataFrame(rows),
             processes=[{"id_uuid": "id1", "station": "Only Station"}],

@@ -48,12 +48,12 @@ class PatternRecognition(Base):
 
         # Sliding dot product via FFT
         QT = np.real(ifft(fft(series) * fft(q_padded)))
-        QT = QT[m - 1:]
+        QT = QT[m - 1 :]
 
         # Rolling statistics
         s = pd.Series(series)
-        rolling_mean = s.rolling(window=m).mean().values[m - 1:]
-        rolling_std = s.rolling(window=m).std(ddof=0).values[m - 1:]
+        rolling_mean = s.rolling(window=m).mean().values[m - 1 :]
+        rolling_std = s.rolling(window=m).std(ddof=0).values[m - 1 :]
 
         q_mean = query.mean()
         q_std = query.std(ddof=0)
@@ -62,7 +62,9 @@ class PatternRecognition(Base):
         rolling_std = np.where(rolling_std < 1e-10, 1e-10, rolling_std)
         q_std = max(q_std, 1e-10)
 
-        dist_sq = 2 * m * (1 - (QT - m * q_mean * rolling_mean) / (m * q_std * rolling_std))
+        dist_sq = (
+            2 * m * (1 - (QT - m * q_mean * rolling_mean) / (m * q_std * rolling_std))
+        )
         dist_sq = np.maximum(dist_sq, 0)
         return np.sqrt(dist_sq)
 
@@ -89,7 +91,7 @@ class PatternRecognition(Base):
         mpi = np.full(profile_len, -1, dtype=int)
 
         for i in range(profile_len):
-            query = series[i:i + window_size]
+            query = series[i : i + window_size]
             dist_profile = cls._mass(series, query)
 
             # Apply exclusion zone
@@ -109,11 +111,11 @@ class PatternRecognition(Base):
     def discover_motifs(
         cls,
         dataframe: pd.DataFrame,
-        value_column: str = 'value_double',
+        value_column: str = "value_double",
         window_size: int = 50,
         top_k: int = 5,
         exclusion_zone: Optional[int] = None,
-        time_column: str = 'systime',
+        time_column: str = "systime",
     ) -> pd.DataFrame:
         """Find the top-k recurring subsequence patterns (motifs).
 
@@ -150,11 +152,16 @@ class PatternRecognition(Base):
                 continue
             used.add(pair)
 
-            row = {'motif_rank': len(results) + 1, 'index_a': pair[0], 'index_b': pair[1], 'distance': mp[idx]}
+            row = {
+                "motif_rank": len(results) + 1,
+                "index_a": pair[0],
+                "index_b": pair[1],
+                "distance": mp[idx],
+            }
             if time_column in dataframe.columns:
                 times = dataframe[time_column].values
-                row['time_a'] = times[pair[0]]
-                row['time_b'] = times[pair[1]]
+                row["time_a"] = times[pair[0]]
+                row["time_b"] = times[pair[1]]
 
             results.append(row)
 
@@ -164,11 +171,11 @@ class PatternRecognition(Base):
     def discover_discords(
         cls,
         dataframe: pd.DataFrame,
-        value_column: str = 'value_double',
+        value_column: str = "value_double",
         window_size: int = 50,
         top_k: int = 5,
         exclusion_zone: Optional[int] = None,
-        time_column: str = 'systime',
+        time_column: str = "systime",
     ) -> pd.DataFrame:
         """Find the top-k anomalous subsequences (discords).
 
@@ -202,9 +209,13 @@ class PatternRecognition(Base):
                 continue
             used_zones.append(idx)
 
-            row = {'discord_rank': len(results) + 1, 'start_index': int(idx), 'distance': float(mp[idx])}
+            row = {
+                "discord_rank": len(results) + 1,
+                "start_index": int(idx),
+                "distance": float(mp[idx]),
+            }
             if time_column in dataframe.columns:
-                row['start_time'] = dataframe[time_column].values[idx]
+                row["start_time"] = dataframe[time_column].values[idx]
 
             results.append(row)
 
@@ -229,10 +240,10 @@ class PatternRecognition(Base):
         cls,
         dataframe: pd.DataFrame,
         query: np.ndarray,
-        value_column: str = 'value_double',
+        value_column: str = "value_double",
         top_k: int = 5,
         normalize: bool = True,
-        time_column: str = 'systime',
+        time_column: str = "systime",
     ) -> pd.DataFrame:
         """Find the top-k most similar subsequences to a query using DTW.
 
@@ -252,7 +263,9 @@ class PatternRecognition(Base):
         n = len(series)
 
         if n < m:
-            return pd.DataFrame(columns=['rank', 'start_index', 'dtw_distance', 'start_time'])
+            return pd.DataFrame(
+                columns=["rank", "start_index", "dtw_distance", "start_time"]
+            )
 
         q = query.astype(float).copy()
         if normalize and q.std() > 1e-10:
@@ -260,7 +273,7 @@ class PatternRecognition(Base):
 
         distances = []
         for i in range(n - m + 1):
-            subseq = series[i:i + m].copy()
+            subseq = series[i : i + m].copy()
             if normalize and subseq.std() > 1e-10:
                 subseq = (subseq - subseq.mean()) / subseq.std()
             d = cls._dtw_distance(q, subseq)
@@ -269,9 +282,9 @@ class PatternRecognition(Base):
         distances.sort(key=lambda x: x[1])
         results = []
         for rank, (idx, dist) in enumerate(distances[:top_k], 1):
-            row = {'rank': rank, 'start_index': idx, 'dtw_distance': dist}
+            row = {"rank": rank, "start_index": idx, "dtw_distance": dist}
             if time_column in dataframe.columns:
-                row['start_time'] = dataframe[time_column].values[idx]
+                row["start_time"] = dataframe[time_column].values[idx]
             results.append(row)
 
         return pd.DataFrame(results)
@@ -281,10 +294,10 @@ class PatternRecognition(Base):
         cls,
         dataframe: pd.DataFrame,
         template: np.ndarray,
-        value_column: str = 'value_double',
+        value_column: str = "value_double",
         threshold: Optional[float] = None,
         normalize: bool = True,
-        time_column: str = 'systime',
+        time_column: str = "systime",
     ) -> pd.DataFrame:
         """Find all occurrences of a template pattern in the time series.
 
@@ -311,7 +324,9 @@ class PatternRecognition(Base):
             dist_profile = cls._mass(series, t)
 
         if len(dist_profile) == 0:
-            return pd.DataFrame(columns=['start_index', 'distance', 'start_time', 'end_time'])
+            return pd.DataFrame(
+                columns=["start_index", "distance", "start_time", "end_time"]
+            )
 
         if threshold is None:
             threshold = float(np.mean(dist_profile) - 2 * np.std(dist_profile))
@@ -320,12 +335,12 @@ class PatternRecognition(Base):
         matches = np.where(dist_profile <= threshold)[0]
         results = []
         for idx in matches:
-            row = {'start_index': int(idx), 'distance': float(dist_profile[idx])}
+            row = {"start_index": int(idx), "distance": float(dist_profile[idx])}
             if time_column in dataframe.columns:
                 times = dataframe[time_column].values
-                row['start_time'] = times[idx]
+                row["start_time"] = times[idx]
                 end_idx = min(idx + m - 1, len(times) - 1)
-                row['end_time'] = times[end_idx]
+                row["end_time"] = times[end_idx]
             results.append(row)
 
         return pd.DataFrame(results)
@@ -335,8 +350,8 @@ class PatternRecognition(Base):
         cls,
         dataframe: pd.DataFrame,
         query: np.ndarray,
-        value_column: str = 'value_double',
-        metric: str = 'euclidean',
+        value_column: str = "value_double",
+        metric: str = "euclidean",
         normalize: bool = True,
     ) -> np.ndarray:
         """Compute distance from query to every subsequence of same length.
@@ -358,13 +373,13 @@ class PatternRecognition(Base):
         if normalize and q.std() > 1e-10:
             q = (q - q.mean()) / q.std()
 
-        if metric == 'euclidean':
+        if metric == "euclidean":
             return cls._mass(series, q)
-        elif metric == 'dtw':
+        elif metric == "dtw":
             n = len(series)
             distances = np.zeros(n - m + 1)
             for i in range(n - m + 1):
-                subseq = series[i:i + m].copy()
+                subseq = series[i : i + m].copy()
                 if normalize and subseq.std() > 1e-10:
                     subseq = (subseq - subseq.mean()) / subseq.std()
                 distances[i] = cls._dtw_distance(q, subseq)

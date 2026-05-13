@@ -127,11 +127,13 @@ class ScrapTracking(Base):
         results = []
         for (date, shift), grp in data.groupby(["date", "shift"]):
             qty = self._get_counter_quantity(grp, value_column)
-            results.append({
-                "date": date,
-                "shift": shift,
-                "scrap_quantity": round(qty, 2),
-            })
+            results.append(
+                {
+                    "date": date,
+                    "shift": shift,
+                    "scrap_quantity": round(qty, 2),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -179,8 +181,10 @@ class ScrapTracking(Base):
         reason_clean = reason_clean.rename(columns={value_column_reason: "reason"})
 
         merged = pd.merge_asof(
-            scrap_clean, reason_clean,
-            on=self.time_column, direction="backward",
+            scrap_clean,
+            reason_clean,
+            on=self.time_column,
+            direction="backward",
         )
         merged = merged.dropna(subset=["reason"])
 
@@ -201,7 +205,9 @@ class ScrapTracking(Base):
         result_df["pct_of_total"] = (
             (result_df["scrap_quantity"] / total * 100).round(1) if total > 0 else 0.0
         )
-        return result_df.sort_values("scrap_quantity", ascending=False).reset_index(drop=True)
+        return result_df.sort_values("scrap_quantity", ascending=False).reset_index(
+            drop=True
+        )
 
     def scrap_cost(
         self,
@@ -251,8 +257,10 @@ class ScrapTracking(Base):
         part_clean = part_clean.rename(columns={value_column_part: "part_number"})
 
         merged = pd.merge_asof(
-            scrap_clean, part_clean,
-            on=self.time_column, direction="backward",
+            scrap_clean,
+            part_clean,
+            on=self.time_column,
+            direction="backward",
         )
         merged = merged.dropna(subset=["part_number"])
 
@@ -260,14 +268,20 @@ class ScrapTracking(Base):
         for part_num, grp in merged.groupby("part_number"):
             qty = self._get_counter_quantity(grp, "scrap_val")
             cost_per_unit = material_costs.get(part_num, 0.0)
-            results.append({
-                "part_number": part_num,
-                "scrap_quantity": round(qty, 2),
-                "cost_per_unit": cost_per_unit,
-                "total_cost": round(qty * cost_per_unit, 2),
-            })
+            results.append(
+                {
+                    "part_number": part_num,
+                    "scrap_quantity": round(qty, 2),
+                    "cost_per_unit": cost_per_unit,
+                    "total_cost": round(qty * cost_per_unit, 2),
+                }
+            )
 
-        return pd.DataFrame(results).sort_values("total_cost", ascending=False).reset_index(drop=True)
+        return (
+            pd.DataFrame(results)
+            .sort_values("total_cost", ascending=False)
+            .reset_index(drop=True)
+        )
 
     def scrap_trend(
         self,
@@ -303,9 +317,11 @@ class ScrapTracking(Base):
             if grp.empty:
                 continue
             qty = self._get_counter_quantity(grp.reset_index(), value_column)
-            results.append({
-                "period": period,
-                "scrap_quantity": round(qty, 2),
-            })
+            results.append(
+                {
+                    "period": period,
+                    "scrap_quantity": round(qty, 2),
+                }
+            )
 
         return pd.DataFrame(results)

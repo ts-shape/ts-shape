@@ -4,32 +4,37 @@ import numpy as np
 
 from ts_shape.events.production import LongDowntimeEvents
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_state_df(times, values, uuid="machine", col="value_bool"):
-    return pd.DataFrame({
-        "systime": pd.to_datetime(times),
-        "uuid": uuid,
-        col: values,
-        "is_delta": True,
-    })
+    return pd.DataFrame(
+        {
+            "systime": pd.to_datetime(times),
+            "uuid": uuid,
+            col: values,
+            "is_delta": True,
+        }
+    )
 
 
 def _make_prod_df(times, values, uuid="prod", col="value_integer"):
-    return pd.DataFrame({
-        "systime": pd.to_datetime(times),
-        "uuid": uuid,
-        col: values,
-        "is_delta": True,
-    })
+    return pd.DataFrame(
+        {
+            "systime": pd.to_datetime(times),
+            "uuid": uuid,
+            col: values,
+            "is_delta": True,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # detect_long_downtime
 # ---------------------------------------------------------------------------
+
 
 class TestDetectLongDowntime:
     def test_basic_two_long_downtimes(self):
@@ -53,8 +58,13 @@ class TestDetectLongDowntime:
         assert result.iloc[0]["duration_seconds"] == pytest.approx(4 * 3600)
         assert result.iloc[1]["duration_seconds"] == pytest.approx(4.5 * 3600 - 60)
         assert set(result.columns) >= {
-            "start", "end", "duration_seconds", "downtime_index",
-            "uuid", "source_uuid", "is_delta",
+            "start",
+            "end",
+            "duration_seconds",
+            "downtime_index",
+            "uuid",
+            "source_uuid",
+            "is_delta",
         }
 
     def test_integer_signal_with_value_range(self):
@@ -68,7 +78,9 @@ class TestDetectLongDowntime:
         values = [0, 0, 1, 1]
         df = _make_state_df(times, values, col="value_integer")
 
-        lde = LongDowntimeEvents(df, "machine", value_column="value_integer", value_range=(1, 1))
+        lde = LongDowntimeEvents(
+            df, "machine", value_column="value_integer", value_range=(1, 1)
+        )
         result = lde.detect_long_downtime(min_gap="3h")
 
         assert len(result) == 1
@@ -95,7 +107,12 @@ class TestDetectLongDowntime:
 
     def test_no_qualifying_downtimes(self):
         """All idle periods shorter than min_gap → empty result."""
-        times = ["2024-01-04 00:00", "2024-01-04 01:00", "2024-01-04 01:01", "2024-01-04 02:00"]
+        times = [
+            "2024-01-04 00:00",
+            "2024-01-04 01:00",
+            "2024-01-04 01:01",
+            "2024-01-04 02:00",
+        ]
         values = [False, False, True, True]
         df = _make_state_df(times, values)
 
@@ -107,12 +124,14 @@ class TestDetectLongDowntime:
 
     def test_empty_dataframe(self):
         """Empty input returns empty result without raising."""
-        df = pd.DataFrame({
-            "systime": pd.Series(dtype="datetime64[ns]"),
-            "uuid": pd.Series(dtype="str"),
-            "value_bool": pd.Series(dtype="bool"),
-            "is_delta": pd.Series(dtype="bool"),
-        })
+        df = pd.DataFrame(
+            {
+                "systime": pd.Series(dtype="datetime64[ns]"),
+                "uuid": pd.Series(dtype="str"),
+                "value_bool": pd.Series(dtype="bool"),
+                "is_delta": pd.Series(dtype="bool"),
+            }
+        )
         lde = LongDowntimeEvents(df, "machine")
         result = lde.detect_long_downtime()
 
@@ -124,6 +143,7 @@ class TestDetectLongDowntime:
 # count_events_between_gaps
 # ---------------------------------------------------------------------------
 
+
 def _build_bounded_scenario():
     """
     State signal:
@@ -134,11 +154,16 @@ def _build_bounded_scenario():
       gap 2: 20:00 → 25:00 (5 h down)
     """
     state_times = [
-        "2024-01-05 00:00", "2024-01-05 05:00",  # down
-        "2024-01-05 05:01", "2024-01-05 10:00",  # running
-        "2024-01-05 10:01", "2024-01-05 15:00",  # down
-        "2024-01-05 15:01", "2024-01-05 20:00",  # running
-        "2024-01-05 20:01", "2024-01-06 01:00",  # down (~4.5 h)
+        "2024-01-05 00:00",
+        "2024-01-05 05:00",  # down
+        "2024-01-05 05:01",
+        "2024-01-05 10:00",  # running
+        "2024-01-05 10:01",
+        "2024-01-05 15:00",  # down
+        "2024-01-05 15:01",
+        "2024-01-05 20:00",  # running
+        "2024-01-05 20:01",
+        "2024-01-06 01:00",  # down (~4.5 h)
     ]
     state_values = [False, False, True, True, False, False, True, True, False, False]
     state_df = _make_state_df(state_times, state_values)
@@ -221,8 +246,10 @@ class TestCountEventsBetweenGaps:
     def test_fewer_than_two_gaps_returns_empty(self):
         """Only one long downtime → no windows → empty result."""
         times = [
-            "2024-01-06 00:00", "2024-01-06 05:00",  # down (5 h)
-            "2024-01-06 05:01", "2024-01-06 10:00",  # running
+            "2024-01-06 00:00",
+            "2024-01-06 05:00",  # down (5 h)
+            "2024-01-06 05:01",
+            "2024-01-06 10:00",  # running
         ]
         values = [False, False, True, True]
         state_df = _make_state_df(times, values)
@@ -236,12 +263,14 @@ class TestCountEventsBetweenGaps:
 
     def test_empty_state_returns_empty(self):
         """Empty state dataframe → count_events_between_gaps returns empty."""
-        state_df = pd.DataFrame({
-            "systime": pd.Series(dtype="datetime64[ns]"),
-            "uuid": pd.Series(dtype="str"),
-            "value_bool": pd.Series(dtype="bool"),
-            "is_delta": pd.Series(dtype="bool"),
-        })
+        state_df = pd.DataFrame(
+            {
+                "systime": pd.Series(dtype="datetime64[ns]"),
+                "uuid": pd.Series(dtype="str"),
+                "value_bool": pd.Series(dtype="bool"),
+                "is_delta": pd.Series(dtype="bool"),
+            }
+        )
         prod_df = _make_prod_df(["2024-01-07 10:00"], [1])
 
         lde = LongDowntimeEvents(state_df, "machine")
@@ -262,6 +291,7 @@ class TestCountEventsBetweenGaps:
 # ---------------------------------------------------------------------------
 # Init guards
 # ---------------------------------------------------------------------------
+
 
 class TestInitGuards:
     def test_invalid_uuid_raises(self):

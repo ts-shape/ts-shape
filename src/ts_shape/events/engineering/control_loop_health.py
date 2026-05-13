@@ -101,18 +101,20 @@ class ControlLoopHealthEvents(Base):
             t_rel = (group.index - group.index[0]).total_seconds()
 
             iae = float((error.abs() * dt).sum())
-            ise = float((error ** 2 * dt).sum())
+            ise = float((error**2 * dt).sum())
             itae = float((t_rel * error.abs() * dt).sum())
             bias = float(error.mean())
 
-            events.append({
-                "window_start": window_start,
-                "iae": iae,
-                "ise": ise,
-                "itae": itae,
-                "bias": bias,
-                "sample_count": len(group),
-            })
+            events.append(
+                {
+                    "window_start": window_start,
+                    "iae": iae,
+                    "ise": ise,
+                    "itae": itae,
+                    "bias": bias,
+                    "sample_count": len(group),
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -133,9 +135,14 @@ class ControlLoopHealthEvents(Base):
             damping_direction.
         """
         cols = [
-            "start", "end", "uuid", "is_delta",
-            "crossing_count", "estimated_period_seconds",
-            "amplitude", "damping_direction",
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "crossing_count",
+            "estimated_period_seconds",
+            "amplitude",
+            "damping_direction",
         ]
         if self._aligned.empty or len(self._aligned) < 4:
             return pd.DataFrame(columns=cols)
@@ -161,7 +168,9 @@ class ControlLoopHealthEvents(Base):
             times = group.index
             if len(cross_idx) >= 2:
                 cross_times = times[cross_idx]
-                intervals = np.diff(cross_times).astype("timedelta64[ms]").astype(float) / 1000
+                intervals = (
+                    np.diff(cross_times).astype("timedelta64[ms]").astype(float) / 1000
+                )
                 # Full period = 2 × half-period (crossing to crossing)
                 est_period = float(np.mean(intervals)) * 2
             else:
@@ -180,16 +189,18 @@ class ControlLoopHealthEvents(Base):
             else:
                 damping = "sustained"
 
-            osc_windows.append({
-                "start": window_start,
-                "end": window_start + td,
-                "uuid": self.event_uuid,
-                "is_delta": False,
-                "crossing_count": crossings,
-                "estimated_period_seconds": est_period,
-                "amplitude": amplitude,
-                "damping_direction": damping,
-            })
+            osc_windows.append(
+                {
+                    "start": window_start,
+                    "end": window_start + td,
+                    "uuid": self.event_uuid,
+                    "is_delta": False,
+                    "crossing_count": crossings,
+                    "estimated_period_seconds": est_period,
+                    "amplitude": amplitude,
+                    "damping_direction": damping,
+                }
+            )
 
         if not osc_windows:
             return pd.DataFrame(columns=cols)
@@ -229,8 +240,11 @@ class ControlLoopHealthEvents(Base):
             pct_time_at_low, pct_time_saturated, longest_saturation_seconds.
         """
         cols = [
-            "window_start", "pct_time_at_high", "pct_time_at_low",
-            "pct_time_saturated", "longest_saturation_seconds",
+            "window_start",
+            "pct_time_at_high",
+            "pct_time_at_low",
+            "pct_time_saturated",
+            "longest_saturation_seconds",
         ]
         if self._out.empty:
             return pd.DataFrame(columns=cols)
@@ -252,19 +266,23 @@ class ControlLoopHealthEvents(Base):
             if saturated.any():
                 runs = (saturated != saturated.shift()).cumsum()
                 sat_runs = saturated.groupby(runs).apply(
-                    lambda g: (g.index[-1] - g.index[0]).total_seconds() if g.iloc[0] else 0
+                    lambda g: (
+                        (g.index[-1] - g.index[0]).total_seconds() if g.iloc[0] else 0
+                    )
                 )
                 longest = float(sat_runs.max())
             else:
                 longest = 0.0
 
-            events.append({
-                "window_start": window_start,
-                "pct_time_at_high": float(at_high / n * 100),
-                "pct_time_at_low": float(at_low / n * 100),
-                "pct_time_saturated": float((at_high + at_low) / n * 100),
-                "longest_saturation_seconds": longest,
-            })
+            events.append(
+                {
+                    "window_start": window_start,
+                    "pct_time_at_high": float(at_high / n * 100),
+                    "pct_time_at_low": float(at_low / n * 100),
+                    "pct_time_saturated": float((at_high + at_low) / n * 100),
+                    "longest_saturation_seconds": longest,
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -276,8 +294,12 @@ class ControlLoopHealthEvents(Base):
             oscillation_count, pct_saturated, health_grade.
         """
         cols = [
-            "window_start", "iae", "bias",
-            "oscillation_count", "pct_saturated", "health_grade",
+            "window_start",
+            "iae",
+            "bias",
+            "oscillation_count",
+            "pct_saturated",
+            "health_grade",
         ]
         integrals = self.error_integrals(window)
         if integrals.empty:
@@ -301,12 +323,18 @@ class ControlLoopHealthEvents(Base):
             # Saturation in this window
             if not sat.empty:
                 sat_row = sat[sat["window_start"] == ws]
-                pct_sat = float(sat_row["pct_time_saturated"].iloc[0]) if not sat_row.empty else 0.0
+                pct_sat = (
+                    float(sat_row["pct_time_saturated"].iloc[0])
+                    if not sat_row.empty
+                    else 0.0
+                )
             else:
                 pct_sat = 0.0
 
             # Grade: count issues
-            iae_median = float(integrals["iae"].median()) if len(integrals) > 1 else row["iae"]
+            iae_median = (
+                float(integrals["iae"].median()) if len(integrals) > 1 else row["iae"]
+            )
             issues = 0
             if row["iae"] > iae_median * 1.5:
                 issues += 1
@@ -317,13 +345,15 @@ class ControlLoopHealthEvents(Base):
 
             grade = "good" if issues == 0 else ("fair" if issues == 1 else "poor")
 
-            events.append({
-                "window_start": ws,
-                "iae": row["iae"],
-                "bias": row["bias"],
-                "oscillation_count": osc_count,
-                "pct_saturated": pct_sat,
-                "health_grade": grade,
-            })
+            events.append(
+                {
+                    "window_start": ws,
+                    "iae": row["iae"],
+                    "bias": row["bias"],
+                    "oscillation_count": osc_count,
+                    "pct_saturated": pct_sat,
+                    "health_grade": grade,
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)

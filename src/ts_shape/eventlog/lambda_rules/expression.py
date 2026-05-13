@@ -20,6 +20,7 @@ Why an AST whitelist over ``pandas.eval`` or ``polars.expr``?
   and any function call outside of ``abs``, ``min``, ``max`` — so an
   LLM-proposed expression cannot exfiltrate or mutate state.
 """
+
 from __future__ import annotations
 
 import ast
@@ -36,15 +37,38 @@ _ALLOWED_FUNCS: frozenset[str] = frozenset({"abs", "min", "max"})
 
 _ALLOWED_NODES: tuple[type, ...] = (
     ast.Expression,
-    ast.BoolOp, ast.BinOp, ast.UnaryOp, ast.Compare,
-    ast.Name, ast.Constant, ast.Load,
-    ast.And, ast.Or, ast.Not,
-    ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
-    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.USub, ast.UAdd,
-    ast.BitAnd, ast.BitOr, ast.BitXor, ast.Invert,
+    ast.BoolOp,
+    ast.BinOp,
+    ast.UnaryOp,
+    ast.Compare,
+    ast.Name,
+    ast.Constant,
+    ast.Load,
+    ast.And,
+    ast.Or,
+    ast.Not,
+    ast.Eq,
+    ast.NotEq,
+    ast.Lt,
+    ast.LtE,
+    ast.Gt,
+    ast.GtE,
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.Mod,
+    ast.USub,
+    ast.UAdd,
+    ast.BitAnd,
+    ast.BitOr,
+    ast.BitXor,
+    ast.Invert,
     ast.Call,
-    ast.Tuple, ast.List,
-    ast.In, ast.NotIn,
+    ast.Tuple,
+    ast.List,
+    ast.In,
+    ast.NotIn,
 )
 
 
@@ -56,7 +80,10 @@ def _validate(tree: ast.AST) -> None:
                 f"{type(node).__name__} is not on the AST whitelist"
             )
         if isinstance(node, ast.Call):
-            if not isinstance(node.func, ast.Name) or node.func.id not in _ALLOWED_FUNCS:
+            if (
+                not isinstance(node.func, ast.Name)
+                or node.func.id not in _ALLOWED_FUNCS
+            ):
                 raise UnsafeExpression(
                     "only abs / min / max calls are allowed in trigger expressions"
                 )
@@ -83,7 +110,9 @@ def compile_expression(expression: str) -> Callable[[pd.DataFrame], pd.Series]:
         local_ns: dict[str, object] = {col: df[col] for col in df.columns}
         global_ns: dict[str, object] = {
             "__builtins__": {},
-            "abs": abs, "min": min, "max": max,
+            "abs": abs,
+            "min": min,
+            "max": max,
         }
         result = eval(code, global_ns, local_ns)  # noqa: S307 — sandboxed
         if not isinstance(result, pd.Series):

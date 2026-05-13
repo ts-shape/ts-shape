@@ -11,21 +11,36 @@ ultimately becomes a ``(class_name, method_name)`` REGISTRY entry that
 the canonical :func:`~ts_shape.eventlog.to_event_log` dispatcher
 understands without any special-case code.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Mapping
 
-
 _VALID_SHAPES: frozenset[str] = frozenset({"point", "interval", "summary", "static"})
-_VALID_PACKS: frozenset[str] = frozenset({
-    "quality", "production", "engineering",
-    "maintenance", "supplychain", "energy", "correlation",
-})
-_VALID_ARCHETYPES: frozenset[str] = frozenset({
-    "threshold", "interval", "aggregate", "outcome",
-    "static", "trace", "forecast", "correlation",
-})
+_VALID_PACKS: frozenset[str] = frozenset(
+    {
+        "quality",
+        "production",
+        "engineering",
+        "maintenance",
+        "supplychain",
+        "energy",
+        "correlation",
+    }
+)
+_VALID_ARCHETYPES: frozenset[str] = frozenset(
+    {
+        "threshold",
+        "interval",
+        "aggregate",
+        "outcome",
+        "static",
+        "trace",
+        "forecast",
+        "correlation",
+    }
+)
 
 
 @dataclass(frozen=True)

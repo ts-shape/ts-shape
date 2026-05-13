@@ -23,6 +23,7 @@ Typical use::
     xes_df = to_flat_df(log, case_object_type="asset")
     events_df, objects_df, relations_df = to_ocel_tables(log)
 """
+
 from .adapters import register_adapter
 from .concat import concat
 from .flat import to_flat_df

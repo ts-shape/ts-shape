@@ -97,12 +97,24 @@ class ChangeoverEvents(Base):
         config = config or {}
         fallback = fallback or {"default_duration": "10m", "completed": False}
 
-        changes = self.detect_changeover(product_uuid, value_column=value_column, min_hold=config.get("min_hold", "0s"))
+        changes = self.detect_changeover(
+            product_uuid,
+            value_column=value_column,
+            min_hold=config.get("min_hold", "0s"),
+        )
         if start_time is not None:
             changes = changes[changes["systime"] >= pd.to_datetime(start_time)]
         if changes.empty:
             return pd.DataFrame(
-                columns=["start", "end", "uuid", "source_uuid", "is_delta", "method", "completed"]
+                columns=[
+                    "start",
+                    "end",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "method",
+                    "completed",
+                ]
             )
 
         rows: List[Dict[str, Any]] = []
@@ -156,7 +168,9 @@ class ChangeoverEvents(Base):
 
         return pd.DataFrame(rows)
 
-    def _compute_stable_band_end(self, t0: pd.Timestamp, config: Dict[str, Any]) -> Optional[pd.Timestamp]:
+    def _compute_stable_band_end(
+        self, t0: pd.Timestamp, config: Dict[str, Any]
+    ) -> Optional[pd.Timestamp]:
         """Compute end time for stable_band method with configurable reference methods."""
         metric_defs = config.get("metrics", [])
         reference_method = config.get("reference_method", "expanding_median")
@@ -210,7 +224,13 @@ class ChangeoverEvents(Base):
 
         return None
 
-    def _calculate_reference(self, series: pd.Series, method: str, config: Dict[str, Any], mdef: Dict[str, Any]) -> pd.Series:
+    def _calculate_reference(
+        self,
+        series: pd.Series,
+        method: str,
+        config: Dict[str, Any],
+        mdef: Dict[str, Any],
+    ) -> pd.Series:
         """Calculate reference values using various methods."""
         if method == "expanding_median":
             return series.expanding(min_periods=3).median()
@@ -247,9 +267,12 @@ class ChangeoverEvents(Base):
         if changes.empty or len(changes) < 2:
             return pd.DataFrame(
                 columns=[
-                    "product", "changeover_count", "avg_time_between_seconds",
-                    "min_time_between_seconds", "max_time_between_seconds",
-                    "std_time_between_seconds"
+                    "product",
+                    "changeover_count",
+                    "avg_time_between_seconds",
+                    "min_time_between_seconds",
+                    "max_time_between_seconds",
+                    "std_time_between_seconds",
                 ]
             )
 
@@ -282,4 +305,3 @@ class ChangeoverEvents(Base):
             product_metrics.append(metrics)
 
         return pd.DataFrame(product_metrics)
-

@@ -108,9 +108,7 @@ class CycleTimeTracking(Base):
         else:
             # For integer/counter-based cycles, use value changes
             cycles["prev"] = cycles[value_column_trigger].shift()
-            cycle_ends = cycles[
-                cycles[value_column_trigger] != cycles["prev"]
-            ]
+            cycle_ends = cycles[cycles[value_column_trigger] != cycles["prev"]]
             times = cycle_ends[self.time_column].reset_index(drop=True)
 
         if len(times) < 2:
@@ -130,19 +128,23 @@ class CycleTimeTracking(Base):
 
         if part_data.empty:
             # Return cycles without part numbers
-            return pd.DataFrame({
-                "systime": times.iloc[1:],
-                "part_number": "UNKNOWN",
-                "cycle_time_seconds": cycle_times.iloc[1:],
-            })
+            return pd.DataFrame(
+                {
+                    "systime": times.iloc[1:],
+                    "part_number": "UNKNOWN",
+                    "cycle_time_seconds": cycle_times.iloc[1:],
+                }
+            )
 
         part_data[self.time_column] = pd.to_datetime(part_data[self.time_column])
 
         # Match part number to each cycle using merge_asof
-        result_df = pd.DataFrame({
-            "systime": times.iloc[1:].reset_index(drop=True),
-            "cycle_time_seconds": cycle_times.iloc[1:].reset_index(drop=True),
-        })
+        result_df = pd.DataFrame(
+            {
+                "systime": times.iloc[1:].reset_index(drop=True),
+                "cycle_time_seconds": cycle_times.iloc[1:].reset_index(drop=True),
+            }
+        )
 
         # Merge with part data
         result_df = pd.merge_asof(
@@ -151,7 +153,7 @@ class CycleTimeTracking(Base):
                 columns={self.time_column: "systime"}
             ),
             on="systime",
-            direction="backward"
+            direction="backward",
         )
 
         result_df = result_df.rename(columns={value_column_part: "part_number"})
@@ -200,18 +202,31 @@ class CycleTimeTracking(Base):
 
         if cycle_data.empty:
             return pd.DataFrame(
-                columns=["part_number", "count", "min_seconds", "avg_seconds",
-                        "max_seconds", "std_seconds", "median_seconds"]
+                columns=[
+                    "part_number",
+                    "count",
+                    "min_seconds",
+                    "avg_seconds",
+                    "max_seconds",
+                    "std_seconds",
+                    "median_seconds",
+                ]
             )
 
-        stats = cycle_data.groupby("part_number")["cycle_time_seconds"].agg([
-            ("count", "count"),
-            ("min_seconds", "min"),
-            ("avg_seconds", "mean"),
-            ("max_seconds", "max"),
-            ("std_seconds", "std"),
-            ("median_seconds", "median"),
-        ]).reset_index()
+        stats = (
+            cycle_data.groupby("part_number")["cycle_time_seconds"]
+            .agg(
+                [
+                    ("count", "count"),
+                    ("min_seconds", "min"),
+                    ("avg_seconds", "mean"),
+                    ("max_seconds", "max"),
+                    ("std_seconds", "std"),
+                    ("median_seconds", "median"),
+                ]
+            )
+            .reset_index()
+        )
 
         return stats
 
@@ -257,8 +272,14 @@ class CycleTimeTracking(Base):
 
         if cycle_data.empty:
             return pd.DataFrame(
-                columns=["systime", "part_number", "cycle_time_seconds",
-                        "median_seconds", "deviation_factor", "is_slow"]
+                columns=[
+                    "systime",
+                    "part_number",
+                    "cycle_time_seconds",
+                    "median_seconds",
+                    "deviation_factor",
+                    "is_slow",
+                ]
             )
 
         # Calculate median per part
@@ -344,7 +365,7 @@ class CycleTimeTracking(Base):
         part_cycles["trend"] = pd.cut(
             part_cycles["trend_slope"],
             bins=[-np.inf, -0.5, 0.5, np.inf],
-            labels=["improving", "stable", "degrading"]
+            labels=["improving", "stable", "degrading"],
         )
 
         return part_cycles[["systime", "cycle_time_seconds", "moving_avg", "trend"]]
@@ -389,19 +410,31 @@ class CycleTimeTracking(Base):
 
         if cycle_data.empty:
             return pd.DataFrame(
-                columns=["hour", "part_number", "cycles_completed",
-                        "avg_cycle_time", "min_cycle_time", "max_cycle_time"]
+                columns=[
+                    "hour",
+                    "part_number",
+                    "cycles_completed",
+                    "avg_cycle_time",
+                    "min_cycle_time",
+                    "max_cycle_time",
+                ]
             )
 
         # Add hour column
         cycle_data["hour"] = cycle_data["systime"].dt.floor("h")
 
         # Group by hour and part
-        hourly = cycle_data.groupby(["hour", "part_number"])["cycle_time_seconds"].agg([
-            ("cycles_completed", "count"),
-            ("avg_cycle_time", "mean"),
-            ("min_cycle_time", "min"),
-            ("max_cycle_time", "max"),
-        ]).reset_index()
+        hourly = (
+            cycle_data.groupby(["hour", "part_number"])["cycle_time_seconds"]
+            .agg(
+                [
+                    ("cycles_completed", "count"),
+                    ("avg_cycle_time", "mean"),
+                    ("min_cycle_time", "min"),
+                    ("max_cycle_time", "max"),
+                ]
+            )
+            .reset_index()
+        )
 
         return hourly

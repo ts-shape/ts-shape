@@ -1,9 +1,10 @@
 import logging
 import pandas as pd  # type: ignore
 from zoneinfo import available_timezones
-from ts_shape.utils.base import Base  
+from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
+
 
 class TimestampConverter(Base):
     """
@@ -12,7 +13,13 @@ class TimestampConverter(Base):
     """
 
     @classmethod
-    def convert_to_datetime(cls, dataframe: pd.DataFrame, columns: list, unit: str = 'ns', timezone: str = 'UTC') -> pd.DataFrame:
+    def convert_to_datetime(
+        cls,
+        dataframe: pd.DataFrame,
+        columns: list,
+        unit: str = "ns",
+        timezone: str = "UTC",
+    ) -> pd.DataFrame:
         """
         Converts specified columns from a given timestamp unit to datetime format in a target timezone.
 
@@ -26,13 +33,15 @@ class TimestampConverter(Base):
             pd.DataFrame: A DataFrame with the converted datetime columns in the specified timezone.
         """
         # Validate unit
-        valid_units = ['s', 'ms', 'us', 'ns']
+        valid_units = ["s", "ms", "us", "ns"]
         if unit not in valid_units:
             raise ValueError(f"Invalid unit '{unit}'. Must be one of {valid_units}.")
 
         # Validate timezone
         if timezone not in available_timezones():
-            raise ValueError(f"Invalid timezone '{timezone}'. Use a valid timezone name from available_timezones().")
+            raise ValueError(
+                f"Invalid timezone '{timezone}'. Use a valid timezone name from available_timezones()."
+            )
 
         df = dataframe.copy()
         for col in columns:
@@ -40,5 +49,5 @@ class TimestampConverter(Base):
             df[col] = pd.to_datetime(df[col], unit=unit, utc=True)
             # Adjust to the target timezone
             df[col] = df[col].dt.tz_convert(timezone)
-        
+
         return df

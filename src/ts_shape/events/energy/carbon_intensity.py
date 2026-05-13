@@ -109,21 +109,45 @@ class CarbonIntensityEvents(Base):
 
             raw[self.time_column] = pd.to_datetime(raw[self.time_column])
             raw = raw.set_index(self.time_column)
-            agg = raw[value_column].resample(window).sum().to_frame("consumption").reset_index()
+            agg = (
+                raw[value_column]
+                .resample(window)
+                .sum()
+                .to_frame("consumption")
+                .reset_index()
+            )
             agg = agg.rename(columns={self.time_column: "window_start"})
             agg["uuid"] = self.event_uuid
             agg["source_uuid"] = src_uuid
             agg["scope"] = src_scope
             agg["emission_factor"] = factor
             agg["kgco2e"] = agg["consumption"] * factor
-            frames.append(agg[["window_start", "uuid", "source_uuid", "scope",
-                                "consumption", "emission_factor", "kgco2e"]])
+            frames.append(
+                agg[
+                    [
+                        "window_start",
+                        "uuid",
+                        "source_uuid",
+                        "scope",
+                        "consumption",
+                        "emission_factor",
+                        "kgco2e",
+                    ]
+                ]
+            )
 
         if not frames:
-            return pd.DataFrame(columns=[
-                "window_start", "uuid", "source_uuid", "scope",
-                "consumption", "emission_factor", "kgco2e",
-            ])
+            return pd.DataFrame(
+                columns=[
+                    "window_start",
+                    "uuid",
+                    "source_uuid",
+                    "scope",
+                    "consumption",
+                    "emission_factor",
+                    "kgco2e",
+                ]
+            )
 
         return (
             pd.concat(frames, ignore_index=True)
@@ -147,8 +171,16 @@ class CarbonIntensityEvents(Base):
             DataFrame: window_start, uuid, scope1_kgco2e, scope2_kgco2e,
                        total_kgco2e
         """
-        all_emissions = self.emissions_by_window(scope=0, value_column=value_column, window=window)
-        empty_cols = ["window_start", "uuid", "scope1_kgco2e", "scope2_kgco2e", "total_kgco2e"]
+        all_emissions = self.emissions_by_window(
+            scope=0, value_column=value_column, window=window
+        )
+        empty_cols = [
+            "window_start",
+            "uuid",
+            "scope1_kgco2e",
+            "scope2_kgco2e",
+            "total_kgco2e",
+        ]
         if all_emissions.empty:
             return pd.DataFrame(columns=empty_cols)
 
@@ -190,10 +222,16 @@ class CarbonIntensityEvents(Base):
             DataFrame: window_start, uuid, total_kgco2e, units_produced,
                        carbon_intensity, trend
         """
-        totals = self.total_emissions_by_window(value_column=value_column, window=window)
+        totals = self.total_emissions_by_window(
+            value_column=value_column, window=window
+        )
         empty_cols = [
-            "window_start", "uuid", "total_kgco2e",
-            "units_produced", "carbon_intensity", "trend",
+            "window_start",
+            "uuid",
+            "total_kgco2e",
+            "units_produced",
+            "carbon_intensity",
+            "trend",
         ]
         if totals.empty:
             return pd.DataFrame(columns=empty_cols)
@@ -224,10 +262,15 @@ class CarbonIntensityEvents(Base):
             np.nan,
         )
 
-        rolling = merged["carbon_intensity"].rolling(window=min(7, len(merged)), min_periods=1).mean()
+        rolling = (
+            merged["carbon_intensity"]
+            .rolling(window=min(7, len(merged)), min_periods=1)
+            .mean()
+        )
         slope = rolling.diff()
         merged["trend"] = np.where(
-            slope < -0.001, "improving",
+            slope < -0.001,
+            "improving",
             np.where(slope > 0.001, "worsening", "stable"),
         )
         return merged[empty_cols]
@@ -246,4 +289,6 @@ class CarbonIntensityEvents(Base):
             }
             for uid, factor in self.emission_factors.items()
         ]
-        return pd.DataFrame(rows, columns=["source_uuid", "scope", "emission_factor_kgco2e_per_unit"])
+        return pd.DataFrame(
+            rows, columns=["source_uuid", "scope", "emission_factor_kgco2e_per_unit"]
+        )

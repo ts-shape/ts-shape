@@ -70,8 +70,11 @@ class ValueDistributionEvents(Base):
             n_modes_detected, mode_values, mode_changed.
         """
         cols = [
-            "window_start", "dominant_mode", "n_modes_detected",
-            "mode_values", "mode_changed",
+            "window_start",
+            "dominant_mode",
+            "n_modes_detected",
+            "mode_values",
+            "mode_changed",
         ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
@@ -97,20 +100,23 @@ class ValueDistributionEvents(Base):
             modes = self._find_modes(vals.values, n_modes, sep_abs)
             dominant = modes[0] if modes else float(vals.median())
             changed = prev_mode is not None and (
-                len(modes) == 0
-                or abs(dominant - prev_mode) > sep_abs
+                len(modes) == 0 or abs(dominant - prev_mode) > sep_abs
             )
             prev_mode = dominant
 
-            events.append({
-                "window_start": ts,
-                "dominant_mode": round(dominant, 4),
-                "n_modes_detected": len(modes),
-                "mode_values": [round(m, 4) for m in modes],
-                "mode_changed": changed,
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "dominant_mode": round(dominant, 4),
+                    "n_modes_detected": len(modes),
+                    "mode_values": [round(m, 4) for m in modes],
+                    "mode_changed": changed,
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def detect_bimodal(self, min_samples: int = 30) -> pd.DataFrame:
         """Test whether the overall signal distribution is bimodal.
@@ -148,14 +154,16 @@ class ValueDistributionEvents(Base):
 
         if len(peaks) < 2:
             return pd.DataFrame(
-                [{
-                    "is_bimodal": False,
-                    "dip_score": 0.0,
-                    "n_samples": len(vals),
-                    "mode_1": round(float(x_grid[peaks[0]]), 4) if peaks else None,
-                    "mode_2": None,
-                    "valley": None,
-                }],
+                [
+                    {
+                        "is_bimodal": False,
+                        "dip_score": 0.0,
+                        "n_samples": len(vals),
+                        "mode_1": round(float(x_grid[peaks[0]]), 4) if peaks else None,
+                        "mode_2": None,
+                        "valley": None,
+                    }
+                ],
                 columns=cols,
             )
 
@@ -168,22 +176,26 @@ class ValueDistributionEvents(Base):
             p1_idx, p2_idx = p2_idx, p1_idx
 
         # Valley = minimum density between the two peaks
-        valley_idx = p1_idx + int(np.argmin(density[p1_idx:p2_idx + 1]))
+        valley_idx = p1_idx + int(np.argmin(density[p1_idx : p2_idx + 1]))
         valley_depth = density[valley_idx]
         min_peak_height = min(density[p1_idx], density[p2_idx])
 
         # Dip score: how deep the valley is relative to the shorter peak
-        dip_score = 1.0 - (valley_depth / min_peak_height) if min_peak_height > 0 else 0.0
+        dip_score = (
+            1.0 - (valley_depth / min_peak_height) if min_peak_height > 0 else 0.0
+        )
 
         return pd.DataFrame(
-            [{
-                "is_bimodal": dip_score > 0.5,
-                "dip_score": round(dip_score, 4),
-                "n_samples": len(vals),
-                "mode_1": round(float(x_grid[p1_idx]), 4),
-                "mode_2": round(float(x_grid[p2_idx]), 4),
-                "valley": round(float(x_grid[valley_idx]), 4),
-            }],
+            [
+                {
+                    "is_bimodal": dip_score > 0.5,
+                    "dip_score": round(dip_score, 4),
+                    "n_samples": len(vals),
+                    "mode_1": round(float(x_grid[p1_idx]), 4),
+                    "mode_2": round(float(x_grid[p2_idx]), 4),
+                    "valley": round(float(x_grid[valley_idx]), 4),
+                }
+            ],
             columns=cols,
         )
 
@@ -207,8 +219,12 @@ class ValueDistributionEvents(Base):
             p_value, skewness, kurtosis.
         """
         cols = [
-            "window_start", "n_samples", "is_normal",
-            "p_value", "skewness", "kurtosis",
+            "window_start",
+            "n_samples",
+            "is_normal",
+            "p_value",
+            "skewness",
+            "kurtosis",
         ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
@@ -236,16 +252,20 @@ class ValueDistributionEvents(Base):
             except Exception:
                 continue
 
-            events.append({
-                "window_start": ts,
-                "n_samples": len(vals),
-                "is_normal": p_value >= alpha,
-                "p_value": round(float(p_value), 6),
-                "skewness": round(float(sp_stats.skew(vals.values)), 4),
-                "kurtosis": round(float(sp_stats.kurtosis(vals.values)), 4),
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "n_samples": len(vals),
+                    "is_normal": p_value >= alpha,
+                    "p_value": round(float(p_value), 6),
+                    "skewness": round(float(sp_stats.skew(vals.values)), 4),
+                    "kurtosis": round(float(sp_stats.kurtosis(vals.values)), 4),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def percentile_tracking(
         self,
@@ -292,7 +312,9 @@ class ValueDistributionEvents(Base):
 
             events.append(row)
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     # ------------------------------------------------------------------
     # Private helpers

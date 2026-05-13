@@ -11,22 +11,30 @@ from ts_shape.events.production import (
     BatchTrackingEvents,
 )
 
-
 # ============================================================================
 # Shared helpers
 # ============================================================================
 
+
 def _empty_df():
     """Return an empty DataFrame with standard columns."""
     return pd.DataFrame(
-        columns=["systime", "uuid", "value_bool", "value_integer",
-                 "value_double", "value_string", "is_delta"]
+        columns=[
+            "systime",
+            "uuid",
+            "value_bool",
+            "value_integer",
+            "value_double",
+            "value_string",
+            "is_delta",
+        ]
     )
 
 
 # ============================================================================
 # OEECalculator fixtures and tests
 # ============================================================================
+
 
 @pytest.fixture
 def oee_data():
@@ -48,15 +56,17 @@ def oee_data():
     for i, t in enumerate(timestamps):
         cycle_pos = i % 60
         running = cycle_pos < 50  # 50 min run, 10 min idle
-        rows.append({
-            "systime": t,
-            "uuid": "machine_state",
-            "value_bool": running,
-            "value_integer": None,
-            "value_double": None,
-            "value_string": None,
-            "is_delta": False,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "machine_state",
+                "value_bool": running,
+                "value_integer": None,
+                "value_double": None,
+                "value_string": None,
+                "is_delta": False,
+            }
+        )
 
     # Part counter: increments by 1 every minute when running
     counter = 0
@@ -64,15 +74,17 @@ def oee_data():
         cycle_pos = i % 60
         if cycle_pos < 50:
             counter += 1
-        rows.append({
-            "systime": t,
-            "uuid": "part_counter",
-            "value_bool": None,
-            "value_integer": counter,
-            "value_double": None,
-            "value_string": None,
-            "is_delta": True,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "part_counter",
+                "value_bool": None,
+                "value_integer": counter,
+                "value_double": None,
+                "value_string": None,
+                "is_delta": True,
+            }
+        )
 
     # Total counter = same as part counter
     total = 0
@@ -80,15 +92,17 @@ def oee_data():
         cycle_pos = i % 60
         if cycle_pos < 50:
             total += 1
-        rows.append({
-            "systime": t,
-            "uuid": "total_counter",
-            "value_bool": None,
-            "value_integer": total,
-            "value_double": None,
-            "value_string": None,
-            "is_delta": True,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "total_counter",
+                "value_bool": None,
+                "value_integer": total,
+                "value_double": None,
+                "value_string": None,
+                "is_delta": True,
+            }
+        )
 
     # Reject counter: 1 reject every 100 parts
     reject = 0
@@ -100,15 +114,17 @@ def oee_data():
             if parts_since_reject >= 100:
                 reject += 1
                 parts_since_reject = 0
-        rows.append({
-            "systime": t,
-            "uuid": "reject_counter",
-            "value_bool": None,
-            "value_integer": reject,
-            "value_double": None,
-            "value_string": None,
-            "is_delta": True,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "reject_counter",
+                "value_bool": None,
+                "value_integer": reject,
+                "value_double": None,
+                "value_string": None,
+                "is_delta": True,
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -178,7 +194,11 @@ class TestOEECalculator:
 
         assert not result.empty
         assert set(result.columns) == {
-            "date", "availability_pct", "performance_pct", "quality_pct", "oee_pct"
+            "date",
+            "availability_pct",
+            "performance_pct",
+            "quality_pct",
+            "oee_pct",
         }
         oee_val = result["oee_pct"].iloc[0]
         assert oee_val > 0.0
@@ -205,6 +225,7 @@ class TestOEECalculator:
 # AlarmManagementEvents fixtures and tests
 # ============================================================================
 
+
 @pytest.fixture
 def alarm_data():
     """Create synthetic alarm signal data.
@@ -218,15 +239,17 @@ def alarm_data():
     rows = []
 
     def add(t, val):
-        rows.append({
-            "systime": t,
-            "uuid": "temp_alarm",
-            "value_bool": val,
-            "value_integer": None,
-            "value_double": None,
-            "value_string": None,
-            "is_delta": False,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "temp_alarm",
+                "value_bool": val,
+                "value_integer": None,
+                "value_double": None,
+                "value_string": None,
+                "is_delta": False,
+            }
+        )
 
     # Normal alarm 1: ON 5 minutes
     add(base + timedelta(minutes=10), True)
@@ -319,6 +342,7 @@ class TestAlarmManagementEvents:
 # BatchTrackingEvents fixtures and tests
 # ============================================================================
 
+
 @pytest.fixture
 def batch_data():
     """Create synthetic batch production data.
@@ -347,26 +371,30 @@ def batch_data():
             freq="1min",
         )
         for t in timestamps:
-            rows.append({
-                "systime": t,
-                "uuid": "batch_signal",
-                "value_bool": None,
-                "value_integer": None,
-                "value_double": None,
-                "value_string": batch_id,
-                "is_delta": False,
-            })
+            rows.append(
+                {
+                    "systime": t,
+                    "uuid": "batch_signal",
+                    "value_bool": None,
+                    "value_integer": None,
+                    "value_double": None,
+                    "value_string": batch_id,
+                    "is_delta": False,
+                }
+            )
             # Counter increments every minute
             counter += 1
-            rows.append({
-                "systime": t,
-                "uuid": "batch_counter",
-                "value_bool": None,
-                "value_integer": counter,
-                "value_double": None,
-                "value_string": None,
-                "is_delta": True,
-            })
+            rows.append(
+                {
+                    "systime": t,
+                    "uuid": "batch_counter",
+                    "value_bool": None,
+                    "value_integer": counter,
+                    "value_double": None,
+                    "value_string": None,
+                    "is_delta": True,
+                }
+            )
         offset += duration_min
 
     return pd.DataFrame(rows)
@@ -389,8 +417,13 @@ class TestBatchTrackingEvents:
         assert not result.empty
         assert len(result) == 4  # 4 batch runs
         assert set(result.columns) >= {
-            "batch_id", "start", "end", "duration_seconds", "sample_count",
-            "uuid", "source_uuid",
+            "batch_id",
+            "start",
+            "end",
+            "duration_seconds",
+            "sample_count",
+            "uuid",
+            "source_uuid",
         }
         # Check batch IDs in order
         assert list(result["batch_id"]) == ["BATCH_A", "BATCH_B", "BATCH_A", "BATCH_C"]
@@ -444,15 +477,17 @@ class TestBatchTrackingEvents:
         timestamps = pd.date_range(base, periods=60, freq="1min")
         rows = []
         for t in timestamps:
-            rows.append({
-                "systime": t,
-                "uuid": "batch_signal",
-                "value_bool": None,
-                "value_integer": None,
-                "value_double": None,
-                "value_string": "ONLY_BATCH",
-                "is_delta": False,
-            })
+            rows.append(
+                {
+                    "systime": t,
+                    "uuid": "batch_signal",
+                    "value_bool": None,
+                    "value_integer": None,
+                    "value_double": None,
+                    "value_string": "ONLY_BATCH",
+                    "is_delta": False,
+                }
+            )
         df = pd.DataFrame(rows)
         tracker = BatchTrackingEvents(df, batch_uuid="batch_signal")
         result = tracker.batch_transition_matrix()

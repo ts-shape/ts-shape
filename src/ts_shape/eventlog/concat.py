@@ -1,4 +1,5 @@
 """Concatenate multiple :class:`EventLog` instances into one."""
+
 from __future__ import annotations
 
 import pandas as pd

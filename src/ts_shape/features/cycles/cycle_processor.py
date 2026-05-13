@@ -13,7 +13,13 @@ class CycleDataProcessor(Base):
     Uses pandas IntervalIndex for efficient cycle assignment instead of nested loops.
     """
 
-    def __init__(self, cycles_df: pd.DataFrame, values_df: pd.DataFrame, cycle_uuid_col: str = "cycle_uuid", systime_col: str = "systime"):
+    def __init__(
+        self,
+        cycles_df: pd.DataFrame,
+        values_df: pd.DataFrame,
+        cycle_uuid_col: str = "cycle_uuid",
+        systime_col: str = "systime",
+    ):
         """
         Initializes the CycleDataProcessor with cycles and values DataFrames.
 
@@ -30,8 +36,8 @@ class CycleDataProcessor(Base):
         self.systime_col = systime_col
 
         # Ensure proper datetime format
-        self.cycles_df['cycle_start'] = pd.to_datetime(self.cycles_df['cycle_start'])
-        self.cycles_df['cycle_end'] = pd.to_datetime(self.cycles_df['cycle_end'])
+        self.cycles_df["cycle_start"] = pd.to_datetime(self.cycles_df["cycle_start"])
+        self.cycles_df["cycle_end"] = pd.to_datetime(self.cycles_df["cycle_end"])
         self.values_df[systime_col] = pd.to_datetime(self.values_df[systime_col])
 
         # Pre-build interval index for efficient lookups
@@ -48,13 +54,10 @@ class CycleDataProcessor(Base):
 
         # Create interval index from cycle start/end times
         intervals = pd.IntervalIndex.from_arrays(
-            self.cycles_df['cycle_start'],
-            self.cycles_df['cycle_end'],
-            closed='both'
+            self.cycles_df["cycle_start"], self.cycles_df["cycle_end"], closed="both"
         )
         self._cycle_intervals = pd.Series(
-            self.cycles_df[self.cycle_uuid_col].values,
-            index=intervals
+            self.cycles_df[self.cycle_uuid_col].values, index=intervals
         )
         logger.debug(f"Built interval index with {len(intervals)} cycles.")
 
@@ -106,7 +109,7 @@ class CycleDataProcessor(Base):
             time_values = merged_df[self.systime_col]
 
             # Find which interval each timestamp belongs to
-            cycle_assignment = pd.Series(index=merged_df.index, dtype='object')
+            cycle_assignment = pd.Series(index=merged_df.index, dtype="object")
 
             for interval, cycle_uuid in self._cycle_intervals.items():
                 mask = (time_values >= interval.left) & (time_values <= interval.right)
@@ -115,11 +118,15 @@ class CycleDataProcessor(Base):
             merged_df[self.cycle_uuid_col] = cycle_assignment
 
         except Exception as e:
-            logger.error(f"Error in vectorized cycle assignment: {e}. Falling back to iterative method.")
+            logger.error(
+                f"Error in vectorized cycle assignment: {e}. Falling back to iterative method."
+            )
             # Fallback to original method if vectorization fails
             merged_df[self.cycle_uuid_col] = None
             for _, row in self.cycles_df.iterrows():
-                mask = (merged_df[self.systime_col] >= row['cycle_start']) & (merged_df[self.systime_col] <= row['cycle_end'])
+                mask = (merged_df[self.systime_col] >= row["cycle_start"]) & (
+                    merged_df[self.systime_col] <= row["cycle_end"]
+                )
                 merged_df.loc[mask, self.cycle_uuid_col] = row[self.cycle_uuid_col]
 
         # Drop rows not assigned to any cycle
@@ -127,10 +134,14 @@ class CycleDataProcessor(Base):
         if unassigned_count > 0:
             logger.info(f"Dropping {unassigned_count} rows not assigned to any cycle.")
         result = merged_df.dropna(subset=[self.cycle_uuid_col])
-        logger.info(f"Merged DataFrame contains {len(result)} records across {result[self.cycle_uuid_col].nunique()} cycles.")
+        logger.info(
+            f"Merged DataFrame contains {len(result)} records across {result[self.cycle_uuid_col].nunique()} cycles."
+        )
         return result
 
-    def group_by_cycle_uuid(self, data: Optional[pd.DataFrame] = None) -> List[pd.DataFrame]:
+    def group_by_cycle_uuid(
+        self, data: Optional[pd.DataFrame] = None
+    ) -> List[pd.DataFrame]:
         """
         Group the DataFrame by the cycle_uuid column, resulting in a list of DataFrames, each containing data for one cycle.
 
@@ -144,14 +155,18 @@ class CycleDataProcessor(Base):
             data = self.values_df
 
         if self.cycle_uuid_col not in data.columns:
-            logger.warning(f"Column '{self.cycle_uuid_col}' not found in data. Cannot group.")
+            logger.warning(
+                f"Column '{self.cycle_uuid_col}' not found in data. Cannot group."
+            )
             return []
 
         grouped_dataframes = [group for _, group in data.groupby(self.cycle_uuid_col)]
         logger.info(f"Grouped data into {len(grouped_dataframes)} cycle UUID groups.")
         return grouped_dataframes
 
-    def split_dataframes_by_group(self, dfs: List[pd.DataFrame], column: str) -> List[pd.DataFrame]:
+    def split_dataframes_by_group(
+        self, dfs: List[pd.DataFrame], column: str
+    ) -> List[pd.DataFrame]:
         """
         Splits a list of DataFrames by groups based on a specified column.
         This function performs a groupby operation on each DataFrame in the list and then flattens the result.
@@ -172,10 +187,14 @@ class CycleDataProcessor(Base):
             for _, group in groups:
                 split_dfs.append(group)
 
-        logger.info(f"Split data into {len(split_dfs)} groups based on column '{column}'.")
+        logger.info(
+            f"Split data into {len(split_dfs)} groups based on column '{column}'."
+        )
         return split_dfs
 
-    def _filter_by_time_range(self, start_time: pd.Timestamp, end_time: pd.Timestamp) -> pd.DataFrame:
+    def _filter_by_time_range(
+        self, start_time: pd.Timestamp, end_time: pd.Timestamp
+    ) -> pd.DataFrame:
         """
         Filters the values DataFrame by the given time range.
 
@@ -186,7 +205,9 @@ class CycleDataProcessor(Base):
         Return:
             Filtered DataFrame containing rows within the time range.
         """
-        mask = (self.values_df[self.systime_col] >= start_time) & (self.values_df[self.systime_col] <= end_time)
+        mask = (self.values_df[self.systime_col] >= start_time) & (
+            self.values_df[self.systime_col] <= end_time
+        )
         return self.values_df[mask]
 
     def compute_cycle_statistics(self) -> pd.DataFrame:
@@ -202,27 +223,33 @@ class CycleDataProcessor(Base):
         stats = []
         for _, cycle in self.cycles_df.iterrows():
             cycle_uuid = cycle[self.cycle_uuid_col]
-            cycle_start = cycle['cycle_start']
-            cycle_end = cycle['cycle_end']
+            cycle_start = cycle["cycle_start"]
+            cycle_end = cycle["cycle_end"]
 
             # Get values for this cycle
-            mask = (self.values_df[self.systime_col] >= cycle_start) & (self.values_df[self.systime_col] <= cycle_end)
+            mask = (self.values_df[self.systime_col] >= cycle_start) & (
+                self.values_df[self.systime_col] <= cycle_end
+            )
             cycle_values = self.values_df[mask]
 
             # Compute stats
             stat = {
                 self.cycle_uuid_col: cycle_uuid,
-                'cycle_start': cycle_start,
-                'cycle_end': cycle_end,
-                'duration_seconds': (cycle_end - cycle_start).total_seconds(),
-                'value_count': len(cycle_values),
-                'unique_uuids': cycle_values['uuid'].nunique() if 'uuid' in cycle_values.columns else 0,
+                "cycle_start": cycle_start,
+                "cycle_end": cycle_end,
+                "duration_seconds": (cycle_end - cycle_start).total_seconds(),
+                "value_count": len(cycle_values),
+                "unique_uuids": (
+                    cycle_values["uuid"].nunique()
+                    if "uuid" in cycle_values.columns
+                    else 0
+                ),
             }
 
             # Add value-type specific stats if columns exist
-            if 'value_double' in cycle_values.columns:
-                stat['mean_value_double'] = cycle_values['value_double'].mean()
-                stat['std_value_double'] = cycle_values['value_double'].std()
+            if "value_double" in cycle_values.columns:
+                stat["mean_value_double"] = cycle_values["value_double"].mean()
+                stat["std_value_double"] = cycle_values["value_double"].std()
 
             stats.append(stat)
 
@@ -230,7 +257,9 @@ class CycleDataProcessor(Base):
         logger.info(f"Computed statistics for {len(result)} cycles.")
         return result
 
-    def compare_cycles(self, reference_cycle_uuid: str, metric: str = 'value_double') -> pd.DataFrame:
+    def compare_cycles(
+        self, reference_cycle_uuid: str, metric: str = "value_double"
+    ) -> pd.DataFrame:
         """
         Compare all cycles against a reference cycle.
 
@@ -246,8 +275,12 @@ class CycleDataProcessor(Base):
             return pd.DataFrame()
 
         # Get reference cycle data
-        ref_cycle = self.cycles_df[self.cycles_df[self.cycle_uuid_col] == reference_cycle_uuid].iloc[0]
-        ref_mask = (self.values_df[self.systime_col] >= ref_cycle['cycle_start']) & (self.values_df[self.systime_col] <= ref_cycle['cycle_end'])
+        ref_cycle = self.cycles_df[
+            self.cycles_df[self.cycle_uuid_col] == reference_cycle_uuid
+        ].iloc[0]
+        ref_mask = (self.values_df[self.systime_col] >= ref_cycle["cycle_start"]) & (
+            self.values_df[self.systime_col] <= ref_cycle["cycle_end"]
+        )
         ref_values = self.values_df[ref_mask][metric].dropna()
 
         if ref_values.empty:
@@ -261,7 +294,9 @@ class CycleDataProcessor(Base):
         comparisons = []
         for _, cycle in self.cycles_df.iterrows():
             cycle_uuid = cycle[self.cycle_uuid_col]
-            mask = (self.values_df[self.systime_col] >= cycle['cycle_start']) & (self.values_df[self.systime_col] <= cycle['cycle_end'])
+            mask = (self.values_df[self.systime_col] >= cycle["cycle_start"]) & (
+                self.values_df[self.systime_col] <= cycle["cycle_end"]
+            )
             cycle_values = self.values_df[mask][metric].dropna()
 
             if cycle_values.empty:
@@ -269,20 +304,33 @@ class CycleDataProcessor(Base):
 
             comparison = {
                 self.cycle_uuid_col: cycle_uuid,
-                'is_reference': cycle_uuid == reference_cycle_uuid,
-                'mean_value': cycle_values.mean(),
-                'std_value': cycle_values.std(),
-                'deviation_from_ref': cycle_values.mean() - ref_mean,
-                'deviation_pct': ((cycle_values.mean() - ref_mean) / ref_mean * 100) if ref_mean != 0 else np.nan,
-                'variability_ratio': (cycle_values.std() / ref_std) if ref_std != 0 else np.nan,
+                "is_reference": cycle_uuid == reference_cycle_uuid,
+                "mean_value": cycle_values.mean(),
+                "std_value": cycle_values.std(),
+                "deviation_from_ref": cycle_values.mean() - ref_mean,
+                "deviation_pct": (
+                    ((cycle_values.mean() - ref_mean) / ref_mean * 100)
+                    if ref_mean != 0
+                    else np.nan
+                ),
+                "variability_ratio": (
+                    (cycle_values.std() / ref_std) if ref_std != 0 else np.nan
+                ),
             }
             comparisons.append(comparison)
 
         result = pd.DataFrame(comparisons)
-        logger.info(f"Compared {len(result)} cycles against reference cycle '{reference_cycle_uuid}'.")
+        logger.info(
+            f"Compared {len(result)} cycles against reference cycle '{reference_cycle_uuid}'."
+        )
         return result
 
-    def identify_golden_cycles(self, metric: str = 'value_double', method: str = 'low_variability', top_n: int = 5) -> List[str]:
+    def identify_golden_cycles(
+        self,
+        metric: str = "value_double",
+        method: str = "low_variability",
+        top_n: int = 5,
+    ) -> List[str]:
         """
         Identify the best performing cycles (golden cycles).
 
@@ -304,30 +352,34 @@ class CycleDataProcessor(Base):
         scores = []
         for _, cycle in self.cycles_df.iterrows():
             cycle_uuid = cycle[self.cycle_uuid_col]
-            mask = (self.values_df[self.systime_col] >= cycle['cycle_start']) & (self.values_df[self.systime_col] <= cycle['cycle_end'])
+            mask = (self.values_df[self.systime_col] >= cycle["cycle_start"]) & (
+                self.values_df[self.systime_col] <= cycle["cycle_end"]
+            )
             cycle_values = self.values_df[mask][metric].dropna()
 
             if cycle_values.empty:
                 continue
 
-            if method == 'low_variability':
+            if method == "low_variability":
                 # Lower coefficient of variation is better
                 mean_val = cycle_values.mean()
                 std_val = cycle_values.std()
                 score = -(std_val / mean_val) if mean_val != 0 else -np.inf
-            elif method == 'high_mean':
+            elif method == "high_mean":
                 score = cycle_values.mean()
             else:  # target_value - would need target parameter
                 score = -cycle_values.std()  # fallback to low variability
 
-            scores.append({'cycle_uuid': cycle_uuid, 'score': score})
+            scores.append({"cycle_uuid": cycle_uuid, "score": score})
 
         if not scores:
             logger.warning("Could not compute scores for any cycles.")
             return []
 
-        scores_df = pd.DataFrame(scores).sort_values('score', ascending=False)
-        golden_cycles = scores_df.head(top_n)['cycle_uuid'].tolist()
+        scores_df = pd.DataFrame(scores).sort_values("score", ascending=False)
+        golden_cycles = scores_df.head(top_n)["cycle_uuid"].tolist()
 
-        logger.info(f"Identified {len(golden_cycles)} golden cycles using method '{method}'.")
+        logger.info(
+            f"Identified {len(golden_cycles)} golden cycles using method '{method}'."
+        )
         return golden_cycles

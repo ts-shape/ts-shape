@@ -9,12 +9,14 @@ def _times(start: str, count: int, freq: str) -> pd.DatetimeIndex:
 
 
 def _make_df(uuid: str, times, values) -> pd.DataFrame:
-    return pd.DataFrame({
-        "uuid": [uuid] * len(times),
-        "systime": times,
-        "value_double": values,
-        "is_delta": [True] * len(times),
-    })
+    return pd.DataFrame(
+        {
+            "uuid": [uuid] * len(times),
+            "systime": times,
+            "value_double": values,
+            "is_delta": [True] * len(times),
+        }
+    )
 
 
 def test_detect_disturbance_spike():
@@ -24,7 +26,9 @@ def test_detect_disturbance_spike():
     df = _make_df("sensor", t, vals)
 
     det = DisturbanceRecoveryEvents(df, "sensor")
-    result = det.detect_disturbances(baseline_window="5m", threshold_sigma=2.0, min_duration="30s")
+    result = det.detect_disturbances(
+        baseline_window="5m", threshold_sigma=2.0, min_duration="30s"
+    )
     assert not result.empty
     assert result["direction"].iloc[0] == "above"
     assert result["peak_deviation"].iloc[0] > 30
@@ -50,7 +54,9 @@ def test_recovery_time_quick_recovery():
     det = DisturbanceRecoveryEvents(df, "sensor")
     result = det.recovery_time(baseline_window="5m", threshold_sigma=2.0)
     if not result.empty:
-        assert result["recovered"].iloc[0] is True or result["recovered"].iloc[0] == True
+        assert (
+            result["recovered"].iloc[0] is True or result["recovered"].iloc[0] == True
+        )
 
 
 def test_disturbance_frequency():
@@ -60,7 +66,9 @@ def test_disturbance_frequency():
     df = _make_df("sensor", t, vals)
 
     det = DisturbanceRecoveryEvents(df, "sensor")
-    result = det.disturbance_frequency(window="20min", baseline_window="5m", threshold_sigma=2.0)
+    result = det.disturbance_frequency(
+        window="20min", baseline_window="5m", threshold_sigma=2.0
+    )
     assert not result.empty
     assert "disturbance_count" in result.columns
 
@@ -85,18 +93,28 @@ def test_with_setpoint():
     sp_vals = [50.0] * len(t)
     pv_vals = [50.0] * 40 + [90.0] * 10 + [50.0] * 70
 
-    sp_df = pd.DataFrame({
-        "uuid": ["sp"] * len(t), "systime": t,
-        "value_double": sp_vals, "is_delta": True,
-    })
-    pv_df = pd.DataFrame({
-        "uuid": ["pv"] * len(t), "systime": t,
-        "value_double": pv_vals, "is_delta": True,
-    })
+    sp_df = pd.DataFrame(
+        {
+            "uuid": ["sp"] * len(t),
+            "systime": t,
+            "value_double": sp_vals,
+            "is_delta": True,
+        }
+    )
+    pv_df = pd.DataFrame(
+        {
+            "uuid": ["pv"] * len(t),
+            "systime": t,
+            "value_double": pv_vals,
+            "is_delta": True,
+        }
+    )
     df = pd.concat([sp_df, pv_df], ignore_index=True)
 
     det = DisturbanceRecoveryEvents(df, "pv", setpoint_uuid="sp")
-    result = det.detect_disturbances(baseline_window="5m", threshold_sigma=2.0, min_duration="30s")
+    result = det.detect_disturbances(
+        baseline_window="5m", threshold_sigma=2.0, min_duration="30s"
+    )
     assert not result.empty
 
 

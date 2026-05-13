@@ -88,8 +88,13 @@ class SteadyStateDetectionEvents(Base):
             mean_value, std_value, duration_seconds.
         """
         cols = [
-            "start", "end", "uuid", "is_delta",
-            "mean_value", "std_value", "duration_seconds",
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "mean_value",
+            "std_value",
+            "duration_seconds",
         ]
         if self.signal.empty or len(self.signal) < 2:
             return pd.DataFrame(columns=cols)
@@ -104,16 +109,18 @@ class SteadyStateDetectionEvents(Base):
         sig = self.signal.set_index(self.time_column)[self.value_column]
         events: List[Dict[str, Any]] = []
         for iv in intervals:
-            segment = sig.loc[iv["start"]:iv["end"]]
-            events.append({
-                "start": iv["start"],
-                "end": iv["end"],
-                "uuid": self.event_uuid,
-                "is_delta": False,
-                "mean_value": float(segment.mean()),
-                "std_value": float(segment.std()) if len(segment) > 1 else 0.0,
-                "duration_seconds": (iv["end"] - iv["start"]).total_seconds(),
-            })
+            segment = sig.loc[iv["start"] : iv["end"]]
+            events.append(
+                {
+                    "start": iv["start"],
+                    "end": iv["end"],
+                    "uuid": self.event_uuid,
+                    "is_delta": False,
+                    "mean_value": float(segment.mean()),
+                    "std_value": float(segment.std()) if len(segment) > 1 else 0.0,
+                    "duration_seconds": (iv["end"] - iv["start"]).total_seconds(),
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -133,8 +140,12 @@ class SteadyStateDetectionEvents(Base):
             max_std, duration_seconds.
         """
         cols = [
-            "start", "end", "uuid", "is_delta",
-            "max_std", "duration_seconds",
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "max_std",
+            "duration_seconds",
         ]
         if self.signal.empty or len(self.signal) < 2:
             return pd.DataFrame(columns=cols)
@@ -148,15 +159,17 @@ class SteadyStateDetectionEvents(Base):
 
         events: List[Dict[str, Any]] = []
         for iv in intervals:
-            seg_std = rolling_std.loc[iv["start"]:iv["end"]]
-            events.append({
-                "start": iv["start"],
-                "end": iv["end"],
-                "uuid": self.event_uuid,
-                "is_delta": False,
-                "max_std": float(seg_std.max()),
-                "duration_seconds": (iv["end"] - iv["start"]).total_seconds(),
-            })
+            seg_std = rolling_std.loc[iv["start"] : iv["end"]]
+            events.append(
+                {
+                    "start": iv["start"],
+                    "end": iv["end"],
+                    "uuid": self.event_uuid,
+                    "is_delta": False,
+                    "max_std": float(seg_std.max()),
+                    "duration_seconds": (iv["end"] - iv["start"]).total_seconds(),
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -186,7 +199,9 @@ class SteadyStateDetectionEvents(Base):
             self.signal[self.time_column].max() - self.signal[self.time_column].min()
         ).total_seconds()
 
-        total_steady = float(steady["duration_seconds"].sum()) if not steady.empty else 0.0
+        total_steady = (
+            float(steady["duration_seconds"].sum()) if not steady.empty else 0.0
+        )
         total_transient = max(total_span - total_steady, 0.0)
         n = len(steady)
 
@@ -211,8 +226,12 @@ class SteadyStateDetectionEvents(Base):
             upper_band, duration_seconds.
         """
         cols = [
-            "start", "end", "mean_value", "lower_band",
-            "upper_band", "duration_seconds",
+            "start",
+            "end",
+            "mean_value",
+            "lower_band",
+            "upper_band",
+            "duration_seconds",
         ]
         steady = self.detect_steady_state(window, std_threshold, min_duration)
         if steady.empty:

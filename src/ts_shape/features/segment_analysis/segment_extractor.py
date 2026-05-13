@@ -23,9 +23,9 @@ class SegmentExtractor(Base):
         cls,
         dataframe: pd.DataFrame,
         segment_uuid: str,
-        uuid_column: str = 'uuid',
-        value_column: str = 'value_string',
-        time_column: str = 'systime',
+        uuid_column: str = "uuid",
+        value_column: str = "value_string",
+        time_column: str = "systime",
         min_duration: Optional[str] = None,
     ) -> pd.DataFrame:
         """Detect value transitions and extract time ranges per segment.
@@ -54,10 +54,15 @@ class SegmentExtractor(Base):
         cls._validate_column(dataframe, value_column)
         cls._validate_column(dataframe, time_column)
 
-        empty_result = pd.DataFrame(columns=[
-            'segment_value', 'segment_start', 'segment_end',
-            'segment_duration', 'segment_index',
-        ])
+        empty_result = pd.DataFrame(
+            columns=[
+                "segment_value",
+                "segment_start",
+                "segment_end",
+                "segment_duration",
+                "segment_index",
+            ]
+        )
 
         # Filter to the segment signal only
         signal = dataframe[dataframe[uuid_column] == segment_uuid].copy()
@@ -77,17 +82,21 @@ class SegmentExtractor(Base):
         rows = []
         for _, group in signal.groupby(group_ids):
             seg_value = group[value_column].iloc[0]
-            if pd.isna(seg_value) or (isinstance(seg_value, str) and seg_value.strip() == ''):
+            if pd.isna(seg_value) or (
+                isinstance(seg_value, str) and seg_value.strip() == ""
+            ):
                 continue
             seg_start = group[time_column].iloc[0]
             seg_end = group[time_column].iloc[-1]
-            rows.append({
-                'segment_value': seg_value,
-                'segment_start': seg_start,
-                'segment_end': seg_end,
-                'segment_duration': seg_end - seg_start,
-                'segment_index': len(rows),
-            })
+            rows.append(
+                {
+                    "segment_value": seg_value,
+                    "segment_start": seg_start,
+                    "segment_end": seg_end,
+                    "segment_duration": seg_end - seg_start,
+                    "segment_index": len(rows),
+                }
+            )
 
         if not rows:
             return empty_result
@@ -96,8 +105,8 @@ class SegmentExtractor(Base):
 
         if min_duration is not None:
             min_td = pd.Timedelta(min_duration)
-            result = result[result['segment_duration'] >= min_td].reset_index(drop=True)
-            result['segment_index'] = range(len(result))
+            result = result[result["segment_duration"] >= min_td].reset_index(drop=True)
+            result["segment_index"] = range(len(result))
 
         logger.info(
             f"Extracted {len(result)} segments from UUID '{segment_uuid}' "

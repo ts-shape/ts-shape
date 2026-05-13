@@ -97,8 +97,13 @@ class PartProductionTracking(Base):
 
         if part_data.empty:
             return pd.DataFrame(
-                columns=["window_start", "part_number", "quantity",
-                        "first_count", "last_count"]
+                columns=[
+                    "window_start",
+                    "part_number",
+                    "quantity",
+                    "first_count",
+                    "last_count",
+                ]
             )
 
         part_data[self.time_column] = pd.to_datetime(part_data[self.time_column])
@@ -112,22 +117,26 @@ class PartProductionTracking(Base):
 
         if counter_data.empty:
             return pd.DataFrame(
-                columns=["window_start", "part_number", "quantity",
-                        "first_count", "last_count"]
+                columns=[
+                    "window_start",
+                    "part_number",
+                    "quantity",
+                    "first_count",
+                    "last_count",
+                ]
             )
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
 
         # Merge part ID with counter data (backward fill - use most recent part)
         # Select only needed columns to avoid suffix issues in merge
-        counter_subset = counter_data[[self.time_column, value_column_counter, "uuid"]].copy()
+        counter_subset = counter_data[
+            [self.time_column, value_column_counter, "uuid"]
+        ].copy()
         part_subset = part_data[[self.time_column, value_column_part]].copy()
 
         merged = pd.merge_asof(
-            counter_subset,
-            part_subset,
-            on=self.time_column,
-            direction="backward"
+            counter_subset, part_subset, on=self.time_column, direction="backward"
         )
 
         # Rename part column
@@ -153,13 +162,15 @@ class PartProductionTracking(Base):
             last_count = group[value_column_counter].iloc[-1]
             quantity = max(0, last_count - first_count)
 
-            results.append({
-                "window_start": window_start,
-                "part_number": part_num,
-                "quantity": quantity,
-                "first_count": first_count,
-                "last_count": last_count,
-            })
+            results.append(
+                {
+                    "window_start": window_start,
+                    "part_number": part_num,
+                    "quantity": quantity,
+                    "first_count": first_count,
+                    "last_count": last_count,
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -208,15 +219,15 @@ class PartProductionTracking(Base):
 
         hourly["date"] = hourly["window_start"].dt.date
 
-        daily = hourly.groupby(["date", "part_number"]).agg({
-            "quantity": "sum",
-            "window_start": "count"
-        }).reset_index()
+        daily = (
+            hourly.groupby(["date", "part_number"])
+            .agg({"quantity": "sum", "window_start": "count"})
+            .reset_index()
+        )
 
-        daily = daily.rename(columns={
-            "quantity": "total_quantity",
-            "window_start": "hours_active"
-        })
+        daily = daily.rename(
+            columns={"quantity": "total_quantity", "window_start": "hours_active"}
+        )
 
         return daily
 
@@ -269,10 +280,11 @@ class PartProductionTracking(Base):
         if end_date:
             daily = daily[daily["date"] <= pd.to_datetime(end_date)]
 
-        totals = daily.groupby("part_number").agg({
-            "total_quantity": "sum",
-            "date": "count"
-        }).reset_index()
+        totals = (
+            daily.groupby("part_number")
+            .agg({"total_quantity": "sum", "date": "count"})
+            .reset_index()
+        )
 
         totals = totals.rename(columns={"date": "days_produced"})
 

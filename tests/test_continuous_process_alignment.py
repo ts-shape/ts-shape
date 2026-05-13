@@ -6,7 +6,6 @@ import pytest
 
 from ts_shape.events.production import ContinuousProcessAlignmentEvents
 
-
 # ---------------------------------------------------------------------------
 # Fixture helpers
 # ---------------------------------------------------------------------------
@@ -19,8 +18,8 @@ LINE_CONFIG = [
 ]
 
 # Expected lags at 10 m/min = 1/6 m/s
-_LAG_A = 30.0 / (10.0 / 60.0)   # 180 s
-_LAG_B = 90.0 / (10.0 / 60.0)   # 540 s
+_LAG_A = 30.0 / (10.0 / 60.0)  # 180 s
+_LAG_B = 90.0 / (10.0 / 60.0)  # 540 s
 _LAG_C = 180.0 / (10.0 / 60.0)  # 1080 s
 
 
@@ -44,40 +43,95 @@ def _make_df() -> pd.DataFrame:
 
     for i, t in enumerate(timestamps):
         speed = 10.0 if t < base + pd.Timedelta(hours=1) else 5.0
-        rows.append(dict(systime=t, uuid="speed:line", value_double=speed,
-                         value_bool=None, value_integer=None))
+        rows.append(
+            dict(
+                systime=t,
+                uuid="speed:line",
+                value_double=speed,
+                value_bool=None,
+                value_integer=None,
+            )
+        )
 
-        rows.append(dict(systime=t, uuid="station:a",
-                         value_double=float(np.sin(i * 0.1)),
-                         value_bool=None, value_integer=None))
-        rows.append(dict(systime=t, uuid="station:b",
-                         value_double=float(np.cos(i * 0.1)),
-                         value_bool=None, value_integer=None))
-        rows.append(dict(systime=t, uuid="station:c",
-                         value_double=42.0,
-                         value_bool=None, value_integer=None))
+        rows.append(
+            dict(
+                systime=t,
+                uuid="station:a",
+                value_double=float(np.sin(i * 0.1)),
+                value_bool=None,
+                value_integer=None,
+            )
+        )
+        rows.append(
+            dict(
+                systime=t,
+                uuid="station:b",
+                value_double=float(np.cos(i * 0.1)),
+                value_bool=None,
+                value_integer=None,
+            )
+        )
+        rows.append(
+            dict(
+                systime=t,
+                uuid="station:c",
+                value_double=42.0,
+                value_bool=None,
+                value_integer=None,
+            )
+        )
 
     # Boolean part counter: fires True every 60 s (every 4 samples)
     cut_times = pd.date_range(base + pd.Timedelta(seconds=60), periods=119, freq="60s")
     for t in cut_times:
-        rows.append(dict(systime=t, uuid="counter:bool",
-                         value_double=None, value_bool=True, value_integer=None))
+        rows.append(
+            dict(
+                systime=t,
+                uuid="counter:bool",
+                value_double=None,
+                value_bool=True,
+                value_integer=None,
+            )
+        )
 
     # Integer part counter: increments by 1 every 60 s
     for j, t in enumerate(cut_times):
-        rows.append(dict(systime=t, uuid="counter:int",
-                         value_double=None, value_bool=None, value_integer=j + 1))
+        rows.append(
+            dict(
+                systime=t,
+                uuid="counter:int",
+                value_double=None,
+                value_bool=None,
+                value_integer=j + 1,
+            )
+        )
 
     # Integer part counter: increments by 2 every 120 s
-    cut_times2 = pd.date_range(base + pd.Timedelta(seconds=120), periods=59, freq="120s")
+    cut_times2 = pd.date_range(
+        base + pd.Timedelta(seconds=120), periods=59, freq="120s"
+    )
     for j, t in enumerate(cut_times2):
-        rows.append(dict(systime=t, uuid="counter:int2",
-                         value_double=None, value_bool=None, value_integer=(j + 1) * 2))
+        rows.append(
+            dict(
+                systime=t,
+                uuid="counter:int2",
+                value_double=None,
+                value_bool=None,
+                value_integer=(j + 1) * 2,
+            )
+        )
 
     # Cut length signal: 0.8 m at same cadence as counter:bool
     for t in cut_times:
-        rows.append(dict(systime=t, uuid="cut:length",
-                         value_double=0.8, value_bool=None, value_integer=None))
+        rows.append(
+            dict(
+                systime=t,
+                uuid="cut:length",
+                value_double=0.8,
+                value_bool=None,
+                value_integer=None,
+            )
+        )
 
     return pd.DataFrame(rows)
 
@@ -98,11 +152,19 @@ def aligner(df):
 # TestAlignToReference
 # ---------------------------------------------------------------------------
 
+
 class TestAlignToReference:
     def test_output_columns(self, aligner):
         result = aligner.align_to_reference()
-        for col in ["material_ref_time", "systime", "uuid", "component",
-                    "position_offset_m", "lag_seconds", "value_double"]:
+        for col in [
+            "material_ref_time",
+            "systime",
+            "uuid",
+            "component",
+            "position_offset_m",
+            "lag_seconds",
+            "value_double",
+        ]:
             assert col in result.columns, f"Missing column: {col}"
 
     def test_lag_constant_speed(self, aligner):
@@ -111,14 +173,16 @@ class TestAlignToReference:
         base = pd.Timestamp("2024-01-01 00:00:00")
         hour1_end = base + pd.Timedelta(hours=1)
 
-        for uid, expected_lag in [("station:a", _LAG_A),
-                                   ("station:b", _LAG_B),
-                                   ("station:c", _LAG_C)]:
+        for uid, expected_lag in [
+            ("station:a", _LAG_A),
+            ("station:b", _LAG_B),
+            ("station:c", _LAG_C),
+        ]:
             sub = result[(result["uuid"] == uid) & (result["systime"] < hour1_end)]
             assert not sub.empty
-            assert abs(sub["lag_seconds"].median() - expected_lag) < 2.0, (
-                f"{uid}: expected lag {expected_lag:.1f}s, got {sub['lag_seconds'].median():.1f}s"
-            )
+            assert (
+                abs(sub["lag_seconds"].median() - expected_lag) < 2.0
+            ), f"{uid}: expected lag {expected_lag:.1f}s, got {sub['lag_seconds'].median():.1f}s"
 
     def test_material_ref_before_systime(self, aligner):
         result = aligner.align_to_reference()
@@ -126,10 +190,17 @@ class TestAlignToReference:
 
     def test_zero_speed_clamped(self, df):
         # Insert zero-speed rows
-        zero_rows = pd.DataFrame([
-            dict(systime=pd.Timestamp("2024-01-01 00:30:00"),
-                 uuid="speed:line", value_double=0.0, value_bool=None, value_integer=None)
-        ])
+        zero_rows = pd.DataFrame(
+            [
+                dict(
+                    systime=pd.Timestamp("2024-01-01 00:30:00"),
+                    uuid="speed:line",
+                    value_double=0.0,
+                    value_bool=None,
+                    value_integer=None,
+                )
+            ]
+        )
         df2 = pd.concat([df, zero_rows], ignore_index=True)
         aligner2 = ContinuousProcessAlignmentEvents(
             df2, "speed:line", LINE_CONFIG, speed_unit="m/min", min_speed=0.01
@@ -143,8 +214,9 @@ class TestAlignToReference:
         assert set(result["uuid"].unique()) == {"station:a"}
 
     def test_empty_dataframe(self):
-        empty = pd.DataFrame(columns=["systime", "uuid", "value_double",
-                                       "value_bool", "value_integer"])
+        empty = pd.DataFrame(
+            columns=["systime", "uuid", "value_double", "value_bool", "value_integer"]
+        )
         aligner = ContinuousProcessAlignmentEvents(
             empty, "speed:line", LINE_CONFIG, speed_unit="m/min"
         )
@@ -161,31 +233,30 @@ class TestAlignToReference:
         lag_h1 = result[result["systime"] < h1_end]["lag_seconds"].median()
         lag_h2 = result[result["systime"] > h2_start]["lag_seconds"].median()
         # At half speed lag should be ~2x
-        assert abs(lag_h2 / lag_h1 - 2.0) < 0.1, (
-            f"Expected 2x lag ratio, got {lag_h2 / lag_h1:.3f}"
-        )
+        assert (
+            abs(lag_h2 / lag_h1 - 2.0) < 0.1
+        ), f"Expected 2x lag ratio, got {lag_h2 / lag_h1:.3f}"
 
 
 # ---------------------------------------------------------------------------
 # TestSegmentByCut
 # ---------------------------------------------------------------------------
 
+
 class TestSegmentByCut:
     def test_piece_id_assigned_bool_counter(self, aligner):
         aligned = aligner.align_to_reference(station_uuids=["station:a"])
-        result = aligner.segment_by_cut(
-            aligned, part_counter_uuid="counter:bool"
-        )
+        result = aligner.segment_by_cut(aligned, part_counter_uuid="counter:bool")
         assert "piece_id" in result.columns
         valid = result["piece_id"].dropna()
         assert len(valid) > 0
-        assert valid.dtype in [np.int64, np.float64, object] or np.issubdtype(valid.dtype, np.number)
+        assert valid.dtype in [np.int64, np.float64, object] or np.issubdtype(
+            valid.dtype, np.number
+        )
 
     def test_piece_id_assigned_int_counter(self, aligner):
         aligned = aligner.align_to_reference(station_uuids=["station:a"])
-        result = aligner.segment_by_cut(
-            aligned, part_counter_uuid="counter:int"
-        )
+        result = aligner.segment_by_cut(aligned, part_counter_uuid="counter:int")
         valid = result["piece_id"].dropna()
         assert len(valid) > 0
         # piece_ids should be integers
@@ -197,9 +268,7 @@ class TestSegmentByCut:
             df, "speed:line", LINE_CONFIG, speed_unit="m/min"
         )
         aligned = aligner2.align_to_reference(station_uuids=["station:a"])
-        result = aligner2.segment_by_cut(
-            aligned, part_counter_uuid="counter:int2"
-        )
+        result = aligner2.segment_by_cut(aligned, part_counter_uuid="counter:int2")
         # With delta=2 counter, piece_ids should be even numbers
         valid = result["piece_id"].dropna().unique()
         assert len(valid) > 0
@@ -218,15 +287,13 @@ class TestSegmentByCut:
         )
         lengths = result["piece_length_m"].dropna().unique()
         assert len(lengths) > 0
-        assert all(abs(l - 0.8) < 0.01 for l in lengths), (
-            f"Expected all lengths ~0.8 m, got {lengths}"
-        )
+        assert all(
+            abs(l - 0.8) < 0.01 for l in lengths
+        ), f"Expected all lengths ~0.8 m, got {lengths}"
 
     def test_length_uuid_only_no_counter(self, aligner):
         aligned = aligner.align_to_reference(station_uuids=["station:a"])
-        result = aligner.segment_by_cut(
-            aligned, cut_length_uuid="cut:length"
-        )
+        result = aligner.segment_by_cut(aligned, cut_length_uuid="cut:length")
         assert "piece_id" in result.columns
         assert result["piece_id"].dropna().astype(int).is_monotonic_increasing or True
         lengths = result["piece_length_m"].dropna().unique()
@@ -242,11 +309,18 @@ class TestSegmentByCut:
 # TestLagProfile
 # ---------------------------------------------------------------------------
 
+
 class TestLagProfile:
     def test_output_columns(self, aligner):
         result = aligner.lag_profile()
-        for col in ["window_start", "uuid", "component", "position_offset_m",
-                    "mean_speed_m_s", "lag_seconds"]:
+        for col in [
+            "window_start",
+            "uuid",
+            "component",
+            "position_offset_m",
+            "mean_speed_m_s",
+            "lag_seconds",
+        ]:
             assert col in result.columns, f"Missing column: {col}"
 
     def test_lag_doubles_at_half_speed(self, aligner):
@@ -271,11 +345,17 @@ class TestLagProfile:
 # TestAlignmentQuality
 # ---------------------------------------------------------------------------
 
+
 class TestAlignmentQuality:
     def test_output_columns(self, aligner):
         result = aligner.alignment_quality()
-        for col in ["window_start", "speed_sample_count", "has_speed_data",
-                    "has_full_coverage", "per_uuid_counts"]:
+        for col in [
+            "window_start",
+            "speed_sample_count",
+            "has_speed_data",
+            "has_full_coverage",
+            "per_uuid_counts",
+        ]:
             assert col in result.columns
 
     def test_full_coverage(self, aligner):
@@ -310,23 +390,39 @@ class TestAlignmentQuality:
 # TestSpeedUnits
 # ---------------------------------------------------------------------------
 
+
 class TestSpeedUnits:
     def _make_speed_unit_df(self, speed_val: float) -> pd.DataFrame:
         base = pd.Timestamp("2024-01-01 00:00:00")
         timestamps = pd.date_range(base, periods=100, freq="15s")
         rows = []
         for t in timestamps:
-            rows.append(dict(systime=t, uuid="speed:line",
-                             value_double=speed_val, value_bool=None, value_integer=None))
-            rows.append(dict(systime=t, uuid="station:a",
-                             value_double=1.0, value_bool=None, value_integer=None))
+            rows.append(
+                dict(
+                    systime=t,
+                    uuid="speed:line",
+                    value_double=speed_val,
+                    value_bool=None,
+                    value_integer=None,
+                )
+            )
+            rows.append(
+                dict(
+                    systime=t,
+                    uuid="station:a",
+                    value_double=1.0,
+                    value_bool=None,
+                    value_integer=None,
+                )
+            )
         return pd.DataFrame(rows)
 
     def test_m_per_s_unit(self):
         # 10 m/min = 1/6 m/s ≈ 0.1667 m/s
         df = self._make_speed_unit_df(10.0 / 60.0)
         aligner = ContinuousProcessAlignmentEvents(
-            df, "speed:line",
+            df,
+            "speed:line",
             [{"name": "zone_a", "offset": 30.0, "uuids": ["station:a"]}],
             speed_unit="m/s",
         )
@@ -338,7 +434,8 @@ class TestSpeedUnits:
         # 10 m/min = 10/60 m/s = 10000/60 mm/s ≈ 166.67 mm/s
         df = self._make_speed_unit_df(10000.0 / 60.0)
         aligner = ContinuousProcessAlignmentEvents(
-            df, "speed:line",
+            df,
+            "speed:line",
             [{"name": "zone_a", "offset": 30.0, "uuids": ["station:a"]}],
             speed_unit="mm/s",
         )
@@ -350,7 +447,8 @@ class TestSpeedUnits:
         df = self._make_speed_unit_df(10.0)
         with pytest.raises(ValueError, match="speed_unit"):
             ContinuousProcessAlignmentEvents(
-                df, "speed:line",
+                df,
+                "speed:line",
                 [{"name": "zone_a", "offset": 30.0, "uuids": ["station:a"]}],
                 speed_unit="km/h",
             )

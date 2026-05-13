@@ -59,7 +59,9 @@ class InventoryMonitoringEvents(Base):
             .sort_values(self.time_column)
         )
         if not self.levels.empty:
-            self.levels[self.time_column] = pd.to_datetime(self.levels[self.time_column])
+            self.levels[self.time_column] = pd.to_datetime(
+                self.levels[self.time_column]
+            )
 
     def detect_low_stock(
         self,
@@ -78,8 +80,14 @@ class InventoryMonitoringEvents(Base):
             min_value, avg_value, duration_seconds.
         """
         empty_cols = [
-            "start", "end", "uuid", "source_uuid", "is_delta",
-            "min_value", "avg_value", "duration_seconds",
+            "start",
+            "end",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "min_value",
+            "avg_value",
+            "duration_seconds",
         ]
         if self.levels.empty:
             return pd.DataFrame(columns=empty_cols)
@@ -98,16 +106,18 @@ class InventoryMonitoringEvents(Base):
             duration = (end - start).total_seconds()
             if (end - start) < hold_td:
                 continue
-            rows.append({
-                "start": start,
-                "end": end,
-                "uuid": self.event_uuid,
-                "source_uuid": self.level_uuid,
-                "is_delta": True,
-                "min_value": float(seg[self.value_column].min()),
-                "avg_value": float(seg[self.value_column].mean()),
-                "duration_seconds": duration,
-            })
+            rows.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "uuid": self.event_uuid,
+                    "source_uuid": self.level_uuid,
+                    "is_delta": True,
+                    "min_value": float(seg[self.value_column].min()),
+                    "avg_value": float(seg[self.value_column].mean()),
+                    "duration_seconds": duration,
+                }
+            )
 
         if not rows:
             return pd.DataFrame(columns=empty_cols)
@@ -130,8 +140,12 @@ class InventoryMonitoringEvents(Base):
             consumption_rate, level_start, level_end.
         """
         empty_cols = [
-            "window_start", "uuid", "is_delta",
-            "consumption_rate", "level_start", "level_end",
+            "window_start",
+            "uuid",
+            "is_delta",
+            "consumption_rate",
+            "level_start",
+            "level_end",
         ]
         if self.levels.empty:
             return pd.DataFrame(columns=empty_cols)
@@ -144,11 +158,13 @@ class InventoryMonitoringEvents(Base):
         first = resampled.first()
         last = resampled.last()
 
-        result = pd.DataFrame({
-            "window_start": first.index,
-            "level_start": first.values,
-            "level_end": last.values,
-        })
+        result = pd.DataFrame(
+            {
+                "window_start": first.index,
+                "level_start": first.values,
+                "level_end": last.values,
+            }
+        )
 
         # Drop windows with no data
         result = result.dropna(subset=["level_start", "level_end"]).copy()
@@ -159,7 +175,9 @@ class InventoryMonitoringEvents(Base):
         # Consumption is positive when level decreases
         window_td = pd.to_timedelta(window)
         window_hours = window_td.total_seconds() / 3600.0
-        result["consumption_rate"] = (result["level_start"] - result["level_end"]) / window_hours
+        result["consumption_rate"] = (
+            result["level_start"] - result["level_end"]
+        ) / window_hours
         result["uuid"] = self.event_uuid
         result["is_delta"] = True
 
@@ -181,8 +199,12 @@ class InventoryMonitoringEvents(Base):
             breach_type ('reorder' or 'safety_stock'), deficit.
         """
         empty_cols = [
-            "systime", "uuid", "is_delta", "current_level",
-            "breach_type", "deficit",
+            "systime",
+            "uuid",
+            "is_delta",
+            "current_level",
+            "breach_type",
+            "deficit",
         ]
         if self.levels.empty:
             return pd.DataFrame(columns=empty_cols)
@@ -207,14 +229,16 @@ class InventoryMonitoringEvents(Base):
             else:
                 breach_type = "reorder"
                 deficit = reorder_level - row[self.value_column]
-            rows.append({
-                "systime": row[self.time_column],
-                "uuid": self.event_uuid,
-                "is_delta": True,
-                "current_level": float(row[self.value_column]),
-                "breach_type": breach_type,
-                "deficit": float(deficit),
-            })
+            rows.append(
+                {
+                    "systime": row[self.time_column],
+                    "uuid": self.event_uuid,
+                    "is_delta": True,
+                    "current_level": float(row[self.value_column]),
+                    "breach_type": breach_type,
+                    "deficit": float(deficit),
+                }
+            )
 
         # Safety stock breaches that were not already caught (was above safety but below reorder)
         safety_mask = (lv[self.value_column] < safety_stock) & (
@@ -222,14 +246,16 @@ class InventoryMonitoringEvents(Base):
         )
         for idx in lv[safety_mask].index:
             row = lv.loc[idx]
-            rows.append({
-                "systime": row[self.time_column],
-                "uuid": self.event_uuid,
-                "is_delta": True,
-                "current_level": float(row[self.value_column]),
-                "breach_type": "safety_stock",
-                "deficit": float(safety_stock - row[self.value_column]),
-            })
+            rows.append(
+                {
+                    "systime": row[self.time_column],
+                    "uuid": self.event_uuid,
+                    "is_delta": True,
+                    "current_level": float(row[self.value_column]),
+                    "breach_type": "safety_stock",
+                    "deficit": float(safety_stock - row[self.value_column]),
+                }
+            )
 
         if not rows:
             return pd.DataFrame(columns=empty_cols)
@@ -254,8 +280,12 @@ class InventoryMonitoringEvents(Base):
             consumption_rate, estimated_stockout_time_hours.
         """
         empty_cols = [
-            "systime", "uuid", "is_delta", "current_level",
-            "consumption_rate", "estimated_stockout_time_hours",
+            "systime",
+            "uuid",
+            "is_delta",
+            "current_level",
+            "consumption_rate",
+            "estimated_stockout_time_hours",
         ]
         if self.levels.empty:
             return pd.DataFrame(columns=empty_cols)
@@ -277,23 +307,24 @@ class InventoryMonitoringEvents(Base):
             window_times = times[mask]
 
             if len(window_vals) < 2:
-                rows.append({
-                    "systime": pd.Timestamp(current_time),
-                    "uuid": self.event_uuid,
-                    "is_delta": True,
-                    "current_level": current_level,
-                    "consumption_rate": 0.0,
-                    "estimated_stockout_time_hours": np.inf,
-                })
+                rows.append(
+                    {
+                        "systime": pd.Timestamp(current_time),
+                        "uuid": self.event_uuid,
+                        "is_delta": True,
+                        "current_level": current_level,
+                        "consumption_rate": 0.0,
+                        "estimated_stockout_time_hours": np.inf,
+                    }
+                )
                 continue
 
             # Consumption = first - last in window (positive if consuming)
             first_val = float(window_vals[0])
             last_val = float(window_vals[-1])
             elapsed_hours = (
-                (pd.Timestamp(window_times[-1]) - pd.Timestamp(window_times[0]))
-                .total_seconds() / 3600.0
-            )
+                pd.Timestamp(window_times[-1]) - pd.Timestamp(window_times[0])
+            ).total_seconds() / 3600.0
 
             if elapsed_hours <= 0:
                 rate = 0.0
@@ -305,14 +336,16 @@ class InventoryMonitoringEvents(Base):
             else:
                 est_hours = np.inf
 
-            rows.append({
-                "systime": pd.Timestamp(current_time),
-                "uuid": self.event_uuid,
-                "is_delta": True,
-                "current_level": current_level,
-                "consumption_rate": float(rate),
-                "estimated_stockout_time_hours": float(est_hours),
-            })
+            rows.append(
+                {
+                    "systime": pd.Timestamp(current_time),
+                    "uuid": self.event_uuid,
+                    "is_delta": True,
+                    "current_level": current_level,
+                    "consumption_rate": float(rate),
+                    "estimated_stockout_time_hours": float(est_hours),
+                }
+            )
 
         if not rows:
             return pd.DataFrame(columns=empty_cols)

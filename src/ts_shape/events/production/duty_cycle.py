@@ -62,12 +62,14 @@ class DutyCycleEvents(Base):
             state = bool(seg["state"].iloc[0])
             start = seg[self.time_column].iloc[0]
             end = seg[self.time_column].iloc[-1]
-            rows.append({
-                "start_time": start,
-                "end_time": end,
-                "state": "on" if state else "off",
-                "duration": end - start,
-            })
+            rows.append(
+                {
+                    "start_time": start,
+                    "end_time": end,
+                    "state": "on" if state else "off",
+                    "duration": end - start,
+                }
+            )
 
         return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
 
@@ -97,14 +99,18 @@ class DutyCycleEvents(Base):
                 continue
             on_time = round(pct * window_td.total_seconds(), 2)
             off_time = round((1 - pct) * window_td.total_seconds(), 2)
-            events.append({
-                "window_start": ts,
-                "on_time": on_time,
-                "off_time": off_time,
-                "duty_cycle_pct": round(pct * 100, 2),
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "on_time": on_time,
+                    "off_time": off_time,
+                    "duty_cycle_pct": round(pct * 100, 2),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def cycle_count(self, window: str = "1h") -> pd.DataFrame:
         """Number of on/off transitions per window.
@@ -132,7 +138,9 @@ class DutyCycleEvents(Base):
         )
         resampled["total_transitions"] = resampled["on_count"] + resampled["off_count"]
 
-        result = resampled.reset_index().rename(columns={self.time_column: "window_start"})
+        result = resampled.reset_index().rename(
+            columns={self.time_column: "window_start"}
+        )
         result["on_count"] = result["on_count"].astype(int)
         result["off_count"] = result["off_count"].astype(int)
         result["total_transitions"] = result["total_transitions"].astype(int)
@@ -154,7 +162,12 @@ class DutyCycleEvents(Base):
             DataFrame with columns: window_start, transition_count,
             avg_on_duration, avg_off_duration.
         """
-        cols = ["window_start", "transition_count", "avg_on_duration", "avg_off_duration"]
+        cols = [
+            "window_start",
+            "transition_count",
+            "avg_on_duration",
+            "avg_off_duration",
+        ]
 
         counts = self.cycle_count(window)
         if counts.empty:
@@ -179,14 +192,26 @@ class DutyCycleEvents(Base):
             on_intervals = win_intervals[win_intervals["state"] == "on"]
             off_intervals = win_intervals[win_intervals["state"] == "off"]
 
-            avg_on = on_intervals["duration"].mean().total_seconds() if not on_intervals.empty else 0.0
-            avg_off = off_intervals["duration"].mean().total_seconds() if not off_intervals.empty else 0.0
+            avg_on = (
+                on_intervals["duration"].mean().total_seconds()
+                if not on_intervals.empty
+                else 0.0
+            )
+            avg_off = (
+                off_intervals["duration"].mean().total_seconds()
+                if not off_intervals.empty
+                else 0.0
+            )
 
-            events.append({
-                "window_start": w_start,
-                "transition_count": int(row["total_transitions"]),
-                "avg_on_duration": round(avg_on, 2),
-                "avg_off_duration": round(avg_off, 2),
-            })
+            events.append(
+                {
+                    "window_start": w_start,
+                    "transition_count": int(row["total_transitions"]),
+                    "avg_on_duration": round(avg_on, 2),
+                    "avg_off_duration": round(avg_off, 2),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )

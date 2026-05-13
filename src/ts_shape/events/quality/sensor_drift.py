@@ -68,9 +68,8 @@ class SensorDriftEvents(Base):
         if self.reference_value is not None:
             return self.reference_value
         if self._reference_series is not None and not self._reference_series.empty:
-            mask = (
-                (self._reference_series[self.time_column] >= window_start)
-                & (self._reference_series[self.time_column] < window_end)
+            mask = (self._reference_series[self.time_column] >= window_start) & (
+                self._reference_series[self.time_column] < window_end
             )
             ref_vals = self._reference_series.loc[mask, self.value_column].dropna()
             if not ref_vals.empty:
@@ -115,9 +114,13 @@ class SensorDriftEvents(Base):
                 # No reference: use first window as baseline
                 if not events:
                     mean_offset = 0.0
-                    auto_threshold = float(vals.std()) * 3 if threshold is None else None
+                    auto_threshold = (
+                        float(vals.std()) * 3 if threshold is None else None
+                    )
                 else:
-                    mean_offset = float(vals.mean()) - (events[0]["mean_offset"] + (ref if ref else float(vals.mean())))
+                    mean_offset = float(vals.mean()) - (
+                        events[0]["mean_offset"] + (ref if ref else float(vals.mean()))
+                    )
                     # Fallback: offset relative to the first window mean
                     if not events:
                         mean_offset = 0.0
@@ -132,7 +135,11 @@ class SensorDriftEvents(Base):
             if auto_threshold is None and threshold is None and not events:
                 auto_threshold = float(vals.std()) * 3
 
-            effective_threshold = threshold if threshold is not None else (auto_threshold if auto_threshold else 1.0)
+            effective_threshold = (
+                threshold
+                if threshold is not None
+                else (auto_threshold if auto_threshold else 1.0)
+            )
 
             # Drift rate = change in offset between consecutive windows
             drift_rate = (mean_offset - prev_offset) if prev_offset is not None else 0.0
@@ -163,7 +170,9 @@ class SensorDriftEvents(Base):
         for e in events:
             e.pop("_raw_mean", None)
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def detect_span_drift(self, window: str = "8h") -> pd.DataFrame:
         """Track measurement sensitivity changes over time.
@@ -205,19 +214,23 @@ class SensorDriftEvents(Base):
             if baseline_sensitivity is None:
                 baseline_sensitivity = sensitivity
 
-            change_pct = ((sensitivity - baseline_sensitivity) / abs(baseline_sensitivity)) * 100
+            change_pct = (
+                (sensitivity - baseline_sensitivity) / abs(baseline_sensitivity)
+            ) * 100
 
-            events.append({
-                "window_start": ts,
-                "sensitivity": round(sensitivity, 6),
-                "sensitivity_change_pct": round(change_pct, 4),
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "sensitivity": round(sensitivity, 6),
+                    "sensitivity_change_pct": round(change_pct, 4),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
-    def drift_trend(
-        self, window: str = "1D", metric: str = "mean"
-    ) -> pd.DataFrame:
+    def drift_trend(self, window: str = "1D", metric: str = "mean") -> pd.DataFrame:
         """Rolling trend analysis on signal statistics.
 
         Args:
@@ -255,7 +268,7 @@ class SensorDriftEvents(Base):
         x = np.arange(len(values), dtype=float)
 
         slope, intercept, r_value, _, _ = stats.linregress(x, values)
-        r_squared = r_value ** 2
+        r_squared = r_value**2
 
         # Direction is "stable" unless there is both a meaningful slope
         # AND a strong fit (R² > 0.8). This avoids labelling random noise
@@ -269,15 +282,19 @@ class SensorDriftEvents(Base):
 
         events: List[Dict[str, Any]] = []
         for i, (ts, v) in enumerate(window_values):
-            events.append({
-                "window_start": ts,
-                "value": round(v, 6),
-                "slope": round(slope, 8),
-                "r_squared": round(r_squared, 4),
-                "direction": direction,
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "value": round(v, 6),
+                    "slope": round(slope, 8),
+                    "r_squared": round(r_squared, 4),
+                    "direction": direction,
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def calibration_health(
         self, window: str = "8h", tolerance: Optional[float] = None
@@ -329,11 +346,15 @@ class SensorDriftEvents(Base):
                 else:
                     health_score = 100.0 if bias == 0 else 50.0
 
-            events.append({
-                "window_start": ts,
-                "bias": round(bias, 6),
-                "precision": round(precision, 6),
-                "health_score": round(health_score, 2),
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "bias": round(bias, 6),
+                    "precision": round(precision, 6),
+                    "health_score": round(health_score, 2),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )

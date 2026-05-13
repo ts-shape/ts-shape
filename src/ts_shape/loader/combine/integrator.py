@@ -71,7 +71,9 @@ class DataIntegratorHybrid:
         return combined_data
 
     @classmethod
-    def _combine_timeseries(cls, sources: Optional[List[Union[pd.DataFrame, object]]], join_key: str) -> pd.DataFrame:
+    def _combine_timeseries(
+        cls, sources: Optional[List[Union[pd.DataFrame, object]]], join_key: str
+    ) -> pd.DataFrame:
         """
         Combine timeseries data from multiple sources.
 
@@ -90,12 +92,16 @@ class DataIntegratorHybrid:
                 df = source.fetch_data_as_dataframe()
                 frames.append(cls._ensure_join_key_column(df, join_key))
             else:
-                logger.warning(f"Unsupported timeseries source: {type(source).__name__}")
+                logger.warning(
+                    f"Unsupported timeseries source: {type(source).__name__}"
+                )
 
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     @classmethod
-    def _combine_metadata(cls, sources: Optional[List[Union[pd.DataFrame, object]]], join_key: str) -> pd.DataFrame:
+    def _combine_metadata(
+        cls, sources: Optional[List[Union[pd.DataFrame, object]]], join_key: str
+    ) -> pd.DataFrame:
         """
         Combine metadata from multiple sources.
 

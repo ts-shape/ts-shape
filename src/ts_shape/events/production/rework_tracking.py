@@ -123,11 +123,13 @@ class ReworkTracking(Base):
         results = []
         for (date, shift), grp in data.groupby(["date", "shift"]):
             qty = self._get_counter_quantity(grp, value_column)
-            results.append({
-                "date": date,
-                "shift": shift,
-                "rework_count": round(qty, 0),
-            })
+            results.append(
+                {
+                    "date": date,
+                    "shift": shift,
+                    "rework_count": round(qty, 0),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -175,8 +177,10 @@ class ReworkTracking(Base):
         reason_clean = reason_clean.rename(columns={value_column_reason: "reason"})
 
         merged = pd.merge_asof(
-            rework_clean, reason_clean,
-            on=self.time_column, direction="backward",
+            rework_clean,
+            reason_clean,
+            on=self.time_column,
+            direction="backward",
         )
         merged = merged.dropna(subset=["reason"])
 
@@ -197,7 +201,9 @@ class ReworkTracking(Base):
             (result_df["rework_count"] / total * 100).round(1) if total > 0 else 0.0
         )
 
-        return result_df.sort_values("rework_count", ascending=False).reset_index(drop=True)
+        return result_df.sort_values("rework_count", ascending=False).reset_index(
+            drop=True
+        )
 
     def rework_rate(
         self,
@@ -232,7 +238,13 @@ class ReworkTracking(Base):
 
         if rework_data.empty or prod_data.empty:
             return pd.DataFrame(
-                columns=["date", "shift", "total_produced", "rework_count", "rework_rate_pct"]
+                columns=[
+                    "date",
+                    "shift",
+                    "total_produced",
+                    "rework_count",
+                    "rework_rate_pct",
+                ]
             )
 
         rework_data[self.time_column] = pd.to_datetime(rework_data[self.time_column])
@@ -244,9 +256,7 @@ class ReworkTracking(Base):
         prod_data["date"] = prod_data[self.time_column].dt.date
 
         # Get all date/shift combos
-        date_shifts = set(
-            zip(rework_data["date"], rework_data["shift"])
-        ) | set(
+        date_shifts = set(zip(rework_data["date"], rework_data["shift"])) | set(
             zip(prod_data["date"], prod_data["shift"])
         )
 
@@ -259,18 +269,28 @@ class ReworkTracking(Base):
                 (prod_data["date"] == date) & (prod_data["shift"] == shift)
             ]
 
-            rework_count = self._get_counter_quantity(rw_grp, value_column_rework) if not rw_grp.empty else 0
-            total_produced = self._get_counter_quantity(pr_grp, value_column_production) if not pr_grp.empty else 0
+            rework_count = (
+                self._get_counter_quantity(rw_grp, value_column_rework)
+                if not rw_grp.empty
+                else 0
+            )
+            total_produced = (
+                self._get_counter_quantity(pr_grp, value_column_production)
+                if not pr_grp.empty
+                else 0
+            )
 
             rate = (rework_count / total_produced * 100) if total_produced > 0 else 0
 
-            results.append({
-                "date": date,
-                "shift": shift,
-                "total_produced": round(total_produced, 0),
-                "rework_count": round(rework_count, 0),
-                "rework_rate_pct": round(rate, 1),
-            })
+            results.append(
+                {
+                    "date": date,
+                    "shift": shift,
+                    "total_produced": round(total_produced, 0),
+                    "rework_count": round(rework_count, 0),
+                    "rework_rate_pct": round(rate, 1),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -322,8 +342,10 @@ class ReworkTracking(Base):
         part_clean = part_clean.rename(columns={value_column_part: "part_number"})
 
         merged = pd.merge_asof(
-            rework_clean, part_clean,
-            on=self.time_column, direction="backward",
+            rework_clean,
+            part_clean,
+            on=self.time_column,
+            direction="backward",
         )
         merged = merged.dropna(subset=["part_number"])
 
@@ -331,12 +353,14 @@ class ReworkTracking(Base):
         for part_num, grp in merged.groupby("part_number"):
             qty = self._get_counter_quantity(grp, "rework_val")
             cost = rework_costs.get(part_num, 0.0)
-            results.append({
-                "part_number": part_num,
-                "rework_count": round(qty, 0),
-                "cost_per_rework": cost,
-                "total_cost": round(qty * cost, 2),
-            })
+            results.append(
+                {
+                    "part_number": part_num,
+                    "rework_count": round(qty, 0),
+                    "cost_per_rework": cost,
+                    "total_cost": round(qty * cost, 2),
+                }
+            )
 
         return (
             pd.DataFrame(results)
@@ -378,9 +402,11 @@ class ReworkTracking(Base):
             if grp.empty:
                 continue
             qty = self._get_counter_quantity(grp.reset_index(), value_column)
-            results.append({
-                "period": period,
-                "rework_count": round(qty, 0),
-            })
+            results.append(
+                {
+                    "period": period,
+                    "rework_count": round(qty, 0),
+                }
+            )
 
         return pd.DataFrame(results)

@@ -174,7 +174,9 @@ class ShiftReporting(Base):
             )
 
             if not part_data.empty:
-                part_data[self.time_column] = pd.to_datetime(part_data[self.time_column])
+                part_data[self.time_column] = pd.to_datetime(
+                    part_data[self.time_column]
+                )
 
                 # Select only needed columns to avoid suffix issues in merge
                 # Keep only the columns we need from counter_data
@@ -186,11 +188,13 @@ class ShiftReporting(Base):
                     counter_subset,
                     part_subset,
                     on=self.time_column,
-                    direction="backward"
+                    direction="backward",
                 )
 
                 # Rename part column
-                counter_data = counter_data.rename(columns={value_column_part: "part_number"})
+                counter_data = counter_data.rename(
+                    columns={value_column_part: "part_number"}
+                )
                 group_cols.append("part_number")
 
         # Calculate quantity per shift
@@ -204,18 +208,22 @@ class ShiftReporting(Base):
             quantity = max(0, last_count - first_count)
 
             if part_id_uuid and len(group_cols) == 3:
-                results.append({
-                    "date": group_key[0],
-                    "shift": group_key[1],
-                    "part_number": group_key[2],
-                    "quantity": quantity,
-                })
+                results.append(
+                    {
+                        "date": group_key[0],
+                        "shift": group_key[1],
+                        "part_number": group_key[2],
+                        "quantity": quantity,
+                    }
+                )
             else:
-                results.append({
-                    "date": group_key[0],
-                    "shift": group_key[1],
-                    "quantity": quantity,
-                })
+                results.append(
+                    {
+                        "date": group_key[0],
+                        "shift": group_key[1],
+                        "quantity": quantity,
+                    }
+                )
 
         return pd.DataFrame(results)
 
@@ -249,27 +257,41 @@ class ShiftReporting(Base):
             1   shift_2  430           405           450           12.8          7
             2   shift_3  385           360           410           18.5          7
         """
-        shift_prod = self.shift_production(counter_uuid, value_column_counter=value_column_counter)
+        shift_prod = self.shift_production(
+            counter_uuid, value_column_counter=value_column_counter
+        )
 
         if shift_prod.empty:
             return pd.DataFrame(
-                columns=["shift", "avg_quantity", "min_quantity",
-                        "max_quantity", "std_quantity", "days_count"]
+                columns=[
+                    "shift",
+                    "avg_quantity",
+                    "min_quantity",
+                    "max_quantity",
+                    "std_quantity",
+                    "days_count",
+                ]
             )
 
         # Filter to recent days
         shift_prod["date"] = pd.to_datetime(shift_prod["date"])
-        cutoff_date = shift_prod["date"].max() - pd.Timedelta(days=days-1)
+        cutoff_date = shift_prod["date"].max() - pd.Timedelta(days=days - 1)
         shift_prod = shift_prod[shift_prod["date"] >= cutoff_date]
 
         # Compare shifts
-        comparison = shift_prod.groupby("shift")["quantity"].agg([
-            ("avg_quantity", "mean"),
-            ("min_quantity", "min"),
-            ("max_quantity", "max"),
-            ("std_quantity", "std"),
-            ("days_count", "count"),
-        ]).reset_index()
+        comparison = (
+            shift_prod.groupby("shift")["quantity"]
+            .agg(
+                [
+                    ("avg_quantity", "mean"),
+                    ("min_quantity", "min"),
+                    ("max_quantity", "max"),
+                    ("std_quantity", "std"),
+                    ("days_count", "count"),
+                ]
+            )
+            .reset_index()
+        )
 
         return comparison
 
@@ -306,15 +328,19 @@ class ShiftReporting(Base):
             2   2024-01-01  shift_3  390     400     -10       97.5
         """
         shift_prod = self.shift_production(
-            counter_uuid,
-            value_column_counter=value_column_counter,
-            date=date
+            counter_uuid, value_column_counter=value_column_counter, date=date
         )
 
         if shift_prod.empty:
             return pd.DataFrame(
-                columns=["date", "shift", "actual", "target",
-                        "variance", "achievement_pct"]
+                columns=[
+                    "date",
+                    "shift",
+                    "actual",
+                    "target",
+                    "variance",
+                    "achievement_pct",
+                ]
             )
 
         # Add targets
@@ -328,8 +354,9 @@ class ShiftReporting(Base):
             shift_prod["actual"] / shift_prod["target"] * 100
         ).round(1)
 
-        return shift_prod[["date", "shift", "actual", "target",
-                          "variance", "achievement_pct"]]
+        return shift_prod[
+            ["date", "shift", "actual", "target", "variance", "achievement_pct"]
+        ]
 
     def best_and_worst_shifts(
         self,
@@ -359,8 +386,7 @@ class ShiftReporting(Base):
             2   2024-01-22  shift_2  485
         """
         shift_prod = self.shift_production(
-            counter_uuid,
-            value_column_counter=value_column_counter
+            counter_uuid, value_column_counter=value_column_counter
         )
 
         if shift_prod.empty:
@@ -369,7 +395,7 @@ class ShiftReporting(Base):
 
         # Filter to recent days
         shift_prod["date"] = pd.to_datetime(shift_prod["date"])
-        cutoff_date = shift_prod["date"].max() - pd.Timedelta(days=days-1)
+        cutoff_date = shift_prod["date"].max() - pd.Timedelta(days=days - 1)
         shift_prod = shift_prod[shift_prod["date"] >= cutoff_date]
 
         # Get best and worst

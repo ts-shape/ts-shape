@@ -4,13 +4,19 @@ from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
 
+
 class IntegerCalc(Base):
     """
     Provides class methods for performing calculations on integer columns in a pandas DataFrame.
     """
 
     @classmethod
-    def scale_column(cls, dataframe: pd.DataFrame, column_name: str = 'value_integer', factor: float = 1) -> pd.DataFrame:
+    def scale_column(
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_integer",
+        factor: float = 1,
+    ) -> pd.DataFrame:
         """
         Scales the integer column by the given factor.
 
@@ -27,7 +33,12 @@ class IntegerCalc(Base):
         return dataframe
 
     @classmethod
-    def offset_column(cls, dataframe: pd.DataFrame, column_name: str = 'value_integer', offset_value: float = 0) -> pd.DataFrame:
+    def offset_column(
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_integer",
+        offset_value: float = 0,
+    ) -> pd.DataFrame:
         """
         Offsets the integer column by the given value.
 
@@ -44,7 +55,12 @@ class IntegerCalc(Base):
         return dataframe
 
     @classmethod
-    def divide_column(cls, dataframe: pd.DataFrame, column_name: str = 'value_integer', divisor: float = 1) -> pd.DataFrame:
+    def divide_column(
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_integer",
+        divisor: float = 1,
+    ) -> pd.DataFrame:
         """
         Divides each value in the integer column by the given divisor.
 
@@ -66,7 +82,12 @@ class IntegerCalc(Base):
         return dataframe
 
     @classmethod
-    def subtract_column(cls, dataframe: pd.DataFrame, column_name: str = 'value_integer', subtract_value: float = 0) -> pd.DataFrame:
+    def subtract_column(
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_integer",
+        subtract_value: float = 0,
+    ) -> pd.DataFrame:
         """
         Subtracts a given value from each element in the integer column.
 
@@ -83,7 +104,13 @@ class IntegerCalc(Base):
         return dataframe
 
     @classmethod
-    def calculate_with_fixed_factors(cls, dataframe: pd.DataFrame, column_name: str = 'value_integer', multiply_factor: float = 1, add_factor: float = 0) -> pd.DataFrame:
+    def calculate_with_fixed_factors(
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_integer",
+        multiply_factor: float = 1,
+        add_factor: float = 0,
+    ) -> pd.DataFrame:
         """
         Performs a calculation by multiplying with a factor and then adding an additional factor.
 
@@ -101,7 +128,12 @@ class IntegerCalc(Base):
         return dataframe
 
     @classmethod
-    def mod_column(cls, dataframe: pd.DataFrame, column_name: str = 'value_integer', mod_value: int = 1) -> pd.DataFrame:
+    def mod_column(
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_integer",
+        mod_value: int = 1,
+    ) -> pd.DataFrame:
         """
         Performs a modulus operation on the integer column with a specified value.
 
@@ -123,7 +155,12 @@ class IntegerCalc(Base):
         return dataframe
 
     @classmethod
-    def power_column(cls, dataframe: pd.DataFrame, column_name: str = 'value_integer', power_value: float = 1) -> pd.DataFrame:
+    def power_column(
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_integer",
+        power_value: float = 1,
+    ) -> pd.DataFrame:
         """
         Raises each value in the integer column to the power of a specified value.
 

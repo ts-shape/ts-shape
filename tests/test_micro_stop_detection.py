@@ -12,19 +12,25 @@ def micro_stop_df():
     t = 0
     # Pattern: 60s run, 5s micro-stop, 60s run, 5s micro-stop, 60s run, 120s long stop, 60s run
     patterns = [
-        (60, True), (5, False),   # run then micro-stop
-        (60, True), (5, False),   # run then micro-stop
-        (60, True), (120, False), # run then long stop
-        (60, True), (3, False),   # run then micro-stop
+        (60, True),
+        (5, False),  # run then micro-stop
+        (60, True),
+        (5, False),  # run then micro-stop
+        (60, True),
+        (120, False),  # run then long stop
+        (60, True),
+        (3, False),  # run then micro-stop
         (60, True),
     ]
     for duration, state in patterns:
         for i in range(duration):
-            rows.append({
-                "systime": base + pd.Timedelta(seconds=t),
-                "uuid": "machine_1",
-                "value_bool": state,
-            })
+            rows.append(
+                {
+                    "systime": base + pd.Timedelta(seconds=t),
+                    "uuid": "machine_1",
+                    "value_bool": state,
+                }
+            )
             t += 1
     return pd.DataFrame(rows)
 

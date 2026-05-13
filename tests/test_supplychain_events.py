@@ -14,22 +14,30 @@ from ts_shape.events.supplychain import (
     DemandPatternEvents,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _empty_df():
     """Return an empty DataFrame with the standard timeseries schema."""
-    return pd.DataFrame(columns=[
-        "systime", "uuid", "value_bool", "value_integer",
-        "value_double", "value_string", "is_delta",
-    ])
+    return pd.DataFrame(
+        columns=[
+            "systime",
+            "uuid",
+            "value_bool",
+            "value_integer",
+            "value_double",
+            "value_string",
+            "is_delta",
+        ]
+    )
 
 
 # ===========================================================================
 # InventoryMonitoringEvents
 # ===========================================================================
+
 
 class TestInventoryMonitoringEvents:
     """Tests for InventoryMonitoringEvents."""
@@ -39,12 +47,14 @@ class TestInventoryMonitoringEvents:
         """Inventory that declines steadily from 500 to 20 over 24 hours."""
         times = pd.date_range("2024-06-01 00:00", periods=25, freq="1h")
         levels = np.linspace(500, 20, 25)
-        return pd.DataFrame({
-            "systime": times,
-            "uuid": "warehouse_level",
-            "value_double": levels,
-            "is_delta": True,
-        })
+        return pd.DataFrame(
+            {
+                "systime": times,
+                "uuid": "warehouse_level",
+                "value_double": levels,
+                "is_delta": True,
+            }
+        )
 
     def test_detect_low_stock_basic(self, declining_inventory_df):
         tracker = InventoryMonitoringEvents(
@@ -119,22 +129,20 @@ class TestInventoryMonitoringEvents:
         finite_rows = result[np.isfinite(result["estimated_stockout_time_hours"])]
         if len(finite_rows) > 1:
             # The last predicted stockout time should be less than the first
-            assert finite_rows["estimated_stockout_time_hours"].iloc[-1] < \
-                   finite_rows["estimated_stockout_time_hours"].iloc[0]
+            assert (
+                finite_rows["estimated_stockout_time_hours"].iloc[-1]
+                < finite_rows["estimated_stockout_time_hours"].iloc[0]
+            )
 
     def test_empty_dataframe(self):
-        tracker = InventoryMonitoringEvents(
-            _empty_df(), level_uuid="nonexistent"
-        )
+        tracker = InventoryMonitoringEvents(_empty_df(), level_uuid="nonexistent")
         assert tracker.detect_low_stock(min_level=100).empty
         assert tracker.consumption_rate().empty
         assert tracker.reorder_point_breach(reorder_level=100).empty
         assert tracker.stockout_prediction().empty
 
     def test_empty_returns_correct_columns(self):
-        tracker = InventoryMonitoringEvents(
-            _empty_df(), level_uuid="nonexistent"
-        )
+        tracker = InventoryMonitoringEvents(_empty_df(), level_uuid="nonexistent")
         low = tracker.detect_low_stock(min_level=100)
         assert "start" in low.columns
         assert "duration_seconds" in low.columns
@@ -153,6 +161,7 @@ class TestInventoryMonitoringEvents:
 # LeadTimeAnalysisEvents
 # ===========================================================================
 
+
 class TestLeadTimeAnalysisEvents:
     """Tests for LeadTimeAnalysisEvents."""
 
@@ -162,21 +171,27 @@ class TestLeadTimeAnalysisEvents:
         order_times = pd.date_range("2024-01-01", periods=5, freq="2D")
         # Deliveries: 3, 4, 5, 3, 7 days after order
         delivery_delays = [3, 4, 5, 3, 7]
-        delivery_times = [ot + pd.Timedelta(days=d) for ot, d in zip(order_times, delivery_delays)]
+        delivery_times = [
+            ot + pd.Timedelta(days=d) for ot, d in zip(order_times, delivery_delays)
+        ]
         order_ids = [f"PO-{i+1:03d}" for i in range(5)]
 
-        orders = pd.DataFrame({
-            "systime": order_times,
-            "uuid": "order_placed",
-            "value_string": order_ids,
-            "is_delta": True,
-        })
-        deliveries = pd.DataFrame({
-            "systime": delivery_times,
-            "uuid": "delivery_received",
-            "value_string": order_ids,
-            "is_delta": True,
-        })
+        orders = pd.DataFrame(
+            {
+                "systime": order_times,
+                "uuid": "order_placed",
+                "value_string": order_ids,
+                "is_delta": True,
+            }
+        )
+        deliveries = pd.DataFrame(
+            {
+                "systime": delivery_times,
+                "uuid": "delivery_received",
+                "value_string": order_ids,
+                "is_delta": True,
+            }
+        )
         return pd.concat([orders, deliveries], ignore_index=True)
 
     def test_calculate_lead_times(self, order_delivery_df):
@@ -218,18 +233,22 @@ class TestLeadTimeAnalysisEvents:
 
     def test_unequal_orders_deliveries(self):
         """More orders than deliveries: only pairs that exist are matched."""
-        orders = pd.DataFrame({
-            "systime": pd.date_range("2024-01-01", periods=5, freq="1D"),
-            "uuid": "order",
-            "value_string": ["A", "B", "C", "D", "E"],
-            "is_delta": True,
-        })
-        deliveries = pd.DataFrame({
-            "systime": pd.date_range("2024-01-03", periods=3, freq="2D"),
-            "uuid": "delivery",
-            "value_string": ["A", "B", "C"],
-            "is_delta": True,
-        })
+        orders = pd.DataFrame(
+            {
+                "systime": pd.date_range("2024-01-01", periods=5, freq="1D"),
+                "uuid": "order",
+                "value_string": ["A", "B", "C", "D", "E"],
+                "is_delta": True,
+            }
+        )
+        deliveries = pd.DataFrame(
+            {
+                "systime": pd.date_range("2024-01-03", periods=3, freq="2D"),
+                "uuid": "delivery",
+                "value_string": ["A", "B", "C"],
+                "is_delta": True,
+            }
+        )
         df = pd.concat([orders, deliveries], ignore_index=True)
         analyzer = LeadTimeAnalysisEvents(df)
         result = analyzer.calculate_lead_times("order", "delivery")
@@ -258,6 +277,7 @@ class TestLeadTimeAnalysisEvents:
 # DemandPatternEvents
 # ===========================================================================
 
+
 class TestDemandPatternEvents:
     """Tests for DemandPatternEvents."""
 
@@ -284,12 +304,14 @@ class TestDemandPatternEvents:
             if t.date() == spike_day.date():
                 demand[i] *= 3.0
 
-        return pd.DataFrame({
-            "systime": times,
-            "uuid": "customer_orders",
-            "value_double": demand,
-            "is_delta": True,
-        })
+        return pd.DataFrame(
+            {
+                "systime": times,
+                "uuid": "customer_orders",
+                "value_double": demand,
+                "is_delta": True,
+            }
+        )
 
     def test_demand_by_period_daily(self, daily_demand_df):
         analyzer = DemandPatternEvents(daily_demand_df, demand_uuid="customer_orders")
@@ -330,7 +352,11 @@ class TestDemandPatternEvents:
         # Should have entries for each day of the week
         assert len(result) == 7
         # Weekday demand should be higher than weekend
-        weekday_rows = result[result["period_label"].isin(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])]
+        weekday_rows = result[
+            result["period_label"].isin(
+                ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+            )
+        ]
         weekend_rows = result[result["period_label"].isin(["Saturday", "Sunday"])]
         assert weekday_rows["avg_demand"].mean() > weekend_rows["avg_demand"].mean()
 
@@ -364,16 +390,19 @@ class TestDemandPatternEvents:
 # Cross-cutting: single-row and minimal data
 # ===========================================================================
 
+
 class TestEdgeCases:
     """Edge cases: single data point, all same values, etc."""
 
     def test_inventory_single_point(self):
-        df = pd.DataFrame({
-            "systime": [pd.Timestamp("2024-01-01")],
-            "uuid": ["lvl"],
-            "value_double": [50.0],
-            "is_delta": [True],
-        })
+        df = pd.DataFrame(
+            {
+                "systime": [pd.Timestamp("2024-01-01")],
+                "uuid": ["lvl"],
+                "value_double": [50.0],
+                "is_delta": [True],
+            }
+        )
         tracker = InventoryMonitoringEvents(df, level_uuid="lvl")
         # Single point below threshold: interval is zero-length
         low = tracker.detect_low_stock(min_level=100)
@@ -384,12 +413,14 @@ class TestEdgeCases:
         assert "consumption_rate" in rate.columns
 
     def test_lead_time_single_pair(self):
-        df = pd.DataFrame({
-            "systime": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-04")],
-            "uuid": ["order", "delivery"],
-            "value_string": ["PO-1", "PO-1"],
-            "is_delta": [True, True],
-        })
+        df = pd.DataFrame(
+            {
+                "systime": [pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-04")],
+                "uuid": ["order", "delivery"],
+                "value_string": ["PO-1", "PO-1"],
+                "is_delta": [True, True],
+            }
+        )
         analyzer = LeadTimeAnalysisEvents(df)
         lt = analyzer.calculate_lead_times("order", "delivery")
         assert len(lt) == 1
@@ -406,12 +437,14 @@ class TestEdgeCases:
     def test_demand_constant_values(self):
         """All demand values are the same -- std=0 so no spikes."""
         times = pd.date_range("2024-01-01", periods=48, freq="1h")
-        df = pd.DataFrame({
-            "systime": times,
-            "uuid": "demand",
-            "value_double": 100.0,
-            "is_delta": True,
-        })
+        df = pd.DataFrame(
+            {
+                "systime": times,
+                "uuid": "demand",
+                "value_double": 100.0,
+                "is_delta": True,
+            }
+        )
         analyzer = DemandPatternEvents(df, demand_uuid="demand")
         spikes = analyzer.detect_demand_spikes(threshold_factor=2.0, window="1D")
         assert spikes.empty

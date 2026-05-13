@@ -13,10 +13,10 @@ def motif_df():
     # Insert the same pattern at positions 50, 200, 350
     pattern = np.sin(np.linspace(0, 2 * np.pi, 30))
     for start in [50, 200, 350]:
-        series[start:start + 30] = pattern
+        series[start : start + 30] = pattern
 
-    times = pd.date_range('2024-01-01', periods=n, freq='1s')
-    return pd.DataFrame({'systime': times, 'value_double': series})
+    times = pd.date_range("2024-01-01", periods=n, freq="1s")
+    return pd.DataFrame({"systime": times, "value_double": series})
 
 
 @pytest.fixture
@@ -28,8 +28,8 @@ def discord_df():
     # Inject a spike anomaly
     series[150:170] = 5.0 + np.random.randn(20) * 0.1
 
-    times = pd.date_range('2024-01-01', periods=n, freq='1s')
-    return pd.DataFrame({'systime': times, 'value_double': series})
+    times = pd.date_range("2024-01-01", periods=n, freq="1s")
+    return pd.DataFrame({"systime": times, "value_double": series})
 
 
 @pytest.fixture
@@ -37,11 +37,13 @@ def simple_df():
     """Simple short DataFrame for basic testing."""
     np.random.seed(42)
     n = 100
-    times = pd.date_range('2024-01-01', periods=n, freq='1s')
-    return pd.DataFrame({
-        'systime': times,
-        'value_double': np.sin(np.linspace(0, 4 * np.pi, n)),
-    })
+    times = pd.date_range("2024-01-01", periods=n, freq="1s")
+    return pd.DataFrame(
+        {
+            "systime": times,
+            "value_double": np.sin(np.linspace(0, 4 * np.pi, n)),
+        }
+    )
 
 
 class TestDiscoverMotifs:
@@ -49,7 +51,7 @@ class TestDiscoverMotifs:
         result = PatternRecognition.discover_motifs(motif_df, window_size=30, top_k=3)
         assert len(result) > 0
         # The top motif should have a low distance
-        assert result.iloc[0]['distance'] < 1.0
+        assert result.iloc[0]["distance"] < 1.0
 
     def test_top_k_limit(self, motif_df):
         result = PatternRecognition.discover_motifs(motif_df, window_size=30, top_k=2)
@@ -58,45 +60,55 @@ class TestDiscoverMotifs:
     def test_motif_indices_in_range(self, motif_df):
         result = PatternRecognition.discover_motifs(motif_df, window_size=30, top_k=3)
         for _, row in result.iterrows():
-            assert 0 <= row['index_a'] < len(motif_df)
-            assert 0 <= row['index_b'] < len(motif_df)
+            assert 0 <= row["index_a"] < len(motif_df)
+            assert 0 <= row["index_b"] < len(motif_df)
 
 
 class TestDiscoverDiscords:
     def test_injected_anomaly(self, discord_df):
-        result = PatternRecognition.discover_discords(discord_df, window_size=20, top_k=3)
+        result = PatternRecognition.discover_discords(
+            discord_df, window_size=20, top_k=3
+        )
         assert len(result) > 0
         # The top discord should be near the injected anomaly
-        top_discord_idx = result.iloc[0]['start_index']
+        top_discord_idx = result.iloc[0]["start_index"]
         assert abs(top_discord_idx - 150) < 30
 
     def test_top_k_limit(self, discord_df):
-        result = PatternRecognition.discover_discords(discord_df, window_size=20, top_k=1)
+        result = PatternRecognition.discover_discords(
+            discord_df, window_size=20, top_k=1
+        )
         assert len(result) == 1
 
 
 class TestSimilaritySearch:
     def test_exact_match(self, simple_df):
-        series = simple_df['value_double'].values
+        series = simple_df["value_double"].values
         query = series[20:30].copy()
-        result = PatternRecognition.similarity_search(simple_df, query, top_k=1, normalize=True)
+        result = PatternRecognition.similarity_search(
+            simple_df, query, top_k=1, normalize=True
+        )
         assert len(result) == 1
-        assert result.iloc[0]['dtw_distance'] < 1e-5
+        assert result.iloc[0]["dtw_distance"] < 1e-5
 
     def test_scaled_match_with_normalize(self, simple_df):
-        series = simple_df['value_double'].values
+        series = simple_df["value_double"].values
         query = series[20:30].copy() * 2.0 + 5.0  # Scale and shift
-        result = PatternRecognition.similarity_search(simple_df, query, top_k=1, normalize=True)
+        result = PatternRecognition.similarity_search(
+            simple_df, query, top_k=1, normalize=True
+        )
         assert len(result) == 1
         # With normalization, it should still find the match
-        assert result.iloc[0]['dtw_distance'] < 1e-5
+        assert result.iloc[0]["dtw_distance"] < 1e-5
 
     def test_top_k_results(self, simple_df):
         query = np.sin(np.linspace(0, np.pi, 10))
-        result = PatternRecognition.similarity_search(simple_df, query, top_k=3, normalize=True)
+        result = PatternRecognition.similarity_search(
+            simple_df, query, top_k=3, normalize=True
+        )
         assert len(result) == 3
         # Results should be sorted by distance
-        assert result.iloc[0]['dtw_distance'] <= result.iloc[1]['dtw_distance']
+        assert result.iloc[0]["dtw_distance"] <= result.iloc[1]["dtw_distance"]
 
 
 class TestTemplateMatch:
@@ -107,7 +119,7 @@ class TestTemplateMatch:
         assert len(result) >= 1
 
     def test_tight_threshold_filters(self, simple_df):
-        query = simple_df['value_double'].values[:10]
+        query = simple_df["value_double"].values[:10]
         # Very tight threshold
         result = PatternRecognition.template_match(simple_df, query, threshold=0.001)
         # Should find at most 1-2 matches with such a tight threshold
@@ -117,26 +129,32 @@ class TestTemplateMatch:
 class TestComputeDistanceProfile:
     def test_euclidean_profile_length(self, simple_df):
         query = np.sin(np.linspace(0, np.pi, 10))
-        profile = PatternRecognition.compute_distance_profile(simple_df, query, metric='euclidean')
+        profile = PatternRecognition.compute_distance_profile(
+            simple_df, query, metric="euclidean"
+        )
         expected_len = len(simple_df) - len(query) + 1
         assert len(profile) == expected_len
 
     def test_dtw_profile_length(self):
         # Small dataset for DTW (expensive)
         n = 50
-        df = pd.DataFrame({
-            'systime': pd.date_range('2024-01-01', periods=n, freq='1s'),
-            'value_double': np.random.randn(n),
-        })
+        df = pd.DataFrame(
+            {
+                "systime": pd.date_range("2024-01-01", periods=n, freq="1s"),
+                "value_double": np.random.randn(n),
+            }
+        )
         query = np.random.randn(5)
-        profile = PatternRecognition.compute_distance_profile(df, query, metric='dtw')
+        profile = PatternRecognition.compute_distance_profile(df, query, metric="dtw")
         expected_len = n - len(query) + 1
         assert len(profile) == expected_len
 
     def test_invalid_metric(self, simple_df):
         query = np.ones(5)
         with pytest.raises(ValueError):
-            PatternRecognition.compute_distance_profile(simple_df, query, metric='invalid')
+            PatternRecognition.compute_distance_profile(
+                simple_df, query, metric="invalid"
+            )
 
 
 class TestMass:
@@ -153,7 +171,7 @@ class TestMass:
         q_norm = (query - query.mean()) / max(query.std(ddof=0), 1e-10)
         brute_dists = []
         for i in range(len(series) - m + 1):
-            subseq = series[i:i + m]
+            subseq = series[i : i + m]
             s_norm = (subseq - subseq.mean()) / max(subseq.std(ddof=0), 1e-10)
             d = np.sqrt(np.sum((q_norm - s_norm) ** 2))
             brute_dists.append(d)
@@ -164,9 +182,11 @@ class TestMass:
 
 class TestMatrixProfile:
     def test_profile_length(self, simple_df):
-        series = simple_df['value_double'].values
+        series = simple_df["value_double"].values
         window_size = 10
-        mp, mpi = PatternRecognition._compute_matrix_profile(series, window_size, window_size // 2)
+        mp, mpi = PatternRecognition._compute_matrix_profile(
+            series, window_size, window_size // 2
+        )
         expected_len = len(series) - window_size + 1
         assert len(mp) == expected_len
         assert len(mpi) == expected_len

@@ -39,6 +39,7 @@ from ts_shape.errors import DataQualityWarning
 
 logger = logging.getLogger(__name__)
 
+
 class Base:
     @staticmethod
     def _validate_column(dataframe: pd.DataFrame, column_name: str) -> None:
@@ -53,7 +54,7 @@ class Base:
                 f"Available columns: {list(dataframe.columns)}"
             )
 
-    def __init__(self, dataframe: pd.DataFrame, column_name: str = 'systime') -> None:
+    def __init__(self, dataframe: pd.DataFrame, column_name: str = "systime") -> None:
         """
         Initializes the Base with a DataFrame, detects time columns, converts them to datetime,
         and sorts the DataFrame by the specified column (or the detected time column if applicable).
@@ -66,33 +67,47 @@ class Base:
             TypeError: If dataframe is not a pandas DataFrame.
         """
         if not isinstance(dataframe, pd.DataFrame):
-            raise TypeError(f"Expected pandas DataFrame, got {type(dataframe).__name__}")
+            raise TypeError(
+                f"Expected pandas DataFrame, got {type(dataframe).__name__}"
+            )
         self.dataframe = dataframe.copy()
         if self.dataframe.empty:
             return
-        
+
         # Attempt to convert the specified column_name to datetime if it exists
         if column_name in self.dataframe.columns:
-            self.dataframe[column_name] = pd.to_datetime(self.dataframe[column_name], errors='coerce')
+            self.dataframe[column_name] = pd.to_datetime(
+                self.dataframe[column_name], errors="coerce"
+            )
         else:
             # If the column_name is not in the DataFrame, fallback to automatic time detection
-            time_columns = [col for col in self.dataframe.columns if 'time' in col.lower() or 'date' in col.lower()]
-            
+            time_columns = [
+                col
+                for col in self.dataframe.columns
+                if "time" in col.lower() or "date" in col.lower()
+            ]
+
             # Convert all detected time columns to datetime, if any
             for col in time_columns:
-                self.dataframe[col] = pd.to_datetime(self.dataframe[col], errors='coerce')
-            
+                self.dataframe[col] = pd.to_datetime(
+                    self.dataframe[col], errors="coerce"
+                )
+
             # If any time columns are detected, sort by the first one; otherwise, do nothing
             if time_columns:
                 column_name = time_columns[0]
-        
+
         # Sort by the datetime column (either specified or detected)
         if column_name in self.dataframe.columns:
             self.dataframe = self.dataframe.sort_values(by=column_name)
 
         # Warn on duplicate timestamps (per UUID when available)
         if column_name in self.dataframe.columns:
-            subset = [column_name, 'uuid'] if 'uuid' in self.dataframe.columns else [column_name]
+            subset = (
+                [column_name, "uuid"]
+                if "uuid" in self.dataframe.columns
+                else [column_name]
+            )
             dup_count = self.dataframe.duplicated(subset=subset).sum()
             if dup_count:
                 warnings.warn(
@@ -103,14 +118,16 @@ class Base:
                 )
 
         # Warn on columns that are entirely NaN
-        all_nan_cols = [col for col in self.dataframe.columns if self.dataframe[col].isna().all()]
+        all_nan_cols = [
+            col for col in self.dataframe.columns if self.dataframe[col].isna().all()
+        ]
         if all_nan_cols:
             warnings.warn(
                 f"Column(s) {all_nan_cols} contain only NaN values.",
                 DataQualityWarning,
                 stacklevel=3,
             )
-    
+
     def get_dataframe(self) -> pd.DataFrame:
         """Returns the processed DataFrame."""
         return self.dataframe

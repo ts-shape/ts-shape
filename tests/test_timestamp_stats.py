@@ -3,11 +3,16 @@ from ts_shape.features.stats.timestamp_stats import TimestampStatistics
 
 
 def test_timestamp_statistics_distributions_and_ranges():
-    ts = pd.to_datetime([
-        '2023-01-01 00:00:00', '2023-01-01 01:00:00', '2023-01-02 02:00:00',
-        '2023-02-01 03:00:00', '2023-02-01 04:00:00'
-    ])
-    df = pd.DataFrame({'systime': ts})
+    ts = pd.to_datetime(
+        [
+            "2023-01-01 00:00:00",
+            "2023-01-01 01:00:00",
+            "2023-01-02 02:00:00",
+            "2023-02-01 03:00:00",
+            "2023-02-01 04:00:00",
+        ]
+    )
+    df = pd.DataFrame({"systime": ts})
 
     assert TimestampStatistics.count_null(df) == 0
     assert TimestampStatistics.count_not_null(df) == 5
@@ -24,4 +29,3 @@ def test_timestamp_statistics_distributions_and_ranges():
     assert TimestampStatistics.median_timestamp(df) in ts.values
     assert not TimestampStatistics.timestamp_quartiles(df).empty
     assert not TimestampStatistics.days_with_most_activity(df).empty
-

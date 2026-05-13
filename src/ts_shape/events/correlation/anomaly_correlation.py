@@ -46,17 +46,23 @@ class AnomalyCorrelationEvents(Base):
             .sort_values(self.time_column)
         )
         if s.empty or len(s) < 3:
-            return pd.DataFrame(columns=[self.time_column, "uuid", self.value_column, "z_score"])
+            return pd.DataFrame(
+                columns=[self.time_column, "uuid", self.value_column, "z_score"]
+            )
 
         s[self.time_column] = pd.to_datetime(s[self.time_column])
         values = s[self.value_column]
         mean = values.mean()
         std = values.std()
         if std == 0:
-            return pd.DataFrame(columns=[self.time_column, "uuid", self.value_column, "z_score"])
+            return pd.DataFrame(
+                columns=[self.time_column, "uuid", self.value_column, "z_score"]
+            )
 
         s["z_score"] = ((values - mean) / std).abs()
-        anomalies = s[s["z_score"] >= z_threshold][[self.time_column, "uuid", self.value_column, "z_score"]]
+        anomalies = s[s["z_score"] >= z_threshold][
+            [self.time_column, "uuid", self.value_column, "z_score"]
+        ]
         return anomalies.reset_index(drop=True)
 
     def coincident_anomalies(
@@ -88,8 +94,12 @@ class AnomalyCorrelationEvents(Base):
         if not all_anomalies:
             return pd.DataFrame(
                 columns=[
-                    "window_start", "window_end", "uuid", "is_delta",
-                    "anomaly_count", "signal_uuids_involved",
+                    "window_start",
+                    "window_end",
+                    "uuid",
+                    "is_delta",
+                    "anomaly_count",
+                    "signal_uuids_involved",
                 ]
             )
 
@@ -104,9 +114,8 @@ class AnomalyCorrelationEvents(Base):
             if i in processed:
                 continue
             t = row[self.time_column]
-            window_mask = (
-                (combined[self.time_column] >= t)
-                & (combined[self.time_column] <= t + window_td)
+            window_mask = (combined[self.time_column] >= t) & (
+                combined[self.time_column] <= t + window_td
             )
             window_data = combined[window_mask]
             unique_signals = window_data["uuid"].unique()
@@ -149,14 +158,23 @@ class AnomalyCorrelationEvents(Base):
             DataFrame: leader_time, follower_time, uuid, is_delta,
                        leader_uuid, follower_uuid, delay_seconds
         """
-        leader_anom = self._detect_signal_anomalies(leader_uuid, z_threshold=z_threshold)
-        follower_anom = self._detect_signal_anomalies(follower_uuid, z_threshold=z_threshold)
+        leader_anom = self._detect_signal_anomalies(
+            leader_uuid, z_threshold=z_threshold
+        )
+        follower_anom = self._detect_signal_anomalies(
+            follower_uuid, z_threshold=z_threshold
+        )
 
         if leader_anom.empty or follower_anom.empty:
             return pd.DataFrame(
                 columns=[
-                    "leader_time", "follower_time", "uuid", "is_delta",
-                    "leader_uuid", "follower_uuid", "delay_seconds",
+                    "leader_time",
+                    "follower_time",
+                    "uuid",
+                    "is_delta",
+                    "leader_uuid",
+                    "follower_uuid",
+                    "delay_seconds",
                 ]
             )
 
@@ -214,7 +232,13 @@ class AnomalyCorrelationEvents(Base):
         """
         if len(signal_uuids) < 2:
             return pd.DataFrame(
-                columns=["signal_uuid", "leader_count", "follower_count", "leader_ratio", "rank"]
+                columns=[
+                    "signal_uuid",
+                    "leader_count",
+                    "follower_count",
+                    "leader_ratio",
+                    "rank",
+                ]
             )
 
         leader_counts: Dict[str, int] = {uid: 0 for uid in signal_uuids}
@@ -246,6 +270,8 @@ class AnomalyCorrelationEvents(Base):
             )
 
         result = pd.DataFrame(rows)
-        result = result.sort_values("leader_ratio", ascending=False).reset_index(drop=True)
+        result = result.sort_values("leader_ratio", ascending=False).reset_index(
+            drop=True
+        )
         result["rank"] = range(1, len(result) + 1)
         return result

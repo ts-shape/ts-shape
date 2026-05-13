@@ -8,8 +8,17 @@ from ts_shape.utils.base import Base
 logger = logging.getLogger(__name__)
 
 # d2 constants for subgroup sizes 2-10 (AIAG MSA reference)
-_D2 = {2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534,
-       7: 2.704, 8: 2.847, 9: 2.970, 10: 3.078}
+_D2 = {
+    2: 1.128,
+    3: 1.693,
+    4: 2.059,
+    5: 2.326,
+    6: 2.534,
+    7: 2.704,
+    8: 2.847,
+    9: 2.970,
+    10: 3.078,
+}
 
 
 class GaugeRepeatabilityEvents(Base):
@@ -89,15 +98,19 @@ class GaugeRepeatabilityEvents(Base):
             ev = part_range / d2
 
             ranges.append(part_range)
-            events.append({
-                "part": part,
-                "mean": round(part_mean, 6),
-                "range": round(part_range, 6),
-                "repeatability_std": round(part_std, 6),
-                "EV": round(ev, 6),
-            })
+            events.append(
+                {
+                    "part": part,
+                    "mean": round(part_mean, 6),
+                    "range": round(part_range, 6),
+                    "repeatability_std": round(part_std, 6),
+                    "EV": round(ev, 6),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def reproducibility(self) -> pd.DataFrame:
         """Appraiser Variation (AV) — between-operator variation.
@@ -124,15 +137,21 @@ class GaugeRepeatabilityEvents(Base):
                 continue
             op_mean = float(vals.mean())
             op_means.append(op_mean)
-            events.append({
-                "operator": op,
-                "mean": round(op_mean, 6),
-                "reproducibility_std": 0.0,
-                "AV": 0.0,
-            })
+            events.append(
+                {
+                    "operator": op,
+                    "mean": round(op_mean, 6),
+                    "reproducibility_std": 0.0,
+                    "AV": 0.0,
+                }
+            )
 
         if len(op_means) < 2:
-            return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+            return (
+                pd.DataFrame(events, columns=cols)
+                if events
+                else pd.DataFrame(columns=cols)
+            )
 
         # AV = range of operator means / d2
         op_range = max(op_means) - min(op_means)
@@ -144,11 +163,11 @@ class GaugeRepeatabilityEvents(Base):
             e["reproducibility_std"] = round(repro_std, 6)
             e["AV"] = round(av, 6)
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
-    def gauge_rr_summary(
-        self, tolerance_range: Optional[float] = None
-    ) -> pd.DataFrame:
+    def gauge_rr_summary(self, tolerance_range: Optional[float] = None) -> pd.DataFrame:
         """Full Gauge R&R summary table.
 
         Computes EV, AV, GRR, PV, TV, %GRR, %PV, and number of
@@ -183,7 +202,7 @@ class GaugeRepeatabilityEvents(Base):
             av = 0.0
 
         # GRR
-        grr = np.sqrt(ev ** 2 + av ** 2)
+        grr = np.sqrt(ev**2 + av**2)
 
         # PV (Part Variation) — std of part means × correction
         part_means = rep["mean"].values
@@ -195,7 +214,7 @@ class GaugeRepeatabilityEvents(Base):
             pv = 0.0
 
         # TV (Total Variation)
-        tv = np.sqrt(grr ** 2 + pv ** 2)
+        tv = np.sqrt(grr**2 + pv**2)
 
         # Percentages
         pct_grr = (grr / tv * 100) if tv > 0 else 0.0
@@ -220,9 +239,7 @@ class GaugeRepeatabilityEvents(Base):
 
         return pd.DataFrame([result])
 
-    def measurement_bias(
-        self, reference_values: Dict[str, float]
-    ) -> pd.DataFrame:
+    def measurement_bias(self, reference_values: Dict[str, float]) -> pd.DataFrame:
         """Compare average measurements to known reference values.
 
         Args:
@@ -250,12 +267,16 @@ class GaugeRepeatabilityEvents(Base):
             bias = measured_mean - ref
             bias_pct = (bias / ref * 100) if ref != 0 else 0.0
 
-            events.append({
-                "part": part,
-                "measured_mean": round(measured_mean, 6),
-                "reference": ref,
-                "bias": round(bias, 6),
-                "bias_pct": round(bias_pct, 4),
-            })
+            events.append(
+                {
+                    "part": part,
+                    "measured_mean": round(measured_mean, 6),
+                    "reference": ref,
+                    "bias": round(bias, 6),
+                    "bias_pct": round(bias_pct, 4),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )

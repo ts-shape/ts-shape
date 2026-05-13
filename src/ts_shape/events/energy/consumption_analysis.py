@@ -110,7 +110,13 @@ class EnergyConsumptionEvents(Base):
         )
         if s.empty:
             return pd.DataFrame(
-                columns=["window_start", "uuid", "source_uuid", "is_delta", "consumption"]
+                columns=[
+                    "window_start",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "consumption",
+                ]
             )
 
         s[self.time_column] = pd.to_datetime(s[self.time_column])
@@ -162,8 +168,13 @@ class EnergyConsumptionEvents(Base):
         if consumption.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start", "uuid", "source_uuid", "is_delta",
-                    "demand", "threshold", "is_peak",
+                    "window_start",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "demand",
+                    "threshold",
+                    "is_peak",
                 ]
             )
 
@@ -175,7 +186,15 @@ class EnergyConsumptionEvents(Base):
         consumption["is_peak"] = consumption["demand"] > threshold
 
         return consumption[
-            ["window_start", "uuid", "source_uuid", "is_delta", "demand", "threshold", "is_peak"]
+            [
+                "window_start",
+                "uuid",
+                "source_uuid",
+                "is_delta",
+                "demand",
+                "threshold",
+                "is_peak",
+            ]
         ]
 
     def consumption_baseline_deviation(
@@ -206,8 +225,14 @@ class EnergyConsumptionEvents(Base):
         if consumption.empty or len(consumption) < baseline_periods:
             return pd.DataFrame(
                 columns=[
-                    "window_start", "uuid", "source_uuid", "is_delta",
-                    "consumption", "baseline", "deviation_pct", "is_anomaly",
+                    "window_start",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "consumption",
+                    "baseline",
+                    "deviation_pct",
+                    "is_anomaly",
                 ]
             )
 
@@ -218,15 +243,24 @@ class EnergyConsumptionEvents(Base):
         )
         consumption["deviation_pct"] = np.where(
             consumption["baseline"] > 0,
-            (consumption["consumption"] - consumption["baseline"]) / consumption["baseline"],
+            (consumption["consumption"] - consumption["baseline"])
+            / consumption["baseline"],
             0.0,
         )
-        consumption["is_anomaly"] = consumption["deviation_pct"].abs() > deviation_threshold
+        consumption["is_anomaly"] = (
+            consumption["deviation_pct"].abs() > deviation_threshold
+        )
 
         return consumption[
             [
-                "window_start", "uuid", "source_uuid", "is_delta",
-                "consumption", "baseline", "deviation_pct", "is_anomaly",
+                "window_start",
+                "uuid",
+                "source_uuid",
+                "is_delta",
+                "consumption",
+                "baseline",
+                "deviation_pct",
+                "is_anomaly",
             ]
         ]
 
@@ -265,15 +299,22 @@ class EnergyConsumptionEvents(Base):
         if energy.empty or counter.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start", "uuid", "source_uuid", "is_delta",
-                    "energy", "units_produced", "energy_per_unit",
+                    "window_start",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "energy",
+                    "units_produced",
+                    "energy_per_unit",
                 ]
             )
 
         counter[self.time_column] = pd.to_datetime(counter[self.time_column])
         counter = counter.set_index(self.time_column)
-        counts = counter[counter_column].resample(window).agg(
-            lambda x: x.max() - x.min() if len(x) > 1 else 0
+        counts = (
+            counter[counter_column]
+            .resample(window)
+            .agg(lambda x: x.max() - x.min() if len(x) > 1 else 0)
         )
         counts = counts.clip(lower=0).to_frame("units_produced").reset_index()
         counts = counts.rename(columns={self.time_column: "window_start"})
@@ -288,7 +329,12 @@ class EnergyConsumptionEvents(Base):
 
         return merged[
             [
-                "window_start", "uuid", "source_uuid", "is_delta",
-                "energy", "units_produced", "energy_per_unit",
+                "window_start",
+                "uuid",
+                "source_uuid",
+                "is_delta",
+                "energy",
+                "units_produced",
+                "energy_per_unit",
             ]
         ]

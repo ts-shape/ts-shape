@@ -8,6 +8,7 @@ a specific ``(class, method)`` pair can be registered with
 ``@register_adapter(...)`` to override the shape-driven default — useful
 for the few detectors whose legacy schema does not fit any standard shape.
 """
+
 from __future__ import annotations
 
 import uuid as _uuid
@@ -19,7 +20,6 @@ from . import schema
 from .model import EventLog
 from .taxonomy import LabelRule, render_activity
 
-
 # ----------------------------------------------------------------------------
 # Registry of optional per-method overrides
 # ----------------------------------------------------------------------------
@@ -28,15 +28,19 @@ AdapterFn = Callable[..., EventLog]
 _OVERRIDES: dict[tuple[str, str], AdapterFn] = {}
 
 
-def register_adapter(class_name: str, method_name: str) -> Callable[[AdapterFn], AdapterFn]:
+def register_adapter(
+    class_name: str, method_name: str
+) -> Callable[[AdapterFn], AdapterFn]:
     """Register a custom adapter for a specific ``(class, method)``.
 
     The function will be called with ``(legacy_df, *, rule, detector,
     objects, qualifiers)``.
     """
+
     def deco(fn: AdapterFn) -> AdapterFn:
         _OVERRIDES[(class_name, method_name)] = fn
         return fn
+
     return deco
 
 
@@ -80,8 +84,17 @@ def _pick_time_col(df: pd.DataFrame, candidates: Sequence[str]) -> str | None:
 
 
 _POINT_CANDIDATES = (
-    "systime", "timestamp", "time", "event_time", "ts", "datetime",
-    "window_start", "window_end", "period_start", "period_end", "date",
+    "systime",
+    "timestamp",
+    "time",
+    "event_time",
+    "ts",
+    "datetime",
+    "window_start",
+    "window_end",
+    "period_start",
+    "period_end",
+    "date",
 )
 
 
@@ -155,7 +168,9 @@ def _resolve_objects(
     # Defaults: asset = source_uuid if column exists.
     if "asset" in declared and "asset" not in bindings:
         if "source_uuid" in legacy.columns:
-            bindings["asset"] = legacy["source_uuid"].reset_index(drop=True).astype("string")
+            bindings["asset"] = (
+                legacy["source_uuid"].reset_index(drop=True).astype("string")
+            )
 
     # Drop empty / all-NaN bindings.
     return {k: v for k, v in bindings.items() if not v.isna().all()}
@@ -177,19 +192,28 @@ def _to_relations(
         mask = oids.notna() & (oids.astype(str) != "") & (oids.astype(str) != "<NA>")
         if not mask.any():
             continue
-        rel_frames.append(pd.DataFrame({
-            schema.OCEL_EID: eids[mask].reset_index(drop=True).astype("string"),
-            schema.OCEL_OID: oids[mask].astype("string").reset_index(drop=True),
-            schema.OCEL_TYPE: pd.Series([otype] * int(mask.sum()), dtype="string"),
-            schema.OCEL_QUALIFIER: pd.Series(
-                [qualifiers.get(otype)] * int(mask.sum()), dtype="string"
-            ),
-        }))
+        rel_frames.append(
+            pd.DataFrame(
+                {
+                    schema.OCEL_EID: eids[mask].reset_index(drop=True).astype("string"),
+                    schema.OCEL_OID: oids[mask].astype("string").reset_index(drop=True),
+                    schema.OCEL_TYPE: pd.Series(
+                        [otype] * int(mask.sum()), dtype="string"
+                    ),
+                    schema.OCEL_QUALIFIER: pd.Series(
+                        [qualifiers.get(otype)] * int(mask.sum()), dtype="string"
+                    ),
+                }
+            )
+        )
         for o in oids[mask].astype(str).unique():
             obj_pairs.append((o, otype))
 
-    relations = (pd.concat(rel_frames, ignore_index=True)
-                 if rel_frames else schema.empty_relations())
+    relations = (
+        pd.concat(rel_frames, ignore_index=True)
+        if rel_frames
+        else schema.empty_relations()
+    )
     if obj_pairs:
         obj_df = pd.DataFrame(obj_pairs, columns=[schema.OCEL_OID, schema.OCEL_TYPE])
         obj_df = obj_df.drop_duplicates().reset_index(drop=True)
@@ -266,6 +290,7 @@ def _apply_standard_attrs(
 # The shape-driven adapter
 # ----------------------------------------------------------------------------
 
+
 def adapt(
     legacy: pd.DataFrame,
     *,
@@ -287,16 +312,29 @@ def adapt(
         end_col = _pick_time_col(legacy, ("end", "window_end", "period_end"))
         if start_col is None or end_col is None:
             # Fall back to point shape if data lacks interval columns.
-            return adapt(legacy, rule=LabelRule(
-                template=rule.template, pack=rule.pack, shape="point",
-                produces_objects=rule.produces_objects,
-                severity_field=rule.severity_field, value_field=rule.value_field,
-                drop_fields=rule.drop_fields,
-                standard_attrs=rule.standard_attrs,
-            ), detector=detector, objects=objects, qualifiers=qualifiers)
+            return adapt(
+                legacy,
+                rule=LabelRule(
+                    template=rule.template,
+                    pack=rule.pack,
+                    shape="point",
+                    produces_objects=rule.produces_objects,
+                    severity_field=rule.severity_field,
+                    value_field=rule.value_field,
+                    drop_fields=rule.drop_fields,
+                    standard_attrs=rule.standard_attrs,
+                ),
+                detector=detector,
+                objects=objects,
+                qualifiers=qualifiers,
+            )
         ts_end = legacy[end_col].apply(_to_utc_ts)
         ts_start = legacy[start_col].apply(_to_utc_ts)
-        duration = (ts_end - ts_start).dt.total_seconds() if len(legacy) else pd.Series(dtype="float64")
+        duration = (
+            (ts_end - ts_start).dt.total_seconds()
+            if len(legacy)
+            else pd.Series(dtype="float64")
+        )
         time_cols_used = {start_col, end_col}
     elif rule.shape in {"point", "summary"}:
         time_col = _pick_time_col(legacy, _POINT_CANDIDATES)
@@ -317,7 +355,11 @@ def adapt(
             duration = pd.Series([float("nan")] * n, dtype="float64")
     elif rule.shape == "static":
         # No natural time. Use a single fixed reference (now-UTC) for all rows.
-        now = pd.Timestamp.utcnow().tz_convert("UTC") if pd.Timestamp.utcnow().tz else pd.Timestamp.utcnow().tz_localize("UTC")
+        now = (
+            pd.Timestamp.utcnow().tz_convert("UTC")
+            if pd.Timestamp.utcnow().tz
+            else pd.Timestamp.utcnow().tz_localize("UTC")
+        )
         ts_end = pd.Series([now] * n)
         ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
         duration = pd.Series([float("nan")] * n, dtype="float64")
@@ -326,7 +368,9 @@ def adapt(
         raise ValueError(f"unknown shape {rule.shape!r}")
 
     # Render activity name (template substitution per row).
-    activities = legacy.apply(lambda r: render_activity(rule, r), axis=1).astype("string")
+    activities = legacy.apply(lambda r: render_activity(rule, r), axis=1).astype(
+        "string"
+    )
 
     # Build canonical event ids.
     eids = pd.Series(
@@ -351,19 +395,21 @@ def adapt(
     # Don't dump huge object columns (`is_delta` etc are kept as attrs).
     attrs = _build_attrs_columns(legacy, pack=rule.pack, drop=drop)
 
-    events = pd.DataFrame({
-        schema.OCEL_EID: eids,
-        schema.OCEL_ACTIVITY: activities,
-        schema.OCEL_TIMESTAMP: ts_end.astype("datetime64[ns, UTC]"),
-        schema.TS_START_TIMESTAMP: ts_start.astype("datetime64[ns, UTC]"),
-        schema.TS_DURATION_S: duration.astype("float64"),
-        schema.TS_DETECTOR: pd.Series([detector] * n, dtype="string"),
-        schema.TS_PACK: pd.Series([rule.pack] * n, dtype="string"),
-        schema.TS_SEVERITY: severity.astype("string"),
-        schema.TS_VALUE: value.astype("float64"),
-        **standard_extras,
-        **attrs,
-    })
+    events = pd.DataFrame(
+        {
+            schema.OCEL_EID: eids,
+            schema.OCEL_ACTIVITY: activities,
+            schema.OCEL_TIMESTAMP: ts_end.astype("datetime64[ns, UTC]"),
+            schema.TS_START_TIMESTAMP: ts_start.astype("datetime64[ns, UTC]"),
+            schema.TS_DURATION_S: duration.astype("float64"),
+            schema.TS_DETECTOR: pd.Series([detector] * n, dtype="string"),
+            schema.TS_PACK: pd.Series([rule.pack] * n, dtype="string"),
+            schema.TS_SEVERITY: severity.astype("string"),
+            schema.TS_VALUE: value.astype("float64"),
+            **standard_extras,
+            **attrs,
+        }
+    )
 
     object_bindings = _resolve_objects(legacy, rule, objects)
     objects_df, relations_df = _to_relations(eids, object_bindings, qualifiers)

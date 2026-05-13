@@ -46,7 +46,9 @@ class MultiSensorValidationEvents(Base):
     def _build_pivot(self) -> pd.DataFrame:
         """Pivot sensor data so each sensor is a column aligned by time."""
         mask = self.dataframe["uuid"].isin(self.sensor_uuids)
-        df = self.dataframe.loc[mask, [self.time_column, "uuid", self.value_column]].copy()
+        df = self.dataframe.loc[
+            mask, [self.time_column, "uuid", self.value_column]
+        ].copy()
         if df.empty:
             return pd.DataFrame()
 
@@ -61,9 +63,7 @@ class MultiSensorValidationEvents(Base):
         pivot = pivot.sort_index().ffill(limit=5)
         return pivot
 
-    def detect_disagreement(
-        self, threshold: float, window: str = "5m"
-    ) -> pd.DataFrame:
+    def detect_disagreement(self, threshold: float, window: str = "5m") -> pd.DataFrame:
         """Flag windows where sensor spread exceeds threshold.
 
         Args:
@@ -74,7 +74,14 @@ class MultiSensorValidationEvents(Base):
             DataFrame with columns: window_start, window_end, max_spread,
             sensor_high, sensor_low, duration.
         """
-        cols = ["window_start", "window_end", "max_spread", "sensor_high", "sensor_low", "duration"]
+        cols = [
+            "window_start",
+            "window_end",
+            "max_spread",
+            "sensor_high",
+            "sensor_low",
+            "duration",
+        ]
         if self._pivot.empty:
             return pd.DataFrame(columns=cols)
 
@@ -92,16 +99,20 @@ class MultiSensorValidationEvents(Base):
             spread = float(valid_means.max() - valid_means.min())
             if spread > threshold:
                 window_end = ts + pd.to_timedelta(window)
-                events.append({
-                    "window_start": ts,
-                    "window_end": window_end,
-                    "max_spread": round(spread, 6),
-                    "sensor_high": valid_means.idxmax(),
-                    "sensor_low": valid_means.idxmin(),
-                    "duration": window_end - ts,
-                })
+                events.append(
+                    {
+                        "window_start": ts,
+                        "window_end": window_end,
+                        "max_spread": round(spread, 6),
+                        "sensor_high": valid_means.idxmax(),
+                        "sensor_low": valid_means.idxmin(),
+                        "duration": window_end - ts,
+                    }
+                )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def pairwise_bias(self, window: str = "1h") -> pd.DataFrame:
         """Mean difference between each sensor pair per window.
@@ -132,15 +143,19 @@ class MultiSensorValidationEvents(Base):
                 if pd.isna(means[a]) or pd.isna(means[b]):
                     continue
                 bias = float(means[a] - means[b])
-                events.append({
-                    "window_start": ts,
-                    "sensor_a": a,
-                    "sensor_b": b,
-                    "bias": round(bias, 6),
-                    "abs_bias": round(abs(bias), 6),
-                })
+                events.append(
+                    {
+                        "window_start": ts,
+                        "sensor_a": a,
+                        "sensor_b": b,
+                        "bias": round(bias, 6),
+                        "abs_bias": round(abs(bias), 6),
+                    }
+                )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def consensus_score(self, window: str = "1h") -> pd.DataFrame:
         """Per-window measurement consensus across sensors.
@@ -177,14 +192,18 @@ class MultiSensorValidationEvents(Base):
             else:
                 score = max(0.0, 1.0 - spread_std) if spread_std < 1.0 else 0.0
 
-            events.append({
-                "window_start": ts,
-                "consensus_mean": round(consensus_mean, 6),
-                "spread_std": round(spread_std, 6),
-                "consensus_score": round(min(1.0, score), 4),
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "consensus_mean": round(consensus_mean, 6),
+                    "spread_std": round(spread_std, 6),
+                    "consensus_score": round(min(1.0, score), 4),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def identify_outlier_sensor(
         self, window: str = "1h", method: str = "median"
@@ -226,11 +245,15 @@ class MultiSensorValidationEvents(Base):
             others = means.drop(outlier)
             other_mean = float(others.mean())
 
-            events.append({
-                "window_start": ts,
-                "outlier_sensor": outlier,
-                "deviation": round(deviation, 6),
-                "other_sensors_mean": round(other_mean, 6),
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "outlier_sensor": outlier,
+                    "deviation": round(deviation, 6),
+                    "other_sensors_mean": round(other_mean, 6),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )

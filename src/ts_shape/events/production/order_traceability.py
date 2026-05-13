@@ -96,8 +96,15 @@ class ValueTraceabilityEvents(Base):
         sdf = self._station_data.get(uuid, pd.DataFrame())
         if sdf.empty:
             return pd.DataFrame(
-                columns=["identifier", "station_uuid", "station_name",
-                         "start", "end", "duration_seconds", "sample_count"]
+                columns=[
+                    "identifier",
+                    "station_uuid",
+                    "station_name",
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "sample_count",
+                ]
             )
 
         s = sdf[[self.time_column, self.value_column]].copy()
@@ -112,15 +119,17 @@ class ValueTraceabilityEvents(Base):
                 continue
             start = seg[self.time_column].iloc[0]
             end = seg[self.time_column].iloc[-1]
-            rows.append({
-                "identifier": identifier,
-                "station_uuid": uuid,
-                "station_name": station_name,
-                "start": start,
-                "end": end,
-                "duration_seconds": (end - start).total_seconds(),
-                "sample_count": len(seg),
-            })
+            rows.append(
+                {
+                    "identifier": identifier,
+                    "station_uuid": uuid,
+                    "station_name": station_name,
+                    "start": start,
+                    "end": end,
+                    "duration_seconds": (end - start).total_seconds(),
+                    "sample_count": len(seg),
+                }
+            )
 
         return pd.DataFrame(rows)
 
@@ -152,9 +161,15 @@ class ValueTraceabilityEvents(Base):
         if not all_intervals:
             return pd.DataFrame(
                 columns=[
-                    "identifier", "station_uuid", "station_name",
-                    "start", "end", "duration_seconds", "sample_count",
-                    "station_sequence", "uuid",
+                    "identifier",
+                    "station_uuid",
+                    "station_name",
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "sample_count",
+                    "station_sequence",
+                    "uuid",
                 ]
             )
 
@@ -191,9 +206,15 @@ class ValueTraceabilityEvents(Base):
         if timeline.empty:
             return pd.DataFrame(
                 columns=[
-                    "identifier", "first_station", "last_station",
-                    "first_seen", "last_seen", "lead_time_seconds",
-                    "stations_visited", "station_path", "uuid",
+                    "identifier",
+                    "first_station",
+                    "last_station",
+                    "first_seen",
+                    "last_seen",
+                    "lead_time_seconds",
+                    "stations_visited",
+                    "station_path",
+                    "uuid",
                 ]
             )
 
@@ -203,17 +224,19 @@ class ValueTraceabilityEvents(Base):
             first_seen = grp["start"].iloc[0]
             last_seen = grp["end"].iloc[-1]
             station_path = " -> ".join(grp["station_name"].tolist())
-            rows.append({
-                "identifier": identifier,
-                "first_station": grp["station_name"].iloc[0],
-                "last_station": grp["station_name"].iloc[-1],
-                "first_seen": first_seen,
-                "last_seen": last_seen,
-                "lead_time_seconds": (last_seen - first_seen).total_seconds(),
-                "stations_visited": grp["station_name"].nunique(),
-                "station_path": station_path,
-                "uuid": self.event_uuid,
-            })
+            rows.append(
+                {
+                    "identifier": identifier,
+                    "first_station": grp["station_name"].iloc[0],
+                    "last_station": grp["station_name"].iloc[-1],
+                    "first_seen": first_seen,
+                    "last_seen": last_seen,
+                    "lead_time_seconds": (last_seen - first_seen).total_seconds(),
+                    "stations_visited": grp["station_name"].nunique(),
+                    "station_path": station_path,
+                    "uuid": self.event_uuid,
+                }
+            )
 
         return pd.DataFrame(rows)
 
@@ -238,22 +261,30 @@ class ValueTraceabilityEvents(Base):
         if timeline.empty:
             return pd.DataFrame(
                 columns=[
-                    "identifier", "current_station", "current_station_uuid",
-                    "arrived_at", "time_at_station_seconds", "uuid",
+                    "identifier",
+                    "current_station",
+                    "current_station_uuid",
+                    "arrived_at",
+                    "time_at_station_seconds",
+                    "uuid",
                 ]
             )
 
         # Latest visit per identifier
-        latest = timeline.sort_values("start").groupby("identifier").last().reset_index()
+        latest = (
+            timeline.sort_values("start").groupby("identifier").last().reset_index()
+        )
 
-        return pd.DataFrame({
-            "identifier": latest["identifier"],
-            "current_station": latest["station_name"],
-            "current_station_uuid": latest["station_uuid"],
-            "arrived_at": latest["start"],
-            "time_at_station_seconds": latest["duration_seconds"],
-            "uuid": self.event_uuid,
-        })
+        return pd.DataFrame(
+            {
+                "identifier": latest["identifier"],
+                "current_station": latest["station_name"],
+                "current_station_uuid": latest["station_uuid"],
+                "arrived_at": latest["start"],
+                "time_at_station_seconds": latest["duration_seconds"],
+                "uuid": self.event_uuid,
+            }
+        )
 
     # ------------------------------------------------------------------
     # station_dwell_statistics
@@ -277,22 +308,34 @@ class ValueTraceabilityEvents(Base):
         if timeline.empty:
             return pd.DataFrame(
                 columns=[
-                    "station_name", "station_uuid", "identifier_count",
-                    "min_dwell_seconds", "avg_dwell_seconds",
-                    "max_dwell_seconds", "total_dwell_seconds",
+                    "station_name",
+                    "station_uuid",
+                    "identifier_count",
+                    "min_dwell_seconds",
+                    "avg_dwell_seconds",
+                    "max_dwell_seconds",
+                    "total_dwell_seconds",
                 ]
             )
 
-        stats = timeline.groupby(["station_name", "station_uuid"]).agg(
-            identifier_count=("identifier", "nunique"),
-            min_dwell_seconds=("duration_seconds", "min"),
-            avg_dwell_seconds=("duration_seconds", "mean"),
-            max_dwell_seconds=("duration_seconds", "max"),
-            total_dwell_seconds=("duration_seconds", "sum"),
-        ).reset_index()
+        stats = (
+            timeline.groupby(["station_name", "station_uuid"])
+            .agg(
+                identifier_count=("identifier", "nunique"),
+                min_dwell_seconds=("duration_seconds", "min"),
+                avg_dwell_seconds=("duration_seconds", "mean"),
+                max_dwell_seconds=("duration_seconds", "max"),
+                total_dwell_seconds=("duration_seconds", "sum"),
+            )
+            .reset_index()
+        )
 
-        for col in ["min_dwell_seconds", "avg_dwell_seconds",
-                     "max_dwell_seconds", "total_dwell_seconds"]:
+        for col in [
+            "min_dwell_seconds",
+            "avg_dwell_seconds",
+            "max_dwell_seconds",
+            "total_dwell_seconds",
+        ]:
             stats[col] = stats[col].round(2)
 
         return stats

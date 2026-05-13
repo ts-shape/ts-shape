@@ -13,11 +13,13 @@ def _make_counter_df():
         base = (day - 1) * 1500
         for hour in range(6, 22):
             t = pd.Timestamp(f"2024-01-0{day} {hour:02d}:00:00")
-            rows.append({
-                "systime": t,
-                "uuid": "prod_counter",
-                "value_integer": base + (hour - 6) * 90 + (10 if day == 2 else 0),
-            })
+            rows.append(
+                {
+                    "systime": t,
+                    "uuid": "prod_counter",
+                    "value_integer": base + (hour - 6) * 90 + (10 if day == 2 else 0),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -32,7 +34,9 @@ class TestTargetTracking:
         )
         assert not result.empty
         assert "status" in result.columns
-        assert set(result["status"].unique()).issubset({"on_target", "warning", "below_target"})
+        assert set(result["status"].unique()).issubset(
+            {"on_target", "warning", "below_target"}
+        )
 
     def test_target_achievement_summary(self):
         df = _make_counter_df()

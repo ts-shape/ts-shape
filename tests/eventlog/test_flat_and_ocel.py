@@ -1,4 +1,5 @@
 """Tests for to_flat_df (XES-style) and to_ocel_tables exporters."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -21,26 +22,44 @@ from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
 @pytest.fixture()
 def small_log():
-    state_df = pd.DataFrame({
-        "systime": pd.date_range("2026-05-07", periods=20, freq="30s", tz="UTC"),
-        "value_bool": [True]*5 + [False]*5 + [True]*5 + [False]*5,
-        "uuid": ["asset-A"]*20,
-        "is_delta": [True]+[False]*4 + [True]+[False]*4
-                  + [True]+[False]*4 + [True]+[False]*4,
-    })
-    legacy_state = MachineStateEvents(state_df, run_state_uuid="asset-A").detect_run_idle()
+    state_df = pd.DataFrame(
+        {
+            "systime": pd.date_range("2026-05-07", periods=20, freq="30s", tz="UTC"),
+            "value_bool": [True] * 5 + [False] * 5 + [True] * 5 + [False] * 5,
+            "uuid": ["asset-A"] * 20,
+            "is_delta": [True]
+            + [False] * 4
+            + [True]
+            + [False] * 4
+            + [True]
+            + [False] * 4
+            + [True]
+            + [False] * 4,
+        }
+    )
+    legacy_state = MachineStateEvents(
+        state_df, run_state_uuid="asset-A"
+    ).detect_run_idle()
     legacy_state["source_uuid"] = "asset-A"
-    state_log = to_event_log(legacy_state, detector="MachineStateEvents.detect_run_idle")
+    state_log = to_event_log(
+        legacy_state, detector="MachineStateEvents.detect_run_idle"
+    )
 
-    out_df = pd.DataFrame({
-        "systime": pd.date_range("2026-05-07", periods=20, freq="1min", tz="UTC"),
-        "value_double": [1.0]*8 + [50.0] + [1.0]*5 + [-30.0] + [1.0]*5,
-        "uuid": ["asset-A"]*20,
-        "is_delta": [False]*20,
-        "source_uuid": ["asset-A"]*20,
-    })
-    legacy_out = OutlierDetectionEvents(out_df, value_column="value_double").detect_outliers_zscore()
-    out_log = to_event_log(legacy_out, detector="OutlierDetectionEvents.detect_outliers_zscore")
+    out_df = pd.DataFrame(
+        {
+            "systime": pd.date_range("2026-05-07", periods=20, freq="1min", tz="UTC"),
+            "value_double": [1.0] * 8 + [50.0] + [1.0] * 5 + [-30.0] + [1.0] * 5,
+            "uuid": ["asset-A"] * 20,
+            "is_delta": [False] * 20,
+            "source_uuid": ["asset-A"] * 20,
+        }
+    )
+    legacy_out = OutlierDetectionEvents(
+        out_df, value_column="value_double"
+    ).detect_outliers_zscore()
+    out_log = to_event_log(
+        legacy_out, detector="OutlierDetectionEvents.detect_outliers_zscore"
+    )
     return concat(state_log, out_log)
 
 

@@ -75,8 +75,15 @@ class LongDowntimeEvents(Base):
         Columns: start, end, duration_seconds, downtime_index, uuid, source_uuid, is_delta
         """
         empty = pd.DataFrame(
-            columns=["start", "end", "duration_seconds", "downtime_index",
-                     "uuid", "source_uuid", "is_delta"]
+            columns=[
+                "start",
+                "end",
+                "duration_seconds",
+                "downtime_index",
+                "uuid",
+                "source_uuid",
+                "is_delta",
+            ]
         )
         if self.series.empty:
             return empty
@@ -111,8 +118,17 @@ class LongDowntimeEvents(Base):
 
         result = pd.DataFrame(rows)
         result["downtime_index"] = range(len(result))
-        return result[["start", "end", "duration_seconds", "downtime_index",
-                        "uuid", "source_uuid", "is_delta"]]
+        return result[
+            [
+                "start",
+                "end",
+                "duration_seconds",
+                "downtime_index",
+                "uuid",
+                "source_uuid",
+                "is_delta",
+            ]
+        ]
 
     def count_events_between_gaps(
         self,
@@ -141,8 +157,16 @@ class LongDowntimeEvents(Base):
                      downtime_index, uuid, source_uuid, is_delta
         """
         empty = pd.DataFrame(
-            columns=["window_start", "window_end", "window_duration_seconds",
-                     "event_count", "downtime_index", "uuid", "source_uuid", "is_delta"]
+            columns=[
+                "window_start",
+                "window_end",
+                "window_duration_seconds",
+                "event_count",
+                "downtime_index",
+                "uuid",
+                "source_uuid",
+                "is_delta",
+            ]
         )
 
         gaps = self.detect_long_downtime(min_gap)
@@ -187,7 +211,9 @@ class LongDowntimeEvents(Base):
                 {
                     "window_start": window_start,
                     "window_end": window_end,
-                    "window_duration_seconds": (window_end - window_start).total_seconds(),
+                    "window_duration_seconds": (
+                        window_end - window_start
+                    ).total_seconds(),
                     "event_count": event_count,
                     "downtime_index": following_index,
                     "uuid": self.event_uuid,

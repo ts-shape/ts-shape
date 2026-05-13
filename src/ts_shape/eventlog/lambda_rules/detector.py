@@ -11,6 +11,7 @@ of them — instead it implements the same conceptual contract:
 Because the spec is registered in :data:`ts_shape.eventlog.taxonomy.REGISTRY`
 at registration time, ``to_event_log`` finds it without any new code path.
 """
+
 from __future__ import annotations
 
 from typing import Mapping

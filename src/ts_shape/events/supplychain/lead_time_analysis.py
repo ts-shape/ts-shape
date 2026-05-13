@@ -66,8 +66,13 @@ class LeadTimeAnalysisEvents(Base):
             lead_time_seconds, lead_time_hours, order_id.
         """
         empty_cols = [
-            "order_time", "delivery_time", "uuid", "is_delta",
-            "lead_time_seconds", "lead_time_hours", "order_id",
+            "order_time",
+            "delivery_time",
+            "uuid",
+            "is_delta",
+            "lead_time_seconds",
+            "lead_time_hours",
+            "order_id",
         ]
 
         orders = (
@@ -93,19 +98,25 @@ class LeadTimeAnalysisEvents(Base):
 
         order_times = orders[self.time_column].iloc[:n_pairs].values
         delivery_times = deliveries[self.time_column].iloc[:n_pairs].values
-        order_ids = orders[value_column].iloc[:n_pairs].values if value_column in orders.columns else [None] * n_pairs
+        order_ids = (
+            orders[value_column].iloc[:n_pairs].values
+            if value_column in orders.columns
+            else [None] * n_pairs
+        )
 
         lead_seconds = pd.to_timedelta(delivery_times - order_times).total_seconds()
 
-        result = pd.DataFrame({
-            "order_time": order_times,
-            "delivery_time": delivery_times,
-            "uuid": self.event_uuid,
-            "is_delta": True,
-            "lead_time_seconds": lead_seconds,
-            "lead_time_hours": lead_seconds / 3600.0,
-            "order_id": order_ids,
-        })
+        result = pd.DataFrame(
+            {
+                "order_time": order_times,
+                "delivery_time": delivery_times,
+                "uuid": self.event_uuid,
+                "is_delta": True,
+                "lead_time_seconds": lead_seconds,
+                "lead_time_hours": lead_seconds / 3600.0,
+                "order_id": order_ids,
+            }
+        )
 
         return result
 
@@ -127,8 +138,12 @@ class LeadTimeAnalysisEvents(Base):
             min_hours, max_hours, p95_hours, count.
         """
         empty_cols = [
-            "mean_hours", "std_hours", "min_hours", "max_hours",
-            "p95_hours", "count",
+            "mean_hours",
+            "std_hours",
+            "min_hours",
+            "max_hours",
+            "p95_hours",
+            "count",
         ]
 
         lt = self.calculate_lead_times(order_uuid, delivery_uuid, value_column)
@@ -137,14 +152,18 @@ class LeadTimeAnalysisEvents(Base):
             return pd.DataFrame(columns=empty_cols)
 
         hours = lt["lead_time_hours"]
-        result = pd.DataFrame([{
-            "mean_hours": float(hours.mean()),
-            "std_hours": float(hours.std()) if len(hours) > 1 else 0.0,
-            "min_hours": float(hours.min()),
-            "max_hours": float(hours.max()),
-            "p95_hours": float(hours.quantile(0.95)),
-            "count": int(len(hours)),
-        }])
+        result = pd.DataFrame(
+            [
+                {
+                    "mean_hours": float(hours.mean()),
+                    "std_hours": float(hours.std()) if len(hours) > 1 else 0.0,
+                    "min_hours": float(hours.min()),
+                    "max_hours": float(hours.max()),
+                    "p95_hours": float(hours.quantile(0.95)),
+                    "count": int(len(hours)),
+                }
+            ]
+        )
 
         return result
 
@@ -169,8 +188,12 @@ class LeadTimeAnalysisEvents(Base):
             lead_time_hours, z_score.
         """
         empty_cols = [
-            "order_time", "delivery_time", "uuid", "is_delta",
-            "lead_time_hours", "z_score",
+            "order_time",
+            "delivery_time",
+            "uuid",
+            "is_delta",
+            "lead_time_hours",
+            "z_score",
         ]
 
         lt = self.calculate_lead_times(order_uuid, delivery_uuid, value_column)
@@ -191,5 +214,13 @@ class LeadTimeAnalysisEvents(Base):
         if anomalies.empty:
             return pd.DataFrame(columns=empty_cols)
 
-        return anomalies[["order_time", "delivery_time", "uuid", "is_delta",
-                          "lead_time_hours", "z_score"]].reset_index(drop=True)
+        return anomalies[
+            [
+                "order_time",
+                "delivery_time",
+                "uuid",
+                "is_delta",
+                "lead_time_hours",
+                "z_score",
+            ]
+        ].reset_index(drop=True)

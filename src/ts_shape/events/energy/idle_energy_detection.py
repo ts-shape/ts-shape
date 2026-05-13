@@ -80,9 +80,15 @@ class IdleEnergyDetectionEvents(Base):
         """
         energy, state = self._filter_two(meter_uuid, state_uuid)
         empty_cols = [
-            "window_start", "uuid", "source_uuid", "is_delta",
-            "total_energy", "idle_energy", "running_energy",
-            "machine_running_pct", "idle_fraction",
+            "window_start",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "total_energy",
+            "idle_energy",
+            "running_energy",
+            "machine_running_pct",
+            "idle_fraction",
         ]
         if energy.empty or state.empty:
             return pd.DataFrame(columns=empty_cols)
@@ -90,7 +96,9 @@ class IdleEnergyDetectionEvents(Base):
         energy = energy.set_index(self.time_column)
         state = state.set_index(self.time_column)
 
-        energy_agg = energy[energy_column].resample(window).sum().to_frame("total_energy")
+        energy_agg = (
+            energy[energy_column].resample(window).sum().to_frame("total_energy")
+        )
         state_agg = (
             state[state_column]
             .fillna(False)
@@ -162,9 +170,13 @@ class IdleEnergyDetectionEvents(Base):
         energy["_shift"] = energy[self.time_column].apply(_assign_shift)
         state["_shift"] = state[self.time_column].apply(_assign_shift)
 
-        energy_by_shift = energy.groupby("_shift")[energy_column].sum().rename("total_energy")
+        energy_by_shift = (
+            energy.groupby("_shift")[energy_column].sum().rename("total_energy")
+        )
         running_by_shift = (
-            state[state_column].fillna(False).astype(float)
+            state[state_column]
+            .fillna(False)
+            .astype(float)
             .groupby(state["_shift"])
             .mean()
             .rename("machine_running_pct")
@@ -209,23 +221,26 @@ class IdleEnergyDetectionEvents(Base):
                        rolling_avg_idle_energy, trend_direction
         """
         by_window = self.idle_energy_by_window(
-            meter_uuid, state_uuid,
+            meter_uuid,
+            state_uuid,
             energy_column=energy_column,
             state_column=state_column,
             window=window,
             idle_threshold=idle_threshold,
         )
         empty_cols = [
-            "window_start", "uuid", "source_uuid",
-            "idle_energy", "rolling_avg_idle_energy", "trend_direction",
+            "window_start",
+            "uuid",
+            "source_uuid",
+            "idle_energy",
+            "rolling_avg_idle_energy",
+            "trend_direction",
         ]
         if by_window.empty:
             return pd.DataFrame(columns=empty_cols)
 
         by_window["rolling_avg_idle_energy"] = (
-            by_window["idle_energy"]
-            .rolling(window=trend_window, min_periods=1)
-            .mean()
+            by_window["idle_energy"].rolling(window=trend_window, min_periods=1).mean()
         )
         slope = by_window["rolling_avg_idle_energy"].diff()
         by_window["trend_direction"] = pd.cut(

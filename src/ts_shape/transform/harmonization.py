@@ -28,16 +28,16 @@ class DataHarmonizer(Base):
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        time_column: str = 'systime',
-        uuid_column: str = 'uuid',
-        value_column: str = 'value_double',
+        time_column: str = "systime",
+        uuid_column: str = "uuid",
+        value_column: str = "value_double",
     ) -> None:
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
         self.uuid_column = uuid_column
         self.value_column = value_column
 
-    def pivot_to_wide(self, aggfunc: str = 'first') -> pd.DataFrame:
+    def pivot_to_wide(self, aggfunc: str = "first") -> pd.DataFrame:
         """Pivot long-format DataFrame to wide-format with one column per UUID.
 
         Args:
@@ -46,7 +46,9 @@ class DataHarmonizer(Base):
         Returns:
             DataFrame with systime as index and one column per UUID.
         """
-        dupes = self.dataframe.duplicated(subset=[self.time_column, self.uuid_column], keep=False)
+        dupes = self.dataframe.duplicated(
+            subset=[self.time_column, self.uuid_column], keep=False
+        )
         if dupes.any():
             warnings.warn(
                 f"Found {dupes.sum()} duplicate (time, uuid) entries; "
@@ -64,7 +66,7 @@ class DataHarmonizer(Base):
     def resample_to_uniform(
         self,
         freq: str,
-        method: str = 'linear',
+        method: str = "linear",
         fill_limit: Optional[int] = None,
     ) -> pd.DataFrame:
         """Resample to a uniform time grid with interpolation.
@@ -81,7 +83,7 @@ class DataHarmonizer(Base):
         resampled = wide.resample(freq).first()
         return resampled.interpolate(method=method, limit=fill_limit)
 
-    def detect_gaps(self, threshold: str = '10s') -> pd.DataFrame:
+    def detect_gaps(self, threshold: str = "10s") -> pd.DataFrame:
         """Identify time gaps per UUID exceeding the threshold.
 
         Args:
@@ -101,20 +103,24 @@ class DataHarmonizer(Base):
             for pos in gap_positions:
                 gap_start = times.iloc[pos - 1]
                 gap_end = times.iloc[pos]
-                rows.append({
-                    'uuid': uid,
-                    'gap_start': gap_start,
-                    'gap_end': gap_end,
-                    'gap_duration': gap_end - gap_start,
-                })
+                rows.append(
+                    {
+                        "uuid": uid,
+                        "gap_start": gap_start,
+                        "gap_end": gap_end,
+                        "gap_duration": gap_end - gap_start,
+                    }
+                )
 
-        return pd.DataFrame(rows) if rows else pd.DataFrame(
-            columns=['uuid', 'gap_start', 'gap_end', 'gap_duration']
+        return (
+            pd.DataFrame(rows)
+            if rows
+            else pd.DataFrame(columns=["uuid", "gap_start", "gap_end", "gap_duration"])
         )
 
     def fill_gaps(
         self,
-        strategy: str = 'interpolate',
+        strategy: str = "interpolate",
         max_gap: Optional[str] = None,
         fill_value: Optional[float] = None,
     ) -> pd.DataFrame:
@@ -130,16 +136,18 @@ class DataHarmonizer(Base):
         """
         wide = self.pivot_to_wide()
 
-        if strategy == 'interpolate':
-            filled = wide.interpolate(method='time', limit_area='inside')
-        elif strategy == 'ffill':
+        if strategy == "interpolate":
+            filled = wide.interpolate(method="time", limit_area="inside")
+        elif strategy == "ffill":
             filled = wide.ffill()
-        elif strategy == 'bfill':
+        elif strategy == "bfill":
             filled = wide.bfill()
-        elif strategy == 'constant':
+        elif strategy == "constant":
             filled = wide.fillna(fill_value)
         else:
-            raise ValueError(f"Unknown strategy: {strategy}. Use 'interpolate', 'ffill', 'bfill', or 'constant'.")
+            raise ValueError(
+                f"Unknown strategy: {strategy}. Use 'interpolate', 'ffill', 'bfill', or 'constant'."
+            )
 
         if max_gap is not None:
             max_gap_td = pd.Timedelta(max_gap)
@@ -161,8 +169,8 @@ class DataHarmonizer(Base):
         self,
         left_uuid: str,
         right_uuid: str,
-        tolerance: str = '1s',
-        direction: str = 'nearest',
+        tolerance: str = "1s",
+        direction: str = "nearest",
     ) -> pd.DataFrame:
         """Align two UUID signals using merge_asof with configurable tolerance.
 
@@ -176,16 +184,18 @@ class DataHarmonizer(Base):
             DataFrame with systime, value_left, value_right.
         """
         left = (
-            self.dataframe[self.dataframe[self.uuid_column] == left_uuid]
-            [[self.time_column, self.value_column]]
+            self.dataframe[self.dataframe[self.uuid_column] == left_uuid][
+                [self.time_column, self.value_column]
+            ]
             .sort_values(self.time_column)
-            .rename(columns={self.value_column: 'value_left'})
+            .rename(columns={self.value_column: "value_left"})
         )
         right = (
-            self.dataframe[self.dataframe[self.uuid_column] == right_uuid]
-            [[self.time_column, self.value_column]]
+            self.dataframe[self.dataframe[self.uuid_column] == right_uuid][
+                [self.time_column, self.value_column]
+            ]
             .sort_values(self.time_column)
-            .rename(columns={self.value_column: 'value_right'})
+            .rename(columns={self.value_column: "value_right"})
         )
 
         return pd.merge_asof(
@@ -200,7 +210,7 @@ class DataHarmonizer(Base):
         self,
         uuids: Optional[List[str]] = None,
         freq: Optional[str] = None,
-        method: str = 'linear',
+        method: str = "linear",
     ) -> pd.DataFrame:
         """End-to-end harmonization: pivot, filter, resample, interpolate.
 
@@ -220,7 +230,7 @@ class DataHarmonizer(Base):
             index=self.time_column,
             columns=self.uuid_column,
             values=self.value_column,
-            aggfunc='first',
+            aggfunc="first",
         )
 
         if freq is not None:

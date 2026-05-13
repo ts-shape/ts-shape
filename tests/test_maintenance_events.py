@@ -8,34 +8,39 @@ from ts_shape.events.maintenance import (
     VibrationAnalysisEvents,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers for synthetic manufacturing data
 # ---------------------------------------------------------------------------
 
+
 def _make_df(times, values, uuid="sig1"):
     """Build a standard ts-shape DataFrame from times and values."""
-    return pd.DataFrame({
-        "systime": times,
-        "uuid": [uuid] * len(times),
-        "value_double": values,
-        "is_delta": [True] * len(times),
-    })
+    return pd.DataFrame(
+        {
+            "systime": times,
+            "uuid": [uuid] * len(times),
+            "value_double": values,
+            "is_delta": [True] * len(times),
+        }
+    )
 
 
 def _empty_df():
     """Return an empty DataFrame with standard columns."""
-    return pd.DataFrame({
-        "systime": pd.Series(dtype="datetime64[ns]"),
-        "uuid": pd.Series(dtype="str"),
-        "value_double": pd.Series(dtype="float64"),
-        "is_delta": pd.Series(dtype="bool"),
-    })
+    return pd.DataFrame(
+        {
+            "systime": pd.Series(dtype="datetime64[ns]"),
+            "uuid": pd.Series(dtype="str"),
+            "value_double": pd.Series(dtype="float64"),
+            "is_delta": pd.Series(dtype="bool"),
+        }
+    )
 
 
 # ===================================================================
 # DegradationDetectionEvents
 # ===================================================================
+
 
 class TestDegradationDetectionEvents:
 
@@ -47,7 +52,9 @@ class TestDegradationDetectionEvents:
         df = _make_df(t, values)
 
         det = DegradationDetectionEvents(df, signal_uuid="sig1")
-        result = det.detect_trend_degradation(window="30min", min_slope=0.0001, direction="decreasing")
+        result = det.detect_trend_degradation(
+            window="30min", min_slope=0.0001, direction="decreasing"
+        )
         assert not result.empty
         assert "avg_slope" in result.columns
         assert (result["avg_slope"] < 0).all()
@@ -61,7 +68,9 @@ class TestDegradationDetectionEvents:
         df = _make_df(t, values)
 
         det = DegradationDetectionEvents(df, signal_uuid="sig1")
-        result = det.detect_trend_degradation(window="20min", min_slope=0.0001, direction="increasing")
+        result = det.detect_trend_degradation(
+            window="20min", min_slope=0.0001, direction="increasing"
+        )
         assert not result.empty
         assert (result["avg_slope"] > 0).all()
 
@@ -86,10 +95,12 @@ class TestDegradationDetectionEvents:
         t = pd.date_range("2024-01-01", periods=120, freq="1min")
         np.random.seed(0)
         # Stable at 50 for 60 points, then jumps to 70
-        values = np.concatenate([
-            50.0 + np.random.normal(0, 0.5, 60),
-            70.0 + np.random.normal(0, 0.5, 60),
-        ])
+        values = np.concatenate(
+            [
+                50.0 + np.random.normal(0, 0.5, 60),
+                70.0 + np.random.normal(0, 0.5, 60),
+            ]
+        )
         df = _make_df(t, values)
 
         det = DegradationDetectionEvents(df, signal_uuid="sig1")
@@ -103,7 +114,11 @@ class TestDegradationDetectionEvents:
         t = pd.date_range("2024-01-01", periods=200, freq="1min")
         np.random.seed(7)
         # Degrading signal: increasing noise + downward drift
-        values = 100.0 - np.arange(200) * 0.2 + np.random.normal(0, 1, 200) * np.linspace(1, 5, 200)
+        values = (
+            100.0
+            - np.arange(200) * 0.2
+            + np.random.normal(0, 1, 200) * np.linspace(1, 5, 200)
+        )
         df = _make_df(t, values)
 
         det = DegradationDetectionEvents(df, signal_uuid="sig1")
@@ -130,6 +145,7 @@ class TestDegradationDetectionEvents:
 # FailurePredictionEvents
 # ===================================================================
 
+
 class TestFailurePredictionEvents:
 
     def test_remaining_useful_life_linear_signal(self):
@@ -140,7 +156,9 @@ class TestFailurePredictionEvents:
         df = _make_df(t, values)
 
         fpe = FailurePredictionEvents(df, signal_uuid="sig1")
-        result = fpe.remaining_useful_life(degradation_rate=1.0 / 60, failure_threshold=100.0)
+        result = fpe.remaining_useful_life(
+            degradation_rate=1.0 / 60, failure_threshold=100.0
+        )
         assert not result.empty
         assert "rul_seconds" in result.columns
         assert "rul_hours" in result.columns
@@ -155,10 +173,12 @@ class TestFailurePredictionEvents:
         t = pd.date_range("2024-01-01", periods=120, freq="1min")
         np.random.seed(3)
         # First hour: mostly below 80, second hour: many above 80/90
-        values = np.concatenate([
-            70 + np.random.normal(0, 3, 60),
-            85 + np.random.normal(0, 5, 60),
-        ])
+        values = np.concatenate(
+            [
+                70 + np.random.normal(0, 3, 60),
+                85 + np.random.normal(0, 5, 60),
+            ]
+        )
         df = _make_df(t, values)
 
         fpe = FailurePredictionEvents(df, signal_uuid="sig1")
@@ -211,6 +231,7 @@ class TestFailurePredictionEvents:
 # VibrationAnalysisEvents
 # ===================================================================
 
+
 class TestVibrationAnalysisEvents:
 
     def test_detect_rms_exceedance_sinusoidal(self):
@@ -224,7 +245,9 @@ class TestVibrationAnalysisEvents:
 
         vae = VibrationAnalysisEvents(df, signal_uuid="sig1")
         # Baseline RMS for amplitude 1 sine: ~0.707
-        result = vae.detect_rms_exceedance(baseline_rms=0.707, threshold_factor=2.0, window="30s")
+        result = vae.detect_rms_exceedance(
+            baseline_rms=0.707, threshold_factor=2.0, window="30s"
+        )
         assert not result.empty
         assert "rms_value" in result.columns
         assert "ratio" in result.columns
@@ -297,6 +320,7 @@ class TestVibrationAnalysisEvents:
 # Cross-class: custom event_uuid propagation
 # ===================================================================
 
+
 class TestCustomEventUuid:
 
     def test_custom_event_uuid_propagates(self):
@@ -305,8 +329,12 @@ class TestCustomEventUuid:
         values = np.arange(60, dtype=float)
         df = _make_df(t, values)
 
-        det = DegradationDetectionEvents(df, signal_uuid="sig1", event_uuid="custom:deg")
-        result = det.detect_trend_degradation(window="20min", min_slope=0.0, direction="increasing")
+        det = DegradationDetectionEvents(
+            df, signal_uuid="sig1", event_uuid="custom:deg"
+        )
+        result = det.detect_trend_degradation(
+            window="20min", min_slope=0.0, direction="increasing"
+        )
         if not result.empty:
             assert (result["uuid"] == "custom:deg").all()
 

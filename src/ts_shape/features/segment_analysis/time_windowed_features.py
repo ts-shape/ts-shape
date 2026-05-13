@@ -24,11 +24,11 @@ class TimeWindowedFeatureTable(Base):
     def compute_long(
         cls,
         dataframe: pd.DataFrame,
-        freq: str = '1min',
-        time_column: str = 'systime',
-        uuid_column: str = 'uuid',
-        value_column: str = 'value_double',
-        segment_column: Optional[str] = 'segment_value',
+        freq: str = "1min",
+        time_column: str = "systime",
+        uuid_column: str = "uuid",
+        value_column: str = "value_double",
+        segment_column: Optional[str] = "segment_value",
         metrics: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """Compute statistical metrics per UUID per time window (long format).
@@ -89,9 +89,9 @@ class TimeWindowedFeatureTable(Base):
             else:
                 window_ts, uuid_val = group_key
 
-            stats['time_window'] = window_ts
+            stats["time_window"] = window_ts
             stats[uuid_column] = uuid_val
-            stats['sample_count'] = len(numeric_data)
+            stats["sample_count"] = len(numeric_data)
             rows.append(stats)
 
         if not rows:
@@ -99,14 +99,14 @@ class TimeWindowedFeatureTable(Base):
             return pd.DataFrame()
 
         result = pd.DataFrame(rows)
-        leading = ['time_window', uuid_column]
+        leading = ["time_window", uuid_column]
         if segment_column is not None:
             leading.append(segment_column)
-        leading.append('sample_count')
+        leading.append("sample_count")
         metric_cols = [c for c in result.columns if c not in leading]
         result = result[leading + metric_cols].reset_index(drop=True)
 
-        n_windows = result['time_window'].nunique()
+        n_windows = result["time_window"].nunique()
         n_uuids = result[uuid_column].nunique()
         logger.info(
             f"Computed {len(result)} feature rows across "
@@ -118,13 +118,13 @@ class TimeWindowedFeatureTable(Base):
     def compute(
         cls,
         dataframe: pd.DataFrame,
-        freq: str = '1min',
-        time_column: str = 'systime',
-        uuid_column: str = 'uuid',
-        value_column: str = 'value_double',
-        segment_column: Optional[str] = 'segment_value',
+        freq: str = "1min",
+        time_column: str = "systime",
+        uuid_column: str = "uuid",
+        value_column: str = "value_double",
+        segment_column: Optional[str] = "segment_value",
         metrics: Optional[List[str]] = None,
-        column_separator: str = '__',
+        column_separator: str = "__",
     ) -> pd.DataFrame:
         """Compute a wide-format feature table with one row per time window.
 
@@ -158,13 +158,12 @@ class TimeWindowedFeatureTable(Base):
         if long_df.empty:
             return pd.DataFrame()
 
-        index_cols = ['time_window']
+        index_cols = ["time_window"]
         if segment_column is not None and segment_column in long_df.columns:
             index_cols.append(segment_column)
 
         # Identify metric columns to pivot
-        value_cols = [c for c in long_df.columns
-                      if c not in index_cols + [uuid_column]]
+        value_cols = [c for c in long_df.columns if c not in index_cols + [uuid_column]]
 
         pieces = []
         for col in value_cols:
@@ -172,11 +171,10 @@ class TimeWindowedFeatureTable(Base):
                 index=index_cols,
                 columns=uuid_column,
                 values=col,
-                aggfunc='first',
+                aggfunc="first",
             )
             pivoted.columns = [
-                f"{uuid_val}{column_separator}{col}"
-                for uuid_val in pivoted.columns
+                f"{uuid_val}{column_separator}{col}" for uuid_val in pivoted.columns
             ]
             pieces.append(pivoted)
 
@@ -184,7 +182,7 @@ class TimeWindowedFeatureTable(Base):
 
         # Sort columns: index cols first, then alphabetical by uuid, ALL_METRICS order within
         used_metrics = metrics if metrics is not None else ALL_METRICS
-        metric_order = list(used_metrics) + ['sample_count']
+        metric_order = list(used_metrics) + ["sample_count"]
         uuids_sorted = sorted(long_df[uuid_column].unique())
 
         ordered_cols = list(index_cols)

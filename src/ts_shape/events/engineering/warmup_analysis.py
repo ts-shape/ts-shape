@@ -56,7 +56,11 @@ class WarmUpCoolDownEvents(Base):
             return []
 
         min_td = pd.Timedelta(min_duration)
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         vals = sig[self.value_column].values
         times = sig[self.time_column].values
 
@@ -88,15 +92,17 @@ class WarmUpCoolDownEvents(Base):
                 dur = e_time - s_time
                 if change >= min_change and dur >= min_td:
                     dur_s = dur.total_seconds()
-                    intervals.append({
-                        "start": s_time,
-                        "end": e_time,
-                        "start_value": s_val,
-                        "end_value": e_val,
-                        "change": change,
-                        "duration_seconds": dur_s,
-                        "avg_rate": change / dur_s if dur_s > 0 else 0.0,
-                    })
+                    intervals.append(
+                        {
+                            "start": s_time,
+                            "end": e_time,
+                            "start_value": s_val,
+                            "end_value": e_val,
+                            "change": change,
+                            "duration_seconds": dur_s,
+                            "avg_rate": change / dur_s if dur_s > 0 else 0.0,
+                        }
+                    )
 
         # Handle ramp that extends to end of data
         if in_ramp:
@@ -109,15 +115,17 @@ class WarmUpCoolDownEvents(Base):
             dur = e_time - s_time
             if change >= min_change and dur >= min_td:
                 dur_s = dur.total_seconds()
-                intervals.append({
-                    "start": s_time,
-                    "end": e_time,
-                    "start_value": s_val,
-                    "end_value": e_val,
-                    "change": change,
-                    "duration_seconds": dur_s,
-                    "avg_rate": change / dur_s if dur_s > 0 else 0.0,
-                })
+                intervals.append(
+                    {
+                        "start": s_time,
+                        "end": e_time,
+                        "start_value": s_val,
+                        "end_value": e_val,
+                        "change": change,
+                        "duration_seconds": dur_s,
+                        "avg_rate": change / dur_s if dur_s > 0 else 0.0,
+                    }
+                )
 
         return intervals
 
@@ -137,8 +145,15 @@ class WarmUpCoolDownEvents(Base):
             start_value, end_value, rise, duration_seconds, avg_rate.
         """
         cols = [
-            "start", "end", "uuid", "is_delta",
-            "start_value", "end_value", "rise", "duration_seconds", "avg_rate",
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "start_value",
+            "end_value",
+            "rise",
+            "duration_seconds",
+            "avg_rate",
         ]
         ramps = self._detect_ramps("rising", min_rise, min_duration)
         if not ramps:
@@ -146,17 +161,19 @@ class WarmUpCoolDownEvents(Base):
 
         events: List[Dict[str, Any]] = []
         for r in ramps:
-            events.append({
-                "start": r["start"],
-                "end": r["end"],
-                "uuid": self.event_uuid,
-                "is_delta": False,
-                "start_value": r["start_value"],
-                "end_value": r["end_value"],
-                "rise": r["change"],
-                "duration_seconds": r["duration_seconds"],
-                "avg_rate": r["avg_rate"],
-            })
+            events.append(
+                {
+                    "start": r["start"],
+                    "end": r["end"],
+                    "uuid": self.event_uuid,
+                    "is_delta": False,
+                    "start_value": r["start_value"],
+                    "end_value": r["end_value"],
+                    "rise": r["change"],
+                    "duration_seconds": r["duration_seconds"],
+                    "avg_rate": r["avg_rate"],
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -176,8 +193,15 @@ class WarmUpCoolDownEvents(Base):
             start_value, end_value, fall, duration_seconds, avg_rate.
         """
         cols = [
-            "start", "end", "uuid", "is_delta",
-            "start_value", "end_value", "fall", "duration_seconds", "avg_rate",
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "start_value",
+            "end_value",
+            "fall",
+            "duration_seconds",
+            "avg_rate",
         ]
         ramps = self._detect_ramps("falling", min_fall, min_duration)
         if not ramps:
@@ -185,17 +209,19 @@ class WarmUpCoolDownEvents(Base):
 
         events: List[Dict[str, Any]] = []
         for r in ramps:
-            events.append({
-                "start": r["start"],
-                "end": r["end"],
-                "uuid": self.event_uuid,
-                "is_delta": False,
-                "start_value": r["start_value"],
-                "end_value": r["end_value"],
-                "fall": r["change"],
-                "duration_seconds": r["duration_seconds"],
-                "avg_rate": r["avg_rate"],
-            })
+            events.append(
+                {
+                    "start": r["start"],
+                    "end": r["end"],
+                    "uuid": self.event_uuid,
+                    "is_delta": False,
+                    "start_value": r["start_value"],
+                    "end_value": r["end_value"],
+                    "fall": r["change"],
+                    "duration_seconds": r["duration_seconds"],
+                    "avg_rate": r["avg_rate"],
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -211,23 +237,28 @@ class WarmUpCoolDownEvents(Base):
             avg_rate, deviation_from_median_duration.
         """
         cols = [
-            "warmup_index", "start", "duration_seconds",
-            "avg_rate", "deviation_from_median_duration",
+            "warmup_index",
+            "start",
+            "duration_seconds",
+            "avg_rate",
+            "deviation_from_median_duration",
         ]
         warmups = self.detect_warmup(min_rise, min_duration)
         if warmups.empty:
             return pd.DataFrame(columns=cols)
 
         median_dur = warmups["duration_seconds"].median()
-        result = pd.DataFrame({
-            "warmup_index": range(len(warmups)),
-            "start": warmups["start"].values,
-            "duration_seconds": warmups["duration_seconds"].values,
-            "avg_rate": warmups["avg_rate"].values,
-            "deviation_from_median_duration": (
-                warmups["duration_seconds"].values - median_dur
-            ),
-        })
+        result = pd.DataFrame(
+            {
+                "warmup_index": range(len(warmups)),
+                "start": warmups["start"].values,
+                "duration_seconds": warmups["duration_seconds"].values,
+                "avg_rate": warmups["avg_rate"].values,
+                "deviation_from_median_duration": (
+                    warmups["duration_seconds"].values - median_dur
+                ),
+            }
+        )
         return result
 
     def time_to_target(
@@ -249,7 +280,11 @@ class WarmUpCoolDownEvents(Base):
         if self.signal.empty or len(self.signal) < 3:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
 
         # Detect ramp starts using a minimal change threshold
         ramps = self._detect_ramps(direction, min_change=0.01, min_duration="0s")
@@ -281,11 +316,13 @@ class WarmUpCoolDownEvents(Base):
                 trough = float(after_reach[self.value_column].min())
                 overshoot = max(target_value - trough, 0.0)
 
-            events.append({
-                "start": r["start"],
-                "target_reached_at": reached_time,
-                "time_to_target_seconds": time_to,
-                "overshoot": overshoot,
-            })
+            events.append(
+                {
+                    "start": r["start"],
+                    "target_reached_at": reached_time,
+                    "time_to_target_seconds": time_to,
+                    "overshoot": overshoot,
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)

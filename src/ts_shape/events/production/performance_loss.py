@@ -98,13 +98,13 @@ class PerformanceLossTracking(Base):
         data[self.time_column] = pd.to_datetime(data[self.time_column])
 
         # If counter: detect increments.  If trigger (bool): each row is a cycle.
-        if value_column in data.columns and pd.api.types.is_numeric_dtype(data[value_column]):
+        if value_column in data.columns and pd.api.types.is_numeric_dtype(
+            data[value_column]
+        ):
             data["delta"] = data[value_column].diff()
             data = data[data["delta"] > 0]
 
-        data["cycle_time_s"] = (
-            data[self.time_column].diff().dt.total_seconds()
-        )
+        data["cycle_time_s"] = data[self.time_column].diff().dt.total_seconds()
         data = data[data["cycle_time_s"].notna() & (data["cycle_time_s"] > 0)]
         return data
 
@@ -132,8 +132,15 @@ class PerformanceLossTracking(Base):
         data = self._compute_cycle_times(cycle_uuid, value_column)
         if data.empty:
             return pd.DataFrame(
-                columns=["date", "shift", "actual_parts", "avg_cycle_time_s",
-                         "target_cycle_time_s", "performance_pct", "loss_minutes"]
+                columns=[
+                    "date",
+                    "shift",
+                    "actual_parts",
+                    "avg_cycle_time_s",
+                    "target_cycle_time_s",
+                    "performance_pct",
+                    "loss_minutes",
+                ]
             )
 
         data["shift"] = data[self.time_column].apply(self._assign_shift)
@@ -153,15 +160,17 @@ class PerformanceLossTracking(Base):
 
             loss_seconds = max(0, elapsed - actual_parts * target_cycle_time)
 
-            results.append({
-                "date": date,
-                "shift": shift,
-                "actual_parts": actual_parts,
-                "avg_cycle_time_s": round(avg_ct, 2),
-                "target_cycle_time_s": target_cycle_time,
-                "performance_pct": round(min(performance, 100.0), 1),
-                "loss_minutes": round(loss_seconds / 60, 1),
-            })
+            results.append(
+                {
+                    "date": date,
+                    "shift": shift,
+                    "actual_parts": actual_parts,
+                    "avg_cycle_time_s": round(avg_ct, 2),
+                    "target_cycle_time_s": target_cycle_time,
+                    "performance_pct": round(min(performance, 100.0), 1),
+                    "loss_minutes": round(loss_seconds / 60, 1),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -191,8 +200,14 @@ class PerformanceLossTracking(Base):
         data = self._compute_cycle_times(cycle_uuid, value_column)
         if data.empty:
             return pd.DataFrame(
-                columns=["window_start", "window_end", "actual_parts",
-                         "avg_cycle_time_s", "performance_pct", "loss_minutes"]
+                columns=[
+                    "window_start",
+                    "window_end",
+                    "actual_parts",
+                    "avg_cycle_time_s",
+                    "performance_pct",
+                    "loss_minutes",
+                ]
             )
 
         data = data.set_index(self.time_column)
@@ -214,14 +229,16 @@ class PerformanceLossTracking(Base):
 
             if performance < threshold_pct:
                 loss_seconds = max(0, elapsed - actual_parts * target_cycle_time)
-                results.append({
-                    "window_start": start,
-                    "window_end": start + pd.Timedelta(window),
-                    "actual_parts": actual_parts,
-                    "avg_cycle_time_s": round(avg_ct, 2),
-                    "performance_pct": round(performance, 1),
-                    "loss_minutes": round(loss_seconds / 60, 1),
-                })
+                results.append(
+                    {
+                        "window_start": start,
+                        "window_end": start + pd.Timedelta(window),
+                        "actual_parts": actual_parts,
+                        "avg_cycle_time_s": round(avg_ct, 2),
+                        "performance_pct": round(performance, 1),
+                        "loss_minutes": round(loss_seconds / 60, 1),
+                    }
+                )
 
         return pd.DataFrame(results)
 
@@ -248,8 +265,13 @@ class PerformanceLossTracking(Base):
         data = self._compute_cycle_times(cycle_uuid, value_column)
         if data.empty:
             return pd.DataFrame(
-                columns=["period", "actual_parts", "avg_cycle_time_s",
-                         "performance_pct", "loss_minutes"]
+                columns=[
+                    "period",
+                    "actual_parts",
+                    "avg_cycle_time_s",
+                    "performance_pct",
+                    "loss_minutes",
+                ]
             )
 
         data = data.set_index(self.time_column)
@@ -271,12 +293,14 @@ class PerformanceLossTracking(Base):
 
             loss_seconds = max(0, elapsed - actual_parts * target_cycle_time)
 
-            results.append({
-                "period": period,
-                "actual_parts": actual_parts,
-                "avg_cycle_time_s": round(avg_ct, 2),
-                "performance_pct": round(min(performance, 100.0), 1),
-                "loss_minutes": round(loss_seconds / 60, 1),
-            })
+            results.append(
+                {
+                    "period": period,
+                    "actual_parts": actual_parts,
+                    "avg_cycle_time_s": round(avg_ct, 2),
+                    "performance_pct": round(min(performance, 100.0), 1),
+                    "loss_minutes": round(loss_seconds / 60, 1),
+                }
+            )
 
         return pd.DataFrame(results)

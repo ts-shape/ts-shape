@@ -3,6 +3,7 @@
 ``org:resource`` columns. ts-shape itself does **not** import pm4py; users
 pass this DataFrame to ``pm4py.format_dataframe`` themselves.
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -78,8 +79,14 @@ def to_flat_df(
 
 
 def _arrange_columns(df: pd.DataFrame) -> pd.DataFrame:
-    head = [schema.XES_CASE, schema.XES_ACTIVITY, schema.XES_TIMESTAMP,
-            schema.XES_LIFECYCLE, schema.XES_RESOURCE, "start_timestamp"]
+    head = [
+        schema.XES_CASE,
+        schema.XES_ACTIVITY,
+        schema.XES_TIMESTAMP,
+        schema.XES_LIFECYCLE,
+        schema.XES_RESOURCE,
+        "start_timestamp",
+    ]
     head = [c for c in head if c in df.columns]
     rest = [c for c in df.columns if c not in head]
     return df[head + rest]

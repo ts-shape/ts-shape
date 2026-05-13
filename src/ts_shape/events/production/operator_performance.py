@@ -114,18 +114,26 @@ class OperatorPerformanceTracking(Base):
         if operator_data.empty or counter_data.empty:
             return pd.DataFrame()
 
-        operator_data[self.time_column] = pd.to_datetime(operator_data[self.time_column])
+        operator_data[self.time_column] = pd.to_datetime(
+            operator_data[self.time_column]
+        )
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
 
         counter_clean = counter_data[[self.time_column, value_column_counter]].copy()
-        counter_clean = counter_clean.rename(columns={value_column_counter: "counter_val"})
+        counter_clean = counter_clean.rename(
+            columns={value_column_counter: "counter_val"}
+        )
 
         operator_clean = operator_data[[self.time_column, value_column_operator]].copy()
-        operator_clean = operator_clean.rename(columns={value_column_operator: "operator"})
+        operator_clean = operator_clean.rename(
+            columns={value_column_operator: "operator"}
+        )
 
         merged = pd.merge_asof(
-            counter_clean, operator_clean,
-            on=self.time_column, direction="backward",
+            counter_clean,
+            operator_clean,
+            on=self.time_column,
+            direction="backward",
         )
         merged = merged.dropna(subset=["operator"])
         merged["shift"] = merged[self.time_column].apply(self._assign_shift)
@@ -154,8 +162,10 @@ class OperatorPerformanceTracking(Base):
             - operator, total_produced, shifts_worked, avg_per_shift
         """
         merged = self._correlate_operator_counter(
-            operator_uuid, counter_uuid,
-            value_column_operator, value_column_counter,
+            operator_uuid,
+            counter_uuid,
+            value_column_operator,
+            value_column_counter,
         )
         if merged.empty:
             return pd.DataFrame(
@@ -174,12 +184,16 @@ class OperatorPerformanceTracking(Base):
             total = sum(shift_production)
             shifts_worked = len(shift_production)
 
-            results.append({
-                "operator": operator,
-                "total_produced": round(total, 0),
-                "shifts_worked": shifts_worked,
-                "avg_per_shift": round(total / shifts_worked, 1) if shifts_worked > 0 else 0,
-            })
+            results.append(
+                {
+                    "operator": operator,
+                    "total_produced": round(total, 0),
+                    "shifts_worked": shifts_worked,
+                    "avg_per_shift": (
+                        round(total / shifts_worked, 1) if shifts_worked > 0 else 0
+                    ),
+                }
+            )
 
         return (
             pd.DataFrame(results)
@@ -210,7 +224,8 @@ class OperatorPerformanceTracking(Base):
             - operator, total_produced, target, efficiency_pct
         """
         prod = self.production_by_operator(
-            operator_uuid, counter_uuid,
+            operator_uuid,
+            counter_uuid,
             value_column_operator=value_column_operator,
             value_column_counter=value_column_counter,
         )
@@ -225,7 +240,9 @@ class OperatorPerformanceTracking(Base):
         ).round(1)
         prod.loc[prod["target"] == 0, "efficiency_pct"] = 0.0
 
-        return prod[["operator", "total_produced", "target", "efficiency_pct"]].reset_index(drop=True)
+        return prod[
+            ["operator", "total_produced", "target", "efficiency_pct"]
+        ].reset_index(drop=True)
 
     def quality_by_operator(
         self,
@@ -270,9 +287,13 @@ class OperatorPerformanceTracking(Base):
                 columns=["operator", "ok_count", "nok_count", "first_pass_yield_pct"]
             )
 
-        operator_data[self.time_column] = pd.to_datetime(operator_data[self.time_column])
+        operator_data[self.time_column] = pd.to_datetime(
+            operator_data[self.time_column]
+        )
         operator_clean = operator_data[[self.time_column, value_column_operator]].copy()
-        operator_clean = operator_clean.rename(columns={value_column_operator: "operator"})
+        operator_clean = operator_clean.rename(
+            columns={value_column_operator: "operator"}
+        )
 
         ok_by_operator = {}
         nok_by_operator = {}
@@ -284,8 +305,10 @@ class OperatorPerformanceTracking(Base):
             ok_clean = ok_clean.rename(columns={value_column_counter: "counter_val"})
 
             merged_ok = pd.merge_asof(
-                ok_clean, operator_clean,
-                on=self.time_column, direction="backward",
+                ok_clean,
+                operator_clean,
+                on=self.time_column,
+                direction="backward",
             )
             merged_ok = merged_ok.dropna(subset=["operator"])
 
@@ -299,8 +322,10 @@ class OperatorPerformanceTracking(Base):
             nok_clean = nok_clean.rename(columns={value_column_counter: "counter_val"})
 
             merged_nok = pd.merge_asof(
-                nok_clean, operator_clean,
-                on=self.time_column, direction="backward",
+                nok_clean,
+                operator_clean,
+                on=self.time_column,
+                direction="backward",
             )
             merged_nok = merged_nok.dropna(subset=["operator"])
 
@@ -316,12 +341,14 @@ class OperatorPerformanceTracking(Base):
             total = ok + nok
             fpy = (ok / total * 100) if total > 0 else 0
 
-            results.append({
-                "operator": op,
-                "ok_count": round(ok, 0),
-                "nok_count": round(nok, 0),
-                "first_pass_yield_pct": round(fpy, 1),
-            })
+            results.append(
+                {
+                    "operator": op,
+                    "ok_count": round(ok, 0),
+                    "nok_count": round(nok, 0),
+                    "first_pass_yield_pct": round(fpy, 1),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -346,7 +373,8 @@ class OperatorPerformanceTracking(Base):
             - operator, total_produced, rank, pct_of_best
         """
         prod = self.production_by_operator(
-            operator_uuid, counter_uuid,
+            operator_uuid,
+            counter_uuid,
             value_column_operator=value_column_operator,
             value_column_counter=value_column_counter,
         )
@@ -355,7 +383,9 @@ class OperatorPerformanceTracking(Base):
                 columns=["operator", "total_produced", "rank", "pct_of_best"]
             )
 
-        prod = prod.sort_values("total_produced", ascending=False).reset_index(drop=True)
+        prod = prod.sort_values("total_produced", ascending=False).reset_index(
+            drop=True
+        )
         prod["rank"] = range(1, len(prod) + 1)
 
         best = prod["total_produced"].max()

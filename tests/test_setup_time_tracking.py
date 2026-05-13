@@ -12,15 +12,18 @@ def _make_setup_df():
     rows = []
     # Machine state: Running → Setup → Running → Setup → Running ...
     states = (
-        ["Running"] * 4 + ["Setup"] * 2 + ["Running"] * 6
-        + ["Setup"] * 3 + ["Running"] * 5 + ["Setup"] * 2 + ["Running"] * 2
+        ["Running"] * 4
+        + ["Setup"] * 2
+        + ["Running"] * 6
+        + ["Setup"] * 3
+        + ["Running"] * 5
+        + ["Setup"] * 2
+        + ["Running"] * 2
     )
     for t, state in zip(times, states):
         rows.append({"systime": t, "uuid": "machine_state", "value_string": state})
     # Part numbers: changes after each setup
-    parts = (
-        ["PART_A"] * 6 + ["PART_B"] * 12 + ["PART_C"] * 6
-    )
+    parts = ["PART_A"] * 6 + ["PART_B"] * 12 + ["PART_C"] * 6
     for t, part in zip(times, parts):
         rows.append({"systime": t, "uuid": "part_number", "value_string": part})
     return pd.DataFrame(rows)
@@ -82,7 +85,9 @@ class TestSetupTimeTracking:
     def test_no_setup_in_data(self):
         """All running, no setup events → empty results."""
         times = pd.date_range("2024-01-01 06:00", periods=6, freq="1h")
-        rows = [{"systime": t, "uuid": "state", "value_string": "Running"} for t in times]
+        rows = [
+            {"systime": t, "uuid": "state", "value_string": "Running"} for t in times
+        ]
         df = pd.DataFrame(rows)
         tracker = SetupTimeTracking(df)
         assert tracker.setup_durations(state_uuid="state").empty

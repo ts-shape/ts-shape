@@ -29,7 +29,7 @@ def test_s3proxy_fetch_data_as_dataframe_monkeypatched(monkeypatch):
             "secret": "s",
             "use_ssl": False,
             "version_aware": False,
-            "s3_path_base": "bucket/"
+            "s3_path_base": "bucket/",
         },
     )
 
@@ -38,13 +38,12 @@ def test_s3proxy_fetch_data_as_dataframe_monkeypatched(monkeypatch):
 
     def fake_fetch(uuid, ts_dir):
         calls.append((uuid, str(ts_dir)))
-        return pd.DataFrame({"uuid": [uuid], "systime": [pd.Timestamp('2024-01-01')]})
+        return pd.DataFrame({"uuid": [uuid], "systime": [pd.Timestamp("2024-01-01")]})
 
     monkeypatch.setattr(loader, "_fetch_parquet", fake_fetch)
 
     df = loader.fetch_data_as_dataframe()
     # Non-empty and contains both uuids
     assert not df.empty
-    assert set(df['uuid'].unique()) == {'u1', 'u2'}
+    assert set(df["uuid"].unique()) == {"u1", "u2"}
     assert len(calls) > 0
-

@@ -59,7 +59,11 @@ class AnomalyClassificationEvents(Base):
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         min_td = pd.to_timedelta(min_duration)
 
         # Detect consecutive identical (within tolerance) values
@@ -80,14 +84,18 @@ class AnomalyClassificationEvents(Base):
             end = sig[self.time_column].iloc[indices[-1]]
             duration = end - start
             if duration >= min_td:
-                events.append({
-                    "start_time": start,
-                    "end_time": end,
-                    "duration": duration,
-                    "stuck_value": float(values[indices[0]]),
-                })
+                events.append(
+                    {
+                        "start_time": start,
+                        "end_time": end,
+                        "duration": duration,
+                        "stuck_value": float(values[indices[0]]),
+                    }
+                )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def detect_oscillation(
         self, window: str = "1m", min_crossings: int = 6
@@ -105,7 +113,11 @@ class AnomalyClassificationEvents(Base):
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         sig = sig.set_index(self.time_column)
         window_td = pd.to_timedelta(window)
 
@@ -118,26 +130,30 @@ class AnomalyClassificationEvents(Base):
             win_end = current + window_td
             win = sig.loc[current:win_end, self.value_column]
             if len(win) >= 3:
-                detrended = win.values - np.linspace(win.values[0], win.values[-1], len(win))
+                detrended = win.values - np.linspace(
+                    win.values[0], win.values[-1], len(win)
+                )
                 signs = np.sign(detrended)
                 signs[signs == 0] = 1
                 crossings = int(np.sum(np.abs(np.diff(signs)) > 0))
 
                 if crossings >= min_crossings:
                     amplitude = float(np.max(win.values) - np.min(win.values))
-                    events.append({
-                        "start_time": current,
-                        "end_time": win_end,
-                        "crossing_count": crossings,
-                        "amplitude": amplitude,
-                    })
+                    events.append(
+                        {
+                            "start_time": current,
+                            "end_time": win_end,
+                            "crossing_count": crossings,
+                            "amplitude": amplitude,
+                        }
+                    )
             current = win_end
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
-    def detect_drift(
-        self, window: str = "1h", min_slope: float = 0.01
-    ) -> pd.DataFrame:
+    def detect_drift(self, window: str = "1h", min_slope: float = 0.01) -> pd.DataFrame:
         """Detect windows where the rolling slope exceeds a threshold.
 
         Args:
@@ -151,7 +167,11 @@ class AnomalyClassificationEvents(Base):
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         sig = sig.set_index(self.time_column)
         window_td = pd.to_timedelta(window)
 
@@ -171,15 +191,19 @@ class AnomalyClassificationEvents(Base):
                     slope = 0.0
 
                 if abs(slope) >= min_slope:
-                    events.append({
-                        "start_time": current,
-                        "end_time": win_end,
-                        "slope": slope,
-                        "direction": "increasing" if slope > 0 else "decreasing",
-                    })
+                    events.append(
+                        {
+                            "start_time": current,
+                            "end_time": win_end,
+                            "slope": slope,
+                            "direction": "increasing" if slope > 0 else "decreasing",
+                        }
+                    )
             current = win_end
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def classify_anomalies(
         self, window: str = "10m", z_threshold: float = 3.0
@@ -199,7 +223,11 @@ class AnomalyClassificationEvents(Base):
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        sig = (
+            self.signal[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         sig = sig.set_index(self.time_column)
         window_td = pd.to_timedelta(window)
 
@@ -226,13 +254,15 @@ class AnomalyClassificationEvents(Base):
 
             # Check flatline
             if win_std < 1e-8:
-                events.append({
-                    "start_time": current,
-                    "end_time": win_end,
-                    "anomaly_type": "flatline",
-                    "severity": "warning",
-                    "details": f"stuck_value={values[0]:.4f}",
-                })
+                events.append(
+                    {
+                        "start_time": current,
+                        "end_time": win_end,
+                        "anomaly_type": "flatline",
+                        "severity": "warning",
+                        "details": f"stuck_value={values[0]:.4f}",
+                    }
+                )
                 current = win_end
                 continue
 
@@ -242,13 +272,15 @@ class AnomalyClassificationEvents(Base):
             if spike_count > 0 and spike_count <= max(3, len(values) * 0.1):
                 max_z = float(np.max(z_scores))
                 severity = "critical" if max_z > z_threshold * 2 else "warning"
-                events.append({
-                    "start_time": current,
-                    "end_time": win_end,
-                    "anomaly_type": "spike",
-                    "severity": severity,
-                    "details": f"spike_count={spike_count}, max_z={max_z:.2f}",
-                })
+                events.append(
+                    {
+                        "start_time": current,
+                        "end_time": win_end,
+                        "anomaly_type": "spike",
+                        "severity": severity,
+                        "details": f"spike_count={spike_count}, max_z={max_z:.2f}",
+                    }
+                )
                 current = win_end
                 continue
 
@@ -258,13 +290,15 @@ class AnomalyClassificationEvents(Base):
             second_half_mean = float(np.mean(values[mid:]))
             shift = abs(second_half_mean - first_half_mean)
             if shift > global_std * 2:
-                events.append({
-                    "start_time": current,
-                    "end_time": win_end,
-                    "anomaly_type": "level_shift",
-                    "severity": "warning",
-                    "details": f"shift={shift:.4f}, from={first_half_mean:.4f}, to={second_half_mean:.4f}",
-                })
+                events.append(
+                    {
+                        "start_time": current,
+                        "end_time": win_end,
+                        "anomaly_type": "level_shift",
+                        "severity": "warning",
+                        "details": f"shift={shift:.4f}, from={first_half_mean:.4f}, to={second_half_mean:.4f}",
+                    }
+                )
                 current = win_end
                 continue
 
@@ -276,13 +310,15 @@ class AnomalyClassificationEvents(Base):
                 slope = 0.0
 
             if abs(slope) > global_std * 0.1:
-                events.append({
-                    "start_time": current,
-                    "end_time": win_end,
-                    "anomaly_type": "drift",
-                    "severity": "warning",
-                    "details": f"slope={slope:.6f}, direction={'increasing' if slope > 0 else 'decreasing'}",
-                })
+                events.append(
+                    {
+                        "start_time": current,
+                        "end_time": win_end,
+                        "anomaly_type": "drift",
+                        "severity": "warning",
+                        "details": f"slope={slope:.6f}, direction={'increasing' if slope > 0 else 'decreasing'}",
+                    }
+                )
                 current = win_end
                 continue
 
@@ -293,14 +329,18 @@ class AnomalyClassificationEvents(Base):
             crossings = int(np.sum(np.abs(np.diff(signs)) > 0))
             if crossings > len(values) * 0.4:
                 amplitude = float(np.max(values) - np.min(values))
-                events.append({
-                    "start_time": current,
-                    "end_time": win_end,
-                    "anomaly_type": "oscillation",
-                    "severity": "warning",
-                    "details": f"crossings={crossings}, amplitude={amplitude:.4f}",
-                })
+                events.append(
+                    {
+                        "start_time": current,
+                        "end_time": win_end,
+                        "anomaly_type": "oscillation",
+                        "severity": "warning",
+                        "details": f"crossings={crossings}, amplitude={amplitude:.4f}",
+                    }
+                )
 
             current = win_end
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )

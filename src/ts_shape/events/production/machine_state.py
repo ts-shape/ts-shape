@@ -35,7 +35,10 @@ class MachineStateEvents(Base):
         self.value_column = value_column
         self.time_column = time_column
         self.value_range = value_range
-        if "uuid" in self.dataframe.columns and run_state_uuid not in self.dataframe["uuid"].values:
+        if (
+            "uuid" in self.dataframe.columns
+            and run_state_uuid not in self.dataframe["uuid"].values
+        ):
             raise ValueError(
                 f"UUID '{run_state_uuid}' not found in dataframe. "
                 f"Available UUIDs: {list(self.dataframe['uuid'].unique())}"
@@ -72,7 +75,15 @@ class MachineStateEvents(Base):
         """
         if self.series.empty:
             return pd.DataFrame(
-                columns=["start", "end", "uuid", "source_uuid", "is_delta", "state", "duration_seconds"]
+                columns=[
+                    "start",
+                    "end",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "state",
+                    "duration_seconds",
+                ]
             )
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = self._as_state(s[self.value_column])
@@ -105,7 +116,14 @@ class MachineStateEvents(Base):
         """
         if self.series.empty:
             return pd.DataFrame(
-                columns=["systime", "uuid", "source_uuid", "is_delta", "transition", "time_since_last_transition_seconds"]
+                columns=[
+                    "systime",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "transition",
+                    "time_since_last_transition_seconds",
+                ]
             )
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = self._as_state(s[self.value_column])
@@ -113,7 +131,14 @@ class MachineStateEvents(Base):
         changes = s[s["state"] != s["prev"]].dropna(subset=["prev"])  # ignore first row
         if changes.empty:
             return pd.DataFrame(
-                columns=["systime", "uuid", "source_uuid", "is_delta", "transition", "time_since_last_transition_seconds"]
+                columns=[
+                    "systime",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "transition",
+                    "time_since_last_transition_seconds",
+                ]
             )
         changes = changes.rename(columns={self.time_column: "systime"})
         changes["transition"] = np.where(
@@ -121,7 +146,9 @@ class MachineStateEvents(Base):
             "idle_to_run",
             "run_to_idle",
         )
-        changes["time_since_last_transition_seconds"] = changes["systime"].diff().dt.total_seconds()
+        changes["time_since_last_transition_seconds"] = (
+            changes["systime"].diff().dt.total_seconds()
+        )
         return pd.DataFrame(
             {
                 "systime": changes["systime"],
@@ -129,7 +156,9 @@ class MachineStateEvents(Base):
                 "source_uuid": self.run_state_uuid,
                 "is_delta": True,
                 "transition": changes["transition"],
-                "time_since_last_transition_seconds": changes["time_since_last_transition_seconds"],
+                "time_since_last_transition_seconds": changes[
+                    "time_since_last_transition_seconds"
+                ],
             }
         )
 
@@ -142,7 +171,9 @@ class MachineStateEvents(Base):
         s["state"] = self._as_state(s[self.value_column])
         self._state_groups = (s["state"] != s["state"].shift()).cumsum()
 
-    def detect_rapid_transitions(self, threshold: str = "5s", min_count: int = 3) -> pd.DataFrame:
+    def detect_rapid_transitions(
+        self, threshold: str = "5s", min_count: int = 3
+    ) -> pd.DataFrame:
         """Identify suspicious rapid state changes.
 
         - threshold: time window to look for rapid transitions
@@ -152,7 +183,12 @@ class MachineStateEvents(Base):
         transitions = self.transition_events()
         if transitions.empty or len(transitions) < min_count:
             return pd.DataFrame(
-                columns=["start_time", "end_time", "transition_count", "duration_seconds"]
+                columns=[
+                    "start_time",
+                    "end_time",
+                    "transition_count",
+                    "duration_seconds",
+                ]
             )
 
         threshold_td = pd.to_timedelta(threshold)
@@ -165,12 +201,14 @@ class MachineStateEvents(Base):
                 duration = window_end - window_start
                 if duration <= threshold_td:
                     transition_count = j - i + 1
-                    rapid_events.append({
-                        "start_time": window_start,
-                        "end_time": window_end,
-                        "transition_count": transition_count,
-                        "duration_seconds": duration.total_seconds(),
-                    })
+                    rapid_events.append(
+                        {
+                            "start_time": window_start,
+                            "end_time": window_end,
+                            "transition_count": transition_count,
+                            "duration_seconds": duration.total_seconds(),
+                        }
+                    )
                 else:
                     break
 
@@ -214,22 +252,45 @@ class MachineStateEvents(Base):
             run_intervals = intervals[intervals["state"] == "run"]
             idle_intervals = intervals[intervals["state"] == "idle"]
 
-            avg_run_duration = run_intervals["duration_seconds"].mean() if not run_intervals.empty else 0.0
-            avg_idle_duration = idle_intervals["duration_seconds"].mean() if not idle_intervals.empty else 0.0
+            avg_run_duration = (
+                run_intervals["duration_seconds"].mean()
+                if not run_intervals.empty
+                else 0.0
+            )
+            avg_idle_duration = (
+                idle_intervals["duration_seconds"].mean()
+                if not idle_intervals.empty
+                else 0.0
+            )
 
-            total_run_time = run_intervals["duration_seconds"].sum() if not run_intervals.empty else 0.0
-            total_idle_time = idle_intervals["duration_seconds"].sum() if not idle_intervals.empty else 0.0
-            run_idle_ratio = total_run_time / total_idle_time if total_idle_time > 0 else 0.0
+            total_run_time = (
+                run_intervals["duration_seconds"].sum()
+                if not run_intervals.empty
+                else 0.0
+            )
+            total_idle_time = (
+                idle_intervals["duration_seconds"].sum()
+                if not idle_intervals.empty
+                else 0.0
+            )
+            run_idle_ratio = (
+                total_run_time / total_idle_time if total_idle_time > 0 else 0.0
+            )
 
         data_gaps_detected = self._detect_data_gaps()
         rapid_transitions_detected = len(self.detect_rapid_transitions())
 
         return {
             "total_transitions": total_transitions,
-            "avg_run_duration": float(avg_run_duration) if not np.isnan(avg_run_duration) else 0.0,
-            "avg_idle_duration": float(avg_idle_duration) if not np.isnan(avg_idle_duration) else 0.0,
-            "run_idle_ratio": float(run_idle_ratio) if not np.isnan(run_idle_ratio) else 0.0,
+            "avg_run_duration": (
+                float(avg_run_duration) if not np.isnan(avg_run_duration) else 0.0
+            ),
+            "avg_idle_duration": (
+                float(avg_idle_duration) if not np.isnan(avg_idle_duration) else 0.0
+            ),
+            "run_idle_ratio": (
+                float(run_idle_ratio) if not np.isnan(run_idle_ratio) else 0.0
+            ),
             "data_gaps_detected": data_gaps_detected,
             "rapid_transitions_detected": rapid_transitions_detected,
         }
-

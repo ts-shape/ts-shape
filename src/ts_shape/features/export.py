@@ -29,17 +29,17 @@ class FeatureMatrixExporter:
     """
 
     _DEFAULT_AGGS: Dict[str, Callable] = {
-        'mean': np.mean,
-        'std': np.std,
-        'min': np.min,
-        'max': np.max,
+        "mean": np.mean,
+        "std": np.std,
+        "min": np.min,
+        "max": np.max,
     }
 
     @classmethod
     def to_feature_matrix(
         cls,
         df: pd.DataFrame,
-        uuid_col: str = 'uuid',
+        uuid_col: str = "uuid",
         value_cols: Optional[List[str]] = None,
         agg_funcs: Optional[Dict[str, Union[str, Callable]]] = None,
         group_col: Optional[str] = None,
@@ -74,8 +74,7 @@ class FeatureMatrixExporter:
 
         if value_cols is None:
             value_cols = [
-                c for c in df.select_dtypes(include='number').columns
-                if c != uuid_col
+                c for c in df.select_dtypes(include="number").columns if c != uuid_col
             ]
         if not value_cols:
             raise ValueError("No numeric value columns found to aggregate.")
@@ -93,23 +92,25 @@ class FeatureMatrixExporter:
 
         rows: Dict = {}
         if group_col:
-            iterator = (((rk, sig), grp) for (rk, sig), grp in df.groupby([group_col, uuid_col]))
+            iterator = (
+                ((rk, sig), grp) for (rk, sig), grp in df.groupby([group_col, uuid_col])
+            )
         else:
-            iterator = ((( 0, sig), grp) for sig, grp in df.groupby(uuid_col))
+            iterator = (((0, sig), grp) for sig, grp in df.groupby(uuid_col))
 
         for (row_key, sig), grp in iterator:
             for vcol in value_cols:
                 series = grp[vcol].dropna()
                 for agg_name, agg_fn in aggs.items():
                     col_name = f"{sig}__{vcol}__{agg_name}"
-                    value = agg_fn(series) if len(series) else float('nan')
+                    value = agg_fn(series) if len(series) else float("nan")
                     rows.setdefault(row_key, {})[col_name] = value
 
         if not rows:
             logger.warning("No data to aggregate — returning empty feature matrix.")
             return pd.DataFrame()
 
-        matrix = pd.DataFrame.from_dict(rows, orient='index')
+        matrix = pd.DataFrame.from_dict(rows, orient="index")
         matrix.index.name = group_col
         matrix = matrix.sort_index(axis=1)
 

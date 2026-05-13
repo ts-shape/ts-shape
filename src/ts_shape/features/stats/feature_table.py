@@ -9,6 +9,7 @@ from .string_stats import StringStatistics
 
 logger = logging.getLogger(__name__)
 
+
 class DescriptiveFeatures:
     """
     A class used to compute descriptive statistics for a DataFrame, grouped by UUID.
@@ -41,44 +42,54 @@ class DescriptiveFeatures:
         - **is_delta_sum**: Sum of the 'is_delta' column.
         - **is_delta_avg**: Mean of the 'is_delta' column.
         - **is_delta_std**: Standard deviation of the 'is_delta' column.
-        
+
         Returns:
             dict: A dictionary with overall statistics.
         """
         statistics = {
-            'total_rows': len(group),
-            'total_time': group['systime'].max() - group['systime'].min(),
-            'is_delta_sum': group['is_delta'].sum(),
-            'is_delta_avg': group['is_delta'].mean(),
-            'is_delta_std': group['is_delta'].std(),
+            "total_rows": len(group),
+            "total_time": group["systime"].max() - group["systime"].min(),
+            "is_delta_sum": group["is_delta"].sum(),
+            "is_delta_avg": group["is_delta"].mean(),
+            "is_delta_std": group["is_delta"].std(),
         }
         return statistics
 
-    def compute_per_group(self, group: pd.DataFrame) -> Dict[str, Dict[str, Union[int, float, str, bool]]]:
+    def compute_per_group(
+        self, group: pd.DataFrame
+    ) -> Dict[str, Dict[str, Union[int, float, str, bool]]]:
         """Compute and return statistics for each column in the DataFrame group.
 
         Returns:
             dict: A dictionary with overall statistics, and string, numeric, and boolean statistics per column.
         """
-        results = {
-            'overall': self.overall_stats(group)
-        }
+        results = {"overall": self.overall_stats(group)}
         for col in group.columns:
-            if col == 'uuid':
+            if col == "uuid":
                 continue
             elif is_bool_dtype(group[col]):
                 # Use BooleanStatistics for boolean columns
-                results[col] = {'boolean_stats': BooleanStatistics.summary_as_dict(group, col)}
+                results[col] = {
+                    "boolean_stats": BooleanStatistics.summary_as_dict(group, col)
+                }
             elif is_numeric_dtype(group[col]):
                 # Use NumericStatistics for numeric columns
-                results[col] = {'numeric_stats': NumericStatistics.summary_as_dict(group, col)}
+                results[col] = {
+                    "numeric_stats": NumericStatistics.summary_as_dict(group, col)
+                }
             elif is_object_dtype(group[col]):
                 # Use StringStatistics for string columns
-                results[col] = {'string_stats': StringStatistics.summary_as_dict(group, col)}
+                results[col] = {
+                    "string_stats": StringStatistics.summary_as_dict(group, col)
+                }
 
         return results
 
-    def compute(self, output_format: str = 'dict') -> Union[pd.DataFrame, Dict[str, Dict[str, Dict[str, Union[int, float, str, bool]]]]]:
+    def compute(
+        self, output_format: str = "dict"
+    ) -> Union[
+        pd.DataFrame, Dict[str, Dict[str, Dict[str, Union[int, float, str, bool]]]]
+    ]:
         """Compute and return descriptive statistics for each UUID in the DataFrame.
 
         Args:
@@ -87,11 +98,11 @@ class DescriptiveFeatures:
         Returns:
             Union[DataFrame, dict]: A DataFrame or a nested dictionary with the UUID as the key and specific statistics related to that UUID's data type.
         """
-        if output_format == 'dataframe':
+        if output_format == "dataframe":
             rows_list = []
 
             # Iterate through each group of UUID
-            for uuid, group in self.data.groupby('uuid'):
+            for uuid, group in self.data.groupby("uuid"):
                 stats_per_group = self.compute_per_group(group)
 
                 # Iterate through the nested stats and create flat columns
@@ -101,21 +112,23 @@ class DescriptiveFeatures:
                         for key, value in stats.items():
                             if isinstance(value, dict):
                                 for sub_key, sub_value in value.items():
-                                    column_name = f'{uuid}::{section}::{key}::{sub_key}'
+                                    column_name = f"{uuid}::{section}::{key}::{sub_key}"
                                     row_dict[column_name] = sub_value
                             else:
-                                column_name = f'{uuid}::{section}::{key}'
+                                column_name = f"{uuid}::{section}::{key}"
                                 row_dict[column_name] = value
                     else:
-                        column_name = f'{uuid}::{section}'
+                        column_name = f"{uuid}::{section}"
                         row_dict[column_name] = stats
 
                 rows_list.append(row_dict)
 
             return pd.DataFrame(rows_list)
 
-        elif output_format == 'dict':
-            return self.data.groupby('uuid').apply(self.compute_per_group).to_dict()
+        elif output_format == "dict":
+            return self.data.groupby("uuid").apply(self.compute_per_group).to_dict()
 
         else:
-            raise ValueError("Invalid output format. Choose either 'dict' or 'dataframe'.")
+            raise ValueError(
+                "Invalid output format. Choose either 'dict' or 'dataframe'."
+            )

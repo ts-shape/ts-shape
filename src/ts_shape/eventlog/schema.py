@@ -7,6 +7,7 @@ XES column names (`concept:name`, `time:timestamp`, `case:concept:name`,
 `lifecycle:transition`, `org:resource`) are produced only by the flat
 exporter; they do not appear in the canonical schema.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -145,6 +146,7 @@ def is_known_object_type(name: str) -> bool:
 
 # ---- Empty frames -----------------------------------------------------------
 
+
 def empty_events() -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -183,6 +185,7 @@ def empty_relations() -> pd.DataFrame:
 
 # ---- Validation -------------------------------------------------------------
 
+
 def validate(eventlog: "EventLog") -> None:
     """Raise ``ValueError`` if the event log violates the canonical schema."""
     events, objects, relations = eventlog.events, eventlog.objects, eventlog.relations
@@ -207,9 +210,7 @@ def validate(eventlog: "EventLog") -> None:
         eids = set(events[OCEL_EID])
         bad = relations[OCEL_EID][~relations[OCEL_EID].isin(eids)]
         if not bad.empty:
-            raise ValueError(
-                f"relations reference unknown {OCEL_EID}: {bad.iloc[0]!r}"
-            )
+            raise ValueError(f"relations reference unknown {OCEL_EID}: {bad.iloc[0]!r}")
         oids = set(zip(objects[OCEL_OID], objects[OCEL_TYPE]))
         rel_pairs = list(zip(relations[OCEL_OID], relations[OCEL_TYPE]))
         for pair in rel_pairs:

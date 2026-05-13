@@ -5,6 +5,7 @@ from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
 
+
 class LambdaProcessor(Base):
     """
     Provides class methods for applying lambda or callable functions to columns in a pandas DataFrame.
@@ -12,7 +13,9 @@ class LambdaProcessor(Base):
     """
 
     @classmethod
-    def apply_function(cls, dataframe: pd.DataFrame, column_name: str, func: Callable[[Any], Any]) -> pd.DataFrame:
+    def apply_function(
+        cls, dataframe: pd.DataFrame, column_name: str, func: Callable[[Any], Any]
+    ) -> pd.DataFrame:
         """
         Applies a lambda or callable function to a specified column in the DataFrame.
 
@@ -26,6 +29,6 @@ class LambdaProcessor(Base):
         """
         if column_name not in dataframe.columns:
             raise ValueError(f"Column '{column_name}' not found in DataFrame.")
-        
+
         dataframe[column_name] = func(dataframe[column_name].values)
         return dataframe

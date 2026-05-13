@@ -59,14 +59,18 @@ class BottleneckDetectionEvents(Base):
 
             for ts, pct in resampled.items():
                 if pd.notna(pct):
-                    rows.append({
-                        "window_start": ts,
-                        "uuid": uid,
-                        "utilization_pct": round(pct * 100, 2),
-                    })
+                    rows.append(
+                        {
+                            "window_start": ts,
+                            "uuid": uid,
+                            "utilization_pct": round(pct * 100, 2),
+                        }
+                    )
 
-        return pd.DataFrame(rows) if rows else pd.DataFrame(
-            columns=["window_start", "uuid", "utilization_pct"]
+        return (
+            pd.DataFrame(rows)
+            if rows
+            else pd.DataFrame(columns=["window_start", "uuid", "utilization_pct"])
         )
 
     def detect_bottleneck(
@@ -87,19 +91,26 @@ class BottleneckDetectionEvents(Base):
         util = self.station_utilization(station_uuids, window)
         if util.empty:
             return pd.DataFrame(
-                columns=["window_start", "window_end", "bottleneck_uuid", "utilization_pct"]
+                columns=[
+                    "window_start",
+                    "window_end",
+                    "bottleneck_uuid",
+                    "utilization_pct",
+                ]
             )
 
         idx = util.groupby("window_start")["utilization_pct"].idxmax()
         bottlenecks = util.loc[idx].copy()
         window_td = pd.to_timedelta(window)
 
-        return pd.DataFrame({
-            "window_start": bottlenecks["window_start"].values,
-            "window_end": bottlenecks["window_start"].values + window_td,
-            "bottleneck_uuid": bottlenecks["uuid"].values,
-            "utilization_pct": bottlenecks["utilization_pct"].values,
-        })
+        return pd.DataFrame(
+            {
+                "window_start": bottlenecks["window_start"].values,
+                "window_end": bottlenecks["window_start"].values + window_td,
+                "bottleneck_uuid": bottlenecks["uuid"].values,
+                "utilization_pct": bottlenecks["utilization_pct"].values,
+            }
+        )
 
     def shifting_bottleneck(
         self, station_uuids: List[str], window: str = "1h"
@@ -117,8 +128,13 @@ class BottleneckDetectionEvents(Base):
         bottlenecks = self.detect_bottleneck(station_uuids, window)
         if bottlenecks.empty or len(bottlenecks) < 2:
             return pd.DataFrame(
-                columns=["systime", "from_uuid", "to_uuid",
-                         "previous_utilization", "new_utilization"]
+                columns=[
+                    "systime",
+                    "from_uuid",
+                    "to_uuid",
+                    "previous_utilization",
+                    "new_utilization",
+                ]
             )
 
         shifts: List[Dict[str, Any]] = []
@@ -129,19 +145,30 @@ class BottleneckDetectionEvents(Base):
             curr_uuid = bottlenecks.iloc[i]["bottleneck_uuid"]
             curr_util = bottlenecks.iloc[i]["utilization_pct"]
             if curr_uuid != prev_uuid:
-                shifts.append({
-                    "systime": bottlenecks.iloc[i]["window_start"],
-                    "from_uuid": prev_uuid,
-                    "to_uuid": curr_uuid,
-                    "previous_utilization": prev_util,
-                    "new_utilization": curr_util,
-                })
+                shifts.append(
+                    {
+                        "systime": bottlenecks.iloc[i]["window_start"],
+                        "from_uuid": prev_uuid,
+                        "to_uuid": curr_uuid,
+                        "previous_utilization": prev_util,
+                        "new_utilization": curr_util,
+                    }
+                )
             prev_uuid = curr_uuid
             prev_util = curr_util
 
-        return pd.DataFrame(shifts) if shifts else pd.DataFrame(
-            columns=["systime", "from_uuid", "to_uuid",
-                     "previous_utilization", "new_utilization"]
+        return (
+            pd.DataFrame(shifts)
+            if shifts
+            else pd.DataFrame(
+                columns=[
+                    "systime",
+                    "from_uuid",
+                    "to_uuid",
+                    "previous_utilization",
+                    "new_utilization",
+                ]
+            )
         )
 
     def throughput_constraint_summary(

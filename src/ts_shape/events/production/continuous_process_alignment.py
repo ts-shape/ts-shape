@@ -130,7 +130,10 @@ class ContinuousProcessAlignmentEvents(Base):
         )
 
     def _attach_speed(
-        self, station_df: pd.DataFrame, speed_df: pd.DataFrame, speed_col: str = "value_double"
+        self,
+        station_df: pd.DataFrame,
+        speed_df: pd.DataFrame,
+        speed_col: str = "value_double",
     ) -> pd.DataFrame:
         """Backward-fill merge: attach most-recent speed reading to each station row."""
         speed_subset = speed_df[[self.time_column, speed_col]].rename(
@@ -144,12 +147,10 @@ class ContinuousProcessAlignmentEvents(Base):
         )
         return merged
 
-    def _lag_from_speed(
-        self, merged: pd.DataFrame, offset_m: float
-    ) -> pd.Series:
-        speed_m_s = (merged["_speed_raw"].fillna(self.min_speed) * self._speed_factor).clip(
-            lower=self.min_speed
-        )
+    def _lag_from_speed(self, merged: pd.DataFrame, offset_m: float) -> pd.Series:
+        speed_m_s = (
+            merged["_speed_raw"].fillna(self.min_speed) * self._speed_factor
+        ).clip(lower=self.min_speed)
         return offset_m / speed_m_s
 
     # ------------------------------------------------------------------
@@ -283,16 +284,22 @@ class ContinuousProcessAlignmentEvents(Base):
                 int_col = "value_integer"
                 dbl_col = "value_double"
 
-                if bool_col in counter_df.columns and counter_df[bool_col].notna().any():
+                if (
+                    bool_col in counter_df.columns
+                    and counter_df[bool_col].notna().any()
+                ):
                     vals = counter_df[bool_col].fillna(False).astype(bool)
                     for i, row in counter_df.iterrows():
-                        if vals.iloc[i if isinstance(i, int) else counter_df.index.get_loc(i)]:
+                        if vals.iloc[
+                            i if isinstance(i, int) else counter_df.index.get_loc(i)
+                        ]:
                             cut_events.append((row[self.time_column], np.nan, 1))
                 else:
                     # Use integer or double counter
                     num_col = (
                         int_col
-                        if int_col in counter_df.columns and counter_df[int_col].notna().any()
+                        if int_col in counter_df.columns
+                        and counter_df[int_col].notna().any()
                         else dbl_col
                     )
                     if num_col in counter_df.columns:
@@ -328,11 +335,16 @@ class ContinuousProcessAlignmentEvents(Base):
                 length_times = length_df[self.time_column].reset_index(drop=True)
                 length_vals = length_df[cut_value_column].reset_index(drop=True)
                 # backward-fill: for each cut event, find most recent length
-                indices = np.searchsorted(length_times.values, cut_times.values, side="right") - 1
+                indices = (
+                    np.searchsorted(length_times.values, cut_times.values, side="right")
+                    - 1
+                )
                 new_events = []
                 for i, (ts, _, n) in enumerate(cut_events):
                     idx = indices[i]
-                    length = length_vals.iloc[idx] if 0 <= idx < len(length_vals) else np.nan
+                    length = (
+                        length_vals.iloc[idx] if 0 <= idx < len(length_vals) else np.nan
+                    )
                     new_events.append((ts, length, n))
                 cut_events = new_events
 
@@ -359,9 +371,10 @@ class ContinuousProcessAlignmentEvents(Base):
             # Find speed at cut time
             speed_df = self._get_speed_df()
             if not speed_df.empty and offset_m > 0:
-                idx = np.searchsorted(
-                    speed_df[self.time_column].values, ts, side="right"
-                ) - 1
+                idx = (
+                    np.searchsorted(speed_df[self.time_column].values, ts, side="right")
+                    - 1
+                )
                 idx = max(0, min(idx, len(speed_df) - 1))
                 raw_speed = speed_df.iloc[idx][self.value_column]
                 speed_m_s = max(float(raw_speed) * self._speed_factor, self.min_speed)
@@ -390,7 +403,8 @@ class ContinuousProcessAlignmentEvents(Base):
             + [
                 piece_rows[i]["_piece_cut_ref_time"]
                 for i in range(1, len(piece_rows))
-                if piece_rows[i]["_piece_cut_ref_time"] != piece_rows[i - 1]["_piece_cut_ref_time"]
+                if piece_rows[i]["_piece_cut_ref_time"]
+                != piece_rows[i - 1]["_piece_cut_ref_time"]
             ],
             dtype="datetime64[ns]",
         )
@@ -414,7 +428,9 @@ class ContinuousProcessAlignmentEvents(Base):
             ["piece_id", "piece_length_m", "piece_cut_ref_time"]
         ].reset_index(drop=True)
 
-        cut_boundaries = unique_cut_ref["piece_cut_ref_time"].values.astype("datetime64[ns]")
+        cut_boundaries = unique_cut_ref["piece_cut_ref_time"].values.astype(
+            "datetime64[ns]"
+        )
 
         mat_ref = aligned_df["material_ref_time"].values.astype("datetime64[ns]")
         # searchsorted: index 0 = before first cut → piece_id = first piece
@@ -425,7 +441,9 @@ class ContinuousProcessAlignmentEvents(Base):
         result = aligned_df.copy()
         result["piece_id"] = unique_cut_ref["piece_id"].iloc[indices].values
         result["piece_length_m"] = unique_cut_ref["piece_length_m"].iloc[indices].values
-        result["piece_cut_ref_time"] = unique_cut_ref["piece_cut_ref_time"].iloc[indices].values
+        result["piece_cut_ref_time"] = (
+            unique_cut_ref["piece_cut_ref_time"].iloc[indices].values
+        )
         return result
 
     def lag_profile(
@@ -457,7 +475,8 @@ class ContinuousProcessAlignmentEvents(Base):
             .rename(columns={self.time_column: "window_start"})
         )
         speed_resampled["mean_speed_m_s"] = (
-            speed_resampled["mean_speed_raw"].fillna(self.min_speed) * self._speed_factor
+            speed_resampled["mean_speed_raw"].fillna(self.min_speed)
+            * self._speed_factor
         ).clip(lower=self.min_speed)
 
         parts: List[pd.DataFrame] = []
@@ -525,7 +544,9 @@ class ContinuousProcessAlignmentEvents(Base):
 
         if station_counts:
             uid_cols = list(station_counts.keys())
-            combined["has_full_coverage"] = combined["has_speed_data"] & combined[uid_cols].gt(0).all(axis=1)
+            combined["has_full_coverage"] = combined["has_speed_data"] & combined[
+                uid_cols
+            ].gt(0).all(axis=1)
             combined["per_uuid_counts"] = combined[uid_cols].apply(
                 lambda row: row.to_dict(), axis=1
             )

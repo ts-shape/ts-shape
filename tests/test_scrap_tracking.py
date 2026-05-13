@@ -12,10 +12,24 @@ def _make_scrap_df():
     rows = []
     # Scrap counter (monotonic)
     for i, t in enumerate(times):
-        rows.append({"systime": t, "uuid": "scrap_weight", "value_double": 10.0 + i * 2.5})
+        rows.append(
+            {"systime": t, "uuid": "scrap_weight", "value_double": 10.0 + i * 2.5}
+        )
     # Reason codes
-    reasons = ["Material", "Material", "Tool", "Tool", "Material",
-               "Operator", "Tool", "Material", "Material", "Tool", "Operator", "Material"]
+    reasons = [
+        "Material",
+        "Material",
+        "Tool",
+        "Tool",
+        "Material",
+        "Operator",
+        "Tool",
+        "Material",
+        "Material",
+        "Tool",
+        "Operator",
+        "Material",
+    ]
     for t, reason in zip(times, reasons):
         rows.append({"systime": t, "uuid": "scrap_reason", "value_string": reason})
     # Part numbers

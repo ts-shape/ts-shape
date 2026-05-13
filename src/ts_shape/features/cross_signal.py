@@ -28,16 +28,23 @@ class CrossSignalAnalytics:
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        time_column: str = 'systime',
+        time_column: str = "systime",
     ) -> None:
         if time_column in dataframe.columns:
             self.df = dataframe.set_index(time_column).copy()
         else:
             self.df = dataframe.copy()
 
-        self.signals = [col for col in self.df.columns if self.df[col].dtype in [np.float64, np.float32, np.int64, np.int32, float, int]]
+        self.signals = [
+            col
+            for col in self.df.columns
+            if self.df[col].dtype
+            in [np.float64, np.float32, np.int64, np.int32, float, int]
+        ]
         if len(self.signals) < 2:
-            raise ValueError(f"Need at least 2 numeric signal columns, found {len(self.signals)}.")
+            raise ValueError(
+                f"Need at least 2 numeric signal columns, found {len(self.signals)}."
+            )
 
     def granger_causality(
         self,
@@ -70,20 +77,20 @@ class CrossSignalAnalytics:
 
             # Build lag matrices
             y_target = y[p:]
-            y_lags = np.column_stack([y[p - i - 1:n - i - 1] for i in range(p)])
-            x_lags = np.column_stack([x[p - i - 1:n - i - 1] for i in range(p)])
+            y_lags = np.column_stack([y[p - i - 1 : n - i - 1] for i in range(p)])
+            x_lags = np.column_stack([x[p - i - 1 : n - i - 1] for i in range(p)])
 
             # Restricted model: y ~ y_lags
             X_r = np.column_stack([np.ones(len(y_target)), y_lags])
             beta_r, rss_r, _, _ = np.linalg.lstsq(X_r, y_target, rcond=None)
             resid_r = y_target - X_r @ beta_r
-            rss_r_val = float(np.sum(resid_r ** 2))
+            rss_r_val = float(np.sum(resid_r**2))
 
             # Unrestricted model: y ~ y_lags + x_lags
             X_u = np.column_stack([np.ones(len(y_target)), y_lags, x_lags])
             beta_u, rss_u, _, _ = np.linalg.lstsq(X_u, y_target, rcond=None)
             resid_u = y_target - X_u @ beta_u
-            rss_u_val = float(np.sum(resid_u ** 2))
+            rss_u_val = float(np.sum(resid_u**2))
 
             dof = len(y_target) - 2 * p - 1
             if dof <= 0 or rss_u_val <= 0:
@@ -92,28 +99,30 @@ class CrossSignalAnalytics:
             f_stat = ((rss_r_val - rss_u_val) / p) / (rss_u_val / dof)
             p_value = float(scipy_stats.f.sf(f_stat, p, dof))
 
-            results_by_lag.append({
-                'lag': p,
-                'f_statistic': f_stat,
-                'p_value': p_value,
-            })
+            results_by_lag.append(
+                {
+                    "lag": p,
+                    "f_statistic": f_stat,
+                    "p_value": p_value,
+                }
+            )
 
         if not results_by_lag:
             return {
-                'optimal_lag': 0,
-                'f_statistic': 0.0,
-                'p_value': 1.0,
-                'is_causal': False,
-                'results_by_lag': [],
+                "optimal_lag": 0,
+                "f_statistic": 0.0,
+                "p_value": 1.0,
+                "is_causal": False,
+                "results_by_lag": [],
             }
 
-        best = min(results_by_lag, key=lambda r: r['p_value'])
+        best = min(results_by_lag, key=lambda r: r["p_value"])
         return {
-            'optimal_lag': best['lag'],
-            'f_statistic': best['f_statistic'],
-            'p_value': best['p_value'],
-            'is_causal': best['p_value'] < significance,
-            'results_by_lag': results_by_lag,
+            "optimal_lag": best["lag"],
+            "f_statistic": best["f_statistic"],
+            "p_value": best["p_value"],
+            "is_causal": best["p_value"] < significance,
+            "results_by_lag": results_by_lag,
         }
 
     def transfer_entropy(
@@ -145,13 +154,16 @@ class CrossSignalAnalytics:
             return 0.0
 
         y_future = y[lag:]
-        y_past = y[:n - lag]
-        x_past = x[:n - lag]
+        y_past = y[: n - lag]
+        x_past = x[: n - lag]
 
         # Discretize
         x_bins = np.linspace(x_past.min() - 1e-10, x_past.max() + 1e-10, bins + 1)
-        y_bins = np.linspace(min(y_future.min(), y_past.min()) - 1e-10,
-                             max(y_future.max(), y_past.max()) + 1e-10, bins + 1)
+        y_bins = np.linspace(
+            min(y_future.min(), y_past.min()) - 1e-10,
+            max(y_future.max(), y_past.max()) + 1e-10,
+            bins + 1,
+        )
 
         x_d = np.digitize(x_past, x_bins) - 1
         yf_d = np.digitize(y_future, y_bins) - 1
@@ -188,9 +200,7 @@ class CrossSignalAnalytics:
                     if p_yf_yp <= 0 or p_yp_xp <= 0 or p_yp_val <= 0:
                         continue
 
-                    te += p_joint * np.log2(
-                        (p_joint * p_yp_val) / (p_yf_yp * p_yp_xp)
-                    )
+                    te += p_joint * np.log2((p_joint * p_yp_val) / (p_yf_yp * p_yp_xp))
 
         return max(0.0, float(te))
 
@@ -218,7 +228,7 @@ class CrossSignalAnalytics:
         self,
         signal_a: str,
         signal_b: str,
-        method: str = 'phase',
+        method: str = "phase",
     ) -> float:
         """Measure synchronization between two signals.
 
@@ -235,7 +245,7 @@ class CrossSignalAnalytics:
         n = min(len(a), len(b))
         a, b = a[:n].astype(float), b[:n].astype(float)
 
-        if method == 'phase':
+        if method == "phase":
             analytic_a = scipy_signal.hilbert(a)
             analytic_b = scipy_signal.hilbert(b)
             phase_a = np.angle(analytic_a)
@@ -243,7 +253,7 @@ class CrossSignalAnalytics:
             plv = float(np.abs(np.mean(np.exp(1j * (phase_a - phase_b)))))
             return plv
 
-        elif method == 'amplitude':
+        elif method == "amplitude":
             env_a = np.abs(scipy_signal.hilbert(a))
             env_b = np.abs(scipy_signal.hilbert(b))
             corr = float(np.corrcoef(env_a, env_b)[0, 1])
@@ -252,7 +262,7 @@ class CrossSignalAnalytics:
         else:
             raise ValueError(f"Unknown method: {method}. Use 'phase' or 'amplitude'.")
 
-    def pairwise_synchronization(self, method: str = 'phase') -> pd.DataFrame:
+    def pairwise_synchronization(self, method: str = "phase") -> pd.DataFrame:
         """Compute synchronization index for all signal pairs.
 
         Returns:
@@ -264,7 +274,9 @@ class CrossSignalAnalytics:
         for i in range(n):
             matrix[i, i] = 1.0
             for j in range(i + 1, n):
-                val = self.synchronization_index(self.signals[i], self.signals[j], method=method)
+                val = self.synchronization_index(
+                    self.signals[i], self.signals[j], method=method
+                )
                 matrix[i, j] = val
                 matrix[j, i] = val
 
@@ -297,8 +309,8 @@ class CrossSignalAnalytics:
         a = (a - a.mean()) / (a.std() + 1e-12)
         b = (b - b.mean()) / (b.std() + 1e-12)
 
-        corr_full = scipy_signal.correlate(a, b, mode='full') / n
-        lags = scipy_signal.correlation_lags(n, n, mode='full')
+        corr_full = scipy_signal.correlate(a, b, mode="full") / n
+        lags = scipy_signal.correlation_lags(n, n, mode="full")
 
         # Restrict to max_lag
         mask = np.abs(lags) <= max_lag
@@ -315,7 +327,7 @@ class CrossSignalAnalytics:
         rng = np.random.RandomState(42)
         for _ in range(n_perms):
             b_perm = rng.permutation(b)
-            corr_perm = scipy_signal.correlate(a, b_perm, mode='full') / n
+            corr_perm = scipy_signal.correlate(a, b_perm, mode="full") / n
             corr_perm_clipped = corr_perm[mask]
             perm_maxes.append(np.max(np.abs(corr_perm_clipped)))
 
@@ -325,12 +337,12 @@ class CrossSignalAnalytics:
         follower = signal_b if optimal_lag >= 0 else signal_a
 
         return {
-            'optimal_lag': optimal_lag,
-            'correlation_at_lag': best_corr,
-            'leader': leader,
-            'follower': follower,
-            'p_value': p_value,
-            'is_significant': p_value < significance,
+            "optimal_lag": optimal_lag,
+            "correlation_at_lag": best_corr,
+            "leader": leader,
+            "follower": follower,
+            "p_value": p_value,
+            "is_significant": p_value < significance,
         }
 
     def lead_lag_matrix(self, max_lag: int = 50) -> pd.DataFrame:
@@ -345,7 +357,9 @@ class CrossSignalAnalytics:
         for i in range(n):
             for j in range(n):
                 if i != j:
-                    result = self.lead_lag(self.signals[i], self.signals[j], max_lag=max_lag)
-                    matrix[i, j] = result['optimal_lag']
+                    result = self.lead_lag(
+                        self.signals[i], self.signals[j], max_lag=max_lag
+                    )
+                    matrix[i, j] = result["optimal_lag"]
 
         return pd.DataFrame(matrix, index=self.signals, columns=self.signals)

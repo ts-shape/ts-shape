@@ -11,22 +11,30 @@ from ts_shape.events.production import (
     RoutingTraceabilityEvents,
 )
 
-
 # ============================================================================
 # Shared helpers
 # ============================================================================
 
+
 def _empty_df():
     """Return an empty DataFrame with standard columns."""
     return pd.DataFrame(
-        columns=["systime", "uuid", "value_bool", "value_integer",
-                 "value_double", "value_string", "is_delta"]
+        columns=[
+            "systime",
+            "uuid",
+            "value_bool",
+            "value_integer",
+            "value_double",
+            "value_string",
+            "is_delta",
+        ]
     )
 
 
 # ============================================================================
 # ValueTraceabilityEvents fixtures and tests
 # ============================================================================
+
 
 @pytest.fixture
 def value_trace_data():
@@ -41,15 +49,17 @@ def value_trace_data():
 
     def _add_station_rows(uuid, identifier, start_min, end_min, freq_min=1):
         for m in range(start_min, end_min + 1, freq_min):
-            rows.append({
-                "systime": base + timedelta(minutes=m),
-                "uuid": uuid,
-                "value_bool": None,
-                "value_integer": None,
-                "value_double": None,
-                "value_string": identifier,
-                "is_delta": False,
-            })
+            rows.append(
+                {
+                    "systime": base + timedelta(minutes=m),
+                    "uuid": uuid,
+                    "value_bool": None,
+                    "value_integer": None,
+                    "value_double": None,
+                    "value_string": identifier,
+                    "is_delta": False,
+                }
+            )
 
     # ORD-001 at each station
     _add_station_rows("station_a", "ORD-001", 0, 10)
@@ -87,15 +97,23 @@ class TestValueTraceabilityEvents:
         assert set(timeline["station_name"]) == {"Station A", "Station B", "Station C"}
         # Each identifier should have sequences 1, 2, 3
         for ident in ["ORD-001", "ORD-002"]:
-            seqs = timeline[timeline["identifier"] == ident]["station_sequence"].tolist()
+            seqs = timeline[timeline["identifier"] == ident][
+                "station_sequence"
+            ].tolist()
             assert seqs == [1, 2, 3]
 
     def test_build_timeline_columns(self, value_tracer):
         timeline = value_tracer.build_timeline()
         expected_cols = {
-            "identifier", "station_uuid", "station_name",
-            "start", "end", "duration_seconds", "sample_count",
-            "station_sequence", "uuid",
+            "identifier",
+            "station_uuid",
+            "station_name",
+            "start",
+            "end",
+            "duration_seconds",
+            "sample_count",
+            "station_sequence",
+            "uuid",
         }
         assert set(timeline.columns) == expected_cols
 
@@ -141,15 +159,17 @@ class TestValueTraceabilityEvents:
         base = pd.Timestamp("2024-01-15 08:00:00")
         rows = []
         for m in range(5):
-            rows.append({
-                "systime": base + timedelta(minutes=m),
-                "uuid": "sta",
-                "value_bool": None,
-                "value_integer": None,
-                "value_double": None,
-                "value_string": "SN-100",
-                "is_delta": False,
-            })
+            rows.append(
+                {
+                    "systime": base + timedelta(minutes=m),
+                    "uuid": "sta",
+                    "value_bool": None,
+                    "value_integer": None,
+                    "value_double": None,
+                    "value_string": "SN-100",
+                    "is_delta": False,
+                }
+            )
 
         tracer = ValueTraceabilityEvents(
             pd.DataFrame(rows),
@@ -182,6 +202,7 @@ class TestValueTraceabilityEvents:
 # RoutingTraceabilityEvents fixtures and tests
 # ============================================================================
 
+
 @pytest.fixture
 def routing_trace_data():
     """Create synthetic data: ID signal + state/routing signal.
@@ -195,47 +216,53 @@ def routing_trace_data():
 
     # ID signal: SN-AAA from 08:00 to 08:30, SN-BBB from 08:35 to 08:55
     for m in range(0, 31):
-        rows.append({
-            "systime": base + timedelta(minutes=m),
-            "uuid": "id_signal",
-            "value_bool": None,
-            "value_integer": None,
-            "value_double": None,
-            "value_string": "SN-AAA",
-            "is_delta": False,
-        })
+        rows.append(
+            {
+                "systime": base + timedelta(minutes=m),
+                "uuid": "id_signal",
+                "value_bool": None,
+                "value_integer": None,
+                "value_double": None,
+                "value_string": "SN-AAA",
+                "is_delta": False,
+            }
+        )
     for m in range(35, 56):
-        rows.append({
-            "systime": base + timedelta(minutes=m),
-            "uuid": "id_signal",
-            "value_bool": None,
-            "value_integer": None,
-            "value_double": None,
-            "value_string": "SN-BBB",
-            "is_delta": False,
-        })
+        rows.append(
+            {
+                "systime": base + timedelta(minutes=m),
+                "uuid": "id_signal",
+                "value_bool": None,
+                "value_integer": None,
+                "value_double": None,
+                "value_string": "SN-BBB",
+                "is_delta": False,
+            }
+        )
 
     # State signal: PLC step numbers
     def _add_state(start_min, end_min, state_val):
         for m in range(start_min, end_min + 1):
-            rows.append({
-                "systime": base + timedelta(minutes=m),
-                "uuid": "state_signal",
-                "value_bool": None,
-                "value_integer": state_val,
-                "value_double": None,
-                "value_string": None,
-                "is_delta": False,
-            })
+            rows.append(
+                {
+                    "systime": base + timedelta(minutes=m),
+                    "uuid": "state_signal",
+                    "value_bool": None,
+                    "value_integer": state_val,
+                    "value_double": None,
+                    "value_string": None,
+                    "is_delta": False,
+                }
+            )
 
     # SN-AAA states
-    _add_state(0, 10, 10)    # Heating
-    _add_state(12, 20, 20)   # Holding
-    _add_state(22, 30, 30)   # Cooling
+    _add_state(0, 10, 10)  # Heating
+    _add_state(12, 20, 20)  # Holding
+    _add_state(22, 30, 30)  # Cooling
 
     # SN-BBB states
-    _add_state(35, 45, 10)   # Heating
-    _add_state(47, 55, 30)   # Cooling (skips Holding)
+    _add_state(35, 45, 10)  # Heating
+    _add_state(47, 55, 30)  # Cooling (skips Holding)
 
     return pd.DataFrame(rows)
 
@@ -272,9 +299,15 @@ class TestRoutingTraceabilityEvents:
     def test_timeline_columns(self, routing_tracer):
         timeline = routing_tracer.build_routing_timeline()
         expected_cols = {
-            "item_id", "routing_value", "station_name",
-            "start", "end", "duration_seconds", "sample_count",
-            "station_sequence", "uuid",
+            "item_id",
+            "routing_value",
+            "station_name",
+            "start",
+            "end",
+            "duration_seconds",
+            "sample_count",
+            "station_sequence",
+            "uuid",
         }
         assert set(timeline.columns) == expected_cols
 
@@ -327,24 +360,28 @@ class TestRoutingTraceabilityEvents:
         base = pd.Timestamp("2024-01-15 08:00:00")
         rows = []
         for m in range(5):
-            rows.append({
-                "systime": base + timedelta(minutes=m),
-                "uuid": "id_sig",
-                "value_bool": None,
-                "value_integer": None,
-                "value_double": None,
-                "value_string": "ITEM-1",
-                "is_delta": False,
-            })
-            rows.append({
-                "systime": base + timedelta(minutes=m),
-                "uuid": "route_sig",
-                "value_bool": None,
-                "value_integer": 5,
-                "value_double": None,
-                "value_string": None,
-                "is_delta": False,
-            })
+            rows.append(
+                {
+                    "systime": base + timedelta(minutes=m),
+                    "uuid": "id_sig",
+                    "value_bool": None,
+                    "value_integer": None,
+                    "value_double": None,
+                    "value_string": "ITEM-1",
+                    "is_delta": False,
+                }
+            )
+            rows.append(
+                {
+                    "systime": base + timedelta(minutes=m),
+                    "uuid": "route_sig",
+                    "value_bool": None,
+                    "value_integer": 5,
+                    "value_double": None,
+                    "value_string": None,
+                    "is_delta": False,
+                }
+            )
 
         tracer = RoutingTraceabilityEvents(
             pd.DataFrame(rows),

@@ -61,9 +61,16 @@ class ShiftHandoverReport(Base):
 
     MERGE_KEYS = ["date", "shift"]
     OUTPUT_COLUMNS = [
-        "date", "shift", "production", "production_target",
-        "production_achievement_pct", "ok_parts", "nok_parts",
-        "quality_pct", "availability_pct", "downtime_minutes",
+        "date",
+        "shift",
+        "production",
+        "production_target",
+        "production_achievement_pct",
+        "ok_parts",
+        "nok_parts",
+        "quality_pct",
+        "availability_pct",
+        "downtime_minutes",
     ]
 
     def __init__(
@@ -133,7 +140,9 @@ class ShiftHandoverReport(Base):
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=["date", "shift", "availability_pct", "downtime_minutes"])
+            return pd.DataFrame(
+                columns=["date", "shift", "availability_pct", "downtime_minutes"]
+            )
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
@@ -148,12 +157,14 @@ class ShiftHandoverReport(Base):
             down = grp.loc[~grp["is_running"], "duration_s"].sum()
             total = up + down
             avail = (up / total * 100) if total > 0 else 0.0
-            results.append({
-                "date": dt,
-                "shift": shift,
-                "availability_pct": round(avail, 1),
-                "downtime_minutes": round(down / 60, 1),
-            })
+            results.append(
+                {
+                    "date": dt,
+                    "shift": shift,
+                    "availability_pct": round(avail, 1),
+                    "downtime_minutes": round(down / 60, 1),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -206,7 +217,11 @@ class ShiftHandoverReport(Base):
         if report_date:
             target_date = pd.to_datetime(report_date).date()
         else:
-            prod["date"] = pd.to_datetime(prod["date"]).dt.date if not pd.api.types.is_object_dtype(prod["date"]) else prod["date"]
+            prod["date"] = (
+                pd.to_datetime(prod["date"]).dt.date
+                if not pd.api.types.is_object_dtype(prod["date"])
+                else prod["date"]
+            )
             target_date = prod["date"].max()
 
         result = prod[prod["date"] == target_date].copy()
@@ -253,8 +268,10 @@ class ShiftHandoverReport(Base):
         if targets:
             result["production_target"] = result["shift"].map(targets).fillna(0)
             result["production_achievement_pct"] = (
-                result["production"] / result["production_target"] * 100
-            ).where(result["production_target"] > 0, 0).round(1)
+                (result["production"] / result["production_target"] * 100)
+                .where(result["production_target"] > 0, 0)
+                .round(1)
+            )
         else:
             result["production_target"] = 0.0
             result["production_achievement_pct"] = 0.0
@@ -319,7 +336,9 @@ class ShiftHandoverReport(Base):
         prod = self._counter_by_shift(counter_uuid, value_column_counter)
         ok = self._counter_by_shift(ok_counter_uuid, value_column_counter)
         nok = self._counter_by_shift(nok_counter_uuid, value_column_counter)
-        avail = self._availability_by_shift(state_uuid, running_value, value_column_state)
+        avail = self._availability_by_shift(
+            state_uuid, running_value, value_column_state
+        )
 
         if prod.empty:
             return pd.DataFrame(columns=self.OUTPUT_COLUMNS)
@@ -336,14 +355,24 @@ class ShiftHandoverReport(Base):
         result = prod.rename(columns={"quantity": "production"})
 
         if not ok.empty:
-            ok_filt = ok[ok["date"] == target_date].rename(columns={"quantity": "ok_parts"})
-            result = result.merge(ok_filt[["date", "shift", "ok_parts"]], on=["date", "shift"], how="left")
+            ok_filt = ok[ok["date"] == target_date].rename(
+                columns={"quantity": "ok_parts"}
+            )
+            result = result.merge(
+                ok_filt[["date", "shift", "ok_parts"]], on=["date", "shift"], how="left"
+            )
         else:
             result["ok_parts"] = 0
 
         if not nok.empty:
-            nok_filt = nok[nok["date"] == target_date].rename(columns={"quantity": "nok_parts"})
-            result = result.merge(nok_filt[["date", "shift", "nok_parts"]], on=["date", "shift"], how="left")
+            nok_filt = nok[nok["date"] == target_date].rename(
+                columns={"quantity": "nok_parts"}
+            )
+            result = result.merge(
+                nok_filt[["date", "shift", "nok_parts"]],
+                on=["date", "shift"],
+                how="left",
+            )
         else:
             result["nok_parts"] = 0
 
@@ -351,7 +380,8 @@ class ShiftHandoverReport(Base):
             avail_filt = avail[avail["date"] == target_date]
             result = result.merge(
                 avail_filt[["date", "shift", "availability_pct", "downtime_minutes"]],
-                on=["date", "shift"], how="left",
+                on=["date", "shift"],
+                how="left",
             )
         else:
             result["availability_pct"] = 0.0
@@ -363,8 +393,10 @@ class ShiftHandoverReport(Base):
         if targets:
             result["production_target"] = result["shift"].map(targets).fillna(0)
             result["production_achievement_pct"] = (
-                result["production"] / result["production_target"] * 100
-            ).where(result["production_target"] > 0, 0).round(1)
+                (result["production"] / result["production_target"] * 100)
+                .where(result["production_target"] > 0, 0)
+                .round(1)
+            )
         else:
             result["production_target"] = 0.0
             result["production_achievement_pct"] = 0.0
@@ -431,7 +463,10 @@ class ShiftHandoverReport(Base):
             report = report_df
         elif counter_uuid and ok_counter_uuid and nok_counter_uuid and state_uuid:
             report = self.generate_report(
-                counter_uuid, ok_counter_uuid, nok_counter_uuid, state_uuid,
+                counter_uuid,
+                ok_counter_uuid,
+                nok_counter_uuid,
+                state_uuid,
                 targets=targets,
                 running_value=running_value,
                 value_column_counter=value_column_counter,
@@ -452,12 +487,14 @@ class ShiftHandoverReport(Base):
                 value = row[metric]
                 if value < threshold:
                     severity = "warning" if value >= threshold * 0.95 else "critical"
-                    issues.append({
-                        "shift": row["shift"],
-                        "metric": metric,
-                        "value": round(float(value), 1),
-                        "threshold": threshold,
-                        "severity": severity,
-                    })
+                    issues.append(
+                        {
+                            "shift": row["shift"],
+                            "metric": metric,
+                            "value": round(float(value), 1),
+                            "threshold": threshold,
+                            "severity": severity,
+                        }
+                    )
 
         return issues

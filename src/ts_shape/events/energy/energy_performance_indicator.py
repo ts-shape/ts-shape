@@ -68,14 +68,20 @@ class EnergyPerformanceIndicatorEvents(Base):
                        energy_kwh, units_produced, enpi
         """
         energy, counter = self._aggregate_pair(
-            meter_uuid, counter_uuid,
+            meter_uuid,
+            counter_uuid,
             energy_column=energy_column,
             counter_column=counter_column,
             window=window,
         )
         empty_cols = [
-            "window_start", "uuid", "source_uuid", "is_delta",
-            "energy_kwh", "units_produced", "enpi",
+            "window_start",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "energy_kwh",
+            "units_produced",
+            "enpi",
         ]
         if energy.empty:
             return pd.DataFrame(columns=empty_cols)
@@ -119,22 +125,27 @@ class EnergyPerformanceIndicatorEvents(Base):
                        deviation_pct, is_anomaly, trend
         """
         base = self.enpi_by_window(
-            meter_uuid, counter_uuid,
+            meter_uuid,
+            counter_uuid,
             energy_column=energy_column,
             counter_column=counter_column,
             window=window,
         )
         empty_cols = [
-            "window_start", "uuid", "source_uuid", "enpi",
-            "baseline_enpi", "deviation_pct", "is_anomaly", "trend",
+            "window_start",
+            "uuid",
+            "source_uuid",
+            "enpi",
+            "baseline_enpi",
+            "deviation_pct",
+            "is_anomaly",
+            "trend",
         ]
         if base.empty or len(base) < 2:
             return pd.DataFrame(columns=empty_cols)
 
         base["baseline_enpi"] = (
-            base["enpi"]
-            .rolling(window=baseline_window, min_periods=1)
-            .mean()
+            base["enpi"].rolling(window=baseline_window, min_periods=1).mean()
         )
         base["deviation_pct"] = np.where(
             base["baseline_enpi"] > 0,
@@ -147,7 +158,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         rolling = base["enpi"].rolling(window=min(7, len(base)), min_periods=1).mean()
         slope = rolling.diff()
         base["trend"] = np.where(
-            slope < -0.01, "improving",
+            slope < -0.01,
+            "improving",
             np.where(slope > 0.01, "degrading", "stable"),
         )
         return base[empty_cols]
@@ -180,19 +192,42 @@ class EnergyPerformanceIndicatorEvents(Base):
         frames = []
         for meter_uuid in meter_uuids:
             df = self.enpi_by_window(
-                meter_uuid, counter_uuid,
+                meter_uuid,
+                counter_uuid,
                 energy_column=energy_column,
                 counter_column=counter_column,
                 window=window,
             )
             if not df.empty:
                 df = df.rename(columns={"source_uuid": "meter_uuid"})
-                frames.append(df[["window_start", "meter_uuid", "energy_kwh", "units_produced", "enpi"]])
+                frames.append(
+                    df[
+                        [
+                            "window_start",
+                            "meter_uuid",
+                            "energy_kwh",
+                            "units_produced",
+                            "enpi",
+                        ]
+                    ]
+                )
 
         if not frames:
-            return pd.DataFrame(columns=["window_start", "meter_uuid", "energy_kwh", "units_produced", "enpi"])
+            return pd.DataFrame(
+                columns=[
+                    "window_start",
+                    "meter_uuid",
+                    "energy_kwh",
+                    "units_produced",
+                    "enpi",
+                ]
+            )
 
-        return pd.concat(frames, ignore_index=True).sort_values(["window_start", "meter_uuid"]).reset_index(drop=True)
+        return (
+            pd.concat(frames, ignore_index=True)
+            .sort_values(["window_start", "meter_uuid"])
+            .reset_index(drop=True)
+        )
 
     # ── Internal helpers ────────────────────────────────────────────────────
 
@@ -226,9 +261,14 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_idx = energy_raw.set_index(self.time_column)
         counter_idx = counter_raw.set_index(self.time_column)
 
-        energy_agg = energy_idx[energy_column].resample(window).sum().to_frame("energy_kwh")
-        counter_agg = counter_idx[counter_column].resample(window).agg(
-            lambda x: max(x.max() - x.min(), 0) if len(x) > 1 else 0
-        ).to_frame("units_produced")
+        energy_agg = (
+            energy_idx[energy_column].resample(window).sum().to_frame("energy_kwh")
+        )
+        counter_agg = (
+            counter_idx[counter_column]
+            .resample(window)
+            .agg(lambda x: max(x.max() - x.min(), 0) if len(x) > 1 else 0)
+            .to_frame("units_produced")
+        )
 
         return energy_agg, counter_agg

@@ -51,8 +51,16 @@ class ProcessWindowEvents(Base):
             min, max, median, p25, p75, range.
         """
         cols = [
-            "window_start", "count", "mean", "std",
-            "min", "max", "median", "p25", "p75", "range",
+            "window_start",
+            "count",
+            "mean",
+            "std",
+            "min",
+            "max",
+            "median",
+            "p25",
+            "p75",
+            "range",
         ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
@@ -65,18 +73,20 @@ class ProcessWindowEvents(Base):
             vals = group.dropna()
             if vals.empty:
                 continue
-            events.append({
-                "window_start": window_start,
-                "count": len(vals),
-                "mean": float(vals.mean()),
-                "std": float(vals.std()) if len(vals) > 1 else 0.0,
-                "min": float(vals.min()),
-                "max": float(vals.max()),
-                "median": float(vals.median()),
-                "p25": float(np.percentile(vals, 25)),
-                "p75": float(np.percentile(vals, 75)),
-                "range": float(vals.max() - vals.min()),
-            })
+            events.append(
+                {
+                    "window_start": window_start,
+                    "count": len(vals),
+                    "mean": float(vals.mean()),
+                    "std": float(vals.std()) if len(vals) > 1 else 0.0,
+                    "min": float(vals.min()),
+                    "max": float(vals.max()),
+                    "median": float(vals.median()),
+                    "p25": float(np.percentile(vals, 25)),
+                    "p75": float(np.percentile(vals, 75)),
+                    "range": float(vals.max() - vals.min()),
+                }
+            )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -94,8 +104,13 @@ class ProcessWindowEvents(Base):
             prev_mean, current_mean, shift_sigma.
         """
         cols = [
-            "start", "end", "uuid", "is_delta",
-            "prev_mean", "current_mean", "shift_sigma",
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "prev_mean",
+            "current_mean",
+            "shift_sigma",
         ]
         stats = self.windowed_statistics(window)
         if len(stats) < 2:
@@ -108,15 +123,17 @@ class ProcessWindowEvents(Base):
             prev_std = prev["std"] if prev["std"] > 0 else 1e-10
             shift = abs(curr["mean"] - prev["mean"]) / prev_std
             if shift >= sensitivity:
-                events.append({
-                    "start": prev["window_start"],
-                    "end": curr["window_start"],
-                    "uuid": self.event_uuid,
-                    "is_delta": False,
-                    "prev_mean": prev["mean"],
-                    "current_mean": curr["mean"],
-                    "shift_sigma": float(shift),
-                })
+                events.append(
+                    {
+                        "start": prev["window_start"],
+                        "end": curr["window_start"],
+                        "uuid": self.event_uuid,
+                        "is_delta": False,
+                        "prev_mean": prev["mean"],
+                        "current_mean": curr["mean"],
+                        "shift_sigma": float(shift),
+                    }
+                )
 
         return pd.DataFrame(events, columns=cols)
 
@@ -135,8 +152,13 @@ class ProcessWindowEvents(Base):
             prev_std, current_std, variance_ratio.
         """
         cols = [
-            "start", "end", "uuid", "is_delta",
-            "prev_std", "current_std", "variance_ratio",
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "prev_std",
+            "current_std",
+            "variance_ratio",
         ]
         stats = self.windowed_statistics(window)
         if len(stats) < 2:
@@ -152,16 +174,20 @@ class ProcessWindowEvents(Base):
                 ratio = float("inf")
             else:
                 ratio = curr["std"] / prev["std"]
-            if ratio >= ratio_threshold or (ratio > 0 and ratio <= 1.0 / ratio_threshold):
-                events.append({
-                    "start": prev["window_start"],
-                    "end": curr["window_start"],
-                    "uuid": self.event_uuid,
-                    "is_delta": False,
-                    "prev_std": prev["std"],
-                    "current_std": curr["std"],
-                    "variance_ratio": float(ratio),
-                })
+            if ratio >= ratio_threshold or (
+                ratio > 0 and ratio <= 1.0 / ratio_threshold
+            ):
+                events.append(
+                    {
+                        "start": prev["window_start"],
+                        "end": curr["window_start"],
+                        "uuid": self.event_uuid,
+                        "is_delta": False,
+                        "prev_std": prev["std"],
+                        "current_std": curr["std"],
+                        "variance_ratio": float(ratio),
+                    }
+                )
 
         return pd.DataFrame(events, columns=cols)
 

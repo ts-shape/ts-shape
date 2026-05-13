@@ -80,7 +80,10 @@ class ContextEnricher:
         )
 
         # Clean up duplicate UUID column if names differ
-        if metadata_uuid_col != self.uuid_column and metadata_uuid_col in result.columns:
+        if (
+            metadata_uuid_col != self.uuid_column
+            and metadata_uuid_col in result.columns
+        ):
             result = result.drop(columns=[metadata_uuid_col])
 
         return result
@@ -115,7 +118,10 @@ class ContextEnricher:
             how="left",
         )
 
-        if tolerance_uuid_col != self.uuid_column and tolerance_uuid_col in result.columns:
+        if (
+            tolerance_uuid_col != self.uuid_column
+            and tolerance_uuid_col in result.columns
+        ):
             result = result.drop(columns=[tolerance_uuid_col])
 
         return result
@@ -147,16 +153,22 @@ class ContextEnricher:
         result = self.dataframe.copy()
 
         # Build a composite key for vectorized lookup
-        mapping_subset = mapping[[mapping_uuid_col, raw_value_col, mapped_value_col]].copy()
-        mapping_subset = mapping_subset.drop_duplicates(subset=[mapping_uuid_col, raw_value_col])
+        mapping_subset = mapping[
+            [mapping_uuid_col, raw_value_col, mapped_value_col]
+        ].copy()
+        mapping_subset = mapping_subset.drop_duplicates(
+            subset=[mapping_uuid_col, raw_value_col]
+        )
 
         # Merge on UUID + raw value to get mapped values in one operation
         result = result.merge(
-            mapping_subset.rename(columns={
-                mapping_uuid_col: self.uuid_column,
-                raw_value_col: "__raw_val__",
-                mapped_value_col: "mapped_value",
-            }),
+            mapping_subset.rename(
+                columns={
+                    mapping_uuid_col: self.uuid_column,
+                    raw_value_col: "__raw_val__",
+                    mapped_value_col: "mapped_value",
+                }
+            ),
             left_on=[self.uuid_column, value_column],
             right_on=[self.uuid_column, "__raw_val__"],
             how="left",

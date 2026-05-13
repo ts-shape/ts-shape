@@ -77,7 +77,11 @@ class AlarmManagementEvents(Base):
         if self.series.empty:
             return pd.DataFrame(columns=["start", "end", "duration_seconds"])
 
-        s = self.series[[self.time_column, self.value_column]].copy().reset_index(drop=True)
+        s = (
+            self.series[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         s["state"] = s[self.value_column].fillna(False).astype(bool)
         s["group"] = (s["state"] != s["state"].shift()).cumsum()
 
@@ -94,11 +98,13 @@ class AlarmManagementEvents(Base):
                 end = next_seg[self.time_column].iloc[0]
             else:
                 end = seg[self.time_column].iloc[-1]
-            rows.append({
-                "start": start,
-                "end": end,
-                "duration_seconds": (end - start).total_seconds(),
-            })
+            rows.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "duration_seconds": (end - start).total_seconds(),
+                }
+            )
 
         return pd.DataFrame(rows)
 
@@ -157,21 +163,28 @@ class AlarmManagementEvents(Base):
         if intervals.empty:
             return pd.DataFrame(
                 columns=[
-                    "source_uuid", "alarm_count",
-                    "min_duration_seconds", "avg_duration_seconds",
-                    "max_duration_seconds", "total_duration_seconds",
+                    "source_uuid",
+                    "alarm_count",
+                    "min_duration_seconds",
+                    "avg_duration_seconds",
+                    "max_duration_seconds",
+                    "total_duration_seconds",
                 ]
             )
 
         durations = intervals["duration_seconds"]
-        return pd.DataFrame([{
-            "source_uuid": self.alarm_uuid,
-            "alarm_count": len(intervals),
-            "min_duration_seconds": round(durations.min(), 2),
-            "avg_duration_seconds": round(durations.mean(), 2),
-            "max_duration_seconds": round(durations.max(), 2),
-            "total_duration_seconds": round(durations.sum(), 2),
-        }])
+        return pd.DataFrame(
+            [
+                {
+                    "source_uuid": self.alarm_uuid,
+                    "alarm_count": len(intervals),
+                    "min_duration_seconds": round(durations.min(), 2),
+                    "avg_duration_seconds": round(durations.mean(), 2),
+                    "max_duration_seconds": round(durations.max(), 2),
+                    "total_duration_seconds": round(durations.sum(), 2),
+                }
+            ]
+        )
 
     def chattering_detection(
         self,
@@ -197,7 +210,13 @@ class AlarmManagementEvents(Base):
         """
         if self.series.empty or len(self.series) < 2:
             return pd.DataFrame(
-                columns=["window_start", "window_end", "transition_count", "uuid", "source_uuid"]
+                columns=[
+                    "window_start",
+                    "window_end",
+                    "transition_count",
+                    "uuid",
+                    "source_uuid",
+                ]
             )
 
         s = self.series[[self.time_column, self.value_column]].copy()
@@ -217,7 +236,13 @@ class AlarmManagementEvents(Base):
 
         if flagged.empty:
             return pd.DataFrame(
-                columns=["window_start", "window_end", "transition_count", "uuid", "source_uuid"]
+                columns=[
+                    "window_start",
+                    "window_end",
+                    "transition_count",
+                    "uuid",
+                    "source_uuid",
+                ]
             )
 
         # Collapse consecutive flagged timestamps into distinct windows
@@ -232,26 +257,30 @@ class AlarmManagementEvents(Base):
             gap = flagged_times.iloc[i] - flagged_times.iloc[i - 1]
             if gap > window_td:
                 # Close current window
-                rows.append({
-                    "window_start": window_start,
-                    "window_end": flagged_times.iloc[i - 1],
-                    "transition_count": max_count,
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.alarm_uuid,
-                })
+                rows.append(
+                    {
+                        "window_start": window_start,
+                        "window_end": flagged_times.iloc[i - 1],
+                        "transition_count": max_count,
+                        "uuid": self.event_uuid,
+                        "source_uuid": self.alarm_uuid,
+                    }
+                )
                 window_start = flagged_times.iloc[i]
                 max_count = int(transition_counts[i])
             else:
                 max_count = max(max_count, int(transition_counts[i]))
 
         # Close last window
-        rows.append({
-            "window_start": window_start,
-            "window_end": flagged_times.iloc[-1],
-            "transition_count": max_count,
-            "uuid": self.event_uuid,
-            "source_uuid": self.alarm_uuid,
-        })
+        rows.append(
+            {
+                "window_start": window_start,
+                "window_end": flagged_times.iloc[-1],
+                "transition_count": max_count,
+                "uuid": self.event_uuid,
+                "source_uuid": self.alarm_uuid,
+            }
+        )
 
         return pd.DataFrame(rows)
 

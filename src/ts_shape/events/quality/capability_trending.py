@@ -82,13 +82,17 @@ class CapabilityTrendingEvents(Base):
             usl = self.upper_spec_fixed
         else:
             spec_rows = self.dataframe[self.dataframe["uuid"] == self.upper_spec_uuid]
-            usl = spec_rows[self.value_column].iloc[-1] if not spec_rows.empty else np.nan
+            usl = (
+                spec_rows[self.value_column].iloc[-1] if not spec_rows.empty else np.nan
+            )
 
         if self.lower_spec_fixed is not None:
             lsl = self.lower_spec_fixed
         else:
             spec_rows = self.dataframe[self.dataframe["uuid"] == self.lower_spec_uuid]
-            lsl = spec_rows[self.value_column].iloc[-1] if not spec_rows.empty else np.nan
+            lsl = (
+                spec_rows[self.value_column].iloc[-1] if not spec_rows.empty else np.nan
+            )
 
         return float(usl), float(lsl)
 
@@ -146,18 +150,22 @@ class CapabilityTrendingEvents(Base):
                 pp = np.nan
                 ppk = np.nan
 
-            events.append({
-                "window_start": ts,
-                "cp": round(cp, 4) if not np.isnan(cp) else np.nan,
-                "cpk": round(cpk, 4) if not np.isnan(cpk) else np.nan,
-                "pp": round(pp, 4) if not np.isnan(pp) else np.nan,
-                "ppk": round(ppk, 4) if not np.isnan(ppk) else np.nan,
-                "mean": round(mean, 6),
-                "std": round(std, 6),
-                "n_samples": n,
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "cp": round(cp, 4) if not np.isnan(cp) else np.nan,
+                    "cpk": round(cpk, 4) if not np.isnan(cpk) else np.nan,
+                    "pp": round(pp, 4) if not np.isnan(pp) else np.nan,
+                    "ppk": round(ppk, 4) if not np.isnan(ppk) else np.nan,
+                    "mean": round(mean, 6),
+                    "std": round(std, 6),
+                    "n_samples": n,
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def detect_capability_drop(
         self,
@@ -201,15 +209,21 @@ class CapabilityTrendingEvents(Base):
 
             alert = cpk < min_cpk or drop_pct > 20.0
 
-            events.append({
-                "window_start": cap.iloc[i]["window_start"],
-                "cpk": round(cpk, 4),
-                "prev_avg_cpk": round(prev_avg, 4) if not np.isnan(prev_avg) else np.nan,
-                "drop_pct": drop_pct,
-                "alert": alert,
-            })
+            events.append(
+                {
+                    "window_start": cap.iloc[i]["window_start"],
+                    "cpk": round(cpk, 4),
+                    "prev_avg_cpk": (
+                        round(prev_avg, 4) if not np.isnan(prev_avg) else np.nan
+                    ),
+                    "drop_pct": drop_pct,
+                    "alert": alert,
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def capability_forecast(
         self,
@@ -228,7 +242,13 @@ class CapabilityTrendingEvents(Base):
             DataFrame with columns: window_start, cpk, trend_slope,
             forecast_cpk, windows_to_threshold.
         """
-        cols = ["window_start", "cpk", "trend_slope", "forecast_cpk", "windows_to_threshold"]
+        cols = [
+            "window_start",
+            "cpk",
+            "trend_slope",
+            "forecast_cpk",
+            "windows_to_threshold",
+        ]
         cap = self.capability_over_time(window)
         if cap.empty or len(cap) < 2:
             return pd.DataFrame(columns=cols)
@@ -257,15 +277,19 @@ class CapabilityTrendingEvents(Base):
             else:
                 windows_to = np.nan  # Not degrading
 
-            events.append({
-                "window_start": cap.iloc[i]["window_start"],
-                "cpk": round(cpk, 4),
-                "trend_slope": round(slope, 6),
-                "forecast_cpk": round(forecast_cpk, 4),
-                "windows_to_threshold": windows_to,
-            })
+            events.append(
+                {
+                    "window_start": cap.iloc[i]["window_start"],
+                    "cpk": round(cpk, 4),
+                    "trend_slope": round(slope, 6),
+                    "forecast_cpk": round(forecast_cpk, 4),
+                    "windows_to_threshold": windows_to,
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def yield_estimate(self, window: str = "8h") -> pd.DataFrame:
         """Estimate yield, DPMO, and sigma level per window.
@@ -307,13 +331,19 @@ class CapabilityTrendingEvents(Base):
             p_lower = stats.norm.cdf(lsl, loc=mean, scale=std)
             yield_pct = (p_upper - p_lower) * 100
             dpmo = (1 - yield_pct / 100) * 1_000_000
-            sigma_level = stats.norm.ppf(1 - dpmo / 1_000_000) + 1.5 if dpmo > 0 else 6.0
+            sigma_level = (
+                stats.norm.ppf(1 - dpmo / 1_000_000) + 1.5 if dpmo > 0 else 6.0
+            )
 
-            events.append({
-                "window_start": ts,
-                "estimated_yield_pct": round(yield_pct, 4),
-                "dpmo": round(dpmo, 1),
-                "sigma_level": round(sigma_level, 2),
-            })
+            events.append(
+                {
+                    "window_start": ts,
+                    "estimated_yield_pct": round(yield_pct, 4),
+                    "dpmo": round(dpmo, 1),
+                    "sigma_level": round(sigma_level, 2),
+                }
+            )
 
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )

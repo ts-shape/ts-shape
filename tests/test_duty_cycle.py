@@ -11,11 +11,13 @@ def fifty_pct_df():
     base = pd.Timestamp("2024-01-01")
     for i in range(3600):  # 1 hour
         state = (i % 20) < 10  # 10s on, 10s off
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=i),
-            "uuid": "motor_1",
-            "value_bool": state,
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=i),
+                "uuid": "motor_1",
+                "value_bool": state,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -26,11 +28,13 @@ def high_cycling_df():
     base = pd.Timestamp("2024-01-01")
     for i in range(3600):
         state = (i % 2) == 0
-        rows.append({
-            "systime": base + pd.Timedelta(seconds=i),
-            "uuid": "motor_1",
-            "value_bool": state,
-        })
+        rows.append(
+            {
+                "systime": base + pd.Timedelta(seconds=i),
+                "uuid": "motor_1",
+                "value_bool": state,
+            }
+        )
     return pd.DataFrame(rows)
 
 

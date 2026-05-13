@@ -20,9 +20,15 @@ def _make_multiday_df(days=14):
             counter += 80
             ok_counter += 77
             nok_counter += 3
-            rows.append({"systime": t, "uuid": "prod_counter", "value_integer": counter})
-            rows.append({"systime": t, "uuid": "ok_counter", "value_integer": ok_counter})
-            rows.append({"systime": t, "uuid": "nok_counter", "value_integer": nok_counter})
+            rows.append(
+                {"systime": t, "uuid": "prod_counter", "value_integer": counter}
+            )
+            rows.append(
+                {"systime": t, "uuid": "ok_counter", "value_integer": ok_counter}
+            )
+            rows.append(
+                {"systime": t, "uuid": "nok_counter", "value_integer": nok_counter}
+            )
     return pd.DataFrame(rows)
 
 
@@ -75,15 +81,59 @@ class TestPeriodSummary:
 
     def test_from_daily_data_weekly(self):
         """Test pipeline entry-point: from_daily_data with weekly freq."""
-        daily = pd.DataFrame([
-            {"date": date(2024, 1, 1), "ok_parts": 1000, "nok_parts": 50, "quality_pct": 95.2, "availability_pct": 90.0},
-            {"date": date(2024, 1, 2), "ok_parts": 1050, "nok_parts": 40, "quality_pct": 96.3, "availability_pct": 91.5},
-            {"date": date(2024, 1, 3), "ok_parts": 980, "nok_parts": 60, "quality_pct": 94.2, "availability_pct": 88.0},
-            {"date": date(2024, 1, 4), "ok_parts": 1020, "nok_parts": 45, "quality_pct": 95.8, "availability_pct": 92.0},
-            {"date": date(2024, 1, 5), "ok_parts": 1100, "nok_parts": 30, "quality_pct": 97.3, "availability_pct": 93.5},
-            {"date": date(2024, 1, 8), "ok_parts": 1010, "nok_parts": 55, "quality_pct": 94.8, "availability_pct": 89.0},
-            {"date": date(2024, 1, 9), "ok_parts": 1060, "nok_parts": 35, "quality_pct": 96.8, "availability_pct": 91.0},
-        ])
+        daily = pd.DataFrame(
+            [
+                {
+                    "date": date(2024, 1, 1),
+                    "ok_parts": 1000,
+                    "nok_parts": 50,
+                    "quality_pct": 95.2,
+                    "availability_pct": 90.0,
+                },
+                {
+                    "date": date(2024, 1, 2),
+                    "ok_parts": 1050,
+                    "nok_parts": 40,
+                    "quality_pct": 96.3,
+                    "availability_pct": 91.5,
+                },
+                {
+                    "date": date(2024, 1, 3),
+                    "ok_parts": 980,
+                    "nok_parts": 60,
+                    "quality_pct": 94.2,
+                    "availability_pct": 88.0,
+                },
+                {
+                    "date": date(2024, 1, 4),
+                    "ok_parts": 1020,
+                    "nok_parts": 45,
+                    "quality_pct": 95.8,
+                    "availability_pct": 92.0,
+                },
+                {
+                    "date": date(2024, 1, 5),
+                    "ok_parts": 1100,
+                    "nok_parts": 30,
+                    "quality_pct": 97.3,
+                    "availability_pct": 93.5,
+                },
+                {
+                    "date": date(2024, 1, 8),
+                    "ok_parts": 1010,
+                    "nok_parts": 55,
+                    "quality_pct": 94.8,
+                    "availability_pct": 89.0,
+                },
+                {
+                    "date": date(2024, 1, 9),
+                    "ok_parts": 1060,
+                    "nok_parts": 35,
+                    "quality_pct": 96.8,
+                    "availability_pct": 91.0,
+                },
+            ]
+        )
 
         result = PeriodSummary.from_daily_data(daily, freq="W")
         assert not result.empty
@@ -98,10 +148,16 @@ class TestPeriodSummary:
 
     def test_from_daily_data_monthly(self):
         """Test from_daily_data with monthly freq."""
-        daily = pd.DataFrame([
-            {"date": date(2024, 1, d), "total_parts": 1000 + d * 10, "quality_pct": 95.0 + d * 0.1}
-            for d in range(1, 15)
-        ])
+        daily = pd.DataFrame(
+            [
+                {
+                    "date": date(2024, 1, d),
+                    "total_parts": 1000 + d * 10,
+                    "quality_pct": 95.0 + d * 0.1,
+                }
+                for d in range(1, 15)
+            ]
+        )
         result = PeriodSummary.from_daily_data(daily, freq="MS")
         assert not result.empty
         assert len(result) == 1  # All in January
@@ -114,10 +170,12 @@ class TestPeriodSummary:
 
     def test_from_daily_data_pct_averaged(self):
         """Verify that _pct columns are averaged, not summed."""
-        daily = pd.DataFrame([
-            {"date": date(2024, 1, 1), "quality_pct": 90.0, "count": 100},
-            {"date": date(2024, 1, 2), "quality_pct": 80.0, "count": 200},
-        ])
+        daily = pd.DataFrame(
+            [
+                {"date": date(2024, 1, 1), "quality_pct": 90.0, "count": 100},
+                {"date": date(2024, 1, 2), "quality_pct": 80.0, "count": 200},
+            ]
+        )
         result = PeriodSummary.from_daily_data(daily, freq="W")
         assert not result.empty
         # quality_pct should be averaged: (90+80)/2 = 85

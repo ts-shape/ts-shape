@@ -80,8 +80,13 @@ class BatchTrackingEvents(Base):
         if self.series.empty:
             return pd.DataFrame(
                 columns=[
-                    "batch_id", "start", "end", "duration_seconds",
-                    "sample_count", "uuid", "source_uuid",
+                    "batch_id",
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "sample_count",
+                    "uuid",
+                    "source_uuid",
                 ]
             )
 
@@ -96,15 +101,17 @@ class BatchTrackingEvents(Base):
                 continue
             start = seg[self.time_column].iloc[0]
             end = seg[self.time_column].iloc[-1]
-            rows.append({
-                "batch_id": batch_id,
-                "start": start,
-                "end": end,
-                "duration_seconds": (end - start).total_seconds(),
-                "sample_count": len(seg),
-                "uuid": self.event_uuid,
-                "source_uuid": self.batch_uuid,
-            })
+            rows.append(
+                {
+                    "batch_id": batch_id,
+                    "start": start,
+                    "end": end,
+                    "duration_seconds": (end - start).total_seconds(),
+                    "sample_count": len(seg),
+                    "uuid": self.event_uuid,
+                    "source_uuid": self.batch_uuid,
+                }
+            )
 
         return pd.DataFrame(rows)
 
@@ -129,23 +136,34 @@ class BatchTrackingEvents(Base):
         if batches.empty:
             return pd.DataFrame(
                 columns=[
-                    "batch_id", "count",
-                    "min_duration_seconds", "avg_duration_seconds",
-                    "max_duration_seconds", "total_duration_seconds",
+                    "batch_id",
+                    "count",
+                    "min_duration_seconds",
+                    "avg_duration_seconds",
+                    "max_duration_seconds",
+                    "total_duration_seconds",
                 ]
             )
 
-        stats = batches.groupby("batch_id")["duration_seconds"].agg(
-            count="count",
-            min_duration_seconds="min",
-            avg_duration_seconds="mean",
-            max_duration_seconds="max",
-            total_duration_seconds="sum",
-        ).reset_index()
+        stats = (
+            batches.groupby("batch_id")["duration_seconds"]
+            .agg(
+                count="count",
+                min_duration_seconds="min",
+                avg_duration_seconds="mean",
+                max_duration_seconds="max",
+                total_duration_seconds="sum",
+            )
+            .reset_index()
+        )
 
         # Round for readability
-        for col in ["min_duration_seconds", "avg_duration_seconds",
-                     "max_duration_seconds", "total_duration_seconds"]:
+        for col in [
+            "min_duration_seconds",
+            "avg_duration_seconds",
+            "max_duration_seconds",
+            "total_duration_seconds",
+        ]:
             stats[col] = stats[col].round(2)
 
         return stats
@@ -184,8 +202,13 @@ class BatchTrackingEvents(Base):
         if batches.empty:
             return pd.DataFrame(
                 columns=[
-                    "batch_id", "start", "end", "duration_seconds",
-                    "quantity", "uuid", "source_uuid",
+                    "batch_id",
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "quantity",
+                    "uuid",
+                    "source_uuid",
                 ]
             )
 
@@ -197,16 +220,24 @@ class BatchTrackingEvents(Base):
 
         if counter_data.empty:
             batches["quantity"] = 0
-            return batches[["batch_id", "start", "end", "duration_seconds",
-                            "quantity", "uuid", "source_uuid"]]
+            return batches[
+                [
+                    "batch_id",
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "quantity",
+                    "uuid",
+                    "source_uuid",
+                ]
+            ]
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
 
         quantities: List[int] = []
         for _, batch_row in batches.iterrows():
-            mask = (
-                (counter_data[self.time_column] >= batch_row["start"])
-                & (counter_data[self.time_column] <= batch_row["end"])
+            mask = (counter_data[self.time_column] >= batch_row["start"]) & (
+                counter_data[self.time_column] <= batch_row["end"]
             )
             batch_counter = counter_data.loc[mask, value_column_counter]
             if batch_counter.empty or len(batch_counter) < 2:
@@ -217,8 +248,17 @@ class BatchTrackingEvents(Base):
 
         batches = batches.copy()
         batches["quantity"] = quantities
-        return batches[["batch_id", "start", "end", "duration_seconds",
-                         "quantity", "uuid", "source_uuid"]].reset_index(drop=True)
+        return batches[
+            [
+                "batch_id",
+                "start",
+                "end",
+                "duration_seconds",
+                "quantity",
+                "uuid",
+                "source_uuid",
+            ]
+        ].reset_index(drop=True)
 
     # ------------------------------------------------------------------
     # Transition matrix
@@ -240,6 +280,8 @@ class BatchTrackingEvents(Base):
         to_batch = batches["batch_id"].iloc[1:].values
 
         transitions = pd.DataFrame({"from_batch": from_batch, "to_batch": to_batch})
-        matrix = transitions.groupby(["from_batch", "to_batch"]).size().unstack(fill_value=0)
+        matrix = (
+            transitions.groupby(["from_batch", "to_batch"]).size().unstack(fill_value=0)
+        )
         matrix["total"] = matrix.sum(axis=1)
         return matrix

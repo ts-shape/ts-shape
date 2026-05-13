@@ -13,10 +13,18 @@ _CSV_PREFIX = "csv/"
 _EMPTY_SCHEMA = ["systime", "uuid", "value_double", "is_delta"]
 _META_COLUMNS = [
     "id",
-    "label_lvl1", "label_lvl2", "label_lvl3", "label_lvl4",
-    "description", "unit",
-    "hierarchy_lvl1", "hierarchy_lvl2", "hierarchy_lvl3",
-    "hierarchy_lvl4", "hierarchy_lvl5", "hierarchy_lvl6",
+    "label_lvl1",
+    "label_lvl2",
+    "label_lvl3",
+    "label_lvl4",
+    "description",
+    "unit",
+    "hierarchy_lvl1",
+    "hierarchy_lvl2",
+    "hierarchy_lvl3",
+    "hierarchy_lvl4",
+    "hierarchy_lvl5",
+    "hierarchy_lvl6",
 ]
 
 
@@ -105,11 +113,17 @@ class AzureBlobEnergyLoader:
             self.container_client = ContainerClient.from_container_url(sas_url)
         elif account_url or (credential is not None and not connection_string):
             if not account_url:
-                raise ValueError("account_url must be provided when using AAD credential auth")
+                raise ValueError(
+                    "account_url must be provided when using AAD credential auth"
+                )
             if credential is None:
-                raise ValueError("credential must be provided when using AAD credential auth")
+                raise ValueError(
+                    "credential must be provided when using AAD credential auth"
+                )
             if not container_name:
-                raise ValueError("container_name is required when using account_url + credential")
+                raise ValueError(
+                    "container_name is required when using account_url + credential"
+                )
             self.container_client = ContainerClient(
                 account_url=account_url,
                 container_name=container_name,
@@ -121,7 +135,9 @@ class AzureBlobEnergyLoader:
                     "Provide one of: sas_url, connection_string, or (account_url + credential)"
                 )
             if not container_name:
-                raise ValueError("container_name is required when using connection_string")
+                raise ValueError(
+                    "container_name is required when using connection_string"
+                )
             try:
                 self.container_client = ContainerClient.from_connection_string(
                     conn_str=connection_string, container_name=container_name
@@ -165,7 +181,9 @@ class AzureBlobEnergyLoader:
             decimal: Decimal separator passed to pd.read_csv.
         """
         if credential is None:
-            raise ValueError("credential must be provided when using AAD credential auth")
+            raise ValueError(
+                "credential must be provided when using AAD credential auth"
+            )
         account_url = f"https://{account_name}.{endpoint_suffix}"
         return cls(
             container_name=container_name,
@@ -251,9 +269,12 @@ class AzureBlobEnergyLoader:
         else:
             ids_set = set(series_ids)
             prefix = self._full_path(_CSV_PREFIX)
-            all_blobs = self.container_client.list_blobs(name_starts_with=prefix or None)
+            all_blobs = self.container_client.list_blobs(
+                name_starts_with=prefix or None
+            )
             blob_names = [
-                b.name for b in all_blobs
+                b.name
+                for b in all_blobs
                 if str(b.name).endswith(".csv")
                 and self._series_id_from_blob_name(b.name) in ids_set
             ]
@@ -342,7 +363,10 @@ class AzureBlobEnergyLoader:
                 name: str = blob.name
                 if not name.endswith(".csv"):
                     continue
-                if ids_set is not None and self._series_id_from_blob_name(name) not in ids_set:
+                if (
+                    ids_set is not None
+                    and self._series_id_from_blob_name(name) not in ids_set
+                ):
                     continue
                 blob_names.append(name)
         return blob_names
@@ -393,7 +417,9 @@ class AzureBlobEnergyLoader:
 
         frames: List[pd.DataFrame] = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {executor.submit(self._download_csv, name): name for name in blob_names}
+            futures = {
+                executor.submit(self._download_csv, name): name for name in blob_names
+            }
             for future in as_completed(futures):
                 df = future.result()
                 if df is not None and not df.empty:
