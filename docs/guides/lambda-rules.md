@@ -297,4 +297,4 @@ Both rely on (a) the canonical-event-log plumbing already in place, (b) the lamb
 
 Other roadmap items: rule packs (versioned YAML bundles per industry), streaming evaluation over chunked DataFrames, polars backend, and labelled backtest scoring (precision/recall).
 
-For an end-to-end runnable example see [`examples/lambda_rules_demo.py`](https://github.com/jakobgabriel/ts-shape/blob/main/examples/lambda_rules_demo.py). For the canonical schema the rules ultimately emit into, see the [Event Log guide](eventlog.md).
+For an end-to-end runnable example see [`examples/lambda_rules_demo.py`](https://github.com/jakobgabriel/ts-shape/blob/main/examples/lambda_rules_demo.py). For the canonical schema the rules ultimately emit into, see the [Event Log guide](eventlog.md). For a side-by-side view of how every detection archetype flows from raw signals through events to rule definitions, see [Event Handling — Visual Overview](event-handling-flow.md).

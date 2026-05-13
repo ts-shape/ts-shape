@@ -35,6 +35,7 @@ nav:
   - Process Engineering: guides/engineering.md
   - Shift Reports & KPIs: guides/reporting.md
   - Event Log (XES & OCEL): guides/eventlog.md
+  - Event Handling — Visual Overview: guides/event-handling-flow.md
   - Lambda Rules: guides/lambda-rules.md
 - Pipelines:
   - Overview: pipelines/index.md

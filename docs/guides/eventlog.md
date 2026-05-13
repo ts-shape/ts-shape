@@ -33,6 +33,9 @@ flowchart LR
 !!! tip "Need a rule without writing a Python class?"
     The [Lambda Rules guide](lambda-rules.md) walks through declaring detectors in YAML. They register dynamically with the same taxonomy and flow through the same adapter described below.
 
+!!! info "Want to see the three-layer flow?"
+    [Event Handling — Visual Overview](event-handling-flow.md) has one infographic per archetype (threshold / interval / aggregate / static) showing raw signals → events → rule definition stacked together.
+
 ---
 
 ## The canonical schema
