@@ -23,9 +23,15 @@ Typical use::
     xes_df = to_flat_df(log, case_object_type="asset")
     events_df, objects_df, relations_df = to_ocel_tables(log)
 """
-from .adapters import register_adapter
+from .adapters import (
+    clear_overrides,
+    has_override,
+    register_adapter,
+)
+from .archetypes import ARCHETYPE_BY_METHOD
 from .concat import concat
 from .flat import to_flat_df
+from .introspect import describe
 from .model import EventLog
 from .normalizer import to_event_log
 from .ocel import to_ocel_tables
@@ -36,6 +42,8 @@ from .schema import (
     OCEL_QUALIFIER,
     OCEL_TIMESTAMP,
     OCEL_TYPE,
+    STANDARD_ATTR_KEYS,
+    STANDARD_ATTR_TYPES,
     TS_DETECTOR,
     TS_DURATION_S,
     TS_PACK,
@@ -50,19 +58,33 @@ from .schema import (
     register_object_type,
     validate,
 )
-from .taxonomy import REGISTRY, LabelRule
+from .taxonomy import REGISTRY, LabelRule, template_fields
 
 __all__ = [
+    # Core types
     "EventLog",
     "LabelRule",
-    "REGISTRY",
+    # Public functions
     "concat",
-    "register_adapter",
-    "register_object_type",
+    "describe",
     "to_event_log",
     "to_flat_df",
     "to_ocel_tables",
     "validate",
+    # Registries
+    "ARCHETYPE_BY_METHOD",
+    "REGISTRY",
+    "STANDARD_ATTR_KEYS",
+    "STANDARD_ATTR_TYPES",
+    # Override management
+    "clear_overrides",
+    "has_override",
+    "register_adapter",
+    # Object-type registry
+    "register_object_type",
+    # Templating helper
+    "template_fields",
+    # OCEL/XES/ts-shape column constants
     "OCEL_ACTIVITY",
     "OCEL_EID",
     "OCEL_OID",

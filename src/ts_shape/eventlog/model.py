@@ -36,17 +36,7 @@ class EventLog:
 
     def filter_by_pack(self, pack: str) -> "EventLog":
         events = self.events[self.events[schema.TS_PACK] == pack]
-        eids = set(events[schema.OCEL_EID])
-        relations = self.relations[self.relations[schema.OCEL_EID].isin(eids)]
-        used = set(zip(relations[schema.OCEL_OID], relations[schema.OCEL_TYPE]))
-        objects = self.objects[
-            self.objects.apply(
-                lambda r: (r[schema.OCEL_OID], r[schema.OCEL_TYPE]) in used, axis=1
-            )
-        ] if used else schema.empty_objects()
-        return EventLog(events.reset_index(drop=True),
-                        objects.reset_index(drop=True),
-                        relations.reset_index(drop=True))
+        return self._restrict(events)
 
     def filter_by_object(self, oid: str, type_: str | None = None) -> "EventLog":
         rel = self.relations
@@ -55,13 +45,23 @@ class EventLog:
             mask &= rel[schema.OCEL_TYPE] == type_
         eids = set(rel[mask][schema.OCEL_EID])
         events = self.events[self.events[schema.OCEL_EID].isin(eids)]
+        return self._restrict(events)
+
+    def _restrict(self, events: pd.DataFrame) -> "EventLog":
+        """Trim relations + objects to those reachable from ``events``."""
+        eids = events[schema.OCEL_EID]
         relations = self.relations[self.relations[schema.OCEL_EID].isin(eids)]
-        used = set(zip(relations[schema.OCEL_OID], relations[schema.OCEL_TYPE]))
-        objects = self.objects[
-            self.objects.apply(
-                lambda r: (r[schema.OCEL_OID], r[schema.OCEL_TYPE]) in used, axis=1
+        if relations.empty:
+            objects = schema.empty_objects()
+        else:
+            keep_pairs = relations[
+                [schema.OCEL_OID, schema.OCEL_TYPE]
+            ].drop_duplicates()
+            objects = self.objects.merge(
+                keep_pairs, on=[schema.OCEL_OID, schema.OCEL_TYPE], how="inner",
             )
-        ] if used else schema.empty_objects()
-        return EventLog(events.reset_index(drop=True),
-                        objects.reset_index(drop=True),
-                        relations.reset_index(drop=True))
+        return EventLog(
+            events.reset_index(drop=True),
+            objects.reset_index(drop=True),
+            relations.reset_index(drop=True),
+        )

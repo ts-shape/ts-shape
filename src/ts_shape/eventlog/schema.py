@@ -204,17 +204,22 @@ def validate(eventlog: "EventLog") -> None:
         raise ValueError(f"relations table missing required columns: {missing}")
 
     if not relations.empty:
-        eids = set(events[OCEL_EID])
-        bad = relations[OCEL_EID][~relations[OCEL_EID].isin(eids)]
-        if not bad.empty:
+        bad_eid = relations[OCEL_EID][~relations[OCEL_EID].isin(events[OCEL_EID])]
+        if not bad_eid.empty:
             raise ValueError(
-                f"relations reference unknown {OCEL_EID}: {bad.iloc[0]!r}"
+                f"relations reference unknown {OCEL_EID}: {bad_eid.iloc[0]!r}"
             )
-        oids = set(zip(objects[OCEL_OID], objects[OCEL_TYPE]))
-        rel_pairs = list(zip(relations[OCEL_OID], relations[OCEL_TYPE]))
-        for pair in rel_pairs:
-            if pair not in oids:
-                raise ValueError(
-                    f"relation references unknown object {pair!r}; "
-                    "every (oid, type) in relations must appear in objects"
-                )
+        # Vectorised (oid, type) referential check via left-only merge.
+        merged = relations[[OCEL_OID, OCEL_TYPE]].merge(
+            objects[[OCEL_OID, OCEL_TYPE]].assign(_obj_present=True),
+            on=[OCEL_OID, OCEL_TYPE],
+            how="left",
+        )
+        missing = merged[merged["_obj_present"].isna()]
+        if not missing.empty:
+            row = missing.iloc[0]
+            raise ValueError(
+                f"relation references unknown object "
+                f"({row[OCEL_OID]!r}, {row[OCEL_TYPE]!r}); "
+                "every (oid, type) in relations must appear in objects"
+            )

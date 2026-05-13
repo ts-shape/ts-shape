@@ -152,3 +152,127 @@ def test_severity_bucket_thresholds():
     log = to_event_log(df, detector="OutlierDetectionEvents.detect_outliers_zscore")
     sev = log.events[TS_SEVERITY].tolist()
     assert sev == ["info", "warn", "critical"]
+
+
+# ---------- NaN handling in templated activity names ------------------------
+
+def test_templated_activity_renders_nan_as_unknown():
+    """Templated columns with NaN values should render as 'unknown',
+    not the literal pandas 'nan' string.
+    """
+    import numpy as np
+    from ts_shape.eventlog.taxonomy import REGISTRY
+
+    df = pd.DataFrame({
+        "start": pd.to_datetime(["2026-05-07T10:00", "2026-05-07T10:05"], utc=True),
+        "end":   pd.to_datetime(["2026-05-07T10:04", "2026-05-07T10:09"], utc=True),
+        "uuid":         ["e1", "e2"],
+        "source_uuid":  ["asset-A", "asset-A"],
+        "is_delta":     [False, False],
+        "state":        ["run", np.nan],
+        "duration_seconds": [240.0, 240.0],
+    })
+    log = to_event_log(df, detector="MachineStateEvents.detect_run_idle")
+    activities = log.events[OCEL_ACTIVITY].tolist()
+    assert "production.machine_state.unknown" in activities
+    assert "production.machine_state.nan" not in activities
+
+
+# ---------- standard_attrs typo handling -----------------------------------
+
+def test_standard_attrs_typo_in_numeric_source_warns():
+    """A numeric standard attr (e.g. baseline) given an identifier-like
+    string that doesn't match any column should warn, not silently
+    broadcast the typo as a literal."""
+    import warnings
+    from ts_shape.eventlog import EventLog
+    from ts_shape.eventlog.taxonomy import LabelRule
+    from ts_shape.eventlog.adapters import adapt
+
+    df = pd.DataFrame({
+        "systime": pd.date_range("2026-05-07", periods=3, freq="1min", tz="UTC"),
+        "uuid": ["x"]*3,
+        "is_delta": [False]*3,
+        "source_uuid": ["asset-A"]*3,
+    })
+    rule = LabelRule(
+        template="quality.outlier.test",
+        pack="quality",
+        shape="point",
+        produces_objects=("asset",),
+        standard_attrs={"ts_shape:baseline": "rolling_mean_typo"},
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        log = adapt(df, rule=rule, detector="X.y", objects=None, qualifiers=None)
+    assert any("looks like a column name" in str(w.message) for w in caught)
+    assert isinstance(log, EventLog)
+
+
+def test_standard_attrs_string_literal_does_not_warn(outlier_df):
+    """Plain literal strings like 'zscore' for ts_shape:method must NOT warn —
+    string-typed standard attrs are commonly used for enum-like literals."""
+    import warnings
+    legacy = OutlierDetectionEvents(
+        outlier_df, value_column="value_double"
+    ).detect_outliers_zscore()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        to_event_log(legacy,
+                     detector="OutlierDetectionEvents.detect_outliers_zscore")
+    typo_warnings = [w for w in caught if "looks like a column name" in str(w.message)]
+    assert not typo_warnings
+
+
+# ---------- interval-shape fallback to point shape -------------------------
+
+def test_interval_rule_falls_back_to_point_when_no_start_end_columns():
+    """A rule declared `interval` should fall back to point-shape behaviour
+    when the legacy DataFrame lacks `start`/`end` columns. No crash."""
+    df = pd.DataFrame({
+        "systime": pd.date_range("2026-05-07", periods=3, freq="1min", tz="UTC"),
+        "uuid": ["x"]*3,
+        "is_delta": [False]*3,
+        "source_uuid": ["asset-A"]*3,
+        "lifecycle_state": ["chattering"]*3,
+    })
+    # AlarmManagementEvents.chattering_detection is declared `interval`
+    # in the registry; here we feed it a point-shaped DataFrame.
+    log = to_event_log(df, detector="AlarmManagementEvents.chattering_detection")
+    assert len(log.events) == 3
+    # All falls-back events get NaT for start_timestamp.
+    assert log.events[TS_START_TIMESTAMP].isna().all()
+
+
+# ---------- static shape time generation -----------------------------------
+
+def test_static_shape_all_rows_share_timestamp():
+    """Static shape uses pd.Timestamp.now(tz='UTC') broadcast — every row
+    must share the same timestamp."""
+    df = pd.DataFrame({
+        "part": ["A", "B", "C"],
+        "mean": [1.0, 1.1, 1.2],
+        "range": [0.1, 0.1, 0.1],
+        "repeatability_std": [0.05, 0.05, 0.05],
+        "EV": [0.15, 0.15, 0.15],
+    })
+    log = to_event_log(df, detector="GaugeRepeatabilityEvents.repeatability")
+    timestamps = log.events[OCEL_TIMESTAMP].unique()
+    assert len(timestamps) == 1
+
+
+# ---------- scalar object bindings -----------------------------------------
+
+def test_scalar_object_binding_broadcasts(outlier_df):
+    """A scalar value passed to objects= should broadcast to every row."""
+    legacy = OutlierDetectionEvents(
+        outlier_df, value_column="value_double"
+    ).detect_outliers_zscore()
+    log = to_event_log(
+        legacy,
+        detector="OutlierDetectionEvents.detect_outliers_zscore",
+        objects={"shift": "A"},  # scalar broadcast
+    )
+    shift_objects = log.objects[log.objects[OCEL_TYPE] == "shift"]
+    assert len(shift_objects) == 1
+    assert shift_objects[OCEL_OID].iloc[0] == "A"
