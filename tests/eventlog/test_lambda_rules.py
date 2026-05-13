@@ -350,7 +350,7 @@ def test_lambda_log_round_trips_to_flat_and_ocel(torque_df, bearing_df):
 
 def test_adapter_coverage_orphan_check_exempts_lambdas(torque_df):
     """Registering a lambda rule must not break test_no_orphan_registry_entries."""
-    from tests.eventlog.test_adapter_coverage import test_no_orphan_registry_entries
+    from .test_adapter_coverage import test_no_orphan_registry_entries
 
     spec = _spec_high_torque("LambdaCoverage1")
     try:
@@ -362,9 +362,7 @@ def test_adapter_coverage_orphan_check_exempts_lambdas(torque_df):
 
 
 def test_adapter_coverage_archetype_completeness_with_lambdas():
-    from tests.eventlog.test_adapter_coverage import (
-        test_archetype_assignment_is_complete,
-    )
+    from .test_adapter_coverage import test_archetype_assignment_is_complete
 
     spec = _spec_bearing_hot("LambdaCoverage2")
     try:
