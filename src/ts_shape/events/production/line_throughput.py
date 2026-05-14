@@ -36,7 +36,7 @@ class LineThroughputEvents(Base):
     ) -> pd.DataFrame:
         """Compute parts per window for a counter uuid.
 
-        Returns columns: window_start, uuid, source_uuid, is_delta, count
+        Returns columns: start, uuid, source_uuid, is_delta, count
         """
         c = (
             self.dataframe[self.dataframe["uuid"] == counter_uuid]
@@ -45,7 +45,7 @@ class LineThroughputEvents(Base):
         )
         if c.empty:
             return pd.DataFrame(
-                columns=["window_start", "uuid", "source_uuid", "is_delta", "count"]
+                columns=["start", "uuid", "source_uuid", "is_delta", "count"]
             )
         c[self.time_column] = pd.to_datetime(c[self.time_column])
         c = c.set_index(self.time_column)
@@ -55,7 +55,7 @@ class LineThroughputEvents(Base):
         out = (
             counts.to_frame("count")
             .reset_index()
-            .rename(columns={self.time_column: "window_start"})
+            .rename(columns={self.time_column: "start"})
         )
         out["uuid"] = self.event_uuid
         out["source_uuid"] = counter_uuid
@@ -150,7 +150,7 @@ class LineThroughputEvents(Base):
             availability_threshold: Threshold for considering equipment available
 
         Returns:
-            DataFrame with columns: window_start, uuid, source_uuid, is_delta,
+            DataFrame with columns: start, uuid, source_uuid, is_delta,
             actual_count, target_count, availability, performance, oee_score
         """
         parts_df = self.count_parts(
@@ -160,7 +160,7 @@ class LineThroughputEvents(Base):
         if parts_df.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -190,7 +190,7 @@ class LineThroughputEvents(Base):
 
         return parts_df[
             [
-                "window_start",
+                "start",
                 "uuid",
                 "source_uuid",
                 "is_delta",
@@ -228,7 +228,7 @@ class LineThroughputEvents(Base):
         if parts_df.empty or len(parts_df) < trend_window:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -259,7 +259,7 @@ class LineThroughputEvents(Base):
 
         return parts_df[
             [
-                "window_start",
+                "start",
                 "uuid",
                 "source_uuid",
                 "is_delta",

@@ -167,7 +167,7 @@ def test_severity_bucket_thresholds():
             "uuid": ["m", "m", "m"],
             "is_delta": [False, False, False],
             "source_uuid": ["asset-A"] * 3,
-            "severity_score": [1.0, 3.5, 5.0],
+            "severity": [1.0, 3.5, 5.0],
         }
     )
     log = to_event_log(df, detector="OutlierDetectionEvents.detect_outliers_zscore")

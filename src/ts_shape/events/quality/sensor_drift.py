@@ -63,13 +63,13 @@ class SensorDriftEvents(Base):
         else:
             self._reference_series = None
 
-    def _get_reference_for_window(self, window_start, window_end) -> Optional[float]:
+    def _get_reference_for_window(self, start, end) -> Optional[float]:
         """Get reference value for a time window."""
         if self.reference_value is not None:
             return self.reference_value
         if self._reference_series is not None and not self._reference_series.empty:
-            mask = (self._reference_series[self.time_column] >= window_start) & (
-                self._reference_series[self.time_column] < window_end
+            mask = (self._reference_series[self.time_column] >= start) & (
+                self._reference_series[self.time_column] < end
             )
             ref_vals = self._reference_series.loc[mask, self.value_column].dropna()
             if not ref_vals.empty:
@@ -87,10 +87,10 @@ class SensorDriftEvents(Base):
                 as 3x std of first window if not provided.
 
         Returns:
-            DataFrame with columns: window_start, window_end, mean_offset,
+            DataFrame with columns: start, end, mean_offset,
             drift_rate, severity.
         """
-        cols = ["window_start", "window_end", "mean_offset", "drift_rate", "severity"]
+        cols = ["start", "end", "mean_offset", "drift_rate", "severity"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -106,8 +106,8 @@ class SensorDriftEvents(Base):
             if len(vals) < 2:
                 continue
 
-            window_end = ts + pd.to_timedelta(window)
-            ref = self._get_reference_for_window(ts, window_end)
+            end = ts + pd.to_timedelta(window)
+            ref = self._get_reference_for_window(ts, end)
             if ref is not None:
                 mean_offset = float(vals.mean()) - ref
             else:
@@ -157,8 +157,8 @@ class SensorDriftEvents(Base):
                 severity = "low"
 
             event = {
-                "window_start": ts,
-                "window_end": window_end,
+                "start": ts,
+                "end": end,
                 "mean_offset": round(mean_offset, 6),
                 "drift_rate": round(drift_rate, 6),
                 "severity": severity,
@@ -184,10 +184,10 @@ class SensorDriftEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, sensitivity,
+            DataFrame with columns: start, sensitivity,
             sensitivity_change_pct.
         """
-        cols = ["window_start", "sensitivity", "sensitivity_change_pct"]
+        cols = ["start", "sensitivity", "sensitivity_change_pct"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
         if self.reference_value is None and self._reference_series is None:
@@ -204,8 +204,8 @@ class SensorDriftEvents(Base):
             if len(vals) < 2:
                 continue
 
-            window_end = ts + pd.to_timedelta(window)
-            ref = self._get_reference_for_window(ts, window_end)
+            end = ts + pd.to_timedelta(window)
+            ref = self._get_reference_for_window(ts, end)
             if ref is None or ref == 0:
                 continue
 
@@ -220,7 +220,7 @@ class SensorDriftEvents(Base):
 
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "sensitivity": round(sensitivity, 6),
                     "sensitivity_change_pct": round(change_pct, 4),
                 }
@@ -238,10 +238,10 @@ class SensorDriftEvents(Base):
             metric: Statistic to trend ('mean' or 'std').
 
         Returns:
-            DataFrame with columns: window_start, value, slope,
+            DataFrame with columns: start, value, slope,
             r_squared, direction.
         """
-        cols = ["window_start", "value", "slope", "r_squared", "direction"]
+        cols = ["start", "value", "slope", "r_squared", "direction"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -284,7 +284,7 @@ class SensorDriftEvents(Base):
         for i, (ts, v) in enumerate(window_values):
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "value": round(v, 6),
                     "slope": round(slope, 8),
                     "r_squared": round(r_squared, 4),
@@ -307,10 +307,10 @@ class SensorDriftEvents(Base):
                 bias and precision into a 0-100 score.
 
         Returns:
-            DataFrame with columns: window_start, bias, precision,
+            DataFrame with columns: start, bias, precision,
             health_score.
         """
-        cols = ["window_start", "bias", "precision", "health_score"]
+        cols = ["start", "bias", "precision", "health_score"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -323,8 +323,8 @@ class SensorDriftEvents(Base):
             if len(vals) < 2:
                 continue
 
-            window_end = ts + pd.to_timedelta(window)
-            ref = self._get_reference_for_window(ts, window_end)
+            end = ts + pd.to_timedelta(window)
+            ref = self._get_reference_for_window(ts, end)
 
             mean_val = float(vals.mean())
             precision = float(vals.std())
@@ -348,7 +348,7 @@ class SensorDriftEvents(Base):
 
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "bias": round(bias, 6),
                     "precision": round(precision, 6),
                     "health_score": round(health_score, 2),

@@ -64,7 +64,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             window: Aggregation window (e.g. '1D', '1h', '1W').
 
         Returns:
-            DataFrame: window_start, uuid, source_uuid, is_delta,
+            DataFrame: start, uuid, source_uuid, is_delta,
                        energy_kwh, units_produced, enpi
         """
         energy, counter = self._aggregate_pair(
@@ -75,7 +75,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             window=window,
         )
         empty_cols = [
-            "window_start",
+            "start",
             "uuid",
             "source_uuid",
             "is_delta",
@@ -87,7 +87,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             return pd.DataFrame(columns=empty_cols)
 
         merged = energy.join(counter, how="inner").reset_index()
-        merged = merged.rename(columns={self.time_column: "window_start"})
+        merged = merged.rename(columns={self.time_column: "start"})
         merged["enpi"] = np.where(
             merged["units_produced"] > 0,
             merged["energy_kwh"] / merged["units_produced"],
@@ -121,7 +121,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             deviation_threshold: Fractional deviation to flag as anomaly (0.1 = 10%).
 
         Returns:
-            DataFrame: window_start, uuid, source_uuid, enpi, baseline_enpi,
+            DataFrame: start, uuid, source_uuid, enpi, baseline_enpi,
                        deviation_pct, is_anomaly, trend
         """
         base = self.enpi_by_window(
@@ -132,7 +132,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             window=window,
         )
         empty_cols = [
-            "window_start",
+            "start",
             "uuid",
             "source_uuid",
             "enpi",
@@ -187,7 +187,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             window: Aggregation window.
 
         Returns:
-            DataFrame: window_start, meter_uuid, energy_kwh, units_produced, enpi
+            DataFrame: start, meter_uuid, energy_kwh, units_produced, enpi
         """
         frames = []
         for meter_uuid in meter_uuids:
@@ -203,7 +203,7 @@ class EnergyPerformanceIndicatorEvents(Base):
                 frames.append(
                     df[
                         [
-                            "window_start",
+                            "start",
                             "meter_uuid",
                             "energy_kwh",
                             "units_produced",
@@ -215,7 +215,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         if not frames:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "meter_uuid",
                     "energy_kwh",
                     "units_produced",
@@ -225,7 +225,7 @@ class EnergyPerformanceIndicatorEvents(Base):
 
         return (
             pd.concat(frames, ignore_index=True)
-            .sort_values(["window_start", "meter_uuid"])
+            .sort_values(["start", "meter_uuid"])
             .reset_index(drop=True)
         )
 

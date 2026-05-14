@@ -74,7 +74,7 @@ class PartProductionTracking(Base):
 
         Returns:
             DataFrame with columns:
-            - window_start: Start of time window
+            - start: Start of time window
             - part_number: Part number/ID
             - quantity: Parts produced in window
             - first_count: Counter value at window start
@@ -82,7 +82,7 @@ class PartProductionTracking(Base):
 
         Example:
             >>> production_by_part('part_id', 'counter', window='1h')
-                window_start         part_number  quantity  first_count  last_count
+                start         part_number  quantity  first_count  last_count
             0   2024-01-01 08:00:00  PART_A       150       1000        1150
             1   2024-01-01 09:00:00  PART_A       145       1150        1295
             2   2024-01-01 10:00:00  PART_B       98        1295        1393
@@ -97,7 +97,7 @@ class PartProductionTracking(Base):
         if part_data.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "part_number",
                     "quantity",
                     "first_count",
@@ -117,7 +117,7 @@ class PartProductionTracking(Base):
         if counter_data.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "part_number",
                     "quantity",
                     "first_count",
@@ -151,7 +151,7 @@ class PartProductionTracking(Base):
         merged = merged.set_index(self.time_column)
 
         results = []
-        for (window_start, part_num), group in merged.groupby(
+        for (start, part_num), group in merged.groupby(
             [pd.Grouper(freq=window), "part_number"]
         ):
             if group.empty:
@@ -163,7 +163,7 @@ class PartProductionTracking(Base):
 
             results.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "part_number": part_num,
                     "quantity": quantity,
                     "first_count": first_count,
@@ -216,16 +216,16 @@ class PartProductionTracking(Base):
                 columns=["date", "part_number", "total_quantity", "hours_active"]
             )
 
-        hourly["date"] = hourly["window_start"].dt.date
+        hourly["date"] = hourly["start"].dt.date
 
         daily = (
             hourly.groupby(["date", "part_number"])
-            .agg({"quantity": "sum", "window_start": "count"})
+            .agg({"quantity": "sum", "start": "count"})
             .reset_index()
         )
 
         daily = daily.rename(
-            columns={"quantity": "total_quantity", "window_start": "hours_active"}
+            columns={"quantity": "total_quantity", "start": "hours_active"}
         )
 
         return daily

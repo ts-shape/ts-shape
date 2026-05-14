@@ -82,10 +82,10 @@ class ControlLoopHealthEvents(Base):
             window: Resample window (e.g. '1h', '8h').
 
         Returns:
-            DataFrame with columns: window_start, iae, ise, itae, bias,
+            DataFrame with columns: start, iae, ise, itae, bias,
             sample_count.
         """
-        cols = ["window_start", "iae", "ise", "itae", "bias", "sample_count"]
+        cols = ["start", "iae", "ise", "itae", "bias", "sample_count"]
         if self._aligned.empty:
             return pd.DataFrame(columns=cols)
 
@@ -93,7 +93,7 @@ class ControlLoopHealthEvents(Base):
         groups = df.resample(window)
 
         events: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             if len(group) < 2:
                 continue
             error = group["error"]
@@ -107,7 +107,7 @@ class ControlLoopHealthEvents(Base):
 
             events.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "iae": iae,
                     "ise": ise,
                     "itae": itae,
@@ -152,7 +152,7 @@ class ControlLoopHealthEvents(Base):
         groups = df.resample(window)
 
         osc_windows: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             if len(group) < 4:
                 continue
 
@@ -191,8 +191,8 @@ class ControlLoopHealthEvents(Base):
 
             osc_windows.append(
                 {
-                    "start": window_start,
-                    "end": window_start + td,
+                    "start": start,
+                    "end": start + td,
                     "uuid": self.event_uuid,
                     "is_delta": False,
                     "crossing_count": crossings,
@@ -236,11 +236,11 @@ class ControlLoopHealthEvents(Base):
         Requires output_uuid in constructor.
 
         Returns:
-            DataFrame with columns: window_start, pct_time_at_high,
+            DataFrame with columns: start, pct_time_at_high,
             pct_time_at_low, pct_time_saturated, longest_saturation_seconds.
         """
         cols = [
-            "window_start",
+            "start",
             "pct_time_at_high",
             "pct_time_at_low",
             "pct_time_saturated",
@@ -254,7 +254,7 @@ class ControlLoopHealthEvents(Base):
         tol = (high_limit - low_limit) * 0.01  # 1% of range
 
         events: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             if group.empty:
                 continue
             n = len(group)
@@ -276,7 +276,7 @@ class ControlLoopHealthEvents(Base):
 
             events.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "pct_time_at_high": float(at_high / n * 100),
                     "pct_time_at_low": float(at_low / n * 100),
                     "pct_time_saturated": float((at_high + at_low) / n * 100),
@@ -290,11 +290,11 @@ class ControlLoopHealthEvents(Base):
         """Shift-level report card combining all loop health metrics.
 
         Returns:
-            DataFrame with columns: window_start, iae, bias,
+            DataFrame with columns: start, iae, bias,
             oscillation_count, pct_saturated, health_grade.
         """
         cols = [
-            "window_start",
+            "start",
             "iae",
             "bias",
             "oscillation_count",
@@ -310,7 +310,7 @@ class ControlLoopHealthEvents(Base):
 
         events: List[Dict[str, Any]] = []
         for _, row in integrals.iterrows():
-            ws = row["window_start"]
+            ws = row["start"]
             we = ws + pd.Timedelta(window)
 
             # Count oscillation events in this window
@@ -322,7 +322,7 @@ class ControlLoopHealthEvents(Base):
 
             # Saturation in this window
             if not sat.empty:
-                sat_row = sat[sat["window_start"] == ws]
+                sat_row = sat[sat["start"] == ws]
                 pct_sat = (
                     float(sat_row["pct_time_saturated"].iloc[0])
                     if not sat_row.empty
@@ -347,7 +347,7 @@ class ControlLoopHealthEvents(Base):
 
             events.append(
                 {
-                    "window_start": ws,
+                    "start": ws,
                     "iae": row["iae"],
                     "bias": row["bias"],
                     "oscillation_count": osc_count,

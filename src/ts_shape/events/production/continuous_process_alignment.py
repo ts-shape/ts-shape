@@ -25,7 +25,7 @@ _ALIGN_COLS = [
 ]
 
 _LAG_COLS = [
-    "window_start",
+    "start",
     "uuid",
     "component",
     "position_offset_m",
@@ -457,7 +457,7 @@ class ContinuousProcessAlignmentEvents(Base):
         Returns
         -------
         DataFrame with columns:
-        ``window_start``, ``uuid``, ``component``, ``position_offset_m``,
+        ``start``, ``uuid``, ``component``, ``position_offset_m``,
         ``mean_speed_m_s``, ``lag_seconds``.
         """
         uuids = station_uuids if station_uuids is not None else self._all_station_uuids
@@ -472,7 +472,7 @@ class ContinuousProcessAlignmentEvents(Base):
             .mean()
             .rename("mean_speed_raw")
             .reset_index()
-            .rename(columns={self.time_column: "window_start"})
+            .rename(columns={self.time_column: "start"})
         )
         speed_resampled["mean_speed_m_s"] = (
             speed_resampled["mean_speed_raw"].fillna(self.min_speed)
@@ -495,7 +495,7 @@ class ContinuousProcessAlignmentEvents(Base):
             return pd.DataFrame(columns=_LAG_COLS)
 
         return pd.concat(parts, ignore_index=True).sort_values(
-            ["window_start", "position_offset_m"]
+            ["start", "position_offset_m"]
         )
 
     def alignment_quality(
@@ -509,7 +509,7 @@ class ContinuousProcessAlignmentEvents(Base):
         Returns
         -------
         DataFrame with columns:
-        ``window_start``, ``speed_sample_count``, ``has_speed_data``,
+        ``start``, ``speed_sample_count``, ``has_speed_data``,
         ``has_full_coverage``, ``per_uuid_counts``.
         """
         uuids = station_uuids if station_uuids is not None else self._all_station_uuids
@@ -537,7 +537,7 @@ class ContinuousProcessAlignmentEvents(Base):
 
         all_series = [speed_counts] + list(station_counts.values())
         combined = pd.concat(all_series, axis=1).fillna(0).astype(int)
-        combined.index.name = "window_start"
+        combined.index.name = "start"
         combined = combined.reset_index()
 
         combined["has_speed_data"] = combined["speed_sample_count"] > 0
@@ -557,7 +557,7 @@ class ContinuousProcessAlignmentEvents(Base):
 
         return combined[
             [
-                "window_start",
+                "start",
                 "speed_sample_count",
                 "has_speed_data",
                 "has_full_coverage",

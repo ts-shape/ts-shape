@@ -70,12 +70,12 @@ class MultiSensorValidationEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, window_end, max_spread,
+            DataFrame with columns: start, end, max_spread,
             sensor_high, sensor_low, duration.
         """
         cols = [
-            "window_start",
-            "window_end",
+            "start",
+            "end",
             "max_spread",
             "sensor_high",
             "sensor_low",
@@ -97,15 +97,15 @@ class MultiSensorValidationEvents(Base):
 
             spread = float(valid_means.max() - valid_means.min())
             if spread > threshold:
-                window_end = ts + pd.to_timedelta(window)
+                end = ts + pd.to_timedelta(window)
                 events.append(
                     {
-                        "window_start": ts,
-                        "window_end": window_end,
+                        "start": ts,
+                        "end": end,
                         "max_spread": round(spread, 6),
                         "sensor_high": valid_means.idxmax(),
                         "sensor_low": valid_means.idxmin(),
-                        "duration": window_end - ts,
+                        "duration": end - ts,
                     }
                 )
 
@@ -120,10 +120,10 @@ class MultiSensorValidationEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, sensor_a, sensor_b,
+            DataFrame with columns: start, sensor_a, sensor_b,
             bias, abs_bias.
         """
-        cols = ["window_start", "sensor_a", "sensor_b", "bias", "abs_bias"]
+        cols = ["start", "sensor_a", "sensor_b", "bias", "abs_bias"]
         if self._pivot.empty:
             return pd.DataFrame(columns=cols)
 
@@ -144,7 +144,7 @@ class MultiSensorValidationEvents(Base):
                 bias = float(means[a] - means[b])
                 events.append(
                     {
-                        "window_start": ts,
+                        "start": ts,
                         "sensor_a": a,
                         "sensor_b": b,
                         "bias": round(bias, 6),
@@ -165,10 +165,10 @@ class MultiSensorValidationEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, consensus_mean,
+            DataFrame with columns: start, consensus_mean,
             spread_std, consensus_score.
         """
-        cols = ["window_start", "consensus_mean", "spread_std", "consensus_score"]
+        cols = ["start", "consensus_mean", "spread_std", "consensus_score"]
         if self._pivot.empty:
             return pd.DataFrame(columns=cols)
 
@@ -193,7 +193,7 @@ class MultiSensorValidationEvents(Base):
 
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "consensus_mean": round(consensus_mean, 6),
                     "spread_std": round(spread_std, 6),
                     "consensus_score": round(min(1.0, score), 4),
@@ -214,10 +214,10 @@ class MultiSensorValidationEvents(Base):
             method: 'median' or 'mean' — central tendency for comparison.
 
         Returns:
-            DataFrame with columns: window_start, outlier_sensor,
+            DataFrame with columns: start, outlier_sensor,
             deviation, other_sensors_mean.
         """
-        cols = ["window_start", "outlier_sensor", "deviation", "other_sensors_mean"]
+        cols = ["start", "outlier_sensor", "deviation", "other_sensors_mean"]
         if self._pivot.empty:
             return pd.DataFrame(columns=cols)
 
@@ -246,7 +246,7 @@ class MultiSensorValidationEvents(Base):
 
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "outlier_sensor": outlier,
                     "deviation": round(deviation, 6),
                     "other_sensors_mean": round(other_mean, 6),

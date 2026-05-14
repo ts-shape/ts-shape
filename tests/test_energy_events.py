@@ -92,7 +92,7 @@ class TestEnergyConsumptionEvents:
         result = ec.consumption_by_window("meter:main", window="1h")
         assert not result.empty
         assert "consumption" in result.columns
-        assert "window_start" in result.columns
+        assert "start" in result.columns
         assert result["uuid"].iloc[0] == "energy:consumption"
         assert result["source_uuid"].iloc[0] == "meter:main"
 
@@ -101,7 +101,7 @@ class TestEnergyConsumptionEvents:
         result = ec.consumption_by_window("nonexistent:uuid")
         assert result.empty
         assert list(result.columns) == [
-            "window_start",
+            "start",
             "uuid",
             "source_uuid",
             "is_delta",

@@ -13,8 +13,34 @@ import pandas as pd  # type: ignore
 from typing import Optional
 
 from ts_shape.utils.base import Base
+from ts_shape.events._output import (
+    COL_DURATION_S,
+    COL_END,
+    COL_START,
+    empty_event_df,
+)
 
 logger = logging.getLogger(__name__)
+
+
+_DAY_SECONDS = 86400.0
+
+
+def _daily_summary(rows: list[dict], extra_cols: list[str]) -> pd.DataFrame:
+    """Convert a list of {date, ...} rows into the canonical summary schema.
+
+    Each ``date`` becomes ``start`` (midnight) + ``end`` (next midnight) +
+    ``duration_seconds = 86400``. The ``date`` key is dropped.
+    """
+    if not rows:
+        return empty_event_df("summary", extra_cols=extra_cols)
+    df = pd.DataFrame(rows)
+    df[COL_START] = pd.to_datetime(df["date"])
+    df[COL_END] = df[COL_START] + pd.Timedelta(days=1)
+    df[COL_DURATION_S] = _DAY_SECONDS
+    df = df.drop(columns=["date"])
+    leading = [COL_START, COL_END, COL_DURATION_S]
+    return df[leading + [c for c in df.columns if c not in leading]]
 
 
 class OEECalculator(Base):
@@ -22,7 +48,8 @@ class OEECalculator(Base):
 
     Combines availability (from run/idle state), performance (from part counters
     and ideal cycle time), and quality (from total/reject counters) into a single
-    OEE metric per day.
+    OEE metric per day. Each daily row uses the canonical summary schema:
+    ``start`` (midnight) / ``end`` (next midnight) / ``duration_seconds`` = 86400.
 
     Example usage:
         oee = OEECalculator(df)
@@ -81,12 +108,13 @@ class OEECalculator(Base):
             value_column: Column holding the boolean state.
 
         Returns:
-            DataFrame with columns:
-            - date
+            Summary-shape DataFrame with columns:
+            - start, end, duration_seconds (canonical day boundaries; 86400)
             - run_seconds
             - planned_seconds
             - availability_pct
         """
+        avail_extra = ["run_seconds", "planned_seconds", "availability_pct"]
         state_data = (
             self.dataframe[self.dataframe["uuid"] == run_state_uuid]
             .copy()
@@ -94,9 +122,7 @@ class OEECalculator(Base):
         )
 
         if state_data.empty:
-            return pd.DataFrame(
-                columns=["date", "run_seconds", "planned_seconds", "availability_pct"]
-            )
+            return _daily_summary([], avail_extra)
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
         state_data["state"] = state_data[value_column].fillna(False).astype(bool)
@@ -111,9 +137,7 @@ class OEECalculator(Base):
         state_data = state_data[state_data["duration"].notna()]
 
         if state_data.empty:
-            return pd.DataFrame(
-                columns=["date", "run_seconds", "planned_seconds", "availability_pct"]
-            )
+            return _daily_summary([], avail_extra)
 
         results = []
         for date, grp in state_data.groupby("date"):
@@ -136,7 +160,7 @@ class OEECalculator(Base):
                 }
             )
 
-        return pd.DataFrame(results)
+        return _daily_summary(results, avail_extra)
 
     # ------------------------------------------------------------------
     # Performance
@@ -165,13 +189,14 @@ class OEECalculator(Base):
             run_value_column: Column holding boolean run state.
 
         Returns:
-            DataFrame with columns:
-            - date
+            Summary-shape DataFrame with columns:
+            - start, end, duration_seconds
             - actual_parts
             - ideal_parts
             - run_seconds
             - performance_pct
         """
+        perf_extra = ["actual_parts", "ideal_parts", "run_seconds", "performance_pct"]
         counter_data = (
             self.dataframe[self.dataframe["uuid"] == counter_uuid]
             .copy()
@@ -179,15 +204,7 @@ class OEECalculator(Base):
         )
 
         if counter_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "actual_parts",
-                    "ideal_parts",
-                    "run_seconds",
-                    "performance_pct",
-                ]
-            )
+            return _daily_summary([], perf_extra)
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
         counter_data["date"] = counter_data[self.time_column].dt.date
@@ -199,7 +216,7 @@ class OEECalculator(Base):
                 run_state_uuid, value_column=run_value_column
             )
             for _, row in avail_df.iterrows():
-                run_per_day[row["date"]] = row["run_seconds"]
+                run_per_day[row[COL_START].date()] = row["run_seconds"]
 
         results = []
         for date, grp in counter_data.groupby("date"):
@@ -232,7 +249,7 @@ class OEECalculator(Base):
                 }
             )
 
-        return pd.DataFrame(results)
+        return _daily_summary(results, perf_extra)
 
     # ------------------------------------------------------------------
     # Quality
@@ -253,13 +270,14 @@ class OEECalculator(Base):
             value_column: Column holding counter values.
 
         Returns:
-            DataFrame with columns:
-            - date
+            Summary-shape DataFrame with columns:
+            - start, end, duration_seconds
             - total_parts
             - reject_parts
             - good_parts
             - quality_pct
         """
+        qual_extra = ["total_parts", "reject_parts", "good_parts", "quality_pct"]
         total_data = (
             self.dataframe[self.dataframe["uuid"] == total_uuid]
             .copy()
@@ -272,15 +290,7 @@ class OEECalculator(Base):
         )
 
         if total_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "total_parts",
-                    "reject_parts",
-                    "good_parts",
-                    "quality_pct",
-                ]
-            )
+            return _daily_summary([], qual_extra)
 
         total_data[self.time_column] = pd.to_datetime(total_data[self.time_column])
         total_data["date"] = total_data[self.time_column].dt.date
@@ -315,7 +325,7 @@ class OEECalculator(Base):
                 }
             )
 
-        return pd.DataFrame(results)
+        return _daily_summary(results, qual_extra)
 
     # ------------------------------------------------------------------
     # Combined OEE
@@ -345,13 +355,19 @@ class OEECalculator(Base):
             planned_time_hours: Fixed planned production hours per day.
 
         Returns:
-            DataFrame with columns:
-            - date
+            Summary-shape DataFrame with columns:
+            - start, end, duration_seconds
             - availability_pct
             - performance_pct
             - quality_pct
             - oee_pct
         """
+        oee_extra = [
+            "availability_pct",
+            "performance_pct",
+            "quality_pct",
+            "oee_pct",
+        ]
         avail_df = self.calculate_availability(
             run_state_uuid, planned_time_hours=planned_time_hours
         )
@@ -365,28 +381,21 @@ class OEECalculator(Base):
             qual_df = None
 
         if avail_df.empty and perf_df.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "availability_pct",
-                    "performance_pct",
-                    "quality_pct",
-                    "oee_pct",
-                ]
-            )
+            return empty_event_df("summary", extra_cols=oee_extra)
 
-        # Merge on date
-        merged = avail_df[["date", "availability_pct"]].copy()
+        # Merge on canonical day boundaries (start/end/duration_seconds)
+        key_cols = [COL_START, COL_END, COL_DURATION_S]
+        merged = avail_df[key_cols + ["availability_pct"]].copy()
         if not perf_df.empty:
             merged = merged.merge(
-                perf_df[["date", "performance_pct"]], on="date", how="outer"
+                perf_df[key_cols + ["performance_pct"]], on=key_cols, how="outer"
             )
         else:
             merged["performance_pct"] = 0.0
 
         if qual_df is not None and not qual_df.empty:
             merged = merged.merge(
-                qual_df[["date", "quality_pct"]], on="date", how="outer"
+                qual_df[key_cols + ["quality_pct"]], on=key_cols, how="outer"
             )
         else:
             merged["quality_pct"] = 100.0
@@ -401,15 +410,7 @@ class OEECalculator(Base):
         ).round(2)
 
         return (
-            merged[
-                [
-                    "date",
-                    "availability_pct",
-                    "performance_pct",
-                    "quality_pct",
-                    "oee_pct",
-                ]
-            ]
-            .sort_values("date")
+            merged[key_cols + oee_extra]
+            .sort_values(COL_START)
             .reset_index(drop=True)
         )

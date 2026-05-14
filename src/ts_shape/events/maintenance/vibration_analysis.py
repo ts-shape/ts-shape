@@ -136,11 +136,11 @@ class VibrationAnalysisEvents(Base):
             growth_threshold: Minimum fractional growth (e.g. 0.1 = 10%) to flag.
 
         Returns:
-            DataFrame with columns: window_start, uuid, is_delta,
+            DataFrame with columns: start, uuid, is_delta,
             amplitude, baseline_amplitude, growth_pct.
         """
         cols = [
-            "window_start",
+            "start",
             "uuid",
             "is_delta",
             "amplitude",
@@ -170,7 +170,7 @@ class VibrationAnalysisEvents(Base):
             if len(win) < 2:
                 continue
             amp = float(win.max() - win.min())
-            amplitudes.append({"window_start": ws, "amplitude": amp})
+            amplitudes.append({"start": ws, "amplitude": amp})
 
         if not amplitudes:
             return pd.DataFrame(columns=cols)
@@ -185,7 +185,7 @@ class VibrationAnalysisEvents(Base):
             growth_pct = (a["amplitude"] - baseline_amp) / baseline_amp
             rows.append(
                 {
-                    "window_start": a["window_start"],
+                    "start": a["start"],
                     "uuid": self.event_uuid,
                     "is_delta": True,
                     "amplitude": a["amplitude"],
@@ -208,11 +208,11 @@ class VibrationAnalysisEvents(Base):
             window: Window size for indicator computation.
 
         Returns:
-            DataFrame with columns: window_start, uuid, is_delta,
+            DataFrame with columns: start, uuid, is_delta,
             rms, peak, crest_factor, kurtosis.
         """
         cols = [
-            "window_start",
+            "start",
             "uuid",
             "is_delta",
             "rms",
@@ -251,7 +251,7 @@ class VibrationAnalysisEvents(Base):
 
             rows.append(
                 {
-                    "window_start": ws,
+                    "start": ws,
                     "uuid": self.event_uuid,
                     "is_delta": True,
                     "rms": round(rms_val, 6),

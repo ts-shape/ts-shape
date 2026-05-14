@@ -48,7 +48,7 @@ class DutyCycleEvents(Base):
         Returns:
             DataFrame with columns: start_time, end_time, state (on/off), duration.
         """
-        cols = ["start_time", "end_time", "state", "duration"]
+        cols = ["start", "end", "state", "duration"]
         if self.series.empty:
             return pd.DataFrame(columns=cols)
 
@@ -63,8 +63,8 @@ class DutyCycleEvents(Base):
             end = seg[self.time_column].iloc[-1]
             rows.append(
                 {
-                    "start_time": start,
-                    "end_time": end,
+                    "start": start,
+                    "end": end,
                     "state": "on" if state else "off",
                     "duration": end - start,
                 }
@@ -79,9 +79,9 @@ class DutyCycleEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: window_start, on_time, off_time, duty_cycle_pct.
+            DataFrame with columns: start, on_time, off_time, duty_cycle_pct.
         """
-        cols = ["window_start", "on_time", "off_time", "duty_cycle_pct"]
+        cols = ["start", "on_time", "off_time", "duty_cycle_pct"]
         if self.series.empty:
             return pd.DataFrame(columns=cols)
 
@@ -100,7 +100,7 @@ class DutyCycleEvents(Base):
             off_time = round((1 - pct) * window_td.total_seconds(), 2)
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "on_time": on_time,
                     "off_time": off_time,
                     "duty_cycle_pct": round(pct * 100, 2),
@@ -118,9 +118,9 @@ class DutyCycleEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: window_start, on_count, off_count, total_transitions.
+            DataFrame with columns: start, on_count, off_count, total_transitions.
         """
-        cols = ["window_start", "on_count", "off_count", "total_transitions"]
+        cols = ["start", "on_count", "off_count", "total_transitions"]
         if self.series.empty:
             return pd.DataFrame(columns=cols)
 
@@ -138,7 +138,7 @@ class DutyCycleEvents(Base):
         resampled["total_transitions"] = resampled["on_count"] + resampled["off_count"]
 
         result = resampled.reset_index().rename(
-            columns={self.time_column: "window_start"}
+            columns={self.time_column: "start"}
         )
         result["on_count"] = result["on_count"].astype(int)
         result["off_count"] = result["off_count"].astype(int)
@@ -158,11 +158,11 @@ class DutyCycleEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: window_start, transition_count,
+            DataFrame with columns: start, transition_count,
             avg_on_duration, avg_off_duration.
         """
         cols = [
-            "window_start",
+            "start",
             "transition_count",
             "avg_on_duration",
             "avg_off_duration",
@@ -181,11 +181,11 @@ class DutyCycleEvents(Base):
 
         events: List[Dict[str, Any]] = []
         for _, row in excessive.iterrows():
-            w_start = row["window_start"]
+            w_start = row["start"]
             w_end = w_start + window_td
 
             win_intervals = intervals[
-                (intervals["start_time"] >= w_start) & (intervals["start_time"] < w_end)
+                (intervals["start"] >= w_start) & (intervals["start"] < w_end)
             ]
 
             on_intervals = win_intervals[win_intervals["state"] == "on"]
@@ -204,7 +204,7 @@ class DutyCycleEvents(Base):
 
             events.append(
                 {
-                    "window_start": w_start,
+                    "start": w_start,
                     "transition_count": int(row["total_transitions"]),
                     "avg_on_duration": round(avg_on, 2),
                     "avg_off_duration": round(avg_off, 2),

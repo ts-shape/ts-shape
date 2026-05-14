@@ -55,7 +55,7 @@ class ThresholdMonitoringEvents(Base):
         Returns:
             DataFrame with columns: start_time, end_time, duration, level, peak_value.
         """
-        cols = ["start_time", "end_time", "duration", "level", "peak_value"]
+        cols = ["start", "end", "duration", "level", "peak_value"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -96,8 +96,8 @@ class ThresholdMonitoringEvents(Base):
 
                 all_events.append(
                     {
-                        "start_time": start,
-                        "end_time": end,
+                        "start": start,
+                        "end": end,
                         "duration": end - start,
                         "level": level_name,
                         "peak_value": peak,
@@ -122,7 +122,7 @@ class ThresholdMonitoringEvents(Base):
         Returns:
             DataFrame with columns: start_time, end_time, duration, peak_value.
         """
-        cols = ["start_time", "end_time", "duration", "peak_value"]
+        cols = ["start", "end", "duration", "peak_value"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -151,8 +151,8 @@ class ThresholdMonitoringEvents(Base):
                 if v < low:
                     events.append(
                         {
-                            "start_time": pd.Timestamp(alarm_start),
-                            "end_time": pd.Timestamp(times[i]),
+                            "start": pd.Timestamp(alarm_start),
+                            "end": pd.Timestamp(times[i]),
                             "duration": pd.Timestamp(times[i])
                             - pd.Timestamp(alarm_start),
                             "peak_value": float(peak),
@@ -165,8 +165,8 @@ class ThresholdMonitoringEvents(Base):
         if in_alarm and alarm_start is not None:
             events.append(
                 {
-                    "start_time": pd.Timestamp(alarm_start),
-                    "end_time": pd.Timestamp(times[-1]),
+                    "start": pd.Timestamp(alarm_start),
+                    "end": pd.Timestamp(times[-1]),
                     "duration": pd.Timestamp(times[-1]) - pd.Timestamp(alarm_start),
                     "peak_value": float(peak),
                 }
@@ -186,9 +186,9 @@ class ThresholdMonitoringEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: window_start, time_above, pct_above, exceedance_count.
+            DataFrame with columns: start, time_above, pct_above, exceedance_count.
         """
-        cols = ["window_start", "time_above", "pct_above", "exceedance_count"]
+        cols = ["start", "time_above", "pct_above", "exceedance_count"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -214,7 +214,7 @@ class ThresholdMonitoringEvents(Base):
             time_above_seconds = row["above_frac"] * window_td.total_seconds()
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "time_above": round(time_above_seconds, 2),
                     "pct_above": pct,
                     "exceedance_count": int(row["exceedance_count"]),
@@ -235,10 +235,10 @@ class ThresholdMonitoringEvents(Base):
             window: Resample window (e.g. '1D' for daily).
 
         Returns:
-            DataFrame with columns: window_start, exceedance_count,
+            DataFrame with columns: start, exceedance_count,
             total_duration, trend_direction.
         """
-        cols = ["window_start", "exceedance_count", "total_duration", "trend_direction"]
+        cols = ["start", "exceedance_count", "total_duration", "trend_direction"]
         time_above = self.time_above_threshold(threshold, window)
         if time_above.empty or len(time_above) < 2:
             return pd.DataFrame(columns=cols)
@@ -256,7 +256,7 @@ class ThresholdMonitoringEvents(Base):
         else:
             trend = "stable"
 
-        result = time_above[["window_start", "exceedance_count", "time_above"]].copy()
+        result = time_above[["start", "exceedance_count", "time_above"]].copy()
         result = result.rename(columns={"time_above": "total_duration"})
         result["trend_direction"] = trend
 

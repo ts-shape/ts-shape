@@ -47,11 +47,11 @@ class OperatingRangeEvents(Base):
         """Per-window operating envelope statistics.
 
         Returns:
-            DataFrame with columns: window_start, min_value, p5,
+            DataFrame with columns: start, min_value, p5,
             mean_value, p95, max_value, range_width.
         """
         cols = [
-            "window_start",
+            "start",
             "min_value",
             "p5",
             "mean_value",
@@ -66,7 +66,7 @@ class OperatingRangeEvents(Base):
         groups = indexed.resample(window)
 
         events: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             if group.empty:
                 continue
             vals = group.dropna()
@@ -76,7 +76,7 @@ class OperatingRangeEvents(Base):
             p95 = float(np.percentile(vals, 95))
             events.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "min_value": float(vals.min()),
                     "p5": p5,
                     "mean_value": float(vals.mean()),
@@ -118,13 +118,13 @@ class OperatingRangeEvents(Base):
         groups = indexed.resample(window)
 
         window_stats: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             vals = group.dropna()
             if len(vals) < 2:
                 continue
             window_stats.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "mean": float(vals.mean()),
                     "std": float(vals.std()),
                 }
@@ -144,8 +144,8 @@ class OperatingRangeEvents(Base):
             if shift_mag >= shift_threshold:
                 events.append(
                     {
-                        "start": prev["window_start"],
-                        "end": curr["window_start"],
+                        "start": prev["start"],
+                        "end": curr["start"],
                         "uuid": self.event_uuid,
                         "is_delta": False,
                         "prev_mean": prev["mean"],
@@ -165,10 +165,10 @@ class OperatingRangeEvents(Base):
         """Percentage of time within a defined range per window.
 
         Returns:
-            DataFrame with columns: window_start, time_in_range_pct,
+            DataFrame with columns: start, time_in_range_pct,
             time_below_pct, time_above_pct.
         """
-        cols = ["window_start", "time_in_range_pct", "time_below_pct", "time_above_pct"]
+        cols = ["start", "time_in_range_pct", "time_below_pct", "time_above_pct"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -176,7 +176,7 @@ class OperatingRangeEvents(Base):
         groups = indexed.resample(window)
 
         events: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             vals = group.dropna()
             if vals.empty:
                 continue
@@ -186,7 +186,7 @@ class OperatingRangeEvents(Base):
             above = (vals > upper).sum()
             events.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "time_in_range_pct": float(in_range / n * 100),
                     "time_below_pct": float(below / n * 100),
                     "time_above_pct": float(above / n * 100),

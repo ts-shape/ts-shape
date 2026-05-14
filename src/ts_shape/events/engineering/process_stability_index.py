@@ -75,12 +75,12 @@ class ProcessStabilityIndex(Base):
         - smoothness_score: low point-to-point jitter = high score
 
         Returns:
-            DataFrame with columns: window_start, stability_score,
+            DataFrame with columns: start, stability_score,
             variance_score, bias_score, excursion_score, smoothness_score,
             grade.
         """
         cols = [
-            "window_start",
+            "start",
             "stability_score",
             "variance_score",
             "bias_score",
@@ -97,7 +97,7 @@ class ProcessStabilityIndex(Base):
         half_range = spec_range / 2.0 if spec_range > 0 else 1.0
 
         events: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             vals = group.dropna()
             if len(vals) < 2:
                 continue
@@ -142,7 +142,7 @@ class ProcessStabilityIndex(Base):
 
             events.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "stability_score": round(total, 1),
                     "variance_score": round(variance_score, 1),
                     "bias_score": round(bias_score, 1),
@@ -162,11 +162,11 @@ class ProcessStabilityIndex(Base):
         """Track whether stability is improving or degrading.
 
         Returns:
-            DataFrame with columns: window_start, stability_score,
+            DataFrame with columns: start, stability_score,
             rolling_avg, trend_direction, score_change.
         """
         cols = [
-            "window_start",
+            "start",
             "stability_score",
             "rolling_avg",
             "trend_direction",
@@ -176,7 +176,7 @@ class ProcessStabilityIndex(Base):
         if scores.empty or len(scores) < 2:
             return pd.DataFrame(columns=cols)
 
-        result = scores[["window_start", "stability_score"]].copy()
+        result = scores[["start", "stability_score"]].copy()
         result["rolling_avg"] = (
             result["stability_score"].rolling(n_windows, min_periods=1).mean()
         )
@@ -197,12 +197,12 @@ class ProcessStabilityIndex(Base):
         """Return the N worst-scoring windows.
 
         Returns:
-            DataFrame with columns: window_start, stability_score,
+            DataFrame with columns: start, stability_score,
             variance_score, bias_score, excursion_score, smoothness_score,
             primary_issue.
         """
         cols = [
-            "window_start",
+            "start",
             "stability_score",
             "variance_score",
             "bias_score",
@@ -239,11 +239,11 @@ class ProcessStabilityIndex(Base):
         """Compare each window to the best-observed window.
 
         Returns:
-            DataFrame with columns: window_start, stability_score,
+            DataFrame with columns: start, stability_score,
             best_score, gap_to_best, pct_of_best.
         """
         cols = [
-            "window_start",
+            "start",
             "stability_score",
             "best_score",
             "gap_to_best",
@@ -254,7 +254,7 @@ class ProcessStabilityIndex(Base):
             return pd.DataFrame(columns=cols)
 
         best = float(scores["stability_score"].max())
-        result = scores[["window_start", "stability_score"]].copy()
+        result = scores[["start", "stability_score"]].copy()
         result["best_score"] = best
         result["gap_to_best"] = best - result["stability_score"]
         result["pct_of_best"] = (

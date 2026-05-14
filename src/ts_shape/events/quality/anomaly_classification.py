@@ -55,7 +55,7 @@ class AnomalyClassificationEvents(Base):
         Returns:
             DataFrame with columns: start_time, end_time, duration, stuck_value.
         """
-        cols = ["start_time", "end_time", "duration", "stuck_value"]
+        cols = ["start", "end", "duration", "stuck_value"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -86,8 +86,8 @@ class AnomalyClassificationEvents(Base):
             if duration >= min_td:
                 events.append(
                     {
-                        "start_time": start,
-                        "end_time": end,
+                        "start": start,
+                        "end": end,
                         "duration": duration,
                         "stuck_value": float(values[indices[0]]),
                     }
@@ -109,7 +109,7 @@ class AnomalyClassificationEvents(Base):
         Returns:
             DataFrame with columns: start_time, end_time, crossing_count, amplitude.
         """
-        cols = ["start_time", "end_time", "crossing_count", "amplitude"]
+        cols = ["start", "end", "crossing_count", "amplitude"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -141,8 +141,8 @@ class AnomalyClassificationEvents(Base):
                     amplitude = float(np.max(win.values) - np.min(win.values))
                     events.append(
                         {
-                            "start_time": current,
-                            "end_time": win_end,
+                            "start": current,
+                            "end": win_end,
                             "crossing_count": crossings,
                             "amplitude": amplitude,
                         }
@@ -163,7 +163,7 @@ class AnomalyClassificationEvents(Base):
         Returns:
             DataFrame with columns: start_time, end_time, slope, direction.
         """
-        cols = ["start_time", "end_time", "slope", "direction"]
+        cols = ["start", "end", "slope", "direction"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -193,8 +193,8 @@ class AnomalyClassificationEvents(Base):
                 if abs(slope) >= min_slope:
                     events.append(
                         {
-                            "start_time": current,
-                            "end_time": win_end,
+                            "start": current,
+                            "end": win_end,
                             "slope": slope,
                             "direction": "increasing" if slope > 0 else "decreasing",
                         }
@@ -219,7 +219,7 @@ class AnomalyClassificationEvents(Base):
         Returns:
             DataFrame with columns: start_time, end_time, anomaly_type, severity, details.
         """
-        cols = ["start_time", "end_time", "anomaly_type", "severity", "details"]
+        cols = ["start", "end", "anomaly_type", "severity", "details"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -256,8 +256,8 @@ class AnomalyClassificationEvents(Base):
             if win_std < 1e-8:
                 events.append(
                     {
-                        "start_time": current,
-                        "end_time": win_end,
+                        "start": current,
+                        "end": win_end,
                         "anomaly_type": "flatline",
                         "severity": "warning",
                         "details": f"stuck_value={values[0]:.4f}",
@@ -274,8 +274,8 @@ class AnomalyClassificationEvents(Base):
                 severity = "critical" if max_z > z_threshold * 2 else "warning"
                 events.append(
                     {
-                        "start_time": current,
-                        "end_time": win_end,
+                        "start": current,
+                        "end": win_end,
                         "anomaly_type": "spike",
                         "severity": severity,
                         "details": f"spike_count={spike_count}, max_z={max_z:.2f}",
@@ -292,8 +292,8 @@ class AnomalyClassificationEvents(Base):
             if shift > global_std * 2:
                 events.append(
                     {
-                        "start_time": current,
-                        "end_time": win_end,
+                        "start": current,
+                        "end": win_end,
                         "anomaly_type": "level_shift",
                         "severity": "warning",
                         "details": f"shift={shift:.4f}, from={first_half_mean:.4f}, to={second_half_mean:.4f}",
@@ -312,8 +312,8 @@ class AnomalyClassificationEvents(Base):
             if abs(slope) > global_std * 0.1:
                 events.append(
                     {
-                        "start_time": current,
-                        "end_time": win_end,
+                        "start": current,
+                        "end": win_end,
                         "anomaly_type": "drift",
                         "severity": "warning",
                         "details": f"slope={slope:.6f}, direction={'increasing' if slope > 0 else 'decreasing'}",
@@ -331,8 +331,8 @@ class AnomalyClassificationEvents(Base):
                 amplitude = float(np.max(values) - np.min(values))
                 events.append(
                     {
-                        "start_time": current,
-                        "end_time": win_end,
+                        "start": current,
+                        "end": win_end,
                         "anomaly_type": "oscillation",
                         "severity": "warning",
                         "details": f"crossings={crossings}, amplitude={amplitude:.4f}",

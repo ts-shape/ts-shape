@@ -91,8 +91,8 @@ def test_contribution_breakdown():
     assert "pct_of_total" in result.columns
     # Input contributions should sum to ~100%
     input_rows = result[result["role"] == "input"]
-    for ws in input_rows["window_start"].unique():
-        ws_rows = input_rows[input_rows["window_start"] == ws]
+    for ws in input_rows["start"].unique():
+        ws_rows = input_rows[input_rows["start"] == ws]
         assert abs(ws_rows["pct_of_total"].sum() - 100.0) < 0.1
 
 

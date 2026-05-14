@@ -136,11 +136,11 @@ class InventoryMonitoringEvents(Base):
             window: Time-based window for grouping (e.g. ``'1h'``, ``'30min'``).
 
         Returns:
-            DataFrame with columns: window_start, uuid, is_delta,
+            DataFrame with columns: start, uuid, is_delta,
             consumption_rate, level_start, level_end.
         """
         empty_cols = [
-            "window_start",
+            "start",
             "uuid",
             "is_delta",
             "consumption_rate",
@@ -160,7 +160,7 @@ class InventoryMonitoringEvents(Base):
 
         result = pd.DataFrame(
             {
-                "window_start": first.index,
+                "start": first.index,
                 "level_start": first.values,
                 "level_end": last.values,
             }
@@ -301,8 +301,8 @@ class InventoryMonitoringEvents(Base):
             current_time = times[i]
             current_level = float(values[i])
             # Lookback window
-            window_start = current_time - window_td
-            mask = (times >= window_start) & (times <= current_time)
+            start = current_time - window_td
+            mask = (times >= start) & (times <= current_time)
             window_vals = values[mask]
             window_times = times[mask]
 

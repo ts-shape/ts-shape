@@ -71,11 +71,11 @@ class DemandPatternEvents(Base):
             period: Pandas offset alias for grouping (e.g. ``'1D'``, ``'1h'``).
 
         Returns:
-            DataFrame with columns: period_start, uuid, is_delta,
+            DataFrame with columns: start, uuid, is_delta,
             total_demand, avg_demand, peak_demand.
         """
         empty_cols = [
-            "period_start",
+            "start",
             "uuid",
             "is_delta",
             "total_demand",
@@ -95,7 +95,7 @@ class DemandPatternEvents(Base):
 
         result = pd.DataFrame(
             {
-                "period_start": total.index,
+                "start": total.index,
                 "total_demand": total.values,
                 "avg_demand": avg.values,
                 "peak_demand": peak.values,
@@ -126,11 +126,11 @@ class DemandPatternEvents(Base):
             window: Pandas offset alias for aggregation period.
 
         Returns:
-            DataFrame with columns: period_start, uuid, is_delta,
+            DataFrame with columns: start, uuid, is_delta,
             demand, baseline_mean, spike_magnitude.
         """
         empty_cols = [
-            "period_start",
+            "start",
             "uuid",
             "is_delta",
             "demand",
@@ -159,7 +159,7 @@ class DemandPatternEvents(Base):
 
         result = pd.DataFrame(
             {
-                "period_start": spikes["period_start"].values,
+                "start": spikes["start"].values,
                 "uuid": self.event_uuid,
                 "is_delta": True,
                 "demand": spikes["total_demand"].values,
@@ -215,7 +215,7 @@ class DemandPatternEvents(Base):
                 "Saturday",
                 "Sunday",
             ]
-            period_data["label"] = period_data["period_start"].dt.dayofweek
+            period_data["label"] = period_data["start"].dt.dayofweek
             grouped = period_data.groupby("label")["total_demand"]
             stats = grouped.agg(["mean", "std", "min", "max"]).reset_index()
             stats.columns = [
@@ -230,7 +230,7 @@ class DemandPatternEvents(Base):
             )
         else:
             # Hour-of-day grouping
-            period_data["label"] = period_data["period_start"].dt.hour
+            period_data["label"] = period_data["start"].dt.hour
             grouped = period_data.groupby("label")["total_demand"]
             stats = grouped.agg(["mean", "std", "min", "max"]).reset_index()
             stats.columns = [

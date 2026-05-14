@@ -143,7 +143,9 @@ class TestOEECalculator:
         result = oee.calculate_availability("machine_state")
 
         assert not result.empty
-        assert "date" in result.columns
+        assert "start" in result.columns
+        assert "end" in result.columns
+        assert "duration_seconds" in result.columns
         assert "availability_pct" in result.columns
         # 50/60 ~ 83.3% availability per cycle
         avail = result["availability_pct"].iloc[0]
@@ -193,7 +195,9 @@ class TestOEECalculator:
 
         assert not result.empty
         assert set(result.columns) == {
-            "date",
+            "start",
+            "end",
+            "duration_seconds",
             "availability_pct",
             "performance_pct",
             "quality_pct",
@@ -291,7 +295,7 @@ class TestAlarmManagementEvents:
 
         assert not result.empty
         assert "alarm_count" in result.columns
-        assert "window_start" in result.columns
+        assert "start" in result.columns
         # Should have some activations
         total = result["alarm_count"].sum()
         assert total > 0

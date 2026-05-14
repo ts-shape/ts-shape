@@ -314,7 +314,7 @@ class TestLagProfile:
     def test_output_columns(self, aligner):
         result = aligner.lag_profile()
         for col in [
-            "window_start",
+            "start",
             "uuid",
             "component",
             "position_offset_m",
@@ -330,8 +330,8 @@ class TestLagProfile:
         h2_start = h1_end + pd.Timedelta(minutes=30)
 
         sub_a = result[result["uuid"] == "station:a"]
-        lag_h1 = sub_a[sub_a["window_start"] < h1_end]["lag_seconds"].median()
-        lag_h2 = sub_a[sub_a["window_start"] > h2_start]["lag_seconds"].median()
+        lag_h1 = sub_a[sub_a["start"] < h1_end]["lag_seconds"].median()
+        lag_h2 = sub_a[sub_a["start"] > h2_start]["lag_seconds"].median()
         assert abs(lag_h2 / lag_h1 - 2.0) < 0.1
 
     def test_window_granularity(self, aligner):
@@ -350,7 +350,7 @@ class TestAlignmentQuality:
     def test_output_columns(self, aligner):
         result = aligner.alignment_quality()
         for col in [
-            "window_start",
+            "start",
             "speed_sample_count",
             "has_speed_data",
             "has_full_coverage",
@@ -381,7 +381,7 @@ class TestAlignmentQuality:
         )
         result = aligner2.alignment_quality(window="30min")
         gap_windows = result[
-            (result["window_start"] >= base) & (result["window_start"] < gap_end)
+            (result["start"] >= base) & (result["start"] < gap_end)
         ]
         assert (
             gap_windows["has_speed_data"]  # noqa: E712 pandas-series-bool-comparison

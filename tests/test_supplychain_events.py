@@ -92,7 +92,7 @@ class TestInventoryMonitoringEvents:
         result = tracker.consumption_rate(window="4h")
         assert not result.empty
         assert "consumption_rate" in result.columns
-        assert "window_start" in result.columns
+        assert "start" in result.columns
         # All rates should be positive (inventory is declining)
         assert (result["consumption_rate"] >= 0).all()
 
@@ -318,7 +318,7 @@ class TestDemandPatternEvents:
         result = analyzer.demand_by_period(period="1D")
         assert not result.empty
         assert "total_demand" in result.columns
-        assert "period_start" in result.columns
+        assert "start" in result.columns
         # Should have roughly 21 days
         assert len(result) == 21
 
@@ -335,7 +335,7 @@ class TestDemandPatternEvents:
         assert not spikes.empty
         assert "spike_magnitude" in spikes.columns
         # The spike day (Jan 11) should be detected
-        spike_dates = pd.to_datetime(spikes["period_start"]).dt.date
+        spike_dates = pd.to_datetime(spikes["start"]).dt.date
         assert pd.Timestamp("2024-01-11").date() in spike_dates.values
 
     def test_detect_no_spikes_high_threshold(self, daily_demand_df):

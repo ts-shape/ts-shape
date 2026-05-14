@@ -74,13 +74,13 @@ class IdleEnergyDetectionEvents(Base):
             idle_threshold: machine_running_pct below this classifies the window as idle.
 
         Returns:
-            DataFrame: window_start, uuid, source_uuid, is_delta,
+            DataFrame: start, uuid, source_uuid, is_delta,
                        total_energy, idle_energy, running_energy,
                        machine_running_pct, idle_fraction
         """
         energy, state = self._filter_two(meter_uuid, state_uuid)
         empty_cols = [
-            "window_start",
+            "start",
             "uuid",
             "source_uuid",
             "is_delta",
@@ -109,7 +109,7 @@ class IdleEnergyDetectionEvents(Base):
         )
 
         out = energy_agg.join(state_agg, how="inner").reset_index()
-        out = out.rename(columns={self.time_column: "window_start"})
+        out = out.rename(columns={self.time_column: "start"})
 
         out["machine_running_pct"] = out["machine_running_pct"].fillna(0.0)
         out["idle_fraction"] = np.where(
@@ -217,7 +217,7 @@ class IdleEnergyDetectionEvents(Base):
             idle_threshold: machine_running_pct below this → idle.
 
         Returns:
-            DataFrame: window_start, uuid, source_uuid, idle_energy,
+            DataFrame: start, uuid, source_uuid, idle_energy,
                        rolling_avg_idle_energy, trend_direction
         """
         by_window = self.idle_energy_by_window(
@@ -229,7 +229,7 @@ class IdleEnergyDetectionEvents(Base):
             idle_threshold=idle_threshold,
         )
         empty_cols = [
-            "window_start",
+            "start",
             "uuid",
             "source_uuid",
             "idle_energy",

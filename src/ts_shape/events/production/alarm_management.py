@@ -121,14 +121,14 @@ class AlarmManagementEvents(Base):
 
         Returns:
             DataFrame with columns:
-            - window_start
+            - start
             - alarm_count
             - uuid
             - source_uuid
         """
         if self.series.empty:
             return pd.DataFrame(
-                columns=["window_start", "alarm_count", "uuid", "source_uuid"]
+                columns=["start", "alarm_count", "uuid", "source_uuid"]
             )
 
         s = self.series[[self.time_column, self.value_column]].copy()
@@ -139,7 +139,7 @@ class AlarmManagementEvents(Base):
 
         s = s.set_index(self.time_column)
         counts = s["activation"].resample(window).sum().reset_index()
-        counts.columns = ["window_start", "alarm_count"]
+        counts.columns = ["start", "alarm_count"]
         counts["alarm_count"] = counts["alarm_count"].astype(int)
         counts["uuid"] = self.event_uuid
         counts["source_uuid"] = self.alarm_uuid
@@ -201,8 +201,8 @@ class AlarmManagementEvents(Base):
 
         Returns:
             DataFrame with columns:
-            - window_start
-            - window_end
+            - start
+            - end
             - transition_count
             - uuid
             - source_uuid
@@ -210,8 +210,8 @@ class AlarmManagementEvents(Base):
         if self.series.empty or len(self.series) < 2:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
-                    "window_end",
+                    "start",
+                    "end",
                     "transition_count",
                     "uuid",
                     "source_uuid",
@@ -236,8 +236,8 @@ class AlarmManagementEvents(Base):
         if flagged.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
-                    "window_end",
+                    "start",
+                    "end",
                     "transition_count",
                     "uuid",
                     "source_uuid",
@@ -249,7 +249,7 @@ class AlarmManagementEvents(Base):
         transition_counts = flagged.values
 
         rows: List[Dict[str, Any]] = []
-        window_start = flagged_times.iloc[0]
+        start = flagged_times.iloc[0]
         max_count = int(transition_counts[0])
 
         for i in range(1, len(flagged_times)):
@@ -258,14 +258,14 @@ class AlarmManagementEvents(Base):
                 # Close current window
                 rows.append(
                     {
-                        "window_start": window_start,
-                        "window_end": flagged_times.iloc[i - 1],
+                        "start": start,
+                        "end": flagged_times.iloc[i - 1],
                         "transition_count": max_count,
                         "uuid": self.event_uuid,
                         "source_uuid": self.alarm_uuid,
                     }
                 )
-                window_start = flagged_times.iloc[i]
+                start = flagged_times.iloc[i]
                 max_count = int(transition_counts[i])
             else:
                 max_count = max(max_count, int(transition_counts[i]))
@@ -273,8 +273,8 @@ class AlarmManagementEvents(Base):
         # Close last window
         rows.append(
             {
-                "window_start": window_start,
-                "window_end": flagged_times.iloc[-1],
+                "start": start,
+                "end": flagged_times.iloc[-1],
                 "transition_count": max_count,
                 "uuid": self.event_uuid,
                 "source_uuid": self.alarm_uuid,

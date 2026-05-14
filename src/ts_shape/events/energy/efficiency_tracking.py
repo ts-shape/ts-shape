@@ -98,7 +98,7 @@ class EnergyEfficiencyEvents(Base):
             trend_window: Number of windows for rolling average.
 
         Returns:
-            DataFrame: window_start, uuid, source_uuid, is_delta,
+            DataFrame: start, uuid, source_uuid, is_delta,
                        energy, units, efficiency, rolling_avg_efficiency,
                        trend_direction
         """
@@ -117,7 +117,7 @@ class EnergyEfficiencyEvents(Base):
         if energy_data.empty or counter_data.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -147,12 +147,12 @@ class EnergyEfficiencyEvents(Base):
         )
 
         merged = energy_agg.join(counter_agg, how="inner").reset_index()
-        merged = merged.rename(columns={self.time_column: "window_start"})
+        merged = merged.rename(columns={self.time_column: "start"})
 
         if merged.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -187,7 +187,7 @@ class EnergyEfficiencyEvents(Base):
 
         return merged[
             [
-                "window_start",
+                "start",
                 "uuid",
                 "source_uuid",
                 "is_delta",
@@ -223,7 +223,7 @@ class EnergyEfficiencyEvents(Base):
             idle_threshold: Energy above this during idle is waste.
 
         Returns:
-            DataFrame: window_start, uuid, source_uuid, is_delta,
+            DataFrame: start, uuid, source_uuid, is_delta,
                        energy_consumed, machine_running_pct, is_idle_waste,
                        waste_energy
         """
@@ -241,7 +241,7 @@ class EnergyEfficiencyEvents(Base):
         if energy.empty or state.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -271,7 +271,7 @@ class EnergyEfficiencyEvents(Base):
         )
 
         merged = energy_agg.join(state_agg, how="inner").reset_index()
-        merged = merged.rename(columns={self.time_column: "window_start"})
+        merged = merged.rename(columns={self.time_column: "start"})
 
         # Idle waste: machine mostly idle but still consuming energy
         merged["is_idle_waste"] = (merged["machine_running_pct"] < 0.1) & (
@@ -287,7 +287,7 @@ class EnergyEfficiencyEvents(Base):
 
         return merged[
             [
-                "window_start",
+                "start",
                 "uuid",
                 "source_uuid",
                 "is_delta",
@@ -319,7 +319,7 @@ class EnergyEfficiencyEvents(Base):
             window: Time window (default daily).
 
         Returns:
-            DataFrame: window_start, uuid, source_uuid, is_delta,
+            DataFrame: start, uuid, source_uuid, is_delta,
                        total_energy, total_output, sec, sec_trend
         """
         energy = (
@@ -336,7 +336,7 @@ class EnergyEfficiencyEvents(Base):
         if energy.empty or counter.empty:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -365,7 +365,7 @@ class EnergyEfficiencyEvents(Base):
         )
 
         merged = energy_agg.join(counter_agg, how="inner").reset_index()
-        merged = merged.rename(columns={self.time_column: "window_start"})
+        merged = merged.rename(columns={self.time_column: "start"})
 
         merged["sec"] = np.where(
             merged["total_output"] > 0,
@@ -387,7 +387,7 @@ class EnergyEfficiencyEvents(Base):
 
         return merged[
             [
-                "window_start",
+                "start",
                 "uuid",
                 "source_uuid",
                 "is_delta",

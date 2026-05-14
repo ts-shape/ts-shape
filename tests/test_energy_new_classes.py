@@ -172,7 +172,7 @@ class TestIdleEnergyDetectionEvents:
             "meter:main", "state:machine1", window="1h"
         )
         expected = [
-            "window_start",
+            "start",
             "uuid",
             "source_uuid",
             "is_delta",
@@ -188,7 +188,7 @@ class TestIdleEnergyDetectionEvents:
         result = self.events.idle_energy_by_window(
             "meter:main", "state:machine1", window="1h"
         )
-        night = result[result["window_start"].dt.hour < 6]
+        night = result[result["start"].dt.hour < 6]
         # Night windows should have non-zero idle energy
         assert (night["idle_energy"] > 0).any()
 

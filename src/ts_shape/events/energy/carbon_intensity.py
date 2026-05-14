@@ -89,7 +89,7 @@ class CarbonIntensityEvents(Base):
             window: Aggregation window (e.g. '1D', '1h').
 
         Returns:
-            DataFrame: window_start, uuid, source_uuid, scope,
+            DataFrame: start, uuid, source_uuid, scope,
                        consumption, emission_factor, kgco2e
         """
         frames = []
@@ -116,7 +116,7 @@ class CarbonIntensityEvents(Base):
                 .to_frame("consumption")
                 .reset_index()
             )
-            agg = agg.rename(columns={self.time_column: "window_start"})
+            agg = agg.rename(columns={self.time_column: "start"})
             agg["uuid"] = self.event_uuid
             agg["source_uuid"] = src_uuid
             agg["scope"] = src_scope
@@ -125,7 +125,7 @@ class CarbonIntensityEvents(Base):
             frames.append(
                 agg[
                     [
-                        "window_start",
+                        "start",
                         "uuid",
                         "source_uuid",
                         "scope",
@@ -139,7 +139,7 @@ class CarbonIntensityEvents(Base):
         if not frames:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
+                    "start",
                     "uuid",
                     "source_uuid",
                     "scope",
@@ -151,7 +151,7 @@ class CarbonIntensityEvents(Base):
 
         return (
             pd.concat(frames, ignore_index=True)
-            .sort_values(["window_start", "source_uuid"])
+            .sort_values(["start", "source_uuid"])
             .reset_index(drop=True)
         )
 
@@ -168,14 +168,14 @@ class CarbonIntensityEvents(Base):
             window: Aggregation window.
 
         Returns:
-            DataFrame: window_start, uuid, scope1_kgco2e, scope2_kgco2e,
+            DataFrame: start, uuid, scope1_kgco2e, scope2_kgco2e,
                        total_kgco2e
         """
         all_emissions = self.emissions_by_window(
             scope=0, value_column=value_column, window=window
         )
         empty_cols = [
-            "window_start",
+            "start",
             "uuid",
             "scope1_kgco2e",
             "scope2_kgco2e",
@@ -186,13 +186,13 @@ class CarbonIntensityEvents(Base):
 
         scope1 = (
             all_emissions[all_emissions["scope"] == 1]
-            .groupby("window_start")["kgco2e"]
+            .groupby("start")["kgco2e"]
             .sum()
             .rename("scope1_kgco2e")
         )
         scope2 = (
             all_emissions[all_emissions["scope"] == 2]
-            .groupby("window_start")["kgco2e"]
+            .groupby("start")["kgco2e"]
             .sum()
             .rename("scope2_kgco2e")
         )
@@ -200,7 +200,7 @@ class CarbonIntensityEvents(Base):
         out = pd.concat([scope1, scope2], axis=1).fillna(0.0).reset_index()
         out["total_kgco2e"] = out["scope1_kgco2e"] + out["scope2_kgco2e"]
         out["uuid"] = self.event_uuid
-        return out[empty_cols].sort_values("window_start").reset_index(drop=True)
+        return out[empty_cols].sort_values("start").reset_index(drop=True)
 
     def carbon_intensity_per_unit(
         self,
@@ -219,14 +219,14 @@ class CarbonIntensityEvents(Base):
             window: Aggregation window.
 
         Returns:
-            DataFrame: window_start, uuid, total_kgco2e, units_produced,
+            DataFrame: start, uuid, total_kgco2e, units_produced,
                        carbon_intensity, trend
         """
         totals = self.total_emissions_by_window(
             value_column=value_column, window=window
         )
         empty_cols = [
-            "window_start",
+            "start",
             "uuid",
             "total_kgco2e",
             "units_produced",
@@ -252,10 +252,10 @@ class CarbonIntensityEvents(Base):
             .agg(lambda x: max(x.max() - x.min(), 0) if len(x) > 1 else 0)
             .to_frame("units_produced")
             .reset_index()
-            .rename(columns={self.time_column: "window_start"})
+            .rename(columns={self.time_column: "start"})
         )
 
-        merged = totals.merge(counter_agg, on="window_start", how="inner")
+        merged = totals.merge(counter_agg, on="start", how="inner")
         merged["carbon_intensity"] = np.where(
             merged["units_produced"] > 0,
             merged["total_kgco2e"] / merged["units_produced"],

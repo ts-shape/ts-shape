@@ -143,9 +143,9 @@ class SignalComparisonEvents(Base):
         """Per-window deviation statistics.
 
         Returns:
-            DataFrame with columns: window_start, mae, max_error, rmse, bias.
+            DataFrame with columns: start, mae, max_error, rmse, bias.
         """
-        cols = ["window_start", "mae", "max_error", "rmse", "bias"]
+        cols = ["start", "mae", "max_error", "rmse", "bias"]
         merged = self._align(actual_uuid)
         if merged.empty:
             return pd.DataFrame(columns=cols)
@@ -154,13 +154,13 @@ class SignalComparisonEvents(Base):
         groups = indexed.resample(window)
 
         events: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             if group.empty:
                 continue
             dev = group["deviation"]
             events.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "mae": float(dev.abs().mean()),
                     "max_error": float(dev.abs().max()),
                     "rmse": float(np.sqrt((dev**2).mean())),
@@ -178,15 +178,15 @@ class SignalComparisonEvents(Base):
         """Track whether deviation is growing or shrinking over time.
 
         Returns:
-            DataFrame with columns: window_start, mae, trend_slope,
+            DataFrame with columns: start, mae, trend_slope,
             trend_direction.
         """
-        cols = ["window_start", "mae", "trend_slope", "trend_direction"]
+        cols = ["start", "mae", "trend_slope", "trend_direction"]
         stats = self.deviation_statistics(actual_uuid, window)
         if stats.empty or len(stats) < 2:
             return pd.DataFrame(columns=cols)
 
-        result = stats[["window_start", "mae"]].copy()
+        result = stats[["start", "mae"]].copy()
         # Slope of MAE over consecutive windows
         mae_diff = result["mae"].diff()
         result["trend_slope"] = mae_diff
@@ -205,9 +205,9 @@ class SignalComparisonEvents(Base):
         """Per-window Pearson correlation between reference and actual.
 
         Returns:
-            DataFrame with columns: window_start, correlation, sample_count.
+            DataFrame with columns: start, correlation, sample_count.
         """
-        cols = ["window_start", "correlation", "sample_count"]
+        cols = ["start", "correlation", "sample_count"]
         merged = self._align(actual_uuid)
         if merged.empty:
             return pd.DataFrame(columns=cols)
@@ -216,13 +216,13 @@ class SignalComparisonEvents(Base):
         groups = indexed.resample(window)
 
         events: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             if len(group) < 2:
                 continue
             corr = group["ref"].corr(group["act"])
             events.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "correlation": float(corr) if not np.isnan(corr) else 0.0,
                     "sample_count": len(group),
                 }

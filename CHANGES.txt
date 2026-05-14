@@ -1,3 +1,28 @@
+# May 14, 2026
+BREAKING: event-detector outputs standardized across all packs (quality,
+  production, engineering, maintenance, supplychain, energy, correlation).
+  Every public DataFrame-returning method now emits one of three canonical
+  shapes: point (systime), interval (start, end, duration_seconds), or
+  summary (start, end, duration_seconds + aggregate columns).
+
+  Column renames applied uniformly:
+    start_time, gap_start, window_start, period_start, disturbance_start
+      -> start
+    end_time, gap_end, window_end, period_end, disturbance_end -> end
+    severity_score, severity_level -> severity
+    OEECalculator: date -> start + end + duration_seconds (86400)
+
+  New helpers in src/ts_shape/events/_output.py (empty_event_df,
+  finalize_point_df, finalize_interval_df, finalize_summary_df) define
+  the canonical column constants and empty-frame schema.
+
+  ts_shape.eventlog.adapters.adapt no longer probes legacy column name
+  variants -- it expects the canonical names. The taxonomy registry has
+  been updated (severity_field="severity"). See docs/guides/eventlog.md
+  for the simplified shape table.
+
+  Downstream code asserting old column names must be updated.
+
 # Sep 09, 2025
 add: Azure blob storage container loader
 add: Metadata JSON loader added

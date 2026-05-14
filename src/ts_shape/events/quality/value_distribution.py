@@ -66,11 +66,11 @@ class ValueDistributionEvents(Base):
                 the signal's standard deviation to count as distinct.
 
         Returns:
-            DataFrame with columns: window_start, dominant_mode,
+            DataFrame with columns: start, dominant_mode,
             n_modes_detected, mode_values, mode_changed.
         """
         cols = [
-            "window_start",
+            "start",
             "dominant_mode",
             "n_modes_detected",
             "mode_values",
@@ -106,7 +106,7 @@ class ValueDistributionEvents(Base):
 
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "dominant_mode": round(dominant, 4),
                     "n_modes_detected": len(modes),
                     "mode_values": [round(m, 4) for m in modes],
@@ -215,11 +215,11 @@ class ValueDistributionEvents(Base):
             min_samples: Minimum samples per window to run the test.
 
         Returns:
-            DataFrame with columns: window_start, n_samples, is_normal,
+            DataFrame with columns: start, n_samples, is_normal,
             p_value, skewness, kurtosis.
         """
         cols = [
-            "window_start",
+            "start",
             "n_samples",
             "is_normal",
             "p_value",
@@ -254,7 +254,7 @@ class ValueDistributionEvents(Base):
 
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "n_samples": len(vals),
                     "is_normal": p_value >= alpha,
                     "p_value": round(float(p_value), 6),
@@ -282,11 +282,11 @@ class ValueDistributionEvents(Base):
             freq: Resample frequency.
 
         Returns:
-            DataFrame with columns: window_start, n_samples, plus one
+            DataFrame with columns: start, n_samples, plus one
             column per percentile (e.g. ``p5``, ``p95``).
         """
         pct_cols = [f"p{int(p)}" for p in percentiles]
-        cols = ["window_start", "n_samples"] + pct_cols
+        cols = ["start", "n_samples"] + pct_cols
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -303,7 +303,7 @@ class ValueDistributionEvents(Base):
                 continue
 
             row: Dict[str, Any] = {
-                "window_start": ts,
+                "start": ts,
                 "n_samples": len(vals),
             }
             computed = np.percentile(vals.values, list(percentiles))

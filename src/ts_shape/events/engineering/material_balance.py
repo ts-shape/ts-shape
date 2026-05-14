@@ -75,11 +75,11 @@ class MaterialBalanceEvents(Base):
             tolerance_pct: Maximum acceptable imbalance percentage.
 
         Returns:
-            DataFrame with columns: window_start, total_input,
+            DataFrame with columns: start, total_input,
             total_output, imbalance, imbalance_pct, balanced.
         """
         cols = [
-            "window_start",
+            "start",
             "total_input",
             "total_output",
             "imbalance",
@@ -115,7 +115,7 @@ class MaterialBalanceEvents(Base):
 
         result = pd.DataFrame(
             {
-                "window_start": all_idx,
+                "start": all_idx,
                 "total_input": total_in.values,
                 "total_output": total_out.values,
                 "imbalance": imbalance.values,
@@ -130,11 +130,11 @@ class MaterialBalanceEvents(Base):
         """Track whether imbalance is growing, shrinking, or stable.
 
         Returns:
-            DataFrame with columns: window_start, imbalance_pct,
+            DataFrame with columns: start, imbalance_pct,
             rolling_avg_imbalance, trend_direction.
         """
         cols = [
-            "window_start",
+            "start",
             "imbalance_pct",
             "rolling_avg_imbalance",
             "trend_direction",
@@ -143,7 +143,7 @@ class MaterialBalanceEvents(Base):
         if bc.empty or len(bc) < 2:
             return pd.DataFrame(columns=cols)
 
-        result = bc[["window_start", "imbalance_pct"]].copy()
+        result = bc[["start", "imbalance_pct"]].copy()
         result["rolling_avg_imbalance"] = (
             result["imbalance_pct"].rolling(3, min_periods=1).mean()
         )
@@ -196,8 +196,8 @@ class MaterialBalanceEvents(Base):
             if not seg_idx.iloc[0]:
                 continue
             seg = bc.loc[seg_idx.index]
-            start = seg["window_start"].iloc[0]
-            end = seg["window_start"].iloc[-1] + window_td
+            start = seg["start"].iloc[0]
+            end = seg["start"].iloc[-1] + window_td
             dur = end - start
             if dur < min_td:
                 continue
@@ -233,10 +233,10 @@ class MaterialBalanceEvents(Base):
         """Each signal's contribution to total input/output per window.
 
         Returns:
-            DataFrame with columns: window_start, uuid, role, value,
+            DataFrame with columns: start, uuid, role, value,
             pct_of_total.
         """
-        cols = ["window_start", "uuid", "role", "value", "pct_of_total"]
+        cols = ["start", "uuid", "role", "value", "pct_of_total"]
         inputs = self._resample_signals(self.input_uuids, window)
         outputs = self._resample_signals(self.output_uuids, window)
 
@@ -252,7 +252,7 @@ class MaterialBalanceEvents(Base):
                     val = float(inputs.loc[ws, uid])
                     events.append(
                         {
-                            "window_start": ws,
+                            "start": ws,
                             "uuid": uid,
                             "role": "input",
                             "value": val,
@@ -267,7 +267,7 @@ class MaterialBalanceEvents(Base):
                     val = float(outputs.loc[ws, uid])
                     events.append(
                         {
-                            "window_start": ws,
+                            "start": ws,
                             "uuid": uid,
                             "role": "output",
                             "value": val,
