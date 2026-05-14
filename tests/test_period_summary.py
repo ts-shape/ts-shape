@@ -136,8 +136,8 @@ class TestPeriodSummary:
 
         result = PeriodSummary.from_daily_data(daily, freq="W")
         assert not result.empty
-        assert "period_start" in result.columns
-        assert "period_end" in result.columns
+        assert "start" in result.columns
+        assert "end" in result.columns
         assert "days" in result.columns
         # _pct columns should be averaged, not summed
         assert "quality_pct" in result.columns

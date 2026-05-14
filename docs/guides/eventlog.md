@@ -1,8 +1,8 @@
 # Event Log: pm4py-shaped output for process mining
 
-Every ts-shape detector returns a pandas DataFrame, but the column names differ between detectors — `systime` vs. `start`/`end`, ad-hoc label columns like `state`, `transition`, `rule_violated`. That makes it hard to feed multiple detectors' output into a single process-mining tool without bespoke glue code.
+Every ts-shape detector returns a pandas DataFrame in one of three canonical shapes — `point` (`systime`), `interval` (`start` / `end` / `duration_seconds`), or `summary` (windowed aggregates with the same `start` / `end`). The shape is enforced by `src/ts_shape/events/_output.py`. Detector-specific labels (`state`, `transition`, `rule_violated`, …) live alongside the canonical columns.
 
-The `ts_shape.eventlog` package solves this with a **canonical event log** whose column names match the [XES](https://xes-standard.org/) and [OCEL 2.0](https://www.ocel-standard.org/) specs verbatim. ts-shape itself imports no process-mining libraries — the resulting DataFrames can be handed to pm4py / Disco / Celonis / OCEL viewers directly.
+The `ts_shape.eventlog` package goes one step further with a **canonical event log** whose column names match the [XES](https://xes-standard.org/) and [OCEL 2.0](https://www.ocel-standard.org/) specs verbatim. ts-shape itself imports no process-mining libraries — the resulting DataFrames can be handed to pm4py / Disco / Celonis / OCEL viewers directly.
 
 ---
 
@@ -110,9 +110,9 @@ populate `ocel:timestamp` / `ts_shape:start_timestamp` /
 
 | Shape | When to use it | Time columns probed | Resulting timestamps |
 |---|---|---|---|
-| `point` | One event per row, single timestamp (e.g. outlier detected at T). | First match in `systime`, `timestamp`, `time`, `event_time`, `ts`, `datetime`, `window_start`, `window_end`, `period_start`, `period_end`, `date`, then any datetime column. | `ocel:timestamp` = the detected time; `ts_shape:start_timestamp` = `NaT`; `ts_shape:duration_s` = `NaN`. |
-| `interval` | Each row spans a window with explicit `start` and `end` (e.g. a run/idle interval). | Start: `start` / `window_start` / `period_start`. End: `end` / `window_end` / `period_end`. | `ocel:timestamp` = end; `ts_shape:start_timestamp` = start; `ts_shape:duration_s` = `(end - start).total_seconds()`. Falls back to `point` shape if start/end columns are absent. |
-| `summary` | Each row is an aggregate over a window (KPI per shift, daily mean, etc.). | Same as `point`, plus an optional `window_start` / `period_start` / `start` for the bucket beginning. | `ocel:timestamp` = window end; `ts_shape:start_timestamp` = window start (if found); `ts_shape:duration_s` = end − start. |
+| `point` | One event per row, single timestamp (e.g. outlier detected at T). | `systime` (canonical). Falls back to the first datetime column if absent. | `ocel:timestamp` = the detected time; `ts_shape:start_timestamp` = `NaT`; `ts_shape:duration_s` = `NaN`. |
+| `interval` | Each row spans a window with explicit `start` and `end` (e.g. a run/idle interval). | Start: `start`. End: `end`. | `ocel:timestamp` = end; `ts_shape:start_timestamp` = start; `ts_shape:duration_s` = `(end - start).total_seconds()`. Falls back to `point` shape if start/end columns are absent. |
+| `summary` | Each row is an aggregate over a window (KPI per shift, daily mean, etc.). | Start: `start`. End: `end`. Both come from the canonical summary schema declared in `events/_output.py`. | `ocel:timestamp` = `end`; `ts_shape:start_timestamp` = `start`; `ts_shape:duration_s` = `(end - start).total_seconds()`. |
 | `static` | No natural time (e.g. a Gauge R&R summary, a routing-paths table). | None — a fixed `now-UTC` is broadcast to every row. | All rows share the same `ocel:timestamp = now`; `start_timestamp`/`duration_s` are null. |
 
 The shape is declared in the `LabelRule` and lives in

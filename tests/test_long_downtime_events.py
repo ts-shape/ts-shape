@@ -239,8 +239,8 @@ class TestCountEventsBetweenGaps:
 
         # window 0: ends at 05:00, window 1 starts at 10:01 → ~5h1min
         assert result.iloc[0]["window_duration_seconds"] > 0
-        assert "window_start" in result.columns
-        assert "window_end" in result.columns
+        assert "start" in result.columns
+        assert "end" in result.columns
 
     def test_fewer_than_two_gaps_returns_empty(self):
         """Only one long downtime → no windows → empty result."""

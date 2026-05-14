@@ -88,7 +88,7 @@ class SetupTimeTracking(Base):
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=["start_time", "end_time", "duration_minutes"])
+            return pd.DataFrame(columns=["start", "end", "duration_minutes"])
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
 
@@ -98,7 +98,7 @@ class SetupTimeTracking(Base):
 
         setup_blocks = data[data["is_setup"]]
         if setup_blocks.empty:
-            return pd.DataFrame(columns=["start_time", "end_time", "duration_minutes"])
+            return pd.DataFrame(columns=["start", "end", "duration_minutes"])
 
         intervals = []
         for _, block in setup_blocks.groupby("block"):
@@ -115,8 +115,8 @@ class SetupTimeTracking(Base):
             if duration > 0:
                 intervals.append(
                     {
-                        "start_time": start,
-                        "end_time": end,
+                        "start": start,
+                        "end": end,
                         "duration_minutes": round(duration, 1),
                     }
                 )
@@ -144,11 +144,11 @@ class SetupTimeTracking(Base):
         intervals = self._extract_setup_intervals(state_uuid, setup_value, value_column)
         if intervals.empty:
             return pd.DataFrame(
-                columns=["start_time", "end_time", "duration_minutes", "date", "shift"]
+                columns=["start", "end", "duration_minutes", "date", "shift"]
             )
 
-        intervals["date"] = intervals["start_time"].dt.date
-        intervals["shift"] = intervals["start_time"].apply(self._assign_shift)
+        intervals["date"] = intervals["start"].dt.date
+        intervals["shift"] = intervals["start"].apply(self._assign_shift)
 
         return intervals
 
@@ -211,8 +211,8 @@ class SetupTimeTracking(Base):
         # For each setup interval, find the product before and after
         rows = []
         for _, interval in intervals.iterrows():
-            before = part_data[part_data[self.time_column] <= interval["start_time"]]
-            after = part_data[part_data[self.time_column] >= interval["end_time"]]
+            before = part_data[part_data[self.time_column] <= interval["start"]]
+            after = part_data[part_data[self.time_column] >= interval["end"]]
 
             from_product = (
                 before[value_column_part].iloc[-1] if not before.empty else "unknown"
@@ -355,7 +355,7 @@ class SetupTimeTracking(Base):
                 ]
             )
 
-        intervals = intervals.set_index("start_time")
+        intervals = intervals.set_index("start")
 
         results = []
         for period, grp in intervals.groupby(pd.Grouper(freq=window)):

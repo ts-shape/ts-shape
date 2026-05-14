@@ -63,7 +63,7 @@ class OutlierDetectionEvents(Base):
                     self.value_column,
                     "is_delta",
                     "uuid",
-                    "severity_score",
+                    "severity",
                 ]
             )
             return empty_df
@@ -101,7 +101,7 @@ class OutlierDetectionEvents(Base):
                     self.value_column,
                     "is_delta",
                     "uuid",
-                    "severity_score",
+                    "severity",
                 ]
             )
             return events_df
@@ -110,9 +110,9 @@ class OutlierDetectionEvents(Base):
         events_df["is_delta"] = True
         events_df["uuid"] = self.event_uuid
 
-        # Preserve severity_score if it exists, otherwise set to NaN
-        if "severity_score" not in events_df.columns:
-            events_df["severity_score"] = np.nan
+        # Preserve severity if it exists, otherwise set to NaN
+        if "severity" not in events_df.columns:
+            events_df["severity"] = np.nan
 
         return events_df.drop(["outlier", "group_id"], axis=1, errors="ignore")
 
@@ -143,7 +143,7 @@ class OutlierDetectionEvents(Base):
         outliers_df = df.loc[df["outlier"]].copy()
 
         # Add severity score (absolute z-score value)
-        outliers_df["severity_score"] = z_scores[df["outlier"]]
+        outliers_df["severity"] = z_scores[df["outlier"]]
 
         # Group and return the outliers
         return self._group_outliers(outliers_df, include_singles=include_singles)
@@ -188,9 +188,9 @@ class OutlierDetectionEvents(Base):
             upper_distance = np.maximum(
                 0, (outliers_df[self.value_column] - upper_bound) / IQR
             )
-            outliers_df["severity_score"] = lower_distance + upper_distance
+            outliers_df["severity"] = lower_distance + upper_distance
         else:
-            outliers_df["severity_score"] = 0.0
+            outliers_df["severity"] = 0.0
 
         # Group and return the outliers
         return self._group_outliers(outliers_df, include_singles=include_singles)
@@ -232,7 +232,7 @@ class OutlierDetectionEvents(Base):
         outliers_df = df.loc[df["outlier"]].copy()
 
         # Add severity score (absolute modified z-score)
-        outliers_df["severity_score"] = np.abs(modified_z_scores[df["outlier"]])
+        outliers_df["severity"] = np.abs(modified_z_scores[df["outlier"]])
 
         # Group and return the outliers
         return self._group_outliers(outliers_df, include_singles=include_singles)
@@ -287,7 +287,7 @@ class OutlierDetectionEvents(Base):
 
         # Add severity score (inverse of anomaly score, normalized to positive values)
         # More negative scores indicate more anomalous points
-        outliers_df["severity_score"] = -anomaly_scores[df["outlier"]]
+        outliers_df["severity"] = -anomaly_scores[df["outlier"]]
 
         # Group and return the outliers
         return self._group_outliers(outliers_df, include_singles=include_singles)

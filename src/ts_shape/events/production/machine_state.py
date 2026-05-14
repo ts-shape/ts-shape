@@ -184,8 +184,8 @@ class MachineStateEvents(Base):
         if transitions.empty or len(transitions) < min_count:
             return pd.DataFrame(
                 columns=[
-                    "start_time",
-                    "end_time",
+                    "start",
+                    "end",
                     "transition_count",
                     "duration_seconds",
                 ]
@@ -195,16 +195,16 @@ class MachineStateEvents(Base):
         rapid_events: List[Dict[str, Any]] = []
 
         for i in range(len(transitions) - min_count + 1):
-            window_start = transitions.iloc[i]["systime"]
+            start = transitions.iloc[i]["systime"]
             for j in range(i + min_count - 1, len(transitions)):
-                window_end = transitions.iloc[j]["systime"]
-                duration = window_end - window_start
+                end = transitions.iloc[j]["systime"]
+                duration = end - start
                 if duration <= threshold_td:
                     transition_count = j - i + 1
                     rapid_events.append(
                         {
-                            "start_time": window_start,
-                            "end_time": window_end,
+                            "start": start,
+                            "end": end,
                             "transition_count": transition_count,
                             "duration_seconds": duration.total_seconds(),
                         }

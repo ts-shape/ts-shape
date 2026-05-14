@@ -206,13 +206,13 @@ class DisturbanceRecoveryEvents(Base):
             max_recovery: Maximum time to look for recovery.
 
         Returns:
-            DataFrame with columns: disturbance_start, disturbance_end,
+            DataFrame with columns: start, end,
             recovery_time_seconds, recovered, pre_disturbance_mean,
             post_recovery_mean, residual_offset.
         """
         cols = [
-            "disturbance_start",
-            "disturbance_end",
+            "start",
+            "end",
             "recovery_time_seconds",
             "recovered",
             "pre_disturbance_mean",
@@ -268,8 +268,8 @@ class DisturbanceRecoveryEvents(Base):
 
             events.append(
                 {
-                    "disturbance_start": d_start,
-                    "disturbance_end": d_end,
+                    "start": d_start,
+                    "end": d_end,
                     "recovery_time_seconds": recovery_s if recovered else np.nan,
                     "recovered": recovered,
                     "pre_disturbance_mean": pre_mean,
@@ -289,12 +289,12 @@ class DisturbanceRecoveryEvents(Base):
         """Count disturbances per time window.
 
         Returns:
-            DataFrame with columns: window_start, disturbance_count,
+            DataFrame with columns: start, disturbance_count,
             total_disturbance_seconds, pct_time_disturbed,
             avg_recovery_seconds.
         """
         cols = [
-            "window_start",
+            "start",
             "disturbance_count",
             "total_disturbance_seconds",
             "pct_time_disturbed",
@@ -329,8 +329,8 @@ class DisturbanceRecoveryEvents(Base):
 
             if not recovery.empty:
                 rec_in = recovery[
-                    (recovery["disturbance_start"] >= ws)
-                    & (recovery["disturbance_start"] < we)
+                    (recovery["start"] >= ws)
+                    & (recovery["start"] < we)
                     & recovery["recovered"]
                 ]
                 avg_rec = (
@@ -343,7 +343,7 @@ class DisturbanceRecoveryEvents(Base):
 
             events.append(
                 {
-                    "window_start": ws,
+                    "start": ws,
                     "disturbance_count": count,
                     "total_disturbance_seconds": total_dur,
                     "pct_time_disturbed": pct,
@@ -362,11 +362,11 @@ class DisturbanceRecoveryEvents(Base):
         """Compare process statistics before vs after each disturbance.
 
         Returns:
-            DataFrame with columns: disturbance_start, pre_mean, post_mean,
+            DataFrame with columns: start, pre_mean, post_mean,
             pre_std, post_std, mean_shift, variance_ratio.
         """
         cols = [
-            "disturbance_start",
+            "start",
             "pre_mean",
             "post_mean",
             "pre_std",
@@ -399,7 +399,7 @@ class DisturbanceRecoveryEvents(Base):
 
             events.append(
                 {
-                    "disturbance_start": d_start,
+                    "start": d_start,
                     "pre_mean": pre_mean,
                     "post_mean": post_mean,
                     "pre_std": pre_std,

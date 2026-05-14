@@ -83,7 +83,7 @@ class MicroStopEvents(Base):
             DataFrame with columns: start_time, end_time, duration,
             preceding_run_duration.
         """
-        cols = ["start_time", "end_time", "duration", "preceding_run_duration"]
+        cols = ["start", "end", "duration", "preceding_run_duration"]
         intervals = self._intervalize()
         if intervals.empty:
             return pd.DataFrame(columns=cols)
@@ -108,8 +108,8 @@ class MicroStopEvents(Base):
 
             events.append(
                 {
-                    "start_time": row["start"],
-                    "end_time": row["end"],
+                    "start": row["start"],
+                    "end": row["end"],
                     "duration": dur,
                     "preceding_run_duration": preceding_run,
                 }
@@ -129,17 +129,17 @@ class MicroStopEvents(Base):
             max_duration: Maximum idle duration to qualify as micro-stop.
 
         Returns:
-            DataFrame with columns: window_start, count, total_lost_time,
+            DataFrame with columns: start, count, total_lost_time,
             pct_of_window.
         """
-        cols = ["window_start", "count", "total_lost_time", "pct_of_window"]
+        cols = ["start", "count", "total_lost_time", "pct_of_window"]
         stops = self.detect_micro_stops(max_duration=max_duration)
         if stops.empty:
             return pd.DataFrame(columns=cols)
 
         window_td = pd.to_timedelta(window)
         stops["duration_seconds"] = stops["duration"].dt.total_seconds()
-        stops_indexed = stops.set_index("start_time")
+        stops_indexed = stops.set_index("start")
 
         resampled = stops_indexed.resample(window).agg(
             count=("duration_seconds", "count"),
@@ -153,7 +153,7 @@ class MicroStopEvents(Base):
         result = resampled.reset_index()
         result = result.rename(
             columns={
-                "start_time": "window_start",
+                "start": "start",
                 "total_lost_seconds": "total_lost_time",
             }
         )
@@ -170,11 +170,11 @@ class MicroStopEvents(Base):
             max_duration: Maximum idle duration to qualify as micro-stop.
 
         Returns:
-            DataFrame with columns: window_start, total_run_time,
+            DataFrame with columns: start, total_run_time,
             total_micro_stop_time, availability_loss_pct.
         """
         cols = [
-            "window_start",
+            "start",
             "total_run_time",
             "total_micro_stop_time",
             "availability_loss_pct",
@@ -221,7 +221,7 @@ class MicroStopEvents(Base):
         )
 
         result = combined.reset_index()
-        result = result.rename(columns={"start": "window_start"})
+        result = result.rename(columns={"start": "start"})
         return result[cols]
 
     def micro_stop_patterns(
@@ -246,8 +246,8 @@ class MicroStopEvents(Base):
         stops["duration_seconds"] = stops["duration"].dt.total_seconds()
 
         if hour_grouping:
-            stops["group"] = stops["start_time"].dt.hour
-            stops["date"] = stops["start_time"].dt.date
+            stops["group"] = stops["start"].dt.hour
+            stops["date"] = stops["start"].dt.date
 
             daily_counts = (
                 stops.groupby(["date", "group"])
@@ -281,8 +281,8 @@ class MicroStopEvents(Base):
                 else:
                     return "night"
 
-            stops["group"] = stops["start_time"].dt.hour.apply(assign_shift)
-            stops["date"] = stops["start_time"].dt.date
+            stops["group"] = stops["start"].dt.hour.apply(assign_shift)
+            stops["date"] = stops["start"].dt.date
 
             daily_counts = (
                 stops.groupby(["date", "group"])

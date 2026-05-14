@@ -58,12 +58,12 @@ class DataGapAnalysisEvents(Base):
                 ``'1min'``, ``'1h'``).
 
         Returns:
-            DataFrame with columns: gap_start, gap_end, gap_duration_seconds,
+            DataFrame with columns: start, end, gap_duration_seconds,
             samples_before_gap, samples_after_gap.
         """
         cols = [
-            "gap_start",
-            "gap_end",
+            "start",
+            "end",
             "gap_duration_seconds",
             "samples_before_gap",
             "samples_after_gap",
@@ -81,8 +81,8 @@ class DataGapAnalysisEvents(Base):
             if gap >= threshold:
                 events.append(
                     {
-                        "gap_start": pd.Timestamp(times[i]),
-                        "gap_end": pd.Timestamp(times[i + 1]),
+                        "start": pd.Timestamp(times[i]),
+                        "end": pd.Timestamp(times[i + 1]),
                         "gap_duration_seconds": round(gap.total_seconds(), 3),
                         "samples_before_gap": i + 1,
                         "samples_after_gap": len(times) - (i + 1),
@@ -160,11 +160,11 @@ class DataGapAnalysisEvents(Base):
                 Defaults to 2x the median sampling interval (auto-detected).
 
         Returns:
-            DataFrame with columns: period_start, sample_count,
+            DataFrame with columns: start, sample_count,
             coverage_pct, gap_count, gap_seconds.
         """
         cols = [
-            "period_start",
+            "start",
             "sample_count",
             "coverage_pct",
             "gap_count",
@@ -199,25 +199,25 @@ class DataGapAnalysisEvents(Base):
 
         events: List[Dict[str, Any]] = []
         for ts, count in counts.items():
-            window_end = ts + window_td
+            end = ts + window_td
             # Find gaps overlapping this window
             gap_secs = 0.0
             gap_count = 0
             if not all_gaps.empty:
                 overlapping = all_gaps[
-                    (all_gaps["gap_start"] < window_end) & (all_gaps["gap_end"] > ts)
+                    (all_gaps["start"] < end) & (all_gaps["end"] > ts)
                 ]
                 gap_count = len(overlapping)
                 for _, g in overlapping.iterrows():
                     # Clip gap to window boundaries
-                    clip_start = max(g["gap_start"], ts)
-                    clip_end = min(g["gap_end"], window_end)
+                    clip_start = max(g["start"], ts)
+                    clip_end = min(g["end"], end)
                     gap_secs += (clip_end - clip_start).total_seconds()
 
             coverage = max(0.0, min(100.0, (1.0 - gap_secs / window_secs) * 100))
             events.append(
                 {
-                    "period_start": ts,
+                    "start": ts,
                     "sample_count": int(count),
                     "coverage_pct": round(coverage, 2),
                     "gap_count": gap_count,
@@ -239,14 +239,14 @@ class DataGapAnalysisEvents(Base):
             min_gap: Minimum gap duration (ignore trivially small gaps).
 
         Returns:
-            DataFrame with columns: gap_start, gap_end, gap_duration_seconds,
+            DataFrame with columns: start, end, gap_duration_seconds,
             value_before, value_after, value_jump, safe_to_interpolate.
             ``safe_to_interpolate`` is True when the value jump across the
             gap is within 2 standard deviations of the signal.
         """
         cols = [
-            "gap_start",
-            "gap_end",
+            "start",
+            "end",
             "gap_duration_seconds",
             "value_before",
             "value_after",
@@ -283,8 +283,8 @@ class DataGapAnalysisEvents(Base):
 
             events.append(
                 {
-                    "gap_start": pd.Timestamp(times[i]),
-                    "gap_end": pd.Timestamp(times[i + 1]),
+                    "start": pd.Timestamp(times[i]),
+                    "end": pd.Timestamp(times[i + 1]),
                     "gap_duration_seconds": round(gap.total_seconds(), 3),
                     "value_before": val_before,
                     "value_after": val_after,

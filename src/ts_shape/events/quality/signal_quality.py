@@ -53,10 +53,10 @@ class SignalQualityEvents(Base):
             tolerance_factor: Multiplier on expected_freq to trigger a gap.
 
         Returns:
-            DataFrame with columns: gap_start, gap_end, gap_duration,
+            DataFrame with columns: start, end, gap_duration,
             expected_samples_missing.
         """
-        cols = ["gap_start", "gap_end", "gap_duration", "expected_samples_missing"]
+        cols = ["start", "end", "gap_duration", "expected_samples_missing"]
         if self.signal.empty or len(self.signal) < 2:
             return pd.DataFrame(columns=cols)
 
@@ -72,8 +72,8 @@ class SignalQualityEvents(Base):
                 expected_missing = int(gap / expected_td) - 1
                 events.append(
                     {
-                        "gap_start": pd.Timestamp(times[i]),
-                        "gap_end": pd.Timestamp(times[i + 1]),
+                        "start": pd.Timestamp(times[i]),
+                        "end": pd.Timestamp(times[i + 1]),
                         "gap_duration": gap,
                         "expected_samples_missing": max(expected_missing, 1),
                     }
@@ -90,11 +90,11 @@ class SignalQualityEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: window_start, mean_interval, std_interval,
+            DataFrame with columns: start, mean_interval, std_interval,
             min_interval, max_interval, regularity_score.
         """
         cols = [
-            "window_start",
+            "start",
             "mean_interval",
             "std_interval",
             "min_interval",
@@ -125,7 +125,7 @@ class SignalQualityEvents(Base):
             regularity = max(0.0, 1.0 - (std_val / (mean_val + 1e-10)))
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "mean_interval": round(mean_val, 4),
                     "std_interval": round(std_val, 4),
                     "min_interval": round(row["min"], 4),
@@ -150,8 +150,8 @@ class SignalQualityEvents(Base):
             min_observed, max_observed, direction.
         """
         cols = [
-            "start_time",
-            "end_time",
+            "start",
+            "end",
             "duration",
             "min_observed",
             "max_observed",
@@ -193,8 +193,8 @@ class SignalQualityEvents(Base):
 
             events.append(
                 {
-                    "start_time": start,
-                    "end_time": end,
+                    "start": start,
+                    "end": end,
                     "duration": end - start,
                     "min_observed": min_obs,
                     "max_observed": max_obs,
@@ -216,10 +216,10 @@ class SignalQualityEvents(Base):
             expected_freq: Expected sampling frequency.
 
         Returns:
-            DataFrame with columns: window_start, expected_count,
+            DataFrame with columns: start, expected_count,
             actual_count, completeness_pct.
         """
-        cols = ["window_start", "expected_count", "actual_count", "completeness_pct"]
+        cols = ["start", "expected_count", "actual_count", "completeness_pct"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -239,7 +239,7 @@ class SignalQualityEvents(Base):
             completeness = min(100.0, round(actual / expected_per_window * 100, 2))
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "expected_count": expected_per_window,
                     "actual_count": int(actual),
                     "completeness_pct": completeness,

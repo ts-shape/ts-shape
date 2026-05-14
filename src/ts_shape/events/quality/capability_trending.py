@@ -103,10 +103,10 @@ class CapabilityTrendingEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, cp, cpk, pp, ppk,
+            DataFrame with columns: start, cp, cpk, pp, ppk,
             mean, std, n_samples.
         """
-        cols = ["window_start", "cp", "cpk", "pp", "ppk", "mean", "std", "n_samples"]
+        cols = ["start", "cp", "cpk", "pp", "ppk", "mean", "std", "n_samples"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -152,7 +152,7 @@ class CapabilityTrendingEvents(Base):
 
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "cp": round(cp, 4) if not np.isnan(cp) else np.nan,
                     "cpk": round(cpk, 4) if not np.isnan(cpk) else np.nan,
                     "pp": round(pp, 4) if not np.isnan(pp) else np.nan,
@@ -181,9 +181,9 @@ class CapabilityTrendingEvents(Base):
             lookback: Number of previous windows for rolling average comparison.
 
         Returns:
-            DataFrame with columns: window_start, cpk, prev_avg_cpk, drop_pct, alert.
+            DataFrame with columns: start, cpk, prev_avg_cpk, drop_pct, alert.
         """
-        cols = ["window_start", "cpk", "prev_avg_cpk", "drop_pct", "alert"]
+        cols = ["start", "cpk", "prev_avg_cpk", "drop_pct", "alert"]
         cap = self.capability_over_time(window)
         if cap.empty:
             return pd.DataFrame(columns=cols)
@@ -211,7 +211,7 @@ class CapabilityTrendingEvents(Base):
 
             events.append(
                 {
-                    "window_start": cap.iloc[i]["window_start"],
+                    "start": cap.iloc[i]["start"],
                     "cpk": round(cpk, 4),
                     "prev_avg_cpk": (
                         round(prev_avg, 4) if not np.isnan(prev_avg) else np.nan
@@ -239,11 +239,11 @@ class CapabilityTrendingEvents(Base):
             threshold: Cpk threshold to predict breach for.
 
         Returns:
-            DataFrame with columns: window_start, cpk, trend_slope,
+            DataFrame with columns: start, cpk, trend_slope,
             forecast_cpk, windows_to_threshold.
         """
         cols = [
-            "window_start",
+            "start",
             "cpk",
             "trend_slope",
             "forecast_cpk",
@@ -279,7 +279,7 @@ class CapabilityTrendingEvents(Base):
 
             events.append(
                 {
-                    "window_start": cap.iloc[i]["window_start"],
+                    "start": cap.iloc[i]["start"],
                     "cpk": round(cpk, 4),
                     "trend_slope": round(slope, 6),
                     "forecast_cpk": round(forecast_cpk, 4),
@@ -300,10 +300,10 @@ class CapabilityTrendingEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, estimated_yield_pct,
+            DataFrame with columns: start, estimated_yield_pct,
             dpmo, sigma_level.
         """
-        cols = ["window_start", "estimated_yield_pct", "dpmo", "sigma_level"]
+        cols = ["start", "estimated_yield_pct", "dpmo", "sigma_level"]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
 
@@ -337,7 +337,7 @@ class CapabilityTrendingEvents(Base):
 
             events.append(
                 {
-                    "window_start": ts,
+                    "start": ts,
                     "estimated_yield_pct": round(yield_pct, 4),
                     "dpmo": round(dpmo, 1),
                     "sigma_level": round(sigma_level, 2),

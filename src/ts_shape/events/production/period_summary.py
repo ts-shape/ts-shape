@@ -102,7 +102,7 @@ class PeriodSummary(Base):
           summed.
         - All other numeric columns: summed.
 
-        The output always includes ``period_start``, ``period_end``, and
+        The output always includes ``start``, ``end``, and
         ``days`` columns.
 
         Args:
@@ -113,18 +113,18 @@ class PeriodSummary(Base):
             date_column: Name of the date column.
 
         Returns:
-            DataFrame with period_start, period_end, days, and aggregated
+            DataFrame with start, end, days, and aggregated
             metric columns.
 
         Example::
 
             quality = QualityTracking(df).daily_quality_summary('ok', 'nok')
             weekly = PeriodSummary.from_daily_data(quality, freq='W')
-            # → [period_start, period_end, days, ok_parts, nok_parts,
+            # → [start, end, days, ok_parts, nok_parts,
             #    total_parts, quality_pct, ...]
         """
         if daily_df.empty:
-            return pd.DataFrame(columns=["period_start", "period_end", "days"])
+            return pd.DataFrame(columns=["start", "end", "days"])
 
         data = daily_df.copy()
         data[date_column] = pd.to_datetime(data[date_column])
@@ -147,18 +147,18 @@ class PeriodSummary(Base):
             grouper = pd.Grouper(freq=freq)
 
         results = []
-        for period_start, grp in data.groupby(grouper):
+        for start, grp in data.groupby(grouper):
             if grp.empty:
                 continue
 
-            row = {"period_start": period_start.date(), "days": len(grp)}
+            row = {"start": start.date(), "days": len(grp)}
 
             if freq.startswith("W"):
-                row["period_end"] = (period_start + pd.Timedelta(days=6)).date()
+                row["end"] = (start + pd.Timedelta(days=6)).date()
             elif freq == "MS":
-                row["period_end"] = (period_start + pd.offsets.MonthEnd(0)).date()
+                row["end"] = (start + pd.offsets.MonthEnd(0)).date()
             else:
-                row["period_end"] = grp.index.max().date()
+                row["end"] = grp.index.max().date()
 
             for col in avg_cols:
                 if col in grp.columns:

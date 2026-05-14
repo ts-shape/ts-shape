@@ -155,7 +155,7 @@ def test_production_by_part_basic(sample_production_data):
     )
 
     assert not result.empty
-    assert "window_start" in result.columns
+    assert "start" in result.columns
     assert "part_number" in result.columns
     assert "quantity" in result.columns
     assert set(result["part_number"].unique()) == {"PART_A", "PART_B"}

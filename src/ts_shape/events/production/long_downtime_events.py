@@ -153,13 +153,13 @@ class LongDowntimeEvents(Base):
 
         Returns:
             DataFrame with one row per inter-gap window.
-            Columns: window_start, window_end, window_duration_seconds, event_count,
+            Columns: start, end, window_duration_seconds, event_count,
                      downtime_index, uuid, source_uuid, is_delta
         """
         empty = pd.DataFrame(
             columns=[
-                "window_start",
-                "window_end",
+                "start",
+                "end",
                 "window_duration_seconds",
                 "event_count",
                 "downtime_index",
@@ -182,13 +182,11 @@ class LongDowntimeEvents(Base):
 
         rows: List[Dict[str, Any]] = []
         for i in range(len(gaps) - 1):
-            window_start = gaps.iloc[i]["end"]
-            window_end = gaps.iloc[i + 1]["start"]
+            start = gaps.iloc[i]["end"]
+            end = gaps.iloc[i + 1]["start"]
             following_index = int(gaps.iloc[i + 1]["downtime_index"])
 
-            subset = prod[
-                (prod["systime"] > window_start) & (prod["systime"] < window_end)
-            ]
+            subset = prod[(prod["systime"] > start) & (prod["systime"] < end)]
 
             if aggregation == "count":
                 event_count = len(subset)
@@ -209,11 +207,9 @@ class LongDowntimeEvents(Base):
 
             rows.append(
                 {
-                    "window_start": window_start,
-                    "window_end": window_end,
-                    "window_duration_seconds": (
-                        window_end - window_start
-                    ).total_seconds(),
+                    "start": start,
+                    "end": end,
+                    "window_duration_seconds": (end - start).total_seconds(),
                     "event_count": event_count,
                     "downtime_index": following_index,
                     "uuid": self.event_uuid,

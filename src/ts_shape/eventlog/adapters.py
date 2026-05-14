@@ -83,19 +83,10 @@ def _pick_time_col(df: pd.DataFrame, candidates: Sequence[str]) -> str | None:
     return None
 
 
-_POINT_CANDIDATES = (
-    "systime",
-    "timestamp",
-    "time",
-    "event_time",
-    "ts",
-    "datetime",
-    "window_start",
-    "window_end",
-    "period_start",
-    "period_end",
-    "date",
-)
+_POINT_CANDIDATES = ("systime",)
+_INTERVAL_START_CANDIDATES = ("start",)
+_INTERVAL_END_CANDIDATES = ("end",)
+_SUMMARY_START_CANDIDATES = ("start",)
 
 
 def _classify_severity(value: object) -> str | None:
@@ -308,8 +299,8 @@ def adapt(
 
     # Resolve timestamps based on shape.
     if rule.shape == "interval":
-        start_col = _pick_time_col(legacy, ("start", "window_start", "period_start"))
-        end_col = _pick_time_col(legacy, ("end", "window_end", "period_end"))
+        start_col = _pick_time_col(legacy, _INTERVAL_START_CANDIDATES)
+        end_col = _pick_time_col(legacy, _INTERVAL_END_CANDIDATES)
         if start_col is None or end_col is None:
             # Fall back to point shape if data lacks interval columns.
             return adapt(
@@ -336,7 +327,7 @@ def adapt(
             else pd.Series(dtype="float64")
         )
         time_cols_used = {start_col, end_col}
-    elif rule.shape in {"point", "summary"}:
+    elif rule.shape == "point":
         time_col = _pick_time_col(legacy, _POINT_CANDIDATES)
         if time_col is None:
             ts_end = pd.Series([pd.Timestamp.utcnow()] * n)
@@ -344,15 +335,31 @@ def adapt(
         else:
             ts_end = legacy[time_col].apply(_to_utc_ts)
             time_cols_used = {time_col}
-        # Summary may have a window_start / period_start counterpart.
-        start_col = _pick_time_col(legacy, ("window_start", "period_start", "start"))
-        if rule.shape == "summary" and start_col is not None and start_col != time_col:
-            ts_start = legacy[start_col].apply(_to_utc_ts)
-            time_cols_used.add(start_col)
-            duration = (ts_end - ts_start).dt.total_seconds()
-        else:
+        ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
+        duration = pd.Series([float("nan")] * n, dtype="float64")
+    elif rule.shape == "summary":
+        # Summary rows always have canonical ``start`` and ``end``.
+        end_col = _pick_time_col(legacy, _INTERVAL_END_CANDIDATES)
+        start_col = _pick_time_col(legacy, _SUMMARY_START_CANDIDATES)
+        if end_col is None and start_col is None:
+            ts_end = pd.Series([pd.Timestamp.utcnow()] * n)
             ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
             duration = pd.Series([float("nan")] * n, dtype="float64")
+            time_cols_used = set()
+        else:
+            time_cols_used = set()
+            if end_col is not None:
+                ts_end = legacy[end_col].apply(_to_utc_ts)
+                time_cols_used.add(end_col)
+            else:
+                ts_end = legacy[start_col].apply(_to_utc_ts)
+            if start_col is not None:
+                ts_start = legacy[start_col].apply(_to_utc_ts)
+                time_cols_used.add(start_col)
+                duration = (ts_end - ts_start).dt.total_seconds()
+            else:
+                ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
+                duration = pd.Series([float("nan")] * n, dtype="float64")
     elif rule.shape == "static":
         # No natural time. Use a single fixed reference (now-UTC) for all rows.
         now = (

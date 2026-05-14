@@ -47,11 +47,11 @@ class ProcessWindowEvents(Base):
         """Per-window descriptive statistics.
 
         Returns:
-            DataFrame with columns: window_start, count, mean, std,
+            DataFrame with columns: start, count, mean, std,
             min, max, median, p25, p75, range.
         """
         cols = [
-            "window_start",
+            "start",
             "count",
             "mean",
             "std",
@@ -69,13 +69,13 @@ class ProcessWindowEvents(Base):
         groups = indexed.resample(window)
 
         events: List[Dict[str, Any]] = []
-        for window_start, group in groups:
+        for start, group in groups:
             vals = group.dropna()
             if vals.empty:
                 continue
             events.append(
                 {
-                    "window_start": window_start,
+                    "start": start,
                     "count": len(vals),
                     "mean": float(vals.mean()),
                     "std": float(vals.std()) if len(vals) > 1 else 0.0,
@@ -125,8 +125,8 @@ class ProcessWindowEvents(Base):
             if shift >= sensitivity:
                 events.append(
                     {
-                        "start": prev["window_start"],
-                        "end": curr["window_start"],
+                        "start": prev["start"],
+                        "end": curr["start"],
                         "uuid": self.event_uuid,
                         "is_delta": False,
                         "prev_mean": prev["mean"],
@@ -179,8 +179,8 @@ class ProcessWindowEvents(Base):
             ):
                 events.append(
                     {
-                        "start": prev["window_start"],
-                        "end": curr["window_start"],
+                        "start": prev["start"],
+                        "end": curr["start"],
                         "uuid": self.event_uuid,
                         "is_delta": False,
                         "prev_std": prev["std"],
@@ -195,10 +195,10 @@ class ProcessWindowEvents(Base):
         """Compare each window mean to the overall baseline.
 
         Returns:
-            DataFrame with columns: window_start, mean, z_score_vs_global,
+            DataFrame with columns: start, mean, z_score_vs_global,
             is_anomalous.
         """
-        cols = ["window_start", "mean", "z_score_vs_global", "is_anomalous"]
+        cols = ["start", "mean", "z_score_vs_global", "is_anomalous"]
         stats = self.windowed_statistics(window)
         if stats.empty:
             return pd.DataFrame(columns=cols)
@@ -208,7 +208,7 @@ class ProcessWindowEvents(Base):
         if global_std == 0:
             global_std = 1e-10
 
-        result = stats[["window_start", "mean"]].copy()
+        result = stats[["start", "mean"]].copy()
         result["z_score_vs_global"] = (result["mean"] - global_mean) / global_std
         result["is_anomalous"] = result["z_score_vs_global"].abs() > 2.0
         return result[cols].reset_index(drop=True)

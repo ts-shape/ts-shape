@@ -66,7 +66,7 @@ class RateOfChangeEvents(Base):
         Returns:
             DataFrame with columns: start_time, end_time, max_rate, direction.
         """
-        cols = ["start_time", "end_time", "max_rate", "direction"]
+        cols = ["start", "end", "max_rate", "direction"]
         rate_df = self._compute_rate()
         if rate_df.empty:
             return pd.DataFrame(columns=cols)
@@ -89,8 +89,8 @@ class RateOfChangeEvents(Base):
 
             events.append(
                 {
-                    "start_time": start,
-                    "end_time": end,
+                    "start": start,
+                    "end": end,
                     "max_rate": max_rate,
                     "direction": "increasing" if max_rate > 0 else "decreasing",
                 }
@@ -107,10 +107,10 @@ class RateOfChangeEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: window_start, mean_rate, std_rate,
+            DataFrame with columns: start, mean_rate, std_rate,
             max_rate, min_rate.
         """
-        cols = ["window_start", "mean_rate", "std_rate", "max_rate", "min_rate"]
+        cols = ["start", "mean_rate", "std_rate", "max_rate", "min_rate"]
         rate_df = self._compute_rate()
         if rate_df.empty:
             return pd.DataFrame(columns=cols)
@@ -123,7 +123,7 @@ class RateOfChangeEvents(Base):
 
         result = resampled.reset_index()
         result.columns = [
-            "window_start",
+            "start",
             "mean_rate",
             "std_rate",
             "max_rate",

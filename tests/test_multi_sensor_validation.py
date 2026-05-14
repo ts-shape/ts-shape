@@ -77,7 +77,7 @@ class TestPairwiseBias:
         result = msv.pairwise_bias(window="2h")
         assert len(result) > 0
         # There should be 3 pairs per window
-        first_window = result[result["window_start"] == result["window_start"].iloc[0]]
+        first_window = result[result["start"] == result["start"].iloc[0]]
         assert len(first_window) == 3
         # sensor_3 pairs should have higher abs_bias
         s3_rows = first_window[

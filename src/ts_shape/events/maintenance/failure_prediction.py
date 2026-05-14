@@ -160,11 +160,11 @@ class FailurePredictionEvents(Base):
             window: Rolling window size.
 
         Returns:
-            DataFrame with columns: window_start, uuid, is_delta,
+            DataFrame with columns: start, uuid, is_delta,
             warning_count, critical_count, escalation_detected.
         """
         cols = [
-            "window_start",
+            "start",
             "uuid",
             "is_delta",
             "warning_count",
@@ -215,7 +215,7 @@ class FailurePredictionEvents(Base):
 
             rows.append(
                 {
-                    "window_start": ws,
+                    "start": ws,
                     "uuid": self.event_uuid,
                     "is_delta": True,
                     "warning_count": warning_count,

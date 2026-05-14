@@ -1656,7 +1656,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "quality.outlier.iqr",
         _Q,
         P,
-        severity_field="severity_score",
+        severity_field="severity",
         standard_attrs={
             "ts_shape:method": "iqr",
             "ts_shape:direction": "outside",
@@ -1666,18 +1666,18 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "quality.outlier.isolation_forest",
         _Q,
         P,
-        severity_field="severity_score",
+        severity_field="severity",
         standard_attrs={
             "ts_shape:method": "isolation_forest",
             "ts_shape:direction": "outside",
-            "ts_shape:confidence": "severity_score",
+            "ts_shape:confidence": "severity",
         },
     ),
     ("OutlierDetectionEvents", "detect_outliers_mad"): _r(
         "quality.outlier.mad",
         _Q,
         P,
-        severity_field="severity_score",
+        severity_field="severity",
         standard_attrs={
             "ts_shape:method": "mad",
             "ts_shape:direction": "outside",
@@ -1687,7 +1687,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "quality.outlier.zscore",
         _Q,
         P,
-        severity_field="severity_score",
+        severity_field="severity",
         standard_attrs={
             "ts_shape:method": "zscore",
             "ts_shape:direction": "outside",

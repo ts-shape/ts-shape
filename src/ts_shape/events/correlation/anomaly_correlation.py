@@ -81,7 +81,7 @@ class AnomalyCorrelationEvents(Base):
             min_signals: Minimum number of signals with anomalies to flag.
 
         Returns:
-            DataFrame: window_start, window_end, uuid, is_delta,
+            DataFrame: start, end, uuid, is_delta,
                        anomaly_count, signal_uuids_involved
         """
         all_anomalies = []
@@ -93,8 +93,8 @@ class AnomalyCorrelationEvents(Base):
         if not all_anomalies:
             return pd.DataFrame(
                 columns=[
-                    "window_start",
-                    "window_end",
+                    "start",
+                    "end",
                     "uuid",
                     "is_delta",
                     "anomaly_count",
@@ -122,8 +122,8 @@ class AnomalyCorrelationEvents(Base):
             if len(unique_signals) >= min_signals:
                 rows.append(
                     {
-                        "window_start": t,
-                        "window_end": t + window_td,
+                        "start": t,
+                        "end": t + window_td,
                         "uuid": self.event_uuid,
                         "is_delta": True,
                         "anomaly_count": len(window_data),

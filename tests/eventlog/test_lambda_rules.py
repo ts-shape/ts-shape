@@ -48,7 +48,7 @@ def torque_df() -> pd.DataFrame:
             "systime": pd.date_range("2026-05-07", periods=10, freq="1min", tz="UTC"),
             "torque": [60.0, 62.0, 70.0, 78.0, 80.0, 72.0, 50.0, 90.0, 65.0, 60.0],
             "state": ["run"] * 8 + ["idle", "idle"],
-            "severity_score": [1.0, 1.0, 2.0, 3.5, 4.7, 2.0, 1.0, 4.9, 1.0, 1.0],
+            "severity": [1.0, 1.0, 2.0, 3.5, 4.7, 2.0, 1.0, 4.9, 1.0, 1.0],
             "source_uuid": ["asset-A"] * 10,
         }
     )
@@ -200,7 +200,7 @@ def _spec_high_torque(class_name: str = "LambdaToolWear") -> RuleSpec:
         template="maintenance.tool.high_torque",
         trigger=TriggerSpec(expression="(torque > 75)"),
         produces_objects=("asset",),
-        severity_field="severity_score",
+        severity_field="severity",
         value_field="torque",
         standard_attrs={
             "ts_shape:method": "lambda_threshold",
