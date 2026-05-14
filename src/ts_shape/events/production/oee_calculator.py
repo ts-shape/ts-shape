@@ -410,7 +410,5 @@ class OEECalculator(Base):
         ).round(2)
 
         return (
-            merged[key_cols + oee_extra]
-            .sort_values(COL_START)
-            .reset_index(drop=True)
+            merged[key_cols + oee_extra].sort_values(COL_START).reset_index(drop=True)
         )

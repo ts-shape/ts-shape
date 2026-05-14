@@ -380,9 +380,7 @@ class TestAlignmentQuality:
             df2, "speed:line", LINE_CONFIG, speed_unit="m/min"
         )
         result = aligner2.alignment_quality(window="30min")
-        gap_windows = result[
-            (result["start"] >= base) & (result["start"] < gap_end)
-        ]
+        gap_windows = result[(result["start"] >= base) & (result["start"] < gap_end)]
         assert (
             gap_windows["has_speed_data"]  # noqa: E712 pandas-series-bool-comparison
             == False  # noqa: E712 pandas-series-bool-comparison

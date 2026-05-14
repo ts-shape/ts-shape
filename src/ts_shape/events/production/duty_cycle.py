@@ -137,9 +137,7 @@ class DutyCycleEvents(Base):
         )
         resampled["total_transitions"] = resampled["on_count"] + resampled["off_count"]
 
-        result = resampled.reset_index().rename(
-            columns={self.time_column: "start"}
-        )
+        result = resampled.reset_index().rename(columns={self.time_column: "start"})
         result["on_count"] = result["on_count"].astype(int)
         result["off_count"] = result["off_count"].astype(int)
         result["total_transitions"] = result["total_transitions"].astype(int)

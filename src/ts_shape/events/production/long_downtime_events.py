@@ -186,9 +186,7 @@ class LongDowntimeEvents(Base):
             end = gaps.iloc[i + 1]["start"]
             following_index = int(gaps.iloc[i + 1]["downtime_index"])
 
-            subset = prod[
-                (prod["systime"] > start) & (prod["systime"] < end)
-            ]
+            subset = prod[(prod["systime"] > start) & (prod["systime"] < end)]
 
             if aggregation == "count":
                 event_count = len(subset)
@@ -211,9 +209,7 @@ class LongDowntimeEvents(Base):
                 {
                     "start": start,
                     "end": end,
-                    "window_duration_seconds": (
-                        end - start
-                    ).total_seconds(),
+                    "window_duration_seconds": (end - start).total_seconds(),
                     "event_count": event_count,
                     "downtime_index": following_index,
                     "uuid": self.event_uuid,

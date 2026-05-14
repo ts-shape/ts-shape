@@ -127,9 +127,7 @@ class AlarmManagementEvents(Base):
             - source_uuid
         """
         if self.series.empty:
-            return pd.DataFrame(
-                columns=["start", "alarm_count", "uuid", "source_uuid"]
-            )
+            return pd.DataFrame(columns=["start", "alarm_count", "uuid", "source_uuid"])
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = s[self.value_column].fillna(False).astype(bool)

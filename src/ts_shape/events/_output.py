@@ -21,7 +21,6 @@ from typing import Iterable, Literal, Sequence
 
 import pandas as pd  # type: ignore
 
-
 # ---------------------------------------------------------------------------
 # Canonical column-name constants
 # ---------------------------------------------------------------------------
