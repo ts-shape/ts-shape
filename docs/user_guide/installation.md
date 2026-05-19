@@ -15,7 +15,7 @@ pip install ts-shape
 ## Install from Source
 
 ```bash
-git clone https://github.com/jakobgabriel/ts-shape.git
+git clone https://github.com/ts-shape/ts-shape.git
 cd ts-shape
 pip install -e .
 ```
@@ -52,7 +52,7 @@ pip install ts-shape[postgres]
 For contributing:
 
 ```bash
-git clone https://github.com/jakobgabriel/ts-shape.git
+git clone https://github.com/ts-shape/ts-shape.git
 cd ts-shape
 
 # Install in development mode

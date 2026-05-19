@@ -340,7 +340,7 @@ ts-shape uses a simple long-format schema. Use only the columns you need.
 
     Source code, issues, and contributions.
 
-    [:octicons-arrow-right-24: View source](https://github.com/jakobgabriel/ts-shape)
+    [:octicons-arrow-right-24: View source](https://github.com/ts-shape/ts-shape)
 
 </div>
 

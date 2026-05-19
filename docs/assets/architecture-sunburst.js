@@ -284,7 +284,9 @@
       html.push("</div>");
 
       if (d.description) {
-        html.push('<p class="ts-details-desc">' + esc(d.description) + "</p>");
+        html.push(
+          '<p class="ts-details-desc">' + renderDescription(d.description) + "</p>"
+        );
       } else {
         html.push(
           '<p class="ts-details-desc ts-details-desc--empty">No description available.</p>'
@@ -477,6 +479,26 @@
         }[ch] || ch
       );
     });
+  }
+
+  // Lightweight inline-markdown for description text. Recognises the
+  // backtick conventions used in ts_shape docstrings — both single
+  // (`name`) and Sphinx-style double (``name``) become <code>name</code>.
+  // Everything outside backticks is HTML-escaped. Match the doubles
+  // first so a chunk like ``foo`` isn't mistaken for two empty `` pairs.
+  function renderDescription(text) {
+    if (!text) return "";
+    var out = "";
+    var last = 0;
+    var re = /``([^`\n]+?)``|`([^`\n]+?)`/g;
+    var m;
+    while ((m = re.exec(text)) !== null) {
+      out += esc(text.slice(last, m.index));
+      out += "<code>" + esc(m[1] || m[2]) + "</code>";
+      last = re.lastIndex;
+    }
+    out += esc(text.slice(last));
+    return out;
   }
 
   function updateBreadcrumb(el, d) {

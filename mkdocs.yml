@@ -1,7 +1,7 @@
 site_name: "ts-shape"
 site_description: "Automatic documentation from sources, for ts-shape."
-site_url: "https://jakobgabriel.github.io/ts-shape"
-repo_url: "https://github.com/jakobgabriel/ts-shape"
+site_url: "https://ts-shape.github.io/ts-shape"
+repo_url: "https://github.com/ts-shape/ts-shape"
 repo_name: "ts-shape"
 site_dir: "site"
 copyright: Copyright &copy; 2024 Jakob Gabriel
@@ -249,6 +249,6 @@ extra_javascript:
 extra:
   social:
   - icon: fontawesome/brands/github
-    link: https://github.com/jakobgabriel
+    link: https://github.com/ts-shape
   - icon: fontawesome/brands/python
     link: https://pypi.org/project/ts-shape/

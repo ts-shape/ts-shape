@@ -185,6 +185,16 @@
   color: var(--md-default-fg-color, #0f172a);
 }
 
+.ts-details-desc code {
+  background: var(--md-default-fg-color--lightest, #f1f5f9);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--md-default-fg-color, #0f172a);
+}
+
 .ts-details-desc--empty {
   color: var(--md-default-fg-color--light, #64748b);
   font-style: italic;

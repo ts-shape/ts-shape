@@ -108,8 +108,8 @@ h1 {{
     Click the centre to zoom out. The details panel under the chart shows
     the description, source file, child list, and a link to the live
     reference docs
-    (<a href="https://jakobgabriel.github.io/ts-shape/" target="_blank"
-       rel="noopener">jakobgabriel.github.io/ts-shape</a>).
+    (<a href="https://ts-shape.github.io/ts-shape/" target="_blank"
+       rel="noopener">ts-shape.github.io/ts-shape</a>).
     Type in the search box to fade non-matching arcs.
   </p>
 
@@ -130,7 +130,7 @@ h1 {{
 // architecture-graph.json from disk. All sync so there's no race with
 // the page-level JS's DOMContentLoaded handler.
 (function () {{
-  var DOCS_BASE = "https://jakobgabriel.github.io/ts-shape/";
+  var DOCS_BASE = "https://ts-shape.github.io/ts-shape/";
   var raw = document.getElementById("ts-graph-data").textContent;
   var data = JSON.parse(raw);
   data.nodes.forEach(function (n) {{
