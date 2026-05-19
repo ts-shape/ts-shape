@@ -356,7 +356,7 @@ def demo_line_throughput(df: pd.DataFrame) -> None:
     print(f"  Windows: {len(parts)}")
     if not parts.empty:
         print(f"  Avg parts/window: {parts['count'].mean():.1f}")
-        print(parts[["window_start", "count"]].head())
+        print(parts[["start", "count"]].head())
 
     # takt_adherence
     _subheader("takt_adherence(takt_time='50s')")
@@ -376,7 +376,7 @@ def demo_line_throughput(df: pd.DataFrame) -> None:
                             window="1h")
     if not oee.empty:
         print(f"  Avg OEE score: {oee['oee_score'].mean():.2f}")
-        print(oee[["window_start", "actual_count", "performance",
+        print(oee[["start", "actual_count", "performance",
                     "oee_score"]].head())
 
     # throughput_trends
@@ -386,7 +386,7 @@ def demo_line_throughput(df: pd.DataFrame) -> None:
                                   window="1h", trend_window=6)
     if not trends.empty:
         print(f"  Windows with trend data: {len(trends)}")
-        print(trends[["window_start", "count", "moving_avg",
+        print(trends[["start", "count", "moving_avg",
                        "trend_direction", "degradation_detected"]].head())
 
     # cycle_quality_check
@@ -487,7 +487,7 @@ def demo_part_production_tracking(df: pd.DataFrame) -> None:
     )
     print(f"  Rows: {len(hourly)}")
     if not hourly.empty:
-        print(hourly[["window_start", "part_number", "quantity"]].head(8))
+        print(hourly[["start", "part_number", "quantity"]].head(8))
 
     # daily_production_summary
     _subheader("daily_production_summary()")

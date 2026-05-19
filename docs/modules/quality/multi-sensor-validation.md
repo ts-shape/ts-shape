@@ -31,7 +31,7 @@ bias = validator.pairwise_bias(window="1h")
 
 # Identify which sensor deviates most from the group
 outlier = validator.identify_outlier_sensor(window="1h", method="median")
-print(outlier[["window_start", "outlier_sensor", "deviation"]].head())
+print(outlier[["start", "outlier_sensor", "deviation"]].head())
 ```
 
 ---

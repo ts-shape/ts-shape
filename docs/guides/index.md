@@ -73,6 +73,14 @@ Pick the stage that matches where you are in your analysis.
 
 <div class="grid cards" markdown>
 
+-   :material-map-outline:{ .lg .middle } **[Architecture Map](architecture.md)**
+
+    ---
+
+    Interactive map of every package, class and detector method in the library. Search, filter by layer, click any node to jump to its reference page.
+
+    `loader` | `transform` | `features` | `events` | `eventlog`
+
 -   :material-database-import:{ .lg .middle } **[Data Acquisition](loading.md)**
 
     ---

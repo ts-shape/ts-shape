@@ -202,7 +202,7 @@ def demo_outlier_detection():
     zscore_events = detector.detect_outliers_zscore(threshold=3.0)
     print(f"  Detected {len(zscore_events)} outlier event rows")
     if not zscore_events.empty:
-        print(zscore_events[["systime", "value_double", "severity_score"]].to_string(index=False))
+        print(zscore_events[["systime", "value_double", "severity"]].to_string(index=False))
     print()
 
     # --- IQR method ---
@@ -210,7 +210,7 @@ def demo_outlier_detection():
     iqr_events = detector.detect_outliers_iqr(threshold=(1.5, 1.5))
     print(f"  Detected {len(iqr_events)} outlier event rows")
     if not iqr_events.empty:
-        print(iqr_events[["systime", "value_double", "severity_score"]].head(10).to_string(index=False))
+        print(iqr_events[["systime", "value_double", "severity"]].head(10).to_string(index=False))
     print()
 
     # --- MAD method ---
@@ -218,7 +218,7 @@ def demo_outlier_detection():
     mad_events = detector.detect_outliers_mad(threshold=3.5)
     print(f"  Detected {len(mad_events)} outlier event rows")
     if not mad_events.empty:
-        print(mad_events[["systime", "value_double", "severity_score"]].head(10).to_string(index=False))
+        print(mad_events[["systime", "value_double", "severity"]].head(10).to_string(index=False))
     print()
 
     # --- Isolation Forest method ---
@@ -227,7 +227,7 @@ def demo_outlier_detection():
         iforest_events = detector.detect_outliers_isolation_forest(contamination=0.05)
         print(f"  Detected {len(iforest_events)} outlier event rows")
         if not iforest_events.empty:
-            print(iforest_events[["systime", "value_double", "severity_score"]].head(10).to_string(index=False))
+            print(iforest_events[["systime", "value_double", "severity"]].head(10).to_string(index=False))
     except ImportError:
         print("  scikit-learn not installed -- skipping Isolation Forest demo")
     print()

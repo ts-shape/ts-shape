@@ -12,11 +12,12 @@ for the few detectors whose legacy schema does not fit any standard shape.
 from __future__ import annotations
 
 import uuid as _uuid
-from typing import Callable, Mapping, Sequence
+from typing import Callable, Mapping
 
 import pandas as pd
 
 from . import schema
+from ..events._output import COL_END, COL_START, COL_SYSTIME
 from .model import EventLog
 from .taxonomy import LabelRule, render_activity
 
@@ -59,6 +60,22 @@ def _eid(detector: str, ts: pd.Timestamp, key: str) -> str:
     return "e-" + str(_uuid.uuid5(_NAMESPACE, f"{detector}|{ts.isoformat()}|{key}"))
 
 
+def _require_columns(
+    df: pd.DataFrame, cols: tuple[str, ...], shape: str, detector: str
+) -> None:
+    """Raise KeyError if any canonical time column for ``shape`` is missing.
+
+    Post-#62 every detector is guaranteed to emit these columns. A missing
+    column means the caller fed a malformed frame, not a legacy schema.
+    """
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        raise KeyError(
+            f"detector {detector!r} produced shape {shape!r} but is missing "
+            f"canonical column(s) {missing}; got {list(df.columns)}"
+        )
+
+
 def _to_utc_ts(value: object) -> pd.Timestamp | pd._libs.tslibs.nattype.NaTType:
     if value is None:
         return pd.NaT
@@ -70,23 +87,6 @@ def _to_utc_ts(value: object) -> pd.Timestamp | pd._libs.tslibs.nattype.NaTType:
     else:
         ts = ts.tz_convert("UTC")
     return ts
-
-
-def _pick_time_col(df: pd.DataFrame, candidates: Sequence[str]) -> str | None:
-    for c in candidates:
-        if c in df.columns:
-            return c
-    # Fall back to first datetime-like column.
-    for c in df.columns:
-        if pd.api.types.is_datetime64_any_dtype(df[c]):
-            return c
-    return None
-
-
-_POINT_CANDIDATES = ("systime",)
-_INTERVAL_START_CANDIDATES = ("start",)
-_INTERVAL_END_CANDIDATES = ("end",)
-_SUMMARY_START_CANDIDATES = ("start",)
 
 
 def _classify_severity(value: object) -> str | None:
@@ -232,7 +232,7 @@ def _severity_series(legacy: pd.DataFrame, rule: LabelRule) -> pd.Series:
         col = legacy[rule.severity_field]
         return col.map(_classify_severity).astype("string")
     if "severity" in legacy.columns:
-        return legacy["severity"].astype("string")
+        return legacy["severity"].map(_classify_severity).astype("string")
     return pd.Series([pd.NA] * len(legacy), dtype="string")
 
 
@@ -297,69 +297,28 @@ def adapt(
     legacy = legacy.reset_index(drop=True)
     n = len(legacy)
 
-    # Resolve timestamps based on shape.
+    # Resolve timestamps based on shape. Detectors are required (post-#62) to
+    # emit canonical time columns: ``systime`` for point, ``start``/``end``
+    # for interval and summary. Missing columns indicate a malformed frame —
+    # we fail fast rather than silently substituting ``utcnow()``.
     if rule.shape == "interval":
-        start_col = _pick_time_col(legacy, _INTERVAL_START_CANDIDATES)
-        end_col = _pick_time_col(legacy, _INTERVAL_END_CANDIDATES)
-        if start_col is None or end_col is None:
-            # Fall back to point shape if data lacks interval columns.
-            return adapt(
-                legacy,
-                rule=LabelRule(
-                    template=rule.template,
-                    pack=rule.pack,
-                    shape="point",
-                    produces_objects=rule.produces_objects,
-                    severity_field=rule.severity_field,
-                    value_field=rule.value_field,
-                    drop_fields=rule.drop_fields,
-                    standard_attrs=rule.standard_attrs,
-                ),
-                detector=detector,
-                objects=objects,
-                qualifiers=qualifiers,
-            )
-        ts_end = legacy[end_col].apply(_to_utc_ts)
-        ts_start = legacy[start_col].apply(_to_utc_ts)
-        duration = (
-            (ts_end - ts_start).dt.total_seconds()
-            if len(legacy)
-            else pd.Series(dtype="float64")
-        )
-        time_cols_used = {start_col, end_col}
+        _require_columns(legacy, (COL_START, COL_END), rule.shape, detector)
+        ts_end = legacy[COL_END].apply(_to_utc_ts)
+        ts_start = legacy[COL_START].apply(_to_utc_ts)
+        duration = (ts_end - ts_start).dt.total_seconds()
+        time_cols_used = {COL_START, COL_END}
     elif rule.shape == "point":
-        time_col = _pick_time_col(legacy, _POINT_CANDIDATES)
-        if time_col is None:
-            ts_end = pd.Series([pd.Timestamp.utcnow()] * n)
-            time_cols_used = set()
-        else:
-            ts_end = legacy[time_col].apply(_to_utc_ts)
-            time_cols_used = {time_col}
+        _require_columns(legacy, (COL_SYSTIME,), rule.shape, detector)
+        ts_end = legacy[COL_SYSTIME].apply(_to_utc_ts)
         ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
         duration = pd.Series([float("nan")] * n, dtype="float64")
+        time_cols_used = {COL_SYSTIME}
     elif rule.shape == "summary":
-        # Summary rows always have canonical ``start`` and ``end``.
-        end_col = _pick_time_col(legacy, _INTERVAL_END_CANDIDATES)
-        start_col = _pick_time_col(legacy, _SUMMARY_START_CANDIDATES)
-        if end_col is None and start_col is None:
-            ts_end = pd.Series([pd.Timestamp.utcnow()] * n)
-            ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
-            duration = pd.Series([float("nan")] * n, dtype="float64")
-            time_cols_used = set()
-        else:
-            time_cols_used = set()
-            if end_col is not None:
-                ts_end = legacy[end_col].apply(_to_utc_ts)
-                time_cols_used.add(end_col)
-            else:
-                ts_end = legacy[start_col].apply(_to_utc_ts)
-            if start_col is not None:
-                ts_start = legacy[start_col].apply(_to_utc_ts)
-                time_cols_used.add(start_col)
-                duration = (ts_end - ts_start).dt.total_seconds()
-            else:
-                ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
-                duration = pd.Series([float("nan")] * n, dtype="float64")
+        _require_columns(legacy, (COL_START, COL_END), rule.shape, detector)
+        ts_end = legacy[COL_END].apply(_to_utc_ts)
+        ts_start = legacy[COL_START].apply(_to_utc_ts)
+        duration = (ts_end - ts_start).dt.total_seconds()
+        time_cols_used = {COL_START, COL_END}
     elif rule.shape == "static":
         # No natural time. Use a single fixed reference (now-UTC) for all rows.
         now = (
