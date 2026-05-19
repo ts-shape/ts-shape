@@ -43,13 +43,12 @@ flowchart TB
 
 ## Full library architecture
 
-For the navigable map of every package, class, and detector method —
-with search, layer filters, and click-through to the reference docs —
-see [Architecture](guides/architecture.md). The single-page interactive
-graph is the canonical map; this page intentionally keeps only the
-abstract pipeline above to avoid two diagrams drifting out of sync.
+For the prose explanation of each layer (input, output, when to use it)
+see [Architecture](guides/architecture.md). For the interactive
+full-screen graph of every package, class, and detector method see
+[Architecture Map](guides/architecture-map.md).
 
-[Open the interactive architecture map →](guides/architecture.md){ .md-button .md-button--primary }
+[Open the interactive architecture map →](guides/architecture-map.md){ .md-button .md-button--primary }
 
 ## Core Principles
 

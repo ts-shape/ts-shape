@@ -56,47 +56,13 @@ you to use the loaders or feature stage first.
 
 ## Interactive map
 
-<link rel="stylesheet" href="../assets/architecture-graph.css">
-<script src="https://unpkg.com/cytoscape@3.30.1/dist/cytoscape.min.js" defer></script>
+[:material-map-search: Open the full-screen map →](architecture-map.md){ .md-button .md-button--primary }
 
-<div class="ts-graph-card">
-  <div id="ts-graph-controls">
-    <input id="ts-search" type="text" placeholder="Search class or method..." aria-label="Search">
-
-    <fieldset>
-      <legend>Depth</legend>
-      <label><input type="radio" name="ts-depth" value="layers"> Layers</label>
-      <label><input type="radio" name="ts-depth" value="packs" checked> + Packs</label>
-      <label><input type="radio" name="ts-depth" value="classes"> + Classes</label>
-      <label><input type="radio" name="ts-depth" value="everything"> Everything</label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Layers</legend>
-      <label><input type="checkbox" name="ts-layer" value="loader" checked> loader</label>
-      <label><input type="checkbox" name="ts-layer" value="transform" checked> transform</label>
-      <label><input type="checkbox" name="ts-layer" value="features" checked> features</label>
-      <label><input type="checkbox" name="ts-layer" value="context" checked> context</label>
-      <label><input type="checkbox" name="ts-layer" value="events" checked> events</label>
-      <label><input type="checkbox" name="ts-layer" value="eventlog" checked> eventlog</label>
-      <label><input type="checkbox" name="ts-layer" value="utils" checked> utils</label>
-    </fieldset>
-
-    <button id="ts-reset" type="button">Reset</button>
-  </div>
-
-  <div id="ts-shape-graph" role="img" aria-label="ts-shape architecture graph"></div>
-  <div class="ts-graph-mobile-notice">
-    Open this page on a wider screen for the interactive map.
-    The Mermaid above shows the same architecture statically.
-  </div>
-</div>
-
-**How to use it.** Click a layer or pack node to expand or collapse
-its children. Click a class or method to jump to the corresponding
-mkdocstrings reference page. Hover any node for shape, pack and file
-path. Type in the search box to highlight matching nodes (search runs
-fuzzy against class name, method name and pack).
+The dedicated map page lets you pan, zoom, search by name, filter by
+layer, and click any class or method to jump to its reference page.
+It uses the same `taxonomy.REGISTRY` as the rest of the library, so
+adding a detector + REGISTRY entry automatically updates the map on
+the next docs build.
 
 ## Layer reference
 
