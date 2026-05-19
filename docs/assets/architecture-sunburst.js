@@ -52,6 +52,7 @@
         return r.json();
       })
       .then(function (data) {
+        renderSubtitle(data);
         render(container, data);
       })
       .catch(function (err) {
@@ -60,6 +61,22 @@
           err.message +
           ").</p>";
       });
+  }
+
+  // Populate the count line under the page heading if the host page has
+  // a <p id="ts-subtitle"> placeholder. Same metrics the standalone HTML
+  // bakes into its header — computed here from the same JSON.
+  function renderSubtitle(data) {
+    var el = document.getElementById("ts-subtitle");
+    if (!el) return;
+    var c = { layer: 0, pack: 0, class: 0, method: 0 };
+    data.nodes.forEach(function (n) {
+      if (c[n.data.type] != null) c[n.data.type]++;
+    });
+    el.textContent =
+      c.layer + " layers · " + c.pack + " packs · " + c.class +
+      " classes · " + c.method + " detector methods. " +
+      "Generated from ts_shape.eventlog.taxonomy.REGISTRY at docs build time.";
   }
 
   // ----------------------------------------------------------------
@@ -111,8 +128,14 @@
 
   function render(container, data) {
     var d3 = window.d3;
-    var width = container.clientWidth;
-    var size = Math.min(width, 720);
+    // Fixed coordinate system: the sunburst is drawn at a canonical
+    // size of 800x800 SVG units regardless of the container's measured
+    // width. The viewBox + CSS `width: 100%` then scales the SVG to
+    // whatever space the container occupies. This decouples the
+    // partition geometry from layout-time measurements, which were
+    // unreliable when this page is wrapped in the Material chrome
+    // (clientWidth could read 0 before paint on some viewport sizes).
+    var size = 800;
     var radius = size / 2;
 
     var root = buildHierarchy(data);

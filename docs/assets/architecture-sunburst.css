@@ -1,6 +1,31 @@
 /* ts-shape architecture sunburst — D3 v7 renderer styling.
  * Consumed by docs/guides/architecture-map.md. */
 
+.ts-subtitle {
+  margin: -4px 0 16px;
+  font-size: 0.88rem;
+  color: var(--md-default-fg-color--light, #475569);
+  font-style: italic;
+}
+
+.ts-subtitle:empty {
+  display: none;
+}
+
+.ts-map-hint {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: var(--md-default-fg-color--lightest, #f1f5f9);
+  border-left: 3px solid var(--md-accent-fg-color, #f59e0b);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.ts-map-hint a {
+  font-weight: 600;
+}
+
 .ts-sunburst-card {
   border: 1px solid var(--md-default-fg-color--lightest, #e2e8f0);
   border-radius: 6px;
@@ -296,10 +321,49 @@
 }
 
 @media (max-width: 600px) {
+  .ts-sunburst-card {
+    padding: 10px 10px 14px;
+    gap: 10px;
+    margin: 12px 0;
+  }
+  #ts-sunburst {
+    max-width: 100%;
+    /* Use most of the viewport width but cap by viewport height so the
+     * chart never pushes the details panel completely below the fold
+     * on phones in portrait. */
+    max-height: 70vh;
+    aspect-ratio: 1 / 1;
+  }
+  #ts-search {
+    padding: 10px 12px;
+    font-size: 0.95rem;
+  }
+  .ts-map-hint {
+    padding: 10px 12px;
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
   #ts-details {
     padding: 12px 14px;
     font-size: 0.85rem;
   }
   .ts-details-title { font-size: 1rem; }
-  .ts-child-chip { padding: 6px 12px; font-size: 0.78rem; }
+  .ts-details-path { font-size: 0.74rem; }
+  .ts-details-children {
+    gap: 8px;
+  }
+  .ts-child-chip {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    min-height: 32px;
+  }
+  .ts-details-cta {
+    display: block;
+    text-align: center;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+  }
+  .ts-subtitle {
+    font-size: 0.82rem;
+  }
 }
