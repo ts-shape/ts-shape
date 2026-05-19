@@ -24,6 +24,7 @@ nav:
 - Guides:
   - Overview: guides/index.md
   - Architecture: guides/architecture.md
+  - Architecture Map: guides/architecture-map.md
   - Data Acquisition: guides/loading.md
   - Signal Conditioning: guides/transforms.md
   - Feature Extraction: guides/feature-extraction.md

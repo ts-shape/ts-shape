@@ -192,13 +192,26 @@
           n.style("display", visible.indexOf(n.data("type")) >= 0 ? "element" : "none");
         });
       });
+      // `cose` is Cytoscape's built-in physics layout. It handles compound
+      // (parent/child) graphs well and doesn't require an extension script.
       cy.layout({
-        name: "breadthfirst",
-        roots: cy.nodes('node[type = "layer"]').first(),
-        spacingFactor: 1.4,
-        directed: true,
+        name: "cose",
         animate: false,
+        nodeDimensionsIncludeLabels: true,
+        padding: 24,
+        randomize: false,
+        componentSpacing: 60,
+        nodeRepulsion: function () {
+          return 8000;
+        },
+        idealEdgeLength: function () {
+          return 80;
+        },
+        nestingFactor: 0.6,
+        gravity: 0.4,
+        numIter: 1200,
       }).run();
+      cy.fit(undefined, 30);
     }
 
     function applyLayerFilter() {

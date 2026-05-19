@@ -44,12 +44,11 @@ LAYERS = (
 )
 
 
-LAYER_EDGES = (
-    ("loader", "transform"),
-    ("transform", "features"),
-    ("features", "events"),
-    ("events", "eventlog"),
-)
+# Layer-to-layer data flow is shown statically in the architecture page's
+# Mermaid diagram. We deliberately do NOT emit these as Cytoscape edges:
+# the layer nodes are compound parents (they contain packs, classes, and
+# methods), and edges to/from compound parents in Cytoscape render at the
+# bounding-box border, producing visual noise rather than information.
 
 
 def _module_for_class(class_name: str) -> str | None:
@@ -108,18 +107,9 @@ def build_graph() -> dict:
             }
         )
 
-    # Layer-to-layer data-flow edges
-    for src_layer, dst_layer in LAYER_EDGES:
-        edges.append(
-            {
-                "data": {
-                    "id": f"edge:{src_layer}->{dst_layer}",
-                    "source": f"layer:{src_layer}",
-                    "target": f"layer:{dst_layer}",
-                    "type": "data-flow",
-                }
-            }
-        )
+    # Edges between layers intentionally omitted — see comment above the
+    # LAYERS constant. The hierarchy expresses containment; data flow is
+    # explained in the prose page.
 
     # ------------------------------------------------------------------
     # Pack nodes — sub-packages of each layer that physically exist
