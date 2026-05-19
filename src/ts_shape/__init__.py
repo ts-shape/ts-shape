@@ -12,11 +12,17 @@ OutlierDetectionEvents``) keep working unchanged.
 
 import importlib
 import logging
+from importlib.metadata import PackageNotFoundError, version
 from logging import NullHandler
 
 # Library best practice: add NullHandler so that consuming applications
 # control logging output.  See https://docs.python.org/3/howto/logging.html
 logging.getLogger(__name__).addHandler(NullHandler())
+
+try:
+    __version__ = version("ts_shape")
+except PackageNotFoundError:  # running from a source tree, not installed
+    __version__ = "0.0.0+unknown"
 
 
 # Public name -> module that defines it. Lazily resolved by __getattr__.
