@@ -7,9 +7,9 @@ hide:
 # Architecture Map
 
 <p class="ts-map-hint">
-  Click any ring to zoom into that branch. Click the centre to zoom out.
-  Hover an arc for its full path. Click a class or method arc to open its
-  reference page. Type in the search box to fade non-matching arcs.
+  Click any ring to zoom into that branch and load its details below.
+  Click the centre to zoom out. Type in the search box to fade non-matching
+  arcs.
   <a href="../architecture/">Back to the prose overview →</a>
 </p>
 
@@ -18,3 +18,5 @@ hide:
   <div id="ts-breadcrumb" aria-live="polite">ts_shape</div>
   <div id="ts-sunburst" role="img" aria-label="ts-shape architecture sunburst"></div>
 </div>
+
+<div id="ts-details" aria-live="polite"></div>

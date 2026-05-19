@@ -104,9 +104,10 @@ h1 {{
     <code>ts_shape.eventlog.taxonomy.REGISTRY</code> at docs build time.
   </p>
   <p class="ts-map-hint">
-    Click any ring to zoom into that branch. Click the centre to zoom out.
-    Hover an arc for its full path. Click a class or method arc to open
-    its reference page on the live docs
+    Click any ring to zoom into that branch and load its details below.
+    Click the centre to zoom out. The details panel under the chart shows
+    the description, source file, child list, and a link to the live
+    reference docs
     (<a href="https://jakobgabriel.github.io/ts-shape/" target="_blank"
        rel="noopener">jakobgabriel.github.io/ts-shape</a>).
     Type in the search box to fade non-matching arcs.
@@ -117,6 +118,8 @@ h1 {{
     <div id="ts-breadcrumb" aria-live="polite">ts_shape</div>
     <div id="ts-sunburst" role="img" aria-label="ts-shape architecture sunburst"></div>
   </div>
+
+  <div id="ts-details" aria-live="polite"></div>
 </div>
 
 <script>

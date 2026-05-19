@@ -116,6 +116,10 @@
     var radius = size / 2;
 
     var root = buildHierarchy(data);
+    var currentSelection = null;
+    // Index id -> hierarchy node so the panel's child links can drill in.
+    var byId = {};
+    root.each(function (n) { byId[n.id] = n; });
     // Cache initial layout co-ordinates on each node so zoom transitions
     // can interpolate from "current" to "target".
     d3.partition().size([2 * Math.PI, radius])(root);
@@ -185,7 +189,6 @@
         ];
         if (t.shape) lines.push("shape: " + t.shape);
         if (t.pack) lines.push("pack: " + t.pack);
-        if (t.file) lines.push("<code>" + t.file + "</code>");
         tooltip.innerHTML = lines.join("<br>");
         tooltip.style.display = "block";
       })
@@ -198,17 +201,180 @@
         d3.select(this).attr("fill-opacity", function (d2) {
           return arcVisible(d2.current) ? (d2.children ? 0.85 : 0.95) : 0;
         });
-        updateBreadcrumb(breadcrumb, null);
+        // Don't clear breadcrumb on mouseout — it reflects the
+        // currently-selected node, not the hovered one.
         tooltip.style.display = "none";
       })
       .on("click", function (event, d) {
-        // Zoom into containers; navigate for leaves.
-        if (d.children) {
-          zoomTo(d);
-        } else if (d.data.url) {
-          window.location.href = d.data.url;
+        // Click always selects + updates the details panel. Containers
+        // also zoom; leaves don't navigate from a click (the panel's
+        // "Open reference" button does that). This separation makes
+        // exploration safe on touch devices.
+        selectNode(d);
+        if (d.children) zoomTo(d);
+      });
+
+    // Initially focus the root so the details panel shows something
+    // meaningful before any click.
+    selectNode(root);
+
+    function selectNode(d) {
+      currentSelection = d;
+      updateBreadcrumb(breadcrumb, d.depth ? d : null);
+      renderDetails(d);
+    }
+
+    // ----------------------------------------------------------------
+    // Details panel below the sunburst.
+    //
+    // Renders the currently-selected node: title, type badge, breadcrumb
+    // path with each segment clickable, description (pulled from the
+    // Python docstrings at build time), file path, child list as
+    // drill-in chips, and an "Open reference docs" CTA for class /
+    // method nodes. Replaces the previous hover-tooltip-only model,
+    // which was unusable on touch.
+    // ----------------------------------------------------------------
+    function renderDetails(node) {
+      var panel = document.getElementById("ts-details");
+      if (!panel) return;
+
+      var d = node.data;
+      var path = [];
+      var n = node;
+      while (n && n.depth > 0) {
+        path.unshift(n);
+        n = n.parent;
+      }
+
+      var html = [];
+      html.push('<div class="ts-details-head">');
+      html.push('<h2 class="ts-details-title">' + esc(d.label) + "</h2>");
+      html.push(
+        '<span class="ts-details-type ts-details-type--' +
+          esc(d.type) +
+          '">' +
+          esc(d.type) +
+          (d.shape ? " · " + esc(d.shape) : "") +
+          "</span>"
+      );
+      html.push("</div>");
+
+      html.push('<div class="ts-details-path">');
+      html.push(
+        '<a href="#" data-target="' +
+          esc(root.id) +
+          '" class="ts-crumb-link ts-crumb-root">ts_shape</a>'
+      );
+      path.forEach(function (p, i) {
+        html.push(' <span class="ts-crumb-sep">›</span> ');
+        if (i === path.length - 1) {
+          html.push(
+            '<span class="ts-crumb-current">' + esc(p.data.label) + "</span>"
+          );
+        } else {
+          html.push(
+            '<a href="#" data-target="' +
+              esc(p.id) +
+              '" class="ts-crumb-link">' +
+              esc(p.data.label) +
+              "</a>"
+          );
         }
       });
+      html.push("</div>");
+
+      if (d.description) {
+        html.push('<p class="ts-details-desc">' + esc(d.description) + "</p>");
+      } else {
+        html.push(
+          '<p class="ts-details-desc ts-details-desc--empty">No description available.</p>'
+        );
+      }
+
+      if (d.file) {
+        html.push(
+          '<div class="ts-details-file"><code>' + esc(d.file) + "</code></div>"
+        );
+      }
+
+      if (node.children && node.children.length) {
+        var counts = countDescendants(node);
+        var summaryBits = [];
+        if (counts.pack)
+          summaryBits.push(counts.pack + " pack" + (counts.pack > 1 ? "s" : ""));
+        if (counts.class)
+          summaryBits.push(
+            counts.class + " class" + (counts.class > 1 ? "es" : "")
+          );
+        if (counts.method)
+          summaryBits.push(
+            counts.method + " method" + (counts.method > 1 ? "s" : "")
+          );
+        if (summaryBits.length) {
+          html.push(
+            '<div class="ts-details-counts">Contains ' +
+              summaryBits.join(" · ") +
+              "</div>"
+          );
+        }
+
+        var children = node.children.slice().sort(function (a, b) {
+          return (a.data.label || "").localeCompare(b.data.label || "");
+        });
+        var childTypeLabel = children[0].data.type;
+        html.push(
+          '<div class="ts-details-children-label">' +
+            esc(
+              childTypeLabel + (children.length > 1 ? "s" : "")
+            ) +
+            " (" +
+            children.length +
+            "):</div>"
+        );
+        html.push('<div class="ts-details-children">');
+        children.forEach(function (c) {
+          var shapeBadge = c.data.shape
+            ? ' <span class="ts-shape-badge ts-shape-badge--' +
+              esc(c.data.shape) +
+              '">' +
+              esc(c.data.shape) +
+              "</span>"
+            : "";
+          html.push(
+            '<a href="#" data-target="' +
+              esc(c.id) +
+              '" class="ts-child-chip ts-child-chip--' +
+              esc(c.data.type) +
+              '">' +
+              esc(c.data.label) +
+              shapeBadge +
+              "</a>"
+          );
+        });
+        html.push("</div>");
+      }
+
+      if (d.url) {
+        html.push(
+          '<a class="ts-details-cta" href="' +
+            esc(d.url) +
+            '" target="_blank" rel="noopener">Open reference docs ↗</a>'
+        );
+      }
+
+      panel.innerHTML = html.join("");
+
+      // Wire breadcrumb + child links to re-select + zoom in the chart.
+      panel.querySelectorAll("[data-target]").forEach(function (a) {
+        a.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          var t = byId[a.getAttribute("data-target")];
+          if (!t) return;
+          selectNode(t);
+          if (t.children) zoomTo(t);
+        });
+      });
+    }
 
     // ----------------------------------------------------------------
     // Zoom — Bostock's standard zoomable-sunburst transform
@@ -288,6 +454,29 @@
 
   function arcVisible(d) {
     return d.y1 <= 1e9 && d.y0 >= 0 && d.x1 > d.x0;
+  }
+
+  function countDescendants(node) {
+    var c = { pack: 0, class: 0, method: 0 };
+    node.each(function (d) {
+      if (d === node) return;
+      if (c[d.data.type] != null) c[d.data.type]++;
+    });
+    return c;
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (ch) {
+      return (
+        {
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }[ch] || ch
+      );
+    });
   }
 
   function updateBreadcrumb(el, d) {
