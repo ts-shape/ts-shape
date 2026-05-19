@@ -173,3 +173,46 @@ def test_severity_bucket_thresholds():
     log = to_event_log(df, detector="OutlierDetectionEvents.detect_outliers_zscore")
     sev = log.events[TS_SEVERITY].tolist()
     assert sev == ["info", "warn", "critical"]
+
+
+def test_malformed_interval_frame_raises_keyerror():
+    """Post-#62 detectors are guaranteed to emit ``start``/``end`` for interval
+    shapes. A user-supplied frame missing those columns must fail fast rather
+    than silently substituting ``utcnow()``."""
+    # MachineStateEvents.detect_run_idle is an interval-shape detector.
+    bad = pd.DataFrame({"systime": pd.date_range("2026-05-07", periods=2, tz="UTC")})
+    with pytest.raises(KeyError, match="canonical column"):
+        to_event_log(bad, detector="MachineStateEvents.detect_run_idle")
+
+
+def test_malformed_point_frame_raises_keyerror():
+    """Point shapes require ``systime``; a frame missing it must raise."""
+    # OutlierDetectionEvents.detect_outliers_zscore is a point-shape detector.
+    bad = pd.DataFrame({"start": pd.date_range("2026-05-07", periods=2, tz="UTC")})
+    with pytest.raises(KeyError, match="canonical column"):
+        to_event_log(bad, detector="OutlierDetectionEvents.detect_outliers_zscore")
+
+
+def test_canonical_severity_column_is_bucketed_without_explicit_field():
+    """When LabelRule.severity_field is unset, a numeric canonical ``severity``
+    column must still be bucketed to info/warn/critical — not passed through
+    as raw numeric strings."""
+    df = pd.DataFrame(
+        {
+            "systime": pd.date_range("2026-05-07", periods=4, freq="30s", tz="UTC"),
+            "value_bool": [True, False, True, False],
+            "uuid": ["m"] * 4,
+            "is_delta": [True, False, True, False],
+            "severity": [0.5, 3.0, 4.5, 6.0],
+        }
+    )
+    # MachineStateEvents.detect_run_idle has severity_field=None in REGISTRY,
+    # so this exercises the canonical-name branch in _severity_series.
+    legacy = MachineStateEvents(df, run_state_uuid="m").detect_run_idle()
+    legacy["severity"] = [0.5, 3.0, 4.5, 6.0][: len(legacy)]
+    log = to_event_log(legacy, detector="MachineStateEvents.detect_run_idle")
+    buckets = log.events[TS_SEVERITY].dropna().tolist()
+    assert buckets, "expected non-empty severity column"
+    assert set(buckets) <= {"info", "warn", "critical"}, (
+        f"raw numeric leaked through bucketing: {buckets}"
+    )
