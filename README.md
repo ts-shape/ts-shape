@@ -2,8 +2,8 @@
 
 [![pypi version](https://img.shields.io/pypi/v/ts-shape.svg)](https://pypi.org/project/ts-shape/)
 [![downloads](https://static.pepy.tech/badge/ts-shape/week)](https://pepy.tech/projects/ts-shape)
-[![CI](https://github.com/jakobgabriel/ts-shape/actions/workflows/ci.yml/badge.svg)](https://github.com/jakobgabriel/ts-shape/actions/workflows/ci.yml)
-[![docs](https://img.shields.io/badge/docs-mkdocs-708FCC.svg?style=flat)](https://jakobgabriel.github.io/ts-shape/)
+[![CI](https://github.com/ts-shape/ts-shape/actions/workflows/ci.yml/badge.svg)](https://github.com/ts-shape/ts-shape/actions/workflows/ci.yml)
+[![docs](https://img.shields.io/badge/docs-mkdocs-708FCC.svg?style=flat)](https://ts-shape.github.io/ts-shape/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 
@@ -277,7 +277,7 @@ cycles = extractor.process_persistent_cycle()
 
 ```bash
 # Clone and install in development mode
-git clone https://github.com/jakobgabriel/ts-shape.git
+git clone https://github.com/ts-shape/ts-shape.git
 cd ts-shape
 pip install -e ".[dev]"
 
@@ -349,7 +349,7 @@ MIT -- see [LICENSE.txt](LICENSE.txt).
 
 ## Links
 
-- [Documentation](https://jakobgabriel.github.io/ts-shape/)
+- [Documentation](https://ts-shape.github.io/ts-shape/)
 - [PyPI](https://pypi.org/project/ts-shape/)
-- [GitHub](https://github.com/jakobgabriel/ts-shape)
-- [Bug Tracker](https://github.com/jakobgabriel/ts-shape/issues)
+- [GitHub](https://github.com/ts-shape/ts-shape)
+- [Bug Tracker](https://github.com/ts-shape/ts-shape/issues)

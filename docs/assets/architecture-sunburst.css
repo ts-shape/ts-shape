@@ -1,0 +1,369 @@
+/* ts-shape architecture sunburst — D3 v7 renderer styling.
+ * Consumed by docs/guides/architecture-map.md. */
+
+.ts-subtitle {
+  margin: -4px 0 16px;
+  font-size: 0.88rem;
+  color: var(--md-default-fg-color--light, #475569);
+  font-style: italic;
+}
+
+.ts-subtitle:empty {
+  display: none;
+}
+
+.ts-map-hint {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: var(--md-default-fg-color--lightest, #f1f5f9);
+  border-left: 3px solid var(--md-accent-fg-color, #f59e0b);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.ts-map-hint a {
+  font-weight: 600;
+}
+
+.ts-sunburst-card {
+  border: 1px solid var(--md-default-fg-color--lightest, #e2e8f0);
+  border-radius: 6px;
+  padding: 12px 16px 20px;
+  margin: 16px 0;
+  background: var(--md-default-bg-color, #ffffff);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+#ts-search {
+  align-self: stretch;
+  padding: 8px 12px;
+  border: 1px solid var(--md-default-fg-color--lighter, #cbd5e1);
+  border-radius: 4px;
+  background: var(--md-default-bg-color, #fff);
+  color: var(--md-default-fg-color, #0f172a);
+  font-size: 0.9rem;
+}
+
+#ts-breadcrumb {
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light, #475569);
+  min-height: 1.4em;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+#ts-breadcrumb .ts-crumb-root {
+  color: var(--md-default-fg-color, #0f172a);
+  font-weight: 600;
+}
+
+#ts-breadcrumb .ts-crumb-sep {
+  opacity: 0.4;
+  margin: 0 2px;
+}
+
+#ts-sunburst {
+  position: relative;
+  align-self: center;
+  width: 100%;
+  max-width: min(720px, 86vh);
+  aspect-ratio: 1 / 1;
+}
+
+.ts-sunburst-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.arc {
+  stroke: var(--md-default-bg-color, #ffffff);
+  stroke-width: 1;
+  transition: fill-opacity 0.15s ease-out;
+}
+
+.ts-sunburst-centre {
+  fill: var(--md-default-bg-color, #ffffff);
+  stroke: var(--md-default-fg-color--lighter, #cbd5e1);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.ts-sunburst-centre-label {
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  fill: var(--md-default-fg-color, #0f172a);
+  pointer-events: none;
+}
+
+.ts-sunburst-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.95);
+  color: #f8fafc;
+  font-size: 0.75rem;
+  padding: 6px 10px;
+  border-radius: 4px;
+  z-index: 10;
+  max-width: 280px;
+  line-height: 1.4;
+}
+
+.ts-sunburst-tooltip code {
+  background: rgba(255, 255, 255, 0.12);
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 0.7rem;
+}
+
+.ts-sunburst-tooltip .ts-type {
+  opacity: 0.7;
+  font-weight: normal;
+}
+
+.ts-sunburst-fallback {
+  padding: 24px;
+  text-align: center;
+  color: var(--md-default-fg-color--light, #64748b);
+  font-style: italic;
+}
+
+/* ----- Details panel below the sunburst ---------------------------- */
+
+#ts-details {
+  margin: 8px auto 0;
+  max-width: 860px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--md-default-fg-color--lightest, #e2e8f0);
+  border-radius: 6px;
+  background: var(--md-default-bg-color, #ffffff);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.ts-details-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.ts-details-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--md-default-fg-color, #0f172a);
+  word-break: break-word;
+}
+
+.ts-details-type {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--md-default-fg-color--lightest, #f1f5f9);
+  color: var(--md-default-fg-color--light, #475569);
+}
+
+.ts-details-type--layer { background: #dbeafe; color: #1e40af; }
+.ts-details-type--pack { background: #ccfbf1; color: #0f766e; }
+.ts-details-type--class { background: #fef3c7; color: #92400e; }
+.ts-details-type--method { background: #ffedd5; color: #9a3412; }
+
+.ts-details-path {
+  margin: 0 0 12px;
+  font-size: 0.78rem;
+  color: var(--md-default-fg-color--light, #475569);
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  word-break: break-word;
+}
+
+.ts-details-path .ts-crumb-link {
+  color: var(--md-default-fg-color--light, #475569);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+
+.ts-details-path .ts-crumb-link:hover {
+  color: var(--md-accent-fg-color, #f59e0b);
+}
+
+.ts-details-path .ts-crumb-current {
+  color: var(--md-default-fg-color, #0f172a);
+  font-weight: 600;
+}
+
+.ts-details-desc {
+  margin: 0 0 12px;
+  color: var(--md-default-fg-color, #0f172a);
+}
+
+.ts-details-desc code {
+  background: var(--md-default-fg-color--lightest, #f1f5f9);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--md-default-fg-color, #0f172a);
+}
+
+.ts-details-desc--empty {
+  color: var(--md-default-fg-color--light, #64748b);
+  font-style: italic;
+}
+
+.ts-details-file {
+  margin: 0 0 12px;
+  font-size: 0.8rem;
+}
+
+.ts-details-file code {
+  background: var(--md-default-fg-color--lightest, #f1f5f9);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+.ts-details-counts {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--md-default-fg-color--light, #475569);
+}
+
+.ts-details-children-label {
+  margin: 4px 0 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--md-default-fg-color--light, #475569);
+  text-transform: uppercase;
+}
+
+.ts-details-children {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.ts-child-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--md-default-fg-color--lightest, #f1f5f9);
+  color: var(--md-default-fg-color, #0f172a);
+  border: 1px solid var(--md-default-fg-color--lighter, #cbd5e1);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ts-child-chip:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: var(--md-default-fg-color, #0f172a);
+}
+
+.ts-child-chip--pack { border-color: #2dd4bf; }
+.ts-child-chip--class { border-color: #f59e0b; }
+.ts-child-chip--method { border-color: #fbbf24; }
+
+.ts-shape-badge {
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--md-default-fg-color--light, #475569);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ts-shape-badge--point { background: #dbeafe; color: #1e40af; }
+.ts-shape-badge--interval { background: #d1fae5; color: #047857; }
+.ts-shape-badge--summary { background: #fef3c7; color: #92400e; }
+.ts-shape-badge--static { background: #ede9fe; color: #6d28d9; }
+
+.ts-details-cta {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 8px 14px;
+  background: var(--md-accent-fg-color, #f59e0b);
+  color: #ffffff !important;
+  text-decoration: none !important;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.ts-details-cta:hover {
+  filter: brightness(1.08);
+}
+
+@media (max-width: 600px) {
+  .ts-sunburst-card {
+    padding: 10px 10px 14px;
+    gap: 10px;
+    margin: 12px 0;
+  }
+  #ts-sunburst {
+    max-width: 100%;
+    /* Use most of the viewport width but cap by viewport height so the
+     * chart never pushes the details panel completely below the fold
+     * on phones in portrait. */
+    max-height: 70vh;
+    aspect-ratio: 1 / 1;
+  }
+  #ts-search {
+    padding: 10px 12px;
+    font-size: 0.95rem;
+  }
+  .ts-map-hint {
+    padding: 10px 12px;
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+  #ts-details {
+    padding: 12px 14px;
+    font-size: 0.85rem;
+  }
+  .ts-details-title { font-size: 1rem; }
+  .ts-details-path { font-size: 0.74rem; }
+  .ts-details-children {
+    gap: 8px;
+  }
+  .ts-child-chip {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    min-height: 32px;
+  }
+  .ts-details-cta {
+    display: block;
+    text-align: center;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+  }
+  .ts-subtitle {
+    font-size: 0.82rem;
+  }
+}

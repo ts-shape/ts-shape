@@ -44,11 +44,50 @@ LAYERS = (
 )
 
 
+# Hardcoded one-line description per layer. These rarely change — easier
+# to keep consistent here than to chase them across __init__.py docstrings
+# at every layer root.
+LAYER_DESCRIPTIONS = {
+    "loader": "Acquire raw timeseries and metadata from external stores (Parquet, S3, Azure Blob, TimescaleDB, JSON).",
+    "transform": "Condition signals — filter, resample, harmonise, time-shift, derive — DataFrame in / DataFrame out.",
+    "features": "Derive analytics: windowed statistics, cycle bounds, segment labels, time-stats, pattern recognition.",
+    "context": "Optional categorical lookup enrichment (code → label, value mapping).",
+    "events": "Detector library. Every method emits one of the canonical event shapes (point, interval, summary).",
+    "eventlog": "Normalise detector output to a canonical OCEL 2.0 EventLog. Exporters for XES / OCEL / flat tables. Lambda-rules DSL.",
+    "utils": "Shared utilities. Most importantly Base — the parent class every detector inherits from.",
+}
+
+
 # Layer-to-layer data flow is shown statically in the architecture page's
 # Mermaid diagram. We deliberately do NOT emit these as Cytoscape edges:
 # the layer nodes are compound parents (they contain packs, classes, and
 # methods), and edges to/from compound parents in Cytoscape render at the
 # bounding-box border, producing visual noise rather than information.
+
+
+def _first_paragraph(doc: str | None) -> str:
+    """Return the first paragraph of ``doc``, collapsed to one line.
+
+    Used to extract a short description from a class or method docstring.
+    Empty input yields empty string.
+    """
+    if not doc:
+        return ""
+    head = doc.strip().split("\n\n", 1)[0]
+    # Collapse internal newlines so the panel renders cleanly.
+    return " ".join(line.strip() for line in head.splitlines() if line.strip())
+
+
+def _pack_description(layer: str, pack: str) -> str:
+    """Read the first paragraph from ``src/ts_shape/<layer>/<pack>/__init__.py``.
+
+    Returns an empty string if the pack package has no docstring.
+    """
+    try:
+        mod = importlib.import_module(f"ts_shape.{layer}.{pack}")
+    except Exception:
+        return ""
+    return _first_paragraph(inspect.getdoc(mod))
 
 
 def _module_for_class(class_name: str) -> str | None:
@@ -103,6 +142,7 @@ def build_graph() -> dict:
                     "id": f"layer:{layer}",
                     "label": layer,
                     "type": "layer",
+                    "description": LAYER_DESCRIPTIONS.get(layer, ""),
                 }
             }
         )
@@ -133,6 +173,7 @@ def build_graph() -> dict:
                         "label": pack,
                         "type": "pack",
                         "parent": f"layer:{layer}",
+                        "description": _pack_description(layer, pack),
                     }
                 }
             )
@@ -170,6 +211,7 @@ def build_graph() -> dict:
                         "parent": "layer:events",
                         "url": "",
                         "file": "",
+                        "description": "",
                     }
                 }
             )
@@ -189,6 +231,12 @@ def build_graph() -> dict:
         rel_file = "/".join(parts) + ".py"
         rel_file = f"src/{rel_file}"
 
+        # Resolve the class object once to grab its docstring and to look
+        # up each registered method's docstring below.
+        mod = importlib.import_module(dotted)
+        cls_obj = getattr(mod, class_name)
+        class_desc = _first_paragraph(inspect.getdoc(cls_obj))
+
         nodes.append(
             {
                 "data": {
@@ -198,11 +246,14 @@ def build_graph() -> dict:
                     "parent": parent,
                     "url": _reference_url(dotted, class_name, None),
                     "file": rel_file,
+                    "description": class_desc,
                 }
             }
         )
 
         for method_name, shape, pack in sorted(methods_by_class[class_name]):
+            method_obj = getattr(cls_obj, method_name, None)
+            method_desc = _first_paragraph(inspect.getdoc(method_obj))
             nodes.append(
                 {
                     "data": {
@@ -213,6 +264,7 @@ def build_graph() -> dict:
                         "url": _reference_url(dotted, class_name, method_name),
                         "shape": shape,
                         "pack": pack,
+                        "description": method_desc,
                     }
                 }
             )
