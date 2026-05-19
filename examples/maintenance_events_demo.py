@@ -340,7 +340,7 @@ def demo_failure_prediction(df: pd.DataFrame):
         print(f"  Windows analyzed: {len(exceed)}")
         escalating = exceed[exceed['escalation_detected']]
         print(f"  Escalation windows: {len(escalating)}")
-        print(exceed[['window_start', 'warning_count', 'critical_count',
+        print(exceed[['start', 'warning_count', 'critical_count',
                        'escalation_detected']].to_string(index=False))
     else:
         print("  No exceedances detected in any window.")
@@ -428,7 +428,7 @@ def demo_vibration_analysis(df: pd.DataFrame):
         print(f"  Windows exceeding 25% growth: {len(growing)}")
         print("\n  First and last 4 windows:")
         combined = pd.concat([amp.head(4), amp.tail(4)]).drop_duplicates()
-        print(combined[['window_start', 'amplitude',
+        print(combined[['start', 'amplitude',
                          'baseline_amplitude', 'growth_pct']].to_string(index=False))
 
     # ---- 3c. Bearing Health Indicators ------------------------------------
@@ -436,7 +436,7 @@ def demo_vibration_analysis(df: pd.DataFrame):
     bhi = analyzer.bearing_health_indicators(window='5min')
     if not bhi.empty:
         print(f"  Windows: {len(bhi)}")
-        print(bhi[['window_start', 'rms', 'peak', 'crest_factor',
+        print(bhi[['start', 'rms', 'peak', 'crest_factor',
                      'kurtosis']].to_string(index=False))
 
         print("\n  Summary across windows:")

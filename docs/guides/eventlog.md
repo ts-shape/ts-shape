@@ -330,10 +330,10 @@ bucketed into a string:
 | `v ≥ 4.5` | `critical` |
 | `NaN` / non-numeric / missing | `<NA>` |
 
-The thresholds match the existing `severity_score` convention used by
-`OutlierDetectionEvents`. If a legacy DataFrame already carries a
-literal `severity` column with one of `info`/`warn`/`critical`, that
-value is passed through verbatim.
+The thresholds match the numeric `severity` column emitted by
+`OutlierDetectionEvents` and other detectors. If a DataFrame already
+carries a literal `severity` column with one of `info`/`warn`/`critical`,
+that string value is passed through verbatim.
 
 ### Object-type vocabulary
 

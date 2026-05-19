@@ -257,7 +257,7 @@ def demo_inventory_monitoring() -> None:
             print(f"  Avg consumption rate : {positive['consumption_rate'].mean():.2f} units/h")
             print(f"  Max consumption rate : {positive['consumption_rate'].max():.2f} units/h")
         print(f"\n  First 8 windows:")
-        print(rate_a[['window_start', 'consumption_rate',
+        print(rate_a[['start', 'consumption_rate',
                        'level_start', 'level_end']].head(8).to_string(index=False))
 
     # 1c. Reorder point breach
@@ -419,7 +419,7 @@ def demo_demand_patterns() -> None:
         print(f"  Avg daily demand : {daily['total_demand'].mean():.1f}")
         print(f"  Max daily demand : {daily['total_demand'].max():.1f}")
         print(f"\n  First 14 days:")
-        print(daily[['period_start', 'total_demand',
+        print(daily[['start', 'total_demand',
                       'avg_demand', 'peak_demand']].head(14).to_string(index=False))
 
     # 3b. Demand by period -- hourly
@@ -429,7 +429,7 @@ def demo_demand_patterns() -> None:
         print(f"  Hourly buckets   : {len(hourly_agg)}")
         print(f"  Avg hourly demand: {hourly_agg['total_demand'].mean():.2f}")
         print(f"\n  Sample (first 12 hourly buckets):")
-        print(hourly_agg[['period_start', 'total_demand',
+        print(hourly_agg[['start', 'total_demand',
                            'avg_demand', 'peak_demand']].head(12).to_string(index=False))
 
     # 3c. Demand spike detection -- daily
@@ -437,7 +437,7 @@ def demo_demand_patterns() -> None:
     spikes = analyzer.detect_demand_spikes(threshold_factor=1.5, window='1D')
     print(f"  Spikes detected: {len(spikes)}")
     if not spikes.empty:
-        print(spikes[['period_start', 'demand',
+        print(spikes[['start', 'demand',
                        'baseline_mean', 'spike_magnitude']].to_string(index=False))
 
     # 3d. Demand spike detection -- tighter threshold
@@ -445,7 +445,7 @@ def demo_demand_patterns() -> None:
     spikes_tight = analyzer.detect_demand_spikes(threshold_factor=2.0, window='1D')
     print(f"  Spikes detected (stricter): {len(spikes_tight)}")
     if not spikes_tight.empty:
-        print(spikes_tight[['period_start', 'demand',
+        print(spikes_tight[['start', 'demand',
                              'baseline_mean', 'spike_magnitude']].to_string(index=False))
 
     # 3e. Seasonality -- day-of-week

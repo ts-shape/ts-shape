@@ -179,7 +179,7 @@ daily_oee = oee.calculate_oee(
 
 print("\n--- Daily OEE ---")
 print(daily_oee)
-# Columns: date, availability, performance, quality, oee
+# Columns: start, end, duration_seconds, availability, performance, quality, oee
 ```
 
 ---
@@ -216,7 +216,7 @@ At the end of this pipeline you have:
 
 | Output | Description | Merge key |
 |--------|-------------|-----------|
-| `daily_oee` | Daily OEE with A/P/Q breakdown | `date` |
+| `daily_oee` | Daily OEE with A/P/Q breakdown | `start` (midnight per day) |
 | `shift_prod` | Production quantity per shift | `date`, `shift` |
 | `comparison` | Cross-shift performance comparison | `shift` |
 | `target_results` | Target vs actual per shift | `date`, `shift` |

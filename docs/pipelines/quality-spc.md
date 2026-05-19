@@ -94,7 +94,7 @@ sq = SignalQualityEvents(df, signal_uuid="temperature_actual")
 missing = sq.detect_missing_data(expected_freq="1s", tolerance_factor=2.0)
 print(f"Data gaps found: {len(missing)}")
 if not missing.empty:
-    print(missing[["gap_start", "gap_end", "gap_duration"]].head())
+    print(missing[["start", "end", "gap_duration"]].head())
 
 # Check sampling regularity
 regularity = sq.sampling_regularity(window="1h")

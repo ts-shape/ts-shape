@@ -28,7 +28,7 @@ span = drift.detect_span_drift(window="8h")
 
 # Get a composite calibration health score
 health = drift.calibration_health(window="8h", tolerance=None)
-print(health[["window_start", "health_score"]].head())
+print(health[["start", "health_score"]].head())
 ```
 
 ---

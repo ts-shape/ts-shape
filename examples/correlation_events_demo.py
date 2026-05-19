@@ -142,7 +142,7 @@ if __name__ == "__main__":
     print(f"\nCoincident anomaly windows: {len(coincident)}")
     if not coincident.empty:
         for _, row in coincident.iterrows():
-            print(f"  {row['window_start']}: "
+            print(f"  {row['start']}: "
                   f"{row['anomaly_count']} anomalies across "
                   f"[{row['signal_uuids_involved']}]")
 

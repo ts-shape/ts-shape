@@ -90,7 +90,7 @@ if __name__ == "__main__":
     print(f"Threshold: {peaks['threshold'].iloc[0]:.1f}")
     if not peak_hours.empty:
         print(f"Sample peak windows:")
-        print(peak_hours[["window_start", "demand", "is_peak"]].head())
+        print(peak_hours[["start", "demand", "is_peak"]].head())
 
     # Baseline deviation
     deviation = ec.consumption_baseline_deviation(
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # Energy per unit
     epu = ec.energy_per_unit("meter:main", "counter:line1", window="1h")
     print(f"\nEnergy per unit (hourly, first 5 rows):")
-    print(epu[["window_start", "energy", "units_produced", "energy_per_unit"]].head())
+    print(epu[["start", "energy", "units_produced", "energy_per_unit"]].head())
 
     # -----------------------------------------------------------------------
     # 2. Efficiency Tracking
@@ -118,7 +118,7 @@ if __name__ == "__main__":
         "meter:main", "counter:line1", window="1h", trend_window=12
     )
     print(f"\nEfficiency trend (first 5 rows):")
-    print(trend[["window_start", "efficiency", "rolling_avg_efficiency", "trend_direction"]].head())
+    print(trend[["start", "efficiency", "rolling_avg_efficiency", "trend_direction"]].head())
 
     # Idle energy waste
     waste = ee.idle_energy_waste("meter:main", "state:machine1", window="1h")
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     # Specific energy consumption
     sec = ee.specific_energy_consumption("meter:main", "counter:line1", window="1D")
     print(f"\nDaily specific energy consumption:")
-    print(sec[["window_start", "total_energy", "total_output", "sec", "sec_trend"]])
+    print(sec[["start", "total_energy", "total_output", "sec", "sec_trend"]])
 
     # Shift efficiency comparison
     comparison = ee.efficiency_comparison("meter:main", "counter:line1")

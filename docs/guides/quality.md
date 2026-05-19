@@ -66,8 +66,8 @@ outliers_ml = detector.detect_outliers_isolation_forest(
     contamination=0.1, random_state=42
 )
 
-# All methods return severity scores
-print(outliers_mad[['systime', 'value_double', 'severity_score']])
+# All methods return a numeric severity column
+print(outliers_mad[['systime', 'value_double', 'severity']])
 ```
 
 ---
