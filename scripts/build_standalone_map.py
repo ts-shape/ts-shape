@@ -135,7 +135,10 @@ h1 {{
   data.nodes.forEach(function (n) {{
     var u = n.data && n.data.url;
     if (u && u.indexOf("../") === 0) {{
-      n.data.url = DOCS_BASE + u.replace(/^\\.\\.\\//, "");
+      // Strip ALL leading `../` segments. The gen script emits two
+      // (`../../reference/...`) — anything we leave behind here would
+      // confuse the browser's URL resolver and produce a 404.
+      n.data.url = DOCS_BASE + u.replace(/^(?:\\.\\.\\/)+/, "");
     }}
   }});
   var origFetch = typeof window.fetch === "function" ? window.fetch.bind(window) : null;

@@ -117,15 +117,18 @@ def _module_for_class(class_name: str) -> str | None:
 def _reference_url(dotted_module: str, class_name: str, method: str | None) -> str:
     """Build the mkdocstrings reference URL for a class or method.
 
-    The page is ``reference/<path>/<module>/`` (the trailing slash is the
-    mkdocs Material default for ``use_directory_urls: true``). The anchor
-    is ``ts_shape.<dotted>.<ClassName>[.<method>]``.
+    The architecture-map page lives at ``/<site>/guides/architecture-map/``
+    (three path segments). The mkdocstrings reference lives at
+    ``/<site>/reference/<path>/``. To get from one to the other we have
+    to step up two segments (out of ``architecture-map/`` and out of
+    ``guides/``), hence ``../../`` rather than ``../``. The anchor is
+    ``ts_shape.<dotted>.<ClassName>[.<method>]``.
     """
     path = dotted_module.replace(".", "/")
     anchor = f"{dotted_module}.{class_name}"
     if method is not None:
         anchor = f"{anchor}.{method}"
-    return f"../reference/{path}/#{anchor}"
+    return f"../../reference/{path}/#{anchor}"
 
 
 def build_graph() -> dict:

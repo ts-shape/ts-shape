@@ -67,6 +67,9 @@ ml = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+ts_shape = ["py.typed"]
+
 [tool.setuptools-scm]
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
