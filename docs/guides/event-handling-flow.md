@@ -1,5 +1,10 @@
 # Event Handling — Visual Overview
 
+!!! note
+    This page zooms into the events layer. For the full library map
+    with every package, class and detector method — searchable and
+    clickable — see [Architecture](architecture.md).
+
 How ts-shape turns raw signals into events. Three layers, four archetypes, one canonical event log.
 
 Every detection in ts-shape — whether it comes from one of the 290 built-in detector methods or a [user-authored lambda rule](lambda-rules.md) — passes through the same three-layer flow:
