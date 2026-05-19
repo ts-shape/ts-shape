@@ -13,9 +13,6 @@ hide:
   <a href="architecture/">Back to the prose overview →</a>
 </p>
 
-<link rel="stylesheet" href="../assets/architecture-graph.css">
-<script src="https://unpkg.com/cytoscape@3.30.1/dist/cytoscape.min.js" defer></script>
-
 <div class="ts-graph-card ts-graph-fullscreen">
   <div id="ts-graph-controls">
     <input id="ts-search" type="text" placeholder="Search class or method..." aria-label="Search">
