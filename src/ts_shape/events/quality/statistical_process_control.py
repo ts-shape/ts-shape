@@ -178,12 +178,22 @@ class StatisticalProcessControlRuleBased(Base):
             pd.DataFrame: Filtered DataFrame with rule violations.
         """
         df["alternating"] = np.sign(df[self.value_column].diff())
+        # In a 14-value window of difference-signs, an alternating run
+        # means every adjacent pair differs. ``raw=True`` passes a NumPy
+        # array, so compare neighbours with array slicing rather than
+        # Series.shift(). Reject windows containing the leading NaN that
+        # diff() produces.
         df["rule_4"] = (
             df["alternating"]
             .rolling(window=14)
-            .apply(lambda x: (x != x.shift()).sum() == 13, raw=True)
+            .apply(
+                lambda x: bool(
+                    not np.isnan(x).any() and np.all(x[1:] != x[:-1])
+                ),
+                raw=True,
+            )
         )
-        return df[df["rule_4"]]
+        return df[df["rule_4"] == 1]
 
     def rule_5(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
@@ -408,7 +418,11 @@ class StatisticalProcessControlRuleBased(Base):
             alternating = values.diff().apply(np.sign)
             rule_4_mask = (
                 alternating.rolling(window=14).apply(
-                    lambda x: (x != x.shift()).sum() == 13 if len(x) == 14 else False,
+                    # raw=True passes a NumPy array; an alternating run
+                    # means every adjacent sign differs. See rule_4().
+                    lambda x: bool(
+                        not np.isnan(x).any() and np.all(x[1:] != x[:-1])
+                    ),
                     raw=True,
                 )
                 == 1
