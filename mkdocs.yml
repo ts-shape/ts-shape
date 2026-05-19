@@ -240,11 +240,11 @@ plugins:
 
 extra_css:
   - stylesheets/extra.css
-  - assets/architecture-graph.css
+  - assets/architecture-sunburst.css
 
 extra_javascript:
-  - https://unpkg.com/cytoscape@3.30.1/dist/cytoscape.min.js
-  - assets/architecture-graph.js
+  - https://d3js.org/d3.v7.min.js
+  - assets/architecture-sunburst.js
 
 extra:
   social:

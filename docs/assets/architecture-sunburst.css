@@ -1,0 +1,109 @@
+/* ts-shape architecture sunburst — D3 v7 renderer styling.
+ * Consumed by docs/guides/architecture-map.md. */
+
+.ts-sunburst-card {
+  border: 1px solid var(--md-default-fg-color--lightest, #e2e8f0);
+  border-radius: 6px;
+  padding: 12px 16px 20px;
+  margin: 16px 0;
+  background: var(--md-default-bg-color, #ffffff);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+#ts-search {
+  align-self: stretch;
+  padding: 8px 12px;
+  border: 1px solid var(--md-default-fg-color--lighter, #cbd5e1);
+  border-radius: 4px;
+  background: var(--md-default-bg-color, #fff);
+  color: var(--md-default-fg-color, #0f172a);
+  font-size: 0.9rem;
+}
+
+#ts-breadcrumb {
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light, #475569);
+  min-height: 1.4em;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+#ts-breadcrumb .ts-crumb-root {
+  color: var(--md-default-fg-color, #0f172a);
+  font-weight: 600;
+}
+
+#ts-breadcrumb .ts-crumb-sep {
+  opacity: 0.4;
+  margin: 0 2px;
+}
+
+#ts-sunburst {
+  position: relative;
+  align-self: center;
+  width: 100%;
+  max-width: min(720px, 86vh);
+  aspect-ratio: 1 / 1;
+}
+
+.ts-sunburst-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.arc {
+  stroke: var(--md-default-bg-color, #ffffff);
+  stroke-width: 1;
+  transition: fill-opacity 0.15s ease-out;
+}
+
+.ts-sunburst-centre {
+  fill: var(--md-default-bg-color, #ffffff);
+  stroke: var(--md-default-fg-color--lighter, #cbd5e1);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.ts-sunburst-centre-label {
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  fill: var(--md-default-fg-color, #0f172a);
+  pointer-events: none;
+}
+
+.ts-sunburst-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.95);
+  color: #f8fafc;
+  font-size: 0.75rem;
+  padding: 6px 10px;
+  border-radius: 4px;
+  z-index: 10;
+  max-width: 280px;
+  line-height: 1.4;
+}
+
+.ts-sunburst-tooltip code {
+  background: rgba(255, 255, 255, 0.12);
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 0.7rem;
+}
+
+.ts-sunburst-tooltip .ts-type {
+  opacity: 0.7;
+  font-weight: normal;
+}
+
+.ts-sunburst-fallback {
+  padding: 24px;
+  text-align: center;
+  color: var(--md-default-fg-color--light, #64748b);
+  font-style: italic;
+}

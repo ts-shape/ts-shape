@@ -1,16 +1,16 @@
-"""Bundle the architecture graph into a single standalone HTML file.
+"""Bundle the architecture sunburst into a single standalone HTML file.
 
 Reads:
-- ``docs/assets/architecture-graph.css``      (inlined into <style>)
-- ``docs/assets/architecture-graph.js``       (inlined into <script>)
+- ``docs/assets/architecture-sunburst.css``   (inlined into <style>)
+- ``docs/assets/architecture-sunburst.js``    (inlined into <script>)
 - ``site/assets/architecture-graph.json``     (inlined into a JSON script tag;
                                                run ``mkdocs build`` first to
                                                refresh this file)
 
 Writes:
 - ``site/assets/architecture-map.html`` — opens in any browser via file://
-  or a static host. No mkdocs / Material theme dependency. Cytoscape.js is
-  the only external load (pinned CDN URL).
+  or a static host. No mkdocs / Material theme dependency. D3.js v7 is the
+  only external load (pinned CDN URL).
 
 The standalone page intercepts the page-level JS's fetch() call so it
 reads the inlined JSON rather than hitting the network for a missing
@@ -27,8 +27,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS_ASSETS = ROOT / "docs" / "assets"
 SITE_ASSETS = ROOT / "site" / "assets"
 
-CSS = (DOCS_ASSETS / "architecture-graph.css").read_text(encoding="utf-8")
-JS = (DOCS_ASSETS / "architecture-graph.js").read_text(encoding="utf-8")
+CSS = (DOCS_ASSETS / "architecture-sunburst.css").read_text(encoding="utf-8")
+JS = (DOCS_ASSETS / "architecture-sunburst.js").read_text(encoding="utf-8")
 GRAPH = json.loads((SITE_ASSETS / "architecture-graph.json").read_text(encoding="utf-8"))
 
 
@@ -38,7 +38,7 @@ HTML_TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ts-shape — Architecture Map (standalone)</title>
-<script src="https://unpkg.com/cytoscape@3.30.1/dist/cytoscape.min.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
 :root {{
   --md-default-bg-color: #ffffff;
@@ -65,7 +65,7 @@ html, body {{
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
 }}
 .wrap {{
-  max-width: 1400px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 24px;
 }}
@@ -78,28 +78,20 @@ h1 {{
   color: var(--md-default-fg-color--light);
   font-size: 0.9rem;
 }}
+.ts-map-hint {{
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: var(--md-default-fg-color--lightest, #f1f5f9);
+  border-left: 3px solid var(--md-accent-fg-color, #f59e0b);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}}
 .ts-map-hint a {{
   color: var(--md-accent-fg-color);
+  font-weight: 600;
 }}
 {embedded_css}
-.ts-graph-fullscreen #ts-shape-graph {{
-  height: calc(100vh - 240px);
-}}
-/* Standalone-only: keep the graph visible at all viewport widths.
- * The docs page uses a mobile fallback because of the Material chrome,
- * but the standalone HTML has the full viewport to itself. */
-@media (max-width: 800px) {{
-  #ts-shape-graph,
-  #ts-graph-controls {{
-    display: block;
-  }}
-  .ts-graph-mobile-notice {{
-    display: none;
-  }}
-  .ts-graph-fullscreen #ts-shape-graph {{
-    height: calc(100vh - 320px);
-  }}
-}}
 </style>
 <script id="ts-graph-data" type="application/json">{embedded_json}</script>
 </head>
@@ -112,40 +104,18 @@ h1 {{
     <code>ts_shape.eventlog.taxonomy.REGISTRY</code> at docs build time.
   </p>
   <p class="ts-map-hint">
-    Pan with drag, zoom with scroll. <b>Search</b> finds class and method
-    names. <b>Depth</b> controls how deep the hierarchy expands. Click any
-    class or method to open its reference page on the docs site
+    Click any ring to zoom into that branch. Click the centre to zoom out.
+    Hover an arc for its full path. Click a class or method arc to open
+    its reference page on the live docs
     (<a href="https://jakobgabriel.github.io/ts-shape/" target="_blank"
        rel="noopener">jakobgabriel.github.io/ts-shape</a>).
+    Type in the search box to fade non-matching arcs.
   </p>
 
-  <div class="ts-graph-card ts-graph-fullscreen">
-    <div id="ts-graph-controls">
-      <input id="ts-search" type="text" placeholder="Search class or method..." aria-label="Search">
-
-      <fieldset>
-        <legend>Depth</legend>
-        <label><input type="radio" name="ts-depth" value="layers"> Layers</label>
-        <label><input type="radio" name="ts-depth" value="packs" checked> + Packs</label>
-        <label><input type="radio" name="ts-depth" value="classes"> + Classes</label>
-        <label><input type="radio" name="ts-depth" value="everything"> Everything</label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Layers</legend>
-        <label><input type="checkbox" name="ts-layer" value="loader" checked> loader</label>
-        <label><input type="checkbox" name="ts-layer" value="transform" checked> transform</label>
-        <label><input type="checkbox" name="ts-layer" value="features" checked> features</label>
-        <label><input type="checkbox" name="ts-layer" value="context" checked> context</label>
-        <label><input type="checkbox" name="ts-layer" value="events" checked> events</label>
-        <label><input type="checkbox" name="ts-layer" value="eventlog" checked> eventlog</label>
-        <label><input type="checkbox" name="ts-layer" value="utils" checked> utils</label>
-      </fieldset>
-
-      <button id="ts-reset" type="button">Reset</button>
-    </div>
-
-    <div id="ts-shape-graph" role="img" aria-label="ts-shape architecture graph"></div>
+  <div class="ts-sunburst-card">
+    <input id="ts-search" type="text" placeholder="Search class or method..." aria-label="Search">
+    <div id="ts-breadcrumb" aria-live="polite">ts_shape</div>
+    <div id="ts-sunburst" role="img" aria-label="ts-shape architecture sunburst"></div>
   </div>
 </div>
 
