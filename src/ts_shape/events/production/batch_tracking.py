@@ -51,6 +51,7 @@ class BatchTrackingEvents(Base):
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
+        self._validate_uuid(self.dataframe, batch_uuid)
 
         self.series = (
             self.dataframe[self.dataframe["uuid"] == self.batch_uuid]

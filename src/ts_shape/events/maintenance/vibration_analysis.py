@@ -29,6 +29,7 @@ class VibrationAnalysisEvents(Base):
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
+        self._validate_uuid(self.dataframe, signal_uuid)
 
         # Isolate signal series and ensure proper dtypes/sort
         self.signal = (

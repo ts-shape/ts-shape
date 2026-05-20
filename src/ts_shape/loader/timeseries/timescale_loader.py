@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 import pandas as pd  # type: ignore
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from typing import List, Dict
 
 logger = logging.getLogger(__name__)
@@ -24,14 +24,26 @@ class TimescaleDBDataAccess:
         )
 
     def _fetch_data(self, uuid: str) -> pd.DataFrame:
-        query = f"""
-            SELECT uuid::text, systime, value_integer, value_string, value_double, value_bool, is_delta 
-            FROM telemetry 
-            WHERE uuid = '{uuid}' 
-              AND systime BETWEEN '{self.start_timestamp}' AND '{self.end_timestamp}' 
+        # Bound parameters keep values out of the SQL text — this avoids
+        # injection and quoting bugs (e.g. a uuid containing an apostrophe).
+        query = text("""
+            SELECT uuid::text, systime, value_integer, value_string,
+                   value_double, value_bool, is_delta
+            FROM telemetry
+            WHERE uuid = :uuid
+              AND systime BETWEEN :start_ts AND :end_ts
             ORDER BY systime ASC
-        """
-        return pd.read_sql(query, self.engine, chunksize=10000)
+            """)
+        return pd.read_sql(
+            query,
+            self.engine,
+            params={
+                "uuid": uuid,
+                "start_ts": self.start_timestamp,
+                "end_ts": self.end_timestamp,
+            },
+            chunksize=10000,
+        )
 
     def fetch_data_as_parquet(self, output_dir: str):
         for uuid in self.uuids:

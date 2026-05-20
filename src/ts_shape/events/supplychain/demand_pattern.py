@@ -49,6 +49,7 @@ class DemandPatternEvents(Base):
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
+        self._validate_uuid(self.dataframe, demand_uuid)
 
         # Isolate the demand series
         self.demand = (

@@ -116,6 +116,9 @@ _LAZY: dict[str, str] = {
     "DatapointDB": "ts_shape.loader.metadata.metadata_db_loader",
     "DataIntegratorHybrid": "ts_shape.loader.combine.integrator",
     "ContextEnricher": "ts_shape.loader.context.context_enricher",
+    # -- top-level utilities --------------------------------------------
+    "list_detectors": "ts_shape.catalog",
+    "make_timeseries": "ts_shape.datasets",
 }
 
 # The eventlog package re-exports its whole public surface from its own

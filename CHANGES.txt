@@ -1,3 +1,26 @@
+# May 20, 2026
+add: ts_shape.make_timeseries() -- public synthetic-data generator for trying
+  detectors and transforms without real data or loaders.
+add: ts_shape.list_detectors() -- programmatic catalog of every top-level
+  class, grouped by pack/category.
+add: Base.__repr__ -- detector and instance classes now print a useful
+  summary (row count + configured uuid/value_column).
+changed: OutlierDetectionEvents emits the canonical point shape (systime,
+  uuid, source_uuid) via events/_output.py -- completes the May 14 output
+  standardization. uuid carries the event id, source_uuid the source signal.
+changed: event detectors validate their configured UUID up front
+  (Base._validate_uuid) -- a typo'd UUID now raises a clear error listing the
+  available UUIDs instead of silently returning empty results.
+fix: DatapointAPI HTTP requests now send a timeout (default 30s) so an
+  unresponsive server can no longer hang the loader.
+fix: TimescaleDBDataAccess uses bound SQL parameters instead of f-string
+  interpolation.
+fix: CycleExtractor uses Base's sorted, defensive copy -- it no longer
+  mutates the caller's DataFrame.
+fix: README quick-start and pack examples corrected to match real
+  constructor signatures (SPC, ToleranceDeviationEvents, DataIntegratorHybrid,
+  TimeGroupedStatistics).
+
 # May 14, 2026
 BREAKING: event-detector outputs standardized across all packs (quality,
   production, engineering, maintenance, supplychain, energy, correlation).

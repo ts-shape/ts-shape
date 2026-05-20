@@ -36,6 +36,7 @@ class DatapointAPI:
         output_path: str = "data",
         required_uuid_list: Optional[List[str]] = None,
         filter_enabled: bool = True,
+        timeout: int = 30,
     ):
         """
         :param device_names: Device names to collect datapoints for.
@@ -44,11 +45,14 @@ class DatapointAPI:
         :param output_path: Directory to write per-device JSON exports.
         :param required_uuid_list: Optional allowlist; only matching UUIDs are kept.
         :param filter_enabled: When True, only datapoints with ``enabled=True`` are kept.
+        :param timeout: Per-request timeout in seconds; prevents an unresponsive
+            server from hanging the loader indefinitely.
         """
         self.device_names = device_names
         self.base_url = base_url.rstrip("/")
         self.api_token = api_token
         self.output_path = output_path
+        self.timeout = timeout
         self.required_uuid_list: List[str] = required_uuid_list or []
         self.filter_enabled = filter_enabled
         self.device_metadata: Dict[str, pd.DataFrame] = {}
@@ -65,7 +69,7 @@ class DatapointAPI:
 
     def _get(self, path: str) -> list:
         url = f"{self.base_url}{path}"
-        response = requests.get(url, headers=self._headers)
+        response = requests.get(url, headers=self._headers, timeout=self.timeout)
         response.raise_for_status()
         return response.json()
 

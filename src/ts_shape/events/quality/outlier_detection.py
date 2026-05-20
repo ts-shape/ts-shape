@@ -4,6 +4,7 @@ import numpy as np
 from scipy.stats import zscore
 from typing import Optional
 from ts_shape.utils.base import Base
+from ts_shape.events._output import empty_event_df, finalize_point_df
 
 logger = logging.getLogger(__name__)
 
@@ -53,20 +54,14 @@ class OutlierDetectionEvents(Base):
             include_singles (bool): Whether to include single outliers in the output. Default is True.
 
         Returns:
-            pd.DataFrame: A DataFrame of grouped outlier events.
+            pd.DataFrame: Canonical ``point``-shape event DataFrame
+            (``systime``, ``uuid``, ``source_uuid``) plus ``<value_column>``,
+            ``severity`` and ``is_delta``. ``uuid`` carries the event id and
+            ``source_uuid`` the originating signal id.
         """
+        extra_cols = [self.value_column, "severity", "is_delta"]
         if outliers_df.empty:
-            # Return empty DataFrame with consistent schema
-            empty_df = pd.DataFrame(
-                columns=[
-                    "systime",
-                    self.value_column,
-                    "is_delta",
-                    "uuid",
-                    "severity",
-                ]
-            )
-            return empty_df
+            return empty_event_df("point", extra_cols=extra_cols)
 
         # Grouping outliers that are close to each other in terms of time
         outliers_df["group_id"] = (
@@ -91,30 +86,24 @@ class OutlierDetectionEvents(Base):
             events_data.append(singles_df)
 
         # Convert list of DataFrame slices to a single DataFrame
-        if events_data:
-            events_df = pd.concat(events_data)
-        else:
-            # Create empty DataFrame with consistent schema
-            events_df = pd.DataFrame(
-                columns=[
-                    "systime",
-                    self.value_column,
-                    "is_delta",
-                    "uuid",
-                    "severity",
-                ]
-            )
-            return events_df
+        if not events_data:
+            return empty_event_df("point", extra_cols=extra_cols)
+        events_df = pd.concat(events_data)
 
         # Ensure consistent schema
         events_df["is_delta"] = True
-        events_df["uuid"] = self.event_uuid
-
-        # Preserve severity if it exists, otherwise set to NaN
         if "severity" not in events_df.columns:
             events_df["severity"] = np.nan
 
-        return events_df.drop(["outlier", "group_id"], axis=1, errors="ignore")
+        # Preserve the originating signal id as source_uuid before the
+        # canonical helper broadcasts the event id into the uuid column.
+        if "source_uuid" in events_df.columns:
+            events_df = events_df.drop(columns=["uuid"], errors="ignore")
+        elif "uuid" in events_df.columns:
+            events_df = events_df.rename(columns={"uuid": "source_uuid"})
+        events_df = events_df.drop(columns=["outlier", "group_id"], errors="ignore")
+
+        return finalize_point_df(events_df, uuid=self.event_uuid, source_uuid=None)
 
     def detect_outliers_zscore(
         self, threshold: float = 3.0, include_singles: bool = True
