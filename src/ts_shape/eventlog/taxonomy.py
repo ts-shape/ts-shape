@@ -1447,6 +1447,24 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("station",),
         standard_attrs={"ts_shape:sample_count": "sample_count"},
     ),
+    ("RuntimeAccountingEvents", "operating_hours_meter"): _r(
+        "production.runtime.hours_meter",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": None},
+    ),
+    ("RuntimeAccountingEvents", "runtime_per_window"): _r(
+        "production.runtime.per_window",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "start_count"},
+    ),
+    ("RuntimeAccountingEvents", "runtime_summary"): _r(
+        "production.runtime.summary",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "start_count"},
+    ),
     ("ScrapTracking", "scrap_by_reason"): _r(
         "production.scrap.by_reason",
         _PR,

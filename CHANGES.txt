@@ -1,4 +1,8 @@
 # May 20, 2026
+add: UnitConverter -- engineering unit conversion (transform), a thin wrapper
+  around the pint library. Optional extra: pip install ts-shape[units].
+add: RuntimeAccountingEvents -- operating-hours accounting (total run time,
+  start count, longest run, utilization, per-window runtime, hour-meter).
 add: LineBalancingEvents -- line balancing & takt analysis (station cycle
   times, balance efficiency/delay, smoothness index, theoretical minimum
   stations, Yamazumi station-loading table).

@@ -38,6 +38,7 @@ Optional integrations:
 | Azure AAD + management | `pip install azure-identity azure-mgmt-storage` |
 | S3 proxy access | Included via `s3fs` |
 | TimescaleDB / PostgreSQL | `pip install ts-shape[postgres]` or any SQLAlchemy-compatible driver |
+| Unit conversion (`UnitConverter`) | `pip install ts-shape[units]` (pulls in `pint`) |
 
 ---
 
@@ -198,6 +199,22 @@ yamazumi = lb.yamazumi(demand=480, available_time="8h")
 flow = FlowMetricsEvents(df, entry_uuid="process:in", exit_uuid="process:out")
 wip = flow.wip_over_time(window="1h")
 summary = flow.flow_summary(value_add_seconds=120, window="1h")
+```
+
+Runtime accounting and unit conversion:
+
+```python
+from ts_shape.events.production.runtime_accounting import RuntimeAccountingEvents
+from ts_shape.transform.calculator.unit_conversion import UnitConverter
+
+# Operating-hours accounting -- run time, starts, longest run, hour-meter
+rt = RuntimeAccountingEvents(df, run_uuid="machine:running")
+summary = rt.runtime_summary()
+meter = rt.operating_hours_meter(window="1h")
+
+# Unit conversion -- backed by pint (pip install ts-shape[units])
+UnitConverter.convert_value(100, "C", "F")            # 212.0
+df_psi = UnitConverter.convert_column(df, "bar", "psi", column_name="value_double")
 ```
 
 ### Engineering Events

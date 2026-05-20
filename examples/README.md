@@ -17,6 +17,7 @@ python examples/quality_events_demo.py
 | `production_events_demo.py` | Production pack — machine state, throughput, OEE, alarms, batches |
 | `production_tracking_demo.py` | Daily production tracking — parts, cycles, downtime, shifts |
 | `line_flow_analytics_demo.py` | Line balancing & takt, flow metrics & Little's Law |
+| `unit_runtime_demo.py` | Unit conversion (pint) and runtime / operating-hours accounting |
 | `maintenance_events_demo.py` | Maintenance pack — degradation, failure prediction, vibration |
 | `energy_events_demo.py` | Energy pack — consumption, efficiency, carbon intensity, idle energy |
 | `correlation_events_demo.py` | Correlation pack — signal and anomaly correlation |
