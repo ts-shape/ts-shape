@@ -183,6 +183,23 @@ batches = BatchTrackingEvents(df, batch_uuid="batch:id")
 batch_list = batches.detect_batches()
 ```
 
+Line & flow analytics for industrial engineers:
+
+```python
+from ts_shape.events.production.line_balancing import LineBalancingEvents
+from ts_shape.events.production.flow_metrics import FlowMetricsEvents
+
+# Line balancing -- station loading, balance efficiency, Yamazumi
+lb = LineBalancingEvents(df, station_uuids={"st1": "Station 1", "st2": "Station 2"})
+balance = lb.balance_metrics(takt_time="55s", window="1h")
+yamazumi = lb.yamazumi(demand=480, available_time="8h")
+
+# Flow metrics -- WIP, throughput, lead time, Little's Law
+flow = FlowMetricsEvents(df, entry_uuid="process:in", exit_uuid="process:out")
+wip = flow.wip_over_time(window="1h")
+summary = flow.flow_summary(value_add_seconds=120, window="1h")
+```
+
 ### Engineering Events
 Analyse control system behaviour and setpoint responses.
 

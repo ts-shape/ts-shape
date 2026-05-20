@@ -51,6 +51,8 @@ _LAZY: dict[str, str] = {
     "DowntimeTracking": "ts_shape.events.production.downtime_tracking",
     "DutyCycleEvents": "ts_shape.events.production.duty_cycle",
     "FlowConstraintEvents": "ts_shape.events.production.flow_constraints",
+    "FlowMetricsEvents": "ts_shape.events.production.flow_metrics",
+    "LineBalancingEvents": "ts_shape.events.production.line_balancing",
     "LineThroughputEvents": "ts_shape.events.production.line_throughput",
     "LongDowntimeEvents": "ts_shape.events.production.long_downtime_events",
     "MachineStateEvents": "ts_shape.events.production.machine_state",

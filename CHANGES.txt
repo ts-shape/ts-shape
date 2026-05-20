@@ -1,4 +1,9 @@
 # May 20, 2026
+add: LineBalancingEvents -- line balancing & takt analysis (station cycle
+  times, balance efficiency/delay, smoothness index, theoretical minimum
+  stations, Yamazumi station-loading table).
+add: FlowMetricsEvents -- flow analytics (time-weighted WIP, throughput,
+  FIFO lead time, Little's Law consistency check, Process Cycle Efficiency).
 add: ts_shape.make_timeseries() -- public synthetic-data generator for trying
   detectors and transforms without real data or loaders.
 add: ts_shape.list_detectors() -- programmatic catalog of every top-level
