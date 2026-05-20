@@ -51,6 +51,7 @@ class InventoryMonitoringEvents(Base):
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
+        self._validate_uuid(self.dataframe, level_uuid)
 
         # Isolate the inventory level series
         self.levels = (

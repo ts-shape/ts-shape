@@ -27,13 +27,13 @@ class CycleExtractor(Base):
         """
         super().__init__(dataframe)
 
-        # Validate input types
-        if not isinstance(dataframe, pd.DataFrame):
-            raise ValueError("dataframe must be a pandas DataFrame")
+        # Validate input types (Base already guards the DataFrame type).
         if not isinstance(start_uuid, str):
             raise ValueError("start_uuid must be a string")
 
-        self.df = dataframe  # Use the provided DataFrame directly
+        # Use Base's processed frame: a sorted, defensive copy. This avoids
+        # mutating the caller's DataFrame and guarantees chronological order.
+        self.df = self.dataframe
         self.start_uuid = start_uuid
         self.end_uuid = end_uuid if end_uuid else start_uuid
         self.value_change_threshold = abs(value_change_threshold)

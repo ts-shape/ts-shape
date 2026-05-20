@@ -335,10 +335,11 @@ class TestAlarmManagementEvents:
         result = alarms.standing_alarms(min_duration="3h")
         assert result.empty
 
-    def test_no_alarms_for_wrong_uuid(self, alarm_data):
-        alarms = AlarmManagementEvents(alarm_data, alarm_uuid="nonexistent")
-        assert alarms.alarm_frequency().empty
-        assert alarms.alarm_duration_stats().empty
+    def test_wrong_uuid_raises_with_available_list(self, alarm_data):
+        # A typo'd UUID is reported up front instead of silently yielding
+        # empty results — the available UUIDs are listed in the message.
+        with pytest.raises(ValueError, match="nonexistent"):
+            AlarmManagementEvents(alarm_data, alarm_uuid="nonexistent")
 
 
 # ============================================================================

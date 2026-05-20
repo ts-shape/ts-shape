@@ -43,24 +43,25 @@ Optional integrations:
 
 ## Quick Start
 
-```python
-import pandas as pd
-from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
-from ts_shape.events.quality.statistical_process_control import StatisticalProcessControlRuleBased
+This snippet runs as-is -- no data files, no setup:
 
-# Load your timeseries data
-df = pd.read_parquet("my_data.parquet")
+```python
+import ts_shape
+
+# Generate a sample dataset (or load your own via pandas / a ts-shape loader)
+df = ts_shape.make_timeseries(["sensor:temp"], n_points=2000, n_outliers=6)
+
+# Discover what is available -- 60+ detectors across 7 packs
+ts_shape.list_detectors("events.quality")
 
 # Detect outliers
-detector = OutlierDetectionEvents(df, value_column="value_double")
+detector = ts_shape.OutlierDetectionEvents(df, value_column="value_double")
 outliers = detector.detect_outliers_zscore(threshold=3.0)
-
-# Run SPC analysis
-spc = StatisticalProcessControlRuleBased(
-    df, actual_uuid="sensor:temp", tolerance_uuid="limit:temp"
-)
-violations = spc.process()
+print(outliers)
 ```
+
+Every script under [`examples/`](examples/) is likewise self-contained -- run any
+of them straight after install, e.g. `python examples/quality_events_demo.py`.
 
 ---
 
@@ -130,11 +131,24 @@ outliers = OutlierDetectionEvents(df, value_column="value_double")
 result = outliers.detect_outliers_zscore(threshold=3.0)
 
 # Statistical Process Control -- 8 Western Electric rules
-spc = StatisticalProcessControlRuleBased(df, actual_uuid="sensor", tolerance_uuid="limit")
+spc = StatisticalProcessControlRuleBased(
+    df,
+    value_column="value_double",
+    tolerance_uuid="limit",
+    actual_uuid="sensor",
+    event_uuid="spc_violation",
+)
 violations = spc.process()
 
 # Tolerance deviation with severity classification
-tol = ToleranceDeviationEvents(df, actual_uuid="sensor", tolerance_uuid="limit")
+tol = ToleranceDeviationEvents(
+    df,
+    tolerance_column="value_double",
+    actual_column="value_double",
+    actual_uuid="sensor",
+    tolerance_uuid="limit",
+    event_uuid="tolerance_deviation",
+)
 deviations = tol.process_and_group_data_with_events()
 ```
 
@@ -248,7 +262,9 @@ df_range = ParquetLoader.load_by_time_range("/data/timeseries", start, end)
 
 # Load metadata and combine
 meta = MetadataJsonLoader.from_file("metadata.json")
-combined = DataIntegratorHybrid.combine_data(timeseries_df=df, metadata_df=meta.to_df())
+combined = DataIntegratorHybrid.combine_data(
+    timeseries_sources=[df], metadata_sources=[meta.to_df()]
+)
 ```
 
 ### Features & Statistics
@@ -263,8 +279,13 @@ from ts_shape.features.cycles.cycles_extractor import CycleExtractor
 stats = NumericStatistics.summary_as_dict(df, "value_double")
 
 # Time-windowed aggregations
-tgs = TimeGroupedStatistics(df, value_column="value_double")
-hourly = tgs.calculate_statistic(freq="1h", stat="mean")
+hourly = TimeGroupedStatistics.calculate_statistic(
+    df,
+    time_column="systime",
+    value_column="value_double",
+    freq="1h",
+    stat_method="mean",
+)
 
 # Cycle extraction (6 detection methods)
 extractor = CycleExtractor(df, start_uuid="cycle:trigger")

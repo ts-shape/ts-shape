@@ -239,7 +239,7 @@ flowchart TB
 ```
 
 !!! info "Merge Keys"
-    Classes connect through **shared DataFrame columns**: `date`, `shift`, `part_number`, `uuid`. When one class produces a column, the next class can join on it. See each guide for specific merge key documentation.
+    Classes connect through **shared DataFrame columns**. Daily-tracking classes join on `date`, `shift`, `part_number`, `uuid`; canonical event detectors emit `start` / `end` interval boundaries (plus `duration_seconds`). When one class produces a column, the next class can join on it. See each guide for specific merge key documentation.
 
 ---
 

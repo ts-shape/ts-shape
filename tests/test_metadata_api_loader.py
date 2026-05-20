@@ -65,7 +65,7 @@ def make_fake_get(datatrons=None, devices=None, datapoints=None):
     dv = devices if devices is not None else DEVICES
     dp = datapoints if datapoints is not None else DATAPOINTS
 
-    def fake_get(url, headers=None):
+    def fake_get(url, headers=None, timeout=None):
         if "data_points" in url:
             return DummyResp(dp)
         if (
@@ -243,7 +243,7 @@ def test_filter_enabled_false(monkeypatch, tmp_path):
 def test_bearer_token_in_headers(monkeypatch):
     captured = {}
 
-    def capturing_get(url, headers=None):
+    def capturing_get(url, headers=None, timeout=None):
         captured["headers"] = headers
         return DummyResp(
             DATATRONS

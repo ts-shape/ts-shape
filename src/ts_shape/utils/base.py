@@ -35,7 +35,7 @@ the right one based on the complexity of the operation:
 import logging
 import warnings
 import pandas as pd  # type: ignore
-from ts_shape.errors import DataQualityWarning
+from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +46,35 @@ class Base:
         """Validate that a column exists in the DataFrame.
 
         Raises:
-            ValueError: If column_name is not in dataframe.columns.
+            ColumnNotFoundError: If column_name is not in dataframe.columns.
+                This subclasses ``ValueError``.
         """
         if column_name not in dataframe.columns:
-            raise ValueError(
+            raise ColumnNotFoundError(
                 f"Column '{column_name}' not found. "
                 f"Available columns: {list(dataframe.columns)}"
+            )
+
+    @staticmethod
+    def _validate_uuid(
+        dataframe: pd.DataFrame, uuid: str, uuid_column: str = "uuid"
+    ) -> None:
+        """Validate that ``uuid`` is present in ``uuid_column``.
+
+        A no-op when the DataFrame is empty or carries no uuid column, so each
+        detector keeps full control over empty-input handling.
+
+        Raises:
+            ValueError: If ``uuid_column`` exists, the frame is non-empty, and
+                ``uuid`` is absent. The message lists the available UUIDs.
+        """
+        if dataframe.empty or uuid_column not in dataframe.columns:
+            return
+        if uuid not in dataframe[uuid_column].values:
+            available = sorted(str(u) for u in dataframe[uuid_column].dropna().unique())
+            raise ValueError(
+                f"UUID '{uuid}' not found in column '{uuid_column}'. "
+                f"Available UUIDs: {available}"
             )
 
     def __init__(self, dataframe: pd.DataFrame, column_name: str = "systime") -> None:
@@ -131,3 +154,19 @@ class Base:
     def get_dataframe(self) -> pd.DataFrame:
         """Returns the processed DataFrame."""
         return self.dataframe
+
+    def __repr__(self) -> str:
+        """Concise, interactive-friendly summary of the instance.
+
+        Shows the row count plus any configured ``value_column`` / ``*_uuid``
+        attributes, so ``print(detector)`` in a REPL or notebook is useful.
+        """
+        df = getattr(self, "dataframe", None)
+        n_rows = len(df) if isinstance(df, pd.DataFrame) else 0
+        parts = [f"rows={n_rows}"]
+        for key, val in self.__dict__.items():
+            if isinstance(val, str) and (
+                key.endswith("_uuid") or key == "value_column"
+            ):
+                parts.append(f"{key}={val!r}")
+        return f"{type(self).__name__}({', '.join(parts)})"

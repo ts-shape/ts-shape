@@ -25,5 +25,10 @@ class DataQualityWarning(TsShapeWarning):
     """Warn about potential data quality issues (gaps, duplicates, NaNs)."""
 
 
-class ColumnNotFoundError(KeyError):
-    """Raised when a required column is missing from the DataFrame."""
+class ColumnNotFoundError(ValueError):
+    """Raised when a required column is missing from the DataFrame.
+
+    Subclasses ``ValueError`` so existing ``except ValueError`` handlers keep
+    working, while callers that want to react specifically to a missing
+    column can catch this narrower type.
+    """

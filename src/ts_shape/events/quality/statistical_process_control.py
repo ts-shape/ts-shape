@@ -37,6 +37,10 @@ class StatisticalProcessControlRuleBased(Base):
         self.tolerance_uuid: str = tolerance_uuid
         self.actual_uuid: str = actual_uuid
         self.event_uuid: str = event_uuid
+        if not self.dataframe.empty:
+            self._validate_column(self.dataframe, value_column)
+            self._validate_uuid(self.dataframe, tolerance_uuid)
+            self._validate_uuid(self.dataframe, actual_uuid)
 
     def calculate_control_limits(self) -> pd.DataFrame:
         """
