@@ -34,13 +34,14 @@ result.to_event_log()          # normalized, combined OCEL event log
 
 ---
 
-## Two kinds of step
+## Kinds of step
 
 The pipeline is **linear single-channel**. You declare each step's role —
 it is never inferred:
 
 | Method | What it does |
 |--------|--------------|
+| `.source(...)` | *Optional, first step only.* Calls a loader that **produces** the pipeline's first DataFrame. |
 | `.transform(...)` | Output **replaces** the working signal — the signal flows on. |
 | `.detect(...)` | Output is **stored** under a name in `result.events`; the working signal is left untouched (detectors branch off). |
 
@@ -77,6 +78,48 @@ pipe.detect(OutlierDetectionEvents, "detect_outliers_zscore",
 
 An unknown keyword argument raises a `ValueError` that lists what the
 constructor and the method accept.
+
+---
+
+## Loading data within the pipeline — the source step
+
+By default a pipeline is **DataFrame-driven**: you load the data yourself and
+pass it to `run(df)`. Add an optional `.source(...)` step and the pipeline
+becomes **source-bound** — it loads its own data and `run()` takes no argument.
+This makes the whole *source → transform → detect* definition self-contained
+and reusable for scheduled or templated jobs.
+
+```python
+from ts_shape import Pipeline
+from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
+
+pipe = (
+    Pipeline(name="quality-from-parquet")
+    .source(ParquetLoader, "load_by_time_range",
+            base_path="/data/timeseries", start_time=start, end_time=end)
+    .detect(OutlierDetectionEvents, "detect_outliers_zscore",
+            name="outliers", value_column="value_double", threshold=3.0)
+)
+
+result = pipe.run()            # no DataFrame — the source produces it
+```
+
+A source target uses the same forms as any other step — a plain callable
+returning a DataFrame, or a `(class, "method")` pair — except **no DataFrame is
+injected**: the loader builds the first frame from its kwargs alone. For an
+instance-method loader (e.g. `AzureBlobParquetLoader`), kwargs are routed
+between the constructor and the method by name, exactly as elsewhere.
+
+Rules:
+
+- a source step must be the **first** step, and there is **at most one**
+  (otherwise `.source(...)` raises `ValueError`);
+- a source-bound pipeline must be run as `run()`; passing a DataFrame raises
+  `TypeError`. A pipeline without a source must still be run as `run(df)`;
+- the `$input` / `$prev` sentinels are not allowed in a source step — there is
+  no prior data to reference;
+- a loader failure (e.g. a network error) is wrapped in a `RuntimeError` that
+  names step 0.
 
 ---
 

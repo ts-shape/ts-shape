@@ -353,8 +353,27 @@ result.events["outliers"]      # detector output
 result.to_event_log()          # normalized, combined OCEL event log
 ```
 
+An optional `.source(...)` step lets the pipeline load its own data, so the
+whole definition -- *source → transform → detect* -- is self-contained and
+reusable for scheduled jobs. A source step must be the first step; the pipeline
+is then run with no DataFrame argument:
+
+```python
+from ts_shape import Pipeline
+from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
+
+pipe = (
+    Pipeline(name="quality-from-parquet")
+    .source(ParquetLoader, "load_all_files", base_path="/data/timeseries")
+    .detect(OutlierDetectionEvents, "detect_outliers_zscore",
+            name="outliers", value_column="value_double", threshold=3.0)
+)
+
+result = pipe.run()            # no DataFrame -- the source produces it
+```
+
 `Pipeline` also supports `$input` / `$prev` sentinels for steps that need a
-second DataFrame, and `run_steps(df)` to inspect every intermediate. See the
+second DataFrame, and `run_steps()` to inspect every intermediate. See the
 [Pipeline guide](https://ts-shape.github.io/ts-shape/guides/pipeline-builder/).
 
 ---
