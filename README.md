@@ -433,6 +433,14 @@ MIT -- see [LICENSE.txt](LICENSE.txt).
 
 ---
 
+## Acknowledgments
+
+Parts of this library were developed with the assistance of
+[Claude](https://www.anthropic.com/claude), Anthropic's AI assistant. All code
+has been reviewed and is maintained by the project authors.
+
+---
+
 ## Links
 
 - [Documentation](https://ts-shape.github.io/ts-shape/)

@@ -27,14 +27,25 @@ The table below lists every runtime dependency declared in `pyproject.toml`, its
 | **azure-storage-blob** | >= 12.19.1 | MIT | Azure Blob Storage loader |
 | **s3fs** | >= 2024.10.0 | BSD-3-Clause | S3 file system access |
 | **requests** | >= 2.32.3 | Apache-2.0 | HTTP requests |
-| **pytz** | >= 2024.1 | MIT | Timezone handling |
+
+### Optional Dependency Licenses
+
+The packages below are **not installed by default**. They are declared as optional extras in `pyproject.toml` and are imported lazily via guarded `try/except ImportError` blocks, so they do not affect the license footprint of a base `pip install ts-shape`.
+
+| Dependency | Version | License | Extra | Purpose |
+|---|---|---|---|---|
+| **pint** | >= 0.24 | BSD-3-Clause | `units` / `dev` | Engineering unit conversion (`UnitConverter`) |
+| **scikit-learn** | >= 1.3.0 | BSD-3-Clause | `ml` | Optional ML-based detectors (e.g. Isolation Forest outliers) |
+| **psycopg2-binary** | >= 2.9.9 | LGPL-3.0-or-later (with exceptions) | `postgres` | PostgreSQL / TimescaleDB driver |
+
+`psycopg2-binary` is LGPL-licensed, but it is a separately installed, dynamically linked database driver — ts-shape neither bundles nor redistributes it, so its LGPL terms do not extend to ts-shape itself.
 
 ### License Compatibility
 
 All dependencies are **compatible with the MIT License** and use permissive licenses:
 
-- **BSD-3-Clause** (pandas, numpy, scipy, s3fs) — permissive, no restrictions beyond attribution.
-- **MIT** (sqlalchemy, azure-storage-blob, pytz) — same terms as ts-shape itself.
+- **BSD-3-Clause** (pandas, numpy, scipy, s3fs, pint, scikit-learn) — permissive, no restrictions beyond attribution.
+- **MIT** (sqlalchemy, azure-storage-blob) — same terms as ts-shape itself.
 - **Apache-2.0** (requests) — permissive, compatible with MIT distribution.
 
 PostgreSQL connectivity is handled through SQLAlchemy, which supports any DB-API 2.0 compatible driver. Users can install the driver of their choice (e.g. `pip install ts-shape[postgres]` for psycopg2-binary, or install psycopg, pg8000, etc.).
