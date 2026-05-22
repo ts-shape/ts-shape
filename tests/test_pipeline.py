@@ -368,3 +368,136 @@ def test_run_steps_returns_every_intermediate():
 
 def test_pipeline_exported_at_top_level():
     assert ts_shape.Pipeline is Pipeline
+
+
+# ---------------------------------------------------------------------------
+# Source steps
+# ---------------------------------------------------------------------------
+
+
+class _ClassmethodLoader:
+    """A loader exposing a classmethod, like ParquetLoader."""
+
+    @classmethod
+    def load(cls, *, n_outliers: int = 5) -> pd.DataFrame:
+        return _signal(n_outliers=n_outliers)
+
+
+class _InstanceLoader:
+    """A loader configured via __init__, then queried by a method."""
+
+    def __init__(self, *, n_points: int = 200) -> None:
+        self._n_points = n_points
+
+    def fetch(self, *, n_outliers: int = 5) -> pd.DataFrame:
+        return make_timeseries(
+            ["sensor:x"],
+            n_points=self._n_points,
+            n_outliers=n_outliers,
+            value_column="value_double",
+        )
+
+
+def test_source_classmethod_form():
+    result = Pipeline(name="src").source(_ClassmethodLoader, "load", n_outliers=3).run()
+    assert isinstance(result, PipelineResult)
+    assert not result.data.empty
+    assert result.events == {}
+
+
+def test_source_instance_form_routes_kwargs():
+    # n_points -> __init__, n_outliers -> method.
+    result = (
+        Pipeline().source(_InstanceLoader, "fetch", n_points=50, n_outliers=2).run()
+    )
+    assert len(result.data) == 50
+
+
+def test_source_callable_form():
+    result = Pipeline().source(lambda: _signal(n_outliers=0)).run()
+    assert not result.data.empty
+
+
+def test_source_then_transform_then_detect():
+    result = (
+        Pipeline(name="full")
+        .source(_ClassmethodLoader, "load", n_outliers=8)
+        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=2)
+        .detect(
+            OutlierDetectionEvents,
+            "detect_outliers_zscore",
+            name="outliers",
+            value_column="value_double",
+            threshold=2.0,
+        )
+        .run()
+    )
+    assert "outliers" in result.events
+    assert "value_double" in result.data.columns
+
+
+def test_run_with_dataframe_on_source_bound_pipeline_raises():
+    pipe = Pipeline(name="sb").source(_ClassmethodLoader, "load")
+    with pytest.raises(TypeError, match="defines a source step"):
+        pipe.run(_signal())
+
+
+def test_run_without_dataframe_on_sourceless_pipeline_raises():
+    pipe = Pipeline(name="dd").transform(
+        IntegerCalc, "scale_column", column_name="value_double", factor=2
+    )
+    with pytest.raises(TypeError, match="no source step"):
+        pipe.run()
+
+
+def test_source_must_be_first_step():
+    pipe = Pipeline().transform(
+        IntegerCalc, "scale_column", column_name="value_double", factor=2
+    )
+    with pytest.raises(ValueError, match="must be the first step"):
+        pipe.source(_ClassmethodLoader, "load")
+
+
+def test_only_one_source_step():
+    pipe = Pipeline().source(_ClassmethodLoader, "load")
+    with pytest.raises(ValueError, match="must be the first step"):
+        pipe.source(_ClassmethodLoader, "load")
+
+
+def test_source_returning_non_dataframe_raises():
+    pipe = Pipeline(name="bad").source(lambda: "not a frame")
+    with pytest.raises(TypeError, match="expected a DataFrame"):
+        pipe.run()
+
+
+def test_source_loader_failure_raises_with_step_context():
+    def _boom() -> pd.DataFrame:
+        raise ConnectionError("network down")
+
+    pipe = Pipeline(name="p").source(_boom, name="loader")
+    with pytest.raises(RuntimeError, match="source 'loader'"):
+        pipe.run()
+
+
+def test_run_steps_exposes_loaded_frame_under_source_name():
+    steps = (
+        Pipeline()
+        .source(_ClassmethodLoader, "load", name="parquet")
+        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=2)
+        .run_steps()
+    )
+    assert set(steps) == {"parquet", "scale_column"}
+    assert "input" not in steps
+
+
+def test_source_rejects_sentinels():
+    with pytest.raises(ValueError, match="cannot use the"):
+        Pipeline().source(lambda **k: _signal(), n_rows="$input")
+
+
+def test_describe_lists_source_step():
+    pipe = Pipeline(name="demo").source(_ClassmethodLoader, "load", n_outliers=3)
+    text = pipe.describe()
+    assert "source" in text
+    assert "n_outliers=3" in text
+    assert pipe.steps == [("source", "load")]
