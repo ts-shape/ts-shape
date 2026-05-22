@@ -25,6 +25,10 @@ class DataQualityWarning(TsShapeWarning):
     """Warn about potential data quality issues (gaps, duplicates, NaNs)."""
 
 
+class LoaderConfigWarning(TsShapeWarning):
+    """Warn when a loader returns no data, likely due to misconfiguration."""
+
+
 class ColumnNotFoundError(ValueError):
     """Raised when a required column is missing from the DataFrame.
 
