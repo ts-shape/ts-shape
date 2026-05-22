@@ -29,6 +29,7 @@ python examples/quality_events_demo.py
 | Script | What it shows |
 |--------|---------------|
 | `loader_usage_demo.py` | Loading timeseries + metadata from Parquet / JSON |
+| `pipeline_demo.py` | Chaining transforms + detectors with the `Pipeline` orchestrator |
 | `transform_operations_demo.py` | Filtering, calculations, timezone shifts |
 | `features_statistics_demo.py` | Feature tables and statistics |
 | `statistics_demo.py` | Numeric / string / boolean / timestamp statistics |

@@ -123,6 +123,7 @@ _LAZY: dict[str, str] = {
     "list_detectors": "ts_shape.catalog",
     "make_timeseries": "ts_shape.datasets",
     "UnitConverter": "ts_shape.transform.calculator.unit_conversion",
+    "Pipeline": "ts_shape.pipeline",
 }
 
 # The eventlog package re-exports its whole public surface from its own

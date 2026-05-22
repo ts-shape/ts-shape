@@ -1,4 +1,8 @@
 # May 20, 2026
+add: Pipeline -- declarative orchestrator that chains transform and detector
+  steps into one reusable definition. .transform() steps replace the working
+  signal; .detect() steps store named event results. PipelineResult.to_event_log()
+  normalizes detector output into a combined OCEL event log.
 add: UnitConverter -- engineering unit conversion (transform), a thin wrapper
   around the pint library. Optional extra: pip install ts-shape[units].
 add: RuntimeAccountingEvents -- operating-hours accounting (total run time,

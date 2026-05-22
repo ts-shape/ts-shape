@@ -328,6 +328,37 @@ cycles = extractor.process_persistent_cycle()
 
 ---
 
+## Composing a Pipeline
+
+`Pipeline` chains transforms and detectors into one reusable definition.
+A `.transform(...)` step's output **replaces** the working signal; a
+`.detect(...)` step's output is **stored** under a name, leaving the signal
+untouched. The choice of `.transform` vs `.detect` is explicit — never inferred.
+
+```python
+from ts_shape import Pipeline
+from ts_shape.transform.calculator.numeric_calc import IntegerCalc
+from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
+
+pipe = (
+    Pipeline(name="sensor-quality")
+    .transform(IntegerCalc, "scale_column", column_name="value_double", factor=0.1)
+    .detect(OutlierDetectionEvents, "detect_outliers_zscore",
+            name="outliers", value_column="value_double", threshold=3.0)
+)
+
+result = pipe.run(df)          # reusable: call .run() on many DataFrames
+result.data                    # final transformed signal
+result.events["outliers"]      # detector output
+result.to_event_log()          # normalized, combined OCEL event log
+```
+
+> For chaining transforms into a **feature table** (rather than running
+> detectors), see `FeaturePipeline` in the
+> [Pipeline Builder guide](https://ts-shape.github.io/ts-shape/guides/pipeline-builder/).
+
+---
+
 ## Development
 
 ```bash
