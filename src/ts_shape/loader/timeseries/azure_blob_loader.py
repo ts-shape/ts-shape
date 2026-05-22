@@ -2,8 +2,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from typing import Iterable, List, Optional, Set, Dict, Any, Callable, Iterator, Tuple
 import logging
+import warnings
 
 import pandas as pd  # type: ignore
+
+from ts_shape.errors import LoaderConfigWarning
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +199,62 @@ class AzureBlobParquetLoader:
             logger.debug("Failed to download blob '%s': %s", blob_name, exc)
             return None
 
+    def _download_many(
+        self, blob_names: List[str]
+    ) -> Tuple[List[pd.DataFrame], int, int]:
+        """
+        Download a set of parquet blobs concurrently.
+
+        Returns:
+            A tuple ``(frames, n_failed, n_empty)`` where ``frames`` are the
+            non-empty DataFrames, ``n_failed`` counts blobs that could not be
+            downloaded or parsed (missing, unauthorized, or corrupt), and
+            ``n_empty`` counts blobs that parsed successfully but had no rows.
+        """
+        frames: List[pd.DataFrame] = []
+        n_failed = 0
+        n_empty = 0
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_to_name = {
+                executor.submit(self._download_parquet, name): name
+                for name in blob_names
+            }
+            for future in as_completed(future_to_name):
+                df = future.result()
+                if df is None:
+                    n_failed += 1
+                elif df.empty:
+                    n_empty += 1
+                else:
+                    frames.append(df)
+        return frames, n_failed, n_empty
+
+    def _warn_empty(self, method: str, detail: str) -> None:
+        """
+        Emit a ``LoaderConfigWarning`` explaining why a load returned no data.
+        """
+        warnings.warn(
+            f"AzureBlobParquetLoader.{method} returned an empty DataFrame. {detail}",
+            LoaderConfigWarning,
+            stacklevel=3,
+        )
+
+    def _time_search_detail(self, slots: List[pd.Timestamp]) -> str:
+        """Describe the prefix/pattern/hour-range probed by a time-range load."""
+        prefix_repr = repr(self.prefix or "")
+        pattern_repr = repr(self.hour_pattern)
+        if not slots:
+            return (
+                f"prefix={prefix_repr}, hour_pattern={pattern_repr}, "
+                "0 hour-prefixes (the time range is empty)"
+            )
+        first = slots[0].strftime("%Y-%m-%d %H:00")
+        last = slots[-1].strftime("%Y-%m-%d %H:00")
+        return (
+            f"prefix={prefix_repr}, hour_pattern={pattern_repr}, "
+            f"{len(slots)} hour-prefix(es) {first} .. {last}"
+        )
+
     # ---- Helpers for time-structured containers parquet/YYYY/MM/DD/HH ----
     @staticmethod
     def _hourly_slots(
@@ -236,21 +295,27 @@ class AzureBlobParquetLoader:
             name_starts_with=self.prefix or None
         )
         blob_names = [b.name for b in blob_iter if str(b.name).endswith(".parquet")]  # type: ignore[attr-defined]
+        prefix_repr = repr(self.prefix or "")
         if not blob_names:
+            self._warn_empty(
+                "load_all_files",
+                f"No .parquet blobs found under prefix={prefix_repr}. "
+                "Check the container name and prefix; the container may be "
+                "empty or the prefix may not match the stored layout.",
+            )
             return pd.DataFrame()
 
-        frames: List[pd.DataFrame] = []
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_name = {
-                executor.submit(self._download_parquet, name): name
-                for name in blob_names
-            }
-            for future in as_completed(future_to_name):
-                df = future.result()
-                if df is not None and not df.empty:
-                    frames.append(df)
-
-        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        frames, n_failed, n_empty = self._download_many(blob_names)
+        if not frames:
+            self._warn_empty(
+                "load_all_files",
+                f"Listed {len(blob_names)} .parquet blob(s) under prefix="
+                f"{prefix_repr} but none yielded rows ({n_failed} failed to "
+                f"download/parse, {n_empty} had no rows). Check that the "
+                "credentials have read permission and the files are valid parquet.",
+            )
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
 
     def load_by_time_range(
         self, start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
@@ -261,30 +326,33 @@ class AzureBlobParquetLoader:
         Assumes container structure: prefix/year/month/day/hour/{file}.parquet
         Listing is constrained per-hour for speed.
         """
-        hour_prefixes = [
-            self._hour_prefix(ts)
-            for ts in self._hourly_slots(start_timestamp, end_timestamp)
-        ]
+        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        hour_prefixes = [self._hour_prefix(ts) for ts in slots]
         blob_names: List[str] = []
         for pfx in hour_prefixes:
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             blob_names.extend([b.name for b in blob_iter if str(b.name).endswith(".parquet")])  # type: ignore[attr-defined]
 
+        search = self._time_search_detail(slots)
         if not blob_names:
+            self._warn_empty(
+                "load_by_time_range",
+                f"No .parquet blobs found. {search}. Check that hour_pattern "
+                "matches the real folder layout and that the time range "
+                "overlaps the stored data.",
+            )
             return pd.DataFrame()
 
-        frames: List[pd.DataFrame] = []
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_name = {
-                executor.submit(self._download_parquet, name): name
-                for name in blob_names
-            }
-            for future in as_completed(future_to_name):
-                df = future.result()
-                if df is not None and not df.empty:
-                    frames.append(df)
-
-        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        frames, n_failed, n_empty = self._download_many(blob_names)
+        if not frames:
+            self._warn_empty(
+                "load_by_time_range",
+                f"Listed {len(blob_names)} .parquet blob(s) but none yielded "
+                f"rows ({n_failed} failed to download/parse, {n_empty} had no "
+                f"rows). {search}. Check read permission and file validity.",
+            )
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
 
     def stream_by_time_range(
         self, start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
@@ -294,10 +362,8 @@ class AzureBlobParquetLoader:
 
         Yields (blob_name, DataFrame) one by one to avoid holding everything in memory.
         """
-        hour_prefixes = [
-            self._hour_prefix(ts)
-            for ts in self._hourly_slots(start_timestamp, end_timestamp)
-        ]
+        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        hour_prefixes = [self._hour_prefix(ts) for ts in slots]
 
         def _names_iter() -> Iterator[str]:
             for pfx in hour_prefixes:
@@ -308,6 +374,7 @@ class AzureBlobParquetLoader:
                         yield name
 
         names_iter = _names_iter()
+        yielded = 0
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures: Dict[Any, str] = {}
             # initial fill
@@ -327,6 +394,7 @@ class AzureBlobParquetLoader:
                     except Exception:
                         df = None
                     if df is not None and not df.empty:
+                        yielded += 1
                         yield (name, df)
 
                 # Refill
@@ -336,6 +404,14 @@ class AzureBlobParquetLoader:
                         futures[executor.submit(self._download_parquet, n)] = n
                 except StopIteration:
                     pass
+
+        if yielded == 0:
+            self._warn_empty(
+                "stream_by_time_range",
+                f"Yielded no DataFrames. {self._time_search_detail(slots)}. "
+                "Check that hour_pattern matches the real folder layout and "
+                "that the time range overlaps the stored data.",
+            )
 
     def load_files_by_time_range_and_uuids(
         self,
@@ -347,11 +423,13 @@ class AzureBlobParquetLoader:
         Load parquet blobs for given UUIDs within [start, end] hours.
 
         Strategy:
-        1) Construct direct blob paths assuming pattern prefix/YYYY/MM/DD/HH/{uuid}.parquet
-           (fast path, no listing).
-        2) For robustness, also list each hour prefix and include any blob whose basename
-           equals one of the requested UUID variants (handles case differences and extra
-           subfolders below the hour level).
+        1) List each hour prefix once and keep blobs whose basename matches a
+           requested UUID variant. When listing succeeds it is authoritative,
+           so only blobs that actually exist are downloaded.
+        2) Only when listing fails entirely (e.g. a SAS token without list
+           permission) fall back to constructing direct blob paths assuming
+           the pattern prefix/YYYY/MM/DD/HH/{uuid}.parquet and downloading
+           those blindly.
         """
         if not uuid_list:
             return pd.DataFrame()
@@ -371,19 +449,13 @@ class AzureBlobParquetLoader:
                     seen.add(v)
                     variants_ordered.append(v)
 
-        hour_prefixes = [
-            self._hour_prefix(ts)
-            for ts in self._hourly_slots(start_timestamp, end_timestamp)
-        ]
+        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        hour_prefixes = [self._hour_prefix(ts) for ts in slots]
 
-        # 1) Fast path: build direct blob names
-        direct_names = [
-            f"{pfx}{u}.parquet" for pfx in hour_prefixes for u in variants_ordered
-        ]
-
-        # 2) Robust path: list each hour prefix and filter by basename match
+        # 1) Authoritative path: list each hour prefix, match by basename.
         basenames = {f"{u}.parquet" for u in variants_ordered}
         listed_names: List[str] = []
+        listing_failed = False
         try:
             for pfx in hour_prefixes:
                 blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
@@ -395,27 +467,48 @@ class AzureBlobParquetLoader:
                     if base in basenames:
                         listed_names.append(name)
         except Exception:
-            # If listing fails for any reason, continue with direct names only
-            pass
+            # Listing not permitted/available: fall back to blind direct names.
+            listing_failed = True
 
-        # Merge and preserve order, avoid duplicates
-        all_blob_names = list(dict.fromkeys([*direct_names, *listed_names]))
+        if listing_failed:
+            # 2) Fallback only: construct direct blob names and download blindly.
+            all_blob_names = list(
+                dict.fromkeys(
+                    f"{pfx}{u}.parquet"
+                    for pfx in hour_prefixes
+                    for u in variants_ordered
+                )
+            )
+            fallback_note = (
+                " Listing was not available, so direct blob names were "
+                "downloaded blindly; verify the credentials' list permission."
+            )
+        else:
+            all_blob_names = list(dict.fromkeys(listed_names))
+            fallback_note = ""
 
+        search = self._time_search_detail(slots)
+        uuid_note = f"{len(variants_ordered)} UUID variant(s) searched"
         if not all_blob_names:
+            self._warn_empty(
+                "load_files_by_time_range_and_uuids",
+                f"No matching .parquet blobs found. {search}, {uuid_note}. "
+                "Check that the UUIDs, hour_pattern and time range match the "
+                f"stored data.{fallback_note}",
+            )
             return pd.DataFrame()
 
-        frames: List[pd.DataFrame] = []
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_name = {
-                executor.submit(self._download_parquet, name): name
-                for name in all_blob_names
-            }
-            for future in as_completed(future_to_name):
-                df = future.result()
-                if df is not None and not df.empty:
-                    frames.append(df)
-
-        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        frames, n_failed, n_empty = self._download_many(all_blob_names)
+        if not frames:
+            self._warn_empty(
+                "load_files_by_time_range_and_uuids",
+                f"Resolved {len(all_blob_names)} blob name(s) but none yielded "
+                f"rows ({n_failed} failed to download/parse, {n_empty} had no "
+                f"rows). {search}, {uuid_note}. Check read permission and file "
+                f"validity.{fallback_note}",
+            )
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
 
     def stream_files_by_time_range_and_uuids(
         self,
@@ -426,10 +519,12 @@ class AzureBlobParquetLoader:
         """
         Stream parquet DataFrames for given UUIDs within [start, end] hours.
 
-        Yields (blob_name, DataFrame) as they arrive. Uses direct names plus per-hour listing fallback.
+        Yields (blob_name, DataFrame) as they arrive. Listing is authoritative
+        when available; direct blob names are used only as a fallback when
+        listing fails (see :meth:`load_files_by_time_range_and_uuids`).
         """
         if not uuid_list:
-            return iter(())
+            return
 
         def _clean_uuid(u: object) -> str:
             return str(u).strip().strip("{}").strip()
@@ -443,23 +538,13 @@ class AzureBlobParquetLoader:
                     seen.add(v)
                     variants_ordered.append(v)
 
-        hour_prefixes = [
-            self._hour_prefix(ts)
-            for ts in self._hourly_slots(start_timestamp, end_timestamp)
-        ]
-        direct_names = [
-            f"{pfx}{u}.parquet" for pfx in hour_prefixes for u in variants_ordered
-        ]
-
+        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        hour_prefixes = [self._hour_prefix(ts) for ts in slots]
         basenames = {f"{u}.parquet" for u in variants_ordered}
 
-        def _names_iter() -> Iterator[str]:
-            # yield direct first
-            yielded: Set[str] = set()
-            for n in direct_names:
-                yielded.add(n)
-                yield n
-            # then list per-hour
+        listed_names: List[str] = []
+        listing_failed = False
+        try:
             for pfx in hour_prefixes:
                 blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
                 for b in blob_iter:  # type: ignore[attr-defined]
@@ -467,11 +552,29 @@ class AzureBlobParquetLoader:
                     if not name.endswith(".parquet"):
                         continue
                     base = name.rsplit("/", 1)[-1]
-                    if base in basenames and name not in yielded:
-                        yielded.add(name)
-                        yield name
+                    if base in basenames:
+                        listed_names.append(name)
+        except Exception:
+            listing_failed = True
 
-        names_iter = _names_iter()
+        if listing_failed:
+            all_blob_names = list(
+                dict.fromkeys(
+                    f"{pfx}{u}.parquet"
+                    for pfx in hour_prefixes
+                    for u in variants_ordered
+                )
+            )
+            fallback_note = (
+                " Listing was not available, so direct blob names were "
+                "downloaded blindly; verify the credentials' list permission."
+            )
+        else:
+            all_blob_names = list(dict.fromkeys(listed_names))
+            fallback_note = ""
+
+        names_iter = iter(all_blob_names)
+        yielded = 0
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures: Dict[Any, str] = {}
             try:
@@ -489,6 +592,7 @@ class AzureBlobParquetLoader:
                     except Exception:
                         df = None
                     if df is not None and not df.empty:
+                        yielded += 1
                         yield (name, df)
 
                 try:
@@ -497,6 +601,15 @@ class AzureBlobParquetLoader:
                         futures[executor.submit(self._download_parquet, n)] = n
                 except StopIteration:
                     pass
+
+        if yielded == 0:
+            self._warn_empty(
+                "stream_files_by_time_range_and_uuids",
+                f"Yielded no DataFrames. {self._time_search_detail(slots)}, "
+                f"{len(variants_ordered)} UUID variant(s) searched. Check that "
+                "the UUIDs, hour_pattern and time range match the stored "
+                f"data.{fallback_note}",
+            )
 
     def list_structure(
         self, parquet_only: bool = True, limit: Optional[int] = None

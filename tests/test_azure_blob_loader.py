@@ -1,6 +1,10 @@
+import warnings
+
 import pandas as pd  # type: ignore
+import pytest
 from types import SimpleNamespace
 
+from ts_shape.errors import LoaderConfigWarning
 from ts_shape.loader.timeseries.azure_blob_loader import (
     AzureBlobParquetLoader,
     AzureBlobFlexibleFileLoader,
@@ -157,3 +161,96 @@ def test_flexible_fetch_basenames(monkeypatch):
         "root/2024/01/01/09/b/file2.json",
         "root/2024/01/01/10/d/file2.json",
     }
+
+
+def test_load_all_files_empty_warns():
+    loader = _make_loader_without_init(prefix="parquet/", files=[])
+    with pytest.warns(LoaderConfigWarning, match="No .parquet blobs"):
+        df = loader.load_all_files()
+    assert df.empty
+
+
+def test_load_all_files_all_downloads_fail_warns(monkeypatch):
+    files = [
+        "parquet/2024/01/01/09/u1.parquet",
+        "parquet/2024/01/01/10/u2.parquet",
+    ]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+    monkeypatch.setattr(loader, "_download_parquet", lambda name: None)
+    with pytest.warns(LoaderConfigWarning, match="failed to download"):
+        df = loader.load_all_files()
+    assert df.empty
+
+
+def test_load_all_files_happy_emits_no_warning(monkeypatch):
+    files = ["parquet/2024/01/01/09/u1.parquet"]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+    monkeypatch.setattr(
+        loader, "_download_parquet", lambda name: pd.DataFrame({"name": [name]})
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", LoaderConfigWarning)
+        df = loader.load_all_files()
+    assert not df.empty
+
+
+def test_load_by_time_range_outside_data_warns():
+    files = ["parquet/2024/01/01/09/u1.parquet"]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+    with pytest.warns(LoaderConfigWarning, match="hour_pattern"):
+        df = loader.load_by_time_range("2030-01-01 00:00:00", "2030-01-01 00:00:00")
+    assert df.empty
+
+
+def test_load_files_by_uuids_unknown_warns_and_skips_downloads(monkeypatch):
+    # An unknown UUID must not trigger blind direct-name downloads when listing
+    # succeeds: the loader should resolve nothing and warn immediately.
+    files = ["parquet/2024/01/01/09/u1.parquet"]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        loader, "_download_parquet", lambda name: calls.append(name) or None
+    )
+    with pytest.warns(LoaderConfigWarning, match="No matching .parquet blobs"):
+        df = loader.load_files_by_time_range_and_uuids(
+            "2024-01-01 09:00:00", "2024-01-01 09:00:00", ["does-not-exist"]
+        )
+    assert df.empty
+    assert calls == []
+
+
+def test_load_files_by_uuids_falls_back_when_listing_fails(monkeypatch):
+    loader = _make_loader_without_init(prefix="parquet/", files=[])
+
+    def boom(name_starts_with=None):
+        raise RuntimeError("no list permission")
+
+    loader.container_client.list_blobs = boom
+
+    calls: list[str] = []
+
+    def fake_download(name):
+        calls.append(name)
+        if name == "parquet/2024/01/01/09/u1.parquet":
+            return pd.DataFrame({"uuid": ["u1"]})
+        return None
+
+    monkeypatch.setattr(loader, "_download_parquet", fake_download)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", LoaderConfigWarning)
+        df = loader.load_files_by_time_range_and_uuids(
+            "2024-01-01 09:00:00", "2024-01-01 09:00:00", ["u1"]
+        )
+    # Listing failed, so direct blob names were downloaded blindly.
+    assert set(df["uuid"]) == {"u1"}
+    assert "parquet/2024/01/01/09/u1.parquet" in calls
+
+
+def test_stream_by_time_range_empty_warns():
+    files = ["parquet/2024/01/01/09/u1.parquet"]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+    with pytest.warns(LoaderConfigWarning, match="Yielded no DataFrames"):
+        results = list(
+            loader.stream_by_time_range("2030-01-01 00:00:00", "2030-01-01 00:00:00")
+        )
+    assert results == []
