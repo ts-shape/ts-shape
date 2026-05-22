@@ -284,7 +284,7 @@ def test_empty_input_flows_through(empty_df):
     assert result.events["o"].empty
 
 
-def test_steps_and_repr():
+def test_steps_describe_and_repr():
     pipe = (
         Pipeline(name="demo")
         .transform(IntegerCalc, "scale_column", column_name="value_double", factor=2)
@@ -296,8 +296,74 @@ def test_steps_and_repr():
         )
     )
     assert pipe.steps == [("transform", "scale_column"), ("detect", "outliers")]
-    text = repr(pipe)
-    assert "demo" in text and "[transform]" in text and "[detect]" in text
+    text = pipe.describe()
+    assert text == repr(pipe)
+    assert "demo" in text
+    assert "transform" in text and "detect" in text
+    # describe() shows step kwargs
+    assert "factor=2" in text
+    assert Pipeline(name="empty").describe() == "Pipeline 'empty' (no steps)"
+
+
+def test_callable_form_forwards_kwargs():
+    # A bound classmethod passed as a callable still receives its kwargs.
+    df = _signal(n_outliers=0)
+    result = (
+        Pipeline()
+        .transform(IntegerCalc.scale_column, column_name="value_double", factor=10)
+        .run(df)
+    )
+    assert result.data["value_double"].to_numpy() == pytest.approx(
+        df["value_double"].to_numpy() * 10
+    )
+
+
+def test_input_and_prev_sentinels():
+    df = _signal(n_outliers=0)
+
+    def _tag(frame, *, original):
+        # `original` is wired to $input; `frame` is the working ($prev) frame.
+        return frame.assign(input_rows=len(original), working_rows=len(frame))
+
+    result = (
+        Pipeline()
+        .transform(lambda d: d.head(10), name="head10")
+        .transform(_tag, name="tag", original="$input")
+        .run(df)
+    )
+    assert (result.data["input_rows"] == len(df)).all()
+    assert (result.data["working_rows"] == 10).all()
+
+
+def test_unknown_sentinel_raises():
+    with pytest.raises(ValueError, match="unknown sentinel"):
+        Pipeline().transform(lambda d, **k: d, name="x", bad="$PREV")
+
+
+def test_run_steps_returns_every_intermediate():
+    df = _signal()
+    steps = (
+        Pipeline()
+        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=2)
+        .detect(
+            OutlierDetectionEvents,
+            "detect_outliers_zscore",
+            name="outliers",
+            value_column="value_double",
+            threshold=2.0,
+        )
+        .run_steps(df)
+    )
+    assert set(steps) == {"input", "scale_column", "outliers"}
+    for frame in steps.values():
+        assert isinstance(frame, pd.DataFrame)
+    # 'input' is the untouched original; 'scale_column' is the transformed signal.
+    assert steps["input"]["value_double"].to_numpy() == pytest.approx(
+        df["value_double"].to_numpy()
+    )
+    assert steps["scale_column"]["value_double"].to_numpy() == pytest.approx(
+        df["value_double"].to_numpy() * 2
+    )
 
 
 def test_pipeline_exported_at_top_level():

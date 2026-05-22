@@ -298,5 +298,5 @@ flowchart TD
 - [Quality Control & SPC](quality.md) — Apply outlier detection and control charts to your feature table
 - [Production Monitoring](production.md) — Machine states, OEE, and downtime analysis
 - [Process Engineering](engineering.md) — Setpoint tracking and process stability
-- [Pipeline Builder](pipeline-builder.md) — Chain the entire workflow into a single `FeaturePipeline`
+- [Pipeline](pipeline-builder.md) — Chain the entire workflow into a single reusable `Pipeline`
 - [API Reference](../reference/index.md) — Full class and method documentation

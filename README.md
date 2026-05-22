@@ -353,9 +353,9 @@ result.events["outliers"]      # detector output
 result.to_event_log()          # normalized, combined OCEL event log
 ```
 
-> For chaining transforms into a **feature table** (rather than running
-> detectors), see `FeaturePipeline` in the
-> [Pipeline Builder guide](https://ts-shape.github.io/ts-shape/guides/pipeline-builder/).
+`Pipeline` also supports `$input` / `$prev` sentinels for steps that need a
+second DataFrame, and `run_steps(df)` to inspect every intermediate. See the
+[Pipeline guide](https://ts-shape.github.io/ts-shape/guides/pipeline-builder/).
 
 ---
 

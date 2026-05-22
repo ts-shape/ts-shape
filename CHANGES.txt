@@ -1,8 +1,16 @@
 # May 20, 2026
-add: Pipeline -- declarative orchestrator that chains transform and detector
-  steps into one reusable definition. .transform() steps replace the working
-  signal; .detect() steps store named event results. PipelineResult.to_event_log()
-  normalizes detector output into a combined OCEL event log.
+add: Pipeline -- the single declarative orchestrator for ts-shape. Chains
+  transform and detector steps into one reusable definition: .transform()
+  steps replace the working signal; .detect() steps store named event
+  results. Supports $input/$prev sentinels for multi-DataFrame wiring,
+  run_steps() for intermediates, describe() for previews, and
+  PipelineResult.to_event_log() for combined OCEL export.
+BREAKING: removed FeaturePipeline (features.segment_analysis.feature_pipeline);
+  Pipeline replaces it. Migration: FeaturePipeline(df)...run() becomes
+  Pipeline()...run(df); .add_step(Cls.method, **kw) and
+  .add_instance_step(Cls, call='method', **kw) both become
+  .transform(Cls, 'method', **kw); .add_lambda_step(fn) becomes
+  .transform(fn). $input/$prev sentinels and run_steps() are unchanged.
 add: UnitConverter -- engineering unit conversion (transform), a thin wrapper
   around the pint library. Optional extra: pip install ts-shape[units].
 add: RuntimeAccountingEvents -- operating-hours accounting (total run time,
