@@ -15,7 +15,7 @@ def _make_loader_without_init(prefix="", files=None):
     # Bypass __init__ to avoid importing azure-storage-blob
     loader = object.__new__(AzureBlobParquetLoader)
 
-    # Fake container_client with list_blobs
+    # Fake container_client with list_blobs and download_blob
     class DummyClient:
         def __init__(self, names):
             self._names = names or []
@@ -29,6 +29,11 @@ def _make_loader_without_init(prefix="", files=None):
             ]
             # Yield objects with a .name attribute
             return [SimpleNamespace(name=n) for n in ns]
+
+        def download_blob(self, name):
+            # A stub downloader exposing readall(); the actual bytes are
+            # irrelevant because pushdown tests monkeypatch pd.read_parquet.
+            return SimpleNamespace(readall=lambda: b"")
 
     loader.container_client = DummyClient(files or [])
     loader.prefix = prefix
@@ -80,7 +85,9 @@ def test_list_structure_and_load_all(monkeypatch):
 
     # Patch download to return frames with some rows
     monkeypatch.setattr(
-        loader, "_download_parquet", lambda name: pd.DataFrame({"name": [name]})
+        loader,
+        "_download_parquet",
+        lambda name, *a, **k: pd.DataFrame({"name": [name]}),
     )
 
     listed = loader.list_structure()
@@ -103,7 +110,9 @@ def test_load_by_time_range_and_uuid(monkeypatch):
     monkeypatch.setattr(
         loader,
         "_download_parquet",
-        lambda name: pd.DataFrame({"uuid": [name.split("/")[-1].split(".")[0]]}),
+        lambda name, *a, **k: pd.DataFrame(
+            {"uuid": [name.split("/")[-1].split(".")[0]]}
+        ),
     )
 
     df1 = loader.load_by_time_range("2024-01-01 09:00:00", "2024-01-01 10:30:00")
@@ -176,7 +185,7 @@ def test_load_all_files_all_downloads_fail_warns(monkeypatch):
         "parquet/2024/01/01/10/u2.parquet",
     ]
     loader = _make_loader_without_init(prefix="parquet/", files=files)
-    monkeypatch.setattr(loader, "_download_parquet", lambda name: None)
+    monkeypatch.setattr(loader, "_download_parquet", lambda name, *a, **k: None)
     with pytest.warns(LoaderConfigWarning, match="failed to download"):
         df = loader.load_all_files()
     assert df.empty
@@ -186,7 +195,9 @@ def test_load_all_files_happy_emits_no_warning(monkeypatch):
     files = ["parquet/2024/01/01/09/u1.parquet"]
     loader = _make_loader_without_init(prefix="parquet/", files=files)
     monkeypatch.setattr(
-        loader, "_download_parquet", lambda name: pd.DataFrame({"name": [name]})
+        loader,
+        "_download_parquet",
+        lambda name, *a, **k: pd.DataFrame({"name": [name]}),
     )
     with warnings.catch_warnings():
         warnings.simplefilter("error", LoaderConfigWarning)
@@ -209,7 +220,7 @@ def test_load_files_by_uuids_unknown_warns_and_skips_downloads(monkeypatch):
     loader = _make_loader_without_init(prefix="parquet/", files=files)
     calls: list[str] = []
     monkeypatch.setattr(
-        loader, "_download_parquet", lambda name: calls.append(name) or None
+        loader, "_download_parquet", lambda name, *a, **k: calls.append(name) or None
     )
     with pytest.warns(LoaderConfigWarning, match="No matching .parquet blobs"):
         df = loader.load_files_by_time_range_and_uuids(
@@ -229,7 +240,7 @@ def test_load_files_by_uuids_falls_back_when_listing_fails(monkeypatch):
 
     calls: list[str] = []
 
-    def fake_download(name):
+    def fake_download(name, *a, **k):
         calls.append(name)
         if name == "parquet/2024/01/01/09/u1.parquet":
             return pd.DataFrame({"uuid": ["u1"]})
@@ -254,3 +265,52 @@ def test_stream_by_time_range_empty_warns():
             loader.stream_by_time_range("2030-01-01 00:00:00", "2030-01-01 00:00:00")
         )
     assert results == []
+
+
+def test_pushdown_passes_columns_and_filters(monkeypatch):
+    files = ["parquet/2024/01/01/09/u1.parquet"]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+    seen: dict = {}
+
+    def fake_read_parquet(buf, columns=None, filters=None):
+        seen["columns"] = columns
+        seen["filters"] = filters
+        return pd.DataFrame({"uuid": ["u1"]})
+
+    monkeypatch.setattr(pd, "read_parquet", fake_read_parquet)
+    df = loader.load_all_files(columns=["uuid"], filters=[("uuid", "==", "u1")])
+    assert not df.empty
+    assert seen["columns"] == ["uuid"]
+    assert seen["filters"] == [("uuid", "==", "u1")]
+
+
+def test_pushdown_defaults_none_backwards_compatible(monkeypatch):
+    # A call with no columns/filters must reach pd.read_parquet with None for
+    # both -- byte-for-byte the pre-existing behaviour.
+    files = ["parquet/2024/01/01/09/u1.parquet"]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+    seen: dict = {}
+
+    def fake_read_parquet(buf, columns=None, filters=None):
+        seen["columns"] = columns
+        seen["filters"] = filters
+        return pd.DataFrame({"uuid": ["u1"]})
+
+    monkeypatch.setattr(pd, "read_parquet", fake_read_parquet)
+    df = loader.load_all_files()
+    assert not df.empty
+    assert seen["columns"] is None
+    assert seen["filters"] is None
+
+
+def test_filters_too_strict_warning_hint(monkeypatch):
+    files = ["parquet/2024/01/01/09/u1.parquet"]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+    monkeypatch.setattr(
+        pd,
+        "read_parquet",
+        lambda buf, columns=None, filters=None: pd.DataFrame(),
+    )
+    with pytest.warns(LoaderConfigWarning, match="filters argument may be too strict"):
+        df = loader.load_all_files(filters=[("value_double", ">", 1e9)])
+    assert df.empty

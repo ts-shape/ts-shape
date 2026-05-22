@@ -187,23 +187,40 @@ class AzureBlobParquetLoader:
             if any(u in name for u in uuids):
                 yield name
 
-    def _download_parquet(self, blob_name: str) -> Optional[pd.DataFrame]:
+    def _download_parquet(
+        self,
+        blob_name: str,
+        columns: Optional[List[str]] = None,
+        filters: Optional[list] = None,
+    ) -> Optional[pd.DataFrame]:
         """
         Download a parquet blob and return a DataFrame. Returns None if not found.
+
+        ``columns`` and ``filters`` are pushed into ``pd.read_parquet`` so only
+        the requested columns / rows are parsed. Both default to ``None``,
+        which reads the full blob.
         """
         try:
             downloader = self.container_client.download_blob(blob_name)
             data = downloader.readall()
-            return pd.read_parquet(BytesIO(data))
+            return pd.read_parquet(BytesIO(data), columns=columns, filters=filters)
         except Exception as exc:
             logger.debug("Failed to download blob '%s': %s", blob_name, exc)
             return None
 
     def _download_many(
-        self, blob_names: List[str]
+        self,
+        blob_names: List[str],
+        columns: Optional[List[str]] = None,
+        filters: Optional[list] = None,
     ) -> Tuple[List[pd.DataFrame], int, int]:
         """
         Download a set of parquet blobs concurrently.
+
+        ``columns``/``filters`` are forwarded to :meth:`_download_parquet` for
+        column projection and row predicate pushdown. If ``columns`` names a
+        field absent from a blob the parquet engine raises, so that blob is
+        counted in ``n_failed``.
 
         Returns:
             A tuple ``(frames, n_failed, n_empty)`` where ``frames`` are the
@@ -216,7 +233,7 @@ class AzureBlobParquetLoader:
         n_empty = 0
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_name = {
-                executor.submit(self._download_parquet, name): name
+                executor.submit(self._download_parquet, name, columns, filters): name
                 for name in blob_names
             }
             for future in as_completed(future_to_name):
@@ -229,10 +246,14 @@ class AzureBlobParquetLoader:
                     frames.append(df)
         return frames, n_failed, n_empty
 
-    def _warn_empty(self, method: str, detail: str) -> None:
+    def _warn_empty(
+        self, method: str, detail: str, filters: Optional[list] = None
+    ) -> None:
         """
         Emit a ``LoaderConfigWarning`` explaining why a load returned no data.
         """
+        if filters is not None:
+            detail = f"{detail} The filters argument may be too strict."
         warnings.warn(
             f"AzureBlobParquetLoader.{method} returned an empty DataFrame. {detail}",
             LoaderConfigWarning,
@@ -282,9 +303,18 @@ class AzureBlobParquetLoader:
         )
         return f"{base}{sub}"
 
-    def load_all_files(self) -> pd.DataFrame:
+    def load_all_files(
+        self,
+        columns: Optional[List[str]] = None,
+        filters: Optional[list] = None,
+    ) -> pd.DataFrame:
         """
         Load all parquet blobs in the container (optionally under `prefix`).
+
+        Args:
+            columns: Subset of parquet columns to read; None reads all columns.
+            filters: pyarrow-style predicate pushdown in DNF form, e.g.
+                ``[("value_double", ">", 0.0)]``; None reads all rows.
 
         Returns:
             A concatenated DataFrame of all parquet blobs. Returns an empty DataFrame
@@ -305,7 +335,7 @@ class AzureBlobParquetLoader:
             )
             return pd.DataFrame()
 
-        frames, n_failed, n_empty = self._download_many(blob_names)
+        frames, n_failed, n_empty = self._download_many(blob_names, columns, filters)
         if not frames:
             self._warn_empty(
                 "load_all_files",
@@ -313,18 +343,28 @@ class AzureBlobParquetLoader:
                 f"{prefix_repr} but none yielded rows ({n_failed} failed to "
                 f"download/parse, {n_empty} had no rows). Check that the "
                 "credentials have read permission and the files are valid parquet.",
+                filters=filters,
             )
             return pd.DataFrame()
         return pd.concat(frames, ignore_index=True)
 
     def load_by_time_range(
-        self, start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
+        self,
+        start_timestamp: str | pd.Timestamp,
+        end_timestamp: str | pd.Timestamp,
+        columns: Optional[List[str]] = None,
+        filters: Optional[list] = None,
     ) -> pd.DataFrame:
         """
         Load all parquet blobs under hourly folders within [start, end].
 
         Assumes container structure: prefix/year/month/day/hour/{file}.parquet
         Listing is constrained per-hour for speed.
+
+        Args:
+            columns: Subset of parquet columns to read; None reads all columns.
+            filters: pyarrow-style predicate pushdown in DNF form, e.g.
+                ``[("value_double", ">", 0.0)]``; None reads all rows.
         """
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
@@ -343,24 +383,34 @@ class AzureBlobParquetLoader:
             )
             return pd.DataFrame()
 
-        frames, n_failed, n_empty = self._download_many(blob_names)
+        frames, n_failed, n_empty = self._download_many(blob_names, columns, filters)
         if not frames:
             self._warn_empty(
                 "load_by_time_range",
                 f"Listed {len(blob_names)} .parquet blob(s) but none yielded "
                 f"rows ({n_failed} failed to download/parse, {n_empty} had no "
                 f"rows). {search}. Check read permission and file validity.",
+                filters=filters,
             )
             return pd.DataFrame()
         return pd.concat(frames, ignore_index=True)
 
     def stream_by_time_range(
-        self, start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
+        self,
+        start_timestamp: str | pd.Timestamp,
+        end_timestamp: str | pd.Timestamp,
+        columns: Optional[List[str]] = None,
+        filters: Optional[list] = None,
     ) -> Iterator[Tuple[str, pd.DataFrame]]:
         """
         Stream parquet DataFrames under hourly folders within [start, end].
 
         Yields (blob_name, DataFrame) one by one to avoid holding everything in memory.
+
+        Args:
+            columns: Subset of parquet columns to read; None reads all columns.
+            filters: pyarrow-style predicate pushdown in DNF form, e.g.
+                ``[("value_double", ">", 0.0)]``; None reads all rows.
         """
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
@@ -381,7 +431,9 @@ class AzureBlobParquetLoader:
             try:
                 while len(futures) < self.max_workers:
                     n = next(names_iter)
-                    futures[executor.submit(self._download_parquet, n)] = n
+                    futures[
+                        executor.submit(self._download_parquet, n, columns, filters)
+                    ] = n
             except StopIteration:
                 pass
 
@@ -401,7 +453,9 @@ class AzureBlobParquetLoader:
                 try:
                     while len(futures) < self.max_workers:
                         n = next(names_iter)
-                        futures[executor.submit(self._download_parquet, n)] = n
+                        futures[
+                            executor.submit(self._download_parquet, n, columns, filters)
+                        ] = n
                 except StopIteration:
                     pass
 
@@ -411,6 +465,7 @@ class AzureBlobParquetLoader:
                 f"Yielded no DataFrames. {self._time_search_detail(slots)}. "
                 "Check that hour_pattern matches the real folder layout and "
                 "that the time range overlaps the stored data.",
+                filters=filters,
             )
 
     def load_files_by_time_range_and_uuids(
@@ -418,6 +473,8 @@ class AzureBlobParquetLoader:
         start_timestamp: str | pd.Timestamp,
         end_timestamp: str | pd.Timestamp,
         uuid_list: List[str],
+        columns: Optional[List[str]] = None,
+        filters: Optional[list] = None,
     ) -> pd.DataFrame:
         """
         Load parquet blobs for given UUIDs within [start, end] hours.
@@ -430,6 +487,11 @@ class AzureBlobParquetLoader:
            permission) fall back to constructing direct blob paths assuming
            the pattern prefix/YYYY/MM/DD/HH/{uuid}.parquet and downloading
            those blindly.
+
+        Args:
+            columns: Subset of parquet columns to read; None reads all columns.
+            filters: pyarrow-style predicate pushdown in DNF form, e.g.
+                ``[("value_double", ">", 0.0)]``; None reads all rows.
         """
         if not uuid_list:
             return pd.DataFrame()
@@ -498,7 +560,9 @@ class AzureBlobParquetLoader:
             )
             return pd.DataFrame()
 
-        frames, n_failed, n_empty = self._download_many(all_blob_names)
+        frames, n_failed, n_empty = self._download_many(
+            all_blob_names, columns, filters
+        )
         if not frames:
             self._warn_empty(
                 "load_files_by_time_range_and_uuids",
@@ -506,6 +570,7 @@ class AzureBlobParquetLoader:
                 f"rows ({n_failed} failed to download/parse, {n_empty} had no "
                 f"rows). {search}, {uuid_note}. Check read permission and file "
                 f"validity.{fallback_note}",
+                filters=filters,
             )
             return pd.DataFrame()
         return pd.concat(frames, ignore_index=True)
@@ -515,6 +580,8 @@ class AzureBlobParquetLoader:
         start_timestamp: str | pd.Timestamp,
         end_timestamp: str | pd.Timestamp,
         uuid_list: List[str],
+        columns: Optional[List[str]] = None,
+        filters: Optional[list] = None,
     ) -> Iterator[Tuple[str, pd.DataFrame]]:
         """
         Stream parquet DataFrames for given UUIDs within [start, end] hours.
@@ -522,6 +589,11 @@ class AzureBlobParquetLoader:
         Yields (blob_name, DataFrame) as they arrive. Listing is authoritative
         when available; direct blob names are used only as a fallback when
         listing fails (see :meth:`load_files_by_time_range_and_uuids`).
+
+        Args:
+            columns: Subset of parquet columns to read; None reads all columns.
+            filters: pyarrow-style predicate pushdown in DNF form, e.g.
+                ``[("value_double", ">", 0.0)]``; None reads all rows.
         """
         if not uuid_list:
             return
@@ -580,7 +652,9 @@ class AzureBlobParquetLoader:
             try:
                 while len(futures) < self.max_workers:
                     n = next(names_iter)
-                    futures[executor.submit(self._download_parquet, n)] = n
+                    futures[
+                        executor.submit(self._download_parquet, n, columns, filters)
+                    ] = n
             except StopIteration:
                 pass
 
@@ -598,7 +672,9 @@ class AzureBlobParquetLoader:
                 try:
                     while len(futures) < self.max_workers:
                         n = next(names_iter)
-                        futures[executor.submit(self._download_parquet, n)] = n
+                        futures[
+                            executor.submit(self._download_parquet, n, columns, filters)
+                        ] = n
                 except StopIteration:
                     pass
 
@@ -609,6 +685,7 @@ class AzureBlobParquetLoader:
                 f"{len(variants_ordered)} UUID variant(s) searched. Check that "
                 "the UUIDs, hour_pattern and time range match the stored "
                 f"data.{fallback_note}",
+                filters=filters,
             )
 
     def list_structure(
