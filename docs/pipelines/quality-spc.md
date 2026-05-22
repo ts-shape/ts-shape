@@ -1,6 +1,6 @@
 # Quality & SPC Pipeline
 
-> From Azure Blob measurement data to outlier detection, SPC rule checks, tolerance analysis, and capability trending (Cp/Cpk).
+> From Azure Blob measurement data to outlier detection, SPC rule checks, tolerance analysis, and capability trending — in one reusable `Pipeline`.
 
 **Signals needed:**
 
@@ -10,255 +10,232 @@
 | Upper spec limit | `temperature_usl` | `value_double` | Upper specification limit (or provide as fixed value) |
 | Lower spec limit | `temperature_lsl` | `value_double` | Lower specification limit (or provide as fixed value) |
 
-**Modules used:** [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [SignalQualityEvents](../reference/ts_shape/events/quality/signal_quality.md) | [DoubleFilter](../reference/ts_shape/transform/filter/numeric_filter.md) | [OutlierDetectionEvents](../reference/ts_shape/events/quality/outlier_detection.md) | [StatisticalProcessControlRuleBased](../reference/ts_shape/events/quality/statistical_process_control.md) | [ToleranceDeviationEvents](../reference/ts_shape/events/quality/tolerance_deviation.md) | [CapabilityTrendingEvents](../reference/ts_shape/events/quality/capability_trending.md)
+**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [DoubleFilter](../reference/ts_shape/transform/filter/numeric_filter.md) | [SignalQualityEvents](../reference/ts_shape/events/quality/signal_quality.md) | [OutlierDetectionEvents](../reference/ts_shape/events/quality/outlier_detection.md) | [StatisticalProcessControlRuleBased](../reference/ts_shape/events/quality/statistical_process_control.md) | [ToleranceDeviationEvents](../reference/ts_shape/events/quality/tolerance_deviation.md) | [CapabilityTrendingEvents](../reference/ts_shape/events/quality/capability_trending.md)
 
 ---
 
 ## Prerequisites
 
 ```python
+# -- The only things you customize --
 AZURE_CONNECTION = "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=..."
 CONTAINER = "timeseries-data"
 
-# Measurement signal + spec limits
 UUID_LIST = [
     "temperature_actual",   # double: process measurement
     "temperature_usl",      # double: upper spec limit (if stored as signal)
     "temperature_lsl",      # double: lower spec limit (if stored as signal)
 ]
 
-# Or use fixed spec limits instead of UUID signals:
-UPPER_SPEC = 105.0   # engineering specification
-LOWER_SPEC = 95.0
-
 START = "2024-06-01"
 END   = "2024-06-08"
 
 METADATA_PATH = "config/signal_metadata.json"
+
+UPPER_SPEC = 105.0   # engineering specification
+LOWER_SPEC = 95.0
 ```
+
+!!! info "New to `Pipeline`?"
+    Read the [Pipeline guide](../guides/pipeline-builder.md) first — it explains
+    `.transform` vs `.detect` steps and the debugging tools used below.
 
 ---
 
-## Step 1: Load Data from Azure
+## Step 1: Load the data
+
+The Azure loader produces the DataFrame the pipeline runs on, so it stays
+outside the pipeline. Metadata is loaded the same way.
 
 ```python
 from ts_shape.loader.timeseries.azure_blob_loader import AzureBlobParquetLoader
+from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
 
 loader = AzureBlobParquetLoader(
     connection_string=AZURE_CONNECTION,
     container_name=CONTAINER,
 )
-
 df = loader.load_files_by_time_range_and_uuids(
     start_timestamp=START,
     end_timestamp=END,
     uuid_list=UUID_LIST,
 )
 
+meta_df = MetadataJsonLoader.from_file(METADATA_PATH).to_df()
+
 print(f"Loaded {len(df):,} rows, {df['uuid'].nunique()} signals")
 ```
 
 ---
 
-## Step 2: Enrich with Metadata & Tolerances
+## Step 2: Build the pipeline
+
+One `Pipeline` captures the whole workflow. `.transform` steps clean the
+signal; every `.detect` step branches off a quality table.
 
 ```python
-from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
+from ts_shape import Pipeline
 from ts_shape.loader.context.context_enricher import ContextEnricher
-
-meta = MetadataJsonLoader.from_file(METADATA_PATH)
-enricher = ContextEnricher(df)
-
-# Add signal descriptions and units
-df = enricher.enrich_with_metadata(meta.to_df(), columns=["description", "unit"])
-
-# If tolerances are in metadata, add them directly
-# enricher = ContextEnricher(df)
-# df = enricher.enrich_with_tolerances(
-#     tolerance_df,
-#     low_col="low_limit",
-#     high_col="high_limit",
-# )
-```
-
----
-
-## Step 3: Validate Signal Quality
-
-```python
-from ts_shape.events.quality.signal_quality import SignalQualityEvents
-
-sq = SignalQualityEvents(df, signal_uuid="temperature_actual")
-
-# Check for missing data
-missing = sq.detect_missing_data(expected_freq="1s", tolerance_factor=2.0)
-print(f"Data gaps found: {len(missing)}")
-if not missing.empty:
-    print(missing[["start", "end", "gap_duration"]].head())
-
-# Check sampling regularity
-regularity = sq.sampling_regularity(window="1h")
-print(regularity.head())
-
-# Check data completeness
-completeness = sq.data_completeness(expected_freq="1s", window="1h")
-print(f"Average completeness: {completeness['completeness_pct'].mean():.1f}%")
-```
-
-!!! warning "Low completeness = unreliable SPC"
-    If completeness drops below 90%, SPC calculations become unreliable. Investigate data source issues before running control charts.
-
----
-
-## Step 4: Filter and Clean
-
-```python
 from ts_shape.transform.filter.numeric_filter import DoubleFilter
 from ts_shape.transform.harmonization import DataHarmonizer
-
-# Remove NaN values
-df_clean = DoubleFilter.filter_nan_value_double(df, column_name="value_double")
-
-# Detect and fill small gaps
-harmonizer = DataHarmonizer(df_clean, value_column="value_double")
-gaps = harmonizer.detect_gaps(threshold="10s")
-if not gaps.empty:
-    df_clean = harmonizer.fill_gaps(strategy="interpolate", max_gap="30s")
-
-print(f"Clean data: {len(df_clean):,} rows")
-```
-
----
-
-## Step 5: Outlier Detection
-
-```python
+from ts_shape.events.quality.signal_quality import SignalQualityEvents
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
-
-detector = OutlierDetectionEvents(
-    df_clean,
-    value_column="value_double",
-    event_uuid="quality:outlier",
+from ts_shape.events.quality.statistical_process_control import (
+    StatisticalProcessControlRuleBased,
 )
-
-# Z-score for normally distributed signals
-outliers_z = detector.detect_outliers_zscore(threshold=3.0)
-print(f"Z-score outliers: {len(outliers_z)}")
-
-# IQR for skewed distributions
-outliers_iqr = detector.detect_outliers_iqr(threshold=(1.5, 1.5))
-print(f"IQR outliers: {len(outliers_iqr)}")
-```
-
-!!! tip "Choose the right detection method"
-    - **Z-score**: Best for normally distributed signals (most process measurements)
-    - **IQR**: Better for skewed data (flow rates, energy consumption)
-    - **MAD**: Robust against extreme outliers (sensor spikes)
-    - **Isolation Forest**: Complex multivariate patterns
-
----
-
-## Step 6: SPC Rule Checks
-
-```python
-from ts_shape.events.quality.statistical_process_control import StatisticalProcessControlRuleBased
-
-spc = StatisticalProcessControlRuleBased(
-    dataframe=df_clean,
-    value_column="value_double",
-    tolerance_uuid="temperature_usl",    # UUID for tolerance signal
-    actual_uuid="temperature_actual",    # UUID for measurement signal
-    event_uuid="quality:spc_violation",
-)
-
-# Calculate control limits
-limits = spc.calculate_control_limits()
-print("Control limits:")
-print(limits)
-
-# Dynamic control limits (adapts over time)
-dynamic_limits = spc.calculate_dynamic_control_limits(
-    method="moving_range",
-    window=20,
-)
-
-# Detect SPC rule violations (Western Electric Rules)
-violations = spc.detect_violations()
-print(f"SPC violations: {len(violations)}")
-if not violations.empty:
-    print(violations[["systime", "value_double", "rule", "severity"]].head())
-```
-
----
-
-## Step 7: Tolerance Deviation Analysis
-
-```python
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
-
-tolerance = ToleranceDeviationEvents(
-    dataframe=df_clean,
-    tolerance_column="value_double",
-    actual_column="value_double",
-    actual_uuid="temperature_actual",
-    event_uuid="quality:tolerance",
-    upper_tolerance_uuid="temperature_usl",
-    lower_tolerance_uuid="temperature_lsl",
-    warning_threshold=0.8,   # warn at 80% of tolerance band
-)
-
-# Detect out-of-tolerance events
-deviations = tolerance.detect_tolerance_deviations()
-print(f"Out-of-tolerance events: {len(deviations)}")
-
-# Process capability indices
-capability = tolerance.calculate_capability()
-print(f"Cp: {capability['Cp']:.3f}, Cpk: {capability['Cpk']:.3f}")
-```
-
----
-
-## Step 8: Capability Trending
-
-```python
 from ts_shape.events.quality.capability_trending import CapabilityTrendingEvents
 
-cap_trend = CapabilityTrendingEvents(
-    dataframe=df_clean,
-    signal_uuid="temperature_actual",
-    upper_spec=UPPER_SPEC,
-    lower_spec=LOWER_SPEC,
+pipe = (
+    Pipeline(name="quality-spc")
+
+    # -- clean the signal --
+    .transform(lambda df: ContextEnricher(df).enrich_with_metadata(
+        meta_df, columns=["description", "unit"]),
+        name="enrich_metadata")
+    .transform(DoubleFilter, "filter_nan_value_double",
+               column_name="value_double")
+    .detect(DataHarmonizer, "detect_gaps", name="gaps", threshold="10s")
+    .transform(DataHarmonizer, "fill_gaps", strategy="interpolate",
+               max_gap="30s")
+
+    # -- signal quality diagnostics --
+    .detect(SignalQualityEvents, "detect_missing_data", name="missing_data",
+            signal_uuid="temperature_actual", expected_freq="1s",
+            tolerance_factor=2.0)
+    .detect(SignalQualityEvents, "sampling_regularity", name="regularity",
+            signal_uuid="temperature_actual", window="1h")
+    .detect(SignalQualityEvents, "data_completeness", name="completeness",
+            signal_uuid="temperature_actual", window="1h", expected_freq="1s")
+
+    # -- outlier detection --
+    .detect(OutlierDetectionEvents, "detect_outliers_zscore",
+            name="outliers_zscore", value_column="value_double", threshold=3.0)
+    .detect(OutlierDetectionEvents, "detect_outliers_iqr",
+            name="outliers_iqr", value_column="value_double",
+            threshold=(1.5, 1.5))
+
+    # -- SPC rule checks --
+    .detect(StatisticalProcessControlRuleBased, "calculate_control_limits",
+            name="control_limits", value_column="value_double",
+            tolerance_uuid="temperature_usl",
+            actual_uuid="temperature_actual", event_uuid="quality:spc")
+    .detect(StatisticalProcessControlRuleBased,
+            "calculate_dynamic_control_limits", name="dynamic_limits",
+            value_column="value_double", tolerance_uuid="temperature_usl",
+            actual_uuid="temperature_actual", event_uuid="quality:spc",
+            window=20)
+    .detect(StatisticalProcessControlRuleBased, "process", name="violations",
+            value_column="value_double", tolerance_uuid="temperature_usl",
+            actual_uuid="temperature_actual", event_uuid="quality:spc",
+            include_severity=True)
+
+    # -- tolerance & capability --
+    .detect(ToleranceDeviationEvents, "process_and_group_data_with_events",
+            name="tolerance_deviations", tolerance_column="value_double",
+            actual_column="value_double", actual_uuid="temperature_actual",
+            event_uuid="quality:tolerance",
+            upper_tolerance_uuid="temperature_usl",
+            lower_tolerance_uuid="temperature_lsl", warning_threshold=0.8)
+    .detect(CapabilityTrendingEvents, "capability_over_time",
+            name="capability_over_time", signal_uuid="temperature_actual",
+            upper_spec=UPPER_SPEC, lower_spec=LOWER_SPEC, window="4h")
+    .detect(CapabilityTrendingEvents, "detect_capability_drop",
+            name="capability_drops", signal_uuid="temperature_actual",
+            upper_spec=UPPER_SPEC, lower_spec=LOWER_SPEC, window="4h",
+            min_cpk=1.33)
+    .detect(CapabilityTrendingEvents, "capability_forecast",
+            name="capability_forecast", signal_uuid="temperature_actual",
+            upper_spec=UPPER_SPEC, lower_spec=LOWER_SPEC, window="4h",
+            horizon=12, threshold=1.0)
 )
+```
 
-# Cp/Cpk over rolling time windows
-capability_over_time = cap_trend.capability_over_time(window="4h")
-print(capability_over_time.head())
+Each detector's constructor and method keyword arguments are passed flat —
+the pipeline routes them by name. The SPC `process` step applies the Western
+Electric rules; `include_severity=True` adds the `rule` and `severity` columns.
 
-# Alert on capability drops
-drops = cap_trend.detect_capability_drop(threshold=1.33, window="4h")
-print(f"Capability drops (Cpk < 1.33): {len(drops)}")
+!!! tip "Choose the right outlier method"
+    - **Z-score**: normally distributed signals (most process measurements)
+    - **IQR**: skewed data (flow rates, energy consumption)
 
-# Forecast: when will Cpk breach threshold?
-forecast = cap_trend.capability_forecast(
-    threshold=1.0,
-    window="4h",
-    horizon_windows=12,
-)
-print(forecast)
+!!! warning "Low completeness = unreliable SPC"
+    Inspect the `completeness` result first. If completeness drops below 90%,
+    SPC calculations become unreliable — investigate the data source before
+    trusting the control charts.
+
+---
+
+## Step 3: Preview with `describe()`
+
+```python
+print(pipe.describe())
+```
+
+```
+Pipeline 'quality-spc' (16 steps):
+  0. [transform] enrich_metadata
+  1. [transform] filter_nan_value_double  column_name='value_double'
+  2. [detect   ] gaps  threshold='10s'
+  3. [transform] fill_gaps  strategy='interpolate', max_gap='30s'
+  4. [detect   ] missing_data  signal_uuid='temperature_actual', expected_freq='1s', tolerance_factor=2.0
+  5. [detect   ] regularity  signal_uuid='temperature_actual', window='1h'
+  6. [detect   ] completeness  signal_uuid='temperature_actual', window='1h', expected_freq='1s'
+  7. [detect   ] outliers_zscore  value_column='value_double', threshold=3.0
+  8. [detect   ] outliers_iqr  value_column='value_double', threshold=(1.5, 1.5)
+  9. [detect   ] control_limits  value_column='value_double', tolerance_uuid='temperature_usl', actual_uuid='temperature_actual', event_uuid='quality:spc'
+  10. [detect   ] dynamic_limits  value_column='value_double', tolerance_uuid='temperature_usl', actual_uuid='temperature_actual', event_uuid='quality:spc', window=20
+  11. [detect   ] violations  value_column='value_double', tolerance_uuid='temperature_usl', actual_uuid='temperature_actual', event_uuid='quality:spc', include_severity=True
+  12. [detect   ] tolerance_deviations  tolerance_column='value_double', actual_column='value_double', actual_uuid='temperature_actual', event_uuid='quality:tolerance', upper_tolerance_uuid='temperature_usl', lower_tolerance_uuid='temperature_lsl', warning_threshold=0.8
+  13. [detect   ] capability_over_time  signal_uuid='temperature_actual', upper_spec=105.0, lower_spec=95.0, window='4h'
+  14. [detect   ] capability_drops  signal_uuid='temperature_actual', upper_spec=105.0, lower_spec=95.0, window='4h', min_cpk=1.33
+  15. [detect   ] capability_forecast  signal_uuid='temperature_actual', upper_spec=105.0, lower_spec=95.0, window='4h', horizon=12, threshold=1.0
+```
+
+---
+
+## Step 4: Run
+
+```python
+result = pipe.run(df)          # reusable — call .run() on any DataFrame
+
+print(f"Z-score outliers: {len(result.events['outliers_zscore'])}")
+print(f"SPC violations:   {len(result.events['violations'])}")
+
+print(result.events["capability_over_time"])   # Cp/Cpk per 4h window
+print(result.events["capability_drops"])       # windows with Cpk < 1.33
+```
+
+`result.data` holds the cleaned signal after `fill_gaps`; every quality table
+is keyed by its step name in `result.events`.
+
+---
+
+## Step 5: Debug with `run_steps()`
+
+To inspect every intermediate DataFrame, use `run_steps()` instead of `run()`:
+
+```python
+intermediates = pipe.run_steps(df)
+
+for name, step_df in intermediates.items():
+    print(f"{name:22s} -> {step_df.shape[0]:>6} rows x {step_df.shape[1]} cols")
 ```
 
 ---
 
 ## Results
 
-| Output | Description | Use case |
-|--------|-------------|----------|
-| `outliers_z` / `outliers_iqr` | Detected outlier events | Immediate investigation |
+| `result.events` key | Description | Use case |
+|---------------------|-------------|----------|
+| `outliers_zscore` / `outliers_iqr` | Detected outlier events | Immediate investigation |
 | `violations` | SPC rule violations (Western Electric) | Control chart alerts |
-| `deviations` | Out-of-tolerance measurements | Quality escape prevention |
+| `control_limits` / `dynamic_limits` | Static and adaptive control limits | Control charts |
+| `tolerance_deviations` | Out-of-tolerance measurements | Quality escape prevention |
 | `capability_over_time` | Cp/Cpk per window | Capability monitoring |
-| `drops` | Capability degradation alerts | Predictive quality |
-| `forecast` | Cpk trend extrapolation | Maintenance planning |
+| `capability_drops` | Capability degradation alerts | Predictive quality |
+| `capability_forecast` | Cpk trend extrapolation | Maintenance planning |
+| `missing_data` / `regularity` / `completeness` | Signal quality diagnostics | Data trust check |
 
 ---
 

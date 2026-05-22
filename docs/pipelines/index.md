@@ -10,17 +10,20 @@ End-to-end workflows that turn raw Azure timeseries into actionable production i
 
 ## Common Pattern
 
-Every pipeline follows the same flow:
+Every pipeline is a single, reusable [`Pipeline`](../guides/pipeline-builder.md)
+object: data is loaded once, then `.transform` steps clean the signal and
+`.detect` steps branch off KPI tables.
 
 ```mermaid
 graph LR
     A[Azure Blob Storage] --> B[Load by UUIDs + Time Range]
-    B --> C[Enrich with Metadata]
-    C --> D[Validate Data Quality]
-    D --> E[Harmonize & Transform]
-    E --> F[Event Detection / Analytics]
-    F --> G[Results & KPIs]
+    B --> C["Pipeline — .transform steps clean the signal"]
+    C --> D["Pipeline — .detect steps branch off analytics"]
+    D --> E["PipelineResult — .data + .events"]
 ```
+
+See the [Pipeline guide](../guides/pipeline-builder.md) for the step types,
+sentinels, and debugging tools every pipeline below uses.
 
 ---
 
