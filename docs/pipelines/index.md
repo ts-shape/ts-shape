@@ -68,11 +68,11 @@ graph LR
 
     **Signals:** 3 UUIDs
 
--   :material-pipe:{ .lg .middle } **[Feature Pipeline](feature-pipeline.md)**
+-   :material-pipe:{ .lg .middle } **[Pipeline](feature-pipeline.md)**
 
     ---
 
-    Chain filtering, harmonization, segmentation, and feature computation into a single `FeaturePipeline`. From raw timeseries to ML-ready feature tables.
+    Chain transforms, segmentation, feature computation, and detectors into a single reusable `Pipeline`. From raw timeseries to ML-ready feature tables and event logs.
 
     **Signals:** N process parameters + 1 order signal
 

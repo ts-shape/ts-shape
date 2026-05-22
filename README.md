@@ -38,6 +38,7 @@ Optional integrations:
 | Azure AAD + management | `pip install azure-identity azure-mgmt-storage` |
 | S3 proxy access | Included via `s3fs` |
 | TimescaleDB / PostgreSQL | `pip install ts-shape[postgres]` or any SQLAlchemy-compatible driver |
+| Unit conversion (`UnitConverter`) | `pip install ts-shape[units]` (pulls in `pint`) |
 
 ---
 
@@ -183,6 +184,39 @@ batches = BatchTrackingEvents(df, batch_uuid="batch:id")
 batch_list = batches.detect_batches()
 ```
 
+Line & flow analytics for industrial engineers:
+
+```python
+from ts_shape.events.production.line_balancing import LineBalancingEvents
+from ts_shape.events.production.flow_metrics import FlowMetricsEvents
+
+# Line balancing -- station loading, balance efficiency, Yamazumi
+lb = LineBalancingEvents(df, station_uuids={"st1": "Station 1", "st2": "Station 2"})
+balance = lb.balance_metrics(takt_time="55s", window="1h")
+yamazumi = lb.yamazumi(demand=480, available_time="8h")
+
+# Flow metrics -- WIP, throughput, lead time, Little's Law
+flow = FlowMetricsEvents(df, entry_uuid="process:in", exit_uuid="process:out")
+wip = flow.wip_over_time(window="1h")
+summary = flow.flow_summary(value_add_seconds=120, window="1h")
+```
+
+Runtime accounting and unit conversion:
+
+```python
+from ts_shape.events.production.runtime_accounting import RuntimeAccountingEvents
+from ts_shape.transform.calculator.unit_conversion import UnitConverter
+
+# Operating-hours accounting -- run time, starts, longest run, hour-meter
+rt = RuntimeAccountingEvents(df, run_uuid="machine:running")
+summary = rt.runtime_summary()
+meter = rt.operating_hours_meter(window="1h")
+
+# Unit conversion -- backed by pint (pip install ts-shape[units])
+UnitConverter.convert_value(100, "C", "F")            # 212.0
+df_psi = UnitConverter.convert_column(df, "bar", "psi", column_name="value_double")
+```
+
 ### Engineering Events
 Analyse control system behaviour and setpoint responses.
 
@@ -291,6 +325,37 @@ hourly = TimeGroupedStatistics.calculate_statistic(
 extractor = CycleExtractor(df, start_uuid="cycle:trigger")
 cycles = extractor.process_persistent_cycle()
 ```
+
+---
+
+## Composing a Pipeline
+
+`Pipeline` chains transforms and detectors into one reusable definition.
+A `.transform(...)` step's output **replaces** the working signal; a
+`.detect(...)` step's output is **stored** under a name, leaving the signal
+untouched. The choice of `.transform` vs `.detect` is explicit — never inferred.
+
+```python
+from ts_shape import Pipeline
+from ts_shape.transform.calculator.numeric_calc import IntegerCalc
+from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
+
+pipe = (
+    Pipeline(name="sensor-quality")
+    .transform(IntegerCalc, "scale_column", column_name="value_double", factor=0.1)
+    .detect(OutlierDetectionEvents, "detect_outliers_zscore",
+            name="outliers", value_column="value_double", threshold=3.0)
+)
+
+result = pipe.run(df)          # reusable: call .run() on many DataFrames
+result.data                    # final transformed signal
+result.events["outliers"]      # detector output
+result.to_event_log()          # normalized, combined OCEL event log
+```
+
+`Pipeline` also supports `$input` / `$prev` sentinels for steps that need a
+second DataFrame, and `run_steps(df)` to inspect every intermediate. See the
+[Pipeline guide](https://ts-shape.github.io/ts-shape/guides/pipeline-builder/).
 
 ---
 

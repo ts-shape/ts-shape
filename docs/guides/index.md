@@ -105,13 +105,13 @@ Pick the stage that matches where you are in your analysis.
 
     `CycleExtractor` | `SegmentExtractor` | `SegmentProcessor` | `DescriptiveFeatures` | `ProfileComparison`
 
--   :material-pipe:{ .lg .middle } **[Pipeline Builder](pipeline-builder.md)**
+-   :material-pipe:{ .lg .middle } **[Pipeline](pipeline-builder.md)**
 
     ---
 
-    Chain any ts-shape class into a single reproducible pipeline. Understand `add_step` vs `add_instance_step`, wire DataFrames with sentinels, and debug with `describe()` and `run_steps()`.
+    Chain transforms and detectors into one reusable pipeline. Declare `.transform` vs `.detect` steps, wire DataFrames with sentinels, and debug with `describe()` and `run_steps()`.
 
-    `FeaturePipeline` | `add_step` | `add_instance_step` | `$prev` | `$input`
+    `Pipeline` | `.transform` | `.detect` | `$prev` | `$input`
 
 -   :material-chart-bell-curve-cumulative:{ .lg .middle } **[Signal Analytics](statistics.md)**
 

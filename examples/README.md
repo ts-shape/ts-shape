@@ -16,6 +16,8 @@ python examples/quality_events_demo.py
 | `quality_events_demo.py` | Quality pack — outlier detection, SPC, tolerance deviation |
 | `production_events_demo.py` | Production pack — machine state, throughput, OEE, alarms, batches |
 | `production_tracking_demo.py` | Daily production tracking — parts, cycles, downtime, shifts |
+| `line_flow_analytics_demo.py` | Line balancing & takt, flow metrics & Little's Law |
+| `unit_runtime_demo.py` | Unit conversion (pint) and runtime / operating-hours accounting |
 | `maintenance_events_demo.py` | Maintenance pack — degradation, failure prediction, vibration |
 | `energy_events_demo.py` | Energy pack — consumption, efficiency, carbon intensity, idle energy |
 | `correlation_events_demo.py` | Correlation pack — signal and anomaly correlation |
@@ -27,6 +29,7 @@ python examples/quality_events_demo.py
 | Script | What it shows |
 |--------|---------------|
 | `loader_usage_demo.py` | Loading timeseries + metadata from Parquet / JSON |
+| `pipeline_demo.py` | Chaining transforms + detectors with the `Pipeline` orchestrator |
 | `transform_operations_demo.py` | Filtering, calculations, timezone shifts |
 | `features_statistics_demo.py` | Feature tables and statistics |
 | `statistics_demo.py` | Numeric / string / boolean / timestamp statistics |

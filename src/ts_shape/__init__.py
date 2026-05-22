@@ -51,6 +51,8 @@ _LAZY: dict[str, str] = {
     "DowntimeTracking": "ts_shape.events.production.downtime_tracking",
     "DutyCycleEvents": "ts_shape.events.production.duty_cycle",
     "FlowConstraintEvents": "ts_shape.events.production.flow_constraints",
+    "FlowMetricsEvents": "ts_shape.events.production.flow_metrics",
+    "LineBalancingEvents": "ts_shape.events.production.line_balancing",
     "LineThroughputEvents": "ts_shape.events.production.line_throughput",
     "LongDowntimeEvents": "ts_shape.events.production.long_downtime_events",
     "MachineStateEvents": "ts_shape.events.production.machine_state",
@@ -67,6 +69,7 @@ _LAZY: dict[str, str] = {
     "QualityTracking": "ts_shape.events.production.quality_tracking",
     "ReworkTracking": "ts_shape.events.production.rework_tracking",
     "RoutingTraceabilityEvents": "ts_shape.events.production.routing_traceability",
+    "RuntimeAccountingEvents": "ts_shape.events.production.runtime_accounting",
     "ScrapTracking": "ts_shape.events.production.scrap_tracking",
     "SetupTimeTracking": "ts_shape.events.production.setup_time_tracking",
     "ShiftHandoverReport": "ts_shape.events.production.shift_handover",
@@ -119,6 +122,8 @@ _LAZY: dict[str, str] = {
     # -- top-level utilities --------------------------------------------
     "list_detectors": "ts_shape.catalog",
     "make_timeseries": "ts_shape.datasets",
+    "UnitConverter": "ts_shape.transform.calculator.unit_conversion",
+    "Pipeline": "ts_shape.pipeline",
 }
 
 # The eventlog package re-exports its whole public surface from its own

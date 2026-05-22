@@ -23,13 +23,14 @@ the right one based on the complexity of the operation:
 - Examples: ``DataHarmonizer``, ``OutlierDetectionEvents``,
   ``MachineStateEvents``, ``OEECalculator``, all event classes.
 
-**FeaturePipeline** — use when chaining multiple steps:
+**Pipeline** — use when chaining multiple steps:
 
-- Combines both patterns via ``add_step()`` (classmethods) and
-  ``add_instance_step()`` (instance classes).
-- Supports ``$prev`` / ``$input`` sentinels for multi-DataFrame wiring.
-- Provides logging, timing, and intermediate result capture.
-- See ``ts_shape.features.segment_analysis.feature_pipeline``.
+- Chains transforms (``.transform()``) and detectors (``.detect()``) into one
+  reusable definition; works with both class patterns above and plain
+  callables.
+- Supports ``$prev`` / ``$input`` sentinels for multi-DataFrame wiring and
+  ``run_steps()`` for intermediate-result capture.
+- See ``ts_shape.pipeline``.
 """
 
 import logging

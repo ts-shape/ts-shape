@@ -25,10 +25,5 @@ Classes:
   - compute_long: Metrics per (time_window, uuid, segment) in long format.
   - compute: Wide-format table with one row per time window, columns = {uuid}__{metric}.
 
-- FeaturePipeline: Generic pipeline builder for chaining any ts-shape class methods.
-  - add_step: Register a @classmethod transform (DataFrame in → DataFrame out).
-  - add_instance_step: Register an instance-based class step (DataHarmonizer, etc.).
-  - add_lambda_step: Register a custom callable step.
-  - run: Execute all steps and return the final DataFrame.
-  - run_steps: Execute all steps and return intermediate results for debugging.
+To chain these classes into a reusable pipeline, use ``ts_shape.Pipeline``.
 """

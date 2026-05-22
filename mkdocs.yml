@@ -28,7 +28,7 @@ nav:
   - Data Acquisition: guides/loading.md
   - Signal Conditioning: guides/transforms.md
   - Feature Extraction: guides/feature-extraction.md
-  - Pipeline Builder: guides/pipeline-builder.md
+  - Pipeline: guides/pipeline-builder.md
   - Signal Analytics: guides/statistics.md
   - Quality Control & SPC: guides/quality.md
   - Production Monitoring: guides/production.md
@@ -46,7 +46,7 @@ nav:
   - Downtime Pareto: pipelines/downtime-pareto.md
   - Quality & SPC: pipelines/quality-spc.md
   - Process Engineering: pipelines/process-engineering.md
-  - Feature Pipeline: pipelines/feature-pipeline.md
+  - Feature-Table Pipeline: pipelines/feature-pipeline.md
 - Module Reference:
   - Overview: modules/index.md
   - Quality:
