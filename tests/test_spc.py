@@ -41,8 +41,7 @@ def _spc(values, *, tol_uuid="tol", act_uuid="act", event_uuid="evt"):
     df = pd.DataFrame(
         {
             "uuid": [tol_uuid] * n + [act_uuid] * n,
-            "systime": list(pd.date_range("2024-01-01", periods=n, freq="min"))
-            * 2,
+            "systime": list(pd.date_range("2024-01-01", periods=n, freq="min")) * 2,
             "value_double": [10.0] * n + list(values),
             "is_delta": [True] * (2 * n),
         }

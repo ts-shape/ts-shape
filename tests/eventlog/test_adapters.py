@@ -213,6 +213,8 @@ def test_canonical_severity_column_is_bucketed_without_explicit_field():
     log = to_event_log(legacy, detector="MachineStateEvents.detect_run_idle")
     buckets = log.events[TS_SEVERITY].dropna().tolist()
     assert buckets, "expected non-empty severity column"
-    assert set(buckets) <= {"info", "warn", "critical"}, (
-        f"raw numeric leaked through bucketing: {buckets}"
-    )
+    assert set(buckets) <= {
+        "info",
+        "warn",
+        "critical",
+    }, f"raw numeric leaked through bucketing: {buckets}"

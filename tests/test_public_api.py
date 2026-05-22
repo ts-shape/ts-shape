@@ -32,9 +32,7 @@ def test_headline_classes_reachable_from_top_level():
 
 def test_deep_imports_still_work():
     """The lazy re-exports are additive — deep imports are unchanged."""
-    mod = importlib.import_module(
-        "ts_shape.events.quality.outlier_detection"
-    )
+    mod = importlib.import_module("ts_shape.events.quality.outlier_detection")
     assert hasattr(mod, "OutlierDetectionEvents")
     # The top-level alias is the very same object, not a copy.
     assert ts_shape.OutlierDetectionEvents is mod.OutlierDetectionEvents
@@ -74,12 +72,9 @@ def test_every_registered_detector_is_top_level_exported():
 
     # Resolve which of the "missing" actually have a real source module
     # (and therefore should have been exported).
-    truly_missing = sorted(
-        name for name in missing if _has_source_class(name)
-    )
+    truly_missing = sorted(name for name in missing if _has_source_class(name))
     assert not truly_missing, (
-        "detectors in REGISTRY missing from ts_shape.__all__: "
-        f"{truly_missing}"
+        "detectors in REGISTRY missing from ts_shape.__all__: " f"{truly_missing}"
     )
 
 

@@ -50,13 +50,13 @@ docs = [
     "mkdocs-gen-files",
     "mkdocs-callouts",
     "mkdocstrings[python]>=0.24",
-    "black",
+    "black==26.3.1",
 ]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "black",
-    "ruff",
+    "black==26.3.1",
+    "ruff==0.15.8",
     "pre-commit>=3.0",
     "mypy>=1.0",
     "pint>=0.24",
@@ -89,3 +89,9 @@ source = ["ts_shape"]
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
+
+[tool.black]
+target-version = ["py311"]
+
+[tool.ruff]
+target-version = "py311"

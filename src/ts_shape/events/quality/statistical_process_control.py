@@ -191,9 +191,7 @@ class StatisticalProcessControlRuleBased(Base):
             df["alternating"]
             .rolling(window=14)
             .apply(
-                lambda x: bool(
-                    not np.isnan(x).any() and np.all(x[1:] != x[:-1])
-                ),
+                lambda x: bool(not np.isnan(x).any() and np.all(x[1:] != x[:-1])),
                 raw=True,
             )
         )
@@ -424,9 +422,7 @@ class StatisticalProcessControlRuleBased(Base):
                 alternating.rolling(window=14).apply(
                     # raw=True passes a NumPy array; an alternating run
                     # means every adjacent sign differs. See rule_4().
-                    lambda x: bool(
-                        not np.isnan(x).any() and np.all(x[1:] != x[:-1])
-                    ),
+                    lambda x: bool(not np.isnan(x).any() and np.all(x[1:] != x[:-1])),
                     raw=True,
                 )
                 == 1
