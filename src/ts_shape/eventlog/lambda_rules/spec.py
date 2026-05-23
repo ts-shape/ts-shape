@@ -27,6 +27,7 @@ _VALID_PACKS: frozenset[str] = frozenset(
         "supplychain",
         "energy",
         "correlation",
+        "development",
     }
 )
 _VALID_ARCHETYPES: frozenset[str] = frozenset(

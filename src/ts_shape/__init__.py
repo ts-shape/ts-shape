@@ -93,6 +93,12 @@ _LAZY: dict[str, str] = {
     "DegradationDetectionEvents": "ts_shape.events.maintenance.degradation_detection",
     "FailurePredictionEvents": "ts_shape.events.maintenance.failure_prediction",
     "VibrationAnalysisEvents": "ts_shape.events.maintenance.vibration_analysis",
+    # -- events.development (product & process R&D) ----------------------
+    "CriticalParameterRankingEvents": "ts_shape.events.development.critical_parameter_ranking",
+    "DesignOfExperimentsEvents": "ts_shape.events.development.design_of_experiments",
+    "DesignSpaceEvents": "ts_shape.events.development.design_space",
+    "GoldenBatchDeviationEvents": "ts_shape.events.development.golden_batch",
+    "RecipePhaseAdherenceEvents": "ts_shape.events.development.recipe_phase_adherence",
     # -- events.energy --------------------------------------------------
     "CarbonIntensityEvents": "ts_shape.events.energy.carbon_intensity",
     "EnergyConsumptionEvents": "ts_shape.events.energy.consumption_analysis",

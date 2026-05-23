@@ -547,7 +547,63 @@ The ten proposed modules (§4) would close these gaps with minimal external depe
 
 ---
 
-## 7. Key Statistics Reference
+## 7. Product & Process Development R&D Methods (`events.development` pack)
+
+The methods proposed in §4 close operational gaps. A separate concern -- and a distinct user persona -- is **product and process development**: the work of formulation scientists, process development engineers, and validation teams that happens **before** (or alongside) commercial production. The same `events.*` architecture supports these workflows with a focused pack named `development`.
+
+### 7.1 Why a Separate Pack
+
+Operations detectors answer "is my running line in spec?" R&D detectors answer different questions:
+
+- "Which of these factor settings actually drives the outcome?" (DOE)
+- "What is the qualified multivariate operating window?" (design space)
+- "Does this batch trajectory match the golden reference?" (golden batch)
+- "Did every recipe phase meet its acceptance criteria?" (recipe adherence)
+- "Which input parameters are statistically linked to yield?" (CPP ranking)
+
+These questions appear in process development for pharma (ICH Q8 design space, IQ/OQ/PQ validation), biotech (golden-batch concept for upstream/downstream), specialty chemicals (campaign DOE for new product introduction), food & beverage (recipe validation), and semiconductors (FOUP-level characterisation runs). The market is smaller than mainline operations but the unit value per detector is higher: a single DOE-effect estimation can save weeks of pilot-plant time.
+
+### 7.2 Implemented Detectors
+
+| Detector | Purpose | Output shape | Methods |
+|---|---|---|---|
+| `DesignOfExperimentsEvents` | Recover DOE run structure from continuous data; estimate per-factor main effects. | interval / static | `detect_runs`, `compute_effects` |
+| `DesignSpaceEvents` | Fit a multivariate qualified operating window (box or convex hull) from R&D data; flag commercial-operation excursions and near-boundary samples. | interval / point | `fit_box`, `fit_hull`, `detect_excursions`, `boundary_proximity` |
+| `GoldenBatchDeviationEvents` | Quantify deviation of a new batch trajectory from a reference (golden) batch using pointwise, area-between-curves, or DTW distance. | summary | `compare`, `phase_breakdown` |
+| `RecipePhaseAdherenceEvents` | Evaluate batch recipe phases against a declarative spec (duration / hold value / ramp rate / peak / trough). | interval | `evaluate` |
+| `CriticalParameterRankingEvents` | Rank candidate input parameters by their statistical association with a quality outcome (Pearson / Spearman / one-way ANOVA). | static | `rank`, `top_drivers` |
+
+### 7.3 Design Choices
+
+- **Zero-ML, scipy-only** -- consistent with the wider ts-shape philosophy. DTW is a pure-numpy implementation with a Sakoe-Chiba band; ANOVA and correlation calls go through `scipy.stats`; the convex hull uses `scipy.spatial.ConvexHull`.
+- **No new schema** -- every method returns canonical `point`, `interval`, `summary`, or `static` shapes via the same `_output.py` helpers used by the other 7 packs.
+- **Compositional with existing detectors** -- `RecipePhaseAdherenceEvents` builds on the same phase-segmentation idea as `BatchTrackingEvents`; `DesignSpaceEvents` complements the univariate `ProcessWindowEvents`; `GoldenBatchDeviationEvents` complements the cross-segment clustering in `features.segment_analysis.ProfileComparison`.
+- **Not duplicated work** -- step-response characterisation (time constant, overshoot, rise time, settling time) already lives in `SetpointChangeEvents` and is intentionally not re-implemented in this pack.
+
+### 7.4 Gaps Closed
+
+| R&D gap | Coverage before | Coverage now |
+|---|---|---|
+| DOE run segmentation from continuous data | none | `DesignOfExperimentsEvents.detect_runs` |
+| Per-factor effect estimation | none | `DesignOfExperimentsEvents.compute_effects` |
+| Multivariate design-space monitoring | univariate only (`ProcessWindowEvents`) | `DesignSpaceEvents` (box + hull) |
+| Golden-batch trajectory comparison | clustering only (`ProfileComparison`) | `GoldenBatchDeviationEvents` |
+| Recipe-phase spec compliance | phase segmentation only (`BatchTrackingEvents`) | `RecipePhaseAdherenceEvents` |
+| Outcome-driven CPP identification | signal-vs-signal correlation only (`AnomalyCorrelationEvents`) | `CriticalParameterRankingEvents` |
+
+### 7.5 Future Extensions (not in scope)
+
+Methods deliberately left out of the initial pack but worth revisiting:
+
+- **Higher-order effect estimation** (two-way interactions, response surface fitting via least-squares).
+- **Bayesian online change-point detection** for run-segmentation when factor changes are not stepwise.
+- **Process validation IQ/OQ/PQ workflow** -- requires a richer notion of "validation campaign" beyond per-run aggregation.
+- **Multivariate SPC (Hotelling T²)** -- proposed in §4 under the operations roadmap; would also serve R&D characterisation studies.
+- **Accelerated life test / Weibull fitting** -- niche but high-value in reliability engineering R&D.
+
+---
+
+## 8. Key Statistics Reference
 
 | Metric | Value | Source |
 |---|---|---|
