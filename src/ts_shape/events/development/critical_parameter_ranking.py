@@ -90,7 +90,14 @@ class CriticalParameterRankingEvents(Base):
         """
         from scipy import stats  # local import: keeps top-level import cheap
 
-        cols = ["parameter", "method", "statistic", "p_value", "abs_effect_size", "rank"]
+        cols = [
+            "parameter",
+            "method",
+            "statistic",
+            "p_value",
+            "abs_effect_size",
+            "rank",
+        ]
         if outcome_column not in per_run_df.columns:
             raise ValueError(
                 f"Outcome column {outcome_column!r} missing from per_run_df; "
@@ -133,7 +140,9 @@ class CriticalParameterRankingEvents(Base):
                     bins = pd.qcut(x_arr, q=anova_bins, labels=False, duplicates="drop")
                 except ValueError:
                     continue
-                groups = [y_arr[bins == b] for b in np.unique(bins) if (bins == b).any()]
+                groups = [
+                    y_arr[bins == b] for b in np.unique(bins) if (bins == b).any()
+                ]
                 groups = [g for g in groups if len(g) >= 2]
                 if len(groups) < 2:
                     continue

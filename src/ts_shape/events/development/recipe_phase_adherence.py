@@ -74,8 +74,14 @@ class RecipePhaseAdherenceEvents(Base):
         if sel.empty:
             return pd.DataFrame(columns=["start", "end", "phase"])
         # Phase name lives in value_string if present, else value_column.
-        phase_col = "value_string" if "value_string" in sel.columns else self.value_column
-        sel = sel[[self.time_column, phase_col]].sort_values(self.time_column).reset_index(drop=True)
+        phase_col = (
+            "value_string" if "value_string" in sel.columns else self.value_column
+        )
+        sel = (
+            sel[[self.time_column, phase_col]]
+            .sort_values(self.time_column)
+            .reset_index(drop=True)
+        )
         sel = sel.dropna(subset=[phase_col])
         if sel.empty:
             return pd.DataFrame(columns=["start", "end", "phase"])

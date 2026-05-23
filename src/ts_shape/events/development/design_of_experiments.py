@@ -258,7 +258,7 @@ class DesignOfExperimentsEvents(Base):
             if statistic == "min":
                 return float(window.min())
             if statistic == "settled":
-                tail = window.iloc[max(0, int(len(window) * 2 / 3)):]
+                tail = window.iloc[max(0, int(len(window) * 2 / 3)) :]
                 return float(tail.mean()) if len(tail) else float(window.mean())
             raise ValueError(f"Unknown statistic: {statistic!r}")
 
@@ -286,9 +286,11 @@ class DesignOfExperimentsEvents(Base):
                         "level": level,
                         "n_runs": int(len(group)),
                         "response_mean": response_mean,
-                        "response_std": float(group["_response"].std(ddof=1))
-                        if len(group) > 1
-                        else 0.0,
+                        "response_std": (
+                            float(group["_response"].std(ddof=1))
+                            if len(group) > 1
+                            else 0.0
+                        ),
                         "main_effect": response_mean - grand_mean,
                     }
                 )

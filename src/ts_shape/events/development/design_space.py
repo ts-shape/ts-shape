@@ -91,7 +91,9 @@ class DesignSpaceEvents(Base):
     # Fitting
     # ------------------------------------------------------------------
 
-    def fit_box(self, quantiles: tuple[float, float] = (0.05, 0.95)) -> DesignSpaceEvents:
+    def fit_box(
+        self, quantiles: tuple[float, float] = (0.05, 0.95)
+    ) -> DesignSpaceEvents:
         """Fit per-axis bounds from the qualification data.
 
         Args:
@@ -216,7 +218,9 @@ class DesignSpaceEvents(Base):
                     "excursion_mode": mode,
                 }
             )
-        return pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return (
+            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        )
 
     def boundary_proximity(
         self,

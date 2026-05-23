@@ -20,7 +20,6 @@ from ts_shape.events.development import (
     RecipePhaseAdherenceEvents,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -64,14 +63,22 @@ class TestDesignOfExperimentsEvents:
         per_run = 4
         n_runs = 4
         t = pd.date_range("2024-01-01", periods=per_run * n_runs, freq="1min")
-        f1 = np.concatenate([
-            np.full(per_run, 10.0), np.full(per_run, 10.0),
-            np.full(per_run, 20.0), np.full(per_run, 20.0),
-        ])
-        f2 = np.concatenate([
-            np.full(per_run, 1.0), np.full(per_run, 2.0),
-            np.full(per_run, 2.0), np.full(per_run, 3.0),
-        ])
+        f1 = np.concatenate(
+            [
+                np.full(per_run, 10.0),
+                np.full(per_run, 10.0),
+                np.full(per_run, 20.0),
+                np.full(per_run, 20.0),
+            ]
+        )
+        f2 = np.concatenate(
+            [
+                np.full(per_run, 1.0),
+                np.full(per_run, 2.0),
+                np.full(per_run, 2.0),
+                np.full(per_run, 3.0),
+            ]
+        )
         # Response = 2*F1 + 5*F2, so F2 has the larger main effect.
         response = 2.0 * f1 + 5.0 * f2
 
@@ -226,9 +233,7 @@ class TestGoldenBatchDeviationEvents:
 
         # Candidate batch is the golden trace shifted up by 5.
         t = pd.date_range("2024-02-01", periods=128, freq="1min")
-        v = (
-            np.concatenate([np.linspace(20.0, 80.0, 64), np.full(64, 80.0)]) + 5.0
-        )
+        v = np.concatenate([np.linspace(20.0, 80.0, 64), np.full(64, 80.0)]) + 5.0
         cand = _make_long_df(t, v, "sig:temp")
 
         out = det.compare(cand, mode="pointwise")
@@ -353,15 +358,16 @@ class TestCriticalParameterRankingEvents:
         x_weak = rng.normal(size=n)
         noise = rng.normal(scale=0.5, size=n)
         outcome = 3.0 * x_strong + 0.1 * x_weak + noise
-        return pd.DataFrame(
-            {"strong": x_strong, "weak": x_weak, "yield": outcome}
-        )
+        return pd.DataFrame({"strong": x_strong, "weak": x_weak, "yield": outcome})
 
     def test_rank_orders_strong_first_with_pearson(self):
         runs = self._per_run_table()
         det = CriticalParameterRankingEvents(pd.DataFrame())
         out = det.rank(
-            runs, candidate_columns=["strong", "weak"], outcome_column="yield", method="pearson"
+            runs,
+            candidate_columns=["strong", "weak"],
+            outcome_column="yield",
+            method="pearson",
         )
         assert list(out["parameter"])[0] == "strong"
         assert out.iloc[0]["abs_effect_size"] > out.iloc[1]["abs_effect_size"]
@@ -383,7 +389,20 @@ class TestCriticalParameterRankingEvents:
             {
                 "x": [0.0, 0.1, 0.2, 1.0, 1.1, 1.2, 2.0, 2.1, 2.2, 3.0, 3.1, 3.2],
                 "noise": np.random.default_rng(0).normal(size=12),
-                "yield": [10, 10.2, 9.8, 20, 19.7, 20.3, 30, 30.2, 29.8, 40, 40.1, 39.9],
+                "yield": [
+                    10,
+                    10.2,
+                    9.8,
+                    20,
+                    19.7,
+                    20.3,
+                    30,
+                    30.2,
+                    29.8,
+                    40,
+                    40.1,
+                    39.9,
+                ],
             }
         )
         det = CriticalParameterRankingEvents(pd.DataFrame())
@@ -413,9 +432,7 @@ class TestCriticalParameterRankingEvents:
         runs = self._per_run_table()
         det = CriticalParameterRankingEvents(pd.DataFrame())
         with pytest.raises(ValueError):
-            det.rank(
-                runs, candidate_columns=["strong"], outcome_column="not-a-column"
-            )
+            det.rank(runs, candidate_columns=["strong"], outcome_column="not-a-column")
 
     def test_unknown_method_raises(self):
         runs = self._per_run_table()

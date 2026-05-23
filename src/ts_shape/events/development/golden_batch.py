@@ -238,7 +238,9 @@ class GoldenBatchDeviationEvents(Base):
             return pd.DataFrame(columns=cols)
 
         # Determine phase intervals from the phase signal.
-        phase_col = "value_string" if "value_string" in phase_df.columns else self.value_column
+        phase_col = (
+            "value_string" if "value_string" in phase_df.columns else self.value_column
+        )
         ph = (
             phase_df[phase_df["uuid"] == phase_uuid][[self.time_column, phase_col]]
             .copy()
@@ -252,7 +254,11 @@ class GoldenBatchDeviationEvents(Base):
         ph["_change"] = (ph[phase_col] != ph[phase_col].shift()).cumsum()
         intervals = (
             ph.groupby("_change")
-            .agg(start=(self.time_column, "first"), end=(self.time_column, "last"), phase=(phase_col, "first"))
+            .agg(
+                start=(self.time_column, "first"),
+                end=(self.time_column, "last"),
+                phase=(phase_col, "first"),
+            )
             .reset_index(drop=True)
         )
 
@@ -278,7 +284,8 @@ class GoldenBatchDeviationEvents(Base):
             if len(window) < 2:
                 continue
             candidate = self._resample_to_grid(
-                window[self.time_column], window[self.value_column].to_numpy(dtype=float)
+                window[self.time_column],
+                window[self.value_column].to_numpy(dtype=float),
             )
             residual = candidate - self._ref_resampled
             grid = np.linspace(0.0, 1.0, self.n_resample)
