@@ -89,7 +89,7 @@ class ValueDistributionEvents(Base):
             global_std = 1.0
         sep_abs = min_separation * global_std
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         prev_mode = None
 
         for ts, group in sig.resample(window):
@@ -147,7 +147,7 @@ class ValueDistributionEvents(Base):
         density = kde(x_grid)
 
         # Find local maxima
-        peaks: List[int] = []
+        peaks: list[int] = []
         for i in range(1, len(density) - 1):
             if density[i] > density[i - 1] and density[i] > density[i + 1]:
                 peaks.append(i)
@@ -235,7 +235,7 @@ class ValueDistributionEvents(Base):
             .set_index(self.time_column)
         )
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, group in sig.resample(freq):
             vals = group[self.value_column].dropna()
             if len(vals) < min_samples:
@@ -296,13 +296,13 @@ class ValueDistributionEvents(Base):
             .set_index(self.time_column)
         )
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, group in sig.resample(freq):
             vals = group[self.value_column].dropna()
             if len(vals) < 2:
                 continue
 
-            row: Dict[str, Any] = {
+            row: dict[str, Any] = {
                 "start": ts,
                 "n_samples": len(vals),
             }
@@ -323,7 +323,7 @@ class ValueDistributionEvents(Base):
     @staticmethod
     def _find_modes(
         values: np.ndarray, max_modes: int, min_separation: float
-    ) -> List[float]:
+    ) -> list[float]:
         """Find up to *max_modes* peaks in the value distribution via KDE."""
         if len(values) < 5:
             return []
@@ -337,7 +337,7 @@ class ValueDistributionEvents(Base):
         density = kde(x_grid)
 
         # Local maxima
-        peaks: List[int] = []
+        peaks: list[int] = []
         for i in range(1, len(density) - 1):
             if density[i] > density[i - 1] and density[i] > density[i + 1]:
                 peaks.append(i)
@@ -347,7 +347,7 @@ class ValueDistributionEvents(Base):
 
         # Sort by density height, keep modes separated by min_separation
         peaks.sort(key=lambda idx: density[idx], reverse=True)
-        modes: List[float] = []
+        modes: list[float] = []
         for p in peaks:
             val = float(x_grid[p])
             if all(abs(val - m) >= min_separation for m in modes):

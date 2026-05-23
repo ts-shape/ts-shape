@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 _Number = Union[int, float, str]
 
 
-def _to_seconds(value: Optional[_Number]) -> Optional[float]:
+def _to_seconds(value: _Number | None) -> float | None:
     """Coerce a duration (seconds number or pandas offset string) to seconds."""
     if value is None:
         return None
@@ -220,7 +220,7 @@ class FlowMetricsEvents(Base):
     def flow_summary(
         self,
         *,
-        value_add_seconds: Optional[_Number] = None,
+        value_add_seconds: _Number | None = None,
         window: str = "1h",
     ) -> pd.DataFrame:
         """Combined flow metrics with a Little's Law consistency check.

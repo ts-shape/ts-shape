@@ -73,15 +73,15 @@ class AzureBlobEnergyLoader:
 
     def __init__(
         self,
-        container_name: Optional[str] = None,
+        container_name: str | None = None,
         *,
-        connection_string: Optional[str] = None,
-        account_url: Optional[str] = None,
-        credential: Optional[object] = None,
-        sas_url: Optional[str] = None,
+        connection_string: str | None = None,
+        account_url: str | None = None,
+        credential: object | None = None,
+        sas_url: str | None = None,
         prefix: str = "",
         max_workers: int = 8,
-        thousands: Optional[str] = None,
+        thousands: str | None = None,
         decimal: str = ".",
     ) -> None:
         """
@@ -160,11 +160,11 @@ class AzureBlobEnergyLoader:
         account_name: str,
         container_name: str,
         *,
-        credential: Optional[object] = None,
+        credential: object | None = None,
         endpoint_suffix: str = "blob.core.windows.net",
         prefix: str = "",
         max_workers: int = 8,
-        thousands: Optional[str] = None,
+        thousands: str | None = None,
         decimal: str = ".",
     ) -> "AzureBlobEnergyLoader":
         """
@@ -227,7 +227,7 @@ class AzureBlobEnergyLoader:
         self,
         start: Union[str, "pd.Timestamp"],
         end: Union[str, "pd.Timestamp"],
-        series_ids: Optional[List[str]] = None,
+        series_ids: list[str] | None = None,
     ) -> pd.DataFrame:
         """
         Load all CSV files in ``csv/YYYY/MM/DD/`` for each date in [start, end].
@@ -246,9 +246,9 @@ class AzureBlobEnergyLoader:
 
     def load_by_series_ids(
         self,
-        series_ids: List[str],
-        start: Optional[Union[str, "pd.Timestamp"]] = None,
-        end: Optional[Union[str, "pd.Timestamp"]] = None,
+        series_ids: list[str],
+        start: Union[str, "pd.Timestamp"] | None = None,
+        end: Union[str, "pd.Timestamp"] | None = None,
     ) -> pd.DataFrame:
         """
         Load specific series by ID.
@@ -284,8 +284,8 @@ class AzureBlobEnergyLoader:
         self,
         start: Union[str, "pd.Timestamp"],
         end: Union[str, "pd.Timestamp"],
-        series_ids: Optional[List[str]] = None,
-    ) -> Iterator[Tuple[str, pd.DataFrame]]:
+        series_ids: list[str] | None = None,
+    ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream CSV files one at a time as (series_id, DataFrame) tuples.
 
@@ -306,7 +306,7 @@ class AzureBlobEnergyLoader:
             if df is not None and not df.empty:
                 yield self._series_id_from_blob_name(blob_name), df
 
-    def list_series(self) -> List[str]:
+    def list_series(self) -> list[str]:
         """
         List all series IDs present in the blob store by scanning ``csv/``.
 
@@ -335,7 +335,7 @@ class AzureBlobEnergyLoader:
         self,
         start: Union[str, "pd.Timestamp"],
         end: Union[str, "pd.Timestamp"],
-    ) -> List[str]:
+    ) -> list[str]:
         """Return list of day-level blob prefixes: csv/YYYY/MM/DD/"""
         dates = pd.date_range(
             start=pd.to_datetime(start).normalize(),
@@ -353,11 +353,11 @@ class AzureBlobEnergyLoader:
         self,
         start: Union[str, "pd.Timestamp"],
         end: Union[str, "pd.Timestamp"],
-        ids_set: Optional[set],
-    ) -> List[str]:
+        ids_set: set | None,
+    ) -> list[str]:
         """List CSV blob names across the date range, optionally filtered by ids_set."""
         day_prefixes = self._build_date_paths(start, end)
-        blob_names: List[str] = []
+        blob_names: list[str] = []
         for pfx in day_prefixes:
             for blob in self.container_client.list_blobs(name_starts_with=pfx):
                 name: str = blob.name
@@ -376,7 +376,7 @@ class AzureBlobEnergyLoader:
         """Extract series_id from blob path: csv/2026/01/13/sensor_001.csv → sensor_001"""
         return PurePosixPath(blob_name).stem
 
-    def _download_csv(self, blob_name: str) -> Optional[pd.DataFrame]:
+    def _download_csv(self, blob_name: str) -> pd.DataFrame | None:
         """Download a single CSV blob and normalize to standard schema. Returns None on error."""
         try:
             downloader = self.container_client.download_blob(blob_name)
@@ -410,12 +410,12 @@ class AzureBlobEnergyLoader:
         out["is_delta"] = True
         return out.sort_values("systime").reset_index(drop=True)
 
-    def _download_and_concat(self, blob_names: List[str]) -> pd.DataFrame:
+    def _download_and_concat(self, blob_names: list[str]) -> pd.DataFrame:
         """Download a list of CSV blobs concurrently and concatenate results."""
         if not blob_names:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)
 
-        frames: List[pd.DataFrame] = []
+        frames: list[pd.DataFrame] = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
                 executor.submit(self._download_csv, name): name for name in blob_names

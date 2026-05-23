@@ -73,7 +73,7 @@ class BooleanStatistics(Base):
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
-    ) -> Dict[str, Union[int, float, bool]]:
+    ) -> dict[str, Union[int, float, bool]]:
         """Returns a summary of boolean statistics for the specified column as a dictionary."""
         return {
             "true_count": cls.count_true(dataframe, column_name),

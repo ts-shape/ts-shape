@@ -26,7 +26,7 @@ class SegmentExtractor(Base):
         uuid_column: str = "uuid",
         value_column: str = "value_string",
         time_column: str = "systime",
-        min_duration: Optional[str] = None,
+        min_duration: str | None = None,
     ) -> pd.DataFrame:
         """Detect value transitions and extract time ranges per segment.
 

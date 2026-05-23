@@ -28,8 +28,8 @@ class TimeWindowedFeatureTable(Base):
         time_column: str = "systime",
         uuid_column: str = "uuid",
         value_column: str = "value_double",
-        segment_column: Optional[str] = "segment_value",
-        metrics: Optional[List[str]] = None,
+        segment_column: str | None = "segment_value",
+        metrics: list[str] | None = None,
     ) -> pd.DataFrame:
         """Compute statistical metrics per UUID per time window (long format).
 
@@ -122,8 +122,8 @@ class TimeWindowedFeatureTable(Base):
         time_column: str = "systime",
         uuid_column: str = "uuid",
         value_column: str = "value_double",
-        segment_column: Optional[str] = "segment_value",
-        metrics: Optional[List[str]] = None,
+        segment_column: str | None = "segment_value",
+        metrics: list[str] | None = None,
         column_separator: str = "__",
     ) -> pd.DataFrame:
         """Compute a wide-format feature table with one row per time window.

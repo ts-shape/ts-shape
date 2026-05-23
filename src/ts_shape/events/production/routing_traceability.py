@@ -80,8 +80,8 @@ class RoutingTraceabilityEvents(Base):
         id_uuid: str,
         routing_uuid: str,
         *,
-        state_map: Optional[Dict[Union[int, float, str], str]] = None,
-        station_map: Optional[Dict[Union[int, float, str], str]] = None,
+        state_map: dict[Union[int, float, str], str] | None = None,
+        station_map: dict[Union[int, float, str], str] | None = None,
         event_uuid: str = "prod:routing_trace",
         id_value_column: str = "value_string",
         routing_value_column: str = "value_integer",
@@ -109,7 +109,7 @@ class RoutingTraceabilityEvents(Base):
         self.id_uuid = id_uuid
         self.routing_uuid = routing_uuid
         # state_map takes priority; fall back to station_map for backwards compat
-        self.state_map: Dict[Union[int, float, str], str] = (
+        self.state_map: dict[Union[int, float, str], str] = (
             state_map or station_map or {}
         )
         self.event_uuid = event_uuid
@@ -243,7 +243,7 @@ class RoutingTraceabilityEvents(Base):
         merged["combo"] = merged["item_id"] + "|" + merged["routing_value"].astype(str)
         merged["group"] = (merged["combo"] != merged["combo"].shift()).cumsum()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in merged.groupby("group"):
             item_id = seg["item_id"].iloc[0]
             routing_val = seg["routing_value"].iloc[0]
@@ -304,7 +304,7 @@ class RoutingTraceabilityEvents(Base):
                 ]
             )
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for item_id, grp in timeline.groupby("item_id"):
             grp = grp.sort_values("start")
             first_seen = grp["start"].iloc[0]

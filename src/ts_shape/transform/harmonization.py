@@ -67,7 +67,7 @@ class DataHarmonizer(Base):
         self,
         freq: str,
         method: str = "linear",
-        fill_limit: Optional[int] = None,
+        fill_limit: int | None = None,
     ) -> pd.DataFrame:
         """Resample to a uniform time grid with interpolation.
 
@@ -121,8 +121,8 @@ class DataHarmonizer(Base):
     def fill_gaps(
         self,
         strategy: str = "interpolate",
-        max_gap: Optional[str] = None,
-        fill_value: Optional[float] = None,
+        max_gap: str | None = None,
+        fill_value: float | None = None,
     ) -> pd.DataFrame:
         """Fill gaps in the wide-format data using the specified strategy.
 
@@ -208,8 +208,8 @@ class DataHarmonizer(Base):
 
     def merge_multi_signals(
         self,
-        uuids: Optional[List[str]] = None,
-        freq: Optional[str] = None,
+        uuids: list[str] | None = None,
+        freq: str | None = None,
         method: str = "linear",
     ) -> pd.DataFrame:
         """End-to-end harmonization: pivot, filter, resample, interpolate.

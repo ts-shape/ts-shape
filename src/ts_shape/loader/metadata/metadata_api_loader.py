@@ -30,11 +30,11 @@ class DatapointAPI:
 
     def __init__(
         self,
-        device_names: List[str],
+        device_names: list[str],
         base_url: str,
         api_token: str,
         output_path: str = "data",
-        required_uuid_list: Optional[List[str]] = None,
+        required_uuid_list: list[str] | None = None,
         filter_enabled: bool = True,
         timeout: int = 30,
     ):
@@ -53,10 +53,10 @@ class DatapointAPI:
         self.api_token = api_token
         self.output_path = output_path
         self.timeout = timeout
-        self.required_uuid_list: List[str] = required_uuid_list or []
+        self.required_uuid_list: list[str] = required_uuid_list or []
         self.filter_enabled = filter_enabled
-        self.device_metadata: Dict[str, pd.DataFrame] = {}
-        self.device_uuids: Dict[str, List[str]] = {}
+        self.device_metadata: dict[str, pd.DataFrame] = {}
+        self.device_uuids: dict[str, list[str]] = {}
         self._headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_token}",
@@ -74,8 +74,8 @@ class DatapointAPI:
         return response.json()
 
     def _filter_by_query(
-        self, records: List[Dict], query: str, fields: List[str]
-    ) -> List[Dict]:
+        self, records: list[dict], query: str, fields: list[str]
+    ) -> list[dict]:
         q = query.lower()
         return [
             r for r in records if any(q in str(r.get(f, "")).lower() for f in fields)
@@ -85,15 +85,15 @@ class DatapointAPI:
     # Core GET methods — one per API level
     # ------------------------------------------------------------------
 
-    def get_datatrons(self) -> List[Dict]:
+    def get_datatrons(self) -> list[dict]:
         """GET /api/datatrons — return all datatrons."""
         return self._get(self._DATATRONS_PATH)
 
-    def get_devices(self, datatron_id) -> List[Dict]:
+    def get_devices(self, datatron_id) -> list[dict]:
         """GET /api/datatrons/{datatron_id}/devices — return all devices for a datatron."""
         return self._get(self._DEVICES_PATH.format(datatron_id=datatron_id))
 
-    def get_datapoints(self, datatron_id, device_id) -> List[Dict]:
+    def get_datapoints(self, datatron_id, device_id) -> list[dict]:
         """GET /api/datatrons/{datatron_id}/devices/{device_id}/data_points."""
         return self._get(
             self._DATAPOINTS_PATH.format(datatron_id=datatron_id, device_id=device_id)
@@ -104,22 +104,22 @@ class DatapointAPI:
     # ------------------------------------------------------------------
 
     def search_datatrons(
-        self, query: str, fields: Optional[List[str]] = None
-    ) -> List[Dict]:
+        self, query: str, fields: list[str] | None = None
+    ) -> list[dict]:
         """Filter datatrons whose fields contain *query* (case-insensitive)."""
         fields = fields or ["name", "serialNumber", "deviceUUID", "model"]
         return self._filter_by_query(self.get_datatrons(), query, fields)
 
     def search_devices(
-        self, datatron_id, query: str, fields: Optional[List[str]] = None
-    ) -> List[Dict]:
+        self, datatron_id, query: str, fields: list[str] | None = None
+    ) -> list[dict]:
         """Filter devices for a datatron whose fields contain *query*."""
         fields = fields or ["name", "serialNumber", "deviceUUID"]
         return self._filter_by_query(self.get_devices(datatron_id), query, fields)
 
     def search_datapoints(
-        self, datatron_id, device_id, query: str, fields: Optional[List[str]] = None
-    ) -> List[Dict]:
+        self, datatron_id, device_id, query: str, fields: list[str] | None = None
+    ) -> list[dict]:
         """Filter datapoints for a device whose fields contain *query*."""
         fields = fields or ["label", "uuid", "unit"]
         return self._filter_by_query(
@@ -130,9 +130,7 @@ class DatapointAPI:
     # Cross-hierarchy find methods — no parent ID needed
     # ------------------------------------------------------------------
 
-    def find_devices(
-        self, query: str, fields: Optional[List[str]] = None
-    ) -> List[Dict]:
+    def find_devices(self, query: str, fields: list[str] | None = None) -> list[dict]:
         """Search all devices across all datatrons.
 
         Each result dict includes an extra ``datatron_id`` key.
@@ -145,8 +143,8 @@ class DatapointAPI:
         return results
 
     def find_datapoints(
-        self, query: str, fields: Optional[List[str]] = None
-    ) -> List[Dict]:
+        self, query: str, fields: list[str] | None = None
+    ) -> list[dict]:
         """Search all datapoints across all datatrons and devices.
 
         Each result dict includes extra ``datatron_id`` and ``device_id`` keys.
@@ -200,7 +198,7 @@ class DatapointAPI:
                 self.device_uuids[device_name] = metadata_df["uuid"].tolist()
                 self._export_json(metadata_df.to_dict(orient="records"), device_name)
 
-    def _export_json(self, data_points: List[Dict], device_name: str) -> None:
+    def _export_json(self, data_points: list[dict], device_name: str) -> None:
         """Write data points to a JSON file for the specified device."""
         file_name = (
             f"{self.output_path}/{device_name.replace(' ', '_')}_data_points.json"
@@ -212,18 +210,18 @@ class DatapointAPI:
     # Public accessors
     # ------------------------------------------------------------------
 
-    def get_all_uuids(self) -> Dict[str, List[str]]:
+    def get_all_uuids(self) -> dict[str, list[str]]:
         """Return ``{device_name: [uuid, ...]}`` — ready for the Azure parquet loader."""
         return self.device_uuids
 
-    def get_all_metadata(self) -> Dict[str, List[Dict]]:
+    def get_all_metadata(self) -> dict[str, list[dict]]:
         """Return ``{device_name: [record, ...]}`` with uuid/label/config columns."""
         return {
             device: metadata.to_dict(orient="records")
             for device, metadata in self.device_metadata.items()
         }
 
-    def display_dataframe(self, device_name: Optional[str] = None) -> None:
+    def display_dataframe(self, device_name: str | None = None) -> None:
         """Log the metadata DataFrame for one device or all devices."""
         if device_name:
             if device_name in self.device_metadata:

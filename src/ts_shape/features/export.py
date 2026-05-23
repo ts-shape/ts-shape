@@ -28,7 +28,7 @@ class FeatureMatrixExporter:
         matrix = FeatureMatrixExporter.to_feature_matrix(df, uuid_col='uuid', value_cols=['value_double'])
     """
 
-    _DEFAULT_AGGS: Dict[str, Callable] = {
+    _DEFAULT_AGGS: dict[str, Callable] = {
         "mean": np.mean,
         "std": np.std,
         "min": np.min,
@@ -40,9 +40,9 @@ class FeatureMatrixExporter:
         cls,
         df: pd.DataFrame,
         uuid_col: str = "uuid",
-        value_cols: Optional[List[str]] = None,
-        agg_funcs: Optional[Dict[str, Union[str, Callable]]] = None,
-        group_col: Optional[str] = None,
+        value_cols: list[str] | None = None,
+        agg_funcs: dict[str, Union[str, Callable]] | None = None,
+        group_col: str | None = None,
     ) -> pd.DataFrame:
         """Pivot a long-format DataFrame into a wide feature matrix.
 
@@ -90,7 +90,7 @@ class FeatureMatrixExporter:
                 f"group_col '{group_col}' not found. Available columns: {list(df.columns)}"
             )
 
-        rows: Dict = {}
+        rows: dict = {}
         if group_col:
             iterator = (
                 ((rk, sig), grp) for (rk, sig), grp in df.groupby([group_col, uuid_col])

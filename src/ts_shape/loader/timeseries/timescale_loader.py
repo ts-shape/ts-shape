@@ -12,8 +12,8 @@ class TimescaleDBDataAccess:
         self,
         start_timestamp: str,
         end_timestamp: str,
-        uuids: List[str],
-        db_config: Dict[str, str],
+        uuids: list[str],
+        db_config: dict[str, str],
     ):
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp

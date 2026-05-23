@@ -109,7 +109,7 @@ class NumericStatistics(Base):
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
-    ) -> Dict[str, Union[float, int]]:
+    ) -> dict[str, Union[float, int]]:
         """Returns a dictionary with comprehensive numeric statistics for the specified column."""
         _series = dataframe[column_name]
         return {

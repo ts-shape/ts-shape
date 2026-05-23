@@ -65,7 +65,7 @@ class SignalQualityEvents(Base):
         expected_td = pd.to_timedelta(expected_freq)
         threshold = expected_td * tolerance_factor
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for i, d in enumerate(diffs):
             gap = pd.Timedelta(d)
             if gap > threshold:
@@ -115,7 +115,7 @@ class SignalQualityEvents(Base):
             sig["interval"].resample(window).agg(["mean", "std", "min", "max", "count"])
         )
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, row in resampled.iterrows():
             if row["count"] < 2 or pd.isna(row["mean"]):
                 continue
@@ -173,7 +173,7 @@ class SignalQualityEvents(Base):
             return pd.DataFrame(columns=cols)
 
         groups = (out_of_range != out_of_range.shift()).cumsum()
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         for _, seg in sig.groupby(groups):
             seg_oor = out_of_range.loc[seg.index]
@@ -234,7 +234,7 @@ class SignalQualityEvents(Base):
 
         counts = sig[self.value_column].resample(window).count()
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, actual in counts.items():
             completeness = min(100.0, round(actual / expected_per_window * 100, 2))
             events.append(

@@ -263,7 +263,7 @@ class StatisticalProcessControlRuleBased(Base):
 
     def _calculate_rule_2_7_8_optimized(
         self, df: pd.DataFrame, limits: pd.DataFrame
-    ) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    ) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
         Optimized calculation for rules 2, 7, and 8 that share common computations.
         Reduces multiple passes through the data by computing related patterns together.
@@ -299,7 +299,7 @@ class StatisticalProcessControlRuleBased(Base):
         return rule_2, rule_7, rule_8
 
     def apply_rules_vectorized(
-        self, selected_rules: Optional[List[str]] = None
+        self, selected_rules: list[str] | None = None
     ) -> pd.DataFrame:
         """
         Applies SPC rules using vectorized operations with optimized multi-rule processing.
@@ -483,7 +483,7 @@ class StatisticalProcessControlRuleBased(Base):
             )
 
     def detect_cusum_shifts(
-        self, target: Optional[float] = None, k: float = 0.5, h: float = 5.0
+        self, target: float | None = None, k: float = 0.5, h: float = 5.0
     ) -> pd.DataFrame:
         """
         Detect process shifts using CUSUM (Cumulative Sum) control chart.
@@ -669,7 +669,7 @@ class StatisticalProcessControlRuleBased(Base):
         return result
 
     def process(
-        self, selected_rules: Optional[List[str]] = None, include_severity: bool = False
+        self, selected_rules: list[str] | None = None, include_severity: bool = False
     ) -> pd.DataFrame:
         """
         Applies the selected SPC rules and generates a DataFrame of events where any rules are violated.

@@ -46,7 +46,7 @@ class WarmUpCoolDownEvents(Base):
 
     def _detect_ramps(
         self, direction: str, min_change: float, min_duration: str = "1m"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Detect monotonic ramp intervals (rising or falling).
 
         Uses a smoothed diff to identify sustained directional movement.
@@ -72,7 +72,7 @@ class WarmUpCoolDownEvents(Base):
             moving = diff < 0
 
         # Intervalize the boolean mask over the diff indices
-        intervals: List[Dict[str, Any]] = []
+        intervals: list[dict[str, Any]] = []
         in_ramp = False
         start_idx = 0
 
@@ -159,7 +159,7 @@ class WarmUpCoolDownEvents(Base):
         if not ramps:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for r in ramps:
             events.append(
                 {
@@ -207,7 +207,7 @@ class WarmUpCoolDownEvents(Base):
         if not ramps:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for r in ramps:
             events.append(
                 {
@@ -291,7 +291,7 @@ class WarmUpCoolDownEvents(Base):
         if not ramps:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for r in ramps:
             mask = sig[self.time_column] >= r["start"]
             segment = sig[mask].reset_index(drop=True)

@@ -166,7 +166,7 @@ class EnergyPerformanceIndicatorEvents(Base):
 
     def enpi_by_hierarchy(
         self,
-        meter_uuids: List[str],
+        meter_uuids: list[str],
         counter_uuid: str,
         *,
         energy_column: str = "value_double",

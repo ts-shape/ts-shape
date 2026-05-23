@@ -52,7 +52,7 @@ class TargetTracking(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
-        shift_definitions: Optional[Dict[str, tuple[str, str]]] = None,
+        shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
@@ -78,7 +78,7 @@ class TargetTracking(Base):
     def compare_to_target(
         self,
         metric_uuid: str,
-        targets: Dict[str, float],
+        targets: dict[str, float],
         *,
         value_column: str = "value_integer",
     ) -> pd.DataFrame:
@@ -217,7 +217,7 @@ class TargetTracking(Base):
         daily_target: float,
         *,
         value_column: str = "value_integer",
-    ) -> Dict[str, Union[float, int]]:
+    ) -> dict[str, Union[float, int]]:
         """How often are targets met?
 
         Args:

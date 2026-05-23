@@ -66,7 +66,7 @@ class AnomalyCorrelationEvents(Base):
 
     def coincident_anomalies(
         self,
-        signal_uuids: List[str],
+        signal_uuids: list[str],
         *,
         z_threshold: float = 3.0,
         coincidence_window: str = "5min",
@@ -106,7 +106,7 @@ class AnomalyCorrelationEvents(Base):
         combined = combined.sort_values(self.time_column)
 
         window_td = pd.to_timedelta(coincidence_window)
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         processed = set()
 
         for i, row in combined.iterrows():
@@ -178,7 +178,7 @@ class AnomalyCorrelationEvents(Base):
             )
 
         max_delay_td = pd.to_timedelta(max_delay)
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         used_followers = set()
 
         for _, lrow in leader_anom.iterrows():
@@ -209,7 +209,7 @@ class AnomalyCorrelationEvents(Base):
 
     def root_cause_ranking(
         self,
-        signal_uuids: List[str],
+        signal_uuids: list[str],
         *,
         z_threshold: float = 3.0,
         max_delay: str = "10min",
@@ -240,8 +240,8 @@ class AnomalyCorrelationEvents(Base):
                 ]
             )
 
-        leader_counts: Dict[str, int] = {uid: 0 for uid in signal_uuids}
-        follower_counts: Dict[str, int] = {uid: 0 for uid in signal_uuids}
+        leader_counts: dict[str, int] = {uid: 0 for uid in signal_uuids}
+        follower_counts: dict[str, int] = {uid: 0 for uid in signal_uuids}
 
         for i, uid_a in enumerate(signal_uuids):
             for uid_b in signal_uuids[i + 1 :]:

@@ -30,8 +30,8 @@ class SensorDriftEvents(Base):
         dataframe: pd.DataFrame,
         signal_uuid: str,
         *,
-        reference_uuid: Optional[str] = None,
-        reference_value: Optional[float] = None,
+        reference_uuid: str | None = None,
+        reference_value: float | None = None,
         value_column: str = "value_double",
         event_uuid: str = "quality:sensor_drift",
         time_column: str = "systime",
@@ -63,7 +63,7 @@ class SensorDriftEvents(Base):
         else:
             self._reference_series = None
 
-    def _get_reference_for_window(self, start, end) -> Optional[float]:
+    def _get_reference_for_window(self, start, end) -> float | None:
         """Get reference value for a time window."""
         if self.reference_value is not None:
             return self.reference_value
@@ -77,7 +77,7 @@ class SensorDriftEvents(Base):
         return None
 
     def detect_zero_drift(
-        self, window: str = "8h", threshold: Optional[float] = None
+        self, window: str = "8h", threshold: float | None = None
     ) -> pd.DataFrame:
         """Track mean offset from baseline per window.
 
@@ -97,9 +97,9 @@ class SensorDriftEvents(Base):
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
 
-        events: List[Dict[str, Any]] = []
-        prev_offset: Optional[float] = None
-        auto_threshold: Optional[float] = None
+        events: list[dict[str, Any]] = []
+        prev_offset: float | None = None
+        auto_threshold: float | None = None
 
         for ts, group in sig.resample(window):
             vals = group[self.value_column].dropna()
@@ -196,8 +196,8 @@ class SensorDriftEvents(Base):
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
 
-        events: List[Dict[str, Any]] = []
-        baseline_sensitivity: Optional[float] = None
+        events: list[dict[str, Any]] = []
+        baseline_sensitivity: float | None = None
 
         for ts, group in sig.resample(window):
             vals = group[self.value_column].dropna()
@@ -249,7 +249,7 @@ class SensorDriftEvents(Base):
         sig = sig.set_index(self.time_column)
 
         # Compute per-window metric
-        window_values: List[tuple] = []
+        window_values: list[tuple] = []
         for ts, group in sig.resample(window):
             vals = group[self.value_column].dropna()
             if len(vals) < 2:
@@ -280,7 +280,7 @@ class SensorDriftEvents(Base):
         else:
             direction = "decreasing"
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for i, (ts, v) in enumerate(window_values):
             events.append(
                 {
@@ -297,7 +297,7 @@ class SensorDriftEvents(Base):
         )
 
     def calibration_health(
-        self, window: str = "8h", tolerance: Optional[float] = None
+        self, window: str = "8h", tolerance: float | None = None
     ) -> pd.DataFrame:
         """Composite calibration health score per window.
 
@@ -317,7 +317,7 @@ class SensorDriftEvents(Base):
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, group in sig.resample(window):
             vals = group[self.value_column].dropna()
             if len(vals) < 2:

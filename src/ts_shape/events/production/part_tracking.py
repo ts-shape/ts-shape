@@ -235,8 +235,8 @@ class PartProductionTracking(Base):
         part_id_uuid: str,
         counter_uuid: str,
         *,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         value_column_part: str = "value_string",
         value_column_counter: str = "value_integer",
     ) -> pd.DataFrame:

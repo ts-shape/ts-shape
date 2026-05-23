@@ -56,7 +56,7 @@ class DutyCycleEvents(Base):
         s["state"] = s[self.value_column].fillna(False).astype(bool)
         state_change = (s["state"] != s["state"].shift()).cumsum()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in s.groupby(state_change):
             state = bool(seg["state"].iloc[0])
             start = seg[self.time_column].iloc[0]
@@ -92,7 +92,7 @@ class DutyCycleEvents(Base):
         window_td = pd.to_timedelta(window)
         resampled = s["state"].resample(window).mean()
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, pct in resampled.items():
             if pd.isna(pct):
                 continue
@@ -177,7 +177,7 @@ class DutyCycleEvents(Base):
         intervals = self.on_off_intervals()
         window_td = pd.to_timedelta(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for _, row in excessive.iterrows():
             w_start = row["start"]
             w_end = w_start + window_td

@@ -61,7 +61,7 @@ class QualityTracking(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
-        shift_definitions: Optional[Dict[str, tuple[str, str]]] = None,
+        shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         """Initialize quality tracker.
 

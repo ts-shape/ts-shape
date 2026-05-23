@@ -76,7 +76,7 @@ class ShiftHandoverReport(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
-        shift_definitions: Optional[Dict[str, tuple[str, str]]] = None,
+        shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
@@ -173,11 +173,11 @@ class ShiftHandoverReport(Base):
     @staticmethod
     def from_shift_data(
         production_df: pd.DataFrame,
-        quality_df: Optional[pd.DataFrame] = None,
-        downtime_df: Optional[pd.DataFrame] = None,
+        quality_df: pd.DataFrame | None = None,
+        downtime_df: pd.DataFrame | None = None,
         *,
-        targets: Optional[Dict[str, float]] = None,
-        report_date: Optional[str] = None,
+        targets: dict[str, float] | None = None,
+        report_date: str | None = None,
     ) -> pd.DataFrame:
         """Build a handover report from pre-computed shift-level DataFrames.
 
@@ -299,13 +299,13 @@ class ShiftHandoverReport(Base):
         nok_counter_uuid: str,
         state_uuid: str,
         *,
-        targets: Optional[Dict[str, float]] = None,
+        targets: dict[str, float] | None = None,
         quality_target_pct: float = 98.0,
         availability_target_pct: float = 90.0,
         running_value: str = "Running",
         value_column_counter: str = "value_integer",
         value_column_state: str = "value_string",
-        report_date: Optional[str] = None,
+        report_date: str | None = None,
     ) -> pd.DataFrame:
         """Generate a shift handover report from raw timeseries signals.
 
@@ -409,19 +409,19 @@ class ShiftHandoverReport(Base):
 
     def highlight_issues(
         self,
-        counter_uuid: Optional[str] = None,
-        ok_counter_uuid: Optional[str] = None,
-        nok_counter_uuid: Optional[str] = None,
-        state_uuid: Optional[str] = None,
+        counter_uuid: str | None = None,
+        ok_counter_uuid: str | None = None,
+        nok_counter_uuid: str | None = None,
+        state_uuid: str | None = None,
         *,
-        report_df: Optional[pd.DataFrame] = None,
-        thresholds: Optional[Dict[str, float]] = None,
-        targets: Optional[Dict[str, float]] = None,
+        report_df: pd.DataFrame | None = None,
+        thresholds: dict[str, float] | None = None,
+        targets: dict[str, float] | None = None,
         running_value: str = "Running",
         value_column_counter: str = "value_integer",
         value_column_state: str = "value_string",
-        report_date: Optional[str] = None,
-    ) -> List[Dict[str, str]]:
+        report_date: str | None = None,
+    ) -> list[dict[str, str]]:
         """Identify issues that need attention.
 
         Can be called in two ways:

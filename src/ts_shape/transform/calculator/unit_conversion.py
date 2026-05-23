@@ -101,7 +101,7 @@ class UnitConverter(Base):
             ) from exc
 
     @classmethod
-    def conversion_factor(cls, from_unit: str, to_unit: str) -> Tuple[float, float]:
+    def conversion_factor(cls, from_unit: str, to_unit: str) -> tuple[float, float]:
         """Return the ``(scale, offset)`` mapping ``from_unit`` -> ``to_unit``.
 
         The conversion is ``target = value * scale + offset``. ``offset`` is
@@ -132,7 +132,7 @@ class UnitConverter(Base):
         to_unit: str,
         *,
         column_name: str = "value_double",
-        target_column: Optional[str] = None,
+        target_column: str | None = None,
     ) -> pd.DataFrame:
         """Convert a numeric DataFrame column to different units.
 

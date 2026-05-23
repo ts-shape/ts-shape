@@ -26,9 +26,9 @@ class ProcessStabilityIndex(Base):
         dataframe: pd.DataFrame,
         signal_uuid: str,
         *,
-        target: Optional[float] = None,
-        lower_spec: Optional[float] = None,
-        upper_spec: Optional[float] = None,
+        target: float | None = None,
+        lower_spec: float | None = None,
+        upper_spec: float | None = None,
         event_uuid: str = "eng:stability_index",
         value_column: str = "value_double",
         time_column: str = "systime",
@@ -96,7 +96,7 @@ class ProcessStabilityIndex(Base):
         spec_range = self.upper_spec - self.lower_spec
         half_range = spec_range / 2.0 if spec_range > 0 else 1.0
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for start, group in groups:
             vals = group.dropna()
             if len(vals) < 2:

@@ -9,7 +9,7 @@ import pandas as pd
 
 from ts_shape.utils.base import Base
 
-_SPEED_FACTORS: Dict[str, float] = {
+_SPEED_FACTORS: dict[str, float] = {
     "m/min": 1.0 / 60.0,
     "m/s": 1.0,
     "mm/s": 1.0 / 1000.0,
@@ -71,10 +71,10 @@ class ContinuousProcessAlignmentEvents(Base):
         self,
         dataframe: pd.DataFrame,
         speed_uuid: str,
-        line_config: List[Dict],
+        line_config: list[dict],
         *,
-        ref_uuid: Optional[str] = None,
-        cut_uuid: Optional[str] = None,
+        ref_uuid: str | None = None,
+        cut_uuid: str | None = None,
         time_column: str = "systime",
         uuid_column: str = "uuid",
         value_column: str = "value_double",
@@ -99,14 +99,14 @@ class ContinuousProcessAlignmentEvents(Base):
         self._speed_factor: float = _SPEED_FACTORS[speed_unit]
 
         # Build flat lookup: uuid -> (component_name, offset_m)
-        self._uuid_meta: Dict[str, tuple] = {}
+        self._uuid_meta: dict[str, tuple] = {}
         for component in line_config:
             name = component["name"]
             offset = float(component["offset"])
             for uid in component.get("uuids", []):
                 self._uuid_meta[uid] = (name, offset)
 
-        self._all_station_uuids: List[str] = list(self._uuid_meta.keys())
+        self._all_station_uuids: list[str] = list(self._uuid_meta.keys())
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -159,9 +159,9 @@ class ContinuousProcessAlignmentEvents(Base):
 
     def align_to_reference(
         self,
-        station_uuids: Optional[List[str]] = None,
+        station_uuids: list[str] | None = None,
         *,
-        value_column: Optional[str] = None,
+        value_column: str | None = None,
     ) -> pd.DataFrame:
         """Shift each station reading backward by its transport lag to produce
         a common ``material_ref_time``.
@@ -189,7 +189,7 @@ class ContinuousProcessAlignmentEvents(Base):
 
         speed_df = self._get_speed_df()
 
-        parts: List[pd.DataFrame] = []
+        parts: list[pd.DataFrame] = []
         for uid in uuids:
             if uid not in self._uuid_meta:
                 continue
@@ -228,8 +228,8 @@ class ContinuousProcessAlignmentEvents(Base):
         self,
         aligned_df: pd.DataFrame,
         *,
-        cut_length_uuid: Optional[str] = None,
-        part_counter_uuid: Optional[str] = None,
+        cut_length_uuid: str | None = None,
+        part_counter_uuid: str | None = None,
         cut_value_column: str = "value_double",
     ) -> pd.DataFrame:
         """Add ``piece_id``, ``piece_length_m``, and ``piece_cut_ref_time`` to
@@ -270,7 +270,7 @@ class ContinuousProcessAlignmentEvents(Base):
 
         # ---- detect cut events ----
         # Each entry: (systime, piece_length_m or NaN, n_pieces)
-        cut_events: List[tuple] = []
+        cut_events: list[tuple] = []
 
         if part_counter_uuid is not None:
             counter_df = (
@@ -356,7 +356,7 @@ class ContinuousProcessAlignmentEvents(Base):
             return result
 
         # ---- expand cut_events to per-piece rows, align to material_ref_time ----
-        piece_rows: List[Dict] = []
+        piece_rows: list[dict] = []
         piece_id = 1
         for ts, length_m, n_pieces in cut_events:
             # Determine material_ref_time of this cut event
@@ -448,7 +448,7 @@ class ContinuousProcessAlignmentEvents(Base):
 
     def lag_profile(
         self,
-        station_uuids: Optional[List[str]] = None,
+        station_uuids: list[str] | None = None,
         *,
         window: str = "1min",
     ) -> pd.DataFrame:
@@ -479,7 +479,7 @@ class ContinuousProcessAlignmentEvents(Base):
             * self._speed_factor
         ).clip(lower=self.min_speed)
 
-        parts: List[pd.DataFrame] = []
+        parts: list[pd.DataFrame] = []
         for uid in uuids:
             if uid not in self._uuid_meta:
                 continue
@@ -500,7 +500,7 @@ class ContinuousProcessAlignmentEvents(Base):
 
     def alignment_quality(
         self,
-        station_uuids: Optional[List[str]] = None,
+        station_uuids: list[str] | None = None,
         *,
         window: str = "1h",
     ) -> pd.DataFrame:
@@ -523,7 +523,7 @@ class ContinuousProcessAlignmentEvents(Base):
             .rename("speed_sample_count")
         )
 
-        station_counts: Dict[str, pd.Series] = {}
+        station_counts: dict[str, pd.Series] = {}
         for uid in uuids:
             if uid not in self._uuid_meta:
                 continue

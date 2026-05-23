@@ -50,14 +50,14 @@ class SteadyStateDetectionEvents(Base):
 
     def _intervalize(
         self, mask: pd.Series, min_duration: str = "0s"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Convert a boolean mask (indexed by timestamp) into intervals."""
         if mask.empty or not mask.any():
             return []
 
         min_td = pd.Timedelta(min_duration)
         groups = (mask != mask.shift()).cumsum()
-        intervals: List[Dict[str, Any]] = []
+        intervals: list[dict[str, Any]] = []
 
         for _, seg in mask.groupby(groups):
             if not seg.iloc[0]:
@@ -106,7 +106,7 @@ class SteadyStateDetectionEvents(Base):
             return pd.DataFrame(columns=cols)
 
         sig = self.signal.set_index(self.time_column)[self.value_column]
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for iv in intervals:
             segment = sig.loc[iv["start"] : iv["end"]]
             events.append(
@@ -156,7 +156,7 @@ class SteadyStateDetectionEvents(Base):
         if not intervals:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for iv in intervals:
             seg_std = rolling_std.loc[iv["start"] : iv["end"]]
             events.append(
@@ -177,7 +177,7 @@ class SteadyStateDetectionEvents(Base):
         window: str = "5m",
         std_threshold: float = 1.0,
         min_duration: str = "10m",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Summary statistics of steady vs transient time.
 
         Returns:

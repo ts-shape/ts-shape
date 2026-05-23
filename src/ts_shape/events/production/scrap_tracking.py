@@ -60,7 +60,7 @@ class ScrapTracking(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
-        shift_definitions: Optional[Dict[str, tuple[str, str]]] = None,
+        shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
@@ -212,7 +212,7 @@ class ScrapTracking(Base):
         self,
         scrap_uuid: str,
         part_id_uuid: str,
-        material_costs: Dict[str, float],
+        material_costs: dict[str, float],
         *,
         value_column_scrap: str = "value_double",
         value_column_part: str = "value_string",

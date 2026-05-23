@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 _Number = Union[int, float, str]
 
 
-def _to_seconds(value: Optional[_Number]) -> Optional[float]:
+def _to_seconds(value: _Number | None) -> float | None:
     """Coerce a duration (seconds number or pandas offset string) to seconds."""
     if value is None:
         return None
@@ -57,7 +57,7 @@ class LineBalancingEvents(Base):
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        station_uuids: Dict[str, str],
+        station_uuids: dict[str, str],
         *,
         event_uuid: str = "prod:line_balance",
         value_column: str = "value_bool",
@@ -106,7 +106,7 @@ class LineBalancingEvents(Base):
         Columns: ``uuid``, ``station_name``, ``completion``, ``cycle_time``.
         The cycle time is the gap to the previous completion at that station.
         """
-        rows: List[pd.DataFrame] = []
+        rows: list[pd.DataFrame] = []
         for uuid, name in self.station_uuids.items():
             times = self._rising_edge_times(uuid)
             if len(times) < 2:
@@ -130,10 +130,10 @@ class LineBalancingEvents(Base):
 
     def _resolve_takt(
         self,
-        takt_time: Optional[_Number],
-        demand: Optional[float],
-        available_time: Optional[_Number],
-    ) -> Optional[float]:
+        takt_time: _Number | None,
+        demand: float | None,
+        available_time: _Number | None,
+    ) -> float | None:
         """Resolve takt time (seconds) from an explicit value or demand/time."""
         if takt_time is not None:
             return _to_seconds(takt_time)
@@ -192,9 +192,9 @@ class LineBalancingEvents(Base):
     def balance_metrics(
         self,
         *,
-        takt_time: Optional[_Number] = None,
-        demand: Optional[float] = None,
-        available_time: Optional[_Number] = None,
+        takt_time: _Number | None = None,
+        demand: float | None = None,
+        available_time: _Number | None = None,
         window: str = "1h",
     ) -> pd.DataFrame:
         """Line-level balance metrics per time window.
@@ -234,7 +234,7 @@ class LineBalancingEvents(Base):
         cycles["start"] = cycles["completion"].dt.floor(window)
         means = cycles.groupby(["start", "uuid"])["cycle_time"].mean().reset_index()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for start, grp in means.groupby("start", sort=True):
             times = grp["cycle_time"].to_numpy(dtype=float)
             n = len(times)
@@ -267,9 +267,9 @@ class LineBalancingEvents(Base):
     def yamazumi(
         self,
         *,
-        takt_time: Optional[_Number] = None,
-        demand: Optional[float] = None,
-        available_time: Optional[_Number] = None,
+        takt_time: _Number | None = None,
+        demand: float | None = None,
+        available_time: _Number | None = None,
     ) -> pd.DataFrame:
         """Yamazumi (station-loading) table over the whole dataset.
 
@@ -300,7 +300,7 @@ class LineBalancingEvents(Base):
         means = cycles.groupby("uuid")["cycle_time"].mean()
         bottleneck_uuid = means.idxmax()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for uuid, name in self.station_uuids.items():
             if uuid not in means.index:
                 continue

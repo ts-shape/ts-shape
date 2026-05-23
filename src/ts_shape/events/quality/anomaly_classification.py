@@ -72,7 +72,7 @@ class AnomalyClassificationEvents(Base):
         is_same = np.concatenate([[True], diffs <= tolerance])
         groups = (is_same != np.roll(is_same, 1)).cumsum()
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for gid in np.unique(groups):
             mask = groups == gid
             if not is_same[mask][0]:
@@ -121,7 +121,7 @@ class AnomalyClassificationEvents(Base):
         sig = sig.set_index(self.time_column)
         window_td = pd.to_timedelta(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         start_time = sig.index[0]
         end_time = sig.index[-1]
         current = start_time
@@ -175,7 +175,7 @@ class AnomalyClassificationEvents(Base):
         sig = sig.set_index(self.time_column)
         window_td = pd.to_timedelta(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         start_time = sig.index[0]
         end_time = sig.index[-1]
         current = start_time
@@ -236,7 +236,7 @@ class AnomalyClassificationEvents(Base):
         if global_std == 0 or np.isnan(global_std):
             global_std = 1e-10
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         start_time = sig.index[0]
         end_time = sig.index[-1]
         current = start_time

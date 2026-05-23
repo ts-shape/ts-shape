@@ -42,7 +42,7 @@ class SetpointChangeEvents(Base):
         self.sp[self.time_column] = pd.to_datetime(self.sp[self.time_column])
 
         # Cache for performance optimization
-        self._actual_cache: Dict[str, pd.DataFrame] = {}
+        self._actual_cache: dict[str, pd.DataFrame] = {}
 
     def _get_actual(self, actual_uuid: str) -> pd.DataFrame:
         """
@@ -123,7 +123,7 @@ class SetpointChangeEvents(Base):
         ) | next_change_times.isna()
         valid_change_times = change_times[hold_ok]
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for t in valid_change_times:
             row = sp.loc[sp[self.time_column] == t].iloc[0]
             rows.append(
@@ -172,7 +172,7 @@ class SetpointChangeEvents(Base):
 
         # group contiguous True segments
         group_id = (rate_mask != rate_mask.shift()).cumsum()
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         min_d = pd.to_timedelta(min_duration)
         for gid, seg in sp.groupby(group_id):
             seg_mask_true = rate_mask.loc[seg.index]
@@ -203,7 +203,7 @@ class SetpointChangeEvents(Base):
         self,
         *,
         min_delta: float = 0.0,
-        min_rate: Optional[float] = None,
+        min_rate: float | None = None,
         min_hold: str = "0s",
         min_duration: str = "0s",
     ) -> pd.DataFrame:
@@ -286,7 +286,7 @@ class SetpointChangeEvents(Base):
         actual_uuid: str,
         *,
         tol: float = 0.0,
-        settle_pct: Optional[float] = None,
+        settle_pct: float | None = None,
         hold: str = "0s",
         lookahead: str = "10m",
     ) -> pd.DataFrame:
@@ -322,7 +322,7 @@ class SetpointChangeEvents(Base):
             sp["delta"].abs() > 0, [self.time_column, self.value_column, "delta"]
         ].reset_index(drop=True)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, c in change_times.iterrows():
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
@@ -431,7 +431,7 @@ class SetpointChangeEvents(Base):
             [self.time_column, self.value_column, "delta", "prev"],
         ]
 
-        out_rows: List[Dict[str, Any]] = []
+        out_rows: list[dict[str, Any]] = []
         for _, r in changes.iterrows():
             t0 = r[self.time_column]
             s_new = float(r[self.value_column])
@@ -592,7 +592,7 @@ class SetpointChangeEvents(Base):
             sp["delta"].abs() > 0, [self.time_column, self.value_column]
         ].reset_index(drop=True)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, c in change_times.iterrows():
             t0 = c[self.time_column]
             window = actual[
@@ -711,7 +711,7 @@ class SetpointChangeEvents(Base):
             [self.time_column, self.value_column, "delta", "prev"],
         ].reset_index(drop=True)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, c in changes.iterrows():
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
@@ -817,7 +817,7 @@ class SetpointChangeEvents(Base):
             sp["delta"].abs() > 0, [self.time_column, self.value_column]
         ].reset_index(drop=True)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, c in changes.iterrows():
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
@@ -937,7 +937,7 @@ class SetpointChangeEvents(Base):
             sp["delta"].abs() > 0, [self.time_column, self.value_column]
         ].reset_index(drop=True)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, c in changes.iterrows():
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
@@ -1018,7 +1018,7 @@ class SetpointChangeEvents(Base):
         actual_uuid: str,
         *,
         tol: float = 0.0,
-        settle_pct: Optional[float] = None,
+        settle_pct: float | None = None,
         hold: str = "0s",
         lookahead: str = "10m",
         rate_threshold: float = 0.01,
@@ -1095,7 +1095,7 @@ class SetpointChangeEvents(Base):
             sp["delta"].abs() > 0, [self.time_column, self.value_column]
         ].reset_index(drop=True)
 
-        ss_error_rows: List[Dict[str, Any]] = []
+        ss_error_rows: list[dict[str, Any]] = []
         for _, c in changes.iterrows():
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])

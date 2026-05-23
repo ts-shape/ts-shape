@@ -53,7 +53,7 @@ class ValueTraceabilityEvents(Base):
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        station_uuids: Dict[str, str],
+        station_uuids: dict[str, str],
         *,
         event_uuid: str = "prod:value_trace",
         value_column: str = "value_string",
@@ -76,7 +76,7 @@ class ValueTraceabilityEvents(Base):
         self.time_column = time_column
 
         # Pre-filter and parse per-station data
-        self._station_data: Dict[str, pd.DataFrame] = {}
+        self._station_data: dict[str, pd.DataFrame] = {}
         for uuid, name in self.station_uuids.items():
             sdf = (
                 self.dataframe[self.dataframe["uuid"] == uuid]
@@ -111,7 +111,7 @@ class ValueTraceabilityEvents(Base):
         s["group"] = (s["identifier"] != s["identifier"].shift()).cumsum()
 
         station_name = self.station_uuids[uuid]
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in s.groupby("group"):
             identifier = seg["identifier"].iloc[0]
             if identifier == "":
@@ -151,7 +151,7 @@ class ValueTraceabilityEvents(Base):
             - station_sequence: Order of visit (1-based) per identifier.
             - uuid: Event UUID.
         """
-        all_intervals: List[pd.DataFrame] = []
+        all_intervals: list[pd.DataFrame] = []
         for uuid in self.station_uuids:
             intervals = self._detect_intervals(uuid)
             if not intervals.empty:
@@ -217,7 +217,7 @@ class ValueTraceabilityEvents(Base):
                 ]
             )
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for identifier, grp in timeline.groupby("identifier"):
             grp = grp.sort_values("start")
             first_seen = grp["start"].iloc[0]

@@ -143,7 +143,7 @@ class StringStatistics(Base):
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
-    ) -> Dict[str, Union[int, str, float]]:
+    ) -> dict[str, Union[int, str, float]]:
         """Returns a dictionary with comprehensive string statistics for the specified column."""
         most_frequent = cls.most_frequent(dataframe, column_name)
         value_counts = dataframe[column_name].value_counts()

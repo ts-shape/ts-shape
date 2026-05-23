@@ -98,7 +98,7 @@ class VibrationAnalysisEvents(Base):
 
         # Group contiguous exceeded intervals
         group_id = (exceeded != exceeded.shift()).cumsum()
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for gid, seg in sig.groupby(group_id):
             seg_exc = exceeded.loc[seg.index]
             if not seg_exc.iloc[0]:
@@ -163,7 +163,7 @@ class VibrationAnalysisEvents(Base):
         t_max = sig[self.time_column].iloc[-1]
         window_starts = pd.date_range(start=t_min, end=t_max, freq=window_td)
 
-        amplitudes: List[Dict[str, Any]] = []
+        amplitudes: list[dict[str, Any]] = []
         for ws in window_starts:
             we = ws + window_td
             mask = (sig[self.time_column] >= ws) & (sig[self.time_column] < we)
@@ -181,7 +181,7 @@ class VibrationAnalysisEvents(Base):
         if baseline_amp == 0:
             baseline_amp = np.finfo(float).eps
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for a in amplitudes:
             growth_pct = (a["amplitude"] - baseline_amp) / baseline_amp
             rows.append(
@@ -236,7 +236,7 @@ class VibrationAnalysisEvents(Base):
         t_max = sig[self.time_column].iloc[-1]
         window_starts = pd.date_range(start=t_min, end=t_max, freq=window_td)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for ws in window_starts:
             we = ws + window_td
             mask = (sig[self.time_column] >= ws) & (sig[self.time_column] < we)

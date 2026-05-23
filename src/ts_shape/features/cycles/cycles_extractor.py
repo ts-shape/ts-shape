@@ -14,7 +14,7 @@ class CycleExtractor(Base):
         self,
         dataframe: pd.DataFrame,
         start_uuid: str,
-        end_uuid: Optional[str] = None,
+        end_uuid: str | None = None,
         value_change_threshold: float = 0.0,
     ):
         """Initializes the class with the data and the UUIDs for cycle start and end.
@@ -39,7 +39,7 @@ class CycleExtractor(Base):
         self.value_change_threshold = abs(value_change_threshold)
 
         # Statistics tracking
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_cycles": 0,
             "complete_cycles": 0,
             "incomplete_cycles": 0,
@@ -455,7 +455,7 @@ class CycleExtractor(Base):
 
         return result_df
 
-    def suggest_method(self) -> Dict[str, Any]:
+    def suggest_method(self) -> dict[str, Any]:
         """Suggest the best cycle extraction method based on data characteristics.
 
         Analyzes the input DataFrame to recommend appropriate extraction method(s).
@@ -553,7 +553,7 @@ class CycleExtractor(Base):
         logger.info(f"Method suggestion: {suggestions['recommended_methods']}")
         return suggestions
 
-    def get_extraction_stats(self) -> Dict[str, Any]:
+    def get_extraction_stats(self) -> dict[str, Any]:
         """Get statistics about the last cycle extraction.
 
         Returns:

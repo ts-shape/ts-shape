@@ -38,10 +38,10 @@ class FlowConstraintEvents(Base):
     def blocked_events(
         self,
         *,
-        roles: Dict[str, str],
+        roles: dict[str, str],
         tolerance: str = "200ms",
-        tolerance_before: Optional[str] = None,
-        tolerance_after: Optional[str] = None,
+        tolerance_before: str | None = None,
+        tolerance_after: str | None = None,
         min_duration: str = "0s",
     ) -> pd.DataFrame:
         """Blocked: upstream_run=True while downstream_run=False.
@@ -121,7 +121,7 @@ class FlowConstraintEvents(Base):
         cond = merged["state_up"] & (~merged["state_dn"].fillna(False))
         gid = (cond.ne(cond.shift())).cumsum()
         min_td = pd.to_timedelta(min_duration)
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in merged.groupby(gid):
             m = cond.loc[seg.index]
             if not m.any():
@@ -153,10 +153,10 @@ class FlowConstraintEvents(Base):
     def starved_events(
         self,
         *,
-        roles: Dict[str, str],
+        roles: dict[str, str],
         tolerance: str = "200ms",
-        tolerance_before: Optional[str] = None,
-        tolerance_after: Optional[str] = None,
+        tolerance_before: str | None = None,
+        tolerance_after: str | None = None,
         min_duration: str = "0s",
     ) -> pd.DataFrame:
         """Starved: downstream_run=True while upstream_run=False.
@@ -236,7 +236,7 @@ class FlowConstraintEvents(Base):
         cond = merged["state_dn"] & (~merged["state_up"].fillna(False))
         gid = (cond.ne(cond.shift())).cumsum()
         min_td = pd.to_timedelta(min_duration)
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in merged.groupby(gid):
             m = cond.loc[seg.index]
             if not m.any():
@@ -294,14 +294,14 @@ class FlowConstraintEvents(Base):
     def flow_constraint_analytics(
         self,
         *,
-        roles: Dict[str, str],
+        roles: dict[str, str],
         tolerance: str = "200ms",
-        tolerance_before: Optional[str] = None,
-        tolerance_after: Optional[str] = None,
+        tolerance_before: str | None = None,
+        tolerance_after: str | None = None,
         min_duration: str = "0s",
         minor_threshold: str = "5s",
         moderate_threshold: str = "30s",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate comprehensive analytics for flow constraints (blockages and starvations).
 
         Args:
@@ -352,7 +352,7 @@ class FlowConstraintEvents(Base):
         )
 
         # Calculate summary statistics
-        summary: Dict[str, Any] = {}
+        summary: dict[str, Any] = {}
 
         # Blocked events statistics
         if not blocked_df.empty:

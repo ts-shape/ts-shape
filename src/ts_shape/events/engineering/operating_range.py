@@ -65,7 +65,7 @@ class OperatingRangeEvents(Base):
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for start, group in groups:
             if group.empty:
                 continue
@@ -117,7 +117,7 @@ class OperatingRangeEvents(Base):
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
 
-        window_stats: List[Dict[str, Any]] = []
+        window_stats: list[dict[str, Any]] = []
         for start, group in groups:
             vals = group.dropna()
             if len(vals) < 2:
@@ -133,7 +133,7 @@ class OperatingRangeEvents(Base):
         if len(window_stats) < 2:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for i in range(1, len(window_stats)):
             prev = window_stats[i - 1]
             curr = window_stats[i]
@@ -175,7 +175,7 @@ class OperatingRangeEvents(Base):
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for start, group in groups:
             vals = group.dropna()
             if vals.empty:
@@ -213,7 +213,7 @@ class OperatingRangeEvents(Base):
         counts, bin_edges = np.histogram(vals, bins=n_bins)
         total = int(counts.sum())
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         cum = 0
         for i in range(len(counts)):
             c = int(counts[i])

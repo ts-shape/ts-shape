@@ -49,9 +49,9 @@ class CarbonIntensityEvents(Base):
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        emission_factors: Dict[str, float],
+        emission_factors: dict[str, float],
         *,
-        scope_map: Optional[Dict[str, int]] = None,
+        scope_map: dict[str, int] | None = None,
         event_uuid: str = "energy:carbon",
         time_column: str = "systime",
         uuid_column: str = "uuid",

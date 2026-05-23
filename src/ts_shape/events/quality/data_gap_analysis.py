@@ -75,7 +75,7 @@ class DataGapAnalysisEvents(Base):
         times = self.signal[self.time_column].values
         diffs = np.diff(times)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for i, d in enumerate(diffs):
             gap = pd.Timedelta(d)
             if gap >= threshold:
@@ -197,7 +197,7 @@ class DataGapAnalysisEvents(Base):
 
         counts = sig[self.value_column].resample(freq).count()
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, count in counts.items():
             end = ts + window_td
             # Find gaps overlapping this window
@@ -266,7 +266,7 @@ class DataGapAnalysisEvents(Base):
         signal_std = float(np.nanstd(values))
         safe_threshold = 2.0 * signal_std if signal_std > 0 else float("inf")
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for i, d in enumerate(diffs):
             gap = pd.Timedelta(d)
             if gap < min_td or gap > max_td:

@@ -85,7 +85,7 @@ class AlarmManagementEvents(Base):
         s["state"] = s[self.value_column].fillna(False).astype(bool)
         s["group"] = (s["state"] != s["state"].shift()).cumsum()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         groups = list(s.groupby("group"))
         for idx, (_, seg) in enumerate(groups):
             if not seg["state"].iloc[0]:
@@ -247,7 +247,7 @@ class AlarmManagementEvents(Base):
         flagged_times = flagged.index.to_series().reset_index(drop=True)
         transition_counts = flagged.values
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         start = flagged_times.iloc[0]
         max_count = int(transition_counts[0])
 

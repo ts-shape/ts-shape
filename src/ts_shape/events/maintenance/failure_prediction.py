@@ -76,7 +76,7 @@ class FailurePredictionEvents(Base):
             sig[self.time_column] - sig[self.time_column].iloc[0]
         ).dt.total_seconds()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for i in range(len(sig)):
             current_val = float(sig[self.value_column].iloc[i])
             t_now = sig[self.time_column].iloc[i]
@@ -194,7 +194,7 @@ class FailurePredictionEvents(Base):
         t_max = sig[self.time_column].iloc[-1]
         window_starts = pd.date_range(start=t_min, end=t_max, freq=window_td)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         prev_warning_count = 0
         prev_critical_count = 0
 
@@ -265,7 +265,7 @@ class FailurePredictionEvents(Base):
             sig[self.time_column] - sig[self.time_column].iloc[0]
         ).dt.total_seconds()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for i in range(len(sig)):
             current_val = float(sig[self.value_column].iloc[i])
             t_now = sig[self.time_column].iloc[i]

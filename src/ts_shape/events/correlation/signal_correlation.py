@@ -157,7 +157,7 @@ class SignalCorrelationEvents(Base):
         corr_df["group"] = (corr_df["below"] != corr_df["below"].shift()).cumsum()
 
         breakdowns = corr_df[corr_df["below"]].groupby("group")
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, grp in breakdowns:
             rows.append(
                 {
@@ -205,7 +205,7 @@ class SignalCorrelationEvents(Base):
         b = aligned["signal_b"].values
         n = len(a)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for lag in range(-max_lag, max_lag + 1):
             if lag < 0:
                 corr = np.corrcoef(a[:lag], b[-lag:])[0, 1]

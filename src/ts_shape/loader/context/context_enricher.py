@@ -52,7 +52,7 @@ class ContextEnricher:
         metadata: pd.DataFrame,
         *,
         metadata_uuid_col: str = "uuid",
-        columns: Optional[List[str]] = None,
+        columns: list[str] | None = None,
     ) -> pd.DataFrame:
         """Join metadata columns onto timeseries by UUID.
 

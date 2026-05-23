@@ -230,7 +230,7 @@ class OutlierDetectionEvents(Base):
         self,
         contamination: float = 0.1,
         include_singles: bool = True,
-        random_state: Optional[int] = 42,
+        random_state: int | None = 42,
     ) -> pd.DataFrame:
         """
         Detects outliers using sklearn's IsolationForest algorithm.

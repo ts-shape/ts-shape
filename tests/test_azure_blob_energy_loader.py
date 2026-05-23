@@ -10,19 +10,19 @@ from ts_shape.loader.timeseries.azure_blob_energy_loader import AzureBlobEnergyL
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
 _CSV_BYTES = (
-    "time,value\n"
-    "2026-01-13T00:00:00Z,107.603588867188\n"
-    "2026-01-13T00:15:00Z,184.093249511719\n"
-    "2026-01-13T00:30:00Z,288.517919921875\n"
-).encode()
+    b"time,value\n"
+    b"2026-01-13T00:00:00Z,107.603588867188\n"
+    b"2026-01-13T00:15:00Z,184.093249511719\n"
+    b"2026-01-13T00:30:00Z,288.517919921875\n"
+)
 
 _META_BYTES = (
-    "id\tlabel_lvl1\tlabel_lvl2\tlabel_lvl3\tlabel_lvl4\tdescription\tunit"
-    "\thierarchy_lvl1\thierarchy_lvl2\thierarchy_lvl3"
-    "\thierarchy_lvl4\thierarchy_lvl5\thierarchy_lvl6\n"
-    "sensor_001\tBuilding A\tFloor 1\tLine 1\t\tMain meter\tkWh"
-    "\tSite\tBuilding\tFloor\tLine\t\t\n"
-).encode()
+    b"id\tlabel_lvl1\tlabel_lvl2\tlabel_lvl3\tlabel_lvl4\tdescription\tunit"
+    b"\thierarchy_lvl1\thierarchy_lvl2\thierarchy_lvl3"
+    b"\thierarchy_lvl4\thierarchy_lvl5\thierarchy_lvl6\n"
+    b"sensor_001\tBuilding A\tFloor 1\tLine 1\t\tMain meter\tkWh"
+    b"\tSite\tBuilding\tFloor\tLine\t\t\n"
+)
 
 
 def _make_container_client(blob_bytes: bytes = _CSV_BYTES, list_names: list = None):

@@ -102,7 +102,7 @@ def _param_names(func: Any) -> set[str]:
     return names
 
 
-def _first_param_name(func: Any) -> Optional[str]:
+def _first_param_name(func: Any) -> str | None:
     """Return the first non-``self`` / ``cls`` parameter name of ``func``."""
     try:
         sig = inspect.signature(func)
@@ -124,7 +124,7 @@ def _subst(value: Any, working_df: pd.DataFrame, input_df: pd.DataFrame) -> Any:
     return value
 
 
-def _validate_sentinels(kwargs: Dict[str, Any]) -> None:
+def _validate_sentinels(kwargs: dict[str, Any]) -> None:
     """Reject unknown ``$``-prefixed sentinel strings at registration time."""
     for key, value in kwargs.items():
         if isinstance(value, str) and value.startswith("$") and value not in _SENTINELS:
@@ -135,8 +135,8 @@ def _validate_sentinels(kwargs: Dict[str, Any]) -> None:
 
 
 def _split_kwargs(
-    target: type, method: str, kwargs: Dict[str, Any]
-) -> Tuple[set[str], set[str]]:
+    target: type, method: str, kwargs: dict[str, Any]
+) -> tuple[set[str], set[str]]:
     """Route kwarg names between ``target.__init__`` and ``target.method``.
 
     Returns ``(init_keys, method_keys)``. A kwarg may match both. Raises
@@ -146,7 +146,7 @@ def _split_kwargs(
     method_params = _param_names(getattr(target, method))
     init_keys: set[str] = set()
     method_keys: set[str] = set()
-    unknown: List[str] = []
+    unknown: list[str] = []
     for key in kwargs:
         in_init = key in init_params
         in_method = key in method_params
@@ -166,8 +166,8 @@ def _split_kwargs(
 
 
 def _resolve(
-    target: Any, method: Optional[str], kwargs: Dict[str, Any]
-) -> Tuple[_Executor, Optional[str]]:
+    target: Any, method: str | None, kwargs: dict[str, Any]
+) -> tuple[_Executor, str | None]:
     """Build a ``(working_df, input_df) -> df`` executor for one step.
 
     Returns ``(executor, detector_id)``; ``detector_id`` is the
@@ -236,7 +236,7 @@ def _resolve(
 
 
 def _resolve_source(
-    target: Any, method: Optional[str], kwargs: Dict[str, Any]
+    target: Any, method: str | None, kwargs: dict[str, Any]
 ) -> Callable[[], pd.DataFrame]:
     """Build a ``() -> DataFrame`` executor for a source (loader) step.
 
@@ -296,14 +296,14 @@ def _resolve_source(
     return _load_instance
 
 
-def _default_name(target: Any, method: Optional[str]) -> str:
+def _default_name(target: Any, method: str | None) -> str:
     """Pick a readable step name when the caller did not supply one."""
     if method is not None:
         return method
     return getattr(target, "__name__", "step")
 
 
-def _format_kwargs(kwargs: Dict[str, Any]) -> str:
+def _format_kwargs(kwargs: dict[str, Any]) -> str:
     """Render kwargs for :meth:`Pipeline.describe`."""
     return ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
 
@@ -314,8 +314,8 @@ class _Step:
     name: str
     # source executors take no args; transform/detect take (working, input).
     executor: Callable[..., pd.DataFrame]
-    detector_id: Optional[str]
-    kwargs: Dict[str, Any]
+    detector_id: str | None
+    kwargs: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -330,8 +330,8 @@ class PipelineResult:
 
     name: str
     data: pd.DataFrame
-    events: Dict[str, pd.DataFrame]
-    _detector_ids: Dict[str, Optional[str]] = field(default_factory=dict)
+    events: dict[str, pd.DataFrame]
+    _detector_ids: dict[str, str | None] = field(default_factory=dict)
 
     def to_event_log(self, *, concat: bool = True) -> Any:
         """Normalize detector outputs into an OCEL event log.
@@ -351,7 +351,7 @@ class PipelineResult:
         from ts_shape.eventlog import concat as _concat
         from ts_shape.eventlog import to_event_log as _to_event_log
 
-        logs: Dict[str, Any] = {}
+        logs: dict[str, Any] = {}
         for step_name, events_df in self.events.items():
             detector_id = self._detector_ids.get(step_name)
             if detector_id is None:
@@ -394,16 +394,16 @@ class Pipeline:
             name: A label for the pipeline, surfaced in ``repr`` and results.
         """
         self.name = name
-        self._steps: List[_Step] = []
+        self._steps: list[_Step] = []
 
     def source(
         self,
         target: Any,
-        method: Optional[str] = None,
+        method: str | None = None,
         *,
-        name: Optional[str] = None,
+        name: str | None = None,
         **kwargs: Any,
-    ) -> "Pipeline":
+    ) -> Pipeline:
         """Add a source step -- a loader that produces the pipeline's first frame.
 
         A source step must be the **first** step, and a pipeline may have at
@@ -447,11 +447,11 @@ class Pipeline:
     def transform(
         self,
         target: Any,
-        method: Optional[str] = None,
+        method: str | None = None,
         *,
-        name: Optional[str] = None,
+        name: str | None = None,
         **kwargs: Any,
-    ) -> "Pipeline":
+    ) -> Pipeline:
         """Add a transform step -- its output replaces the working DataFrame.
 
         Args:
@@ -481,11 +481,11 @@ class Pipeline:
     def detect(
         self,
         target: Any,
-        method: Optional[str] = None,
+        method: str | None = None,
         *,
-        name: Optional[str] = None,
+        name: str | None = None,
         **kwargs: Any,
-    ) -> "Pipeline":
+    ) -> Pipeline:
         """Add a detector step -- its output is stored, the signal is unchanged.
 
         Args:
@@ -514,7 +514,7 @@ class Pipeline:
         return self
 
     @property
-    def steps(self) -> List[Tuple[str, str]]:
+    def steps(self) -> list[tuple[str, str]]:
         """The ordered ``(kind, name)`` pairs of the configured steps."""
         return [(s.kind, s.name) for s in self._steps]
 
@@ -529,15 +529,15 @@ class Pipeline:
             lines.append(f"  {index}. [{step.kind:<9s}] {step.name}{suffix}")
         return "\n".join(lines)
 
-    def _execute(self, dataframe: Optional[pd.DataFrame], *, capture: bool) -> Tuple[
+    def _execute(self, dataframe: pd.DataFrame | None, *, capture: bool) -> tuple[
         pd.DataFrame,
-        Dict[str, pd.DataFrame],
-        Dict[str, Optional[str]],
-        Dict[str, pd.DataFrame],
+        dict[str, pd.DataFrame],
+        dict[str, str | None],
+        dict[str, pd.DataFrame],
     ]:
-        events: Dict[str, pd.DataFrame] = {}
-        detector_ids: Dict[str, Optional[str]] = {}
-        intermediates: Dict[str, pd.DataFrame] = {}
+        events: dict[str, pd.DataFrame] = {}
+        detector_ids: dict[str, str | None] = {}
+        intermediates: dict[str, pd.DataFrame] = {}
         has_source = bool(self._steps) and self._steps[0].kind == "source"
 
         if has_source:
@@ -605,7 +605,7 @@ class Pipeline:
 
         return working, events, detector_ids, intermediates
 
-    def run(self, dataframe: Optional[pd.DataFrame] = None) -> PipelineResult:
+    def run(self, dataframe: pd.DataFrame | None = None) -> PipelineResult:
         """Execute every step.
 
         Args:
@@ -632,8 +632,8 @@ class Pipeline:
         )
 
     def run_steps(
-        self, dataframe: Optional[pd.DataFrame] = None
-    ) -> Dict[str, pd.DataFrame]:
+        self, dataframe: pd.DataFrame | None = None
+    ) -> dict[str, pd.DataFrame]:
         """Execute every step and return *all* intermediate DataFrames.
 
         Useful for debugging which step changes the data unexpectedly.

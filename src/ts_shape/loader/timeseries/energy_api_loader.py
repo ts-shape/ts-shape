@@ -42,7 +42,7 @@ class EnergyAPILoader:
         self,
         base_url: str,
         *,
-        headers: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
         timeout: int = 30,
     ) -> None:
         """Initialise the loader.
@@ -64,11 +64,11 @@ class EnergyAPILoader:
         self,
         endpoint: str,
         *,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         time_key: str = "timestamp",
         value_key: str = "value",
         uuid_value: str = "energy:default",
-        data_root: Optional[str] = None,
+        data_root: str | None = None,
     ) -> pd.DataFrame:
         """Fetch energy data from a REST endpoint and return a DataFrame.
 
@@ -97,13 +97,13 @@ class EnergyAPILoader:
     def fetch_multiple_meters(
         self,
         endpoint: str,
-        meter_ids: List[str],
+        meter_ids: list[str],
         *,
         meter_param: str = "meter_id",
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         time_key: str = "timestamp",
         value_key: str = "value",
-        data_root: Optional[str] = None,
+        data_root: str | None = None,
     ) -> pd.DataFrame:
         """Fetch data for several meters and combine into one DataFrame.
 
@@ -122,7 +122,7 @@ class EnergyAPILoader:
         Returns:
             Combined DataFrame sorted by systime.
         """
-        frames: List[pd.DataFrame] = []
+        frames: list[pd.DataFrame] = []
         base_params = dict(params) if params else {}
 
         for mid in meter_ids:
@@ -152,7 +152,7 @@ class EnergyAPILoader:
         self,
         endpoint: str,
         *,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
     ) -> Any:
         """Execute GET request and return parsed JSON."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
@@ -169,7 +169,7 @@ class EnergyAPILoader:
         time_key: str,
         value_key: str,
         uuid_value: str,
-        data_root: Optional[str],
+        data_root: str | None,
     ) -> pd.DataFrame:
         """Convert raw JSON into a standard ts_shape DataFrame."""
         if data_root is not None and isinstance(raw, dict):

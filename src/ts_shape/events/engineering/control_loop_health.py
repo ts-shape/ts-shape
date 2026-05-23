@@ -28,7 +28,7 @@ class ControlLoopHealthEvents(Base):
         setpoint_uuid: str,
         actual_uuid: str,
         *,
-        output_uuid: Optional[str] = None,
+        output_uuid: str | None = None,
         event_uuid: str = "eng:control_loop_health",
         value_column: str = "value_double",
         time_column: str = "systime",
@@ -92,7 +92,7 @@ class ControlLoopHealthEvents(Base):
         df = self._aligned.set_index(self.time_column)
         groups = df.resample(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for start, group in groups:
             if len(group) < 2:
                 continue
@@ -151,7 +151,7 @@ class ControlLoopHealthEvents(Base):
         td = pd.Timedelta(window)
         groups = df.resample(window)
 
-        osc_windows: List[Dict[str, Any]] = []
+        osc_windows: list[dict[str, Any]] = []
         for start, group in groups:
             if len(group) < 4:
                 continue
@@ -206,7 +206,7 @@ class ControlLoopHealthEvents(Base):
             return pd.DataFrame(columns=cols)
 
         # Merge contiguous oscillating windows
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         current = osc_windows[0].copy()
         for i in range(1, len(osc_windows)):
             w = osc_windows[i]
@@ -253,7 +253,7 @@ class ControlLoopHealthEvents(Base):
         groups = out.resample(window)
         tol = (high_limit - low_limit) * 0.01  # 1% of range
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for start, group in groups:
             if group.empty:
                 continue
@@ -308,7 +308,7 @@ class ControlLoopHealthEvents(Base):
         osc = self.detect_oscillation()
         sat = self.output_saturation(window=window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for _, row in integrals.iterrows():
             ws = row["start"]
             we = ws + pd.Timedelta(window)

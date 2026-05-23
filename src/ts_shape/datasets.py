@@ -31,7 +31,7 @@ def make_timeseries(
     drift: float = 0.0,
     n_outliers: int = 0,
     value_column: str = "value_double",
-    seed: Optional[int] = 42,
+    seed: int | None = 42,
 ) -> pd.DataFrame:
     """Generate a standard-schema synthetic timeseries DataFrame.
 

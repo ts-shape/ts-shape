@@ -183,8 +183,8 @@ class PeriodSummary(Base):
     def weekly_summary(
         self,
         counter_uuid: str,
-        ok_counter_uuid: Optional[str] = None,
-        nok_counter_uuid: Optional[str] = None,
+        ok_counter_uuid: str | None = None,
+        nok_counter_uuid: str | None = None,
         *,
         value_column: str = "value_integer",
     ) -> pd.DataFrame:
@@ -283,8 +283,8 @@ class PeriodSummary(Base):
     def monthly_summary(
         self,
         counter_uuid: str,
-        ok_counter_uuid: Optional[str] = None,
-        nok_counter_uuid: Optional[str] = None,
+        ok_counter_uuid: str | None = None,
+        nok_counter_uuid: str | None = None,
         *,
         value_column: str = "value_integer",
     ) -> pd.DataFrame:
@@ -414,7 +414,7 @@ class PeriodSummary(Base):
         p1_data = daily[(daily["date"] >= p1_start) & (daily["date"] <= p1_end)]
         p2_data = daily[(daily["date"] >= p2_start) & (daily["date"] <= p2_end)]
 
-        def _metrics(data: pd.DataFrame) -> Dict[str, float]:
+        def _metrics(data: pd.DataFrame) -> dict[str, float]:
             if data.empty:
                 return {
                     "total_production": 0,

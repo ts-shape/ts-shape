@@ -53,7 +53,7 @@ class EnergyEfficiencyEvents(Base):
         series_id: str,
         time_column: str = "time",
         value_column: str = "value",
-        id_column: Optional[str] = None,
+        id_column: str | None = None,
     ) -> pd.DataFrame:
         """Convert a raw energy DataFrame to the standard ts-shape schema.
 
@@ -405,7 +405,7 @@ class EnergyEfficiencyEvents(Base):
         *,
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
-        shift_definitions: Optional[Dict[str, tuple]] = None,
+        shift_definitions: dict[str, tuple] | None = None,
     ) -> pd.DataFrame:
         """Compare energy efficiency across shifts.
 

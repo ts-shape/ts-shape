@@ -94,7 +94,7 @@ class BatchTrackingEvents(Base):
         s["batch_id"] = s[self.value_column].fillna("")
         s["group"] = (s["batch_id"] != s["batch_id"].shift()).cumsum()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in s.groupby("group"):
             batch_id = seg["batch_id"].iloc[0]
             if batch_id == "":
@@ -234,7 +234,7 @@ class BatchTrackingEvents(Base):
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
 
-        quantities: List[int] = []
+        quantities: list[int] = []
         for _, batch_row in batches.iterrows():
             mask = (counter_data[self.time_column] >= batch_row["start"]) & (
                 counter_data[self.time_column] <= batch_row["end"]
