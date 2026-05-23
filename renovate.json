@@ -5,15 +5,28 @@
     "Covers pep621, pip_requirements, pip_setup, github-actions, and python-version managers.",
     "To reuse: move this file to a jakobgabriel/renovate-config repo and extend via github>jakobgabriel/renovate-config."
   ],
-  "extends": ["config:recommended"],
+  "extends": [
+    "config:recommended",
+    ":enableVulnerabilityAlertsWithLabel(security)",
+    "security:openssf-scorecard"
+  ],
   "dependencyDashboard": true,
   "osvVulnerabilityAlerts": true,
+  "transitiveRemediation": true,
+  "rangeStrategy": "bump",
   "minimumReleaseAge": "3 days",
-  "prConcurrentLimit": 5,
+  "prConcurrentLimit": 10,
   "assignees": ["jakobgabriel"],
   "commitMessagePrefix": "chore(deps):",
   "platformAutomerge": true,
   "automergeType": "pr",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "automerge": true,
+    "labels": ["security"],
+    "minimumReleaseAge": "0 days",
+    "schedule": ["at any time"]
+  },
   "enabledManagers": [
     "pep621",
     "pip_requirements",
@@ -79,11 +92,12 @@
       "labels": ["major-update"]
     },
     {
-      "description": "Vulnerability fixes bypass schedule and get security label",
+      "description": "Vulnerability fixes bypass schedule and auto-merge with security label",
       "matchCategories": ["security"],
       "schedule": ["at any time"],
       "labels": ["security"],
-      "automerge": false
+      "automerge": true,
+      "minimumReleaseAge": "0 days"
     },
     {
       "description": "Pin and auto-update GitHub Actions by SHA digest",
@@ -92,6 +106,12 @@
       "automerge": true,
       "groupName": "github actions",
       "labels": ["ci"]
+    },
+    {
+      "description": "Tag non-zerover stable releases with deprecation-watch so they show up in the dashboard for review",
+      "matchUpdateTypes": ["minor", "patch", "major"],
+      "matchCurrentVersion": "!/^0/",
+      "addLabels": ["deprecation-watch"]
     }
   ]
 }
