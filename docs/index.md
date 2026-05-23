@@ -346,6 +346,27 @@ ts-shape uses a simple long-format schema. Use only the columns you need.
 
 ---
 
+<div class="tx-section-heading" markdown>
+
+## Try it live
+
+</div>
+
+Run `ts-shape` directly in your browser — no install required. The first run
+downloads the Python runtime and may take a few seconds; later runs are instant.
+
+<div id="ts-shape-repl" class="ts-repl">
+  <textarea class="ts-repl__editor" spellcheck="false" aria-label="Python code editor"></textarea>
+  <div class="ts-repl__toolbar">
+    <button type="button" class="ts-repl__run">Run</button>
+    <button type="button" class="ts-repl__reset">Reset</button>
+    <span class="ts-repl__status"></span>
+  </div>
+  <pre class="ts-repl__output" aria-live="polite"></pre>
+</div>
+
+---
+
 <div align="center" markdown>
 
 **MIT License** — Built for the timeseries community

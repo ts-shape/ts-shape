@@ -85,3 +85,110 @@
 [data-md-color-scheme="slate"] .tx-pipeline-grid .md-typeset .grid.cards > ul > li {
   border-left-color: #80cbc4;
 }
+
+/* ── In-browser ts-shape REPL ─────────────────────────────────── */
+.ts-repl {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.4rem;
+  overflow: hidden;
+  margin: 1rem 0;
+}
+
+.ts-repl__editor {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 16rem;
+  padding: 0.8rem;
+  border: 0;
+  resize: vertical;
+  tab-size: 4;
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--md-code-fg-color);
+  background-color: var(--md-code-bg-color);
+}
+
+.ts-repl__editor:focus {
+  outline: 2px solid #009688;
+  outline-offset: -2px;
+}
+
+[data-md-color-scheme="slate"] .ts-repl__editor:focus {
+  outline-color: #80cbc4;
+}
+
+.ts-repl__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  background-color: var(--md-default-fg-color--lightest);
+}
+
+.ts-repl__run,
+.ts-repl__reset {
+  cursor: pointer;
+  border: 0;
+  border-radius: 0.2rem;
+  padding: 0.35rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.ts-repl__run {
+  background-color: #009688;
+  color: #fff;
+}
+
+.ts-repl__run:hover {
+  background-color: #00796b;
+}
+
+.ts-repl__run:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.ts-repl__reset {
+  background-color: transparent;
+  color: var(--md-default-fg-color--light);
+  border: 1px solid var(--md-default-fg-color--lighter);
+}
+
+.ts-repl__reset:hover {
+  color: var(--md-default-fg-color);
+}
+
+.ts-repl__status {
+  margin-left: auto;
+  font-size: 0.66rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.ts-repl__output {
+  margin: 0;
+  padding: 0.8rem;
+  max-height: 22rem;
+  overflow: auto;
+  white-space: pre;
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--md-code-fg-color);
+  background-color: var(--md-code-bg-color);
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.ts-repl__output:empty {
+  display: none;
+}
+
+.ts-repl__output--error {
+  color: #c62828;
+}
+
+[data-md-color-scheme="slate"] .ts-repl__output--error {
+  color: #ff8a80;
+}

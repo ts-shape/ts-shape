@@ -245,6 +245,8 @@ extra_css:
 extra_javascript:
   - https://d3js.org/d3.v7.min.js
   - assets/architecture-sunburst.js
+  - https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js
+  - javascripts/pyodide-repl.js
 
 extra:
   social:
