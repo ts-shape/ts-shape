@@ -2,7 +2,6 @@ import logging
 import requests
 import pandas as pd  # type: ignore
 import json
-from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

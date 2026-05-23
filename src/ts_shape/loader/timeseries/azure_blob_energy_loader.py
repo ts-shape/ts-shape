@@ -1,7 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import Iterator, List, Optional, Tuple, Union
+from typing import Union
+from collections.abc import Iterator
 import logging
 
 import pandas as pd  # type: ignore

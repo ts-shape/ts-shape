@@ -26,7 +26,7 @@ This module correlates both signals to reconstruct the full routing path.
 
 import logging
 import pandas as pd  # type: ignore
-from typing import List, Dict, Any, Optional, Union
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -80,8 +80,8 @@ class RoutingTraceabilityEvents(Base):
         id_uuid: str,
         routing_uuid: str,
         *,
-        state_map: dict[Union[int, float, str], str] | None = None,
-        station_map: dict[Union[int, float, str], str] | None = None,
+        state_map: dict[int | float | str, str] | None = None,
+        station_map: dict[int | float | str, str] | None = None,
         event_uuid: str = "prod:routing_trace",
         id_value_column: str = "value_string",
         routing_value_column: str = "value_integer",
@@ -109,9 +109,7 @@ class RoutingTraceabilityEvents(Base):
         self.id_uuid = id_uuid
         self.routing_uuid = routing_uuid
         # state_map takes priority; fall back to station_map for backwards compat
-        self.state_map: dict[Union[int, float, str], str] = (
-            state_map or station_map or {}
-        )
+        self.state_map: dict[int | float | str, str] = state_map or station_map or {}
         self.event_uuid = event_uuid
         self.id_value_column = id_value_column
         self.routing_value_column = routing_value_column

@@ -2,7 +2,6 @@ import logging
 import pandas as pd  # type: ignore
 import numpy as np
 from scipy.stats import zscore
-from typing import Optional
 from ts_shape.utils.base import Base
 from ts_shape.events._output import empty_event_df, finalize_point_df
 

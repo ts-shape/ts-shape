@@ -12,7 +12,7 @@ transform, or statistic can be exercised without real data or loaders::
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore

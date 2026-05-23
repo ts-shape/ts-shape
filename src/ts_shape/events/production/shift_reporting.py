@@ -8,7 +8,6 @@ Simple module for shift summaries:
 
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, Dict, Tuple
 
 from ts_shape.utils.base import Base
 

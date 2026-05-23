@@ -10,7 +10,7 @@ Classes:
 import logging
 import pandas as pd  # type: ignore
 import requests
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
-from typing import Iterable, List, Optional, Set, Dict, Any, Callable, Iterator, Tuple
+from typing import Any
+from collections.abc import Iterable, Callable, Iterator
 import logging
 import warnings
 

@@ -7,7 +7,7 @@ identifies reorder point breaches, and predicts stockouts.
 import logging
 import pandas as pd  # type: ignore
 import numpy as np
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 

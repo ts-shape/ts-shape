@@ -14,7 +14,7 @@ counts): here the focus is *absolute* run time and an hour-meter reading.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd  # type: ignore
 

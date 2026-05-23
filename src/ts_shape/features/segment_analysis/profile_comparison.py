@@ -1,7 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import Optional, List
 
 from scipy.spatial.distance import pdist, squareform  # type: ignore
 from scipy.cluster.hierarchy import linkage, fcluster  # type: ignore

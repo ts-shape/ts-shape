@@ -10,7 +10,6 @@ Track rework events and their impact:
 
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, Dict
 
 from ts_shape.utils.base import Base
 

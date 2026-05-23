@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 import pandas as pd  # type: ignore
 import s3fs
-from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 

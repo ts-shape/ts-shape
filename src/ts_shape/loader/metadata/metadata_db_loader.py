@@ -2,7 +2,6 @@ import logging
 import pandas as pd  # type: ignore
 import json
 from sqlalchemy import create_engine, text
-from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 

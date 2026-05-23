@@ -12,7 +12,7 @@ for the few detectors whose legacy schema does not fit any standard shape.
 from __future__ import annotations
 
 import uuid as _uuid
-from typing import Callable, Mapping
+from collections.abc import Callable, Mapping
 
 import pandas as pd
 

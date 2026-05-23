@@ -1,7 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
 from scipy import stats
-from typing import Dict, Union
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -109,7 +108,7 @@ class NumericStatistics(Base):
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
-    ) -> dict[str, Union[float, int]]:
+    ) -> dict[str, float | int]:
         """Returns a dictionary with comprehensive numeric statistics for the specified column."""
         _series = dataframe[column_name]
         return {

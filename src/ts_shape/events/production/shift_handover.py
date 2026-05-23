@@ -13,7 +13,6 @@ Two modes of operation:
 
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, Dict, List
 
 from ts_shape.utils.base import Base
 

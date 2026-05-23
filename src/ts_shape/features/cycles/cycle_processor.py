@@ -1,5 +1,4 @@
 import logging
-from typing import Dict, List, Optional
 import pandas as pd  # type: ignore
 import numpy as np
 from ts_shape.utils.base import Base

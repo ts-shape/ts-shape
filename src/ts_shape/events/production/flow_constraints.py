@@ -1,6 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 from ts_shape.utils.base import Base
 

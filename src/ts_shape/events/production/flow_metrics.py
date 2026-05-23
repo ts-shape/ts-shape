@@ -13,7 +13,6 @@ Entry and exit are boolean signals; each rising edge is one unit.
 """
 
 import logging
-from typing import Optional, Union
 
 import pandas as pd  # type: ignore
 
@@ -26,7 +25,7 @@ from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
 
-_Number = Union[int, float, str]
+_Number = int | float | str
 
 
 def _to_seconds(value: _Number | None) -> float | None:

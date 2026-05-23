@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 import pandas as pd  # type: ignore
 from sqlalchemy import create_engine, text
-from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 

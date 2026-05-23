@@ -8,7 +8,6 @@ Generic module for comparing any metric to targets:
 
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, Dict, Union
 
 from ts_shape.utils.base import Base
 
@@ -217,7 +216,7 @@ class TargetTracking(Base):
         daily_target: float,
         *,
         value_column: str = "value_integer",
-    ) -> dict[str, Union[float, int]]:
+    ) -> dict[str, float | int]:
         """How often are targets met?
 
         Args:

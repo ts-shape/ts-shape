@@ -14,7 +14,7 @@ time between consecutive rising edges is that station's cycle time.
 
 import logging
 import math
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
@@ -24,7 +24,7 @@ from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
 
-_Number = Union[int, float, str]
+_Number = int | float | str
 
 
 def _to_seconds(value: _Number | None) -> float | None:

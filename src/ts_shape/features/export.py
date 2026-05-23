@@ -5,7 +5,7 @@ suitable for machine-learning workflows.
 """
 
 import logging
-from typing import Dict, List, Optional, Callable, Union
+from collections.abc import Callable
 import pandas as pd  # type: ignore
 import numpy as np
 
@@ -41,7 +41,7 @@ class FeatureMatrixExporter:
         df: pd.DataFrame,
         uuid_col: str = "uuid",
         value_cols: list[str] | None = None,
-        agg_funcs: dict[str, Union[str, Callable]] | None = None,
+        agg_funcs: dict[str, str | Callable] | None = None,
         group_col: str | None = None,
     ) -> pd.DataFrame:
         """Pivot a long-format DataFrame into a wide feature matrix.

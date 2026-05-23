@@ -1,6 +1,5 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, List
 
 from ts_shape.utils.base import Base
 from ts_shape.features.stats.numeric_stats import NumericStatistics

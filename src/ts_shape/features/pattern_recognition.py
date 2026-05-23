@@ -1,7 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import Optional, Tuple
 
 from scipy.fft import fft, ifft  # type: ignore
 

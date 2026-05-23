@@ -12,7 +12,6 @@ pint is an optional dependency; install it with::
 """
 
 import logging
-from typing import Optional, Tuple
 
 import pandas as pd  # type: ignore
 

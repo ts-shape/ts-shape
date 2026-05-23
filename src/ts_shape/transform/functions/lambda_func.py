@@ -1,6 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import Callable, Any
+from typing import Any
+from collections.abc import Callable
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
