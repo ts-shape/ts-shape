@@ -100,6 +100,7 @@ def test_every_label_rule_has_valid_pack():
         "supplychain",
         "energy",
         "correlation",
+        "development",
     }
     bad = [(k, r.pack) for k, r in REGISTRY.items() if r.pack not in valid]
     assert not bad, f"invalid pack on entries: {bad[:10]}"

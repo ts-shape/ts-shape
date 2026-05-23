@@ -53,6 +53,7 @@ _M = "maintenance"
 _SC = "supplychain"
 _EN = "energy"
 _CO = "correlation"
+_DV = "development"
 
 P = "point"
 I = "interval"  # noqa: E741 — one-letter shape alias used in the REGISTRY literal below
@@ -137,6 +138,70 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:method": "rolling_correlation",
             "ts_shape:confidence": "correlation",
         },
+    ),
+    # ---- development (product & process R&D) -------------------------------
+    ("CriticalParameterRankingEvents", "rank"): _r(
+        "development.cpp.rank",
+        _DV,
+        ST,
+        objs=("signal",),
+        standard_attrs={"ts_shape:method": "method"},
+    ),
+    ("CriticalParameterRankingEvents", "top_drivers"): _r(
+        "development.cpp.top_drivers",
+        _DV,
+        ST,
+        objs=("signal",),
+        standard_attrs={"ts_shape:method": "method"},
+    ),
+    ("DesignOfExperimentsEvents", "compute_effects"): _r(
+        "development.doe.effects",
+        _DV,
+        ST,
+        objs=("signal",),
+        standard_attrs={"ts_shape:method": "doe_effects"},
+    ),
+    ("DesignOfExperimentsEvents", "detect_runs"): _r(
+        "development.doe.run",
+        _DV,
+        I,
+        standard_attrs={"ts_shape:lifecycle_state": "doe_run"},
+    ),
+    ("DesignSpaceEvents", "boundary_proximity"): _r(
+        "development.design_space.boundary_proximity",
+        _DV,
+        P,
+        standard_attrs={
+            "ts_shape:method": "boundary_proximity",
+            "ts_shape:direction": "closest_axis",
+        },
+    ),
+    ("DesignSpaceEvents", "detect_excursions"): _r(
+        "development.design_space.excursion",
+        _DV,
+        I,
+        standard_attrs={"ts_shape:lifecycle_state": "excursion_mode"},
+    ),
+    ("GoldenBatchDeviationEvents", "compare"): _r(
+        "development.golden_batch.compare",
+        _DV,
+        S,
+        objs=("batch",),
+        standard_attrs={"ts_shape:sample_count": None},
+    ),
+    ("GoldenBatchDeviationEvents", "phase_breakdown"): _r(
+        "development.golden_batch.phase_breakdown",
+        _DV,
+        S,
+        objs=("batch",),
+        standard_attrs={"ts_shape:sample_count": None},
+    ),
+    ("RecipePhaseAdherenceEvents", "evaluate"): _r(
+        "development.recipe_phase.evaluate",
+        _DV,
+        I,
+        objs=("asset", "batch"),
+        standard_attrs={"ts_shape:lifecycle_state": "phase"},
     ),
     # ---- energy ------------------------------------------------------------
     ("CarbonIntensityEvents", "carbon_intensity_per_unit"): _r(

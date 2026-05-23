@@ -14,7 +14,7 @@
 ## Key Features
 
 - **Unified DataFrame workflow** -- Load timeseries + metadata, join on `uuid`, process.
-- **Modular packs** -- Quality, Production, Engineering, Maintenance, Supply Chain events.
+- **Modular packs** -- Quality, Production, Engineering, Maintenance, Supply Chain, Energy, Correlation, and Development (product & process R&D) events.
 - **Performance-aware** -- Vectorised ops, chunked DB reads, concurrent I/O.
 - **Zero ML dependencies** -- Core uses only pandas, numpy, scipy.
 - **Multi-source loaders** -- Parquet, S3, Azure Blob, TimescaleDB, REST APIs.
@@ -52,7 +52,7 @@ import ts_shape
 # Generate a sample dataset (or load your own via pandas / a ts-shape loader)
 df = ts_shape.make_timeseries(["sensor:temp"], n_points=2000, n_outliers=6)
 
-# Discover what is available -- 60+ detectors across 7 packs
+# Discover what is available -- 70+ detectors across 8 packs
 ts_shape.list_detectors("events.quality")
 
 # Detect outliers
@@ -255,6 +255,45 @@ rul = fp.remaining_useful_life(degradation_rate=0.01, failure_threshold=120.0)
 # Vibration analysis (RMS, crest factor, kurtosis)
 vib = VibrationAnalysisEvents(df, signal_uuid="sensor:vibration")
 indicators = vib.bearing_health_indicators(window="5m")
+```
+
+### Development Events (Product & Process R&D)
+Designed for the activities that happen before commercial production: DOE runs,
+design-space qualification, golden-batch comparison, recipe-phase adherence, and
+outcome-driven critical-parameter ranking.
+
+```python
+from ts_shape.events.development import (
+    DesignOfExperimentsEvents,
+    DesignSpaceEvents,
+    GoldenBatchDeviationEvents,
+    RecipePhaseAdherenceEvents,
+    CriticalParameterRankingEvents,
+)
+
+# Recover DOE run structure from a continuous trace
+doe = DesignOfExperimentsEvents(df, factor_uuids=["factor:F1", "factor:F2"])
+runs = doe.detect_runs(min_duration="5min", stability_tol=0.01)
+effects = doe.compute_effects(response_uuid="response:Y", statistic="settled")
+
+# Multivariate qualified operating window
+ds = DesignSpaceEvents(qualification_df, cpp_uuids=["cpp:temp", "cpp:ph"]).fit_box()
+excursions = ds.detect_excursions(operation_df)
+
+# Golden-batch trajectory comparison (pointwise / area / DTW)
+gb = GoldenBatchDeviationEvents(reference_df, signal_uuid="reactor:temp")
+deviation = gb.compare(new_batch_df, mode="dtw")
+
+# Recipe-phase pass/fail vs. a declarative spec
+spec = {"hold": {"hold_value": (78.0, 82.0)}, "heat_up": {"ramp_rate_max": 0.5}}
+rp = RecipePhaseAdherenceEvents(df, phase_uuid="phase:reactor",
+                                value_uuid="temp:reactor", spec=spec)
+phases = rp.evaluate()
+
+# Rank candidate CPPs by their statistical link to a quality outcome
+cpp = CriticalParameterRankingEvents(df)
+drivers = cpp.top_drivers(per_run_df, candidate_columns=["x1", "x2", "x3"],
+                          outcome_column="yield", method="spearman")
 ```
 
 ### Supply Chain Events

@@ -34,6 +34,16 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("SignalCorrelationEvents", "correlation_breakdown"): "correlation",
     ("SignalCorrelationEvents", "lag_correlation"): "correlation",
     ("SignalCorrelationEvents", "rolling_correlation"): "correlation",
+    # ---- development (product & process R&D) -------------------------------
+    ("CriticalParameterRankingEvents", "rank"): "static",
+    ("CriticalParameterRankingEvents", "top_drivers"): "static",
+    ("DesignOfExperimentsEvents", "compute_effects"): "static",
+    ("DesignOfExperimentsEvents", "detect_runs"): "interval",
+    ("DesignSpaceEvents", "boundary_proximity"): "threshold",
+    ("DesignSpaceEvents", "detect_excursions"): "interval",
+    ("GoldenBatchDeviationEvents", "compare"): "aggregate",
+    ("GoldenBatchDeviationEvents", "phase_breakdown"): "aggregate",
+    ("RecipePhaseAdherenceEvents", "evaluate"): "interval",
     # ---- energy ------------------------------------------------------------
     ("CarbonIntensityEvents", "carbon_intensity_per_unit"): "aggregate",
     ("CarbonIntensityEvents", "emission_factor_audit"): "aggregate",
