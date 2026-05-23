@@ -9,7 +9,6 @@ loaders from a REPL or notebook instead of scanning the docs::
 
 from __future__ import annotations
 
-from typing import Optional
 
 import pandas as pd  # type: ignore
 
@@ -27,7 +26,7 @@ def _category_for(module: str) -> str:
     return parts[1] if len(parts) > 1 else module
 
 
-def list_detectors(category: Optional[str] = None) -> pd.DataFrame:
+def list_detectors(category: str | None = None) -> pd.DataFrame:
     """Return a catalog of ts-shape's top-level public classes.
 
     Args:

@@ -102,6 +102,8 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests with coverage
+        env:
+          PYTHONDEVMODE: "1"
         run: |
           pytest --cov=ts_shape --cov-report=xml --cov-report=term -v
 
@@ -111,4 +113,64 @@ jobs:
         with:
           name: coverage-report-py${{ matrix.python-version }}
           path: coverage.xml
+          retention-days: 14
+
+  scan:
+    name: Deprecation & vulnerability scan
+    runs-on: ubuntu-latest
+    needs: [pip-compile]
+    if: always() && (needs.pip-compile.result == 'success' || needs.pip-compile.result == 'skipped')
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install package, dev extras, and scan tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pip-audit
+
+      - name: Capture runtime DeprecationWarnings from tests
+        continue-on-error: true
+        run: |
+          pytest -W error::DeprecationWarning -W error::PendingDeprecationWarning \
+            --tb=line -q 2>&1 | tee deprecation-warnings.txt
+
+      - name: Static @deprecated detection (mypy PEP 702)
+        continue-on-error: true
+        run: |
+          mypy 2>&1 | tee mypy-full.txt
+          grep '\[deprecated\]' mypy-full.txt | tee mypy-deprecated.txt || true
+
+      - name: Vulnerability scan (pip-audit)
+        continue-on-error: true
+        run: |
+          pip-audit --format=json --output pip-audit.json || true
+          pip-audit | tee pip-audit.txt || true
+
+      - name: Outdated dependencies
+        continue-on-error: true
+        run: |
+          pip list --outdated --format=json > outdated.json || true
+          pip list --outdated | tee outdated.txt || true
+
+      - name: Upload scan artefacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deprecation-scan
+          path: |
+            deprecation-warnings.txt
+            mypy-deprecated.txt
+            mypy-full.txt
+            pip-audit.json
+            pip-audit.txt
+            outdated.json
+            outdated.txt
           retention-days: 14

@@ -12,7 +12,7 @@ transform, or statistic can be exercised without real data or loaders::
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
@@ -31,7 +31,7 @@ def make_timeseries(
     drift: float = 0.0,
     n_outliers: int = 0,
     value_column: str = "value_double",
-    seed: Optional[int] = 42,
+    seed: int | None = 42,
 ) -> pd.DataFrame:
     """Generate a standard-schema synthetic timeseries DataFrame.
 

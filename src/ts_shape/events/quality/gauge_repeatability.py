@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -43,7 +43,7 @@ class GaugeRepeatabilityEvents(Base):
         *,
         part_column: str = "value_string",
         value_column: str = "value_double",
-        operator_column: Optional[str] = None,
+        operator_column: str | None = None,
         event_uuid: str = "quality:gauge_rr",
         time_column: str = "systime",
     ) -> None:
@@ -62,7 +62,7 @@ class GaugeRepeatabilityEvents(Base):
             .sort_values(self.time_column)
         )
 
-    def repeatability(self, n_trials: Optional[int] = None) -> pd.DataFrame:
+    def repeatability(self, n_trials: int | None = None) -> pd.DataFrame:
         """Equipment Variation (EV) — within-part variation.
 
         Groups measurements by part, computes range-based or pooled
@@ -79,7 +79,7 @@ class GaugeRepeatabilityEvents(Base):
         if self.signal.empty or self.part_column not in self.signal.columns:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         grouped = self.signal.groupby(self.part_column)
 
         ranges = []
@@ -127,7 +127,7 @@ class GaugeRepeatabilityEvents(Base):
         if self.signal.empty or self.operator_column not in self.signal.columns:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         # Per-operator mean across all parts
         op_means = []
@@ -167,7 +167,7 @@ class GaugeRepeatabilityEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
-    def gauge_rr_summary(self, tolerance_range: Optional[float] = None) -> pd.DataFrame:
+    def gauge_rr_summary(self, tolerance_range: float | None = None) -> pd.DataFrame:
         """Full Gauge R&R summary table.
 
         Computes EV, AV, GRR, PV, TV, %GRR, %PV, and number of
@@ -239,7 +239,7 @@ class GaugeRepeatabilityEvents(Base):
 
         return pd.DataFrame([result])
 
-    def measurement_bias(self, reference_values: Dict[str, float]) -> pd.DataFrame:
+    def measurement_bias(self, reference_values: dict[str, float]) -> pd.DataFrame:
         """Compare average measurements to known reference values.
 
         Args:
@@ -254,7 +254,7 @@ class GaugeRepeatabilityEvents(Base):
         if self.signal.empty or self.part_column not in self.signal.columns:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for part, group in self.signal.groupby(self.part_column):
             if part not in reference_values:
                 continue

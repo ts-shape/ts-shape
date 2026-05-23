@@ -1,6 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -29,7 +29,7 @@ class LongDowntimeEvents(Base):
         event_uuid: str = "prod:long_downtime",
         value_column: str = "value_bool",
         time_column: str = "systime",
-        value_range: Optional[Tuple[Optional[float], Optional[float]]] = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
         super().__init__(dataframe, column_name=time_column)
         self.state_uuid = state_uuid
@@ -93,7 +93,7 @@ class LongDowntimeEvents(Base):
         state_change = (s["state"] != s["state"].shift()).cumsum()
         min_td = pd.to_timedelta(min_gap)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in s.groupby(state_change):
             if bool(seg["state"].iloc[0]):
                 continue  # running segment — skip
@@ -180,7 +180,7 @@ class LongDowntimeEvents(Base):
         )
         prod["systime"] = pd.to_datetime(prod["systime"])
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for i in range(len(gaps) - 1):
             start = gaps.iloc[i]["end"]
             end = gaps.iloc[i + 1]["start"]

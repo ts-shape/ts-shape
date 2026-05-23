@@ -1,7 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List
 
 from ts_shape.utils.base import Base
 
@@ -166,7 +165,7 @@ class EnergyPerformanceIndicatorEvents(Base):
 
     def enpi_by_hierarchy(
         self,
-        meter_uuids: List[str],
+        meter_uuids: list[str],
         counter_uuid: str,
         *,
         energy_column: str = "value_double",

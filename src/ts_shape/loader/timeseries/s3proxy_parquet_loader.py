@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 import pandas as pd  # type: ignore
 import s3fs
-from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +17,8 @@ class S3ProxyDataAccess:
         self,
         start_timestamp: str,
         end_timestamp: str,
-        uuids: List[str],
-        s3_config: Dict[str, str],
+        uuids: list[str],
+        s3_config: dict[str, str],
     ):
         """
         Initialize the S3ProxyDataAccess object.

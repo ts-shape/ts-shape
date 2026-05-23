@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -76,7 +76,7 @@ class RateOfChangeEvents(Base):
             return pd.DataFrame(columns=cols)
 
         groups = (rapid != rapid.shift()).cumsum()
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         for _, seg in rate_df.groupby(groups):
             seg_rapid = rapid.loc[seg.index]
@@ -158,7 +158,7 @@ class RateOfChangeEvents(Base):
         )
         max_td = pd.to_timedelta(max_duration)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         values = sig[self.value_column].values
         times = sig[self.time_column].values
 

@@ -18,7 +18,8 @@ lambda rules do not need a real Python class on disk.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
+from collections.abc import Iterable, Mapping
 
 from ..archetypes import ARCHETYPE_BY_METHOD
 from ..schema import STANDARD_ATTR_KEYS

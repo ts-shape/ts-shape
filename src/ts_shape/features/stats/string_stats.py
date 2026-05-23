@@ -1,6 +1,5 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import Dict, Union
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -143,7 +142,7 @@ class StringStatistics(Base):
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
-    ) -> Dict[str, Union[int, str, float]]:
+    ) -> dict[str, int | str | float]:
         """Returns a dictionary with comprehensive string statistics for the specified column."""
         most_frequent = cls.most_frequent(dataframe, column_name)
         value_counts = dataframe[column_name].value_counts()

@@ -1,5 +1,4 @@
 import logging
-from typing import Dict, List, Optional
 import pandas as pd  # type: ignore
 import numpy as np
 from ts_shape.utils.base import Base
@@ -61,7 +60,7 @@ class CycleDataProcessor(Base):
         )
         logger.debug(f"Built interval index with {len(intervals)} cycles.")
 
-    def split_by_cycle(self) -> Dict[str, pd.DataFrame]:
+    def split_by_cycle(self) -> dict[str, pd.DataFrame]:
         """
         Splits the values DataFrame by cycles defined in the cycles DataFrame.
         Uses optimized interval-based assignment.
@@ -140,8 +139,8 @@ class CycleDataProcessor(Base):
         return result
 
     def group_by_cycle_uuid(
-        self, data: Optional[pd.DataFrame] = None
-    ) -> List[pd.DataFrame]:
+        self, data: pd.DataFrame | None = None
+    ) -> list[pd.DataFrame]:
         """
         Group the DataFrame by the cycle_uuid column, resulting in a list of DataFrames, each containing data for one cycle.
 
@@ -165,8 +164,8 @@ class CycleDataProcessor(Base):
         return grouped_dataframes
 
     def split_dataframes_by_group(
-        self, dfs: List[pd.DataFrame], column: str
-    ) -> List[pd.DataFrame]:
+        self, dfs: list[pd.DataFrame], column: str
+    ) -> list[pd.DataFrame]:
         """
         Splits a list of DataFrames by groups based on a specified column.
         This function performs a groupby operation on each DataFrame in the list and then flattens the result.
@@ -330,7 +329,7 @@ class CycleDataProcessor(Base):
         metric: str = "value_double",
         method: str = "low_variability",
         top_n: int = 5,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Identify the best performing cycles (golden cycles).
 

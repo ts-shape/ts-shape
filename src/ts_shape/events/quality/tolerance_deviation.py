@@ -3,7 +3,7 @@ from ts_shape.utils.base import Base
 import pandas as pd  # type: ignore
 import numpy as np
 import operator
-from typing import Callable, Optional, Dict
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +26,13 @@ class ToleranceDeviationEvents(Base):
         dataframe: pd.DataFrame,
         tolerance_column: str,
         actual_column: str,
-        tolerance_uuid: Optional[str] = None,
+        tolerance_uuid: str | None = None,
         actual_uuid: str = None,
         event_uuid: str = None,
         compare_func: Callable[[pd.Series, pd.Series], pd.Series] = operator.ge,
         time_threshold: str = "5min",
-        upper_tolerance_uuid: Optional[str] = None,
-        lower_tolerance_uuid: Optional[str] = None,
+        upper_tolerance_uuid: str | None = None,
+        lower_tolerance_uuid: str | None = None,
         warning_threshold: float = 0.8,
         tolerance_lag: str = "0s",
     ) -> None:
@@ -72,15 +72,15 @@ class ToleranceDeviationEvents(Base):
                     "Either tolerance_uuid or both upper_tolerance_uuid and lower_tolerance_uuid must be provided"
                 )
             # Use single tolerance for both upper and lower (backward compatibility)
-            self.tolerance_uuid: Optional[str] = tolerance_uuid
-            self.upper_tolerance_uuid: Optional[str] = None
-            self.lower_tolerance_uuid: Optional[str] = None
+            self.tolerance_uuid: str | None = tolerance_uuid
+            self.upper_tolerance_uuid: str | None = None
+            self.lower_tolerance_uuid: str | None = None
             self.separate_tolerances: bool = False
         else:
             # Use separate upper and lower tolerances
-            self.tolerance_uuid: Optional[str] = None
-            self.upper_tolerance_uuid: Optional[str] = upper_tolerance_uuid
-            self.lower_tolerance_uuid: Optional[str] = lower_tolerance_uuid
+            self.tolerance_uuid: str | None = None
+            self.upper_tolerance_uuid: str | None = upper_tolerance_uuid
+            self.lower_tolerance_uuid: str | None = lower_tolerance_uuid
             self.separate_tolerances: bool = True
 
     def _apply_tolerance_lag(
@@ -419,8 +419,8 @@ class ToleranceDeviationEvents(Base):
         return events_df
 
     def compute_capability_indices(
-        self, target_value: Optional[float] = None
-    ) -> Dict[str, float]:
+        self, target_value: float | None = None
+    ) -> dict[str, float]:
         """
         Calculate process capability indices (Cp, Cpk, Pp, Ppk).
 

@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -70,7 +70,7 @@ class StartupDetectionEvents(Base):
         rising = (~above_enter.shift(fill_value=False)) & above_enter
         rise_times = s.loc[rising, self.time_column]
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for t0 in rise_times:
             # ensure dwell above exit threshold for min_above
             win = s[
@@ -128,7 +128,7 @@ class StartupDetectionEvents(Base):
 
         gid = (mask != mask.shift()).cumsum()
         min_d = pd.to_timedelta(min_duration)
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for _, seg in s.groupby(gid):
             seg_mask = mask.loc[seg.index]
             if not seg_mask.any():
@@ -154,7 +154,7 @@ class StartupDetectionEvents(Base):
 
     def detect_startup_multi_signal(
         self,
-        signals: Dict[str, Dict[str, Any]],
+        signals: dict[str, dict[str, Any]],
         logic: str = "all",
         *,
         time_tolerance: str = "30s",
@@ -177,7 +177,7 @@ class StartupDetectionEvents(Base):
             raise ValueError(f"logic must be 'all' or 'any', got '{logic}'")
 
         # Detect startups for each signal
-        signal_events: Dict[str, pd.DataFrame] = {}
+        signal_events: dict[str, pd.DataFrame] = {}
         for sig_uuid, config in signals.items():
             # Temporarily store original settings
             orig_uuid = self.target_uuid
@@ -343,7 +343,7 @@ class StartupDetectionEvents(Base):
         s = self.series[[self.time_column, self.value_column]].copy()
         s = s.sort_values(self.time_column).reset_index(drop=True)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         # Calculate rolling statistics
         s["rolling_mean"] = (
@@ -535,7 +535,7 @@ class StartupDetectionEvents(Base):
 
     def track_startup_phases(
         self,
-        phases: List[Dict[str, Any]],
+        phases: list[dict[str, Any]],
         *,
         min_phase_duration: str = "5s",
     ) -> pd.DataFrame:
@@ -671,7 +671,7 @@ class StartupDetectionEvents(Base):
 
         return pd.DataFrame(phase_results)
 
-    def _check_phase_condition(self, row: pd.Series, phase: Dict[str, Any]) -> bool:
+    def _check_phase_condition(self, row: pd.Series, phase: dict[str, Any]) -> bool:
         """Helper method to check if a row satisfies a phase condition."""
         condition = phase.get("condition", "threshold")
         value = row[self.value_column]
@@ -698,7 +698,7 @@ class StartupDetectionEvents(Base):
         threshold: float,
         min_rise_duration: str = "5s",
         max_completion_time: str = "5m",
-        completion_threshold: Optional[float] = None,
+        completion_threshold: float | None = None,
         required_stability: str = "10s",
     ) -> pd.DataFrame:
         """
@@ -748,7 +748,7 @@ class StartupDetectionEvents(Base):
         rising = (~above_threshold.shift(fill_value=False)) & above_threshold
         rise_times = s.loc[rising, self.time_column]
 
-        failed_events: List[Dict[str, Any]] = []
+        failed_events: list[dict[str, Any]] = []
 
         for t0 in rise_times:
             # Get data for potential startup period

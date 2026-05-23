@@ -1,6 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -34,7 +34,7 @@ class BottleneckDetectionEvents(Base):
         self.value_column = value_column
 
     def station_utilization(
-        self, station_uuids: List[str], window: str = "1h"
+        self, station_uuids: list[str], window: str = "1h"
     ) -> pd.DataFrame:
         """Per-station uptime percentage per time window.
 
@@ -45,7 +45,7 @@ class BottleneckDetectionEvents(Base):
         Returns:
             DataFrame with columns: start, uuid, utilization_pct.
         """
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
 
         for uid in station_uuids:
             station = self.dataframe[self.dataframe["uuid"] == uid].copy()
@@ -73,7 +73,7 @@ class BottleneckDetectionEvents(Base):
         )
 
     def detect_bottleneck(
-        self, station_uuids: List[str], window: str = "1h"
+        self, station_uuids: list[str], window: str = "1h"
     ) -> pd.DataFrame:
         """Identify the bottleneck station per window.
 
@@ -112,7 +112,7 @@ class BottleneckDetectionEvents(Base):
         )
 
     def shifting_bottleneck(
-        self, station_uuids: List[str], window: str = "1h"
+        self, station_uuids: list[str], window: str = "1h"
     ) -> pd.DataFrame:
         """Track when the bottleneck identity changes between stations.
 
@@ -136,7 +136,7 @@ class BottleneckDetectionEvents(Base):
                 ]
             )
 
-        shifts: List[Dict[str, Any]] = []
+        shifts: list[dict[str, Any]] = []
         prev_uuid = bottlenecks.iloc[0]["bottleneck_uuid"]
         prev_util = bottlenecks.iloc[0]["utilization_pct"]
 
@@ -171,8 +171,8 @@ class BottleneckDetectionEvents(Base):
         )
 
     def throughput_constraint_summary(
-        self, station_uuids: List[str], window: str = "1h"
-    ) -> Dict[str, Any]:
+        self, station_uuids: list[str], window: str = "1h"
+    ) -> dict[str, Any]:
         """Summary statistics for bottleneck analysis.
 
         Args:

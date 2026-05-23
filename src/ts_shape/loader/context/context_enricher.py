@@ -1,6 +1,5 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ class ContextEnricher:
         metadata: pd.DataFrame,
         *,
         metadata_uuid_col: str = "uuid",
-        columns: Optional[List[str]] = None,
+        columns: list[str] | None = None,
     ) -> pd.DataFrame:
         """Join metadata columns onto timeseries by UUID.
 

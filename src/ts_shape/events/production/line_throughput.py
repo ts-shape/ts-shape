@@ -1,7 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np
-from typing import Optional
 
 from ts_shape.utils.base import Base
 
@@ -135,7 +134,7 @@ class LineThroughputEvents(Base):
         *,
         value_column: str = "value_integer",
         window: str = "1h",
-        target_rate: Optional[float] = None,
+        target_rate: float | None = None,
         availability_threshold: float = 0.95,
     ) -> pd.DataFrame:
         """Calculate Overall Equipment Effectiveness (OEE) metrics.
@@ -275,7 +274,7 @@ class LineThroughputEvents(Base):
         cycle_uuid: str,
         *,
         value_column: str = "value_bool",
-        expected_cycle_time: Optional[float] = None,
+        expected_cycle_time: float | None = None,
         tolerance_pct: float = 0.1,
     ) -> pd.DataFrame:
         """Enhanced cycle detection with quality validation.

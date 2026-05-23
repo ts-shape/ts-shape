@@ -35,7 +35,7 @@ class EventLog:
             f"objects={len(self.objects)}, relations={len(self.relations)})"
         )
 
-    def filter_by_pack(self, pack: str) -> "EventLog":
+    def filter_by_pack(self, pack: str) -> EventLog:
         events = self.events[self.events[schema.TS_PACK] == pack]
         eids = set(events[schema.OCEL_EID])
         relations = self.relations[self.relations[schema.OCEL_EID].isin(eids)]
@@ -55,7 +55,7 @@ class EventLog:
             relations.reset_index(drop=True),
         )
 
-    def filter_by_object(self, oid: str, type_: str | None = None) -> "EventLog":
+    def filter_by_object(self, oid: str, type_: str | None = None) -> EventLog:
         rel = self.relations
         mask = rel[schema.OCEL_OID] == oid
         if type_ is not None:

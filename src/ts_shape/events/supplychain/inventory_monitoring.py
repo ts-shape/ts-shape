@@ -7,7 +7,7 @@ identifies reorder point breaches, and predicts stockouts.
 import logging
 import pandas as pd  # type: ignore
 import numpy as np
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -100,7 +100,7 @@ class InventoryMonitoringEvents(Base):
         # Group contiguous below-threshold segments
         lv["group"] = (lv["below"] != lv["below"].shift()).cumsum()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in lv[lv["below"]].groupby("group"):
             start = seg[self.time_column].iloc[0]
             end = seg[self.time_column].iloc[-1]
@@ -215,7 +215,7 @@ class InventoryMonitoringEvents(Base):
         # Detect transitions into breach (was above, now below)
         lv["prev_value"] = lv[self.value_column].shift()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
 
         # Reorder point breaches: crossing below reorder_level
         reorder_mask = (lv[self.value_column] < reorder_level) & (
@@ -294,7 +294,7 @@ class InventoryMonitoringEvents(Base):
         lv = self.levels[[self.time_column, self.value_column]].copy()
         window_td = pd.to_timedelta(consumption_rate_window)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         times = lv[self.time_column].values
         values = lv[self.value_column].values
 

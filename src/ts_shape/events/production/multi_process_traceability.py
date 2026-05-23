@@ -20,7 +20,7 @@ being processed.  Handover signals between cells confirm the transfer.
 
 import logging
 import pandas as pd  # type: ignore
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -58,9 +58,9 @@ class MultiProcessTraceabilityEvents(Base):
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        processes: List[Dict[str, str]],
+        processes: list[dict[str, str]],
         *,
-        handovers: Optional[List[Dict[str, str]]] = None,
+        handovers: list[dict[str, str]] | None = None,
         event_uuid: str = "prod:multi_process_trace",
         id_value_column: str = "value_string",
         handover_value_column: str = "value_integer",
@@ -92,13 +92,13 @@ class MultiProcessTraceabilityEvents(Base):
         self.time_column = time_column
 
         # Build station lookup: station_name -> list of id_uuids (parallel cells)
-        self._station_uuids: Dict[str, List[str]] = {}
+        self._station_uuids: dict[str, list[str]] = {}
         for proc in self.processes:
             station = proc["station"]
             self._station_uuids.setdefault(station, []).append(proc["id_uuid"])
 
         # Pre-filter process data per uuid
-        self._process_data: Dict[str, pd.DataFrame] = {}
+        self._process_data: dict[str, pd.DataFrame] = {}
         for proc in self.processes:
             uid = proc["id_uuid"]
             sdf = (
@@ -110,7 +110,7 @@ class MultiProcessTraceabilityEvents(Base):
             self._process_data[uid] = sdf
 
         # Pre-filter handover data per uuid
-        self._handover_data: Dict[str, pd.DataFrame] = {}
+        self._handover_data: dict[str, pd.DataFrame] = {}
         for ho in self.handovers:
             uid = ho["uuid"]
             hdf = (
@@ -156,7 +156,7 @@ class MultiProcessTraceabilityEvents(Base):
             gap = pd.Series(False, index=s.index)
         s["group"] = (value_change | gap).cumsum()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in s.groupby("group"):
             item_id = seg["item_id"].iloc[0]
             if item_id == "":
@@ -202,7 +202,7 @@ class MultiProcessTraceabilityEvents(Base):
               station for the same item.
             - uuid: Event UUID.
         """
-        all_intervals: List[pd.DataFrame] = []
+        all_intervals: list[pd.DataFrame] = []
         for proc in self.processes:
             intervals = self._detect_intervals(proc["id_uuid"], proc["station"])
             if not intervals.empty:
@@ -286,7 +286,7 @@ class MultiProcessTraceabilityEvents(Base):
                 ]
             )
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for item_id, grp in timeline.groupby("item_id"):
             grp = grp.sort_values("start")
             first_seen = grp["start"].iloc[0]
@@ -341,7 +341,7 @@ class MultiProcessTraceabilityEvents(Base):
                 ]
             )
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for item_id, grp in timeline.groupby("item_id"):
             if len(grp) < 2:
                 continue
@@ -418,7 +418,7 @@ class MultiProcessTraceabilityEvents(Base):
                 ]
             )
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for ho in self.handovers:
             ho_uuid = ho["uuid"]
             from_station = ho["from_station"]

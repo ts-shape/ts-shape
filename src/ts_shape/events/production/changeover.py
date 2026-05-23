@@ -1,6 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -71,10 +71,10 @@ class ChangeoverEvents(Base):
         product_uuid: str,
         *,
         value_column: str = "value_string",
-        start_time: Optional[pd.Timestamp] = None,
+        start_time: pd.Timestamp | None = None,
         until: str = "fixed_window",
-        config: Optional[Dict[str, Any]] = None,
-        fallback: Optional[Dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
+        fallback: dict[str, Any] | None = None,
     ) -> pd.DataFrame:
         """Compute changeover windows per product change with enhanced configurability.
 
@@ -116,7 +116,7 @@ class ChangeoverEvents(Base):
                 ]
             )
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, r in changes.iterrows():
             t0 = pd.to_datetime(r["systime"])
             if until == "fixed_window":
@@ -168,13 +168,13 @@ class ChangeoverEvents(Base):
         return pd.DataFrame(rows)
 
     def _compute_stable_band_end(
-        self, t0: pd.Timestamp, config: Dict[str, Any]
-    ) -> Optional[pd.Timestamp]:
+        self, t0: pd.Timestamp, config: dict[str, Any]
+    ) -> pd.Timestamp | None:
         """Compute end time for stable_band method with configurable reference methods."""
         metric_defs = config.get("metrics", [])
         reference_method = config.get("reference_method", "expanding_median")
 
-        metric_ends: List[pd.Timestamp] = []
+        metric_ends: list[pd.Timestamp] = []
 
         for mdef in metric_defs:
             uid = mdef["uuid"]
@@ -203,7 +203,7 @@ class ChangeoverEvents(Base):
 
             # Find first stable period
             gid = (inside.ne(inside.shift())).cumsum()
-            end_found: Optional[pd.Timestamp] = None
+            end_found: pd.Timestamp | None = None
 
             for _, seg in s.groupby(gid):
                 seg_inside = inside.loc[seg.index]
@@ -227,8 +227,8 @@ class ChangeoverEvents(Base):
         self,
         series: pd.Series,
         method: str,
-        config: Dict[str, Any],
-        mdef: Dict[str, Any],
+        config: dict[str, Any],
+        mdef: dict[str, Any],
     ) -> pd.Series:
         """Calculate reference values using various methods."""
         if method == "expanding_median":

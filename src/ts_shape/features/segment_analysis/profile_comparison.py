@@ -1,7 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import Optional, List
 
 from scipy.spatial.distance import pdist, squareform  # type: ignore
 from scipy.cluster.hierarchy import linkage, fcluster  # type: ignore
@@ -30,8 +29,8 @@ class ProfileComparison(Base):
     def _get_metric_columns(
         cls,
         df: pd.DataFrame,
-        metric_columns: Optional[List[str]] = None,
-    ) -> List[str]:
+        metric_columns: list[str] | None = None,
+    ) -> list[str]:
         """Identify numeric metric columns from a profiles DataFrame."""
         non_metric = {
             "uuid",
@@ -58,7 +57,7 @@ class ProfileComparison(Base):
         cls,
         metric_profiles: pd.DataFrame,
         group_column: str = "uuid",
-        metric_columns: Optional[List[str]] = None,
+        metric_columns: list[str] | None = None,
         distance_metric: str = "euclidean",
         normalize: bool = True,
     ) -> pd.DataFrame:
@@ -109,7 +108,7 @@ class ProfileComparison(Base):
         cls,
         distance_matrix: pd.DataFrame,
         n_clusters: int = 3,
-        distance_threshold: Optional[float] = None,
+        distance_threshold: float | None = None,
         linkage_method: str = "average",
     ) -> pd.DataFrame:
         """Group items by metric similarity using hierarchical clustering.
@@ -212,7 +211,7 @@ class ProfileComparison(Base):
         metric_profiles: pd.DataFrame,
         uuid_column: str = "uuid",
         group_column: str = "segment_index",
-        metric_columns: Optional[List[str]] = None,
+        metric_columns: list[str] | None = None,
         normalize: bool = True,
     ) -> pd.DataFrame:
         """Track how each UUID's metrics change across consecutive segments.
@@ -264,7 +263,7 @@ class ProfileComparison(Base):
         metric_profiles: pd.DataFrame,
         uuid_column: str = "uuid",
         group_column: str = "segment_value",
-        metric_columns: Optional[List[str]] = None,
+        metric_columns: list[str] | None = None,
         normalize: bool = True,
         top_k: int = 10,
     ) -> pd.DataFrame:

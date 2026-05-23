@@ -10,7 +10,6 @@ Industry-standard metric for manufacturing productivity:
 
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional
 
 from ts_shape.utils.base import Base
 from ts_shape.events._output import (
@@ -91,7 +90,7 @@ class OEECalculator(Base):
     def calculate_availability(
         self,
         run_state_uuid: str,
-        planned_time_hours: Optional[float] = None,
+        planned_time_hours: float | None = None,
         *,
         value_column: str = "value_bool",
     ) -> pd.DataFrame:
@@ -170,7 +169,7 @@ class OEECalculator(Base):
         self,
         counter_uuid: str,
         ideal_cycle_time: float,
-        run_state_uuid: Optional[str] = None,
+        run_state_uuid: str | None = None,
         *,
         value_column: str = "value_integer",
         run_value_column: str = "value_bool",
@@ -336,10 +335,10 @@ class OEECalculator(Base):
         run_state_uuid: str,
         counter_uuid: str,
         ideal_cycle_time: float,
-        total_uuid: Optional[str] = None,
-        reject_uuid: Optional[str] = None,
+        total_uuid: str | None = None,
+        reject_uuid: str | None = None,
         *,
-        planned_time_hours: Optional[float] = None,
+        planned_time_hours: float | None = None,
     ) -> pd.DataFrame:
         """Calculate daily OEE = Availability * Performance * Quality.
 

@@ -1,7 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import Optional, Tuple
 
 from scipy.fft import fft, ifft  # type: ignore
 
@@ -74,7 +73,7 @@ class PatternRecognition(Base):
         series: np.ndarray,
         window_size: int,
         exclusion_zone: int,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Compute the Matrix Profile and Matrix Profile Index.
 
         Args:
@@ -114,7 +113,7 @@ class PatternRecognition(Base):
         value_column: str = "value_double",
         window_size: int = 50,
         top_k: int = 5,
-        exclusion_zone: Optional[int] = None,
+        exclusion_zone: int | None = None,
         time_column: str = "systime",
     ) -> pd.DataFrame:
         """Find the top-k recurring subsequence patterns (motifs).
@@ -174,7 +173,7 @@ class PatternRecognition(Base):
         value_column: str = "value_double",
         window_size: int = 50,
         top_k: int = 5,
-        exclusion_zone: Optional[int] = None,
+        exclusion_zone: int | None = None,
         time_column: str = "systime",
     ) -> pd.DataFrame:
         """Find the top-k anomalous subsequences (discords).
@@ -295,7 +294,7 @@ class PatternRecognition(Base):
         dataframe: pd.DataFrame,
         template: np.ndarray,
         value_column: str = "value_double",
-        threshold: Optional[float] = None,
+        threshold: float | None = None,
         normalize: bool = True,
         time_column: str = "systime",
     ) -> pd.DataFrame:

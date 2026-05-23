@@ -1,7 +1,7 @@
 import logging
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -27,7 +27,7 @@ class MachineStateEvents(Base):
         event_uuid: str = "prod:run_idle",
         value_column: str = "value_bool",
         time_column: str = "systime",
-        value_range: Optional[Tuple[Optional[float], Optional[float]]] = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
         super().__init__(dataframe, column_name=time_column)
         self.run_state_uuid = run_state_uuid
@@ -49,7 +49,7 @@ class MachineStateEvents(Base):
             .sort_values(self.time_column)
         )
         self.series[self.time_column] = pd.to_datetime(self.series[self.time_column])
-        self._state_groups: Optional[pd.Series] = None
+        self._state_groups: pd.Series | None = None
         self._compute_state_groups()
 
     def _as_state(self, col: pd.Series) -> pd.Series:
@@ -89,7 +89,7 @@ class MachineStateEvents(Base):
         s["state"] = self._as_state(s[self.value_column])
         state_change = (s["state"] != s["state"].shift()).cumsum()
         min_td = pd.to_timedelta(min_duration)
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in s.groupby(state_change):
             state = bool(seg["state"].iloc[0])
             start = seg[self.time_column].iloc[0]
@@ -192,7 +192,7 @@ class MachineStateEvents(Base):
             )
 
         threshold_td = pd.to_timedelta(threshold)
-        rapid_events: List[Dict[str, Any]] = []
+        rapid_events: list[dict[str, Any]] = []
 
         for i in range(len(transitions) - min_count + 1):
             start = transitions.iloc[i]["systime"]
@@ -228,7 +228,7 @@ class MachineStateEvents(Base):
         gaps = time_diffs[time_diffs > max_gap_td]
         return len(gaps)
 
-    def state_quality_metrics(self) -> Dict[str, Any]:
+    def state_quality_metrics(self) -> dict[str, Any]:
         """Return quality metrics for the state data.
 
         Returns dictionary with:

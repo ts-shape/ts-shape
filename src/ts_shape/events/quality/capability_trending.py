@@ -2,7 +2,7 @@ import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
 from scipy import stats  # type: ignore
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -31,10 +31,10 @@ class CapabilityTrendingEvents(Base):
         dataframe: pd.DataFrame,
         signal_uuid: str,
         *,
-        upper_spec: Optional[float] = None,
-        lower_spec: Optional[float] = None,
-        upper_spec_uuid: Optional[str] = None,
-        lower_spec_uuid: Optional[str] = None,
+        upper_spec: float | None = None,
+        lower_spec: float | None = None,
+        upper_spec_uuid: str | None = None,
+        lower_spec_uuid: str | None = None,
         value_column: str = "value_double",
         event_uuid: str = "quality:capability_trend",
         time_column: str = "systime",
@@ -47,12 +47,12 @@ class CapabilityTrendingEvents(Base):
 
         # Resolve spec limits
         if upper_spec is not None:
-            self.upper_spec_fixed: Optional[float] = float(upper_spec)
+            self.upper_spec_fixed: float | None = float(upper_spec)
         else:
             self.upper_spec_fixed = None
 
         if lower_spec is not None:
-            self.lower_spec_fixed: Optional[float] = float(lower_spec)
+            self.lower_spec_fixed: float | None = float(lower_spec)
         else:
             self.lower_spec_fixed = None
 
@@ -118,7 +118,7 @@ class CapabilityTrendingEvents(Base):
         if overall_std == 0 or pd.isna(overall_std):
             overall_std = np.nan
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, group in sig.resample(window):
             vals = group[self.value_column].dropna()
             n = len(vals)
@@ -189,7 +189,7 @@ class CapabilityTrendingEvents(Base):
             return pd.DataFrame(columns=cols)
 
         cpk_vals = cap["cpk"].values
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         for i in range(len(cap)):
             cpk = cpk_vals[i]
@@ -262,7 +262,7 @@ class CapabilityTrendingEvents(Base):
         y = cpk_vals[valid_mask]
         slope, intercept, _, _, _ = stats.linregress(x, y)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for i in range(len(cap)):
             cpk = cpk_vals[i]
             if np.isnan(cpk):
@@ -310,7 +310,7 @@ class CapabilityTrendingEvents(Base):
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, group in sig.resample(window):
             vals = group[self.value_column].dropna()
             n = len(vals)

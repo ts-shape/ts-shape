@@ -14,7 +14,7 @@ counts): here the focus is *absolute* run time and an hour-meter reading.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd  # type: ignore
 
@@ -91,7 +91,7 @@ class RuntimeAccountingEvents(Base):
     def _run_intervals(self, samples: pd.DataFrame) -> pd.DataFrame:
         """Contiguous run segments. Columns: ``start``, ``duration_seconds``."""
         change = (samples["state"] != samples["state"].shift()).cumsum()
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, grp in samples.groupby(change):
             if not bool(grp["state"].iloc[0]):
                 continue
@@ -173,7 +173,7 @@ class RuntimeAccountingEvents(Base):
 
         samples = samples.copy()
         samples["win"] = samples[self.time_column].dt.floor(window)
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for win, grp in samples.groupby("win", sort=True):
             run_s = float(grp.loc[grp["state"], "dur"].sum())
             covered = float(grp["dur"].sum())

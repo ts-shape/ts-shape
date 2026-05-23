@@ -1,6 +1,5 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import Dict, Union
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -73,7 +72,7 @@ class BooleanStatistics(Base):
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
-    ) -> Dict[str, Union[int, float, bool]]:
+    ) -> dict[str, int | float | bool]:
         """Returns a summary of boolean statistics for the specified column as a dictionary."""
         return {
             "true_count": cls.count_true(dataframe, column_name),

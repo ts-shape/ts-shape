@@ -17,7 +17,8 @@ the same column names regardless of detector pack or method.
 
 from __future__ import annotations
 
-from typing import Iterable, Literal, Sequence
+from typing import Literal
+from collections.abc import Iterable, Sequence
 
 import pandas as pd  # type: ignore
 

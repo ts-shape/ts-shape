@@ -10,7 +10,6 @@ Track rework events and their impact:
 
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, Dict
 
 from ts_shape.utils.base import Base
 
@@ -56,7 +55,7 @@ class ReworkTracking(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
-        shift_definitions: Optional[Dict[str, tuple[str, str]]] = None,
+        shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
@@ -297,7 +296,7 @@ class ReworkTracking(Base):
         self,
         rework_uuid: str,
         part_id_uuid: str,
-        rework_costs: Dict[str, float],
+        rework_costs: dict[str, float],
         *,
         value_column_rework: str = "value_integer",
         value_column_part: str = "value_string",

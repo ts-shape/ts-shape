@@ -1,7 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import Dict, Optional
 
 from ts_shape.utils.base import Base
 
@@ -49,9 +48,9 @@ class CarbonIntensityEvents(Base):
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        emission_factors: Dict[str, float],
+        emission_factors: dict[str, float],
         *,
-        scope_map: Optional[Dict[str, int]] = None,
+        scope_map: dict[str, int] | None = None,
         event_uuid: str = "energy:carbon",
         time_column: str = "systime",
         uuid_column: str = "uuid",

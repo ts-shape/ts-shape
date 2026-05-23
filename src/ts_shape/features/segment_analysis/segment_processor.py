@@ -1,6 +1,5 @@
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, List
 
 from ts_shape.utils.base import Base
 from ts_shape.features.stats.numeric_stats import NumericStatistics
@@ -49,7 +48,7 @@ class SegmentProcessor(Base):
         time_ranges: pd.DataFrame,
         uuid_column: str = "uuid",
         time_column: str = "systime",
-        target_uuids: Optional[List[str]] = None,
+        target_uuids: list[str] | None = None,
     ) -> pd.DataFrame:
         """Filter process parameter data by extracted time ranges.
 
@@ -126,7 +125,7 @@ class SegmentProcessor(Base):
         uuid_column: str = "uuid",
         value_column: str = "value_double",
         group_column: str = "segment_value",
-        metrics: Optional[List[str]] = None,
+        metrics: list[str] | None = None,
     ) -> pd.DataFrame:
         """Compute statistical metrics per UUID per segment.
 

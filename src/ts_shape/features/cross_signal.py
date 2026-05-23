@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any
+from typing import Any
 
 from scipy import signal as scipy_signal  # type: ignore
 from scipy import stats as scipy_stats  # type: ignore
@@ -69,7 +69,7 @@ class CrossSignalAnalytics:
         n = min(len(x), len(y))
         x, y = x[:n], y[:n]
 
-        results_by_lag: List[Dict[str, Any]] = []
+        results_by_lag: list[dict[str, Any]] = []
 
         for p in range(1, max_lag + 1):
             if n <= 2 * p + 1:

@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -52,7 +52,7 @@ class MicroStopEvents(Base):
         s["state"] = s[self.value_column].fillna(False).astype(bool)
         state_change = (s["state"] != s["state"].shift()).cumsum()
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, seg in s.groupby(state_change):
             state = bool(seg["state"].iloc[0])
             start = seg[self.time_column].iloc[0]
@@ -91,7 +91,7 @@ class MicroStopEvents(Base):
         max_td = pd.to_timedelta(max_duration)
         min_td = pd.to_timedelta(min_duration)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for i, row in intervals.iterrows():
             if row["state"] != "idle":
                 continue

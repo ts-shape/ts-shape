@@ -1,6 +1,7 @@
 import logging
 import json
-from typing import Dict, Any, List, Optional, Iterable
+from typing import Any
+from collections.abc import Iterable
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ class MetadataJsonLoader:
         Returns:
             MetadataJsonLoader instance.
         """
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             data = json.load(f)
         return cls(data, strict=strict)
 
@@ -113,7 +114,7 @@ class MetadataJsonLoader:
 
         return df.set_index("uuid")
 
-    def _normalize_to_records(self, data: Any) -> List[Dict[str, Any]]:
+    def _normalize_to_records(self, data: Any) -> list[dict[str, Any]]:
         """
         Normalize supported input shapes into a list of record dicts with
         keys: 'uuid', 'label', and 'config'.
@@ -144,7 +145,7 @@ class MetadataJsonLoader:
                         raise ValueError(f"Column lengths differ: {lengths}")
                     # Fallback to shortest length
                 n = min(lengths.values()) if lengths else 0
-                out: List[Dict[str, Any]] = []
+                out: list[dict[str, Any]] = []
                 for i in range(n):
                     out.append(
                         self._normalize_record(
@@ -193,7 +194,7 @@ class MetadataJsonLoader:
         return []
 
     @staticmethod
-    def _normalize_record(rec: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_record(rec: dict[str, Any]) -> dict[str, Any]:
         """
         Ensure a single record has the shape {uuid, label, config},
         coercing 'config' to a dictionary where possible.
@@ -253,7 +254,7 @@ class MetadataJsonLoader:
         return self.df.head(n)
 
     # ------- Lookups -------
-    def get_by_uuid(self, uuid: str) -> Optional[Dict[str, Any]]:
+    def get_by_uuid(self, uuid: str) -> dict[str, Any] | None:
         """
         Retrieve a row by UUID as a dictionary.
 
@@ -267,7 +268,7 @@ class MetadataJsonLoader:
             return None
         return self.df.loc[uuid].to_dict()
 
-    def get_by_label(self, label: str) -> Optional[Dict[str, Any]]:
+    def get_by_label(self, label: str) -> dict[str, Any] | None:
         """
         Retrieve the first row matching a label as a dictionary.
 
@@ -321,7 +322,7 @@ class MetadataJsonLoader:
         return self.df[self.df["label"].isin(labels_set)]
 
     # ------- Introspection -------
-    def list_uuids(self) -> List[str]:
+    def list_uuids(self) -> list[str]:
         """
         Return a list of UUIDs present in the metadata index.
 
@@ -330,7 +331,7 @@ class MetadataJsonLoader:
         """
         return list(self.df.index.astype(str))
 
-    def list_labels(self) -> List[str]:
+    def list_labels(self) -> list[str]:
         """
         Return all non-null labels.
 

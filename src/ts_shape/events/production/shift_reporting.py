@@ -8,7 +8,6 @@ Simple module for shift summaries:
 
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, Dict, Tuple
 
 from ts_shape.utils.base import Base
 
@@ -54,7 +53,7 @@ class ShiftReporting(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
-        shift_definitions: Optional[Dict[str, Tuple[str, str]]] = None,
+        shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         """Initialize shift reporter.
 
@@ -110,11 +109,11 @@ class ShiftReporting(Base):
     def shift_production(
         self,
         counter_uuid: str,
-        part_id_uuid: Optional[str] = None,
+        part_id_uuid: str | None = None,
         *,
         value_column_counter: str = "value_integer",
         value_column_part: str = "value_string",
-        date: Optional[str] = None,
+        date: str | None = None,
     ) -> pd.DataFrame:
         """Production quantity per shift.
 
@@ -298,10 +297,10 @@ class ShiftReporting(Base):
     def shift_targets(
         self,
         counter_uuid: str,
-        targets: Dict[str, float],
+        targets: dict[str, float],
         *,
         value_column_counter: str = "value_integer",
-        date: Optional[str] = None,
+        date: str | None = None,
     ) -> pd.DataFrame:
         """Compare actual production to shift targets.
 
@@ -364,7 +363,7 @@ class ShiftReporting(Base):
         *,
         value_column_counter: str = "value_integer",
         days: int = 30,
-    ) -> Dict[str, pd.DataFrame]:
+    ) -> dict[str, pd.DataFrame]:
         """Identify best and worst performing shifts.
 
         Args:

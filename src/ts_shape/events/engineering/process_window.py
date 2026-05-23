@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -68,7 +68,7 @@ class ProcessWindowEvents(Base):
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for start, group in groups:
             vals = group.dropna()
             if vals.empty:
@@ -116,7 +116,7 @@ class ProcessWindowEvents(Base):
         if len(stats) < 2:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for i in range(1, len(stats)):
             prev = stats.iloc[i - 1]
             curr = stats.iloc[i]
@@ -164,7 +164,7 @@ class ProcessWindowEvents(Base):
         if len(stats) < 2:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for i in range(1, len(stats)):
             prev = stats.iloc[i - 1]
             curr = stats.iloc[i]

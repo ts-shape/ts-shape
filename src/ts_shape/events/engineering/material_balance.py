@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -24,8 +24,8 @@ class MaterialBalanceEvents(Base):
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        input_uuids: List[str],
-        output_uuids: List[str],
+        input_uuids: list[str],
+        output_uuids: list[str],
         *,
         event_uuid: str = "eng:material_balance",
         value_column: str = "value_double",
@@ -42,9 +42,9 @@ class MaterialBalanceEvents(Base):
             self.dataframe[self.time_column]
         )
 
-    def _resample_signals(self, uuids: List[str], window: str) -> pd.DataFrame:
+    def _resample_signals(self, uuids: list[str], window: str) -> pd.DataFrame:
         """Resample each UUID to window and return sum per window."""
-        frames: List[pd.Series] = []
+        frames: list[pd.Series] = []
         for uid in uuids:
             sig = self.dataframe[self.dataframe["uuid"] == uid]
             if sig.empty:
@@ -190,7 +190,7 @@ class MaterialBalanceEvents(Base):
         min_td = pd.Timedelta(min_duration)
 
         groups = (unbalanced != unbalanced.shift()).cumsum()
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         for _, seg_idx in unbalanced.groupby(groups):
             if not seg_idx.iloc[0]:
@@ -243,7 +243,7 @@ class MaterialBalanceEvents(Base):
         if inputs.empty and outputs.empty:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         if not inputs.empty:
             for ws in inputs.index:

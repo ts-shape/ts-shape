@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 from itertools import combinations
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -25,7 +25,7 @@ class MultiSensorValidationEvents(Base):
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        sensor_uuids: List[str],
+        sensor_uuids: list[str],
         *,
         value_column: str = "value_double",
         event_uuid: str = "quality:multi_sensor",
@@ -84,7 +84,7 @@ class MultiSensorValidationEvents(Base):
         if self._pivot.empty:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, group in self._pivot.resample(window):
             group = group.dropna(how="all")
             if group.empty or len(group) < 1:
@@ -128,7 +128,7 @@ class MultiSensorValidationEvents(Base):
             return pd.DataFrame(columns=cols)
 
         pairs = list(combinations(self.sensor_uuids, 2))
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         for ts, group in self._pivot.resample(window):
             group = group.dropna(how="all")
@@ -172,7 +172,7 @@ class MultiSensorValidationEvents(Base):
         if self._pivot.empty:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, group in self._pivot.resample(window):
             group = group.dropna(how="all")
             if group.empty:
@@ -221,7 +221,7 @@ class MultiSensorValidationEvents(Base):
         if self._pivot.empty:
             return pd.DataFrame(columns=cols)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, group in self._pivot.resample(window):
             group = group.dropna(how="all")
             if group.empty:

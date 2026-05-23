@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -26,7 +26,7 @@ class DisturbanceRecoveryEvents(Base):
         dataframe: pd.DataFrame,
         signal_uuid: str,
         *,
-        setpoint_uuid: Optional[str] = None,
+        setpoint_uuid: str | None = None,
         event_uuid: str = "eng:disturbance_recovery",
         value_column: str = "value_double",
         time_column: str = "systime",
@@ -142,7 +142,7 @@ class DisturbanceRecoveryEvents(Base):
         min_td = pd.Timedelta(min_duration)
         groups = (exceeded != exceeded.shift()).cumsum()
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for _, seg_idx in exceeded.groupby(groups):
             if not seg_idx.iloc[0]:
                 continue
@@ -227,7 +227,7 @@ class DisturbanceRecoveryEvents(Base):
         max_td = pd.Timedelta(max_recovery)
         recovery_threshold = 1.0 - recovery_pct
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for _, dist in disturbances.iterrows():
             d_start = dist["start"]
             d_end = dist["end"]
@@ -312,7 +312,7 @@ class DisturbanceRecoveryEvents(Base):
         windows = pd.date_range(start=t_min, end=t_max, freq=window)
         window_td = pd.Timedelta(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ws in windows:
             we = ws + window_td
             if not disturbances.empty:
@@ -381,7 +381,7 @@ class DisturbanceRecoveryEvents(Base):
         sig = self.signal.set_index(self.time_column)[self.value_column]
         comp_td = pd.Timedelta(comparison_window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for _, dist in disturbances.iterrows():
             d_start = dist["start"]
             d_end = dist["end"]

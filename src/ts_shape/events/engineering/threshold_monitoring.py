@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -43,7 +43,7 @@ class ThresholdMonitoringEvents(Base):
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
     def multi_level_threshold(
-        self, levels: Dict[str, float], direction: str = "above"
+        self, levels: dict[str, float], direction: str = "above"
     ) -> pd.DataFrame:
         """Detect intervals where signal exceeds configurable threshold levels.
 
@@ -70,7 +70,7 @@ class ThresholdMonitoringEvents(Base):
             levels.items(), key=lambda x: x[1], reverse=(direction == "above")
         )
 
-        all_events: List[Dict[str, Any]] = []
+        all_events: list[dict[str, Any]] = []
 
         for level_name, threshold in sorted_levels:
             if direction == "above":
@@ -134,7 +134,7 @@ class ThresholdMonitoringEvents(Base):
         values = sig[self.value_column].values
         times = sig[self.time_column].values
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         in_alarm = False
         alarm_start = None
         peak = -np.inf
@@ -206,7 +206,7 @@ class ThresholdMonitoringEvents(Base):
             sample_count=("above", "count"),
         )
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for ts, row in resampled.iterrows():
             if row["sample_count"] == 0:
                 continue

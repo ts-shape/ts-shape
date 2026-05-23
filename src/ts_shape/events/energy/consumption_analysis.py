@@ -1,7 +1,6 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import Optional
 
 from ts_shape.utils.base import Base
 
@@ -54,7 +53,7 @@ class EnergyConsumptionEvents(Base):
         series_id: str,
         time_column: str = "time",
         value_column: str = "value",
-        id_column: Optional[str] = None,
+        id_column: str | None = None,
     ) -> pd.DataFrame:
         """Convert a raw energy DataFrame to the standard ts-shape schema.
 
@@ -144,7 +143,7 @@ class EnergyConsumptionEvents(Base):
         *,
         value_column: str = "value_double",
         window: str = "15min",
-        threshold: Optional[float] = None,
+        threshold: float | None = None,
         percentile: float = 0.95,
     ) -> pd.DataFrame:
         """Detect peak demand periods exceeding a threshold.

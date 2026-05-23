@@ -186,7 +186,7 @@ def empty_relations() -> pd.DataFrame:
 # ---- Validation -------------------------------------------------------------
 
 
-def validate(eventlog: "EventLog") -> None:
+def validate(eventlog: EventLog) -> None:
     """Raise ``ValueError`` if the event log violates the canonical schema."""
     events, objects, relations = eventlog.events, eventlog.objects, eventlog.relations
 

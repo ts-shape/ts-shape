@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -110,7 +110,7 @@ class SignalComparisonEvents(Base):
 
         min_td = pd.Timedelta(min_duration)
         groups = (exceeded != exceeded.shift()).cumsum()
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         for _, seg in merged.groupby(groups):
             seg_exc = exceeded.loc[seg.index]
@@ -153,7 +153,7 @@ class SignalComparisonEvents(Base):
         indexed = merged.set_index(self.time_column)
         groups = indexed.resample(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for start, group in groups:
             if group.empty:
                 continue
@@ -215,7 +215,7 @@ class SignalComparisonEvents(Base):
         indexed = merged.set_index(self.time_column)
         groups = indexed.resample(window)
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for start, group in groups:
             if len(group) < 2:
                 continue

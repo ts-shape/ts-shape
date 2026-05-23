@@ -8,7 +8,6 @@ Simple, practical module for daily production reporting:
 
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional
 
 from ts_shape.utils.base import Base
 
@@ -235,8 +234,8 @@ class PartProductionTracking(Base):
         part_id_uuid: str,
         counter_uuid: str,
         *,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         value_column_part: str = "value_string",
         value_column_counter: str = "value_integer",
     ) -> pd.DataFrame:

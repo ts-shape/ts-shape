@@ -9,7 +9,6 @@ Essential module for daily downtime analysis:
 
 import logging
 import pandas as pd  # type: ignore
-from typing import Optional, Dict
 
 from ts_shape.utils.base import Base
 
@@ -55,7 +54,7 @@ class DowntimeTracking(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
-        shift_definitions: Optional[Dict[str, tuple[str, str]]] = None,
+        shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         """Initialize downtime tracker.
 

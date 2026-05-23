@@ -1,7 +1,7 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import List, Dict, Any
+from typing import Any
 
 from ts_shape.utils.base import Base
 
@@ -117,7 +117,7 @@ class DegradationDetectionEvents(Base):
 
         # Group contiguous degrading intervals
         group_id = (degrading != degrading.shift()).cumsum()
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for gid, seg in sig.groupby(group_id):
             seg_deg = degrading.loc[seg.index]
             if not seg_deg.iloc[0]:
@@ -212,7 +212,7 @@ class DegradationDetectionEvents(Base):
 
         # Group contiguous exceeded intervals
         group_id = (exceeded != exceeded.shift()).cumsum()
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for gid, seg in sig.groupby(group_id):
             seg_exc = exceeded.loc[seg.index]
             if not seg_exc.iloc[0]:
@@ -270,7 +270,7 @@ class DegradationDetectionEvents(Base):
         values = sig[self.value_column].values
         times = sig[self.time_column].values
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         # CUSUM-based approach: track cumulative deviation from running mean
         running_mean = values[0]
@@ -384,7 +384,7 @@ class DegradationDetectionEvents(Base):
             baseline_mean_for_pct = baseline_mean
 
         # Compute rolling metrics
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for i in range(len(sig)):
             t_end = sig[self.time_column].iloc[i]
             t_start = t_end - window_td

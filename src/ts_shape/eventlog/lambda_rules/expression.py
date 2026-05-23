@@ -24,7 +24,7 @@ Why an AST whitelist over ``pandas.eval`` or ``polars.expr``?
 from __future__ import annotations
 
 import ast
-from typing import Callable
+from collections.abc import Callable
 
 import pandas as pd
 

@@ -1,13 +1,12 @@
 import logging
 import pandas as pd  # type: ignore
 import numpy as np  # type: ignore
-from typing import Dict, Optional, Tuple
 
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_SHIFTS: Dict[str, Tuple[str, str]] = {
+_DEFAULT_SHIFTS: dict[str, tuple[str, str]] = {
     "shift_1": ("06:00", "14:00"),
     "shift_2": ("14:00", "22:00"),
     "shift_3": ("22:00", "06:00"),
@@ -132,7 +131,7 @@ class IdleEnergyDetectionEvents(Base):
         *,
         energy_column: str = "value_double",
         state_column: str = "value_bool",
-        shift_definitions: Optional[Dict[str, Tuple[str, str]]] = None,
+        shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> pd.DataFrame:
         """Aggregate idle energy waste per shift across all dates.
 
