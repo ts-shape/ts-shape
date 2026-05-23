@@ -142,15 +142,11 @@ jobs:
           pytest -W error::DeprecationWarning -W error::PendingDeprecationWarning \
             --tb=line -q 2>&1 | tee deprecation-warnings.txt
 
-      - name: Pyupgrade scan (ruff UP rules, advisory)
-        continue-on-error: true
-        run: |
-          ruff check --select UP src/ tests/ 2>&1 | tee ruff-pyupgrade.txt
-
       - name: Static @deprecated detection (mypy PEP 702)
         continue-on-error: true
         run: |
-          mypy 2>&1 | tee mypy-deprecated.txt
+          mypy 2>&1 | tee mypy-full.txt
+          grep '\[deprecated\]' mypy-full.txt | tee mypy-deprecated.txt || true
 
       - name: Vulnerability scan (pip-audit)
         continue-on-error: true
@@ -171,8 +167,8 @@ jobs:
           name: deprecation-scan
           path: |
             deprecation-warnings.txt
-            ruff-pyupgrade.txt
             mypy-deprecated.txt
+            mypy-full.txt
             pip-audit.json
             pip-audit.txt
             outdated.json

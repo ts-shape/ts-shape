@@ -7,12 +7,8 @@ echo "== pytest deprecations =="
 pytest -W error::DeprecationWarning -W error::PendingDeprecationWarning --tb=line -q || true
 
 echo
-echo "== ruff pyupgrade (UP) =="
-ruff check --select UP src/ tests/ || true
-
-echo
 echo "== mypy @deprecated (PEP 702) =="
-mypy || true
+mypy 2>&1 | tee /tmp/mypy-full.txt | grep '\[deprecated\]' || echo "(none)"
 
 echo
 echo "== pip-audit =="
