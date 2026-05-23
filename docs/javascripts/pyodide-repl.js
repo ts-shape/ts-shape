@@ -52,6 +52,19 @@
                 'await micropip.install("ts-shape", deps=False)\n'
             );
           })
+          .then(function () {
+            // Silence the one-shot pyarrow DeprecationWarning that pandas
+            // raises on first import, and widen the DataFrame repr so all
+            // columns fit in the REPL output pane.
+            return py.runPythonAsync(
+              "import warnings\n" +
+                'warnings.filterwarnings("ignore", message=".*Pyarrow will become.*")\n' +
+                "import pandas as pd\n" +
+                'pd.set_option("display.max_columns", None)\n' +
+                'pd.set_option("display.width", 1000)\n' +
+                'pd.set_option("display.max_colwidth", 80)\n'
+            );
+          })
           .catch(function (err) {
             installPromise = null; // allow a retry on the next run
             throw err;
