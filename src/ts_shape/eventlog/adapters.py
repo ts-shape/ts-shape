@@ -377,6 +377,21 @@ def adapt(
         }
     )
 
+    # Trim *empty* variable-extra columns. The canonical core
+    # (EVENT_REQUIRED_COLUMNS ∪ EVENT_OPTIONAL_COLUMNS) is always retained so
+    # every event log exposes an identical core schema — this keeps appends /
+    # ``concat`` consistent and ``schema.validate`` / ``filter_by_pack``
+    # working. Standard-attr extensions and ``<pack>:<col>`` passthroughs are
+    # per-detector extras; an all-null one carries no information, so drop it.
+    keep_always = set(schema.EVENT_REQUIRED_COLUMNS) | set(
+        schema.EVENT_OPTIONAL_COLUMNS
+    )
+    drop_empty = [
+        c for c in events.columns if c not in keep_always and events[c].isna().all()
+    ]
+    if drop_empty:
+        events = events.drop(columns=drop_empty)
+
     object_bindings = _resolve_objects(legacy, rule, objects)
     objects_df, relations_df = _to_relations(eids, object_bindings, qualifiers)
 

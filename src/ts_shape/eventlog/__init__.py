@@ -7,7 +7,9 @@ pm4py / Disco / Celonis / OCEL viewers directly.
 
 Typical use::
 
-    from ts_shape.eventlog import to_event_log, concat, to_flat_df, to_ocel_tables
+    from ts_shape.eventlog import (
+        to_event_log, concat, to_event_log_xes, to_event_log_ocel,
+    )
     from ts_shape.events.production.machine_state import MachineStateEvents
     from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
@@ -20,13 +22,14 @@ Typical use::
         detector="OutlierDetectionEvents.detect_outliers_zscore",
     )
     log = concat(state_log, outlier_log)
-    xes_df = to_flat_df(log, case_object_type="asset")
-    events_df, objects_df, relations_df = to_ocel_tables(log)
+    xes_df = to_event_log_xes(log, case_object_type="asset")
+    events_df, objects_df, relations_df = to_event_log_ocel(log)
 """
 
 from .adapters import register_adapter
+from .align import align_columns
 from .concat import concat
-from .flat import to_flat_df
+from .flat import to_event_log_xes, to_flat_df
 from .lambda_rules import (
     BacktestResult,
     LambdaDetector,
@@ -42,7 +45,7 @@ from .lambda_rules import (
 )
 from .model import EventLog
 from .normalizer import to_event_log
-from .ocel import to_ocel_tables
+from .ocel import to_event_log_ocel, to_ocel_tables
 from .schema import (
     OCEL_ACTIVITY,
     OCEL_EID,
@@ -69,6 +72,7 @@ from .taxonomy import REGISTRY, LabelRule
 __all__ = [
     "BacktestResult",
     "EventLog",
+    "align_columns",
     "LabelRule",
     "LambdaDetector",
     "REGISTRY",
@@ -84,6 +88,8 @@ __all__ = [
     "register_object_type",
     "run_backtest",
     "to_event_log",
+    "to_event_log_ocel",
+    "to_event_log_xes",
     "to_flat_df",
     "to_ocel_tables",
     "unregister_lambda_rule",

@@ -175,7 +175,7 @@ Pick the stage that matches where you are in your analysis.
 
     Normalize any detector's output into a canonical event log with OCEL 2.0 / XES column names. Concatenate logs across detectors, then export per-asset / per-batch / per-cycle traces for pm4py, Disco, or Celonis.
 
-    `to_event_log` | `concat` | `to_flat_df` | `to_ocel_tables`
+    `to_event_log` | `concat` | `to_event_log_xes` | `to_event_log_ocel`
 
 </div>
 

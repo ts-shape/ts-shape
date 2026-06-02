@@ -27,4 +27,4 @@ Runnable demo scripts covering every ts-shape module. Each example generates syn
 | [Cycle Extractor](cycle-extractor.md) | `CycleExtractor` (6 detection methods) | `python examples/cycle_extractor_enhancements_demo.py` |
 | [Context Enricher](context-enricher.md) | `ContextEnricher`, `ValueMapping` | `python examples/context_enricher_demo.py` |
 | [Statistics (Basic)](statistics-basic.md) | `NumericStatistics`, `StringStatistics`, `BooleanStatistics` | `python examples/statistics_demo.py` |
-| [Event Log (XES & OCEL)](eventlog.md) | `to_event_log`, `concat`, `to_flat_df`, `to_ocel_tables` | `python examples/eventlog_demo.py` |
+| [Event Log (XES & OCEL)](eventlog.md) | `to_event_log`, `concat`, `to_event_log_xes`, `to_event_log_ocel` | `python examples/eventlog_demo.py` |

@@ -4,7 +4,7 @@ The first-slice MVP supports "run rule, count hits" only — no
 label-matching, no precision/recall. The returned
 :class:`BacktestResult` still carries the full :class:`EventLog` so the
 caller can inspect any individual hit and run their own downstream
-analysis (e.g. ``to_flat_df`` for pm4py, ``filter_by_pack`` for
+analysis (e.g. ``to_event_log_xes`` for pm4py, ``filter_by_pack`` for
 domain-specific drill-down).
 """
 

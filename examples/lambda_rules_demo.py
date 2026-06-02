@@ -31,8 +31,8 @@ from ts_shape.eventlog import (
     concat,
     load_yaml,
     run_backtest,
-    to_flat_df,
-    to_ocel_tables,
+    to_event_log_ocel,
+    to_event_log_xes,
     unregister_lambda_rule,
 )
 
@@ -123,7 +123,7 @@ def main() -> None:
         # -----------------------------------------------------------------
         # 3. XES and OCEL 2.0 round-trip.
         # -----------------------------------------------------------------
-        xes = to_flat_df(log, case_object_type="asset")
+        xes = to_event_log_xes(log, case_object_type="asset")
         print("=" * 70)
         print("Flat XES export — case = asset (first 10 rows)")
         print("=" * 70)
@@ -132,7 +132,7 @@ def main() -> None:
         ].head(10).to_string(index=False))
         print()
 
-        events_df, objects_df, relations_df = to_ocel_tables(log)
+        events_df, objects_df, relations_df = to_event_log_ocel(log)
         print("=" * 70)
         print("OCEL 2.0 tables")
         print("=" * 70)

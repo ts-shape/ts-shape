@@ -137,6 +137,7 @@ _LAZY: dict[str, str] = {
 _EVENTLOG_NAMES = (
     "BacktestResult",
     "EventLog",
+    "align_columns",
     "LabelRule",
     "LambdaDetector",
     "REGISTRY",
@@ -152,6 +153,8 @@ _EVENTLOG_NAMES = (
     "register_object_type",
     "run_backtest",
     "to_event_log",
+    "to_event_log_ocel",
+    "to_event_log_xes",
     "to_flat_df",
     "to_ocel_tables",
     "unregister_lambda_rule",
