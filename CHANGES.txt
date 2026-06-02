@@ -1,3 +1,19 @@
+# June 2, 2026
+changed: event-log output now trims entirely-empty extra columns. The 9
+  canonical core columns (ocel:eid, ocel:activity, ocel:timestamp,
+  ts_shape:start_timestamp, ts_shape:duration_s, ts_shape:detector,
+  ts_shape:pack, ts_shape:severity, ts_shape:value) are always emitted, so
+  every event log keeps an identical append-friendly core schema; per-detector
+  extras (<pack>:<col> passthroughs, standard-attr extensions) are dropped when
+  all-empty instead of shipped full of NaN.
+add: align_columns(*logs) -- reindex multiple EventLogs' events tables to their
+  shared column union (core first, extras sorted) so each frame exposes an
+  identical column set before appending/stacking. concat(...) already unions
+  columns on merge; this is for callers stacking frames themselves.
+changed: event-log exporters renamed for a consistent to_event_log* family:
+  to_flat_df -> to_event_log_xes, to_ocel_tables -> to_event_log_ocel. The old
+  names remain as deprecated aliases (DeprecationWarning) for back-compat.
+
 # May 20, 2026
 add: Pipeline -- the single declarative orchestrator for ts-shape. Chains
   transform and detector steps into one reusable definition: .transform()

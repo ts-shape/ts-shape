@@ -15,7 +15,7 @@ class EventLog:
 
     Objects/relations are empty when the source detector has no natural object
     association (e.g. a global cross-signal correlation statistic). Use
-    :attr:`has_objects` to check before calling :meth:`to_flat_df`.
+    :attr:`has_objects` to check before calling :func:`to_event_log_xes`.
     """
 
     events: pd.DataFrame = field(default_factory=schema.empty_events)

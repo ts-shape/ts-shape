@@ -6,13 +6,15 @@ pass this DataFrame to ``pm4py.format_dataframe`` themselves.
 
 from __future__ import annotations
 
+import warnings
+
 import pandas as pd
 
 from . import schema
 from .model import EventLog
 
 
-def to_flat_df(
+def to_event_log_xes(
     eventlog: EventLog,
     *,
     case_object_type: str = "asset",
@@ -33,8 +35,8 @@ def to_flat_df(
     """
     if not eventlog.has_objects:
         raise ValueError(
-            "to_flat_df requires objects: this event log was produced by a "
-            "detector with no object association. Use to_ocel_tables() or "
+            "to_event_log_xes requires objects: this event log was produced by "
+            "a detector with no object association. Use to_event_log_ocel() or "
             "supply objects to the adapter."
         )
     if lifecycle not in ("single", "two_row"):
@@ -90,3 +92,13 @@ def _arrange_columns(df: pd.DataFrame) -> pd.DataFrame:
     head = [c for c in head if c in df.columns]
     rest = [c for c in df.columns if c not in head]
     return df[head + rest]
+
+
+def to_flat_df(*args, **kwargs) -> pd.DataFrame:
+    """Deprecated alias for :func:`to_event_log_xes`."""
+    warnings.warn(
+        "to_flat_df is deprecated; use to_event_log_xes",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return to_event_log_xes(*args, **kwargs)

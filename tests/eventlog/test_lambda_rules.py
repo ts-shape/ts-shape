@@ -30,8 +30,8 @@ from ts_shape.eventlog import (
     register_lambda_rule,
     run_backtest,
     to_event_log,
-    to_flat_df,
-    to_ocel_tables,
+    to_event_log_ocel,
+    to_event_log_xes,
     unregister_lambda_rule,
 )
 from ts_shape.eventlog.archetypes import ARCHETYPE_BY_METHOD
@@ -384,11 +384,11 @@ def test_lambda_log_round_trips_to_flat_and_ocel(torque_df, bearing_df):
         i_det = register_lambda_rule(i_spec)
         log = concat(p_det.to_event_log(torque_df), i_det.to_event_log(bearing_df))
 
-        xes = to_flat_df(log, case_object_type="asset")
+        xes = to_event_log_xes(log, case_object_type="asset")
         assert not xes.empty
         assert "concept:name" in xes.columns
 
-        events_df, objects_df, relations_df = to_ocel_tables(log)
+        events_df, objects_df, relations_df = to_event_log_ocel(log)
         assert len(events_df) == len(log.events)
         assert len(relations_df) == len(log.relations)
     finally:

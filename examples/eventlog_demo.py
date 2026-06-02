@@ -33,8 +33,8 @@ from ts_shape.eventlog import (
     concat,
     register_adapter,
     to_event_log,
-    to_flat_df,
-    to_ocel_tables,
+    to_event_log_ocel,
+    to_event_log_xes,
 )
 from ts_shape.eventlog import schema as S
 from ts_shape.eventlog import taxonomy
@@ -208,7 +208,7 @@ def main() -> None:
     print("=" * 70)
     print("Flat XES export — case = asset")
     print("=" * 70)
-    xes_asset = to_flat_df(log, case_object_type="asset", lifecycle="single")
+    xes_asset = to_event_log_xes(log, case_object_type="asset", lifecycle="single")
     print(xes_asset[
         ["case:concept:name", "concept:name", "time:timestamp",
          "lifecycle:transition"]
@@ -218,7 +218,7 @@ def main() -> None:
     print("=" * 70)
     print("Flat XES export — case = batch (only outlier events have batches)")
     print("=" * 70)
-    xes_batch = to_flat_df(log, case_object_type="batch")
+    xes_batch = to_event_log_xes(log, case_object_type="batch")
     print(xes_batch[
         ["case:concept:name", "concept:name", "time:timestamp"]
     ].to_string(index=False))
@@ -295,7 +295,7 @@ def main() -> None:
     # 4. OCEL 2.0 export (column names match the spec verbatim)
     # ---------------------------------------------------------------------
 
-    events_df, objects_df, relations_df = to_ocel_tables(log)
+    events_df, objects_df, relations_df = to_event_log_ocel(log)
     print("=" * 70)
     print("OCEL 2.0 tables")
     print("=" * 70)

@@ -1,4 +1,4 @@
-"""Tests for to_flat_df (XES-style) and to_ocel_tables exporters."""
+"""Tests for to_event_log_xes (XES-style) and to_event_log_ocel exporters."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from ts_shape.eventlog import (
     XES_TIMESTAMP,
     concat,
     to_event_log,
+    to_event_log_ocel,
+    to_event_log_xes,
     to_flat_df,
     to_ocel_tables,
 )
@@ -63,8 +65,8 @@ def small_log():
     return concat(state_log, out_log)
 
 
-def test_to_flat_df_single_lifecycle(small_log):
-    flat = to_flat_df(small_log, case_object_type="asset", lifecycle="single")
+def test_to_event_log_xes_single_lifecycle(small_log):
+    flat = to_event_log_xes(small_log, case_object_type="asset", lifecycle="single")
     assert {XES_CASE, XES_ACTIVITY, XES_TIMESTAMP, XES_LIFECYCLE}.issubset(flat.columns)
     assert (flat[XES_CASE] == "asset-A").all()
     assert (flat[XES_LIFECYCLE] == "complete").all()
@@ -73,35 +75,51 @@ def test_to_flat_df_single_lifecycle(small_log):
     assert "quality.outlier.zscore" in activities
 
 
-def test_to_flat_df_two_row_lifecycle(small_log):
-    flat = to_flat_df(small_log, case_object_type="asset", lifecycle="two_row")
+def test_to_event_log_xes_two_row_lifecycle(small_log):
+    flat = to_event_log_xes(small_log, case_object_type="asset", lifecycle="two_row")
     # Interval rows expand to start+complete; point rows stay as one row.
     assert (flat[XES_LIFECYCLE].isin(["start", "complete"])).all()
     # At least one start row exists (for the run/idle intervals).
     assert (flat[XES_LIFECYCLE] == "start").sum() > 0
 
 
-def test_to_flat_df_unknown_object_type_raises(small_log):
+def test_to_event_log_xes_unknown_object_type_raises(small_log):
     with pytest.raises(ValueError, match="no objects of type"):
-        to_flat_df(small_log, case_object_type="batch")
+        to_event_log_xes(small_log, case_object_type="batch")
 
 
-def test_to_flat_df_no_objects_raises():
+def test_to_event_log_xes_no_objects_raises():
     log = EventLog()  # empty, no objects
     with pytest.raises(ValueError, match="requires objects"):
-        to_flat_df(log)
+        to_event_log_xes(log)
 
 
-def test_to_flat_df_invalid_lifecycle(small_log):
+def test_to_event_log_xes_invalid_lifecycle(small_log):
     with pytest.raises(ValueError, match="invalid lifecycle"):
-        to_flat_df(small_log, lifecycle="weird")
+        to_event_log_xes(small_log, lifecycle="weird")
 
 
-def test_to_ocel_tables_returns_three_frames(small_log):
-    events, objects, relations = to_ocel_tables(small_log)
+def test_to_event_log_ocel_returns_three_frames(small_log):
+    events, objects, relations = to_event_log_ocel(small_log)
     assert isinstance(events, pd.DataFrame)
     assert isinstance(objects, pd.DataFrame)
     assert isinstance(relations, pd.DataFrame)
+    assert len(events) == len(small_log.events)
+    assert len(objects) == len(small_log.objects)
+    assert len(relations) == len(small_log.relations)
+
+
+def test_deprecated_to_flat_df_alias(small_log):
+    with pytest.warns(DeprecationWarning, match="to_event_log_xes"):
+        flat = to_flat_df(small_log, case_object_type="asset")
+    # Same result as the new name.
+    expected = to_event_log_xes(small_log, case_object_type="asset")
+    pd.testing.assert_frame_equal(flat, expected)
+
+
+def test_deprecated_to_ocel_tables_alias(small_log):
+    with pytest.warns(DeprecationWarning, match="to_event_log_ocel"):
+        events, objects, relations = to_ocel_tables(small_log)
     assert len(events) == len(small_log.events)
     assert len(objects) == len(small_log.objects)
     assert len(relations) == len(small_log.relations)

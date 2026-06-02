@@ -7,12 +7,14 @@ The column names match the OCEL 2.0 spec verbatim.
 
 from __future__ import annotations
 
+import warnings
+
 import pandas as pd
 
 from .model import EventLog
 
 
-def to_ocel_tables(
+def to_event_log_ocel(
     eventlog: EventLog,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Return ``(events, objects, relations)`` DataFrames as-is.
@@ -25,3 +27,15 @@ def to_ocel_tables(
         eventlog.objects.copy(),
         eventlog.relations.copy(),
     )
+
+
+def to_ocel_tables(
+    eventlog: EventLog,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Deprecated alias for :func:`to_event_log_ocel`."""
+    warnings.warn(
+        "to_ocel_tables is deprecated; use to_event_log_ocel",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return to_event_log_ocel(eventlog)
