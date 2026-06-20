@@ -41,6 +41,17 @@ Classes:
   - stream_by_time_range: Yield (series_id, DataFrame) incrementally.
   - list_series: List all series IDs available in the blob store.
 
+- DatabricksUnityEnergyLoader: Load CSV energy timeseries + metadata governed by Unity Catalog.
+  Reads the same .meta/series.csv and csv/YYYY/MM/DD/<series_id>.csv files
+  directly from a FUSE-mounted UC Volume, for use inside Databricks
+  notebooks/pipelines -- no download, no SDK, low resource footprint.
+  - load_series_metadata: Read .meta/series.csv as a DataFrame.
+  - load_by_time_range: Load only the day folders between start and end.
+  - load_by_series_ids: Load specific series by ID, optional date filter.
+  - stream_by_time_range: Yield (series_id, DataFrame) incrementally (low memory).
+  - list_series: List all series IDs available in the Volume.
+  - fetch_data_as_dataframe: Combined DataFrame for Pipeline/DataIntegratorHybrid.
+
 - AzureBlobFlexibleFileLoader: Load arbitrary file types from Azure Blob Storage.
   - list_files_by_time_range: List matching files (by extension) under hourly folders.
   - iter_file_names_by_time_range: Generator of names without downloading.
