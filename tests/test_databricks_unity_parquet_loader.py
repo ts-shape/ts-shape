@@ -6,7 +6,7 @@ import pytest
 
 from ts_shape.errors import LoaderConfigWarning
 from ts_shape.loader.timeseries.databricks_unity_parquet_loader import (
-    DatabricksUnityCatalogParquetLoader,
+    DatabricksUnityParquetLoader,
 )
 
 
@@ -36,7 +36,7 @@ def _fake_read_by_stem(p, columns=None, filters=None):
 
 def _loader(tmp_path, monkeypatch=None):
     root = _make_volume(tmp_path)
-    loader = DatabricksUnityCatalogParquetLoader(volume_path=str(root), prefix="parquet")
+    loader = DatabricksUnityParquetLoader(volume_path=str(root), prefix="parquet")
     if monkeypatch is not None:
         monkeypatch.setattr(pd, "read_parquet", _fake_read_by_stem)
     return loader, root
@@ -49,7 +49,7 @@ def test_resolve_from_volume_path(tmp_path):
 
 def test_resolve_from_catalog_parts(tmp_path):
     root = _make_volume(tmp_path)
-    loader = DatabricksUnityCatalogParquetLoader(
+    loader = DatabricksUnityParquetLoader(
         catalog="main",
         schema="plant",
         volume="timeseries",
@@ -61,7 +61,7 @@ def test_resolve_from_catalog_parts(tmp_path):
 
 def test_missing_parts_raises_value_error():
     with pytest.raises(ValueError, match="volume_path"):
-        DatabricksUnityCatalogParquetLoader(catalog="main", schema="plant")
+        DatabricksUnityParquetLoader(catalog="main", schema="plant")
 
 
 def test_hour_dir_and_slots(tmp_path):
@@ -180,7 +180,7 @@ def test_fetch_data_as_dataframe_all(tmp_path, monkeypatch):
 def test_load_all_empty_warns(tmp_path):
     root = tmp_path / "Volumes" / "main" / "plant" / "empty"
     (root / "parquet").mkdir(parents=True)
-    loader = DatabricksUnityCatalogParquetLoader(volume_path=str(root), prefix="parquet")
+    loader = DatabricksUnityParquetLoader(volume_path=str(root), prefix="parquet")
     with pytest.warns(LoaderConfigWarning, match="No .parquet files"):
         df = loader.load_all_files()
     assert df.empty
@@ -204,14 +204,14 @@ def test_happy_load_emits_no_warning(tmp_path, monkeypatch):
 def test_validate_warns_on_missing_root(tmp_path):
     missing = tmp_path / "Volumes" / "main" / "plant" / "nope"
     with pytest.warns(LoaderConfigWarning, match="path does not exist"):
-        DatabricksUnityCatalogParquetLoader(volume_path=str(missing), prefix="parquet")
+        DatabricksUnityParquetLoader(volume_path=str(missing), prefix="parquet")
 
 
 def test_validate_false_is_silent_on_missing_root(tmp_path):
     missing = tmp_path / "Volumes" / "main" / "plant" / "nope"
     with warnings.catch_warnings():
         warnings.simplefilter("error", LoaderConfigWarning)
-        DatabricksUnityCatalogParquetLoader(
+        DatabricksUnityParquetLoader(
             volume_path=str(missing), prefix="parquet", validate=False
         )
 

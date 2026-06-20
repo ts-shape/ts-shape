@@ -22,7 +22,7 @@ Classes:
   - stream_files_by_time_range_and_uuids: Yield per-UUID frames incrementally.
   - list_structure: List folders and files under a prefix.
 
-- DatabricksUnityCatalogParquetLoader: Load canonical parquet governed by Unity Catalog.
+- DatabricksUnityParquetLoader: Load canonical parquet governed by Unity Catalog.
   Reads the same parquet files directly from a FUSE-mounted UC Volume
   (/Volumes/<catalog>/<schema>/<volume>/...), for use inside Databricks
   notebooks/pipelines -- no download, no SDK, low resource footprint.

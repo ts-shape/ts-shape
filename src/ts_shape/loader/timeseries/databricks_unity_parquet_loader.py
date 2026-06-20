@@ -11,7 +11,7 @@ from ts_shape.errors import LoaderConfigWarning
 logger = logging.getLogger(__name__)
 
 
-class DatabricksUnityCatalogParquetLoader:
+class DatabricksUnityParquetLoader:
     """
     Load canonical parquet files governed by **Databricks Unity Catalog**.
 
@@ -65,12 +65,12 @@ class DatabricksUnityCatalogParquetLoader:
         ``catalog`` / ``schema`` / ``volume`` triple (joined under ``base_path``)::
 
             # explicit mounted path
-            DatabricksUnityCatalogParquetLoader(
+            DatabricksUnityParquetLoader(
                 volume_path="/Volumes/main/plant/timeseries", prefix="parquet",
             )
 
             # from catalog/schema/volume parts
-            DatabricksUnityCatalogParquetLoader(
+            DatabricksUnityParquetLoader(
                 catalog="main", schema="plant", volume="timeseries",
                 prefix="parquet",
             )
@@ -106,7 +106,7 @@ class DatabricksUnityCatalogParquetLoader:
 
         if validate and not self.base_path.exists():
             warnings.warn(
-                "DatabricksUnityCatalogParquetLoader path does not exist: "
+                "DatabricksUnityParquetLoader path does not exist: "
                 f"{self.base_path}. Inside Databricks ensure the Unity Catalog "
                 "Volume is mounted (default '/Volumes/<catalog>/<schema>/<volume>') "
                 "and that catalog/schema/volume/prefix are correct.",
@@ -213,7 +213,7 @@ class DatabricksUnityCatalogParquetLoader:
         if filters is not None:
             detail = f"{detail} The filters argument may be too strict."
         warnings.warn(
-            f"DatabricksUnityCatalogParquetLoader.{method} returned an empty "
+            f"DatabricksUnityParquetLoader.{method} returned an empty "
             f"DataFrame. {detail}",
             LoaderConfigWarning,
             stacklevel=3,
