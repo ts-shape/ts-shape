@@ -118,6 +118,8 @@ _LAZY: dict[str, str] = {
     "AzureBlobParquetLoader": "ts_shape.loader.timeseries.azure_blob_loader",
     "AzureBlobFlexibleFileLoader": "ts_shape.loader.timeseries.azure_blob_loader",
     "AzureBlobEnergyLoader": "ts_shape.loader.timeseries.azure_blob_energy_loader",
+    "DatabricksUnityParquetLoader": "ts_shape.loader.timeseries.databricks_unity_parquet_loader",
+    "DatabricksUnityEnergyLoader": "ts_shape.loader.timeseries.databricks_unity_energy_loader",
     "EnergyAPILoader": "ts_shape.loader.timeseries.energy_api_loader",
     "TimescaleDBDataAccess": "ts_shape.loader.timeseries.timescale_loader",
     "MetadataJsonLoader": "ts_shape.loader.metadata.metadata_json_loader",
