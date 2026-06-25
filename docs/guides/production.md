@@ -184,6 +184,34 @@ totals = tracker.production_totals(
 )
 ```
 
+### Handling counter resets
+
+Production counters are assumed to increase as parts are produced. Many counters reset back to zero (or a lower value) at a shift change, a part change, or a controller restart. By default the quantity is `max(0, last_count - first_count)`, so **any window where the counter drops reports 0 and silently loses that window's production**.
+
+Pass `handle_resets=True` to count production correctly across resets. The quantity becomes the sum of per-reading increments, where a drop is treated as a reset that contributes the new counter value. The result gains a `resets` column counting resets per window/day/range. The same flag is available on `daily_production_summary` and `production_totals`.
+
+```python
+# Reset-aware hourly production (adds a `resets` column)
+hourly = tracker.production_by_part(
+    part_id_uuid='part_number_signal',
+    counter_uuid='counter_signal',
+    window='1h',
+    handle_resets=True,
+)
+
+# Inspect exactly when and how far the counter reset
+resets = tracker.detect_resets(
+    part_id_uuid='part_number_signal',
+    counter_uuid='counter_signal',
+)
+#             systime  part_number  count_before  count_after  drop
+#  2026-06-15 17:00:00  8842580               432           61   371
+#  2026-06-16 19:00:00  9423376               854            0   854
+```
+
+!!! tip "Confirm reset behavior first"
+    Use `detect_resets()` to check whether and when your counter resets. If it never resets, the default (`handle_resets=False`) and the reset-aware result are identical; enable the flag whenever resets are expected.
+
 ---
 
 ## Cycle Time Tracking
