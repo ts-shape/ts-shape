@@ -1,5 +1,5 @@
 site_name: "ts-shape"
-site_description: "Automatic documentation from sources, for ts-shape."
+site_description: "From raw industrial timeseries to OEE, SPC, and process-mining-ready event logs — a composable Python toolkit, DataFrame in, DataFrame out."
 site_url: "https://ts-shape.github.io/ts-shape"
 repo_url: "https://github.com/ts-shape/ts-shape"
 repo_name: "ts-shape"

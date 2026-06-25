@@ -13,8 +13,13 @@ hide:
 # **ts-shape**
 
 <div class="tx-hero__tagline">
-Timeseries analytics for manufacturing — from raw signals to production KPIs.
+From raw industrial timeseries to OEE, SPC, and process-mining-ready event logs — in pure pandas.
 </div>
+
+<p class="tx-hero__subtext">
+A composable Python toolkit for loading, shaping, and analysing manufacturing &amp; IoT signals.
+<strong>DataFrame in, DataFrame out</strong> — across loaders, transforms, features, and 290+ event detectors.
+</p>
 
 <div class="tx-hero__badges">
 <a href="https://pypi.org/project/ts-shape/"><img src="https://img.shields.io/pypi/v/ts-shape.svg" alt="PyPI"></a>
@@ -24,8 +29,12 @@ Timeseries analytics for manufacturing — from raw signals to production KPIs.
 </div>
 
 [Get Started](user_guide/installation.md){ .md-button .md-button--primary }
-[Pipelines](pipelines/index.md){ .md-button }
-[API Reference](reference/index.md){ .md-button }
+[See Pipelines](pipelines/index.md){ .md-button }
+[GitHub](https://github.com/ts-shape/ts-shape){ .md-button }
+
+```bash
+pip install ts-shape
+```
 
 </div>
 
@@ -43,26 +52,29 @@ Timeseries analytics for manufacturing — from raw signals to production KPIs.
 
     ---
 
-    Every operation accepts and returns Pandas DataFrames.
-    No proprietary formats, no lock-in — plug into any notebook or dashboard.
+    Every operation takes and returns a Pandas DataFrame. No proprietary
+    formats, no lock-in — drop straight into any notebook, pipeline, or dashboard.
 
--   :material-puzzle:{ .lg .middle } **Modular Design**
+-   :material-factory:{ .lg .middle } **290+ Detectors, 8 Packs**
 
     ---
 
-    Use only what you need. Loaders, transforms, features, and event detectors are fully decoupled.
+    A curated industry library: OEE, SPC, cycle times, downtime, traceability,
+    energy, maintenance — production use cases, batteries included.
 
 -   :material-cloud-sync:{ .lg .middle } **Multi-Source Loading**
 
     ---
 
-    Load from Parquet, S3, Azure Blob, or TimescaleDB with a unified interface. Enrich with JSON metadata.
+    Parquet, S3, Azure Blob, TimescaleDB behind one interface — enriched with
+    JSON or REST metadata. Vectorised, chunked, concurrent.
 
--   :material-factory:{ .lg .middle } **Manufacturing-Ready**
+-   :material-sitemap:{ .lg .middle } **Process-Mining Native**
 
     ---
 
-    OEE, SPC, cycle times, downtime tracking, shift reports — built-in modules for real production use cases.
+    Every detector's output normalizes into a canonical **OCEL 2.0 / XES** event
+    log — hand it straight to pm4py, Celonis, or Disco. Zero ML dependencies.
 
 </div>
 
@@ -70,7 +82,7 @@ Timeseries analytics for manufacturing — from raw signals to production KPIs.
 
 <div class="tx-section-heading" markdown>
 
-## From Signals to Insights
+## From Signals to Event Logs
 
 </div>
 
@@ -100,7 +112,7 @@ Timeseries analytics for manufacturing — from raw signals to production KPIs.
     print(f"Mean: {stats.mean():.2f}  Std: {stats.std():.2f}")
     ```
 
-=== "Detect Events"
+=== "Detect"
 
     ```python
     from ts_shape.events.production.machine_state import MachineStateEvents
@@ -108,6 +120,18 @@ Timeseries analytics for manufacturing — from raw signals to production KPIs.
     mse = MachineStateEvents(df, run_state_uuid="machine-state")
     intervals = mse.detect_run_idle(min_duration="30s")
     ```
+
+=== "Event Log"
+
+    ```python
+    from ts_shape.eventlog import to_event_log, to_event_log_ocel
+
+    log = to_event_log(intervals, detector="MachineStateEvents.detect_run_idle")
+    tables = to_event_log_ocel(log)   # OCEL 2.0 — events, objects, relations, o2o…
+    ```
+
+Any detector's output flows into the same canonical event log — that is the
+methodology that keeps the library working end to end.
 
 ---
 
@@ -152,7 +176,7 @@ flowchart TB
     style D3 stroke-dasharray: 4 3
 ```
 
-The detection layer is intentionally pluggable: hand-coded detector classes for the curated industry library, YAML-declared [lambda rules](guides/lambda-rules.md) for user-authored or per-site customizations, and (roadmap) gen-AI authoring that emits lambda rules — so it inherits the same AST-sandbox safety net. Whichever path a detection comes from, the output lands in the same canonical event log.
+One pluggable detection layer: a curated library of detector classes, plus YAML-declared [lambda rules](guides/lambda-rules.md) for per-site customization. Whichever path a detection comes from, the output lands in the **same canonical event log** — ready for process mining.
 
 ---
 
@@ -214,83 +238,9 @@ Each pipeline starts with an Azure connection, a UUID list, and a time range —
 
 <div class="tx-section-heading" markdown>
 
-## Core Modules
+## Explore the docs
 
 </div>
-
-<div class="grid" markdown>
-
-<div markdown>
-
-### :material-database-import: Loaders
-
-- **Parquet** — Local and remote files
-- **S3 Proxy** — S3-compatible storage
-- **Azure Blob** — Container layouts
-- **TimescaleDB** — SQL timeseries
-- **Metadata JSON** — Context enrichment
-
-</div>
-
-<div markdown>
-
-### :material-filter: Transforms
-
-- **Numeric Filter** — Range, threshold
-- **String Filter** — Pattern matching
-- **DateTime Filter** — Time ranges
-- **Boolean Filter** — Flag filtering
-- **Calculator** — Derived columns
-- **Harmonization** — Multi-signal alignment
-
-</div>
-
-<div markdown>
-
-### :material-chart-box: Features
-
-- **Numeric Stats** — min, max, mean, std
-- **Time Stats** — Coverage, gaps
-- **String Stats** — Value counts
-- **Cycles** — Extraction & processing
-
-</div>
-
-<div markdown>
-
-### :material-factory: Events
-
-- **Quality & SPC** — Outliers, control charts, Cp/Cpk
-- **Production** — Machine states, downtime, changeovers
-- **OEE** — Availability, performance, quality
-- **Traceability** — Part tracking across stations
-- **Engineering** — Setpoints, startup, steady-state
-- **Maintenance** — Degradation, failure prediction
-
-</div>
-
-</div>
-
----
-
-<div class="tx-section-heading" markdown>
-
-## Data Model
-
-</div>
-
-ts-shape uses a simple long-format schema. Use only the columns you need.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `uuid` | string | Signal identifier |
-| `systime` | datetime | Timestamp |
-| `value_double` | float | Numeric values |
-| `value_integer` | int | Integer values |
-| `value_string` | string | String values |
-| `value_bool` | bool | Boolean values |
-
----
 
 <div class="grid cards" markdown>
 
