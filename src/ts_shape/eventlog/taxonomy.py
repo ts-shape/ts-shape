@@ -1387,6 +1387,16 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("asset", "part"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
+    ("PartProductionTracking", "detect_resets"): _r(
+        "production.part.counter_reset",
+        _PR,
+        P,
+        objs=("asset", "part"),
+        standard_attrs={
+            "ts_shape:method": "counter_reset",
+            "ts_shape:direction": "decrease",
+        },
+    ),
     ("PerformanceLossTracking", "performance_by_shift"): _r(
         "production.performance.by_shift",
         _PR,

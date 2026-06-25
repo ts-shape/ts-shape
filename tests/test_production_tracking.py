@@ -229,6 +229,143 @@ def test_production_tracking_empty_data():
 
 
 # ============================================================================
+# Counter reset handling
+# ============================================================================
+
+
+@pytest.fixture
+def sample_reset_data():
+    """Production data where the counter resets mid-run and at a part change.
+
+    Part A: counter climbs, resets to 50 mid-run, climbs again.
+    Part B: starts after a reset from Part A's last value, then climbs.
+    """
+    rows = []
+
+    def add(uuid, t, **kw):
+        rows.append({"uuid": uuid, "systime": t, **kw})
+
+    # Part A: 188, 215, 335, 408, 432, [reset] 50, 120, 180
+    times_a = pd.date_range("2026-06-15 14:00:00", periods=8, freq="30min", tz="UTC")
+    counts_a = [188, 215, 335, 408, 432, 50, 120, 180]
+    for t, c in zip(times_a, counts_a):
+        add("production_counter", t, value_integer=c)
+        add("part_number", t, value_string="PART_A")
+
+    # Part B: [reset from 180] 61, 120, 164
+    times_b = pd.date_range("2026-06-15 18:00:00", periods=3, freq="30min", tz="UTC")
+    counts_b = [61, 120, 164]
+    for t, c in zip(times_b, counts_b):
+        add("production_counter", t, value_integer=c)
+        add("part_number", t, value_string="PART_B")
+
+    return pd.DataFrame(rows)
+
+
+def test_production_by_part_loses_production_without_reset_handling(sample_reset_data):
+    """Without reset handling, windows containing a reset under-report."""
+    tracker = PartProductionTracking(sample_reset_data)
+    result = tracker.production_by_part(
+        part_id_uuid="part_number",
+        counter_uuid="production_counter",
+        window="1h",
+    )
+
+    # The window with the reset (432 -> 50) clamps to 0, losing production.
+    reset_window = result[
+        (result["part_number"] == "PART_A") & (result["first_count"] == 432)
+    ]
+    assert (reset_window["quantity"] == 0).all()
+    assert "resets" not in result.columns
+
+
+def test_production_by_part_handles_resets(sample_reset_data):
+    """With reset handling, production after a reset is counted correctly."""
+    tracker = PartProductionTracking(sample_reset_data)
+    result = tracker.production_by_part(
+        part_id_uuid="part_number",
+        counter_uuid="production_counter",
+        window="1h",
+        handle_resets=True,
+    )
+
+    assert "resets" in result.columns
+
+    # True production for PART_A: 27+120+73+24+50+70+60 = 424
+    part_a_total = result[result["part_number"] == "PART_A"]["quantity"].sum()
+    assert part_a_total == 424
+
+    # True production for PART_B (first reading is a reset to 61): 61+59+44 = 164
+    part_b_total = result[result["part_number"] == "PART_B"]["quantity"].sum()
+    assert part_b_total == 164
+
+    # Two resets total: the mid-run reset and the part-change reset.
+    assert result["resets"].sum() == 2
+
+
+def test_detect_resets(sample_reset_data):
+    """detect_resets returns the timestamp and magnitude of each reset."""
+    tracker = PartProductionTracking(sample_reset_data)
+    resets = tracker.detect_resets(
+        part_id_uuid="part_number", counter_uuid="production_counter"
+    )
+
+    assert list(resets.columns) == [
+        "systime",
+        "part_number",
+        "count_before",
+        "count_after",
+        "drop",
+    ]
+    assert len(resets) == 2
+
+    # Mid-run reset of PART_A: 432 -> 50
+    mid = resets.iloc[0]
+    assert mid["part_number"] == "PART_A"
+    assert mid["count_before"] == 432
+    assert mid["count_after"] == 50
+    assert mid["drop"] == 382
+
+    # Part-change reset to PART_B: 180 -> 61
+    switch = resets.iloc[1]
+    assert switch["part_number"] == "PART_B"
+    assert switch["count_before"] == 180
+    assert switch["count_after"] == 61
+
+
+def test_detect_resets_none_when_monotonic(sample_production_data):
+    """A monotonic counter produces no reset events."""
+    tracker = PartProductionTracking(sample_production_data)
+    resets = tracker.detect_resets(
+        part_id_uuid="part_number", counter_uuid="production_counter"
+    )
+    assert resets.empty
+
+
+def test_daily_summary_and_totals_with_resets(sample_reset_data):
+    """Daily summary and totals expose reset counts and corrected quantities."""
+    tracker = PartProductionTracking(sample_reset_data)
+
+    daily = tracker.daily_production_summary(
+        part_id_uuid="part_number",
+        counter_uuid="production_counter",
+        handle_resets=True,
+    )
+    assert "resets" in daily.columns
+    assert daily["resets"].sum() == 2
+    assert daily[daily["part_number"] == "PART_A"]["total_quantity"].iloc[0] == 424
+
+    totals = tracker.production_totals(
+        part_id_uuid="part_number",
+        counter_uuid="production_counter",
+        handle_resets=True,
+    )
+    assert "resets" in totals.columns
+    assert totals[totals["part_number"] == "PART_A"]["total_quantity"].iloc[0] == 424
+    assert totals[totals["part_number"] == "PART_B"]["total_quantity"].iloc[0] == 164
+
+
+# ============================================================================
 # CycleTimeTracking Tests
 # ============================================================================
 

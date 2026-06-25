@@ -39,16 +39,37 @@ print(hourly.head(10))
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `production_by_part(part_id_uuid, counter_uuid, window='1h')` | Count parts produced per part number per time window | DataFrame with window, part_id, and quantity |
-| `daily_production_summary(part_id_uuid, counter_uuid)` | Aggregate daily production totals by part number | DataFrame with date, part_id, and daily quantity |
-| `production_totals(part_id_uuid, counter_uuid)` | Compute total production by part number over the entire date range | DataFrame with part_id and total quantity |
+| `production_by_part(part_id_uuid, counter_uuid, window='1h', handle_resets=False)` | Count parts produced per part number per time window | DataFrame with window, part_id, and quantity (plus `resets` when `handle_resets=True`) |
+| `daily_production_summary(part_id_uuid, counter_uuid, handle_resets=False)` | Aggregate daily production totals by part number | DataFrame with date, part_id, and daily quantity |
+| `production_totals(part_id_uuid, counter_uuid, handle_resets=False)` | Compute total production by part number over the entire date range | DataFrame with part_id and total quantity |
+| `detect_resets(part_id_uuid, counter_uuid)` | Find when the counter was reset | DataFrame with timestamp, part_id, `count_before`, `count_after`, `drop` |
+
+---
+
+## Counter Resets
+
+Production counters are assumed to increase as parts are produced. Many counters reset back to zero (or a lower value) — at a shift change, a part change, or a controller restart. By default (`handle_resets=False`), a window where the counter drops reports `quantity = max(0, last_count - first_count)`, which **clamps to 0 and loses all production in that window**.
+
+Pass `handle_resets=True` to count production correctly across resets. The quantity is then the sum of per-reading increments, where a drop is treated as a reset that contributes the new counter value. The result gains a `resets` column counting resets per window.
+
+```python
+# Reset-aware hourly production
+hourly = pt.production_by_part(
+    part_id_uuid="part_id", counter_uuid="part_counter",
+    window="1h", handle_resets=True,
+)
+
+# Inspect exactly when the counter reset
+resets = pt.detect_resets(part_id_uuid="part_id", counter_uuid="part_counter")
+print(resets)   # timestamp, part_number, count_before, count_after, drop
+```
 
 ---
 
 ## Tips & Hints
 
-!!! tip "Handle counter resets at part changes"
-    When the part number changes, the counter may reset. The module handles this automatically, but verify your counter signal behavior — some PLCs maintain a running total while others reset per batch.
+!!! tip "Enable reset handling when counters reset"
+    If your counter resets at part changes, shift boundaries, or controller restarts, pass `handle_resets=True` so production is not silently dropped. Use `detect_resets()` first to confirm whether and when your counter resets.
 
 !!! info "Related modules"
     - [Line Throughput](line-throughput.md) — aggregate throughput without part-level breakdown
