@@ -60,6 +60,8 @@ def align_columns(*logs: EventLog) -> list[EventLog]:
             events=log.events.reindex(columns=union),
             objects=log.objects,
             relations=log.relations,
+            o2o=log.o2o,
+            object_changes=log.object_changes,
         )
         for log in logs
     ]

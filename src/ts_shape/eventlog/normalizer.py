@@ -2,12 +2,29 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 import pandas as pd
 
 from . import adapters, schema, taxonomy
 from .model import EventLog
+
+TableInput = pd.DataFrame | Iterable[Mapping[str, object]] | None
+
+
+def _coerce_table(data: object, empty: pd.DataFrame) -> pd.DataFrame:
+    """Coerce a DataFrame or iterable-of-mappings onto a canonical table.
+
+    Reindexes to the canonical columns (extra columns dropped, missing filled
+    with NA) and aligns dtypes, so callers can pass plain dicts.
+    """
+    if data is None:
+        return empty
+    df = data if isinstance(data, pd.DataFrame) else pd.DataFrame(list(data))
+    if df.empty:
+        return empty
+    df = df.reindex(columns=empty.columns)
+    return df.astype(empty.dtypes.to_dict()).reset_index(drop=True)
 
 
 def to_event_log(
@@ -16,6 +33,8 @@ def to_event_log(
     detector: str,
     objects: Mapping[str, object] | None = None,
     qualifiers: Mapping[str, str] | None = None,
+    o2o: TableInput = None,
+    object_changes: TableInput = None,
     validate: bool = True,
 ) -> EventLog:
     """Normalize a legacy detector DataFrame into the canonical event log.
@@ -34,6 +53,12 @@ def to_event_log(
     adapter's ``LabelRule.produces_objects`` are *also* auto-extracted from
     standard legacy columns (e.g. ``source_uuid -> asset``) when no explicit
     binding is given.
+
+    ``o2o`` and ``object_changes`` optionally attach the OCEL 2.0
+    object-to-object relations and time-varying object attributes. Each
+    accepts a DataFrame (or an iterable of dict rows) with the canonical
+    columns — see :func:`ts_shape.eventlog.schema.empty_o2o` /
+    :func:`~ts_shape.eventlog.schema.empty_object_changes`.
     """
     if "." not in detector:
         raise ValueError(f"detector must be 'ClassName.method_name', got {detector!r}")
@@ -55,6 +80,9 @@ def to_event_log(
         log = adapters.adapt(
             df, rule=rule, detector=detector, objects=objects, qualifiers=qualifiers
         )
+
+    log.o2o = _coerce_table(o2o, schema.empty_o2o())
+    log.object_changes = _coerce_table(object_changes, schema.empty_object_changes())
 
     if validate:
         schema.validate(log)

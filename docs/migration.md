@@ -6,15 +6,16 @@ while you migrate. Deprecated names still function but emit a
 authoritative, dated record is the [Changelog](changelog.md) — this page is the
 quick old → new lookup.
 
-## Deprecated function aliases
+## Removed exporter aliases
 
 The event-log exporters were renamed into a consistent `to_event_log_*` family.
-The old names remain as deprecated aliases.
+The old aliases (`to_flat_df`, `to_ocel_tables`) have now been **removed** —
+update any remaining imports:
 
-| Deprecated | Use instead | Notes |
-|---|---|---|
-| `to_flat_df(...)` | `to_event_log_xes(...)` | XES-flavoured flat export. Signature unchanged. |
-| `to_ocel_tables(...)` | `to_event_log_ocel(...)` | OCEL 2.0 `(events, objects, relations)` tables. Signature unchanged. |
+| Removed | Use instead |
+|---|---|
+| `to_flat_df(...)` | `to_event_log_xes(...)` |
+| `to_ocel_tables(...)` | `to_event_log_ocel(...)` |
 
 ```python
 # Before
@@ -23,6 +24,30 @@ from ts_shape.eventlog import to_flat_df, to_ocel_tables
 # After
 from ts_shape.eventlog import to_event_log_xes, to_event_log_ocel
 ```
+
+## `to_event_log_ocel` now returns five tables
+
+To fully model OCEL 2.0, `to_event_log_ocel(log)` returns an `OCEL2Tables`
+bundle (object-to-object relations and time-varying object attributes were
+added) instead of a 3-tuple. Access the frames by attribute:
+
+```python
+# Before
+events_df, objects_df, relations_df = to_event_log_ocel(log)
+
+# After
+tables = to_event_log_ocel(log)
+tables.events, tables.objects, tables.relations          # as before
+tables.o2o, tables.object_changes                        # new OCEL 2.0 tables
+```
+
+## `org:resource` in XES export
+
+`to_event_log_xes` previously copied the case object id into `org:resource`.
+Per the XES standard `org:resource` is the performing resource, so it is now
+populated only from an `operator`-type object relation, and **omitted** when
+the log has no operators. Supply one via `objects={"operator": ...}` if you
+need it.
 
 ## Class aliases
 

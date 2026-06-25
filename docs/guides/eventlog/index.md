@@ -45,7 +45,11 @@ flowchart LR
 
 ## The canonical schema
 
-An :class:`EventLog` holds three pandas DataFrames.
+An :class:`EventLog` holds the five OCEL 2.0 relational tables as pandas
+DataFrames: `events`, `objects`, `relations` (event-to-object), `o2o`
+(object-to-object), and `object_changes` (time-varying object attributes). The
+last two are empty unless supplied — see [Object relations &
+attributes](#object-relations-and-attributes).
 
 ### Events
 
@@ -94,6 +98,29 @@ log's events table to the shared union (core first, extras sorted), leaving
 | `ocel:type` | string | Denormalized for convenience. |
 | `ocel:qualifier` | string \| `<NA>` | Role of the object in the event, e.g. `produced_on`, `during_batch`. |
 
+### O2O — object-to-object relations
+
+OCEL 2.0 also models qualified relations *between* objects (a `part` belongs to
+a `batch`, a `sensor` is mounted on an `asset`). Empty unless supplied.
+
+| Column | Type | Notes |
+|---|---|---|
+| `ocel:oid` | string | Source object. |
+| `ocel:oid_2` | string | Target object. |
+| `ocel:qualifier` | string | Role of the target relative to the source, e.g. `part_of`. |
+
+### Object changes — time-varying attributes
+
+OCEL 2.0 lets an object's attributes change over time. Empty unless supplied.
+
+| Column | Type | Notes |
+|---|---|---|
+| `ocel:oid` | string | The object. |
+| `ocel:type` | string | Its type. |
+| `ocel:field` | string | Attribute name, e.g. `firmware`. |
+| `ocel:value` | any | Value taken from `ocel:timestamp` onward. |
+| `ocel:timestamp` | `datetime64[ns, UTC]` | When the value became effective. |
+
 The activity-name taxonomy that fills `ocel:activity`, plus the full pack /
 family / severity / standard-attribute rules, are documented in
 [Labelling standard & taxonomy](taxonomy.md). How a detector's raw DataFrame is
@@ -127,19 +154,22 @@ log = concat(state_log, outlier_log)
 xes_df = to_event_log_xes(log, case_object_type="asset")
 # Now xes_df has case:concept:name / concept:name / time:timestamp columns.
 
-# 4b. Or hand the OCEL tables to pm4py directly.
-events_df, objects_df, relations_df = to_event_log_ocel(log)
-# import pm4py; pm4py.write_ocel2_json(...)
+# 4b. Or hand the OCEL 2.0 tables to pm4py directly.
+tables = to_event_log_ocel(log)
+# tables.events / .objects / .relations / .o2o / .object_changes — these map
+# 1:1 onto pm4py's OCEL(...) constructor. import pm4py; pm4py.write_ocel2_json(...)
 ```
 
 ---
 
-## Linking objects to events
+## Object relations and attributes
 
 OCEL is multi-object: an event can be linked to *several* objects of *several* types. ts-shape distinguishes two ways an object ends up on an event:
 
 1. **Auto-extracted** by the adapter from a standard legacy column. Each `LabelRule` declares `produces_objects` (e.g. `("asset",)`); when the legacy DataFrame contains the matching column (e.g. `source_uuid`), the asset object is created automatically.
 2. **Caller-supplied** via the `objects=` argument. This is for *contextual* annotations — "this outlier happened during batch B-2026-117 on shift A". Caller-supplied bindings can use any object type.
+
+A binding value is one of: a **column name** (string), a **callable** `row -> oid`, a **`pd.Series`** aligned with the detector output, or a **non-string scalar** broadcast to every row. A bare string is always read as a column name — for a constant id use a callable.
 
 ```python
 to_event_log(
@@ -148,13 +178,35 @@ to_event_log(
     objects={
         "batch":    "batch_id",                 # column name
         "operator": lambda r: r["op_id"][:6],   # callable
-        "shift":    "A",                        # scalar broadcast
+        "shift":    lambda r: "A",              # constant id (callable, not "A")
     },
     qualifiers={"asset": "produced_on", "batch": "during_batch"},
 )
 ```
 
 If a method has no natural object association at all (e.g. a global cross-signal correlation statistic), the adapter declares `produces_objects = ()` and the resulting `EventLog` has empty `objects` and `relations` tables. Calling `to_event_log_xes(...)` on such a log raises a clear error rather than fabricating object ids.
+
+### O2O relations and object changes
+
+Pass `o2o=` and `object_changes=` to attach the two remaining OCEL 2.0 tables. Each accepts a DataFrame or an iterable of dict rows with the canonical columns; every referenced `ocel:oid` must exist in `objects` or `validate` raises.
+
+```python
+to_event_log(
+    legacy_df,
+    detector="OutlierDetectionEvents.detect_outliers_zscore",
+    objects={"asset": "source_uuid", "station": lambda r: "line-1"},
+    o2o=[{"ocel:oid": "asset-A", "ocel:oid_2": "line-1", "ocel:qualifier": "part_of"}],
+    object_changes=[{
+        "ocel:oid": "asset-A", "ocel:type": "asset",
+        "ocel:field": "firmware", "ocel:value": "v2",
+        "ocel:timestamp": "2026-05-07T00:00:00Z",
+    }],
+)
+```
+
+### Resources (`org:resource`)
+
+In the XES export, `org:resource` is the **operator that performed the activity** — not the case object. It is populated only from an `operator`-type relation (bind one via `objects={"operator": ...}`) and is otherwise omitted; ts-shape never copies the case id into it.
 
 ---
 

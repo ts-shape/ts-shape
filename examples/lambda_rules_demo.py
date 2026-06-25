@@ -132,13 +132,13 @@ def main() -> None:
         ].head(10).to_string(index=False))
         print()
 
-        events_df, objects_df, relations_df = to_event_log_ocel(log)
+        tables = to_event_log_ocel(log)
         print("=" * 70)
         print("OCEL 2.0 tables")
         print("=" * 70)
-        print(f"events:    {events_df.shape}")
-        print(f"objects:   {objects_df.shape}")
-        print(f"relations: {relations_df.shape}")
+        print(f"events:    {tables.events.shape}")
+        print(f"objects:   {tables.objects.shape}")
+        print(f"relations: {tables.relations.shape}")
         print()
 
         # -----------------------------------------------------------------

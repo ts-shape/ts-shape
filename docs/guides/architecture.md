@@ -110,7 +110,7 @@ from ts_shape.eventlog import to_event_log, to_event_log_ocel
 intervals = MachineStateEvents(df, run_state_uuid="machine_run_state") \
     .detect_run_idle()
 log = to_event_log(intervals, detector="MachineStateEvents.detect_run_idle")
-events_df, objects_df, relations_df = to_event_log_ocel(log)
+tables = to_event_log_ocel(log)  # .events .objects .relations .o2o .object_changes
 ```
 
 ## Cross-cutting modules

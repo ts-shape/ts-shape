@@ -295,18 +295,21 @@ def main() -> None:
     # 4. OCEL 2.0 export (column names match the spec verbatim)
     # ---------------------------------------------------------------------
 
-    events_df, objects_df, relations_df = to_event_log_ocel(log)
+    tables = to_event_log_ocel(log)
     print("=" * 70)
     print("OCEL 2.0 tables")
     print("=" * 70)
-    print(f"events:    {events_df.shape}")
-    print(f"objects:   {objects_df.shape}")
-    print(f"relations: {relations_df.shape}")
+    print(f"events:         {tables.events.shape}")
+    print(f"objects:        {tables.objects.shape}")
+    print(f"relations:      {tables.relations.shape}  (event-to-object)")
+    print(f"o2o:            {tables.o2o.shape}  (object-to-object)")
+    print(f"object_changes: {tables.object_changes.shape}  (time-varying attrs)")
     print()
-    print("These three frames can be passed directly to e.g.:")
-    print("  pm4py.write_ocel2_json(...)")
-    print("  pm4py.format_dataframe(xes_asset, ...)")
-    print("ts-shape itself imports neither — column names match the specs.")
+    print("These five frames map 1:1 onto pm4py's OCEL constructor:")
+    print("  pm4py.objects.ocel.obj.OCEL(events=tables.events, objects=...,")
+    print("      relations=..., o2o=tables.o2o, object_changes=tables.object_changes)")
+    print("ts-shape itself imports neither pm4py nor any OCEL writer — the")
+    print("column names match the specs verbatim.")
 
 
 if __name__ == "__main__":

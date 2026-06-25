@@ -23,13 +23,13 @@ Typical use::
     )
     log = concat(state_log, outlier_log)
     xes_df = to_event_log_xes(log, case_object_type="asset")
-    events_df, objects_df, relations_df = to_event_log_ocel(log)
+    tables = to_event_log_ocel(log)  # OCEL2Tables(events, objects, relations, ...)
 """
 
 from .adapters import register_adapter
 from .align import align_columns
 from .concat import concat
-from .flat import to_event_log_xes, to_flat_df
+from .flat import to_event_log_xes
 from .lambda_rules import (
     BacktestResult,
     LambdaDetector,
@@ -45,14 +45,17 @@ from .lambda_rules import (
 )
 from .model import EventLog
 from .normalizer import to_event_log
-from .ocel import to_event_log_ocel, to_ocel_tables
+from .ocel import OCEL2Tables, to_event_log_ocel
 from .schema import (
     OCEL_ACTIVITY,
     OCEL_EID,
+    OCEL_FIELD,
     OCEL_OID,
+    OCEL_OID2,
     OCEL_QUALIFIER,
     OCEL_TIMESTAMP,
     OCEL_TYPE,
+    OCEL_VALUE,
     TS_DETECTOR,
     TS_DURATION_S,
     TS_PACK,
@@ -64,6 +67,8 @@ from .schema import (
     XES_LIFECYCLE,
     XES_RESOURCE,
     XES_TIMESTAMP,
+    empty_object_changes,
+    empty_o2o,
     register_object_type,
     validate,
 )
@@ -72,6 +77,7 @@ from .taxonomy import REGISTRY, LabelRule
 __all__ = [
     "BacktestResult",
     "EventLog",
+    "OCEL2Tables",
     "align_columns",
     "LabelRule",
     "LambdaDetector",
@@ -81,6 +87,8 @@ __all__ = [
     "UnsafeExpression",
     "compile_expression",
     "concat",
+    "empty_object_changes",
+    "empty_o2o",
     "load_dicts",
     "load_yaml",
     "register_adapter",
@@ -90,16 +98,17 @@ __all__ = [
     "to_event_log",
     "to_event_log_ocel",
     "to_event_log_xes",
-    "to_flat_df",
-    "to_ocel_tables",
     "unregister_lambda_rule",
     "validate",
     "OCEL_ACTIVITY",
     "OCEL_EID",
+    "OCEL_FIELD",
     "OCEL_OID",
+    "OCEL_OID2",
     "OCEL_QUALIFIER",
     "OCEL_TIMESTAMP",
     "OCEL_TYPE",
+    "OCEL_VALUE",
     "TS_DETECTOR",
     "TS_DURATION_S",
     "TS_PACK",
