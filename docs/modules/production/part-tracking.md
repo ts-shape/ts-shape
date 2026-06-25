@@ -15,22 +15,41 @@ Use for part-level production reporting. Tracks how many of each part number wer
 
 ## Quick Example
 
+The tracker reads long-format timeseries data: one row per signal reading, identified by a `uuid` column. The part number lives in a string signal (`value_string`) and the production count in a counter signal (`value_integer`).
+
 ```python
 from ts_shape.events.production.part_tracking import PartProductionTracking
 import pandas as pd
 import numpy as np
 
-df = pd.DataFrame({
-    "timestamp": pd.date_range("2024-01-01 06:00", periods=480, freq="1min"),
-    "part_id": (["PN-100"]*160 + ["PN-200"]*160 + ["PN-100"]*160),
-    "part_counter": np.arange(1, 481),
-})
+t = pd.date_range("2024-01-01 06:00", periods=480, freq="1min")
 
-pt = PartProductionTracking(df, timestamp_column="timestamp")
+# Part-number signal (which part is running) and a counter signal
+parts = pd.DataFrame({
+    "uuid": "part_id",
+    "systime": t,
+    "value_string": (["PN-100"] * 160 + ["PN-200"] * 160 + ["PN-100"] * 160),
+})
+counter = pd.DataFrame({
+    "uuid": "part_counter",
+    "systime": t,
+    "value_integer": np.arange(1, 481),
+})
+df = pd.concat([parts, counter], ignore_index=True)
+
+pt = PartProductionTracking(df, time_column="systime")
 hourly = pt.production_by_part(part_id_uuid="part_id", counter_uuid="part_counter", window="1h")
 daily = pt.daily_production_summary(part_id_uuid="part_id", counter_uuid="part_counter")
 totals = pt.production_totals(part_id_uuid="part_id", counter_uuid="part_counter")
 print(hourly.head(10))
+
+# If the counter resets (shift/part change, controller restart), enable
+# reset handling so production is not silently dropped:
+hourly = pt.production_by_part(
+    part_id_uuid="part_id", counter_uuid="part_counter",
+    window="1h", handle_resets=True,
+)
+resets = pt.detect_resets(part_id_uuid="part_id", counter_uuid="part_counter")
 ```
 
 ---
