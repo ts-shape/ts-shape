@@ -216,6 +216,7 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("PartProductionTracking", "daily_production_summary"): "aggregate",
     ("PartProductionTracking", "production_by_part"): "aggregate",
     ("PartProductionTracking", "production_totals"): "aggregate",
+    ("PartProductionTracking", "detect_resets"): "threshold",
     ("PerformanceLossTracking", "performance_by_shift"): "aggregate",
     ("PerformanceLossTracking", "performance_trend"): "aggregate",
     ("PerformanceLossTracking", "slow_periods"): "interval",

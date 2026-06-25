@@ -311,7 +311,9 @@ class PartProductionTracking(Base):
             {
                 self.time_column: resets[self.time_column].values,
                 "part_number": resets["part_number"].values,
-                "count_before": resets["_prev"].astype(resets[value_column_counter].dtype).values,
+                "count_before": resets["_prev"]
+                .astype(resets[value_column_counter].dtype)
+                .values,
                 "count_after": resets[value_column_counter].values,
             }
         )
@@ -372,13 +374,14 @@ class PartProductionTracking(Base):
 
         hourly["date"] = hourly["start"].dt.date
 
-        agg = {"total_quantity": ("quantity", "sum"), "hours_active": ("start", "count")}
+        agg = {
+            "total_quantity": ("quantity", "sum"),
+            "hours_active": ("start", "count"),
+        }
         if handle_resets:
             agg["resets"] = ("resets", "sum")
 
-        daily = (
-            hourly.groupby(["date", "part_number"]).agg(**agg).reset_index()
-        )
+        daily = hourly.groupby(["date", "part_number"]).agg(**agg).reset_index()
 
         return daily
 
@@ -438,7 +441,10 @@ class PartProductionTracking(Base):
         if end_date:
             daily = daily[daily["date"] <= pd.to_datetime(end_date)]
 
-        agg = {"total_quantity": ("total_quantity", "sum"), "days_produced": ("date", "count")}
+        agg = {
+            "total_quantity": ("total_quantity", "sum"),
+            "days_produced": ("date", "count"),
+        }
         if handle_resets:
             agg["resets"] = ("resets", "sum")
 
