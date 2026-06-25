@@ -5,7 +5,7 @@
 [![CI](https://github.com/ts-shape/ts-shape/actions/workflows/ci.yml/badge.svg)](https://github.com/ts-shape/ts-shape/actions/workflows/ci.yml)
 [![docs](https://img.shields.io/badge/docs-mkdocs-708FCC.svg?style=flat)](https://ts-shape.github.io/ts-shape/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 
 **ts-shape** is a composable, production-ready Python toolkit for loading, shaping, and analysing industrial timeseries data. Built for manufacturing and IoT, it follows a simple **DataFrame-in, DataFrame-out** philosophy across loaders, transforms, feature extractors, and event detectors.
 
@@ -62,7 +62,9 @@ print(outliers)
 ```
 
 Every script under [`examples/`](examples/) is likewise self-contained -- run any
-of them straight after install, e.g. `python examples/quality_events_demo.py`.
+of them straight after install, e.g. `python examples/quality_events_demo.py`. See
+[`examples/README.md`](examples/README.md) for the full, authoritative catalogue
+(loaders, transforms, pipelines, and every event pack).
 
 ---
 
@@ -109,6 +111,8 @@ ts_shape/
 │   ├── production/      # OEE, machine state, throughput, shift, downtime, alarms, batches
 │   ├── engineering/     # Setpoint changes, startup detection, control quality
 │   ├── maintenance/     # Degradation, failure prediction, vibration analysis
+│   ├── energy/          # Consumption analysis, efficiency tracking
+│   ├── correlation/     # Signal correlation, anomaly co-occurrence
 │   └── supplychain/     # Inventory monitoring, lead time, demand patterns
 │
 ├── context/             # Value mapping (categorical codes → labels)

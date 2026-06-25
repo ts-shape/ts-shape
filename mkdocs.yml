@@ -1,5 +1,5 @@
 site_name: "ts-shape"
-site_description: "Automatic documentation from sources, for ts-shape."
+site_description: "From raw industrial timeseries to OEE, SPC, and process-mining-ready event logs — a composable Python toolkit, DataFrame in, DataFrame out."
 site_url: "https://ts-shape.github.io/ts-shape"
 repo_url: "https://github.com/ts-shape/ts-shape"
 repo_name: "ts-shape"
@@ -16,6 +16,7 @@ nav:
 - Home:
   - Overview: index.md
   - Concept: concept.md
+  - Migration & Deprecations: migration.md
   - Changelog: changelog.md
   - License: license.md
 - Getting Started:
@@ -36,7 +37,10 @@ nav:
   - Product Traceability: guides/traceability.md
   - Process Engineering: guides/engineering.md
   - Shift Reports & KPIs: guides/reporting.md
-  - Event Log (XES & OCEL): guides/eventlog.md
+  - Event Log (XES & OCEL):
+    - Overview: guides/eventlog/index.md
+    - Labelling Standard & Taxonomy: guides/eventlog/taxonomy.md
+    - Adapter Anatomy & Custom Adapters: guides/eventlog/adapters.md
   - Event Handling — Visual Overview: guides/event-handling-flow.md
   - Lambda Rules: guides/lambda-rules.md
 - Pipelines:

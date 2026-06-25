@@ -1,6 +1,6 @@
 # Lambda Rules: declarative, user-authored detectors
 
-ts-shape ships ~290 hand-written detector methods across 68 classes — a curated industry library covering machine state, OEE, SPC, drift, vibration, energy, supply chain, and more. They are precise, opinionated, and parametric. They are also code: every new detection idea requires a new Python class, a new taxonomy entry, a new archetype, a new test.
+ts-shape ships 290+ hand-written detector methods across 70+ classes — a curated industry library covering machine state, OEE, SPC, drift, vibration, energy, supply chain, and more. They are precise, opinionated, and parametric. They are also code: every new detection idea requires a new Python class, a new taxonomy entry, a new archetype, a new test.
 
 The **lambda-rule** subsystem coexists with that library. You declare a rule in YAML (or a dict), the loader compiles it into a `LambdaDetector`, and it joins the same `REGISTRY` the built-ins live in. From that point on the canonical-event-log pipeline does not care which kind of detector emitted the row — the rule's output flows through the same shape-driven adapter, severity bucketing, object auto-extraction, OCEL / XES export, `concat`, and schema validation.
 
@@ -21,7 +21,7 @@ flowchart TB
         L2[Transforms / Features]
     end
     subgraph DETECT["Detection Layer"]
-        D1["Built-in detectors<br/>(290 methods, 68 classes)"]
+        D1["Built-in detectors<br/>(290+ methods, 70+ classes)"]
         D2["Lambda rules<br/>(YAML / DSL)"]
         D3["Gen-AI authoring<br/><i>roadmap</i>"]
     end
@@ -297,4 +297,4 @@ Both rely on (a) the canonical-event-log plumbing already in place, (b) the lamb
 
 Other roadmap items: rule packs (versioned YAML bundles per industry), streaming evaluation over chunked DataFrames, polars backend, and labelled backtest scoring (precision/recall).
 
-For an end-to-end runnable example see [`examples/lambda_rules_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/lambda_rules_demo.py). For the canonical schema the rules ultimately emit into, see the [Event Log guide](eventlog.md). For a side-by-side view of how every detection archetype flows from raw signals through events to rule definitions, see [Event Handling — Visual Overview](event-handling-flow.md).
+For an end-to-end runnable example see [`examples/lambda_rules_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/lambda_rules_demo.py). For the canonical schema the rules ultimately emit into, see the [Event Log guide](eventlog/index.md). For a side-by-side view of how every detection archetype flows from raw signals through events to rule definitions, see [Event Handling — Visual Overview](event-handling-flow.md).

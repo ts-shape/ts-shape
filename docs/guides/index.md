@@ -169,7 +169,7 @@ Pick the stage that matches where you are in your analysis.
 
     `PerformanceLossTracking` | `ScrapTracking` | `TargetTracking` | `SetupTimeTracking` | +4 more
 
--   :material-graph-outline:{ .lg .middle } **[Event Log (XES & OCEL)](eventlog.md)**
+-   :material-graph-outline:{ .lg .middle } **[Event Log (XES & OCEL)](eventlog/index.md)**
 
     ---
 

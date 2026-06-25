@@ -14,6 +14,8 @@ def concat(*logs: EventLog) -> EventLog:
     events = pd.concat([log.events for log in logs], ignore_index=True)
     objects = pd.concat([log.objects for log in logs], ignore_index=True)
     relations = pd.concat([log.relations for log in logs], ignore_index=True)
+    o2o = pd.concat([log.o2o for log in logs], ignore_index=True)
+    object_changes = pd.concat([log.object_changes for log in logs], ignore_index=True)
 
     if not objects.empty:
         objects = objects.drop_duplicates(
@@ -30,4 +32,20 @@ def concat(*logs: EventLog) -> EventLog:
             subset=[schema.OCEL_EID, schema.OCEL_OID, schema.OCEL_TYPE]
         ).reset_index(drop=True)
 
-    return EventLog(events=events, objects=objects, relations=relations)
+    if not o2o.empty:
+        o2o = o2o.drop_duplicates(
+            subset=[schema.OCEL_OID, schema.OCEL_OID2, schema.OCEL_QUALIFIER]
+        ).reset_index(drop=True)
+
+    if not object_changes.empty:
+        object_changes = object_changes.drop_duplicates(
+            subset=[schema.OCEL_OID, schema.OCEL_FIELD, schema.OCEL_TIMESTAMP]
+        ).reset_index(drop=True)
+
+    return EventLog(
+        events=events,
+        objects=objects,
+        relations=relations,
+        o2o=o2o,
+        object_changes=object_changes,
+    )

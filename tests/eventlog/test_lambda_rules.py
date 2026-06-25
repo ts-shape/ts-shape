@@ -388,9 +388,9 @@ def test_lambda_log_round_trips_to_flat_and_ocel(torque_df, bearing_df):
         assert not xes.empty
         assert "concept:name" in xes.columns
 
-        events_df, objects_df, relations_df = to_event_log_ocel(log)
-        assert len(events_df) == len(log.events)
-        assert len(relations_df) == len(log.relations)
+        tables = to_event_log_ocel(log)
+        assert len(tables.events) == len(log.events)
+        assert len(tables.relations) == len(log.relations)
     finally:
         unregister_lambda_rule(p_spec.class_name, p_spec.method_name)
         unregister_lambda_rule(i_spec.class_name, i_spec.method_name)

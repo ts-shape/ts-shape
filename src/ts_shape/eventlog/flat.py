@@ -6,12 +6,15 @@ pass this DataFrame to ``pm4py.format_dataframe`` themselves.
 
 from __future__ import annotations
 
-import warnings
-
 import pandas as pd
 
 from . import schema
 from .model import EventLog
+
+# Object type whose linked oid names the resource (org:resource) that
+# performed the activity. Falls back to absent when no such relation exists —
+# org:resource is never fabricated from the case id.
+_RESOURCE_OBJECT_TYPE = "operator"
 
 
 def to_event_log_xes(
@@ -58,11 +61,19 @@ def to_event_log_xes(
         schema.OCEL_TIMESTAMP: schema.XES_TIMESTAMP,
     }
     base = joined.rename(columns=rename)
-    base[schema.XES_RESOURCE] = base.get(schema.XES_CASE)
+    # org:resource is the operator that performed the activity, NOT the case
+    # object. Populate it only from an actual operator relation; if the log has
+    # no operators, the column is omitted rather than mislabelling the case id.
+    resource = _resource_map(eventlog)
+    if resource is not None:
+        base[schema.XES_RESOURCE] = base[schema.OCEL_EID].map(resource).astype("string")
     base["start_timestamp"] = base[schema.TS_START_TIMESTAMP]
 
     if lifecycle == "single":
         base[schema.XES_LIFECYCLE] = "complete"
+        base = base.sort_values([schema.XES_CASE, schema.XES_TIMESTAMP]).reset_index(
+            drop=True
+        )
         return _arrange_columns(base)
 
     # Two-row expansion.
@@ -80,6 +91,22 @@ def to_event_log_xes(
     return _arrange_columns(expanded)
 
 
+def _resource_map(eventlog: EventLog) -> pd.Series | None:
+    """Map ``ocel:eid`` -> resource oid from operator E2O relations.
+
+    Returns ``None`` when the log has no operator relations, so the caller can
+    omit ``org:resource`` entirely rather than fabricate it.
+    """
+    rels = eventlog.relations
+    ops = rels[rels[schema.OCEL_TYPE] == _RESOURCE_OBJECT_TYPE]
+    if ops.empty:
+        return None
+    # One resource per event; keep the first if several are linked.
+    return ops.drop_duplicates(schema.OCEL_EID).set_index(schema.OCEL_EID)[
+        schema.OCEL_OID
+    ]
+
+
 def _arrange_columns(df: pd.DataFrame) -> pd.DataFrame:
     head = [
         schema.XES_CASE,
@@ -92,13 +119,3 @@ def _arrange_columns(df: pd.DataFrame) -> pd.DataFrame:
     head = [c for c in head if c in df.columns]
     rest = [c for c in df.columns if c not in head]
     return df[head + rest]
-
-
-def to_flat_df(*args, **kwargs) -> pd.DataFrame:
-    """Deprecated alias for :func:`to_event_log_xes`."""
-    warnings.warn(
-        "to_flat_df is deprecated; use to_event_log_xes",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return to_event_log_xes(*args, **kwargs)

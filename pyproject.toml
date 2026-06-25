@@ -32,9 +32,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://jakobgabriel.github.io/ts-shape/"
-Repository = "https://github.com/jakobgabriel/ts-shape"
-"Bug Tracker" = "https://github.com/jakobgabriel/ts-shape/issues"
+Homepage = "https://ts-shape.github.io/ts-shape/"
+Repository = "https://github.com/ts-shape/ts-shape"
+"Bug Tracker" = "https://github.com/ts-shape/ts-shape/issues"
 
 [project.optional-dependencies]
 azure = [

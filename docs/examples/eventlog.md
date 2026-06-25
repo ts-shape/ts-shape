@@ -6,7 +6,7 @@ Demonstrates the canonical OCEL 2.0 / XES-shaped event log produced by the `ts_s
 
 **Modules demonstrated:** `to_event_log`, `concat`, `to_event_log_xes`, `to_event_log_ocel`, `MachineStateEvents`, `OutlierDetectionEvents`
 
-**Related guides:** [Event Log: pm4py-shaped output for process mining](../guides/eventlog.md)
+**Related guides:** [Event Log: pm4py-shaped output for process mining](../guides/eventlog/index.md)
 
 ---
 

@@ -55,11 +55,40 @@ OCEL_TYPE = "ocel:type"
 OBJECT_REQUIRED_COLUMNS: tuple[str, ...] = (OCEL_OID, OCEL_TYPE)
 
 
-# ---- Event-to-object relations table ---------------------------------------
+# ---- Event-to-object relations table (E2O) ---------------------------------
 
 OCEL_QUALIFIER = "ocel:qualifier"
 
 RELATION_REQUIRED_COLUMNS: tuple[str, ...] = (OCEL_EID, OCEL_OID, OCEL_TYPE)
+
+
+# ---- Object-to-object relations table (O2O) --------------------------------
+#
+# OCEL 2.0 models qualified relations *between* objects (e.g. a ``part``
+# belongs to a ``batch``; a ``sensor`` is mounted on an ``asset``). The
+# qualifier names the role of the target object relative to the source.
+
+OCEL_OID2 = "ocel:oid_2"
+
+O2O_REQUIRED_COLUMNS: tuple[str, ...] = (OCEL_OID, OCEL_OID2, OCEL_QUALIFIER)
+
+
+# ---- Object dynamic-attribute changes table --------------------------------
+#
+# OCEL 2.0 lets an object's attributes vary over time. Each row records that
+# ``OCEL_FIELD`` of object ``OCEL_OID`` took ``OCEL_VALUE`` from ``OCEL_TIMESTAMP``
+# onward. A purely static attribute is a single row with the log's base time.
+
+OCEL_FIELD = "ocel:field"
+OCEL_VALUE = "ocel:value"
+
+OBJECT_CHANGE_REQUIRED_COLUMNS: tuple[str, ...] = (
+    OCEL_OID,
+    OCEL_TYPE,
+    OCEL_FIELD,
+    OCEL_VALUE,
+    OCEL_TIMESTAMP,
+)
 
 
 # ---- XES export columns -----------------------------------------------------
@@ -183,6 +212,28 @@ def empty_relations() -> pd.DataFrame:
     )
 
 
+def empty_o2o() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            OCEL_OID: pd.Series(dtype="string"),
+            OCEL_OID2: pd.Series(dtype="string"),
+            OCEL_QUALIFIER: pd.Series(dtype="string"),
+        }
+    )
+
+
+def empty_object_changes() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            OCEL_OID: pd.Series(dtype="string"),
+            OCEL_TYPE: pd.Series(dtype="string"),
+            OCEL_FIELD: pd.Series(dtype="string"),
+            OCEL_VALUE: pd.Series(dtype="object"),
+            OCEL_TIMESTAMP: pd.Series(dtype="datetime64[ns, UTC]"),
+        }
+    )
+
+
 # ---- Validation -------------------------------------------------------------
 
 
@@ -219,3 +270,29 @@ def validate(eventlog: EventLog) -> None:
                     f"relation references unknown object {pair!r}; "
                     "every (oid, type) in relations must appear in objects"
                 )
+
+    o2o = eventlog.o2o
+    missing = [c for c in O2O_REQUIRED_COLUMNS if c not in o2o.columns]
+    if missing:
+        raise ValueError(f"o2o table missing required columns: {missing}")
+    if not o2o.empty:
+        known_oids = set(objects[OCEL_OID])
+        for col in (OCEL_OID, OCEL_OID2):
+            unknown = o2o[col][~o2o[col].isin(known_oids)]
+            if not unknown.empty:
+                raise ValueError(
+                    f"o2o references unknown object id in {col!r}: "
+                    f"{unknown.iloc[0]!r}; every oid must appear in objects"
+                )
+
+    changes = eventlog.object_changes
+    missing = [c for c in OBJECT_CHANGE_REQUIRED_COLUMNS if c not in changes.columns]
+    if missing:
+        raise ValueError(f"object_changes table missing required columns: {missing}")
+    if not changes.empty:
+        unknown = changes[OCEL_OID][~changes[OCEL_OID].isin(set(objects[OCEL_OID]))]
+        if not unknown.empty:
+            raise ValueError(
+                f"object_changes references unknown object id: {unknown.iloc[0]!r}; "
+                "every oid must appear in objects"
+            )
