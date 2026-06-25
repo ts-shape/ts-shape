@@ -213,4 +213,4 @@ flowchart TB
 
 ## Where this fits in the rest of the library
 
-For the full module map — including loaders, transforms, features, and how the event layer plugs into them — see the architecture chart in [Concept](../concept.md#full-library-architecture). For the canonical event-log schema events ultimately land in, see [Event Log (XES & OCEL)](eventlog.md). For the user-authored path that emits straight into this same flow, see [Lambda Rules](lambda-rules.md).
+For the full module map — including loaders, transforms, features, and how the event layer plugs into them — see the architecture chart in [Concept](../concept.md#full-library-architecture). For the canonical event-log schema events ultimately land in, see [Event Log (XES & OCEL)](eventlog/index.md). For the user-authored path that emits straight into this same flow, see [Lambda Rules](lambda-rules.md).

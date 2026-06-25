@@ -5,6 +5,11 @@ gives the 30-second overview; the interactive graph below lets you pan,
 zoom, search, and click any class or method to jump to its auto-generated
 reference page.
 
+!!! info "Which page do I want?"
+    - **[Concept](../concept.md)** — the short *what & why*: core principles and the data model.
+    - **This page** — the canonical prose walkthrough of every layer.
+    - **[Architecture Map](architecture-map.md)** — the interactive, searchable graph of every class and method.
+
 ## 30-second overview
 
 ```mermaid
@@ -21,8 +26,8 @@ flowchart TB
     subgraph CONTEXT["context"]
         CX["value_mapping"]
     end
-    subgraph EVENTS["events — detector library (264 methods, 63 classes)"]
-        EV["quality · production · engineering · maintenance · energy · correlation · supplychain"]
+    subgraph EVENTS["events — detector library (290+ methods, 70+ classes)"]
+        EV["quality · production · engineering · maintenance · energy · correlation · supplychain · development"]
     end
     subgraph EVENTLOG["eventlog — OCEL 2.0 canonical layer"]
         EL["model · schema · taxonomy · adapters · normalizer · flat · ocel · lambda_rules"]
@@ -119,7 +124,7 @@ events_df, objects_df, relations_df = to_event_log_ocel(log)
   `finalize_summary_df`). Single source of truth for the columns every
   detector emits.
 - **`src/ts_shape/eventlog/taxonomy.py`** — `REGISTRY` with one
-  `LabelRule` per `(ClassName, method_name)` pair. 264 entries today.
+  `LabelRule` per `(ClassName, method_name)` pair (~290 entries today).
   This is also the data source driving every node in the interactive
   graph above.
 - **`src/ts_shape/eventlog/archetypes.py`** — eight archetype

@@ -177,5 +177,5 @@ Pass `concat=False` for a per-step `dict`.
 ## Next steps
 
 - [Feature Extraction](feature-extraction.md) — cycles vs segments
-- [Event Log (XES & OCEL)](eventlog.md) — what `to_event_log()` produces
+- [Event Log (XES & OCEL)](eventlog/index.md) — what `to_event_log()` produces
 - [API Reference](../reference/ts_shape/pipeline.md) — full parameter docs
