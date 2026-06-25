@@ -321,11 +321,7 @@ def adapt(
         time_cols_used = {COL_START, COL_END}
     elif rule.shape == "static":
         # No natural time. Use a single fixed reference (now-UTC) for all rows.
-        now = (
-            pd.Timestamp.utcnow().tz_convert("UTC")
-            if pd.Timestamp.utcnow().tz
-            else pd.Timestamp.utcnow().tz_localize("UTC")
-        )
+        now = pd.Timestamp.now("UTC")
         ts_end = pd.Series([now] * n)
         ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
         duration = pd.Series([float("nan")] * n, dtype="float64")
