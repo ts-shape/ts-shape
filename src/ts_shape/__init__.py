@@ -130,6 +130,7 @@ _LAZY: dict[str, str] = {
     # -- top-level utilities --------------------------------------------
     "list_detectors": "ts_shape.catalog",
     "make_timeseries": "ts_shape.datasets",
+    "make_id_signal": "ts_shape.datasets",
     "UnitConverter": "ts_shape.transform.calculator.unit_conversion",
     "Pipeline": "ts_shape.pipeline",
 }
@@ -140,6 +141,11 @@ _EVENTLOG_NAMES = (
     "BacktestResult",
     "EventLog",
     "OCEL2Tables",
+    "ObjectSpec",
+    "attach_objects",
+    "detect_objects",
+    "object_intervals",
+    "object_specs_from_metadata",
     "align_columns",
     "LabelRule",
     "LambdaDetector",

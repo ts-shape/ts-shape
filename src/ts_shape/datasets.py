@@ -94,3 +94,61 @@ def make_timeseries(
         frames.append(frame)
 
     return pd.concat(frames, ignore_index=True)
+
+
+def make_id_signal(
+    uuid: str = "object:id",
+    values: Sequence[str] = ("A", "B", "C"),
+    *,
+    hold: int = 10,
+    freq: str = "30s",
+    start: str = "2025-01-01 00:00:00",
+    value_column: str = "value_string",
+    source_uuid: str | None = None,
+) -> pd.DataFrame:
+    """Generate a categorical *identifier* signal in the standard schema.
+
+    Each value in ``values`` is held for ``hold`` consecutive samples, so the
+    signal looks like a real batch / serial / coil / recipe id stream that
+    changes over time. Feed it to :mod:`ts_shape.eventlog.objects` to extract
+    object instances.
+
+    Args:
+        uuid: Signal identifier.
+        values: Ordered id values; each held for ``hold`` samples.
+        hold: Samples each value persists before the next one starts.
+        freq: Pandas offset alias for the sampling interval.
+        start: Timestamp of the first sample.
+        value_column: Which column carries the id (``value_string`` or
+            ``value_integer``).
+        source_uuid: Optional ``source_uuid`` to stamp on every row.
+
+    Returns:
+        DataFrame with the standard ts-shape columns, ``value_column`` filled.
+    """
+    if value_column not in ("value_string", "value_integer"):
+        raise ValueError("value_column must be 'value_string' or 'value_integer'")
+    if hold <= 0:
+        raise ValueError(f"hold must be positive; got {hold}")
+
+    n = len(values) * hold
+    times = pd.date_range(start=start, periods=n, freq=freq)
+    seq = [v for v in values for _ in range(hold)]
+    frame = pd.DataFrame(
+        {
+            "systime": times,
+            "uuid": uuid,
+            "value_bool": pd.NA,
+            "value_integer": pd.NA,
+            "value_double": np.nan,
+            "value_string": pd.NA,
+            "is_delta": False,
+        }
+    )
+    if value_column == "value_integer":
+        frame["value_integer"] = pd.array(seq, dtype="Int64")
+    else:
+        frame["value_string"] = pd.array([str(v) for v in seq], dtype="string")
+    if source_uuid is not None:
+        frame["source_uuid"] = source_uuid
+    return frame

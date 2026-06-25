@@ -6,6 +6,7 @@ The `ts_shape.eventlog` package goes one step further with a **canonical event l
 
 !!! abstract "On this page vs. the rest of the Event Log guide"
     - **This page** — the canonical schema, quick start, and export modes.
+    - **[Object detection](objects.md)** — extract batches, serials, coils, recipes… as OCEL objects from id signals and link them to events.
     - **[Labelling standard & taxonomy](taxonomy.md)** — the activity-name rules, pack/family vocabularies, severity buckets, and standard attributes that make any two detectors compatible.
     - **[Adapter anatomy & custom adapters](adapters.md)** — how a detector's raw DataFrame becomes an `EventLog`, and how to override it.
 

@@ -45,6 +45,13 @@ from .lambda_rules import (
 )
 from .model import EventLog
 from .normalizer import to_event_log
+from .objects import (
+    ObjectSpec,
+    attach_objects,
+    detect_objects,
+    object_intervals,
+    object_specs_from_metadata,
+)
 from .ocel import OCEL2Tables, to_event_log_ocel
 from .schema import (
     OCEL_ACTIVITY,
@@ -78,7 +85,12 @@ __all__ = [
     "BacktestResult",
     "EventLog",
     "OCEL2Tables",
+    "ObjectSpec",
     "align_columns",
+    "attach_objects",
+    "detect_objects",
+    "object_intervals",
+    "object_specs_from_metadata",
     "LabelRule",
     "LambdaDetector",
     "REGISTRY",
