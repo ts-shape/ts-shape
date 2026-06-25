@@ -59,15 +59,23 @@ specs = object_specs_from_metadata(metadata_loader.to_df())  # reads `object_typ
 ## Detect objects and their relations
 
 ```python
-log = detect_objects(df, specs)        # an EventLog with NO events
+log = detect_objects(df, specs, hierarchy={"serial": "batch", "batch": "work_order"})
 log.objects          # one row per (oid, type)
-log.o2o              # serial part_of batch, etc. — inferred from interval overlap
+log.o2o              # serial part_of batch (declared hierarchy), else co_occurs
 log.object_changes   # presence lifecycle (active/released) + captured attributes
 ```
 
-Object-to-object relations come from interval overlap: when one object's presence
-interval sits wholly inside another's, the inner is `part_of` the outer (a serial
-inside a batch); otherwise overlapping objects are `co_active`.
+!!! warning "`part_of` is declared, not guessed"
+    A compositional `part_of` relation **cannot** be inferred from time alone — a
+    long-running `tool` or `shift` temporally contains every batch without owning
+    it. So ts-shape asserts `part_of` (child → parent) **only along a declared
+    `hierarchy`** (child type → parent type), when the child's presence overlaps
+    the parent's. Without a hierarchy, overlapping objects of different types get
+    the honest, symmetric `co_occurs` qualifier. Pass `infer_o2o=False` to skip
+    object-to-object relations entirely.
+
+An id is treated as present from when it appears until the **next** id on the same
+signal — so sparse sampling does not leave gaps that orphan events.
 
 ## Attach objects to any event log
 

@@ -49,13 +49,15 @@ def main() -> None:
         ObjectSpec("sig:coil", "coil", id_template="{type}:{value}"),
     ]
 
-    # 2. Detect objects + object-to-object relations.
-    obj_log = detect_objects(df, specs)
+    # 2. Detect objects + object-to-object relations. `part_of` is asserted only
+    #    along a declared hierarchy (a serial belongs to a batch); pure temporal
+    #    overlap is reported honestly as `co_occurs`, never guessed as part_of.
+    obj_log = detect_objects(df, specs, hierarchy={"serial": "batch"})
     print("=" * 70)
     print("Detected objects")
     print("=" * 70)
     print(obj_log.objects.to_string(index=False))
-    print("\nObject-to-object relations (overlap-inferred):")
+    print("\nObject-to-object relations (declared hierarchy → part_of):")
     print(obj_log.o2o.to_string(index=False))
 
     # 3. Attach detected objects to a real event detector's output by time.
@@ -71,6 +73,7 @@ def main() -> None:
         ev_log,
         df,
         specs,
+        hierarchy={"serial": "batch"},
         qualifiers={
             "batch": "during_batch",
             "serial": "identified_by",

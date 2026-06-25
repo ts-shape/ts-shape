@@ -8,17 +8,18 @@ events refer to.
 
 It is deliberately **one generic, declarative layer**, not another family of
 detector classes: you describe which signals carry which object type with an
-:class:`ObjectSpec` (or discover them from metadata), and the same run-length
-kernel that powers batch/traceability detection
-(:meth:`ts_shape.features.segment_analysis.segment_extractor.SegmentExtractor.extract_time_ranges`)
+:class:`ObjectSpec` (or discover them from metadata), and a run-length kernel
+(the same value-change segmentation that powers batch/traceability detection)
 extracts every object's presence interval. New object types are added by *data /
 config*, never by code.
 
 Three steps, all feeding the OCEL 2.0 tables on :class:`~ts_shape.eventlog.model.EventLog`:
 
-* :func:`object_intervals` — segment id signals into ``(oid, type, start, end)``.
+* :func:`object_intervals` — segment id signals into ``(oid, type, start, end)``
+  presence intervals (an id is present until the next id on the same signal).
 * :func:`detect_objects` — build the ``objects`` / ``o2o`` / ``object_changes``
-  tables (object-to-object relations inferred from interval overlap).
+  tables. ``part_of`` is asserted only along a declared ``hierarchy`` (it cannot
+  be inferred from time alone); other overlaps are reported as ``co_occurs``.
 * :func:`attach_objects` — link an existing event log's events to the detected
   objects by temporal containment, so the output of *every* event detector gains
   rich object references with no per-detector changes.
@@ -31,7 +32,6 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from ..features.segment_analysis.segment_extractor import SegmentExtractor
 from . import schema
 from .concat import concat
 from .model import EventLog
@@ -49,6 +49,50 @@ def _to_utc(values: object) -> pd.Series:
     if s.dt.tz is None:
         return s.dt.tz_localize("UTC")
     return s.dt.tz_convert("UTC")
+
+
+def _segments(
+    df: pd.DataFrame,
+    segment_uuid: str,
+    *,
+    uuid_column: str,
+    value_column: str,
+    time_column: str,
+    min_duration: str | None,
+) -> pd.DataFrame:
+    """Run-length encode one signal into constant-value segments.
+
+    Returns ``value / start / end`` (observed first/last sample per segment).
+    Unlike a naive ``value.ne(value.shift())`` the first sample always opens a
+    segment, so neither the leading object nor a single-sample object is lost.
+    """
+    sig = df[df[uuid_column] == segment_uuid]
+    cols = ["value", "start", "end"]
+    if sig.empty:
+        return pd.DataFrame(columns=cols)
+
+    sig = sig.sort_values(time_column)
+    times = _to_utc(sig[time_column]).reset_index(drop=True)
+    vals = sig[value_column].ffill().reset_index(drop=True)
+    changed = vals.ne(vals.shift())
+    changed.iloc[0] = True  # the first sample always starts a segment
+    groups = changed.cumsum().to_numpy()
+
+    work = pd.DataFrame(
+        {"value": vals.to_numpy(), "start": times, "end": times, "_g": groups}
+    )
+    agg = work.groupby("_g", sort=True).agg(
+        value=("value", "first"), start=("start", "min"), end=("end", "max")
+    )
+
+    value = agg["value"]
+    blank = value.map(lambda v: isinstance(v, str) and v.strip() == "")
+    agg = agg[value.notna() & ~blank].reset_index(drop=True)
+
+    if min_duration is not None and not agg.empty:
+        keep = (agg["end"] - agg["start"]) >= pd.Timedelta(min_duration)
+        agg = agg[keep].reset_index(drop=True)
+    return agg
 
 
 @dataclass(frozen=True)
@@ -90,17 +134,17 @@ def object_intervals(
     """Extract one presence interval per object instance from id signals.
 
     Returns a tidy frame with columns ``oid``, ``type``, ``start``, ``end`` plus
-    one column per captured attribute. Reuses
-    :meth:`SegmentExtractor.extract_time_ranges` as the run-length kernel.
+    one column per captured attribute. Each id signal is run-length encoded into
+    contiguous constant-value segments.
     """
     frames: list[pd.DataFrame] = []
     for spec in specs:
         if not schema.is_known_object_type(spec.object_type):
             schema.register_object_type(spec.object_type)
 
-        segs = SegmentExtractor.extract_time_ranges(
+        segs = _segments(
             df,
-            segment_uuid=spec.uuid,
+            spec.uuid,
             uuid_column=uuid_column,
             value_column=spec.value_column,
             time_column=time_column,
@@ -109,15 +153,22 @@ def object_intervals(
         if segs.empty:
             continue
 
+        starts = segs["start"].reset_index(drop=True)
+        observed_ends = segs["end"].reset_index(drop=True)
+        # An id is present until the *next* id on the same signal appears, so a
+        # gap between segments (sparse sampling) does not orphan events that land
+        # in it. The final segment keeps its last observed sample as the end.
+        next_starts = starts.shift(-1)
+        ends = next_starts.where(next_starts.notna(), observed_ends)
         out = pd.DataFrame(
             {
                 _OID: [
                     spec.id_template.format(value=v, type=spec.object_type)
-                    for v in segs["segment_value"]
+                    for v in segs["value"]
                 ],
                 _TYPE: spec.object_type,
-                _START: _to_utc(segs["segment_start"].values),
-                _END: _to_utc(segs["segment_end"].values),
+                _START: starts,
+                _END: ends,
             }
         )
         for attr_name, attr_uuid in spec.attributes.items():
@@ -173,22 +224,32 @@ def detect_objects(
     *,
     uuid_column: str = "uuid",
     time_column: str = "systime",
+    hierarchy: Mapping[str, str] | None = None,
     infer_o2o: bool = True,
     validate: bool = True,
 ) -> EventLog:
     """Detect object instances and build their OCEL 2.0 tables.
 
     Produces an :class:`EventLog` with **no events** — only ``objects``, ``o2o``
-    (object-to-object relations inferred from interval overlap), and
-    ``object_changes`` (presence lifecycle + captured attributes). Compose it
-    with event-detector logs via :func:`~ts_shape.eventlog.concat.concat`.
+    (object-to-object relations), and ``object_changes`` (presence lifecycle +
+    captured attributes). Compose it with event-detector logs via
+    :func:`~ts_shape.eventlog.concat.concat`.
+
+    ``hierarchy`` maps a child object type to its parent type
+    (e.g. ``{"serial": "batch", "batch": "work_order"}``). A compositional
+    ``part_of`` relation is asserted **only** along these declared edges, when a
+    child's presence overlaps a parent's — because *part_of cannot be inferred
+    from time alone* (a long-running tool temporally contains every batch
+    without owning it). Without a declared hierarchy, overlapping objects of
+    different types get the honest, symmetric ``co_occurs`` qualifier instead.
+    Set ``infer_o2o=False`` to skip object-to-object relations entirely.
     """
     intervals = object_intervals(
         df, specs, uuid_column=uuid_column, time_column=time_column
     )
     log = EventLog(
         objects=_objects_table(intervals),
-        o2o=_infer_o2o(intervals) if infer_o2o else schema.empty_o2o(),
+        o2o=_infer_o2o(intervals, hierarchy) if infer_o2o else schema.empty_o2o(),
         object_changes=_object_changes(intervals, specs),
     )
     if validate:
@@ -204,6 +265,7 @@ def attach_objects(
     qualifiers: Mapping[str, str] | None = None,
     uuid_column: str = "uuid",
     time_column: str = "systime",
+    hierarchy: Mapping[str, str] | None = None,
     infer_o2o: bool = True,
     validate: bool = True,
 ) -> EventLog:
@@ -212,7 +274,8 @@ def attach_objects(
     For every event, any object whose presence interval contains the event
     timestamp is linked with an event-to-object (E2O) relation. The detected
     objects, ``o2o`` and ``object_changes`` are merged in. This enriches the
-    output of *any* event detector — no per-detector changes required.
+    output of *any* event detector — no per-detector changes required. See
+    :func:`detect_objects` for ``hierarchy`` (declared ``part_of`` edges).
     """
     intervals = object_intervals(
         df, specs, uuid_column=uuid_column, time_column=time_column
@@ -222,6 +285,7 @@ def attach_objects(
         specs,
         uuid_column=uuid_column,
         time_column=time_column,
+        hierarchy=hierarchy,
         infer_o2o=infer_o2o,
         validate=False,
     )
@@ -336,46 +400,76 @@ def _change_row(r: pd.Series, field_name: str, value: object, ts: object) -> dic
     }
 
 
-def _infer_o2o(intervals: pd.DataFrame) -> pd.DataFrame:
+def _infer_o2o(
+    intervals: pd.DataFrame, hierarchy: Mapping[str, str] | None
+) -> pd.DataFrame:
     """Object-to-object relations from interval overlap between distinct types.
 
-    One relation per overlapping pair: strict containment (one interval wholly
-    inside the other) → ``child part_of parent``; any other overlap →
-    ``co_active``. Each unordered type pair is visited once.
+    With a declared ``hierarchy`` (child type -> parent type), a child whose
+    presence overlaps a parent's gets ``part_of`` (child -> parent). Otherwise
+    overlapping objects of different types get the honest symmetric
+    ``co_occurs`` qualifier — ``part_of`` is never guessed from time alone.
     """
     if intervals.empty:
         return schema.empty_o2o()
+    return (
+        _hierarchy_o2o(intervals, hierarchy)
+        if hierarchy
+        else _cooccurrence_o2o(intervals)
+    )
+
+
+def _hierarchy_o2o(
+    intervals: pd.DataFrame, hierarchy: Mapping[str, str]
+) -> pd.DataFrame:
+    rows: list[dict] = []
+    for child_type, parent_type in hierarchy.items():
+        children = _non_degenerate(intervals[intervals[_TYPE] == child_type])
+        parents = _non_degenerate(intervals[intervals[_TYPE] == parent_type])
+        if children.empty or parents.empty:
+            continue
+        pidx = pd.IntervalIndex.from_arrays(
+            parents[_START], parents[_END], closed="left"
+        )
+        for _, c in children.iterrows():
+            c_int = pd.Interval(c[_START], c[_END], closed="left")
+            for pos in _overlapping_positions(pidx, c_int):
+                parent = parents.iloc[pos]
+                if c[_OID] != parent[_OID]:
+                    rows.append(_o2o_row(c[_OID], parent[_OID], "part_of"))
+    return _o2o_frame(rows)
+
+
+def _cooccurrence_o2o(intervals: pd.DataFrame) -> pd.DataFrame:
     types = sorted(pd.unique(intervals[_TYPE]))
-    by_type = {t: intervals[intervals[_TYPE] == t] for t in types}
+    by_type = {t: _non_degenerate(intervals[intervals[_TYPE] == t]) for t in types}
     rows: list[dict] = []
     for i, ta in enumerate(types):
         for tb in types[i + 1 :]:
             b = by_type[tb]
-            if b.empty:
+            if b.empty or by_type[ta].empty:
                 continue
-            bidx = pd.IntervalIndex.from_arrays(b[_START], b[_END], closed="both")
+            bidx = pd.IntervalIndex.from_arrays(b[_START], b[_END], closed="left")
             for _, a in by_type[ta].iterrows():
-                a_int = pd.Interval(a[_START], a[_END], closed="both")
+                a_int = pd.Interval(a[_START], a[_END], closed="left")
                 for pos in _overlapping_positions(bidx, a_int):
                     brow = b.iloc[pos]
-                    if a[_OID] == brow[_OID]:
-                        continue
-                    rows.append(_relate(a, brow))
+                    if a[_OID] != brow[_OID]:
+                        rows.append(_o2o_row(a[_OID], brow[_OID], "co_occurs"))
+    return _o2o_frame(rows)
+
+
+def _non_degenerate(frame: pd.DataFrame) -> pd.DataFrame:
+    """Drop zero-length presence intervals (start == end) — they overlap nothing
+    meaningfully and are invalid for a half-open IntervalIndex."""
+    return frame[frame[_START] < frame[_END]]
+
+
+def _o2o_frame(rows: list[dict]) -> pd.DataFrame:
     if not rows:
         return schema.empty_o2o()
     out = pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
     return out.astype(schema.empty_o2o().dtypes.to_dict())
-
-
-def _relate(a: pd.Series, b: pd.Series) -> dict:
-    """One O2O row for an overlapping pair (strict containment → part_of)."""
-    a_in_b = b[_START] <= a[_START] and a[_END] <= b[_END]
-    b_in_a = a[_START] <= b[_START] and b[_END] <= a[_END]
-    if a_in_b and not b_in_a:
-        return _o2o_row(a[_OID], b[_OID], "part_of")  # a (child) part_of b
-    if b_in_a and not a_in_b:
-        return _o2o_row(b[_OID], a[_OID], "part_of")  # b (child) part_of a
-    return _o2o_row(a[_OID], b[_OID], "co_active")
 
 
 def _overlapping_positions(index: pd.IntervalIndex, interval: pd.Interval) -> list[int]:
