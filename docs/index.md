@@ -53,28 +53,28 @@ pip install ts-shape
     ---
 
     Every operation takes and returns a Pandas DataFrame. No proprietary
-    formats, no lock-in — drop straight into any notebook, pipeline, or dashboard.
+    formats, no lock-in — drop straight into any notebook or pipeline.
 
 -   :material-factory:{ .lg .middle } **290+ Detectors, 8 Packs**
 
     ---
 
-    A curated industry library: OEE, SPC, cycle times, downtime, traceability,
-    energy, maintenance — production use cases, batteries included.
+    OEE, SPC, cycle times, downtime, traceability, energy, maintenance —
+    production use cases, batteries included.
 
 -   :material-cloud-sync:{ .lg .middle } **Multi-Source Loading**
 
     ---
 
-    Parquet, S3, Azure Blob, TimescaleDB behind one interface — enriched with
-    JSON or REST metadata. Vectorised, chunked, concurrent.
+    Parquet, S3, Azure Blob, TimescaleDB behind one interface. Vectorised,
+    chunked, concurrent.
 
 -   :material-sitemap:{ .lg .middle } **Process-Mining Native**
 
     ---
 
-    Every detector's output normalizes into a canonical **OCEL 2.0 / XES** event
-    log — hand it straight to pm4py, Celonis, or Disco. Zero ML dependencies.
+    Every detector normalizes into a canonical **OCEL 2.0 / XES** event log —
+    ready for pm4py, Celonis, or Disco.
 
 </div>
 
@@ -82,157 +82,27 @@ pip install ts-shape
 
 <div class="tx-section-heading" markdown>
 
-## From Signals to Event Logs
+## Signals to event logs, in four steps
 
 </div>
 
-=== "Load"
+```python
+from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
+from ts_shape.events.production.machine_state import MachineStateEvents
+from ts_shape.eventlog import to_event_log, to_event_log_ocel
 
-    ```python
-    from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
+# 1. Load raw signals
+df = ParquetLoader.load_by_uuids("data/", ["machine-state"], "2024-01-01", "2024-01-31")
 
-    uuids = ["machine-state", "part-counter", "temperature"]
-    df = ParquetLoader.load_by_uuids("data/", uuids, "2024-01-01", "2024-01-31")
-    ```
+# 2. Detect events
+intervals = MachineStateEvents(df, run_state_uuid="machine-state").detect_run_idle(min_duration="30s")
 
-=== "Transform"
-
-    ```python
-    from ts_shape.transform.filter.numeric_filter import NumericFilter
-
-    clean = NumericFilter.filter_value_in_range(df, "value_double", 0, 500)
-    ```
-
-=== "Analyze"
-
-    ```python
-    from ts_shape.features.stats.numeric_stats import NumericStatistics
-
-    stats = NumericStatistics(clean, "value_double")
-    print(f"Mean: {stats.mean():.2f}  Std: {stats.std():.2f}")
-    ```
-
-=== "Detect"
-
-    ```python
-    from ts_shape.events.production.machine_state import MachineStateEvents
-
-    mse = MachineStateEvents(df, run_state_uuid="machine-state")
-    intervals = mse.detect_run_idle(min_duration="30s")
-    ```
-
-=== "Event Log"
-
-    ```python
-    from ts_shape.eventlog import to_event_log, to_event_log_ocel
-
-    log = to_event_log(intervals, detector="MachineStateEvents.detect_run_idle")
-    tables = to_event_log_ocel(log)   # OCEL 2.0 — events, objects, relations, o2o…
-    ```
-
-Any detector's output flows into the same canonical event log — that is the
-methodology that keeps the library working end to end.
-
----
-
-<div class="tx-section-heading" markdown>
-
-## Architecture
-
-</div>
-
-```mermaid
-flowchart TB
-    subgraph IN["Sources"]
-        S1[Time-series stores<br/><i>Parquet · S3/Azure · TimescaleDB</i>]
-        S2[Object &amp; context<br/><i>batches · shifts · assets</i>]
-    end
-    subgraph LOAD["Load &amp; Enrich"]
-        L1[Loaders]
-        L2[Transforms · Features · Statistics]
-    end
-    subgraph DETECT["Detection Layer"]
-        D1["Built-in detectors<br/>(290+ methods, 70+ classes)"]
-        D2["Lambda rules<br/>(YAML / DSL)"]
-        D3["Gen-AI authoring<br/><i>roadmap</i>"]
-    end
-    subgraph EVENTLOG["Canonical EventLog (OCEL 2.0)"]
-        E1[Events]
-        E2[Objects]
-        E3[Relations]
-    end
-    subgraph OUT["Consumers"]
-        O1[XES / pm4py]
-        O2[OCEL viewers]
-        O3[KPIs &amp; reports]
-    end
-    IN --> LOAD --> DETECT
-    D1 --> EVENTLOG
-    D2 --> EVENTLOG
-    D3 -.-> D2
-    EVENTLOG --> OUT
-    style DETECT fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
-    style EVENTLOG fill:#3d2a0f,stroke:#fbbf24,color:#fef3c7
-    style D3 stroke-dasharray: 4 3
+# 3. Build the canonical event log, then 4. export OCEL 2.0
+log = to_event_log(intervals, detector="MachineStateEvents.detect_run_idle")
+tables = to_event_log_ocel(log)
 ```
 
-One pluggable detection layer: a curated library of detector classes, plus YAML-declared [lambda rules](guides/lambda-rules.md) for per-site customization. Whichever path a detection comes from, the output lands in the **same canonical event log** — ready for process mining.
-
----
-
-<div class="tx-section-heading" markdown>
-
-## End-to-End Pipelines
-
-</div>
-
-Each pipeline starts with an Azure connection, a UUID list, and a time range — and produces actionable KPIs.
-
-<div class="tx-pipeline-grid" markdown>
-<div class="grid cards" markdown>
-
--   :material-gauge:{ .lg .middle } **[OEE Dashboard](pipelines/oee-dashboard.md)**
-
-    ---
-
-    Machine state + counters + rejects into daily Availability, Performance, Quality, and OEE by shift.
-
-    **4 UUIDs**
-
--   :material-timer-outline:{ .lg .middle } **[Cycle Time Analysis](pipelines/cycle-time-analysis.md)**
-
-    ---
-
-    Cycle triggers + part numbers into statistics, slow-cycle detection, and golden-cycle comparison.
-
-    **3 UUIDs**
-
--   :material-chart-bar:{ .lg .middle } **[Downtime Pareto](pipelines/downtime-pareto.md)**
-
-    ---
-
-    Machine state + reason codes into Pareto analysis, shift downtime, and availability trends.
-
-    **2 UUIDs**
-
--   :material-shield-check:{ .lg .middle } **[Quality & SPC](pipelines/quality-spc.md)**
-
-    ---
-
-    Measurements + tolerances into outlier detection, SPC rule checks, and Cp/Cpk capability trending.
-
-    **1+ UUIDs**
-
--   :material-cog-transfer:{ .lg .middle } **[Process Engineering](pipelines/process-engineering.md)**
-
-    ---
-
-    Setpoint + actual + state signals into setpoint adherence, startup detection, and stability scores.
-
-    **3 UUIDs**
-
-</div>
-</div>
+Any detector's output flows into the **same canonical event log** — that is what keeps the library working end to end.
 
 ---
 
@@ -244,13 +114,13 @@ Each pipeline starts with an Azure connection, a UUID list, and a time range —
 
 <div class="grid cards" markdown>
 
--   :material-book-open-variant:{ .lg .middle } **Concept**
+-   :material-rocket-launch:{ .lg .middle } **Quick Start**
 
     ---
 
-    Architecture and design principles.
+    Install and run your first pipeline in minutes.
 
-    [:octicons-arrow-right-24: Learn more](concept.md)
+    [:octicons-arrow-right-24: Get started](user_guide/quick_start.md)
 
 -   :material-code-tags:{ .lg .middle } **Guides**
 
@@ -264,7 +134,7 @@ Each pipeline starts with an Azure connection, a UUID list, and a time range —
 
     ---
 
-    End-to-end workflows from Azure to production KPIs.
+    End-to-end workflows from raw signals to production KPIs.
 
     [:octicons-arrow-right-24: View pipelines](pipelines/index.md)
 
@@ -276,43 +146,6 @@ Each pipeline starts with an Azure connection, a UUID list, and a time range —
 
     [:octicons-arrow-right-24: Browse API](reference/index.md)
 
--   :material-test-tube:{ .lg .middle } **Examples**
-
-    ---
-
-    Runnable examples for every module category.
-
-    [:octicons-arrow-right-24: Try examples](examples/index.md)
-
--   :material-github:{ .lg .middle } **GitHub**
-
-    ---
-
-    Source code, issues, and contributions.
-
-    [:octicons-arrow-right-24: View source](https://github.com/ts-shape/ts-shape)
-
-</div>
-
----
-
-<div class="tx-section-heading" markdown>
-
-## Try it live
-
-</div>
-
-Run `ts-shape` directly in your browser — no install required. The first run
-downloads the Python runtime and may take a few seconds; later runs are instant.
-
-<div id="ts-shape-repl" class="ts-repl">
-  <textarea class="ts-repl__editor" spellcheck="false" aria-label="Python code editor"></textarea>
-  <div class="ts-repl__toolbar">
-    <button type="button" class="ts-repl__run">Run</button>
-    <button type="button" class="ts-repl__reset">Reset</button>
-    <span class="ts-repl__status"></span>
-  </div>
-  <pre class="ts-repl__output" aria-live="polite"></pre>
 </div>
 
 ---
