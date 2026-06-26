@@ -1,6 +1,10 @@
 import logging
+import warnings
 import pandas as pd  # type: ignore
 from pathlib import Path
+
+from ts_shape.errors import LoaderConfigWarning
+from ts_shape.loader._utils import retry_call, validate_local_path
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +20,11 @@ class ParquetLoader:
 
         Args:
             base_path (str): The base directory where parquet files are stored.
+
+        Raises:
+            LoaderError: If ``base_path`` does not exist or is not a directory.
         """
-        self.base_path = Path(base_path)
+        self.base_path = validate_local_path(base_path, must_be_dir=True)
 
     @classmethod
     def _get_parquet_files(cls, base_path: Path) -> list:
@@ -34,6 +41,32 @@ class ParquetLoader:
         return list(base_path.rglob("*.parquet"))
 
     @classmethod
+    def _read_concat(cls, files: list, base_path: Path) -> pd.DataFrame:
+        """Read parquet ``files`` (each with retry) and concatenate them.
+
+        Warns with :class:`LoaderConfigWarning` and returns an empty DataFrame
+        when ``files`` is empty -- a likely sign of a misconfigured path or
+        filter rather than a genuine error.
+        """
+        if not files:
+            warnings.warn(
+                f"No parquet files matched under {base_path}. "
+                "Check the path and any time-range/uuid filters.",
+                LoaderConfigWarning,
+                stacklevel=3,
+            )
+            return pd.DataFrame()
+        dataframes = [
+            retry_call(
+                lambda f=file: pd.read_parquet(f),
+                exclude=(FileNotFoundError,),
+                description=f"read_parquet({file})",
+            )
+            for file in files
+        ]
+        return pd.concat(dataframes, ignore_index=True)
+
+    @classmethod
     def load_all_files(cls, base_path: str) -> pd.DataFrame:
         """
         Loads all parquet files in the specified base directory into a single pandas DataFrame.
@@ -44,17 +77,10 @@ class ParquetLoader:
         Returns:
             pd.DataFrame: A DataFrame containing all the data from the parquet files.
         """
-        # Convert base path to a Path object
-        base_path = Path(base_path)
+        base_path = validate_local_path(base_path, must_be_dir=True)
         # Get all parquet files in the directory
         parquet_files = cls._get_parquet_files(base_path)
-        # Load all files into pandas DataFrames
-        dataframes = [pd.read_parquet(file) for file in parquet_files]
-
-        # Concatenate all DataFrames into a single DataFrame
-        if not dataframes:
-            return pd.DataFrame()
-        return pd.concat(dataframes, ignore_index=True)
+        return cls._read_concat(parquet_files, base_path)
 
     @classmethod
     def load_by_time_range(
@@ -73,8 +99,7 @@ class ParquetLoader:
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files within the time range.
         """
-        # Convert base path to a Path object
-        base_path = Path(base_path)
+        base_path = validate_local_path(base_path, must_be_dir=True)
         # Get all parquet files in the directory
         parquet_files = cls._get_parquet_files(base_path)
         valid_files = []
@@ -95,11 +120,7 @@ class ParquetLoader:
                 # Skip files that do not follow the expected folder structure
                 continue
 
-        # Load all valid files into pandas DataFrames
-        dataframes = [pd.read_parquet(file) for file in valid_files]
-        if not dataframes:
-            return pd.DataFrame()
-        return pd.concat(dataframes, ignore_index=True)
+        return cls._read_concat(valid_files, base_path)
 
     @classmethod
     def load_by_uuid_list(cls, base_path: str, uuid_list: list) -> pd.DataFrame:
@@ -115,8 +136,7 @@ class ParquetLoader:
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files with matching UUIDs.
         """
-        # Convert base path to a Path object
-        base_path = Path(base_path)
+        base_path = validate_local_path(base_path, must_be_dir=True)
         # Get all parquet files in the directory
         parquet_files = cls._get_parquet_files(base_path)
         valid_files = []
@@ -130,11 +150,7 @@ class ParquetLoader:
                     valid_files.append(file)
                     break  # Stop checking other UUIDs for this file
 
-        # Load all valid files into pandas DataFrames
-        dataframes = [pd.read_parquet(file) for file in valid_files]
-        if not dataframes:
-            return pd.DataFrame()
-        return pd.concat(dataframes, ignore_index=True)
+        return cls._read_concat(valid_files, base_path)
 
     @classmethod
     def load_files_by_time_range_and_uuids(
@@ -158,8 +174,7 @@ class ParquetLoader:
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files that meet both criteria.
         """
-        # Convert base path to a Path object
-        base_path = Path(base_path)
+        base_path = validate_local_path(base_path, must_be_dir=True)
         # Get all parquet files in the directory
         parquet_files = cls._get_parquet_files(base_path)
         valid_files = []
@@ -186,8 +201,4 @@ class ParquetLoader:
                 # Skip files that do not follow the expected folder structure
                 continue
 
-        # Load all valid files into pandas DataFrames
-        dataframes = [pd.read_parquet(file) for file in valid_files]
-        if not dataframes:
-            return pd.DataFrame()
-        return pd.concat(dataframes, ignore_index=True)
+        return cls._read_concat(valid_files, base_path)

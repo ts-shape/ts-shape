@@ -93,6 +93,9 @@ source = ["ts_shape"]
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
+# Fail the build if total coverage regresses below this floor. Set just under
+# the current measured level; ratchet upward as coverage improves.
+fail_under = 80
 
 [tool.black]
 target-version = ["py311"]

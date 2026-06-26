@@ -3,7 +3,18 @@ from pathlib import Path
 import pandas as pd  # type: ignore
 import s3fs
 
+from ts_shape.loader._utils import require_config, retry_call
+
 logger = logging.getLogger(__name__)
+
+_REQUIRED_S3_KEYS = [
+    "endpoint_url",
+    "key",
+    "secret",
+    "use_ssl",
+    "version_aware",
+    "s3_path_base",
+]
 
 
 class S3ProxyDataAccess:
@@ -27,6 +38,7 @@ class S3ProxyDataAccess:
         :param uuids: List of UUIDs to retrieve data for.
         :param s3_config: Configuration dictionary for S3 connection.
         """
+        require_config(s3_config, _REQUIRED_S3_KEYS, name="s3_config")
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
         self.uuids = uuids
@@ -67,9 +79,19 @@ class S3ProxyDataAccess:
         :return: DataFrame if the file is found, else None.
         """
         s3_path = f"{self.s3_path_base}{timeslot_dir}/{uuid}.parquet"
-        try:
+
+        def _read() -> pd.DataFrame:
             with self.s3.open(s3_path, "rb") as remote_file:
                 return pd.read_parquet(remote_file)
+
+        try:
+            # Retry transient S3/network errors; a genuine miss (FileNotFoundError)
+            # is excluded so it short-circuits to the "no data" path below.
+            return retry_call(
+                _read,
+                exclude=(FileNotFoundError,),
+                description=f"s3 read {s3_path}",
+            )
         except FileNotFoundError:
             logger.debug("Data for UUID %s at %s not found.", uuid, timeslot_dir)
             return None

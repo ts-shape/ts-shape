@@ -68,6 +68,37 @@ def _schema_for(shape: Shape) -> tuple[str, ...]:
     raise ValueError(f"Unknown event shape: {shape!r}")
 
 
+def validate_event_output(df: pd.DataFrame, shape: Shape) -> pd.DataFrame:
+    """Assert that ``df`` conforms to the canonical schema for ``shape``.
+
+    A lightweight contract check for detector output: confirms the required
+    columns for the given shape are present. Use it in tests or at the end of a
+    custom detector to guarantee downstream consumers (event-log normalizers,
+    OCEL/XES exporters) see the expected columns.
+
+    Args:
+        df: The detector output to validate.
+        shape: One of ``"point"``, ``"interval"`` or ``"summary"``.
+
+    Returns:
+        The same ``df`` unchanged, so the call can wrap a return value.
+
+    Raises:
+        TypeError: If ``df`` is not a DataFrame.
+        ValueError: If ``shape`` is unknown or required columns are missing.
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError(f"Expected a pandas DataFrame, got {type(df).__name__}")
+    required = _schema_for(shape)
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"{shape!r} event output is missing required column(s) {missing}. "
+            f"Got columns: {list(df.columns)}"
+        )
+    return df
+
+
 def empty_event_df(shape: Shape, extra_cols: Sequence[str] = ()) -> pd.DataFrame:
     """Return an empty DataFrame with the canonical columns for ``shape``.
 
