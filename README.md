@@ -344,6 +344,27 @@ combined = DataIntegratorHybrid.combine_data(
 )
 ```
 
+On **Databricks**, read the same hourly layout either driver-local from a
+mounted Unity Catalog Volume (`DatabricksUnityParquetLoader`, pandas) or via the
+cluster's Spark session (`DatabricksSparkParquetLoader`):
+
+```python
+from ts_shape.loader.timeseries.databricks_spark_parquet_loader import (
+    DatabricksSparkParquetLoader,
+)
+
+# `spark` defaults to the active session inside Databricks
+loader = DatabricksSparkParquetLoader("/Volumes/main/plant/timeseries", spark=spark)
+df = loader.load_by_time_range_and_uuids(
+    "2026-06-19 06:00", "2026-06-19 14:00",
+    uuids=["ABC", "DEF"],
+    columns=["systime", "uuid", "value_integer"],
+)
+```
+
+See the [loading guide](https://ts-shape.github.io/ts-shape/guides/loading/) for
+the Databricks options side by side.
+
 ### Features & Statistics
 Extract statistical features and detect cycles.
 

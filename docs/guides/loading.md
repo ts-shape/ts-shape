@@ -175,6 +175,88 @@ df = loader.fetch_data_as_dataframe()
 
 ---
 
+## Loading from Databricks
+
+The canonical hourly layout (`<base>/YYYY/MM/DD/HH/<uuid>.parquet`) can be read
+from Databricks two ways. Pick by **who does the scan**.
+
+### Mounted Unity Catalog Volume (pandas)
+
+`DatabricksUnityParquetLoader` reads the FUSE-mounted UC Volume directly with
+`pandas.read_parquet` — no Spark, no download. Best for light, driver-local
+reads with column/row pushdown and optional streaming.
+
+```python
+from ts_shape.loader.timeseries.databricks_unity_parquet_loader import (
+    DatabricksUnityParquetLoader,
+)
+
+loader = DatabricksUnityParquetLoader(
+    catalog="main", schema="plant", volume="timeseries", prefix="parquet",
+)
+df = loader.load_by_time_range("2026-06-19 06:00", "2026-06-19 14:00")
+```
+
+### Spark-native read (`DatabricksSparkParquetLoader`)
+
+`DatabricksSparkParquetLoader` lets the **cluster's Spark session** do the scan
+(distributed read, predicate/column pushdown) and collects to pandas only at the
+end. It generalizes the common notebook idiom
+
+```python
+hours = pd.date_range(start, end, freq="h")
+paths = [f"{base}/{h:%Y/%m/%d/%H}/{uuid}.parquet" for h in hours]
+sdf = spark.read.option("basePath", base).parquet(*paths)
+df = sdf.select("systime", "uuid", "value_integer").toPandas()
+```
+
+into a reusable, parameterized loader:
+
+```python
+from ts_shape.loader.timeseries.databricks_spark_parquet_loader import (
+    DatabricksSparkParquetLoader,
+)
+
+# `spark` defaults to the active session inside Databricks; pass it explicitly
+# off-cluster. pyspark stays an optional, lazily-imported dependency.
+loader = DatabricksSparkParquetLoader("/Volumes/main/plant/timeseries", spark=spark)
+
+df = loader.load_by_time_range_and_uuids(
+    "2026-06-19 06:00", "2026-06-19 14:00",
+    uuids=["ABC", "DEF"],                 # one UUID or a list
+    columns=["systime", "uuid", "value_integer"],  # projection pushdown
+    filter_expr="value_integer > 0",      # Spark SQL predicate
+)                                          # -> pandas; as_pandas=False -> Spark DataFrame
+```
+
+Key options:
+
+| Argument | Purpose |
+|----------|---------|
+| `uuids` | A single UUID or a list; one path is built per *(hour, uuid)*. |
+| `columns` | Columns to `select` (projection pushdown). |
+| `filter_expr` | Spark SQL predicate applied with `.where`. |
+| `hour_pattern` / `file_template` | Customize the folder/file layout (defaults match ts-shape). |
+| `ignore_missing` | Skip hours with no file for a UUID instead of failing (default `True`). |
+| `path_exists` | Optional callable (e.g. over `dbutils.fs`) to pre-filter to existing paths. |
+| `as_pandas` | Return pandas (`True`, default) or the Spark DataFrame (`False`). |
+
+The path construction is exposed as a pure, Spark-free method so you can inspect
+exactly what will be read (and unit-test it off-cluster):
+
+```python
+loader.build_paths("2026-06-19 06:00", "2026-06-19 08:00", ["ABC"])
+# ['/Volumes/main/plant/timeseries/2026/06/19/06/ABC.parquet',
+#  '/Volumes/main/plant/timeseries/2026/06/19/07/ABC.parquet',
+#  '/Volumes/main/plant/timeseries/2026/06/19/08/ABC.parquet']
+```
+
+> **Which one?** Use the Unity loader for cheap driver-local reads of a mounted
+> Volume; use the Spark loader when you want Spark to distribute the scan or you
+> are already working with Spark DataFrames.
+
+---
+
 ## Loading Metadata
 
 Signal metadata (names, units, configuration) stored in JSON files.
