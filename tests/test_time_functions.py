@@ -1,5 +1,5 @@
-import pytest
 import pandas as pd  # type: ignore
+import pytest
 
 from ts_shape.transform.time_functions.timestamp_converter import TimestampConverter
 from ts_shape.transform.time_functions.timezone_shift import TimezoneShift

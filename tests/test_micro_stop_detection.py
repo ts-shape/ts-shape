@@ -1,5 +1,6 @@
-import pytest
 import pandas as pd
+import pytest
+
 from ts_shape.events.production.micro_stop_detection import MicroStopEvents
 
 

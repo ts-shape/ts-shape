@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+
 import pandas as pd  # type: ignore
 from sqlalchemy import create_engine, text
 

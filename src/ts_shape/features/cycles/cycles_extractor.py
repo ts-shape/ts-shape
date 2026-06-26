@@ -1,7 +1,9 @@
 import logging
-from typing import Any
-import pandas as pd  # type: ignore
 import uuid
+from typing import Any
+
+import pandas as pd
+
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -463,7 +465,7 @@ class CycleExtractor(Base):
         Returns:
             Dictionary with method suggestions and reasoning
         """
-        suggestions = {
+        suggestions: dict[str, Any] = {
             "recommended_methods": [],
             "reasoning": [],
             "data_characteristics": {},
@@ -576,7 +578,7 @@ class CycleExtractor(Base):
 
         return stats
 
-    def reset_stats(self):
+    def reset_stats(self) -> None:
         """Reset extraction statistics."""
         self._stats = {
             "total_cycles": 0,

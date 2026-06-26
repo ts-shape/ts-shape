@@ -10,13 +10,13 @@ domain-specific drill-down).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 import pandas as pd
 
 from ..model import EventLog
-from ..schema import OCEL_TYPE, OCEL_OID, TS_SEVERITY
+from ..schema import OCEL_OID, OCEL_TYPE, TS_SEVERITY
 from .detector import LambdaDetector
 
 

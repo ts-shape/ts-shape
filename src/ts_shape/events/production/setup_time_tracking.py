@@ -8,6 +8,7 @@ Track setup durations to support Single-Minute Exchange of Die improvement:
 """
 
 import logging
+
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base

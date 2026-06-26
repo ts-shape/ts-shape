@@ -1,13 +1,13 @@
 import warnings
+from types import SimpleNamespace
 
 import pandas as pd  # type: ignore
 import pytest
-from types import SimpleNamespace
 
 from ts_shape.errors import LoaderConfigWarning
 from ts_shape.loader.timeseries.azure_blob_loader import (
-    AzureBlobParquetLoader,
     AzureBlobFlexibleFileLoader,
+    AzureBlobParquetLoader,
 )
 
 

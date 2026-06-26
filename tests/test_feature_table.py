@@ -1,7 +1,8 @@
-import pytest
-import pandas as pd
-import numpy as np
 from unittest.mock import patch
+
+import numpy as np
+import pandas as pd
+import pytest
 
 from ts_shape.features.stats.feature_table import DescriptiveFeatures
 

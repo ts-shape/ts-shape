@@ -1,9 +1,10 @@
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
+
+from ts_shape.features.segment_analysis.profile_comparison import ProfileComparison
 from ts_shape.features.segment_analysis.segment_extractor import SegmentExtractor
 from ts_shape.features.segment_analysis.segment_processor import SegmentProcessor
-from ts_shape.features.segment_analysis.profile_comparison import ProfileComparison
 
 
 @pytest.fixture

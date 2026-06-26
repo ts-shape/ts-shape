@@ -7,6 +7,7 @@ Track material waste and scrap (different from NOK parts):
 """
 
 import logging
+
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base

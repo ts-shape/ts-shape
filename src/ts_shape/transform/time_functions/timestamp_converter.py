@@ -1,6 +1,8 @@
 import logging
-import pandas as pd  # type: ignore
 from zoneinfo import available_timezones
+
+import pandas as pd  # type: ignore
+
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)

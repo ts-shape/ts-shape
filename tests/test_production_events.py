@@ -1,10 +1,10 @@
 import pandas as pd  # type: ignore
 
 from ts_shape.events.production import (
-    MachineStateEvents,
-    LineThroughputEvents,
     ChangeoverEvents,
     FlowConstraintEvents,
+    LineThroughputEvents,
+    MachineStateEvents,
 )
 
 

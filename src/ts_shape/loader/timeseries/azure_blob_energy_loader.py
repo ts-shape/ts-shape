@@ -1,9 +1,9 @@
+import logging
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import Union
-from collections.abc import Iterator
-import logging
+from typing import Any, Union
 
 import pandas as pd  # type: ignore
 
@@ -78,7 +78,7 @@ class AzureBlobEnergyLoader:
         *,
         connection_string: str | None = None,
         account_url: str | None = None,
-        credential: object | None = None,
+        credential: Any | None = None,
         sas_url: str | None = None,
         prefix: str = "",
         max_workers: int = 8,
@@ -161,7 +161,7 @@ class AzureBlobEnergyLoader:
         account_name: str,
         container_name: str,
         *,
-        credential: object | None = None,
+        credential: Any | None = None,
         endpoint_suffix: str = "blob.core.windows.net",
         prefix: str = "",
         max_workers: int = 8,

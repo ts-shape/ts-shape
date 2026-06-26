@@ -1,16 +1,16 @@
 """Tests for new energy event classes and data-model agnosticism."""
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
+from ts_shape.events.energy.carbon_intensity import CarbonIntensityEvents
 from ts_shape.events.energy.consumption_analysis import EnergyConsumptionEvents
 from ts_shape.events.energy.efficiency_tracking import EnergyEfficiencyEvents
-from ts_shape.events.energy.idle_energy_detection import IdleEnergyDetectionEvents
 from ts_shape.events.energy.energy_performance_indicator import (
     EnergyPerformanceIndicatorEvents,
 )
-from ts_shape.events.energy.carbon_intensity import CarbonIntensityEvents
+from ts_shape.events.energy.idle_energy_detection import IdleEnergyDetectionEvents
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 

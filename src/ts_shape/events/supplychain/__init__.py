@@ -8,9 +8,9 @@ Classes:
 - DemandPatternEvents: Demand aggregation, spike detection, and seasonality analysis.
 """
 
+from .demand_pattern import DemandPatternEvents
 from .inventory_monitoring import InventoryMonitoringEvents
 from .lead_time_analysis import LeadTimeAnalysisEvents
-from .demand_pattern import DemandPatternEvents
 
 __all__ = [
     "InventoryMonitoringEvents",

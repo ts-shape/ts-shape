@@ -19,7 +19,6 @@ import re
 import pandas as pd
 import pytest
 
-from ts_shape.events._output import COL_END, COL_START, COL_SYSTIME
 from ts_shape.eventlog import (
     OCEL2Tables,
     to_event_log,
@@ -28,6 +27,7 @@ from ts_shape.eventlog import (
     validate,
 )
 from ts_shape.eventlog.taxonomy import REGISTRY, LabelRule
+from ts_shape.events._output import COL_END, COL_START, COL_SYSTIME
 
 _N = 3
 

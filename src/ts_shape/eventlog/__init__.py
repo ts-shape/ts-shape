@@ -48,9 +48,12 @@ from .normalizer import to_event_log
 from .objects import (
     ObjectSpec,
     attach_objects,
+    derive_o2o,
     detect_objects,
+    link_events_to_objects,
     object_intervals,
     object_specs_from_metadata,
+    relate,
 )
 from .ocel import OCEL2Tables, to_event_log_ocel
 from .schema import (
@@ -74,8 +77,8 @@ from .schema import (
     XES_LIFECYCLE,
     XES_RESOURCE,
     XES_TIMESTAMP,
-    empty_object_changes,
     empty_o2o,
+    empty_object_changes,
     register_object_type,
     validate,
 )
@@ -88,9 +91,12 @@ __all__ = [
     "ObjectSpec",
     "align_columns",
     "attach_objects",
+    "derive_o2o",
     "detect_objects",
+    "link_events_to_objects",
     "object_intervals",
     "object_specs_from_metadata",
+    "relate",
     "LabelRule",
     "LambdaDetector",
     "REGISTRY",

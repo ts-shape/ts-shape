@@ -1,9 +1,9 @@
 import logging
-import pandas as pd  # type: ignore
-import numpy as np  # type: ignore
 
+import numpy as np  # type: ignore
+import pandas as pd  # type: ignore
+from scipy.cluster.hierarchy import fcluster, linkage  # type: ignore
 from scipy.spatial.distance import pdist, squareform  # type: ignore
-from scipy.cluster.hierarchy import linkage, fcluster  # type: ignore
 
 from ts_shape.utils.base import Base
 

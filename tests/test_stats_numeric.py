@@ -1,5 +1,5 @@
-import pytest
 import pandas as pd  # type: ignore
+import pytest
 
 pytest.importorskip("scipy")
 

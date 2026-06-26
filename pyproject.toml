@@ -93,6 +93,9 @@ source = ["ts_shape"]
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
+# Fail the build if total coverage regresses below this floor. Set just under
+# the current measured level; ratchet upward as coverage improves.
+fail_under = 82
 
 [tool.black]
 target-version = ["py311"]
@@ -101,10 +104,66 @@ target-version = ["py311"]
 target-version = "py311"
 
 [tool.ruff.lint]
-extend-select = ["UP"]
+# "UP" = pyupgrade, "I" = isort (import sorting & grouping, black-compatible).
+extend-select = ["UP", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ts_shape"]
 
 [tool.mypy]
 python_version = "3.11"
 files = ["src/ts_shape"]
 ignore_missing_imports = true
 enable_error_code = ["deprecated"]
+# Global baseline — cheap, high-signal checks the whole tree already passes.
+check_untyped_defs = true
+no_implicit_optional = true
+strict_equality = true
+warn_redundant_casts = true
+
+# --- Strict allowlist -------------------------------------------------------
+# Modules held to full strict typing. Add a module here once it is clean under
+# these flags; the goal is to grow this list until it becomes the global
+# default. See docs/insiders/development.md for the chip-away workflow.
+[[tool.mypy.overrides]]
+module = [
+    "ts_shape.loader._utils",
+    "ts_shape.events._output",
+    "ts_shape.loader.timeseries.parquet_loader",
+    "ts_shape.loader.timeseries.s3proxy_parquet_loader",
+    "ts_shape.loader.timeseries.databricks_spark_parquet_loader",
+    "ts_shape.features.cycles.cycles_extractor",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+
+# --- Typing debt ------------------------------------------------------------
+# These modules predate strict typing and still report errors under the global
+# config above. They are quarantined so `mypy src/ts_shape` is green and can
+# gate CI. To chip away: remove a module from this list, fix the errors, and
+# (ideally) promote it into the strict allowlist.
+[[tool.mypy.overrides]]
+module = [
+    "ts_shape.pipeline",
+    "ts_shape.eventlog.adapters",
+    "ts_shape.eventlog.normalizer",
+    "ts_shape.eventlog.lambda_rules.evaluator",
+    "ts_shape.features.cross_signal",
+    "ts_shape.features.export",
+    "ts_shape.features.pattern_recognition",
+    "ts_shape.features.segment_analysis.segment_extractor",
+    "ts_shape.features.stats.feature_table",
+    "ts_shape.features.stats.numeric_stats",
+    "ts_shape.features.stats.string_stats",
+    "ts_shape.transform.calculator.unit_conversion",
+    "ts_shape.transform.filter.datetime_filter",
+    "ts_shape.transform.time_functions.timezone_shift",
+    "ts_shape.events.engineering.process_stability_index",
+    "ts_shape.events.maintenance.degradation_detection",
+    "ts_shape.events.production.line_balancing",
+    "ts_shape.events.production.quality_tracking",
+    "ts_shape.events.quality.tolerance_deviation",
+]
+ignore_errors = true

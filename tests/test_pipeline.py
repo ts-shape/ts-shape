@@ -7,8 +7,8 @@ import pytest
 
 import ts_shape
 from ts_shape.datasets import make_timeseries
-from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 from ts_shape.events.production.runtime_accounting import RuntimeAccountingEvents
+from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 from ts_shape.pipeline import Pipeline, PipelineResult
 from ts_shape.transform.calculator.numeric_calc import IntegerCalc
 from ts_shape.transform.filter.numeric_filter import DoubleFilter

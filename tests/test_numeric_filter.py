@@ -1,5 +1,6 @@
 import pandas as pd  # type: ignore
-from ts_shape.transform.filter.numeric_filter import IntegerFilter, DoubleFilter
+
+from ts_shape.transform.filter.numeric_filter import DoubleFilter, IntegerFilter
 
 
 def test_integer_filter_match():

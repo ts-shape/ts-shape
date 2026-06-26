@@ -12,9 +12,10 @@ Items:
 - SN-003: Welding Cell 1 + Welding Cell 2 overlap -> Painting (parallel start)
 """
 
+from datetime import timedelta
+
 import pandas as pd  # type: ignore
 import pytest
-from datetime import timedelta
 
 from ts_shape.events.production import MultiProcessTraceabilityEvents
 

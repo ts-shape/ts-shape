@@ -4,14 +4,14 @@ Covers InventoryMonitoringEvents, LeadTimeAnalysisEvents, and DemandPatternEvent
 with synthetic but realistic manufacturing/warehouse data.
 """
 
-import pandas as pd  # type: ignore
 import numpy as np
+import pandas as pd  # type: ignore
 import pytest
 
 from ts_shape.events.supplychain import (
+    DemandPatternEvents,
     InventoryMonitoringEvents,
     LeadTimeAnalysisEvents,
-    DemandPatternEvents,
 )
 
 # ---------------------------------------------------------------------------

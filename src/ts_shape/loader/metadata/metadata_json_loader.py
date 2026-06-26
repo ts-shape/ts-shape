@@ -1,7 +1,8 @@
-import logging
 import json
-from typing import Any
+import logging
 from collections.abc import Iterable
+from typing import Any
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)

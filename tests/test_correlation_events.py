@@ -1,11 +1,11 @@
 """Tests for the correlation events pack."""
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
-from ts_shape.events.correlation.signal_correlation import SignalCorrelationEvents
 from ts_shape.events.correlation.anomaly_correlation import AnomalyCorrelationEvents
+from ts_shape.events.correlation.signal_correlation import SignalCorrelationEvents
 
 # ---------------------------------------------------------------------------
 # Fixtures

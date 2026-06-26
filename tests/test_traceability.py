@@ -1,13 +1,14 @@
 """Tests for ValueTraceabilityEvents and RoutingTraceabilityEvents."""
 
-import pandas as pd  # type: ignore
-import pytest
 from datetime import timedelta
 
+import pandas as pd  # type: ignore
+import pytest
+
 from ts_shape.events.production import (
-    ValueTraceabilityEvents,
     OrderTraceabilityEvents,  # backwards-compatible alias
     RoutingTraceabilityEvents,
+    ValueTraceabilityEvents,
 )
 
 # ============================================================================

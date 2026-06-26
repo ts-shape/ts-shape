@@ -1,4 +1,5 @@
 import pandas as pd  # type: ignore
+
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
 

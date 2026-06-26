@@ -15,8 +15,8 @@ Classes:
   - root_cause_ranking: Rank signals by how often their anomalies precede others.
 """
 
-from .signal_correlation import SignalCorrelationEvents
 from .anomaly_correlation import AnomalyCorrelationEvents
+from .signal_correlation import SignalCorrelationEvents
 
 __all__ = [
     "SignalCorrelationEvents",

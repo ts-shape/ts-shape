@@ -18,6 +18,38 @@ pytest ./tests
 
 ---
 
+## 2a. Lint and Type Check
+
+```bash
+black --check src/ tests/   # formatting
+ruff check src/ tests/      # linting
+mypy                        # type checking (config in pyproject.toml)
+```
+
+All three are blocking in CI.
+
+### Incremental strict typing
+
+`mypy` runs the whole tree under a modest global baseline. Two override blocks
+in `pyproject.toml` drive an incremental rollout toward full strictness:
+
+- **Strict allowlist** — modules held to `disallow_untyped_defs`,
+  `disallow_incomplete_defs`, `warn_return_any` and `warn_unused_ignores`. New
+  code should land here.
+- **Typing debt** — older modules quarantined with `ignore_errors` so the gate
+  stays green.
+
+To chip away at the debt, pick one module, remove it from the debt list, fix the
+reported errors, then (ideally) add it to the strict allowlist:
+
+```bash
+# See what a quarantined module needs:
+mypy src/ts_shape/features/cross_signal.py \
+  --check-untyped-defs --disallow-untyped-defs --warn-return-any --warn-unused-ignores
+```
+
+---
+
 ## 3. Build Distribution Packages
 
 ```bash

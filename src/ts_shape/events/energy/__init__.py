@@ -40,11 +40,11 @@ Classes:
   - emission_factor_audit: Return configured factors for audit trail.
 """
 
+from .carbon_intensity import CarbonIntensityEvents
 from .consumption_analysis import EnergyConsumptionEvents
 from .efficiency_tracking import EnergyEfficiencyEvents
-from .idle_energy_detection import IdleEnergyDetectionEvents
 from .energy_performance_indicator import EnergyPerformanceIndicatorEvents
-from .carbon_intensity import CarbonIntensityEvents
+from .idle_energy_detection import IdleEnergyDetectionEvents
 
 __all__ = [
     "EnergyConsumptionEvents",

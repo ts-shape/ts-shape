@@ -7,8 +7,8 @@ import pytest
 
 from ts_shape.datasets import make_id_signal
 from ts_shape.eventlog import (
-    OCEL2Tables,
     ObjectSpec,
+    OCEL2Tables,
     attach_objects,
     concat,
     detect_objects,

@@ -1,9 +1,9 @@
+import logging
+import warnings
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from typing import Any
-from collections.abc import Iterable, Callable, Iterator
-import logging
-import warnings
 
 import pandas as pd  # type: ignore
 
@@ -28,7 +28,7 @@ class AzureBlobParquetLoader:
         *,
         connection_string: str | None = None,
         account_url: str | None = None,
-        credential: object | None = None,
+        credential: Any | None = None,
         sas_url: str | None = None,
         prefix: str = "",
         max_workers: int = 8,
@@ -140,7 +140,7 @@ class AzureBlobParquetLoader:
         account_name: str,
         container_name: str,
         *,
-        credential: object | None = None,
+        credential: Any | None = None,
         endpoint_suffix: str = "blob.core.windows.net",
         prefix: str = "",
         max_workers: int = 8,
@@ -748,7 +748,7 @@ class AzureBlobFlexibleFileLoader:
         *,
         connection_string: str | None = None,
         account_url: str | None = None,
-        credential: object | None = None,
+        credential: Any | None = None,
         sas_url: str | None = None,
         prefix: str = "",
         max_workers: int = 8,

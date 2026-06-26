@@ -2,13 +2,13 @@
 
 import warnings
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
-from ts_shape.utils.base import Base
 from ts_shape.errors import DataQualityWarning
 from ts_shape.features.export import FeatureMatrixExporter
+from ts_shape.utils.base import Base
 
 # ---------------------------------------------------------------------------
 # Base — empty / single-row / all-NaN / duplicate-timestamp inputs

@@ -1,6 +1,8 @@
 import logging
+
 import pandas as pd  # type: ignore
 from scipy import stats
+
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)

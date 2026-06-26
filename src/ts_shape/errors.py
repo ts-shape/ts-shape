@@ -36,3 +36,12 @@ class ColumnNotFoundError(ValueError):
     working, while callers that want to react specifically to a missing
     column can catch this narrower type.
     """
+
+
+class LoaderError(Exception):
+    """Raised when a loader cannot read from its configured source.
+
+    Covers misconfiguration (missing path, absent credentials) and I/O that
+    fails after the configured number of retries. Callers can catch this single
+    type regardless of the underlying backend (local, S3, Azure, database).
+    """

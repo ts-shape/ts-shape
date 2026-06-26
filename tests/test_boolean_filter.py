@@ -1,5 +1,6 @@
 import pandas as pd  # type: ignore
-from ts_shape.transform.filter.boolean_filter import IsDeltaFilter, BooleanFilter
+
+from ts_shape.transform.filter.boolean_filter import BooleanFilter, IsDeltaFilter
 
 
 def test_is_delta_true():

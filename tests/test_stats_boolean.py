@@ -1,4 +1,5 @@
 import pandas as pd  # type: ignore
+
 from ts_shape.features.stats.boolean_stats import BooleanStatistics
 
 

@@ -1,9 +1,22 @@
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-import pandas as pd  # type: ignore
+
+import pandas as pd
 import s3fs
 
+from ts_shape.loader._utils import require_config, retry_call
+
 logger = logging.getLogger(__name__)
+
+_REQUIRED_S3_KEYS = [
+    "endpoint_url",
+    "key",
+    "secret",
+    "use_ssl",
+    "version_aware",
+    "s3_path_base",
+]
 
 
 class S3ProxyDataAccess:
@@ -27,6 +40,7 @@ class S3ProxyDataAccess:
         :param uuids: List of UUIDs to retrieve data for.
         :param s3_config: Configuration dictionary for S3 connection.
         """
+        require_config(s3_config, _REQUIRED_S3_KEYS, name="s3_config")
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
         self.uuids = uuids
@@ -42,7 +56,7 @@ class S3ProxyDataAccess:
         )
         self.s3_path_base = s3_config["s3_path_base"]
 
-    def _generate_timeslot_paths(self):
+    def _generate_timeslot_paths(self) -> Iterator[Path]:
         """
         Generates a sequence of time-based directory paths for each hour in the range
         between start_timestamp and end_timestamp.
@@ -59,7 +73,7 @@ class S3ProxyDataAccess:
             )
             yield timeslot_dir
 
-    def _fetch_parquet(self, uuid: str, timeslot_dir: Path):
+    def _fetch_parquet(self, uuid: str, timeslot_dir: Path) -> "pd.DataFrame | None":
         """
         Fetches a Parquet file from S3 for a specific UUID and time slot.
         :param uuid: The UUID for which data is being retrieved.
@@ -67,14 +81,24 @@ class S3ProxyDataAccess:
         :return: DataFrame if the file is found, else None.
         """
         s3_path = f"{self.s3_path_base}{timeslot_dir}/{uuid}.parquet"
-        try:
+
+        def _read() -> pd.DataFrame:
             with self.s3.open(s3_path, "rb") as remote_file:
                 return pd.read_parquet(remote_file)
+
+        try:
+            # Retry transient S3/network errors; a genuine miss (FileNotFoundError)
+            # is excluded so it short-circuits to the "no data" path below.
+            return retry_call(
+                _read,
+                exclude=(FileNotFoundError,),
+                description=f"s3 read {s3_path}",
+            )
         except FileNotFoundError:
             logger.debug("Data for UUID %s at %s not found.", uuid, timeslot_dir)
             return None
 
-    def fetch_data_as_parquet(self, output_dir: str):
+    def fetch_data_as_parquet(self, output_dir: str) -> None:
         """
         Retrieves timeseries data from S3 and saves it as Parquet files.
         Each file is saved in a directory structure of UUID/year/month/day/hour.
