@@ -1,7 +1,7 @@
 """Tests for the energy events pack."""
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
 from ts_shape.events.energy.consumption_analysis import EnergyConsumptionEvents

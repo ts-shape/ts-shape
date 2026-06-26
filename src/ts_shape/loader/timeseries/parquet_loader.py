@@ -1,8 +1,9 @@
 import logging
 import warnings
 from functools import partial
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 
 from ts_shape.errors import LoaderConfigWarning
 from ts_shape.loader._utils import retry_call, validate_local_path

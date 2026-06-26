@@ -1,9 +1,10 @@
 import logging
-import pandas as pd  # type: ignore
-from pandas.api.types import is_numeric_dtype, is_bool_dtype, is_object_dtype
 
-from .numeric_stats import NumericStatistics
+import pandas as pd  # type: ignore
+from pandas.api.types import is_bool_dtype, is_numeric_dtype, is_object_dtype
+
 from .boolean_stats import BooleanStatistics
+from .numeric_stats import NumericStatistics
 from .string_stats import StringStatistics
 
 logger = logging.getLogger(__name__)

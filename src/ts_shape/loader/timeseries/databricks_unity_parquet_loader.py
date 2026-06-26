@@ -1,8 +1,8 @@
-from collections.abc import Iterable, Iterator
-from pathlib import Path
 import logging
 import os
 import warnings
+from collections.abc import Iterable, Iterator
+from pathlib import Path
 
 import pandas as pd  # type: ignore
 

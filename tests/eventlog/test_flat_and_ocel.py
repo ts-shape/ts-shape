@@ -6,8 +6,6 @@ import pandas as pd
 import pytest
 
 from ts_shape.eventlog import (
-    EventLog,
-    OCEL2Tables,
     OCEL_FIELD,
     OCEL_OID,
     OCEL_OID2,
@@ -20,6 +18,8 @@ from ts_shape.eventlog import (
     XES_LIFECYCLE,
     XES_RESOURCE,
     XES_TIMESTAMP,
+    EventLog,
+    OCEL2Tables,
     concat,
     to_event_log,
     to_event_log_ocel,

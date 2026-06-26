@@ -1,6 +1,7 @@
 import logging
-import pandas as pd  # type: ignore
+
 import numpy as np
+import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 

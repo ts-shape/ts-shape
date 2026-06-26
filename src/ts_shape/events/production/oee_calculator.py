@@ -9,15 +9,16 @@ Industry-standard metric for manufacturing productivity:
 """
 
 import logging
+
 import pandas as pd  # type: ignore
 
-from ts_shape.utils.base import Base
 from ts_shape.events._output import (
     COL_DURATION_S,
     COL_END,
     COL_START,
     empty_event_df,
 )
+from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,9 @@
-from collections.abc import Iterator
-from pathlib import Path
-from typing import Union
 import logging
 import os
 import warnings
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Union
 
 import pandas as pd  # type: ignore
 

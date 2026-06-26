@@ -1,4 +1,5 @@
 import logging
+
 import pandas as pd  # type: ignore
 
 logger = logging.getLogger(__name__)

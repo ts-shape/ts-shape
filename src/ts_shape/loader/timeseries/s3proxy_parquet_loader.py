@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Iterator
 from pathlib import Path
+
 import pandas as pd
 import s3fs
 

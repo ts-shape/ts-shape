@@ -1,5 +1,7 @@
 import operator
+
 import pandas as pd  # type: ignore
+
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 
 

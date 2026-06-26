@@ -16,8 +16,8 @@ from collections.abc import Callable, Mapping
 
 import pandas as pd
 
-from . import schema
 from ..events._output import COL_END, COL_START, COL_SYSTIME
+from . import schema
 from .model import EventLog
 from .taxonomy import LabelRule, render_activity
 

@@ -80,19 +80,19 @@ Classes:
   - stability_comparison: Compare each window to best-observed.
 """
 
-from .setpoint_events import SetpointChangeEvents  # re-export
-from .startup_events import StartupDetectionEvents  # re-export
-from .threshold_monitoring import ThresholdMonitoringEvents  # re-export
-from .rate_of_change import RateOfChangeEvents  # re-export
-from .steady_state_detection import SteadyStateDetectionEvents  # re-export
-from .signal_comparison import SignalComparisonEvents  # re-export
-from .operating_range import OperatingRangeEvents  # re-export
-from .warmup_analysis import WarmUpCoolDownEvents  # re-export
-from .process_window import ProcessWindowEvents  # re-export
 from .control_loop_health import ControlLoopHealthEvents  # re-export
 from .disturbance_recovery import DisturbanceRecoveryEvents  # re-export
 from .material_balance import MaterialBalanceEvents  # re-export
+from .operating_range import OperatingRangeEvents  # re-export
 from .process_stability_index import ProcessStabilityIndex  # re-export
+from .process_window import ProcessWindowEvents  # re-export
+from .rate_of_change import RateOfChangeEvents  # re-export
+from .setpoint_events import SetpointChangeEvents  # re-export
+from .signal_comparison import SignalComparisonEvents  # re-export
+from .startup_events import StartupDetectionEvents  # re-export
+from .steady_state_detection import SteadyStateDetectionEvents  # re-export
+from .threshold_monitoring import ThresholdMonitoringEvents  # re-export
+from .warmup_analysis import WarmUpCoolDownEvents  # re-export
 
 __all__ = [
     "SetpointChangeEvents",

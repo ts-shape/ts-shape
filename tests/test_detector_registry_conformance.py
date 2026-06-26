@@ -24,6 +24,7 @@ from __future__ import annotations
 import pytest
 
 import ts_shape
+from ts_shape.eventlog.taxonomy import REGISTRY
 from ts_shape.events._output import (
     INTERVAL_SCHEMA,
     POINT_SCHEMA,
@@ -31,7 +32,6 @@ from ts_shape.events._output import (
     _schema_for,
     validate_event_output,
 )
-from ts_shape.eventlog.taxonomy import REGISTRY
 
 # Canonical shapes. The first three have an explicit column schema in
 # ``_output.py``; ``static`` is the non-temporal shape (e.g. driver rankings,

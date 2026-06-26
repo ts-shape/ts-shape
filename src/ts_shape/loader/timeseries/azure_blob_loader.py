@@ -1,9 +1,9 @@
+import logging
+import warnings
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from typing import Any
-from collections.abc import Iterable, Callable, Iterator
-import logging
-import warnings
 
 import pandas as pd  # type: ignore
 

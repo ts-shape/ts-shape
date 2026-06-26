@@ -1,7 +1,8 @@
 """Tests for ShiftHandoverReport module."""
 
-import pandas as pd
 from datetime import date
+
+import pandas as pd
 
 from ts_shape.events.production.shift_handover import ShiftHandoverReport
 

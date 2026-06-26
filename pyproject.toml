@@ -104,7 +104,11 @@ target-version = ["py311"]
 target-version = "py311"
 
 [tool.ruff.lint]
-extend-select = ["UP"]
+# "UP" = pyupgrade, "I" = isort (import sorting & grouping, black-compatible).
+extend-select = ["UP", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ts_shape"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -128,6 +132,7 @@ module = [
     "ts_shape.loader.timeseries.parquet_loader",
     "ts_shape.loader.timeseries.s3proxy_parquet_loader",
     "ts_shape.loader.timeseries.databricks_spark_parquet_loader",
+    "ts_shape.features.cycles.cycles_extractor",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
@@ -145,7 +150,6 @@ module = [
     "ts_shape.eventlog.adapters",
     "ts_shape.eventlog.normalizer",
     "ts_shape.eventlog.lambda_rules.evaluator",
-    "ts_shape.features.cycles.cycles_extractor",
     "ts_shape.features.cross_signal",
     "ts_shape.features.export",
     "ts_shape.features.pattern_recognition",

@@ -1,5 +1,5 @@
-import pytest
 import pandas as pd  # type: ignore
+import pytest
 
 s3fs = pytest.importorskip("s3fs")
 

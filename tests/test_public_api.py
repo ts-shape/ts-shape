@@ -23,9 +23,9 @@ def test_all_names_are_importable():
 def test_headline_classes_reachable_from_top_level():
     """A few well-known classes are importable straight from ts_shape."""
     from ts_shape import (  # noqa: F401
+        MachineStateEvents,
         OEECalculator,
         OutlierDetectionEvents,
-        MachineStateEvents,
         to_event_log,
     )
 

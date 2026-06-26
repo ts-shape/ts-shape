@@ -25,8 +25,9 @@ This module correlates both signals to reconstruct the full routing path.
 """
 
 import logging
-import pandas as pd  # type: ignore
 from typing import Any
+
+import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 

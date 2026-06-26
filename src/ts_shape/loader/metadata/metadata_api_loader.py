@@ -1,7 +1,8 @@
-import logging
-import requests
-import pandas as pd  # type: ignore
 import json
+import logging
+
+import pandas as pd  # type: ignore
+import requests
 
 logger = logging.getLogger(__name__)
 

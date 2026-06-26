@@ -9,7 +9,6 @@ loaders from a REPL or notebook instead of scanning the docs::
 
 from __future__ import annotations
 
-
 import pandas as pd  # type: ignore
 
 

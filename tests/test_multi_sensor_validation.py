@@ -1,6 +1,7 @@
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
+
 from ts_shape.events.quality.multi_sensor_validation import MultiSensorValidationEvents
 
 

@@ -14,8 +14,8 @@ understands without any special-case code.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 _VALID_SHAPES: frozenset[str] = frozenset({"point", "interval", "summary", "static"})
 _VALID_PACKS: frozenset[str] = frozenset(

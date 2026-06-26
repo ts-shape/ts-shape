@@ -1,6 +1,7 @@
 import pandas as pd  # type: ignore
-from ts_shape.transform.filter.string_filter import StringFilter
+
 from ts_shape.transform.filter.datetime_filter import DateTimeFilter
+from ts_shape.transform.filter.string_filter import StringFilter
 
 
 def test_string_filter_basic_operations():

@@ -8,9 +8,10 @@ Classes:
 """
 
 import logging
+from typing import Any
+
 import pandas as pd  # type: ignore
 import requests
-from typing import Any
 
 logger = logging.getLogger(__name__)
 

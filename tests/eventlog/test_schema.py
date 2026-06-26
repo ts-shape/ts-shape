@@ -6,7 +6,6 @@ import pandas as pd
 import pytest
 
 from ts_shape.eventlog import (
-    EventLog,
     OCEL_ACTIVITY,
     OCEL_EID,
     OCEL_OID,
@@ -14,6 +13,7 @@ from ts_shape.eventlog import (
     OCEL_TYPE,
     TS_DETECTOR,
     TS_PACK,
+    EventLog,
     validate,
 )
 from ts_shape.eventlog import schema as S

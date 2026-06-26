@@ -1,4 +1,5 @@
 import pandas as pd  # type: ignore
+
 from ts_shape.features.stats.string_stats import StringStatistics
 
 

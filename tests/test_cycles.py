@@ -1,6 +1,7 @@
 import pandas as pd  # type: ignore
-from ts_shape.features.cycles.cycles_extractor import CycleExtractor
+
 from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
+from ts_shape.features.cycles.cycles_extractor import CycleExtractor
 
 
 def make_cycle_df():

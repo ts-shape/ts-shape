@@ -11,8 +11,9 @@ identifier to its own UUID.  This module joins those signals to answer
 """
 
 import logging
-import pandas as pd  # type: ignore
 from typing import Any
+
+import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 

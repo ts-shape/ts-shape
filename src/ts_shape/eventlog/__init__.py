@@ -74,8 +74,8 @@ from .schema import (
     XES_LIFECYCLE,
     XES_RESOURCE,
     XES_TIMESTAMP,
-    empty_object_changes,
     empty_o2o,
+    empty_object_changes,
     register_object_type,
     validate,
 )

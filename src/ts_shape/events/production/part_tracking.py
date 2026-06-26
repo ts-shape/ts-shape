@@ -15,6 +15,7 @@ production that happened in a window where a reset occurred. Pass
 """
 
 import logging
+
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base

@@ -1,9 +1,11 @@
 import logging
-from ts_shape.utils.base import Base
-import pandas as pd  # type: ignore
-import numpy as np
 import operator
 from collections.abc import Callable
+
+import numpy as np
+import pandas as pd  # type: ignore
+
+from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
 

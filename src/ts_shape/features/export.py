@@ -6,8 +6,9 @@ suitable for machine-learning workflows.
 
 import logging
 from collections.abc import Callable
-import pandas as pd  # type: ignore
+
 import numpy as np
+import pandas as pd  # type: ignore
 
 logger = logging.getLogger(__name__)
 

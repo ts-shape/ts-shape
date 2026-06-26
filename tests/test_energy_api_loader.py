@@ -1,8 +1,9 @@
 """Tests for EnergyAPILoader."""
 
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock
 
 from ts_shape.loader.timeseries.energy_api_loader import EnergyAPILoader
 
