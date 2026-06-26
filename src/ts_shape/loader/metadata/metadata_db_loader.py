@@ -18,7 +18,7 @@ class DatapointDB:
         db_pass: str,
         db_host: str,
         output_path: str = "data",
-        required_uuid_list: list[str] = None,
+        required_uuid_list: list[str] | None = None,
         filter_enabled: bool = True,
     ):
         """
@@ -102,7 +102,7 @@ class DatapointDB:
         }
 
     def display_dataframe(
-        self, device_name: str = None, aggregate: bool = False
+        self, device_name: str | None = None, aggregate: bool = False
     ) -> None:
         """
         Display metadata as a DataFrame for a specific device or all devices.

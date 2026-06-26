@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Literal
 from collections.abc import Iterable, Sequence
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 # ---------------------------------------------------------------------------
 # Canonical column-name constants

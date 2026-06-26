@@ -26,7 +26,7 @@ import logging
 from collections.abc import Callable, Sequence
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.errors import LoaderError
 
@@ -40,7 +40,7 @@ def _active_spark() -> Any | None:
     not installed.
     """
     try:
-        from pyspark.sql import SparkSession  # type: ignore
+        from pyspark.sql import SparkSession
     except ImportError:
         return None
     return SparkSession.getActiveSession()

@@ -61,13 +61,16 @@ jobs:
       - name: Install dev tools
         run: |
           python -m pip install --upgrade pip
-          pip install black==26.3.1 ruff==0.15.8
+          pip install black==26.3.1 ruff==0.15.8 mypy
 
       - name: Check formatting (black)
         run: black --check src/ tests/
 
       - name: Lint (ruff)
         run: ruff check src/ tests/
+
+      - name: Type check (mypy)
+        run: mypy
 
   test:
     name: Test (Python ${{ matrix.python-version }})

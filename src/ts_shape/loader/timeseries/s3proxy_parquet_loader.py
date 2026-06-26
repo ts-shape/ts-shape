@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-import pandas as pd  # type: ignore
+import pandas as pd
 import s3fs
 
 from ts_shape.loader._utils import require_config, retry_call
@@ -54,7 +55,7 @@ class S3ProxyDataAccess:
         )
         self.s3_path_base = s3_config["s3_path_base"]
 
-    def _generate_timeslot_paths(self):
+    def _generate_timeslot_paths(self) -> Iterator[Path]:
         """
         Generates a sequence of time-based directory paths for each hour in the range
         between start_timestamp and end_timestamp.
@@ -71,7 +72,7 @@ class S3ProxyDataAccess:
             )
             yield timeslot_dir
 
-    def _fetch_parquet(self, uuid: str, timeslot_dir: Path):
+    def _fetch_parquet(self, uuid: str, timeslot_dir: Path) -> "pd.DataFrame | None":
         """
         Fetches a Parquet file from S3 for a specific UUID and time slot.
         :param uuid: The UUID for which data is being retrieved.
@@ -96,7 +97,7 @@ class S3ProxyDataAccess:
             logger.debug("Data for UUID %s at %s not found.", uuid, timeslot_dir)
             return None
 
-    def fetch_data_as_parquet(self, output_dir: str):
+    def fetch_data_as_parquet(self, output_dir: str) -> None:
         """
         Retrieves timeseries data from S3 and saves it as Parquet files.
         Each file is saved in a directory structure of UUID/year/month/day/hour.

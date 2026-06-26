@@ -1,6 +1,7 @@
 import logging
 import warnings
-import pandas as pd  # type: ignore
+from functools import partial
+import pandas as pd
 from pathlib import Path
 
 from ts_shape.errors import LoaderConfigWarning
@@ -58,7 +59,7 @@ class ParquetLoader:
             return pd.DataFrame()
         dataframes = [
             retry_call(
-                lambda f=file: pd.read_parquet(f),
+                partial(pd.read_parquet, file),
                 exclude=(FileNotFoundError,),
                 description=f"read_parquet({file})",
             )
@@ -77,10 +78,10 @@ class ParquetLoader:
         Returns:
             pd.DataFrame: A DataFrame containing all the data from the parquet files.
         """
-        base_path = validate_local_path(base_path, must_be_dir=True)
+        root = validate_local_path(base_path, must_be_dir=True)
         # Get all parquet files in the directory
-        parquet_files = cls._get_parquet_files(base_path)
-        return cls._read_concat(parquet_files, base_path)
+        parquet_files = cls._get_parquet_files(root)
+        return cls._read_concat(parquet_files, root)
 
     @classmethod
     def load_by_time_range(
@@ -99,15 +100,15 @@ class ParquetLoader:
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files within the time range.
         """
-        base_path = validate_local_path(base_path, must_be_dir=True)
+        root = validate_local_path(base_path, must_be_dir=True)
         # Get all parquet files in the directory
-        parquet_files = cls._get_parquet_files(base_path)
+        parquet_files = cls._get_parquet_files(root)
         valid_files = []
 
         for file in parquet_files:
             try:
                 # Extract the timestamp from the file's relative path
-                folder_parts = file.relative_to(base_path).parts[
+                folder_parts = file.relative_to(root).parts[
                     :4
                 ]  # Extract YYYY/MM/DD/HH parts
                 folder_time_str = "/".join(folder_parts)
@@ -120,7 +121,7 @@ class ParquetLoader:
                 # Skip files that do not follow the expected folder structure
                 continue
 
-        return cls._read_concat(valid_files, base_path)
+        return cls._read_concat(valid_files, root)
 
     @classmethod
     def load_by_uuid_list(cls, base_path: str, uuid_list: list) -> pd.DataFrame:
@@ -136,9 +137,9 @@ class ParquetLoader:
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files with matching UUIDs.
         """
-        base_path = validate_local_path(base_path, must_be_dir=True)
+        root = validate_local_path(base_path, must_be_dir=True)
         # Get all parquet files in the directory
-        parquet_files = cls._get_parquet_files(base_path)
+        parquet_files = cls._get_parquet_files(root)
         valid_files = []
 
         for file in parquet_files:
@@ -150,7 +151,7 @@ class ParquetLoader:
                     valid_files.append(file)
                     break  # Stop checking other UUIDs for this file
 
-        return cls._read_concat(valid_files, base_path)
+        return cls._read_concat(valid_files, root)
 
     @classmethod
     def load_files_by_time_range_and_uuids(
@@ -174,15 +175,15 @@ class ParquetLoader:
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files that meet both criteria.
         """
-        base_path = validate_local_path(base_path, must_be_dir=True)
+        root = validate_local_path(base_path, must_be_dir=True)
         # Get all parquet files in the directory
-        parquet_files = cls._get_parquet_files(base_path)
+        parquet_files = cls._get_parquet_files(root)
         valid_files = []
 
         for file in parquet_files:
             try:
                 # Extract the timestamp from the file's relative path
-                folder_parts = file.relative_to(base_path).parts[
+                folder_parts = file.relative_to(root).parts[
                     :4
                 ]  # Extract YYYY/MM/DD/HH parts
                 folder_time_str = "/".join(folder_parts)
@@ -201,4 +202,4 @@ class ParquetLoader:
                 # Skip files that do not follow the expected folder structure
                 continue
 
-        return cls._read_concat(valid_files, base_path)
+        return cls._read_concat(valid_files, root)
