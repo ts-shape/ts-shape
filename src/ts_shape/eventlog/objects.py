@@ -23,6 +23,16 @@ Three steps, all feeding the OCEL 2.0 tables on :class:`~ts_shape.eventlog.model
 * :func:`attach_objects` — link an existing event log's events to the detected
   objects by temporal containment, so the output of *every* event detector gains
   rich object references with no per-detector changes.
+
+When you already hold the two lists — an **event list** and an **object list**
+(intervals) — the relationship derivation is automated and needs no raw signals:
+
+* :func:`link_events_to_objects` — all event-to-object (E2O) relations, by
+  temporal containment and/or direct ``key_columns`` matching.
+* :func:`derive_o2o` — all object-to-object (O2O) relations (declared
+  ``part_of`` hierarchy or symmetric ``co_occurs``).
+* :func:`relate` — assemble both, plus objects and ``object_changes``, into one
+  validated :class:`EventLog` ready to ingest into an OCEL 2.0 database.
 """
 
 from __future__ import annotations
@@ -250,7 +260,7 @@ def detect_objects(
     log = EventLog(
         objects=_objects_table(intervals),
         o2o=_infer_o2o(intervals, hierarchy) if infer_o2o else schema.empty_o2o(),
-        object_changes=_object_changes(intervals, specs),
+        object_changes=_object_changes(intervals),
     )
     if validate:
         schema.validate(log)
@@ -276,22 +286,65 @@ def attach_objects(
     objects, ``o2o`` and ``object_changes`` are merged in. This enriches the
     output of *any* event detector — no per-detector changes required. See
     :func:`detect_objects` for ``hierarchy`` (declared ``part_of`` edges).
+
+    This is a convenience over :func:`relate`: it first segments ``df`` into an
+    object-interval table via :func:`object_intervals`, then relates the events
+    to it. When you already hold an interval/object table, call :func:`relate`
+    directly and skip the raw signals.
     """
     intervals = object_intervals(
         df, specs, uuid_column=uuid_column, time_column=time_column
     )
-    detected = detect_objects(
-        df,
-        specs,
-        uuid_column=uuid_column,
-        time_column=time_column,
+    return relate(
+        event_log,
+        intervals,
         hierarchy=hierarchy,
+        qualifiers=qualifiers,
         infer_o2o=infer_o2o,
-        validate=False,
+        validate=validate,
+    )
+
+
+def relate(
+    event_log: EventLog,
+    intervals: pd.DataFrame,
+    *,
+    hierarchy: Mapping[str, str] | None = None,
+    qualifiers: Mapping[str, str] | None = None,
+    key_columns: Sequence[str] | None = None,
+    infer_o2o: bool = True,
+    validate: bool = True,
+) -> EventLog:
+    """Assemble a full OCEL 2.0 log from an event list and an object list.
+
+    This is the automated relationship step: given an existing ``event_log``
+    (with events) and an ``intervals`` table describing objects -- columns
+    ``oid``, ``type`` and, for temporal linking, ``start`` / ``end`` (plus any
+    attribute columns) -- it derives **all** relations and returns a validated
+    :class:`EventLog` whose five tables are ready to ingest into an OCEL 2.0
+    database:
+
+    * ``objects`` from the distinct ``(oid, type)`` pairs,
+    * ``relations`` (E2O) via :func:`link_events_to_objects`
+      (temporal containment, plus optional ``key_columns`` matching),
+    * ``o2o`` via :func:`derive_o2o` (declared ``part_of`` ``hierarchy`` or
+      symmetric ``co_occurs``),
+    * ``object_changes`` (lifecycle + captured attributes).
+
+    Unlike :func:`attach_objects`, no raw signals or :class:`ObjectSpec` are
+    needed -- you bring the two lists, ts-shape derives the relationships.
+    """
+    iv = _normalize_intervals(intervals)
+    detected = EventLog(
+        objects=_objects_table(iv),
+        o2o=derive_o2o(iv, hierarchy=hierarchy) if infer_o2o else schema.empty_o2o(),
+        object_changes=_object_changes(iv),
     )
     merged = concat(event_log, detected)
 
-    rels = _contained_relations(event_log.events, intervals, qualifiers or {})
+    rels = link_events_to_objects(
+        event_log.events, iv, qualifiers=qualifiers, key_columns=key_columns
+    )
     if not rels.empty:
         merged.relations = (
             pd.concat([merged.relations, rels], ignore_index=True)
@@ -303,6 +356,19 @@ def attach_objects(
     if validate:
         schema.validate(merged)
     return merged
+
+
+def derive_o2o(
+    intervals: pd.DataFrame, *, hierarchy: Mapping[str, str] | None = None
+) -> pd.DataFrame:
+    """Derive object-to-object (O2O) relations from an interval table.
+
+    Public entry point over the overlap kernel: a declared ``hierarchy``
+    (child type -> parent type) yields ``part_of`` along overlapping presence
+    intervals; without one, overlapping objects of different types get the
+    symmetric ``co_occurs`` qualifier. Returns the OCEL 2.0 ``o2o`` table.
+    """
+    return _infer_o2o(_normalize_intervals(intervals), hierarchy)
 
 
 def object_specs_from_metadata(
@@ -371,12 +437,17 @@ def _objects_table(intervals: pd.DataFrame) -> pd.DataFrame:
     return objs
 
 
-def _object_changes(
-    intervals: pd.DataFrame, specs: Sequence[ObjectSpec]
-) -> pd.DataFrame:
-    if intervals.empty:
+def _object_changes(intervals: pd.DataFrame) -> pd.DataFrame:
+    """Lifecycle + attribute ``object_changes`` derived from the interval table.
+
+    Attribute columns are inferred from the frame itself -- any column beyond
+    the reserved ``oid / type / start / end`` -- so changes can be built from a
+    standalone object list without re-supplying the specs.
+    """
+    if intervals.empty or _START not in intervals.columns:
         return schema.empty_object_changes()
-    attr_cols = [a for spec in specs for a in spec.attributes if a in intervals.columns]
+    reserved = {_OID, _TYPE, _START, _END}
+    attr_cols = [c for c in intervals.columns if c not in reserved]
     rows: list[dict] = []
     for _, r in intervals.iterrows():
         # Lifecycle presence as a time-varying attribute.
@@ -410,7 +481,11 @@ def _infer_o2o(
     overlapping objects of different types get the honest symmetric
     ``co_occurs`` qualifier — ``part_of`` is never guessed from time alone.
     """
-    if intervals.empty:
+    if (
+        intervals.empty
+        or _START not in intervals.columns
+        or _END not in intervals.columns
+    ):
         return schema.empty_o2o()
     return (
         _hierarchy_o2o(intervals, hierarchy)
@@ -485,30 +560,100 @@ def _o2o_row(oid: object, oid2: object, qualifier: str) -> dict:
     }
 
 
-def _contained_relations(
+def _normalize_intervals(intervals: pd.DataFrame) -> pd.DataFrame:
+    """Validate and normalize an object/interval table.
+
+    Requires ``oid`` and ``type``; ``start`` / ``end`` are optional (needed only
+    for temporal linking and ``o2o``). Ids/types are coerced to ``string`` and
+    any present time bounds to tz-aware UTC, matching the OCEL columns.
+    """
+    missing = {_OID, _TYPE} - set(intervals.columns)
+    if missing:
+        raise ValueError(
+            f"object/interval table is missing required column(s) {sorted(missing)}; "
+            f"got {list(intervals.columns)}"
+        )
+    out = intervals.copy()
+    out[_OID] = out[_OID].astype("string")
+    out[_TYPE] = out[_TYPE].astype("string")
+    if _START in out.columns:
+        out[_START] = _to_utc(out[_START])
+    if _END in out.columns:
+        out[_END] = _to_utc(out[_END])
+    return out
+
+
+def _e2o_row(eid: object, oid: object, type_: object, qualifier: object) -> dict:
+    return {
+        schema.OCEL_EID: eid,
+        schema.OCEL_OID: oid,
+        schema.OCEL_TYPE: type_,
+        schema.OCEL_QUALIFIER: qualifier,
+    }
+
+
+def link_events_to_objects(
     events: pd.DataFrame,
     intervals: pd.DataFrame,
-    qualifiers: Mapping[str, str],
+    *,
+    qualifiers: Mapping[str, str] | None = None,
+    key_columns: Sequence[str] | None = None,
+    contain: bool = True,
 ) -> pd.DataFrame:
-    """E2O relations: each event linked to objects whose interval contains it."""
-    if events.empty or intervals.empty:
+    """Derive all event-to-object (E2O) relations from two lists.
+
+    Takes an OCEL ``events`` table and an object/interval table (``oid``,
+    ``type`` and, for temporal linking, ``start`` / ``end``) and returns the
+    OCEL 2.0 ``relations`` table -- with no access to the raw signals. Two
+    complementary strategies are unioned and de-duplicated:
+
+    * **temporal containment** (``contain``, default on): link an event to every
+      object whose presence interval ``[start, end]`` contains the event
+      timestamp. Requires ``start`` / ``end`` columns.
+    * **key match** (opt-in via ``key_columns``): link an event to the object
+      whose ``oid`` equals the value in one of the event's ``key_columns`` --
+      for events that already name their object (e.g. a ``batch`` attribute).
+
+    ``qualifiers`` maps an object ``type`` to the relation qualifier to stamp
+    (e.g. ``{"batch": "processed_in"}``); unmapped types get ``<NA>``.
+    """
+    if events.empty:
         return schema.empty_relations()
-    ts = pd.to_datetime(events[schema.OCEL_TIMESTAMP])
+    iv = _normalize_intervals(intervals)
+    if iv.empty:
+        return schema.empty_relations()
+    qual = dict(qualifiers or {})
     rows: list[dict] = []
-    for _, obj in intervals.iterrows():
-        hit = (ts >= obj[_START]) & (ts <= obj[_END])
-        if not hit.any():
-            continue
-        for eid in events.loc[hit, schema.OCEL_EID]:
-            rows.append(
-                {
-                    schema.OCEL_EID: eid,
-                    schema.OCEL_OID: obj[_OID],
-                    schema.OCEL_TYPE: obj[_TYPE],
-                    schema.OCEL_QUALIFIER: qualifiers.get(obj[_TYPE]),
-                }
-            )
+
+    if contain and _START in iv.columns and _END in iv.columns:
+        ts = pd.to_datetime(events[schema.OCEL_TIMESTAMP])
+        for _, obj in iv.iterrows():
+            hit = (ts >= obj[_START]) & (ts <= obj[_END])
+            if not hit.any():
+                continue
+            for eid in events.loc[hit, schema.OCEL_EID]:
+                rows.append(_e2o_row(eid, obj[_OID], obj[_TYPE], qual.get(obj[_TYPE])))
+
+    if key_columns:
+        oid_to_type = dict(zip(iv[_OID], iv[_TYPE]))
+        present = [c for c in key_columns if c in events.columns]
+        for col in present:
+            for _, ev in events.iterrows():
+                val = ev.get(col)
+                if val is None or pd.isna(val):
+                    continue
+                oid = str(val)
+                otype = oid_to_type.get(oid)
+                if otype is not None:
+                    rows.append(
+                        _e2o_row(ev[schema.OCEL_EID], oid, otype, qual.get(otype))
+                    )
+
     if not rows:
         return schema.empty_relations()
-    out = pd.DataFrame(rows)
+    out = (
+        pd.DataFrame(rows)
+        .drop_duplicates(subset=[schema.OCEL_EID, schema.OCEL_OID, schema.OCEL_TYPE])
+        .reset_index(drop=True)
+    )
     return out.astype(schema.empty_relations().dtypes.to_dict())
