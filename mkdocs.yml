@@ -65,6 +65,7 @@ nav:
     - Gauge R&R: modules/quality/gauge-rr.md
     - Capability Trending: modules/quality/capability-trending.md
   - Production:
+    - Signal Normalization: modules/production/signal-normalization.md
     - Event Detection:
       - Machine State: modules/production/machine-state.md
       - Line Throughput: modules/production/line-throughput.md

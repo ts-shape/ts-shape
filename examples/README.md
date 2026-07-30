@@ -16,6 +16,7 @@ python examples/quality_events_demo.py
 | `quality_events_demo.py` | Quality pack — outlier detection, SPC, tolerance deviation |
 | `production_events_demo.py` | Production pack — machine state, throughput, OEE, alarms, batches |
 | `production_tracking_demo.py` | Daily production tracking — parts, cycles, downtime, shifts |
+| `global_production_reporting_demo.py` | Fleet reporting over four differently-wired machines — counter/status/cycle/context normalization, OEE, coverage diagnostics |
 | `line_flow_analytics_demo.py` | Line balancing & takt, flow metrics & Little's Law |
 | `unit_runtime_demo.py` | Unit conversion (pint) and runtime / operating-hours accounting |
 | `maintenance_events_demo.py` | Maintenance pack — degradation, failure prediction, vibration |

@@ -1,3 +1,32 @@
+# July 30, 2026
+add: ts_shape.events.production.signals -- a signal-normalization layer that makes
+  production reporting work across a fleet of machines that do not share a signal
+  convention. Five classes, all emitting the canonical event shapes:
+  ProductionCounterNormalizer (any part-counter encoding -> OK/NOK/total
+  quantities: cumulative totalizers with register wrap-around and reset handling,
+  incremental, part-done pulses with parts-per-count, boolean quality verdicts,
+  defect codes, absolute batch totals), MachineStatusNormalizer (boolean,
+  PLC code map, one-hot lamps with priority resolution, stacklight, PackML ->
+  the nine canonical MachineState values, with debounce, staleness -> UNKNOWN and
+  unmapped-code reporting), CycleTimeNormalizer (published values with unit
+  inference, counter deltas, trigger edges, start/end pairs, part-present flags,
+  or producing-time/parts, with cavity division and artefact rejection),
+  ProductionContextResolver (order/batch/part/serial/customer-part and any other
+  identifier signal attached to events with validity limits, late binding for
+  identifiers published after their part, and placeholder scrubbing), and
+  FleetProductionReport (windowed production, context breakdowns, OEE, machine and
+  fleet roll-ups, plus signal-coverage and anomaly diagnostics).
+add: declarative, JSON-round-trippable signal mapping (CounterSpec, StatusSpec,
+  CycleSpec, ContextSpec, MachineSpec, FleetSpec). FleetSpec.from_records() builds
+  a fleet from a tidy (machine, role, uuid) tag table, so hundreds of machines are
+  configured as reviewable data rather than as code.
+changed: unmeasured production quantities are reported as NaN, not 0, throughout
+  the new layer -- a machine that counts parts but not quality no longer implies
+  100% quality, and fleet roll-ups compute quality rates only over the machines
+  that measure both good parts and a total (reported as quality_machines).
+changed: mypy strict allowlist grown by the eight new signals modules; coverage
+  floor raised 82 -> 84.
+
 # June 2, 2026
 changed: event-log output now trims entirely-empty extra columns. The 9
   canonical core columns (ocel:eid, ocel:activity, ocel:timestamp,

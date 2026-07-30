@@ -2,6 +2,15 @@
 
 Track machine states, line throughput, changeovers, downtime, cycle times, and shift performance on the shop floor. These classes form the operational backbone of plant analytics.
 
+!!! tip "Reporting on more than one machine?"
+    Every class on this page assumes a specific signal encoding -- a boolean run flag,
+    a monotonic counter, a string part number. That assumption holds on one machine and
+    breaks across a plant, because the encodings differ on nearly every controller.
+    Start from [Signal Normalization](../modules/production/signal-normalization.md)
+    instead: it maps any counter, status, cycle-time or identifier signal onto canonical
+    production events, and `FleetProductionReport` turns a declarative fleet
+    configuration into one comparable frame for hundreds of machines.
+
 ---
 
 ## Production Class Map
@@ -13,6 +22,14 @@ flowchart TB
         LT["LineThroughputEvents<br/><code>parts per window</code>"]
         CO["ChangeoverEvents<br/><code>product changes</code>"]
         FC["FlowConstraintEvents<br/><code>blocked / starved</code>"]
+    end
+
+    subgraph NORM["<b>Signal Normalization</b><br/><i>any encoding → canonical events</i>"]
+        PCN["ProductionCounterNormalizer<br/><code>ok / nok / total</code>"]
+        MSN["MachineStatusNormalizer<br/><code>9 canonical states</code>"]
+        CTN["CycleTimeNormalizer<br/><code>seconds per part</code>"]
+        PCR["ProductionContextResolver<br/><code>order / part / serial</code>"]
+        FPR["FleetProductionReport<br/><code>machine × window</code>"]
     end
 
     subgraph TRACK["<b>Daily Tracking</b><br/><i>events → shift-level KPIs</i>"]
@@ -33,8 +50,14 @@ flowchart TB
     DT -->|"date, shift"| SR
     QT -->|"date, shift"| SR
 
+    PCN --> FPR
+    MSN --> FPR
+    CTN --> FPR
+    PCR --> FPR
+
     style DETECT fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
     style TRACK fill:#1a3a4a,stroke:#f59e0b,color:#fef3c7
+    style NORM fill:#1e293b,stroke:#a78bfa,color:#ede9fe
 ```
 
 ---

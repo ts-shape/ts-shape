@@ -2169,6 +2169,238 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("work_order",),
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
+    # ---- production: signal normalization layer ---------------------------
+    # ts_shape.events.production.signals turns heterogeneous machine signals
+    # into canonical production events. The classes below emit the same three
+    # canonical shapes as every other detector, so their output flows into the
+    # event log unchanged.
+    ("ProductionCounterNormalizer", "count_events"): _r(
+        "production.count.{kind}",
+        _PR,
+        P,
+        objs=("asset", "part"),
+        value_field="quantity",
+        standard_attrs={"ts_shape:outcome": "kind"},
+    ),
+    ("ProductionCounterNormalizer", "anomalies"): _r(
+        "production.count.anomaly.{anomaly}",
+        _PR,
+        P,
+        severity_field="severity",
+        value_field="value",
+        standard_attrs={"ts_shape:outcome": "anomaly"},
+    ),
+    ("ProductionCounterNormalizer", "counts_by_window"): _r(
+        "production.count.window_summary",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "qty_total"},
+    ),
+    ("ProductionCounterNormalizer", "counts_by_context"): _r(
+        "production.count.context_summary",
+        _PR,
+        S,
+        objs=("asset", "part"),
+        standard_attrs={"ts_shape:sample_count": "qty_total"},
+    ),
+    ("ProductionCounterNormalizer", "totals"): _r(
+        "production.count.totals",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "qty_total"},
+    ),
+    ("ProductionCounterNormalizer", "diagnostics"): _r(
+        "production.count.diagnostics",
+        _PR,
+        "static",
+        standard_attrs={"ts_shape:method": "counter_diagnostics"},
+    ),
+    ("MachineStatusNormalizer", "status_intervals"): _r(
+        "production.machine_status.{state}",
+        _PR,
+        I,
+        standard_attrs={"ts_shape:lifecycle_state": "state"},
+    ),
+    ("MachineStatusNormalizer", "downtime_intervals"): _r(
+        "production.machine_status.downtime.{state}",
+        _PR,
+        I,
+        standard_attrs={"ts_shape:lifecycle_state": "state"},
+    ),
+    ("MachineStatusNormalizer", "transitions"): _r(
+        "production.machine_status.transition_{transition}",
+        _PR,
+        P,
+        standard_attrs={"ts_shape:outcome": "transition"},
+    ),
+    ("MachineStatusNormalizer", "state_summary"): _r(
+        "production.machine_status.summary",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": None},
+    ),
+    ("MachineStatusNormalizer", "unmapped_values"): _r(
+        "production.machine_status.unmapped_value",
+        _PR,
+        "static",
+        standard_attrs={"ts_shape:method": "unmapped_state_value"},
+    ),
+    ("MachineStatusNormalizer", "diagnostics"): _r(
+        "production.machine_status.diagnostics",
+        _PR,
+        "static",
+        standard_attrs={"ts_shape:method": "status_diagnostics"},
+    ),
+    ("CycleTimeNormalizer", "cycles"): _r(
+        "production.cycle.measured",
+        _PR,
+        I,
+        objs=("asset", "cycle"),
+        value_field="cycle_time_seconds",
+        standard_attrs={"ts_shape:lifecycle_state": "complete"},
+    ),
+    ("CycleTimeNormalizer", "rejected"): _r(
+        "production.cycle.rejected.{reason}",
+        _PR,
+        I,
+        objs=("asset", "cycle"),
+        value_field="cycle_time_seconds",
+        standard_attrs={"ts_shape:lifecycle_state": "rejected"},
+    ),
+    ("CycleTimeNormalizer", "cycle_statistics"): _r(
+        "production.cycle.statistics",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "cycles"},
+    ),
+    ("CycleTimeNormalizer", "by_window"): _r(
+        "production.cycle.window_summary",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "cycles"},
+    ),
+    ("CycleTimeNormalizer", "deviations"): _r(
+        "production.cycle.deviation_{direction}",
+        _PR,
+        P,
+        objs=("asset", "cycle"),
+        severity_field="severity",
+        value_field="cycle_time_seconds",
+        standard_attrs={
+            "ts_shape:method": "cycle_deviation",
+            "ts_shape:direction": "direction",
+            "ts_shape:deviation": "deviation_seconds",
+            "ts_shape:deviation_pct": "deviation_pct",
+        },
+    ),
+    ("CycleTimeNormalizer", "diagnostics"): _r(
+        "production.cycle.diagnostics",
+        _PR,
+        "static",
+        standard_attrs={"ts_shape:method": "cycle_diagnostics"},
+    ),
+    # ``attach`` returns the caller's frame with context columns added, so its
+    # shape follows its input; ``point`` is declared because the frames that
+    # carry production context are overwhelmingly point events (counts, cycles).
+    ("ProductionContextResolver", "attach"): _r(
+        "production.context.attached",
+        _PR,
+        P,
+        objs=("asset", "part"),
+        standard_attrs={"ts_shape:outcome": None},
+    ),
+    ("ProductionContextResolver", "timeline"): _r(
+        "production.context.{dimension}",
+        _PR,
+        P,
+        standard_attrs={"ts_shape:outcome": "value"},
+    ),
+    ("ProductionContextResolver", "changes"): _r(
+        "production.context.change.{dimension}",
+        _PR,
+        P,
+        standard_attrs={"ts_shape:outcome": "transition"},
+    ),
+    ("ProductionContextResolver", "segments"): _r(
+        "production.context.segment",
+        _PR,
+        I,
+        standard_attrs={"ts_shape:lifecycle_state": "active"},
+    ),
+    ("ProductionContextResolver", "coverage"): _r(
+        "production.context.coverage",
+        _PR,
+        "static",
+        standard_attrs={"ts_shape:method": "context_coverage"},
+    ),
+    ("FleetProductionReport", "production_by_window"): _r(
+        "production.fleet.production_window",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "qty_total"},
+    ),
+    ("FleetProductionReport", "production_by_context"): _r(
+        "production.fleet.production_context",
+        _PR,
+        S,
+        objs=("asset", "part"),
+        standard_attrs={"ts_shape:sample_count": "qty_total"},
+    ),
+    ("FleetProductionReport", "status_by_window"): _r(
+        "production.fleet.status_window",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": None},
+    ),
+    ("FleetProductionReport", "status_intervals"): _r(
+        "production.fleet.machine_status.{state}",
+        _PR,
+        I,
+        standard_attrs={"ts_shape:lifecycle_state": "state"},
+    ),
+    ("FleetProductionReport", "cycle_by_window"): _r(
+        "production.fleet.cycle_window",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "cycles"},
+    ),
+    ("FleetProductionReport", "cycle_by_context"): _r(
+        "production.fleet.cycle_context",
+        _PR,
+        S,
+        objs=("asset", "part"),
+        standard_attrs={"ts_shape:sample_count": "cycles"},
+    ),
+    ("FleetProductionReport", "oee"): _r(
+        "production.fleet.oee",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "qty_total"},
+    ),
+    ("FleetProductionReport", "machine_summary"): _r(
+        "production.fleet.machine_summary",
+        _PR,
+        "static",
+        standard_attrs={"ts_shape:method": "machine_summary"},
+    ),
+    ("FleetProductionReport", "fleet_summary"): _r(
+        "production.fleet.summary",
+        _PR,
+        "static",
+        standard_attrs={"ts_shape:method": "fleet_summary"},
+    ),
+    ("FleetProductionReport", "signal_coverage"): _r(
+        "production.fleet.signal_coverage",
+        _PR,
+        "static",
+        standard_attrs={"ts_shape:method": "signal_coverage"},
+    ),
+    ("FleetProductionReport", "anomalies"): _r(
+        "production.fleet.anomaly",
+        _PR,
+        "static",
+        standard_attrs={"ts_shape:method": "fleet_anomaly"},
+    ),
 }
 
 

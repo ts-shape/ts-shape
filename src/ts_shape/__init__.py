@@ -64,6 +64,16 @@ _LAZY: dict[str, str] = {
     # OrderTraceabilityEvents is a backwards-compatible alias of the above.
     "OrderTraceabilityEvents": "ts_shape.events.production.order_traceability",
     "PartProductionTracking": "ts_shape.events.production.part_tracking",
+    # -- events.production.signals (signal normalization layer) ----------
+    # The declarative specs these take (CounterSpec, StatusSpec, MachineSpec,
+    # FleetSpec, ...) live in ts_shape.events.production.signals; they are
+    # configuration types rather than detectors, so they are not re-exported
+    # here and would only clutter list_detectors().
+    "CycleTimeNormalizer": "ts_shape.events.production.signals.cycles",
+    "FleetProductionReport": "ts_shape.events.production.signals.report",
+    "MachineStatusNormalizer": "ts_shape.events.production.signals.status",
+    "ProductionContextResolver": "ts_shape.events.production.signals.context",
+    "ProductionCounterNormalizer": "ts_shape.events.production.signals.counters",
     "PerformanceLossTracking": "ts_shape.events.production.performance_loss",
     "PeriodSummary": "ts_shape.events.production.period_summary",
     "QualityTracking": "ts_shape.events.production.quality_tracking",

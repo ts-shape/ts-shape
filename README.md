@@ -188,6 +188,57 @@ batches = BatchTrackingEvents(df, batch_uuid="batch:id")
 batch_list = batches.detect_batches()
 ```
 
+**Global production reporting across a fleet.** The detectors above each assume one
+signal encoding. Across hundreds of machines the encodings differ on nearly every
+controller -- a 16-bit counter that wraps, a part-done pulse meaning eight parts, a
+PackML state number, three overlapping stacklight lamps, a cycle time in
+milliseconds, a serial number published *after* the part it identifies. The
+signal-normalization layer absorbs all of it, so one report covers the whole fleet:
+
+```python
+from ts_shape.events.production.signals import (
+    CounterKind, CounterMode, CounterSpec, FleetProductionReport, FleetSpec,
+    MachineSpec, Rollover, StatusMode, StatusSpec,
+)
+
+# The mapping is data, not code -- build it from a maintained tag table,
+# JSON/YAML, or a config table: FleetSpec.from_records(rows).
+fleet = FleetSpec(machines=(
+    MachineSpec(
+        machine_id="PRESS-01",
+        attributes={"plant": "Ingolstadt", "line": "L1"},
+        counters=(
+            CounterSpec(uuid="p1.total", kind=CounterKind.TOTAL,
+                        mode=CounterMode.CUMULATIVE, rollover_at=Rollover.UINT16),
+            CounterSpec(uuid="p1.nok", kind=CounterKind.NOK),
+        ),
+        status=StatusSpec(mode=StatusMode.PACKML, uuid="p1.packml",
+                          stale_after="30min"),
+        ideal_cycle_seconds=14.0,
+    ),
+    MachineSpec(
+        machine_id="CELL-07",
+        attributes={"plant": "Ingolstadt", "line": "L2"},
+        counters=(CounterSpec(uuid="c7.done", kind=CounterKind.OK,
+                              mode=CounterMode.PULSE, parts_per_count=2),),
+        status=StatusSpec(mode=StatusMode.BOOLEAN, uuid="c7.running"),
+    ),
+))
+
+report = FleetProductionReport(fleet, df, until="2025-03-03 14:00")
+report.production_by_window("1h")                 # machine x hour, one schema
+report.production_by_context(["order_number"])    # machine x order / part / customer
+report.oee("1D")                                  # availability x performance x quality
+report.fleet_summary(group_by=["plant", "line"])  # roll-up
+report.signal_coverage()                          # which tags never reported
+report.anomalies()                                # counter resets, unmapped state codes
+```
+
+Quantities that are not measured stay `NaN` rather than becoming `0`, so a machine
+that counts parts but not quality cannot quietly outrank one that measures both. See
+[`examples/global_production_reporting_demo.py`](examples/global_production_reporting_demo.py)
+for a runnable four-machine fleet where no two machines are wired alike.
+
 Line & flow analytics for industrial engineers:
 
 ```python

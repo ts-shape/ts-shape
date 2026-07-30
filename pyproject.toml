@@ -95,7 +95,7 @@ show_missing = true
 skip_empty = true
 # Fail the build if total coverage regresses below this floor. Set just under
 # the current measured level; ratchet upward as coverage improves.
-fail_under = 82
+fail_under = 84
 
 [tool.black]
 target-version = ["py311"]
@@ -133,6 +133,14 @@ module = [
     "ts_shape.loader.timeseries.s3proxy_parquet_loader",
     "ts_shape.loader.timeseries.databricks_spark_parquet_loader",
     "ts_shape.features.cycles.cycles_extractor",
+    "ts_shape.events.production.signals._intervals",
+    "ts_shape.events.production.signals.context",
+    "ts_shape.events.production.signals.counters",
+    "ts_shape.events.production.signals.cycles",
+    "ts_shape.events.production.signals.report",
+    "ts_shape.events.production.signals.spec",
+    "ts_shape.events.production.signals.status",
+    "ts_shape.events.production.signals.values",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
