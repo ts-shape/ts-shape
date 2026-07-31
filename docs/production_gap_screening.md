@@ -61,29 +61,37 @@ both the reset under-count and the interleaving over-count.
 
 ---
 
-## Theme B — Interval duration measured as sample-span, not to the next transition 🔜
+## Theme B — Interval duration measured as sample-span, not to the next transition ✅ / 🔜
 
 State intervals are built as `end = last sample carrying this state`, so the
 time from the last same-state sample to the actual transition is never counted.
 On dense periodic data this undercounts each interval by one sample period; on
 **change-encoded (`is_delta=True`) signals** — one row per transition, the
 library's own convention — each state is a single row, so `start == end` and
-**duration collapses to 0**. Existing tests pass only because their fixtures
-insert a redundant trailing same-state sample.
+**duration collapses to 0**. Existing tests passed only because their fixtures
+inserted a redundant trailing same-state sample.
 
-| Module | Method | Sev | Effect on delta signals |
-|---|---|---|---|
-| `machine_state.py` | `detect_run_idle` (→ `state_quality_metrics`) | high | every duration `0`; `min_duration` filter drops all intervals |
-| `micro_stop_detection.py` | `_intervalize` (→ detect/frequency/impact) | high | `total_micro_stop_time = 0`, `availability_loss_pct = 0` |
-| `long_downtime_events.py` | `detect_long_downtime` | high | a real multi-hour stop is a single row → `duration 0 < min_gap` → missed |
-| `duty_cycle.py` | `on_off_intervals` (→ `excessive_cycling`) | medium | all on/off durations `0` |
-| `order_traceability.py`, `routing_traceability.py`, `multi_process_traceability.py` | `_detect_intervals` / dwell stats | medium | per-station dwell `0` for single-arrival events |
+**Fix:** a shared helper `ts_shape.utils.intervals.state_intervals` closes each
+interval at the *next transition's* timestamp when `interval_end="next_change"`
+(the final, still-open interval is bounded by an optional `data_end`/`now`).
+Default `interval_end="last_sample"` is unchanged, so bracketed-data callers
+are unaffected.
 
-**Fix approach (follow-up):** close each interval at the *next transition's*
-timestamp (`end = next_start`), leaving the final interval open (optionally
-bounded by a `data_end`/`now` argument). Offer behind an opt-in kwarg (e.g.
-`interval_end="next_change"`) so bracketed-data users are unaffected. A shared
-`utils.intervals` helper analogous to `utils.counters` keeps it consistent.
+| Module | Method | Sev | Effect on delta signals | Status |
+|---|---|---|---|---|
+| `machine_state.py` | `detect_run_idle`, `state_quality_metrics` | high | every duration `0`; `min_duration` filter drops all intervals | ✅ (`interval_end` kwarg) |
+| `micro_stop_detection.py` | `_intervalize` (→ detect/frequency/impact) | high | `total_micro_stop_time = 0`, `availability_loss_pct = 0` | ✅ (constructor `interval_end`) |
+| `long_downtime_events.py` | `detect_long_downtime` | high | a real multi-hour stop is a single row → `duration 0 < min_gap` → missed | ✅ (`interval_end` kwarg) |
+| `duty_cycle.py` | `on_off_intervals` (→ `excessive_cycling`) | medium | all on/off durations `0` | ✅ (constructor `interval_end`) |
+| `order_traceability.py`, `routing_traceability.py`, `multi_process_traceability.py` | `_detect_intervals` / dwell stats | medium | per-station dwell `0` for single-arrival events | 🔜 |
+
+**Traceability dwell (follow-up):** the three traceability modules share the
+same collapse, but the honest fix has *different* semantics — a station logs a
+part once on arrival, so the dwell is `arrival-at-this-station →
+arrival-at-the-part's-next-station` (a cross-station, per-identifier lookup),
+not simply the next occupant of the same station. That is a distinct design
+decision (`infer_dwell_from_next`), so it is kept as its own change rather than
+forced through the boolean-state helper.
 
 **Genuine bug in the same family — fixed now:** ✅
 `downtime_tracking.downtime_by_reason` computed `next_time` *after* filtering to
@@ -172,9 +180,9 @@ consistently across the pack.
 
 ## Follow-up plan (lined out)
 
-1. **Theme B** — `utils.intervals` helper + opt-in `interval_end="next_change"`
-   across `machine_state`, `micro_stop_detection`, `long_downtime_events`,
-   `duty_cycle`, and the traceability dwell methods.
+1. **Theme B traceability dwell** — `infer_dwell_from_next` (cross-station,
+   per-identifier) on `order_traceability`, `routing_traceability`,
+   `multi_process_traceability`. (The boolean-state modules are done.)
 2. **Theme E overnight** — production-day grouping across `target_tracking`,
    `shift_reporting`, `shift_handover`.
 3. **Theme C** — `max_gap`/`max_cycle_gap` caps on `downtime_tracking`,

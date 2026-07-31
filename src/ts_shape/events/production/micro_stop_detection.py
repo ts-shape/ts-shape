@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +31,29 @@ class MicroStopEvents(Base):
         event_uuid: str = "prod:micro_stop",
         value_column: str = "value_bool",
         time_column: str = "systime",
+        interval_end: str = "last_sample",
+        data_end: pd.Timestamp | None = None,
     ) -> None:
+        """Initialize the micro-stop detector.
+
+        Args:
+            interval_end: How idle/run intervals are closed. ``"last_sample"``
+                (default) ends each interval at its last sample -- backward
+                compatible, but a change-encoded (``is_delta``) run-state signal
+                logs one row per transition, so every interval collapses to
+                zero duration and no lost time is reported. ``"next_change"``
+                closes each interval at the next transition, correctly
+                measuring change-encoded signals.
+            data_end: Optional bound for the final, still-open interval when
+                ``interval_end="next_change"``.
+        """
         super().__init__(dataframe, column_name=time_column)
         self.run_state_uuid = run_state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
+        self.interval_end = interval_end
+        self.data_end = data_end
 
         self.series = (
             self.dataframe[self.dataframe["uuid"] == self.run_state_uuid]
@@ -45,29 +63,37 @@ class MicroStopEvents(Base):
         self.series[self.time_column] = pd.to_datetime(self.series[self.time_column])
 
     def _intervalize(self) -> pd.DataFrame:
-        """Convert boolean state signal to run/idle intervals."""
+        """Convert boolean state signal to run/idle intervals.
+
+        Intervals are closed according to the ``interval_end`` set on the
+        instance (see :func:`ts_shape.utils.intervals.state_intervals`).
+        """
+        cols = ["start", "end", "state", "duration"]
         if self.series.empty:
-            return pd.DataFrame(columns=["start", "end", "state", "duration"])
+            return pd.DataFrame(columns=cols)
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = s[self.value_column].fillna(False).astype(bool)
-        state_change = (s["state"] != s["state"].shift()).cumsum()
+        intervals = state_intervals(
+            s,
+            time_column=self.time_column,
+            state_column="state",
+            interval_end=self.interval_end,
+            data_end=self.data_end,
+        )
+        if intervals.empty:
+            return pd.DataFrame(columns=cols)
 
-        rows: list[dict[str, Any]] = []
-        for _, seg in s.groupby(state_change):
-            state = bool(seg["state"].iloc[0])
-            start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
-            rows.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "state": "run" if state else "idle",
-                    "duration": end - start,
-                }
-            )
-
-        return pd.DataFrame(rows)
+        return pd.DataFrame(
+            {
+                "start": intervals["start"].to_numpy(),
+                "end": intervals["end"].to_numpy(),
+                "state": [
+                    "run" if bool(st) else "idle" for st in intervals["state"]
+                ],
+                "duration": pd.to_timedelta(intervals["duration_seconds"], unit="s"),
+            }
+        )
 
     def detect_micro_stops(
         self,

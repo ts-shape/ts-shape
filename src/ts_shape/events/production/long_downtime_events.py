@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +71,25 @@ class LongDowntimeEvents(Base):
             return mask
         return col.fillna(False).astype(bool)
 
-    def detect_long_downtime(self, min_gap: str = "3h") -> pd.DataFrame:
+    def detect_long_downtime(
+        self,
+        min_gap: str = "3h",
+        *,
+        interval_end: str = "last_sample",
+        data_end: pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
         """Return idle/stopped intervals whose duration is >= min_gap.
+
+        - interval_end: how each downtime interval is closed.
+          ``"last_sample"`` (default) ends it at its last sample -- backward
+          compatible, but a change-encoded (``is_delta``) state signal logs one
+          row per transition, so a real multi-hour stop becomes a single
+          zero-duration row and is missed. ``"next_change"`` closes the
+          interval at the following transition, so change-encoded stops are
+          detected. The final, still-open downtime is bounded by ``data_end``
+          when given (otherwise it stays zero-length and is filtered out).
+        - data_end: optional bound for a downtime still open at the end of the
+          data (e.g. "now").
 
         Columns: start, end, duration_seconds, downtime_index, uuid, source_uuid, is_delta
         """
@@ -91,23 +109,27 @@ class LongDowntimeEvents(Base):
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = self._as_state(s[self.value_column])
-        state_change = (s["state"] != s["state"].shift()).cumsum()
+        intervals = state_intervals(
+            s,
+            time_column=self.time_column,
+            state_column="state",
+            interval_end=interval_end,
+            data_end=data_end,
+        )
         min_td = pd.to_timedelta(min_gap)
 
         rows: list[dict[str, Any]] = []
-        for _, seg in s.groupby(state_change):
-            if bool(seg["state"].iloc[0]):
+        for _, interval in intervals.iterrows():
+            if bool(interval["state"]):
                 continue  # running segment — skip
-            start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
-            duration = end - start
+            duration = interval["end"] - interval["start"]
             if duration < min_td:
                 continue
             rows.append(
                 {
-                    "start": start,
-                    "end": end,
-                    "duration_seconds": duration.total_seconds(),
+                    "start": interval["start"],
+                    "end": interval["end"],
+                    "duration_seconds": interval["duration_seconds"],
                     "uuid": self.event_uuid,
                     "source_uuid": self.state_uuid,
                     "is_delta": True,

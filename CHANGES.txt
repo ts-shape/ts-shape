@@ -1,4 +1,18 @@
 # July 31, 2026
+add: ts_shape.utils.intervals.state_intervals -- shared helper that collapses a
+  state signal into intervals and closes each one at the next transition when
+  interval_end="next_change". The previous "end at the last sample carrying the
+  state" logic collapses to zero duration on change-encoded (is_delta) signals
+  -- one row per transition -- so downtime, micro-stop and duty-cycle analyses
+  silently reported nothing on the library's normal data shape.
+add: opt-in interval_end="next_change" (with an optional data_end bound for the
+  final open interval) on MachineStateEvents.detect_run_idle /
+  state_quality_metrics and LongDowntimeEvents.detect_long_downtime, and as a
+  constructor option on MicroStopEvents and DutyCycleEvents. Default
+  ("last_sample") is unchanged. On change-encoded signals this recovers
+  micro-stop lost time, multi-hour downtimes, and on/off durations that
+  previously read as zero. (Traceability dwell shares the collapse but has
+  distinct cross-station semantics and is a separate follow-up.)
 add: ts_shape.utils.counters (counter_quantity, counter_increments,
   count_resets) -- shared reset-aware handling for monotonic production
   counters that reset to zero at a shift/part change or PLC restart. A naive
