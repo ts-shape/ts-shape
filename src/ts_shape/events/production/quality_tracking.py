@@ -12,6 +12,7 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_increments, counter_quantity, count_resets
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ class QualityTracking(Base):
         nok_counter_uuid: str,
         *,
         value_column: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate NOK (defective) parts per shift.
 
@@ -111,6 +113,13 @@ class QualityTracking(Base):
             ok_counter_uuid: UUID for good parts counter
             nok_counter_uuid: UUID for defective parts counter
             value_column: Column containing counter values
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the parts accumulated after the reset, for both the
+                OK and NOK counters. The result gains a ``resets`` column with
+                the number of resets observed in each shift (across both
+                counters). When False (default), each counter uses
+                ``max(0, last - first)`` and a shift containing a reset
+                reports too little (often 0).
 
         Returns:
             DataFrame with quality metrics by shift:
@@ -121,6 +130,8 @@ class QualityTracking(Base):
             - total_parts: Total parts produced
             - nok_rate_pct: Percentage of defective parts
             - first_pass_yield_pct: Percentage of good parts
+            - resets: Number of counter resets in the shift (only when
+              ``handle_resets=True``)
 
         Example:
             >>> nok_by_shift('good_counter', 'bad_counter')
@@ -185,6 +196,7 @@ class QualityTracking(Base):
         for date, shift in sorted(date_shifts):
             ok_parts = 0
             nok_parts = 0
+            resets = 0
 
             # Calculate OK parts for this shift
             if ok_processed is not None:
@@ -192,9 +204,11 @@ class QualityTracking(Base):
                     (ok_processed["date"] == date) & (ok_processed["shift"] == shift)
                 ]
                 if not ok_shift.empty:
-                    first_count = ok_shift[value_column].iloc[0]
-                    last_count = ok_shift[value_column].iloc[-1]
-                    ok_parts = max(0, last_count - first_count)
+                    ok_parts = counter_quantity(
+                        ok_shift[value_column], handle_resets=handle_resets
+                    )
+                    if handle_resets:
+                        resets += count_resets(ok_shift[value_column])
 
             # Calculate NOK parts for this shift
             if nok_processed is not None:
@@ -202,9 +216,11 @@ class QualityTracking(Base):
                     (nok_processed["date"] == date) & (nok_processed["shift"] == shift)
                 ]
                 if not nok_shift.empty:
-                    first_count = nok_shift[value_column].iloc[0]
-                    last_count = nok_shift[value_column].iloc[-1]
-                    nok_parts = max(0, last_count - first_count)
+                    nok_parts = counter_quantity(
+                        nok_shift[value_column], handle_resets=handle_resets
+                    )
+                    if handle_resets:
+                        resets += count_resets(nok_shift[value_column])
 
             total_parts = ok_parts + nok_parts
 
@@ -215,18 +231,19 @@ class QualityTracking(Base):
                 nok_rate = 0
                 fpy = 0
 
-            results.append(
-                {
-                    "date": date,
-                    "shift": shift,
-                    "ok_parts": ok_parts,
-                    "nok_parts": nok_parts,
-                    "total_parts": total_parts,
-                    "nok_rate_pct": round(nok_rate, 1),
-                    "first_pass_yield_pct": round(fpy, 1),
-                    "quality_pct": round(fpy, 1),
-                }
-            )
+            row = {
+                "date": date,
+                "shift": shift,
+                "ok_parts": ok_parts,
+                "nok_parts": nok_parts,
+                "total_parts": total_parts,
+                "nok_rate_pct": round(nok_rate, 1),
+                "first_pass_yield_pct": round(fpy, 1),
+                "quality_pct": round(fpy, 1),
+            }
+            if handle_resets:
+                row["resets"] = int(resets)
+            results.append(row)
 
         return pd.DataFrame(results)
 
@@ -238,6 +255,7 @@ class QualityTracking(Base):
         *,
         value_column_counter: str = "value_integer",
         value_column_part: str = "value_string",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate quality metrics by part number.
 
@@ -247,6 +265,17 @@ class QualityTracking(Base):
             part_id_uuid: UUID for part number signal
             value_column_counter: Column containing counter values
             value_column_part: Column containing part numbers
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the parts accumulated after the reset. The part
+                number is attached to a single global counter, so the
+                reset-aware quantity is the sum of per-reading increments over
+                the full time-sorted series, grouped by part -- this also
+                corrects the over-count that ``last - first`` produces when
+                parts alternate over a non-contiguous group. The result gains
+                a ``resets`` column with the number of resets attributed to
+                each part (across the OK and NOK counters). When False
+                (default), the quantity is ``max(0, last - first)`` per part
+                group and a reset is lost.
 
         Returns:
             DataFrame with quality by part:
@@ -256,6 +285,8 @@ class QualityTracking(Base):
             - total_parts: Total parts produced
             - nok_rate_pct: Percentage of defective parts
             - first_pass_yield_pct: Percentage of good parts
+            - resets: Number of counter resets for the part (only when
+              ``handle_resets=True``)
 
         Example:
             >>> quality_by_part('good', 'bad', 'part_id')
@@ -302,6 +333,7 @@ class QualityTracking(Base):
 
         # Process OK parts by part number
         ok_by_part = {}
+        resets_by_part: dict[str, int] = {}
         if not ok_data.empty:
             ok_data[self.time_column] = pd.to_datetime(ok_data[self.time_column])
 
@@ -316,12 +348,28 @@ class QualityTracking(Base):
             merged_ok = merged_ok.rename(columns={value_column_part: "part_number"})
             merged_ok = merged_ok.dropna(subset=["part_number"])
 
+            if handle_resets:
+                # Compute increments on the FULL time-sorted counter before
+                # grouping (fixes both reset under-count and interleaving).
+                merged_ok["_increment"] = counter_increments(
+                    merged_ok[value_column_counter]
+                )
+                merged_ok["_is_reset"] = (
+                    merged_ok[value_column_counter].diff() < 0
+                ).fillna(False)
+
             # Calculate OK parts per part number
             for part_num, group in merged_ok.groupby("part_number"):
                 if not group.empty:
-                    first_count = group[value_column_counter].iloc[0]
-                    last_count = group[value_column_counter].iloc[-1]
-                    ok_by_part[part_num] = max(0, last_count - first_count)
+                    if handle_resets:
+                        ok_by_part[part_num] = float(group["_increment"].sum())
+                        resets_by_part[part_num] = resets_by_part.get(
+                            part_num, 0
+                        ) + int(group["_is_reset"].sum())
+                    else:
+                        first_count = group[value_column_counter].iloc[0]
+                        last_count = group[value_column_counter].iloc[-1]
+                        ok_by_part[part_num] = max(0, last_count - first_count)
 
         # Process NOK parts by part number
         nok_by_part = {}
@@ -339,12 +387,26 @@ class QualityTracking(Base):
             merged_nok = merged_nok.rename(columns={value_column_part: "part_number"})
             merged_nok = merged_nok.dropna(subset=["part_number"])
 
+            if handle_resets:
+                merged_nok["_increment"] = counter_increments(
+                    merged_nok[value_column_counter]
+                )
+                merged_nok["_is_reset"] = (
+                    merged_nok[value_column_counter].diff() < 0
+                ).fillna(False)
+
             # Calculate NOK parts per part number
             for part_num, group in merged_nok.groupby("part_number"):
                 if not group.empty:
-                    first_count = group[value_column_counter].iloc[0]
-                    last_count = group[value_column_counter].iloc[-1]
-                    nok_by_part[part_num] = max(0, last_count - first_count)
+                    if handle_resets:
+                        nok_by_part[part_num] = float(group["_increment"].sum())
+                        resets_by_part[part_num] = resets_by_part.get(
+                            part_num, 0
+                        ) + int(group["_is_reset"].sum())
+                    else:
+                        first_count = group[value_column_counter].iloc[0]
+                        last_count = group[value_column_counter].iloc[-1]
+                        nok_by_part[part_num] = max(0, last_count - first_count)
 
         # Combine results
         all_parts = set(ok_by_part.keys()) | set(nok_by_part.keys())
@@ -361,17 +423,18 @@ class QualityTracking(Base):
                 nok_rate = 0
                 fpy = 0
 
-            results.append(
-                {
-                    "part_number": part_num,
-                    "ok_parts": ok_parts,
-                    "nok_parts": nok_parts,
-                    "total_parts": total_parts,
-                    "nok_rate_pct": round(nok_rate, 1),
-                    "first_pass_yield_pct": round(fpy, 1),
-                    "quality_pct": round(fpy, 1),
-                }
-            )
+            row = {
+                "part_number": part_num,
+                "ok_parts": ok_parts,
+                "nok_parts": nok_parts,
+                "total_parts": total_parts,
+                "nok_rate_pct": round(nok_rate, 1),
+                "first_pass_yield_pct": round(fpy, 1),
+                "quality_pct": round(fpy, 1),
+            }
+            if handle_resets:
+                row["resets"] = resets_by_part.get(part_num, 0)
+            results.append(row)
 
         return pd.DataFrame(results)
 
@@ -382,6 +445,7 @@ class QualityTracking(Base):
         *,
         value_column_counter: str = "value_integer",
         value_column_reason: str = "value_string",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Analyze NOK parts by defect reason.
 
@@ -390,12 +454,24 @@ class QualityTracking(Base):
             defect_reason_uuid: UUID for defect reason signal
             value_column_counter: Column containing counter values
             value_column_reason: Column containing reason codes
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the parts accumulated after the reset. The reason is
+                attached to a single global counter, so the reset-aware
+                quantity is the sum of per-reading increments over the full
+                time-sorted series, grouped by reason -- this also corrects
+                the over-count that ``last - first`` produces when reasons
+                alternate over a non-contiguous group. The result gains a
+                ``resets`` column with the number of resets attributed to each
+                reason. When False (default), the quantity is
+                ``max(0, last - first)`` per reason group and a reset is lost.
 
         Returns:
             DataFrame with NOK by reason:
             - reason: Defect reason code
             - nok_parts: Number of defective parts
             - pct_of_total: Percentage of total NOK
+            - resets: Number of counter resets for the reason (only when
+              ``handle_resets=True``)
 
         Example:
             >>> nok_by_reason('bad_parts', 'defect_reason')
@@ -416,8 +492,12 @@ class QualityTracking(Base):
             .sort_values(self.time_column)
         )
 
+        columns = ["reason", "nok_parts", "pct_of_total"]
+        if handle_resets:
+            columns.append("resets")
+
         if nok_data.empty or reason_data.empty:
-            return pd.DataFrame(columns=["reason", "nok_parts", "pct_of_total"])
+            return pd.DataFrame(columns=columns)
 
         nok_data[self.time_column] = pd.to_datetime(nok_data[self.time_column])
         reason_data[self.time_column] = pd.to_datetime(reason_data[self.time_column])
@@ -438,25 +518,31 @@ class QualityTracking(Base):
         merged = merged[merged["reason"] != ""]
 
         if merged.empty:
-            return pd.DataFrame(columns=["reason", "nok_parts", "pct_of_total"])
+            return pd.DataFrame(columns=columns)
+
+        if handle_resets:
+            # Compute increments/resets on the FULL time-sorted counter before
+            # grouping (fixes both reset under-count and interleaving).
+            merged["_increment"] = counter_increments(merged["nok_count"])
+            merged["_is_reset"] = (merged["nok_count"].diff() < 0).fillna(False)
 
         # Calculate NOK parts per reason
         results = []
         for reason, group in merged.groupby("reason"):
             if not group.empty:
-                first_count = group["nok_count"].iloc[0]
-                last_count = group["nok_count"].iloc[-1]
-                nok_parts = max(0, last_count - first_count)
-
-                results.append(
-                    {
-                        "reason": reason,
-                        "nok_parts": nok_parts,
-                    }
-                )
+                if handle_resets:
+                    nok_parts = float(group["_increment"].sum())
+                    row = {"reason": reason, "nok_parts": nok_parts}
+                    row["resets"] = int(group["_is_reset"].sum())
+                else:
+                    first_count = group["nok_count"].iloc[0]
+                    last_count = group["nok_count"].iloc[-1]
+                    nok_parts = max(0, last_count - first_count)
+                    row = {"reason": reason, "nok_parts": nok_parts}
+                results.append(row)
 
         if not results:
-            return pd.DataFrame(columns=["reason", "nok_parts", "pct_of_total"])
+            return pd.DataFrame(columns=columns)
 
         result_df = pd.DataFrame(results)
 
@@ -471,7 +557,7 @@ class QualityTracking(Base):
         # Sort by NOK parts descending
         result_df = result_df.sort_values("nok_parts", ascending=False)
 
-        return result_df.reset_index(drop=True)
+        return result_df.reset_index(drop=True)[columns]
 
     def daily_quality_summary(
         self,
@@ -479,6 +565,7 @@ class QualityTracking(Base):
         nok_counter_uuid: str,
         *,
         value_column: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Daily quality summary.
 
@@ -486,6 +573,11 @@ class QualityTracking(Base):
             ok_counter_uuid: UUID for good parts counter
             nok_counter_uuid: UUID for defective parts counter
             value_column: Column containing counter values
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the parts accumulated after the reset (see
+                :meth:`nok_by_shift`). The result gains a ``resets`` column
+                with the number of resets observed that day. When False
+                (default), a shift containing a reset reports too little.
 
         Returns:
             DataFrame with daily quality:
@@ -495,6 +587,8 @@ class QualityTracking(Base):
             - total_parts: Total parts produced
             - nok_rate_pct: Percentage of defective parts
             - first_pass_yield_pct: Percentage of good parts
+            - resets: Number of counter resets that day (only when
+              ``handle_resets=True``)
 
         Example:
             >>> daily_quality_summary('good', 'bad')
@@ -504,42 +598,49 @@ class QualityTracking(Base):
             2   2024-01-03  1290      60         1350         4.4           95.6
         """
         shift_quality = self.nok_by_shift(
-            ok_counter_uuid, nok_counter_uuid, value_column=value_column
+            ok_counter_uuid,
+            nok_counter_uuid,
+            value_column=value_column,
+            handle_resets=handle_resets,
         )
+
+        base_columns = [
+            "date",
+            "ok_parts",
+            "nok_parts",
+            "total_parts",
+            "nok_rate_pct",
+            "first_pass_yield_pct",
+            "quality_pct",
+        ]
+        if handle_resets:
+            base_columns.append("resets")
 
         if shift_quality.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "ok_parts",
-                    "nok_parts",
-                    "total_parts",
-                    "nok_rate_pct",
-                    "first_pass_yield_pct",
-                    "quality_pct",
-                ]
-            )
+            return pd.DataFrame(columns=base_columns)
 
         # Aggregate by date
-        daily = (
-            shift_quality.groupby("date")
-            .agg(
-                {
-                    "ok_parts": "sum",
-                    "nok_parts": "sum",
-                    "total_parts": "sum",
-                }
-            )
-            .reset_index()
-        )
+        agg = {
+            "ok_parts": "sum",
+            "nok_parts": "sum",
+            "total_parts": "sum",
+        }
+        if handle_resets:
+            agg["resets"] = "sum"
 
-        # Recalculate percentages
-        daily["nok_rate_pct"] = (daily["nok_parts"] / daily["total_parts"] * 100).round(
-            1
+        daily = shift_quality.groupby("date").agg(agg).reset_index()
+
+        # Recalculate percentages. Guard against zero-total days (0/0 = NaN).
+        daily["nok_rate_pct"] = (
+            (daily["nok_parts"] / daily["total_parts"] * 100)
+            .where(daily["total_parts"] > 0, 0.0)
+            .round(1)
         )
         daily["first_pass_yield_pct"] = (
-            daily["ok_parts"] / daily["total_parts"] * 100
-        ).round(1)
+            (daily["ok_parts"] / daily["total_parts"] * 100)
+            .where(daily["total_parts"] > 0, 0.0)
+            .round(1)
+        )
         daily["quality_pct"] = daily["first_pass_yield_pct"]
 
         return daily

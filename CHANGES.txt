@@ -1,3 +1,36 @@
+# July 31, 2026
+add: ts_shape.utils.counters (counter_quantity, counter_increments,
+  count_resets) -- shared reset-aware handling for monotonic production
+  counters that reset to zero at a shift/part change or PLC restart. A naive
+  last - first loses all production in a window where a reset happened.
+add: opt-in handle_resets=True across the production pack so the reset-aware
+  behaviour shipped in PartProductionTracking is available everywhere a
+  quantity is derived from a counter: OEECalculator (calculate_performance,
+  calculate_quality), LineThroughputEvents.count_parts, TargetTracking,
+  ScrapTracking, ReworkTracking, QualityTracking, BatchTrackingEvents,
+  OperatorPerformanceTracking, ContinuousProcessAlignment.segment_by_cut,
+  ShiftReporting, ShiftHandover, and PeriodSummary. Default behaviour and
+  column sets are unchanged; when enabled the result gains a resets column.
+  For the by-reason / by-part methods this also corrects the over-count that
+  last - first produces when categories alternate over a non-contiguous group.
+fix: DowntimeTracking.downtime_by_reason booked running time as downtime (it
+  diffed timestamps after filtering to stopped rows, so a stop lasted until
+  the next stop). Duration is now computed on the full state timeline before
+  filtering, mirroring downtime_by_shift.
+fix: QualityTracking.daily_quality_summary returned NaN rates for a zero-total
+  day (0/0); both rate divisions are now guarded to 0.0.
+fix: LineThroughputEvents.throughput_oee produced NaN/inf performance when the
+  target rate was zero (flat counter or explicit 0); it now reports 0.
+fix: ShiftReporting.shift_targets produced inf achievement_pct for a zero
+  target; now guarded to 0.0, matching ShiftHandover.
+add: ChangeoverEvents.detect_changeover gained include_initial (default True
+  preserves the current behaviour of emitting the first reading; pass False to
+  report only real value changes and drop the synthetic leading event).
+docs: docs/production_gap_screening.md -- a full functional-gap screen of the
+  production pack, with the remaining themes (interval-duration on
+  change-encoded signals, gap-spanning durations, time-weighted utilisation,
+  overnight-shift attribution) lined out as scoped follow-ups.
+
 # June 2, 2026
 changed: event-log output now trims entirely-empty extra columns. The 9
   canonical core columns (ocel:eid, ocel:activity, ocel:timestamp,
