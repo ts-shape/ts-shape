@@ -16,6 +16,7 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import count_resets, counter_quantity
 
 logger = logging.getLogger(__name__)
 
@@ -103,15 +104,25 @@ class ShiftHandoverReport(Base):
         self,
         uuid: str,
         value_column: str,
+        *,
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
-        """Get counter deltas grouped by date/shift."""
+        """Get counter deltas grouped by date/shift.
+
+        When ``handle_resets`` is True a decreasing counter is treated as a
+        reset and the post-reset production is counted, and a ``resets`` column
+        with the per-shift reset count is added.
+        """
         data = (
             self.dataframe[self.dataframe["uuid"] == uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=["date", "shift", "quantity"])
+            cols = ["date", "shift", "quantity"]
+            if handle_resets:
+                cols.append("resets")
+            return pd.DataFrame(columns=cols)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
@@ -120,8 +131,12 @@ class ShiftHandoverReport(Base):
         results = []
         for (dt, shift), grp in data.groupby(["date", "shift"]):
             grp = grp.sort_values(self.time_column)
-            qty = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
-            results.append({"date": dt, "shift": shift, "quantity": int(qty)})
+            counter_series = grp[value_column]
+            qty = int(counter_quantity(counter_series, handle_resets=handle_resets))
+            row = {"date": dt, "shift": shift, "quantity": qty}
+            if handle_resets:
+                row["resets"] = count_resets(counter_series)
+            results.append(row)
 
         return pd.DataFrame(results)
 
@@ -306,6 +321,7 @@ class ShiftHandoverReport(Base):
         value_column_counter: str = "value_integer",
         value_column_state: str = "value_string",
         report_date: str | None = None,
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Generate a shift handover report from raw timeseries signals.
 
@@ -324,22 +340,39 @@ class ShiftHandoverReport(Base):
             value_column_counter: Column for counter values.
             value_column_state: Column for state values.
             report_date: Specific date (YYYY-MM-DD). If None, uses latest date.
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset for production, ok_parts and
+                nok_parts. A shift boundary is exactly where counters commonly
+                reset, so the default ``max(0, last - first)`` under-reports any
+                shift containing a reset. The result gains a ``resets`` column
+                with the number of production-counter resets in each shift.
 
         Returns:
             DataFrame with columns:
             date, shift, production, production_target, production_achievement_pct,
-            ok_parts, nok_parts, quality_pct, availability_pct, downtime_minutes
+            ok_parts, nok_parts, quality_pct, availability_pct, downtime_minutes,
+            and ``resets`` (only when ``handle_resets=True``).
         """
+        output_cols = list(self.OUTPUT_COLUMNS)
+        if handle_resets:
+            output_cols.append("resets")
+
         # Production
-        prod = self._counter_by_shift(counter_uuid, value_column_counter)
-        ok = self._counter_by_shift(ok_counter_uuid, value_column_counter)
-        nok = self._counter_by_shift(nok_counter_uuid, value_column_counter)
+        prod = self._counter_by_shift(
+            counter_uuid, value_column_counter, handle_resets=handle_resets
+        )
+        ok = self._counter_by_shift(
+            ok_counter_uuid, value_column_counter, handle_resets=handle_resets
+        )
+        nok = self._counter_by_shift(
+            nok_counter_uuid, value_column_counter, handle_resets=handle_resets
+        )
         avail = self._availability_by_shift(
             state_uuid, running_value, value_column_state
         )
 
         if prod.empty:
-            return pd.DataFrame(columns=self.OUTPUT_COLUMNS)
+            return pd.DataFrame(columns=output_cols)
 
         # Filter to report date
         if report_date:
@@ -405,7 +438,7 @@ class ShiftHandoverReport(Base):
             (result["ok_parts"] / total * 100).where(total > 0, 0).round(1)
         )
 
-        return result[self.OUTPUT_COLUMNS].reset_index(drop=True)
+        return result[output_cols].reset_index(drop=True)
 
     def highlight_issues(
         self,

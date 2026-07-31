@@ -11,6 +11,7 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import count_resets, counter_quantity
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +116,15 @@ class ShiftReporting(Base):
         value_column_counter: str = "value_integer",
         value_column_part: str = "value_string",
         date: str | None = None,
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Production quantity per shift.
+
+        A shift boundary is exactly where production counters commonly reset
+        (shift change, part change, PLC restart). With the default
+        ``max(0, last - first)`` quantity, any shift containing a reset
+        under-reports (often to 0). Pass ``handle_resets=True`` to treat a
+        decreasing counter as a reset and count the post-reset production.
 
         Args:
             counter_uuid: Production counter UUID
@@ -124,6 +132,12 @@ class ShiftReporting(Base):
             value_column_counter: Column containing counter values
             value_column_part: Column containing part numbers
             date: Specific date in 'YYYY-MM-DD' format (optional)
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset instead of losing it. The
+                result gains a ``resets`` column with the number of resets
+                observed in each shift. When False (default), the quantity is
+                ``max(0, last_count - first_count)`` and a shift containing a
+                reset reports too little.
 
         Returns:
             DataFrame with production by shift:
@@ -131,6 +145,8 @@ class ShiftReporting(Base):
             - shift: Shift name
             - part_number: Part number (if part_id_uuid provided)
             - quantity: Parts produced
+            - resets: Number of counter resets in the shift (only when
+              ``handle_resets=True``)
 
         Example:
             >>> shift_production('counter', part_id_uuid='part_id')
@@ -149,6 +165,8 @@ class ShiftReporting(Base):
             cols = ["date", "shift", "quantity"]
             if part_id_uuid:
                 cols.insert(2, "part_number")
+            if handle_resets:
+                cols.append("resets")
             return pd.DataFrame(columns=cols)
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
@@ -203,27 +221,27 @@ class ShiftReporting(Base):
             if group_data.empty:
                 continue
 
-            first_count = group_data[value_column_counter].iloc[0]
-            last_count = group_data[value_column_counter].iloc[-1]
-            quantity = max(0, last_count - first_count)
+            counter_series = group_data[value_column_counter]
+            quantity = int(counter_quantity(counter_series, handle_resets=handle_resets))
 
             if part_id_uuid and len(group_cols) == 3:
-                results.append(
-                    {
-                        "date": group_key[0],
-                        "shift": group_key[1],
-                        "part_number": group_key[2],
-                        "quantity": quantity,
-                    }
-                )
+                row = {
+                    "date": group_key[0],
+                    "shift": group_key[1],
+                    "part_number": group_key[2],
+                    "quantity": quantity,
+                }
             else:
-                results.append(
-                    {
-                        "date": group_key[0],
-                        "shift": group_key[1],
-                        "quantity": quantity,
-                    }
-                )
+                row = {
+                    "date": group_key[0],
+                    "shift": group_key[1],
+                    "quantity": quantity,
+                }
+
+            if handle_resets:
+                row["resets"] = count_resets(counter_series)
+
+            results.append(row)
 
         return pd.DataFrame(results)
 
@@ -350,9 +368,13 @@ class ShiftReporting(Base):
         # Calculate variance and achievement
         shift_prod["actual"] = shift_prod["quantity"]
         shift_prod["variance"] = shift_prod["actual"] - shift_prod["target"]
+        # Guard a zero target (unscheduled shift / placeholder) which would
+        # otherwise yield inf, matching the guarded sibling in ShiftHandover.
         shift_prod["achievement_pct"] = (
-            shift_prod["actual"] / shift_prod["target"] * 100
-        ).round(1)
+            (shift_prod["actual"] / shift_prod["target"] * 100)
+            .where(shift_prod["target"] > 0, 0.0)
+            .round(1)
+        )
 
         return shift_prod[
             ["date", "shift", "actual", "target", "variance", "achievement_pct"]

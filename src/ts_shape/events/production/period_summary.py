@@ -15,6 +15,7 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import count_resets, counter_quantity
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +59,25 @@ class PeriodSummary(Base):
         self,
         uuid: str,
         value_column: str = "value_integer",
+        *,
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
-        """Get daily counter deltas."""
+        """Get daily counter deltas.
+
+        When ``handle_resets`` is True a decreasing counter is treated as a
+        reset and the post-reset production is counted, and a ``resets`` column
+        with the per-day reset count is added.
+        """
         data = (
             self.dataframe[self.dataframe["uuid"] == uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=["date", "quantity"])
+            cols = ["date", "quantity"]
+            if handle_resets:
+                cols.append("resets")
+            return pd.DataFrame(columns=cols)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["date"] = data[self.time_column].dt.date
@@ -74,8 +85,12 @@ class PeriodSummary(Base):
         results = []
         for date, grp in data.groupby("date"):
             grp = grp.sort_values(self.time_column)
-            qty = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
-            results.append({"date": date, "quantity": int(qty)})
+            counter_series = grp[value_column]
+            qty = int(counter_quantity(counter_series, handle_resets=handle_resets))
+            row = {"date": date, "quantity": qty}
+            if handle_resets:
+                row["resets"] = count_resets(counter_series)
+            results.append(row)
 
         return pd.DataFrame(results)
 
@@ -187,6 +202,7 @@ class PeriodSummary(Base):
         nok_counter_uuid: str | None = None,
         *,
         value_column: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Roll up daily production to weekly summaries from raw signals.
 
@@ -198,13 +214,21 @@ class PeriodSummary(Base):
             ok_counter_uuid: UUID of good parts counter (optional).
             nok_counter_uuid: UUID of defective parts counter (optional).
             value_column: Column containing counter values.
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset instead of losing it (a
+                daily boundary is a common reset point). The result gains a
+                ``resets`` column with the number of resets observed each week.
 
         Returns:
             DataFrame with columns:
             - week_start, week_end, total_production, daily_avg,
               production_days, [ok_parts, nok_parts, quality_pct]
+            - resets: Number of counter resets in the week (only when
+              ``handle_resets=True``)
         """
-        daily = self._daily_counter(counter_uuid, value_column)
+        daily = self._daily_counter(
+            counter_uuid, value_column, handle_resets=handle_resets
+        )
         if daily.empty:
             cols = [
                 "week_start",
@@ -215,6 +239,8 @@ class PeriodSummary(Base):
             ]
             if ok_counter_uuid:
                 cols.extend(["ok_parts", "nok_parts", "quality_pct"])
+            if handle_resets:
+                cols.append("resets")
             return pd.DataFrame(columns=cols)
 
         daily["date"] = pd.to_datetime(daily["date"])
@@ -223,11 +249,15 @@ class PeriodSummary(Base):
         ok_daily = None
         nok_daily = None
         if ok_counter_uuid:
-            ok_daily = self._daily_counter(ok_counter_uuid, value_column)
+            ok_daily = self._daily_counter(
+                ok_counter_uuid, value_column, handle_resets=handle_resets
+            )
             if not ok_daily.empty:
                 ok_daily["date"] = pd.to_datetime(ok_daily["date"])
         if nok_counter_uuid:
-            nok_daily = self._daily_counter(nok_counter_uuid, value_column)
+            nok_daily = self._daily_counter(
+                nok_counter_uuid, value_column, handle_resets=handle_resets
+            )
             if not nok_daily.empty:
                 nok_daily["date"] = pd.to_datetime(nok_daily["date"])
 
@@ -276,6 +306,9 @@ class PeriodSummary(Base):
                     row["ok_parts"] / total_q * 100 if total_q > 0 else 0, 1
                 )
 
+            if handle_resets:
+                row["resets"] = int(grp["resets"].sum())
+
             results.append(row)
 
         return pd.DataFrame(results)
@@ -287,6 +320,7 @@ class PeriodSummary(Base):
         nok_counter_uuid: str | None = None,
         *,
         value_column: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Roll up daily production to monthly summaries from raw signals.
 
@@ -298,17 +332,27 @@ class PeriodSummary(Base):
             ok_counter_uuid: UUID of good parts counter (optional).
             nok_counter_uuid: UUID of defective parts counter (optional).
             value_column: Column containing counter values.
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset instead of losing it. The
+                result gains a ``resets`` column with the number of resets
+                observed each month.
 
         Returns:
             DataFrame with columns:
             - year, month, total_production, daily_avg,
               production_days, [ok_parts, nok_parts, quality_pct]
+            - resets: Number of counter resets in the month (only when
+              ``handle_resets=True``)
         """
-        daily = self._daily_counter(counter_uuid, value_column)
+        daily = self._daily_counter(
+            counter_uuid, value_column, handle_resets=handle_resets
+        )
         if daily.empty:
             cols = ["year", "month", "total_production", "daily_avg", "production_days"]
             if ok_counter_uuid:
                 cols.extend(["ok_parts", "nok_parts", "quality_pct"])
+            if handle_resets:
+                cols.append("resets")
             return pd.DataFrame(columns=cols)
 
         daily["date"] = pd.to_datetime(daily["date"])
@@ -316,11 +360,15 @@ class PeriodSummary(Base):
         ok_daily = None
         nok_daily = None
         if ok_counter_uuid:
-            ok_daily = self._daily_counter(ok_counter_uuid, value_column)
+            ok_daily = self._daily_counter(
+                ok_counter_uuid, value_column, handle_resets=handle_resets
+            )
             if not ok_daily.empty:
                 ok_daily["date"] = pd.to_datetime(ok_daily["date"])
         if nok_counter_uuid:
-            nok_daily = self._daily_counter(nok_counter_uuid, value_column)
+            nok_daily = self._daily_counter(
+                nok_counter_uuid, value_column, handle_resets=handle_resets
+            )
             if not nok_daily.empty:
                 nok_daily["date"] = pd.to_datetime(nok_daily["date"])
 
@@ -368,6 +416,9 @@ class PeriodSummary(Base):
                     row["ok_parts"] / total_q * 100 if total_q > 0 else 0, 1
                 )
 
+            if handle_resets:
+                row["resets"] = int(grp["resets"].sum())
+
             results.append(row)
 
         return pd.DataFrame(results)
@@ -379,6 +430,7 @@ class PeriodSummary(Base):
         period2: tuple[str, str],
         *,
         value_column: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Compare production between two time periods.
 
@@ -387,12 +439,17 @@ class PeriodSummary(Base):
             period1: Tuple of (start_date, end_date) for first period.
             period2: Tuple of (start_date, end_date) for second period.
             value_column: Column containing counter values.
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset instead of losing it, so the
+                compared metrics are not understated for days containing a reset.
 
         Returns:
             DataFrame with columns:
             - metric, period1_value, period2_value, change, change_pct
         """
-        daily = self._daily_counter(counter_uuid, value_column)
+        daily = self._daily_counter(
+            counter_uuid, value_column, handle_resets=handle_resets
+        )
         if daily.empty:
             return pd.DataFrame(
                 columns=[

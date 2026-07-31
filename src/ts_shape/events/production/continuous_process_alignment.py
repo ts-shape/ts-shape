@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_increments
 
 _SPEED_FACTORS: dict[str, float] = {
     "m/min": 1.0 / 60.0,
@@ -229,6 +230,7 @@ class ContinuousProcessAlignmentEvents(Base):
         cut_length_uuid: str | None = None,
         part_counter_uuid: str | None = None,
         cut_value_column: str = "value_double",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Add ``piece_id``, ``piece_length_m``, and ``piece_cut_ref_time`` to
         ``aligned_df`` (output of :meth:`align_to_reference`).
@@ -253,6 +255,13 @@ class ContinuousProcessAlignmentEvents(Base):
             integer).
         cut_value_column:
             Column holding the length value in ``cut_length_uuid`` rows.
+        handle_resets:
+            When True and a numeric ``part_counter_uuid`` is used, a decreasing
+            counter (a reset at a shift/part change or PLC restart) is treated
+            as new production: the post-reset counter value is emitted as that
+            many cut events instead of being skipped. When False (default), a
+            reset's negative delta is ignored and its post-reset pieces are
+            lost, matching the previous behaviour.
 
         Returns
         -------
@@ -302,14 +311,24 @@ class ContinuousProcessAlignmentEvents(Base):
                     )
                     if num_col in counter_df.columns:
                         counts = counter_df[num_col].ffill().fillna(0)
-                        prev = counts.iloc[0]
-                        for idx in range(1, len(counter_df)):
-                            curr = counts.iloc[idx]
-                            delta = int(round(curr - prev))
-                            if delta > 0:
-                                ts = counter_df.iloc[idx][self.time_column]
-                                cut_events.append((ts, np.nan, delta))
-                            prev = curr
+                        if handle_resets:
+                            # Reset-aware: a decreasing counter is treated as a
+                            # reset, so the post-reset value is new production.
+                            increments = counter_increments(counts)
+                            for idx in range(1, len(counter_df)):
+                                n_pieces = int(round(increments.iloc[idx]))
+                                if n_pieces > 0:
+                                    ts = counter_df.iloc[idx][self.time_column]
+                                    cut_events.append((ts, np.nan, n_pieces))
+                        else:
+                            prev = counts.iloc[0]
+                            for idx in range(1, len(counter_df)):
+                                curr = counts.iloc[idx]
+                                delta = int(round(curr - prev))
+                                if delta > 0:
+                                    ts = counter_df.iloc[idx][self.time_column]
+                                    cut_events.append((ts, np.nan, delta))
+                                prev = curr
         else:
             # No counter — each row of cut_length_uuid is a cut
             length_df = (
