@@ -36,11 +36,22 @@ class ChangeoverEvents(Base):
         *,
         value_column: str = "value_string",
         min_hold: str = "0s",
+        include_initial: bool = True,
     ) -> pd.DataFrame:
         """Emit point events when the product/recipe changes value.
 
         Uses a hold check: the new product must persist for at least min_hold
         until the next change.
+
+        Args:
+            product_uuid: UUID of the product/recipe signal.
+            value_column: Column containing the product value.
+            min_hold: Minimum time the new product must persist to count.
+            include_initial: When True (default) the first reading is emitted
+                as a changeover event, marking the product active at the start
+                of the data. A changeover strictly requires a *prior, different*
+                value, so pass ``include_initial=False`` to suppress this
+                synthetic leading event and report only real value changes.
         """
         p = (
             self.dataframe[self.dataframe["uuid"] == product_uuid]
@@ -54,6 +65,11 @@ class ChangeoverEvents(Base):
         p[self.time_column] = pd.to_datetime(p[self.time_column])
         series = p[value_column]
         changed = series.ne(series.shift())
+        if not include_initial and len(changed) > 0:
+            # series.shift() yields NaN for the first row, so ne(...) always
+            # flags it. That is the product being active at the window start,
+            # not a changeover.
+            changed.iloc[0] = False
         change_times = p.loc[changed, self.time_column]
         min_td = pd.to_timedelta(min_hold)
         next_change = change_times.shift(-1)

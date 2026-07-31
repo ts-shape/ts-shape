@@ -19,6 +19,7 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_increments
 
 logger = logging.getLogger(__name__)
 
@@ -144,15 +145,13 @@ class PartProductionTracking(Base):
         """
         counter = merged[value_column_counter]
         prev = counter.shift(1)
-        delta = counter - prev
-        is_reset = delta < 0
+        is_reset = (counter - prev) < 0
 
         # On a reset, assume the counter dropped to (at most) zero and
         # climbed to its current value, so the new value is the production.
-        increment = delta.where(~is_reset, counter).fillna(0)
-
+        # Shared with the rest of the library via ts_shape.utils.counters.
         merged["_prev"] = prev
-        merged["_increment"] = increment
+        merged["_increment"] = counter_increments(counter)
         merged["_is_reset"] = is_reset.fillna(False)
 
     @staticmethod

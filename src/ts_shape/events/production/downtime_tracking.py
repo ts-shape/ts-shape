@@ -263,8 +263,19 @@ class DowntimeTracking(Base):
             state_clean, reason_clean, on=self.time_column, direction="backward"
         )
 
-        # Filter for stopped states
+        # Calculate each interval's duration on the FULL state timeline, before
+        # filtering to stopped rows. A stop lasts until the next state change
+        # (the next reading), not until the next *stop* - computing the diff
+        # after filtering would book the intervening running time as downtime.
+        merged = merged.sort_values(self.time_column)
+        merged["next_time"] = merged[self.time_column].shift(-1)
+        merged["duration_minutes"] = (
+            merged["next_time"] - merged[self.time_column]
+        ).dt.total_seconds() / 60
+
+        # Filter for stopped states, then drop the trailing open interval (NaN).
         stopped = merged[merged["state"] == stopped_value].copy()
+        stopped = stopped[stopped["duration_minutes"].notna()]
 
         if stopped.empty:
             return pd.DataFrame(
@@ -276,16 +287,6 @@ class DowntimeTracking(Base):
                     "pct_of_total",
                 ]
             )
-
-        # Calculate duration
-        stopped = stopped.sort_values(self.time_column)
-        stopped["next_time"] = stopped[self.time_column].shift(-1)
-        stopped["duration_minutes"] = (
-            stopped["next_time"] - stopped[self.time_column]
-        ).dt.total_seconds() / 60
-
-        # Remove NaN durations
-        stopped = stopped[stopped["duration_minutes"].notna()]
 
         if stopped.empty:
             return pd.DataFrame(
