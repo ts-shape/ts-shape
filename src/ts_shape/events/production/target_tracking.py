@@ -11,6 +11,7 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import count_resets, counter_quantity
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ class TargetTracking(Base):
         targets: dict[str, float],
         *,
         value_column: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Compare actual metric to per-shift targets.
 
@@ -88,28 +90,37 @@ class TargetTracking(Base):
             metric_uuid: UUID of the metric signal (counter).
             targets: Dict mapping shift names to target values.
             value_column: Column containing metric values.
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset instead of losing it, so
+                ``actual`` is the reset-aware total. The result gains a
+                ``resets`` column with the number of resets observed in each
+                shift. When False (default), ``actual`` is simply
+                ``max(0, last - first)`` and a shift containing a reset reports
+                too little.
 
         Returns:
             DataFrame with columns:
             - date, shift, actual, target, variance, achievement_pct, status
+            - resets (only when ``handle_resets=True``)
         """
+        base_columns = [
+            "date",
+            "shift",
+            "actual",
+            "target",
+            "variance",
+            "achievement_pct",
+            "status",
+        ]
+        if handle_resets:
+            base_columns.append("resets")
         data = (
             self.dataframe[self.dataframe["uuid"] == metric_uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "shift",
-                    "actual",
-                    "target",
-                    "variance",
-                    "achievement_pct",
-                    "status",
-                ]
-            )
+            return pd.DataFrame(columns=base_columns)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
@@ -118,7 +129,10 @@ class TargetTracking(Base):
         results = []
         for (date, shift), grp in data.groupby(["date", "shift"]):
             grp = grp.sort_values(self.time_column)
-            actual = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
+            if handle_resets:
+                actual = counter_quantity(grp[value_column], handle_resets=True)
+            else:
+                actual = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
             target = targets.get(shift, 0.0)
 
             variance = actual - target
@@ -131,19 +145,20 @@ class TargetTracking(Base):
             else:
                 status = "below_target"
 
-            results.append(
-                {
-                    "date": date,
-                    "shift": shift,
-                    "actual": int(actual),
-                    "target": target,
-                    "variance": round(variance, 1),
-                    "achievement_pct": round(achievement, 1),
-                    "status": status,
-                }
-            )
+            row = {
+                "date": date,
+                "shift": shift,
+                "actual": int(actual),
+                "target": target,
+                "variance": round(variance, 1),
+                "achievement_pct": round(achievement, 1),
+                "status": status,
+            }
+            if handle_resets:
+                row["resets"] = count_resets(grp[value_column])
+            results.append(row)
 
-        return pd.DataFrame(results)
+        return pd.DataFrame(results, columns=base_columns)
 
     def target_achievement_summary(
         self,
@@ -151,6 +166,7 @@ class TargetTracking(Base):
         daily_target: float,
         *,
         value_column: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Summarize target achievement over time.
 
@@ -158,27 +174,36 @@ class TargetTracking(Base):
             metric_uuid: UUID of the metric signal (counter).
             daily_target: Daily production target.
             value_column: Column containing metric values.
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset instead of losing it, so
+                ``actual`` is the reset-aware daily total. The result gains a
+                ``resets`` column with the number of resets observed each day.
+                When False (default), ``actual`` is simply
+                ``max(0, last - first)`` and a day containing a reset reports
+                too little.
 
         Returns:
             DataFrame with columns:
             - date, actual, target, variance, achievement_pct, status
+            - resets (only when ``handle_resets=True``)
         """
+        base_columns = [
+            "date",
+            "actual",
+            "target",
+            "variance",
+            "achievement_pct",
+            "status",
+        ]
+        if handle_resets:
+            base_columns.append("resets")
         data = (
             self.dataframe[self.dataframe["uuid"] == metric_uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "actual",
-                    "target",
-                    "variance",
-                    "achievement_pct",
-                    "status",
-                ]
-            )
+            return pd.DataFrame(columns=base_columns)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["date"] = data[self.time_column].dt.date
@@ -186,7 +211,10 @@ class TargetTracking(Base):
         results = []
         for date, grp in data.groupby("date"):
             grp = grp.sort_values(self.time_column)
-            actual = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
+            if handle_resets:
+                actual = counter_quantity(grp[value_column], handle_resets=True)
+            else:
+                actual = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
 
             variance = actual - daily_target
             achievement = (actual / daily_target * 100) if daily_target > 0 else 0.0
@@ -198,18 +226,19 @@ class TargetTracking(Base):
             else:
                 status = "below_target"
 
-            results.append(
-                {
-                    "date": date,
-                    "actual": int(actual),
-                    "target": daily_target,
-                    "variance": round(variance, 1),
-                    "achievement_pct": round(achievement, 1),
-                    "status": status,
-                }
-            )
+            row = {
+                "date": date,
+                "actual": int(actual),
+                "target": daily_target,
+                "variance": round(variance, 1),
+                "achievement_pct": round(achievement, 1),
+                "status": status,
+            }
+            if handle_resets:
+                row["resets"] = count_resets(grp[value_column])
+            results.append(row)
 
-        return pd.DataFrame(results)
+        return pd.DataFrame(results, columns=base_columns)
 
     def target_hit_rate(
         self,

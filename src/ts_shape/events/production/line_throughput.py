@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_increments
 
 logger = logging.getLogger(__name__)
 
@@ -33,34 +34,58 @@ class LineThroughputEvents(Base):
         *,
         value_column: str = "value_integer",
         window: str = "1m",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Compute parts per window for a counter uuid.
 
+        When ``handle_resets`` is False (default), the count per window is the
+        window-over-window difference of the counter maximum, clipped at zero -
+        so a window in which the counter resets to a lower value silently loses
+        that production. When True, per-reading increments are computed on the
+        raw counter (a decreasing counter is treated as a reset and the
+        post-reset value counted as new production) and summed into each window,
+        and a ``resets`` column reports the number of resets per window.
+
         Returns columns: start, uuid, source_uuid, is_delta, count
+        (plus ``resets`` when ``handle_resets=True``)
         """
+        base_columns = ["start", "uuid", "source_uuid", "is_delta", "count"]
+        if handle_resets:
+            base_columns.append("resets")
         c = (
             self.dataframe[self.dataframe["uuid"] == counter_uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if c.empty:
-            return pd.DataFrame(
-                columns=["start", "uuid", "source_uuid", "is_delta", "count"]
-            )
+            return pd.DataFrame(columns=base_columns)
         c[self.time_column] = pd.to_datetime(c[self.time_column])
         c = c.set_index(self.time_column)
-        # take diff of last values within each window
-        grp = c[value_column].resample(window)
-        counts = grp.max().ffill().diff().fillna(0).clip(lower=0)
-        out = (
-            counts.to_frame("count")
-            .reset_index()
-            .rename(columns={self.time_column: "start"})
-        )
+        if handle_resets:
+            series = c[value_column]
+            increments = counter_increments(series)
+            counts = increments.resample(window).sum()
+            out = (
+                counts.to_frame("count")
+                .reset_index()
+                .rename(columns={self.time_column: "start"})
+            )
+            is_reset = pd.to_numeric(series, errors="coerce").diff() < 0
+            resets = is_reset.resample(window).sum().astype(int)
+            out["resets"] = resets.values
+        else:
+            # take diff of last values within each window
+            grp = c[value_column].resample(window)
+            counts = grp.max().ffill().diff().fillna(0).clip(lower=0)
+            out = (
+                counts.to_frame("count")
+                .reset_index()
+                .rename(columns={self.time_column: "start"})
+            )
         out["uuid"] = self.event_uuid
         out["source_uuid"] = counter_uuid
         out["is_delta"] = True
-        return out
+        return out[base_columns]
 
     def takt_adherence(
         self,
@@ -182,8 +207,13 @@ class LineThroughputEvents(Base):
         # Availability: percentage of time equipment was running
         parts_df["availability"] = np.where(parts_df["count"] > 0, 1.0, 0.0)
 
-        # Performance: actual vs target rate
-        parts_df["performance"] = np.minimum(parts_df["count"] / target_rate, 1.0)
+        # Performance: actual vs target rate. A non-positive target rate (flat
+        # counter, long stoppage, or an explicit 0) would otherwise yield
+        # inf/NaN performance; treat it as no performance instead.
+        if target_rate and target_rate > 0:
+            parts_df["performance"] = np.minimum(parts_df["count"] / target_rate, 1.0)
+        else:
+            parts_df["performance"] = 0.0
 
         # OEE score (simplified - assumes quality = 1.0)
         parts_df["oee_score"] = parts_df["availability"] * parts_df["performance"]
