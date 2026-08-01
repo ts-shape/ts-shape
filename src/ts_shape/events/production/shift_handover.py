@@ -17,6 +17,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -106,12 +107,15 @@ class ShiftHandoverReport(Base):
         value_column: str,
         *,
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Get counter deltas grouped by date/shift.
 
         When ``handle_resets`` is True a decreasing counter is treated as a
         reset and the post-reset production is counted, and a ``resets`` column
-        with the per-shift reset count is added.
+        with the per-shift reset count is added. When ``production_day`` is True
+        an overnight shift's post-midnight readings are attributed to the
+        shift's start date.
         """
         data = (
             self.dataframe[self.dataframe["uuid"] == uuid]
@@ -126,7 +130,7 @@ class ShiftHandoverReport(Base):
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
-        data["date"] = data[self.time_column].dt.date
+        data["date"] = self._group_dates(data, production_day)
 
         results = []
         for (dt, shift), grp in data.groupby(["date", "shift"]):
@@ -140,11 +144,21 @@ class ShiftHandoverReport(Base):
 
         return pd.DataFrame(results)
 
+    def _group_dates(self, data: pd.DataFrame, production_day: bool) -> pd.Series:
+        """Grouping date per row: calendar date, or production day when set."""
+        if production_day:
+            return production_dates(
+                data[self.time_column], data["shift"], self.shift_definitions
+            )
+        return data[self.time_column].dt.date
+
     def _availability_by_shift(
         self,
         state_uuid: str,
         running_value: str,
         value_column: str,
+        *,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Compute availability grouped by date/shift."""
         data = (
@@ -159,7 +173,7 @@ class ShiftHandoverReport(Base):
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
-        data["date"] = data[self.time_column].dt.date
+        data["date"] = self._group_dates(data, production_day)
         data["is_running"] = data[value_column] == running_value
         data["duration_s"] = data[self.time_column].diff().shift(-1).dt.total_seconds()
         data = data[data["duration_s"].notna()]
@@ -322,6 +336,7 @@ class ShiftHandoverReport(Base):
         value_column_state: str = "value_string",
         report_date: str | None = None,
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Generate a shift handover report from raw timeseries signals.
 
@@ -346,6 +361,11 @@ class ShiftHandoverReport(Base):
                 reset, so the default ``max(0, last - first)`` under-reports any
                 shift containing a reset. The result gains a ``resets`` column
                 with the number of production-counter resets in each shift.
+            production_day: When True, an overnight shift's post-midnight
+                readings are attributed to the shift's start date, so a night
+                shift is one contiguous ``(date, shift)`` group instead of being
+                split across two calendar dates. Only affects schedules with an
+                overnight shift.
 
         Returns:
             DataFrame with columns:
@@ -359,16 +379,28 @@ class ShiftHandoverReport(Base):
 
         # Production
         prod = self._counter_by_shift(
-            counter_uuid, value_column_counter, handle_resets=handle_resets
+            counter_uuid,
+            value_column_counter,
+            handle_resets=handle_resets,
+            production_day=production_day,
         )
         ok = self._counter_by_shift(
-            ok_counter_uuid, value_column_counter, handle_resets=handle_resets
+            ok_counter_uuid,
+            value_column_counter,
+            handle_resets=handle_resets,
+            production_day=production_day,
         )
         nok = self._counter_by_shift(
-            nok_counter_uuid, value_column_counter, handle_resets=handle_resets
+            nok_counter_uuid,
+            value_column_counter,
+            handle_resets=handle_resets,
+            production_day=production_day,
         )
         avail = self._availability_by_shift(
-            state_uuid, running_value, value_column_state
+            state_uuid,
+            running_value,
+            value_column_state,
+            production_day=production_day,
         )
 
         if prod.empty:

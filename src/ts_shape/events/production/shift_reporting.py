@@ -12,6 +12,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ class ShiftReporting(Base):
         value_column_part: str = "value_string",
         date: str | None = None,
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Production quantity per shift.
 
@@ -138,6 +140,12 @@ class ShiftReporting(Base):
                 observed in each shift. When False (default), the quantity is
                 ``max(0, last_count - first_count)`` and a shift containing a
                 reset reports too little.
+            production_day: When True, the post-midnight portion of an overnight
+                shift (e.g. ``22:00 -> 06:00``) is attributed to the shift's
+                start date, so a night shift is one contiguous ``(date, shift)``
+                group instead of being split across two calendar dates. When
+                False (default), grouping is by raw calendar date. Only affects
+                schedules with an overnight shift.
 
         Returns:
             DataFrame with production by shift:
@@ -180,7 +188,14 @@ class ShiftReporting(Base):
 
         # Assign shifts
         counter_data["shift"] = counter_data[self.time_column].apply(self._assign_shift)
-        counter_data["date"] = counter_data[self.time_column].dt.date
+        if production_day:
+            counter_data["date"] = production_dates(
+                counter_data[self.time_column],
+                counter_data["shift"],
+                self.shift_definitions,
+            )
+        else:
+            counter_data["date"] = counter_data[self.time_column].dt.date
 
         # Add part numbers if provided
         group_cols = ["date", "shift"]

@@ -12,6 +12,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,7 @@ class TargetTracking(Base):
         *,
         value_column: str = "value_integer",
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Compare actual metric to per-shift targets.
 
@@ -97,6 +99,14 @@ class TargetTracking(Base):
                 shift. When False (default), ``actual`` is simply
                 ``max(0, last - first)`` and a shift containing a reset reports
                 too little.
+            production_day: When True, the post-midnight portion of an overnight
+                shift (e.g. ``22:00 -> 06:00``) is attributed to the shift's
+                start date, so each ``(date, shift)`` group is one contiguous
+                interval. When False (default), readings are grouped by their
+                raw calendar date; a night shift is then split across two dates
+                and, within a date, its group spans the whole day so
+                ``last - first`` sweeps in other shifts' production. Only
+                affects schedules with an overnight shift.
 
         Returns:
             DataFrame with columns:
@@ -124,7 +134,12 @@ class TargetTracking(Base):
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
-        data["date"] = data[self.time_column].dt.date
+        if production_day:
+            data["date"] = production_dates(
+                data[self.time_column], data["shift"], self.shift_definitions
+            )
+        else:
+            data["date"] = data[self.time_column].dt.date
 
         results = []
         for (date, shift), grp in data.groupby(["date", "shift"]):

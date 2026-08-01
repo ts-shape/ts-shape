@@ -1,4 +1,18 @@
 # July 31, 2026
+add: ts_shape.utils.shifts (assign_shift, production_dates) -- shared shift
+  assignment plus a "production day" that attributes an overnight shift's
+  post-midnight readings to the shift's start date. Grouping a night shift
+  (22:00->06:00) by raw calendar date splits it across two dates and, within a
+  date, spans the whole day so last - first sweeps in other shifts' output
+  (a night shift could report ~750% of target).
+add: opt-in production_day=True on TargetTracking.compare_to_target,
+  ShiftReporting.shift_production, and ShiftHandover.generate_report so overnight
+  shifts group as one contiguous interval. Default (calendar date) unchanged.
+add: opt-in require_all_stations=True on LineBalancingEvents.balance_metrics so a
+  fully stopped station stays in the denominator (a dead station previously read
+  as a perfectly balanced line); adds a stations_missing column.
+add: opt-in count_initial_active=False on AlarmManagementEvents.alarm_frequency
+  to ignore an alarm already active at the start of the data window.
 add: ts_shape.utils.intervals.state_intervals -- shared helper that collapses a
   state signal into intervals and closes each one at the next transition when
   interval_end="next_change". The previous "end at the last sample carrying the

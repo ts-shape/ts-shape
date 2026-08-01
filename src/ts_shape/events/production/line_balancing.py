@@ -196,6 +196,7 @@ class LineBalancingEvents(Base):
         demand: float | None = None,
         available_time: _Number | None = None,
         window: str = "1h",
+        require_all_stations: bool = False,
     ) -> pd.DataFrame:
         """Line-level balance metrics per time window.
 
@@ -209,12 +210,21 @@ class LineBalancingEvents(Base):
             demand: Units required over ``available_time``.
             available_time: Available production time (seconds or offset string).
             window: Resample window.
+            require_all_stations: When False (default), ``n_stations`` counts
+                only stations that completed at least one cycle in the window.
+                A completely stopped or starved station -- the worst imbalance --
+                then drops out of the denominator and the line reads as well
+                balanced. When True, the constructor's full set of
+                ``station_uuids`` is used as the denominator, so a missing
+                station drags efficiency down, and a ``stations_missing`` column
+                reports how many known stations produced no cycle.
 
         Returns:
             Summary-shape DataFrame with columns: start, end, duration_seconds,
             n_stations, bottleneck_uuid, bottleneck_cycle_time, takt_seconds,
             balance_efficiency_pct, balance_delay_pct, smoothness_index,
-            theoretical_min_stations.
+            theoretical_min_stations (plus ``stations_missing`` when
+            ``require_all_stations=True``).
         """
         extra = [
             "n_stations",
@@ -226,10 +236,13 @@ class LineBalancingEvents(Base):
             "smoothness_index",
             "theoretical_min_stations",
         ]
+        if require_all_stations:
+            extra.append("stations_missing")
         cycles = self._all_cycles()
         if cycles.empty:
             return empty_event_df("summary", extra_cols=extra)
 
+        n_known = len(self.station_uuids)
         takt = self._resolve_takt(takt_time, demand, available_time)
         cycles["start"] = cycles["completion"].dt.floor(window)
         means = cycles.groupby(["start", "uuid"])["cycle_time"].mean().reset_index()
@@ -237,30 +250,32 @@ class LineBalancingEvents(Base):
         rows: list[dict[str, Any]] = []
         for start, grp in means.groupby("start", sort=True):
             times = grp["cycle_time"].to_numpy(dtype=float)
-            n = len(times)
+            n_active = len(times)
+            n = n_known if require_all_stations else n_active
             bottleneck = float(times.max())
             total = float(times.sum())
-            efficiency = total / (n * bottleneck) if bottleneck > 0 else 0.0
+            efficiency = total / (n * bottleneck) if (n > 0 and bottleneck > 0) else 0.0
             smoothness = float(np.sqrt(np.sum((bottleneck - times) ** 2)))
             if takt is not None and takt > 0:
                 theoretical_min = math.ceil(total / takt)
             else:
                 theoretical_min = np.nan
             bottleneck_uuid = grp.loc[grp["cycle_time"].idxmax(), "uuid"]
-            rows.append(
-                {
-                    "start": start,
-                    "end": start + pd.Timedelta(window),
-                    "n_stations": n,
-                    "bottleneck_uuid": bottleneck_uuid,
-                    "bottleneck_cycle_time": round(bottleneck, 3),
-                    "takt_seconds": round(takt, 3) if takt is not None else np.nan,
-                    "balance_efficiency_pct": round(efficiency * 100, 2),
-                    "balance_delay_pct": round((1 - efficiency) * 100, 2),
-                    "smoothness_index": round(smoothness, 3),
-                    "theoretical_min_stations": theoretical_min,
-                }
-            )
+            row = {
+                "start": start,
+                "end": start + pd.Timedelta(window),
+                "n_stations": n,
+                "bottleneck_uuid": bottleneck_uuid,
+                "bottleneck_cycle_time": round(bottleneck, 3),
+                "takt_seconds": round(takt, 3) if takt is not None else np.nan,
+                "balance_efficiency_pct": round(efficiency * 100, 2),
+                "balance_delay_pct": round((1 - efficiency) * 100, 2),
+                "smoothness_index": round(smoothness, 3),
+                "theoretical_min_stations": theoretical_min,
+            }
+            if require_all_stations:
+                row["stations_missing"] = n_known - n_active
+            rows.append(row)
 
         return finalize_summary_df(pd.DataFrame(rows))
 

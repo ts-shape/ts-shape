@@ -113,13 +113,20 @@ class AlarmManagementEvents(Base):
     # public methods
     # ------------------------------------------------------------------
 
-    def alarm_frequency(self, window: str = "1h") -> pd.DataFrame:
+    def alarm_frequency(
+        self, window: str = "1h", *, count_initial_active: bool = True
+    ) -> pd.DataFrame:
         """Count alarm activations per time window.
 
         An activation is a transition from False to True.
 
         Args:
             window: Pandas offset alias for the aggregation window.
+            count_initial_active: When True (default) an alarm that is already
+                active in the first sample is counted as an activation, because
+                ``shift(fill_value=False)`` treats the leading True as a rising
+                edge. Pass ``False`` to ignore an alarm that was raised before
+                the data window began (no real activation occurred inside it).
 
         Returns:
             DataFrame with columns:
@@ -136,6 +143,10 @@ class AlarmManagementEvents(Base):
         s["prev"] = s["state"].shift(fill_value=False)
         # Rising edges = alarm activations
         s["activation"] = s["state"] & ~s["prev"]
+        if not count_initial_active and len(s) > 0 and bool(s["state"].iloc[0]):
+            # The alarm was already active at the window start -> not a new
+            # activation.
+            s.iloc[0, s.columns.get_loc("activation")] = False
 
         s = s.set_index(self.time_column)
         counts = s["activation"].resample(window).sum().reset_index()

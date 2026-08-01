@@ -141,17 +141,20 @@ with the time-weighted approach already used in `runtime_accounting` and
 
 | Module | Method | Sev | Issue | Status |
 |---|---|---|---|---|
-| `target_tracking.py` | `compare_to_target` | high | overnight shift (22:00–06:00) grouped by raw calendar date; the group spans 00:00–23:59 with a hole, so `last - first` attributes the **whole day** to the night shift (≈750 % achievement) | 🔜 |
-| `shift_reporting.py`, `shift_handover.py` | `_assign_shift` + calendar-date grouping | medium | an overnight shift is split across two calendar dates into two rows, dropping the midnight-crossing delta and double-comparing against the target | 🔜 |
+| `target_tracking.py` | `compare_to_target` | high | overnight shift (22:00–06:00) grouped by raw calendar date; the group spans 00:00–23:59 with a hole, so `last - first` attributes the **whole day** to the night shift (≈750 % achievement) | ✅ (opt-in `production_day`) |
+| `shift_reporting.py`, `shift_handover.py` | `_assign_shift` + calendar-date grouping | medium | an overnight shift is split across two calendar dates into two rows, dropping the midnight-crossing delta and double-comparing against the target | ✅ (opt-in `production_day`) |
 | `changeover.py` | `detect_changeover` | medium | `series.ne(series.shift())` flags the first reading (vs `NaN`) as a changeover, over-counting the initial product | ✅ (opt-in `include_initial`, default preserves behaviour) |
-| `line_balancing.py` | `balance_metrics` | medium | a fully stopped station has no cycle in the window and vanishes from the denominator, so a dead station reads as a perfectly balanced line (`efficiency 100 %`) | 🔜 |
-| `alarm_management.py` | `alarm_frequency` | low | an alarm already active at the window start is counted as an activation | 🔜 |
+| `line_balancing.py` | `balance_metrics` | medium | a fully stopped station has no cycle in the window and vanishes from the denominator, so a dead station reads as a perfectly balanced line (`efficiency 100 %`) | ✅ (opt-in `require_all_stations`) |
+| `alarm_management.py` | `alarm_frequency` | low | an alarm already active at the window start is counted as an activation | ✅ (opt-in `count_initial_active`) |
 
-**Overnight-shift fix approach (follow-up):** attribute an overnight shift's
-post-midnight readings to the shift's *start* date (a "production day") so each
-shift is one contiguous group, then apply the same Theme-A reset handling.
-Shared across `target_tracking`, `shift_reporting`, `shift_handover` (identical
-`_assign_shift`).
+**Overnight-shift fix:** a shared helper `ts_shape.utils.shifts` attributes an
+overnight shift's post-midnight readings to the shift's *start* date (a
+"production day") so each shift is one contiguous group. Opt-in via
+`production_day=True` on `target_tracking.compare_to_target`,
+`shift_reporting.shift_production`, and `shift_handover.generate_report`;
+default (raw calendar date) is unchanged. The scrap/rework/quality/operator
+shift methods share the same `_assign_shift` and can adopt the option the same
+way as a mechanical fast-follow.
 
 ---
 
@@ -183,12 +186,10 @@ consistently across the pack.
 1. **Theme B traceability dwell** — `infer_dwell_from_next` (cross-station,
    per-identifier) on `order_traceability`, `routing_traceability`,
    `multi_process_traceability`. (The boolean-state modules are done.)
-2. **Theme E overnight** — production-day grouping across `target_tracking`,
-   `shift_reporting`, `shift_handover`.
+2. **Theme E overnight fast-follow** — extend the `production_day` option to the
+   scrap/rework/quality/operator shift methods (same `_assign_shift`).
 3. **Theme C** — `max_gap`/`max_cycle_gap` caps on `downtime_tracking`,
    `cycle_time_tracking`, `performance_loss`.
 4. **Theme D** — time-weighted option on `bottleneck_detection` and
    `duty_cycle.duty_cycle_per_window`.
-5. **Theme E/F remainder** — `line_balancing` missing-station denominator,
-   `alarm_management` initial-active flag, `line_throughput.cycle_quality_check`
-   guard.
+5. **Theme F remainder** — `line_throughput.cycle_quality_check` guard.
