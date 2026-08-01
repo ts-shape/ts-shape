@@ -35,13 +35,25 @@ class BottleneckDetectionEvents(Base):
         self.value_column = value_column
 
     def station_utilization(
-        self, station_uuids: list[str], window: str = "1h"
+        self,
+        station_uuids: list[str],
+        window: str = "1h",
+        *,
+        time_weighted: bool = False,
     ) -> pd.DataFrame:
         """Per-station uptime percentage per time window.
 
         Args:
             station_uuids: List of UUID strings identifying station run-state signals.
             window: Resample window (e.g. '1h', '30m').
+            time_weighted: When False (default), utilization is the mean of the
+                boolean samples in the window -- correct only under uniform
+                sampling. On change-encoded / irregular signals the result is
+                driven by how many rows land in the window, so a station
+                emitting one ``True`` per hour reads 100 %. When True,
+                utilization is time-weighted: each sample is weighted by the gap
+                to the next sample (as in ``RuntimeAccountingEvents``), so it
+                reflects wall-clock time in the running state.
 
         Returns:
             DataFrame with columns: start, uuid, utilization_pct.
@@ -53,11 +65,35 @@ class BottleneckDetectionEvents(Base):
             if station.empty:
                 continue
             station[self.time_column] = pd.to_datetime(station[self.time_column])
-            station = station.set_index(self.time_column)
+            station = station.sort_values(self.time_column)
             station["state"] = station[self.value_column].fillna(False).astype(float)
-            resampled = station["state"].resample(window).mean()
 
-            for ts, pct in resampled.items():
+            if time_weighted:
+                # Weight each sample by the gap to the next sample, bucketed by
+                # the sample's window. The trailing sample has no successor.
+                station["dur"] = (
+                    station[self.time_column].shift(-1) - station[self.time_column]
+                ).dt.total_seconds()
+                station = station[station["dur"].notna()]
+                if station.empty:
+                    continue
+                station["win"] = station[self.time_column].dt.floor(window)
+                station["run_dur"] = station["state"] * station["dur"]
+                grouped = station.groupby("win").agg(
+                    run=("run_dur", "sum"), total=("dur", "sum")
+                )
+                series = grouped.apply(
+                    lambda r: (r["run"] / r["total"]) if r["total"] > 0 else 0.0,
+                    axis=1,
+                )
+            else:
+                series = (
+                    station.set_index(self.time_column)["state"]
+                    .resample(window)
+                    .mean()
+                )
+
+            for ts, pct in series.items():
                 if pd.notna(pct):
                     rows.append(
                         {
@@ -74,7 +110,11 @@ class BottleneckDetectionEvents(Base):
         )
 
     def detect_bottleneck(
-        self, station_uuids: list[str], window: str = "1h"
+        self,
+        station_uuids: list[str],
+        window: str = "1h",
+        *,
+        time_weighted: bool = False,
     ) -> pd.DataFrame:
         """Identify the bottleneck station per window.
 
@@ -84,11 +124,15 @@ class BottleneckDetectionEvents(Base):
         Args:
             station_uuids: List of station run-state UUIDs.
             window: Resample window.
+            time_weighted: Forwarded to :meth:`station_utilization` -- pass True
+                for change-encoded/irregular signals.
 
         Returns:
             DataFrame with columns: start, end, bottleneck_uuid, utilization_pct.
         """
-        util = self.station_utilization(station_uuids, window)
+        util = self.station_utilization(
+            station_uuids, window, time_weighted=time_weighted
+        )
         if util.empty:
             return pd.DataFrame(
                 columns=[
@@ -113,19 +157,26 @@ class BottleneckDetectionEvents(Base):
         )
 
     def shifting_bottleneck(
-        self, station_uuids: list[str], window: str = "1h"
+        self,
+        station_uuids: list[str],
+        window: str = "1h",
+        *,
+        time_weighted: bool = False,
     ) -> pd.DataFrame:
         """Track when the bottleneck identity changes between stations.
 
         Args:
             station_uuids: List of station run-state UUIDs.
             window: Resample window.
+            time_weighted: Forwarded to :meth:`station_utilization`.
 
         Returns:
             DataFrame with columns: systime, from_uuid, to_uuid,
             previous_utilization, new_utilization.
         """
-        bottlenecks = self.detect_bottleneck(station_uuids, window)
+        bottlenecks = self.detect_bottleneck(
+            station_uuids, window, time_weighted=time_weighted
+        )
         if bottlenecks.empty or len(bottlenecks) < 2:
             return pd.DataFrame(
                 columns=[
@@ -172,20 +223,29 @@ class BottleneckDetectionEvents(Base):
         )
 
     def throughput_constraint_summary(
-        self, station_uuids: list[str], window: str = "1h"
+        self,
+        station_uuids: list[str],
+        window: str = "1h",
+        *,
+        time_weighted: bool = False,
     ) -> dict[str, Any]:
         """Summary statistics for bottleneck analysis.
 
         Args:
             station_uuids: List of station run-state UUIDs.
             window: Resample window.
+            time_weighted: Forwarded to :meth:`station_utilization`.
 
         Returns:
             Dict with: bottleneck_counts, bottleneck_percentages,
             most_frequent_bottleneck, avg_utilization_per_station.
         """
-        bottlenecks = self.detect_bottleneck(station_uuids, window)
-        util = self.station_utilization(station_uuids, window)
+        bottlenecks = self.detect_bottleneck(
+            station_uuids, window, time_weighted=time_weighted
+        )
+        util = self.station_utilization(
+            station_uuids, window, time_weighted=time_weighted
+        )
 
         if bottlenecks.empty:
             return {

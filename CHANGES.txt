@@ -1,4 +1,20 @@
 # July 31, 2026
+add: opt-in max_gap on DowntimeTracking.downtime_by_shift / availability_trend
+  and max_cycle_gap on CycleTimeTracking.cycle_time_by_part and
+  PerformanceLossTracking (performance_by_shift, slow_periods,
+  performance_trend). A duration taken as next-time minus time otherwise
+  bridges logging gaps and stoppages: a logger outage is booked as uptime, and
+  a lunch break becomes one giant "cycle" that reads as a huge speed loss.
+  Durations above the cap are excluded as "no data". Default (None) unchanged.
+add: opt-in time_weighted on BottleneckDetectionEvents.station_utilization
+  (and detect_bottleneck / shifting_bottleneck / throughput_constraint_summary)
+  and DutyCycleEvents.duty_cycle_per_window. resample().mean() averages sample
+  counts, so on change-encoded/irregular signals a station up all hour but
+  logged once reads 50-100% by row count; time_weighted weights each sample by
+  the gap to the next sample. Default (sample mean) unchanged.
+fix: LineThroughputEvents.cycle_quality_check returned inf/NaN deviations when
+  the expected cycle time was zero (explicit, or a degenerate zero median); it
+  now returns the typed empty frame.
 add: ts_shape.utils.shifts (assign_shift, production_dates) -- shared shift
   assignment plus a "production day" that attributes an overnight shift's
   post-midnight readings to the shift's start date. Grouping a night shift

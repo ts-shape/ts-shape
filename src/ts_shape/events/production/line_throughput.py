@@ -372,6 +372,23 @@ class LineThroughputEvents(Base):
         if expected_cycle_time is None:
             expected_cycle_time = cycle_times.median()
 
+        # A non-positive (or NaN) reference has no meaningful deviation and
+        # would divide by zero; return the typed empty frame instead.
+        if pd.isna(expected_cycle_time) or expected_cycle_time <= 0:
+            return pd.DataFrame(
+                columns=[
+                    "systime",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "cycle_time_seconds",
+                    "expected_time",
+                    "deviation_pct",
+                    "is_valid",
+                    "quality_flag",
+                ]
+            )
+
         # Calculate deviation
         deviation_pct = (
             (cycle_times - expected_cycle_time) / expected_cycle_time

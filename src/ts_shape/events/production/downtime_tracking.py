@@ -98,6 +98,7 @@ class DowntimeTracking(Base):
         *,
         running_value: str = "Running",
         value_column: str = "value_string",
+        max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate downtime duration per shift.
 
@@ -105,6 +106,12 @@ class DowntimeTracking(Base):
             state_uuid: UUID for machine state signal
             running_value: Value that indicates machine is running
             value_column: Column containing state values
+            max_gap: Optional cap (e.g. "15min"). A duration between two
+                consecutive readings longer than this is treated as a logging
+                gap ("no data") and excluded, instead of being attributed to
+                the preceding state. Without it, a logger outage between a
+                ``Running`` sample and the next reading is booked as uptime,
+                inflating availability toward 100 % over a period with no data.
 
         Returns:
             DataFrame with downtime by shift:
@@ -151,6 +158,12 @@ class DowntimeTracking(Base):
         state_data["duration_minutes"] = (
             state_data["next_time"] - state_data[self.time_column]
         ).dt.total_seconds() / 60
+
+        # Treat over-long gaps as "no data" so they are excluded from the sums.
+        if max_gap is not None:
+            cap_minutes = pd.to_timedelta(max_gap).total_seconds() / 60
+            over_gap = state_data["duration_minutes"] > cap_minutes
+            state_data.loc[over_gap, "duration_minutes"] = float("nan")
 
         # Mark running vs downtime
         state_data["is_running"] = state_data[value_column] == running_value
@@ -390,6 +403,7 @@ class DowntimeTracking(Base):
         running_value: str = "Running",
         value_column: str = "value_string",
         window: str = "1D",
+        max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate availability trend over time.
 
@@ -398,6 +412,10 @@ class DowntimeTracking(Base):
             running_value: Value that indicates machine is running
             value_column: Column containing state values
             window: Time window for aggregation (e.g., '1D', '1W')
+            max_gap: Optional cap (e.g. "15min"). A gap between consecutive
+                readings longer than this is treated as "no data" and excluded,
+                instead of being attributed to the preceding state (which would
+                inflate availability across a logging outage).
 
         Returns:
             DataFrame with availability trend:
@@ -436,6 +454,12 @@ class DowntimeTracking(Base):
         state_data["duration_minutes"] = (
             state_data["next_time"] - state_data[self.time_column]
         ).dt.total_seconds() / 60
+
+        # Treat over-long gaps as "no data" so they are excluded below.
+        if max_gap is not None:
+            cap_minutes = pd.to_timedelta(max_gap).total_seconds() / 60
+            over_gap = state_data["duration_minutes"] > cap_minutes
+            state_data.loc[over_gap, "duration_minutes"] = float("nan")
 
         # Mark running vs downtime
         state_data["is_running"] = state_data[value_column] == running_value

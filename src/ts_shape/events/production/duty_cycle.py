@@ -91,11 +91,20 @@ class DutyCycleEvents(Base):
             }
         )
 
-    def duty_cycle_per_window(self, window: str = "1h") -> pd.DataFrame:
+    def duty_cycle_per_window(
+        self, window: str = "1h", *, time_weighted: bool = False
+    ) -> pd.DataFrame:
         """Percentage of time the signal is True per window.
 
         Args:
             window: Resample window.
+            time_weighted: When False (default), the duty cycle is the mean of
+                the boolean samples in the window -- correct only under uniform
+                sampling. On change-encoded / irregular signals the result is
+                driven by sample counts (``On@09:00, Off@09:59`` reads 50 %).
+                When True, each sample is weighted by the gap to the next sample,
+                so the duty cycle reflects wall-clock on-time; ``on_time`` and
+                ``off_time`` are then the actual covered seconds in the window.
 
         Returns:
             DataFrame with columns: start, on_time, off_time, duty_cycle_pct.
@@ -105,26 +114,49 @@ class DutyCycleEvents(Base):
             return pd.DataFrame(columns=cols)
 
         s = self.series[[self.time_column, self.value_column]].copy()
+        s[self.time_column] = pd.to_datetime(s[self.time_column])
+        s = s.sort_values(self.time_column)
         s["state"] = s[self.value_column].fillna(False).astype(float)
-        s = s.set_index(self.time_column)
-
-        window_td = pd.to_timedelta(window)
-        resampled = s["state"].resample(window).mean()
 
         events: list[dict[str, Any]] = []
-        for ts, pct in resampled.items():
-            if pd.isna(pct):
-                continue
-            on_time = round(pct * window_td.total_seconds(), 2)
-            off_time = round((1 - pct) * window_td.total_seconds(), 2)
-            events.append(
-                {
-                    "start": ts,
-                    "on_time": on_time,
-                    "off_time": off_time,
-                    "duty_cycle_pct": round(pct * 100, 2),
-                }
-            )
+        if time_weighted:
+            s["dur"] = (
+                s[self.time_column].shift(-1) - s[self.time_column]
+            ).dt.total_seconds()
+            s = s[s["dur"].notna()]
+            if s.empty:
+                return pd.DataFrame(columns=cols)
+            s["win"] = s[self.time_column].dt.floor(window)
+            s["on_dur"] = s["state"] * s["dur"]
+            grouped = s.groupby("win").agg(on=("on_dur", "sum"), total=("dur", "sum"))
+            for ts, row in grouped.iterrows():
+                total = row["total"]
+                on_time = row["on"]
+                pct = (on_time / total) if total > 0 else 0.0
+                events.append(
+                    {
+                        "start": ts,
+                        "on_time": round(on_time, 2),
+                        "off_time": round(total - on_time, 2),
+                        "duty_cycle_pct": round(pct * 100, 2),
+                    }
+                )
+        else:
+            window_td = pd.to_timedelta(window)
+            resampled = s.set_index(self.time_column)["state"].resample(window).mean()
+            for ts, pct in resampled.items():
+                if pd.isna(pct):
+                    continue
+                on_time = round(pct * window_td.total_seconds(), 2)
+                off_time = round((1 - pct) * window_td.total_seconds(), 2)
+                events.append(
+                    {
+                        "start": ts,
+                        "on_time": on_time,
+                        "off_time": off_time,
+                        "duty_cycle_pct": round(pct * 100, 2),
+                    }
+                )
 
         return (
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)

@@ -102,38 +102,37 @@ stop). Now the per-interval duration is computed on the full state timeline
 
 ---
 
-## Theme C — Durations span data gaps (no max-gap cap) 🔜
+## Theme C — Durations span data gaps (no max-gap cap) ✅
 
 A duration taken as `next_time - time` (or `diff()` between events) blindly
 bridges logging gaps and inter-cycle stoppages.
 
-| Module | Method | Sev | Concrete effect |
-|---|---|---|---|
-| `downtime_tracking.py` | `downtime_by_shift`, `availability_trend` | medium | a logger outage between a `Running` sample and the next reading is booked as uptime, inflating `availability_pct` |
-| `cycle_time_tracking.py` | `cycle_time_by_part` (→ stats/slow/hourly) | medium | a 2 h idle gap between completions is reported as one 7200 s "cycle", skewing max/avg and false-flagging slow cycles |
-| `performance_loss.py` | `performance_by_shift`, `slow_periods`, `performance_trend` | medium | a lunch break becomes one giant "cycle", so a 100 %-speed machine reports ~11 % performance and large speed loss |
+**Fix:** an opt-in `max_gap` / `max_cycle_gap` kwarg (default `None` = current
+behaviour); intervals exceeding it are excluded as "no data" rather than
+attributed to the preceding state/cycle.
 
-**Fix approach (follow-up):** opt-in `max_gap` / `max_cycle_gap` kwarg
-(default `None` = current behaviour); intervals exceeding it are excluded as
-"no data" rather than attributed to the preceding state/cycle.
+| Module | Method | Sev | Concrete effect | Status |
+|---|---|---|---|---|
+| `downtime_tracking.py` | `downtime_by_shift`, `availability_trend` | medium | a logger outage between a `Running` sample and the next reading is booked as uptime, inflating `availability_pct` | ✅ (`max_gap`) |
+| `cycle_time_tracking.py` | `cycle_time_by_part` (→ stats/slow/hourly) | medium | a 2 h idle gap between completions is reported as one 7200 s "cycle", skewing max/avg and false-flagging slow cycles | ✅ (`max_cycle_gap`) |
+| `performance_loss.py` | `performance_by_shift`, `slow_periods`, `performance_trend` | medium | a lunch break becomes one giant "cycle", so a 100 %-speed machine reports ~11 % performance and large speed loss | ✅ (`max_cycle_gap`) |
 
 ---
 
-## Theme D — Sample-count average instead of time-weighted 🔜
+## Theme D — Sample-count average instead of time-weighted ✅
 
 `resample(window).mean()` over a state signal averages *sample counts*, correct
 only under uniform sampling. On change-encoded/irregular data the result is
 driven by how many rows land in the window, not by time.
 
-| Module | Method | Sev | Concrete effect |
-|---|---|---|---|
-| `bottleneck_detection.py` | `station_utilization` (→ detect/shifting/summary) | medium | a station emitting one `True` per hour reads 100 % utilization; mis-ranks the constraint |
-| `duty_cycle.py` | `duty_cycle_per_window` | medium | `On@09:00, Off@09:59` reads 50 % duty (two samples) instead of ~98 % |
+**Fix:** an opt-in `time_weighted=True` kwarg weights each sample by the gap to
+the next sample (as in `runtime_accounting`), so the metric reflects wall-clock
+time. Default (`False`, sample-mean) is unchanged.
 
-**Fix approach (follow-up):** integrate the step function over the window
-(weight each state by `next_time - time`, clipped to window bounds), consistent
-with the time-weighted approach already used in `runtime_accounting` and
-`oee_calculator.calculate_availability`. Offer as `method="time_weighted"`.
+| Module | Method | Sev | Concrete effect | Status |
+|---|---|---|---|---|
+| `bottleneck_detection.py` | `station_utilization` (→ detect/shifting/summary) | medium | a station emitting one `True` per hour reads 100 % utilization; mis-ranks the constraint | ✅ (`time_weighted`) |
+| `duty_cycle.py` | `duty_cycle_per_window` | medium | `On@09:00, Off@09:59` reads 50 % duty (two samples) instead of ~98 % | ✅ (`time_weighted`) |
 
 ---
 
@@ -165,7 +164,7 @@ way as a mechanical fast-follow.
 | `quality_tracking.py` | `daily_quality_summary` | medium | a zero-total day yields `0/0 = NaN` for every rate, inconsistent with `nok_by_shift` (which reports 0) | ✅ (guarded with the reset work) |
 | `line_throughput.py` | `throughput_oee` | medium | a flat/stopped counter makes `target_rate = quantile(0.95) = 0`, so `count/target_rate = NaN` poisons every `oee_score` | ✅ |
 | `shift_reporting.py` | `shift_targets` | low | a `target = 0` yields `achievement_pct = inf` (unlike the guarded sibling in `shift_handover`) | ✅ |
-| `line_throughput.py` | `cycle_quality_check` | low | `expected_cycle_time = 0` (explicit or degenerate median) → inf/NaN deviation | 🔜 |
+| `line_throughput.py` | `cycle_quality_check` | low | `expected_cycle_time = 0` (explicit or degenerate median) → inf/NaN deviation | ✅ (returns typed empty frame) |
 
 ---
 
@@ -181,15 +180,14 @@ consistently across the pack.
 
 ---
 
-## Follow-up plan (lined out)
+## Remaining follow-ups (lined out)
 
 1. **Theme B traceability dwell** — `infer_dwell_from_next` (cross-station,
    per-identifier) on `order_traceability`, `routing_traceability`,
    `multi_process_traceability`. (The boolean-state modules are done.)
 2. **Theme E overnight fast-follow** — extend the `production_day` option to the
    scrap/rework/quality/operator shift methods (same `_assign_shift`).
-3. **Theme C** — `max_gap`/`max_cycle_gap` caps on `downtime_tracking`,
-   `cycle_time_tracking`, `performance_loss`.
-4. **Theme D** — time-weighted option on `bottleneck_detection` and
-   `duty_cycle.duty_cycle_per_window`.
-5. **Theme F remainder** — `line_throughput.cycle_quality_check` guard.
+
+Themes A, C, D, F and the boolean-state part of B are complete. The two items
+above are the only remaining gaps from this screen; each is a self-contained
+change with a defined approach.
