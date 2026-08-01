@@ -173,13 +173,32 @@ unchanged.
 
 ---
 
+## OEE deep screen (Availability × Performance × Quality) ✅
+
+A focused pass over every module that computes OEE or one of its factors. The
+component-level counter/gap gaps were fixed under Themes A/C, but the OEE
+*aggregators* did not expose those fixes, and one availability parameter was
+dead.
+
+| Module | Method | Sev | Issue | Status |
+|---|---|---|---|---|
+| `oee_calculator.py` | `calculate_oee` | high | did not thread `handle_resets` to its performance/quality components, so a day with a counter reset silently dragged the combined OEE toward zero even though the components could handle it | ✅ (`handle_resets` threaded) |
+| `oee_calculator.py` | `calculate_availability` / `calculate_performance` / `calculate_oee` | medium | availability had no gap cap: an overnight/logger gap while the last state was `running` was booked as run time, inflating availability (and the run-time denominator of performance) | ✅ (`max_gap`, threaded through OEE) |
+| `line_throughput.py` | `throughput_oee` | medium | (a) called `count_parts` without `handle_resets`; (b) the documented `availability_threshold` parameter was **accepted but never used** (dead) | ✅ (`handle_resets` threaded; `availability_threshold` now gates the availability proxy — default `0.0` reproduces the old "produced anything" behaviour) |
+| `runtime_accounting.py` | `runtime_summary`, `runtime_per_window`, `operating_hours_meter` | medium | per-sample duration (`shift(-1) - t`) had no gap cap, so a logging outage while `running` inflated run time, utilization, and the hour meter | ✅ (`max_gap` opt-in) |
+
+`calculate_quality` needs no gap cap (it is counter-only, already reset-aware).
+`calculate_oee`'s output schema is unchanged — `handle_resets` only affects the
+underlying quantities, not the emitted columns.
+
+---
+
 ## Modules found robust
 
-`flow_metrics.py` and `runtime_accounting.py` derive everything from boolean
-rising edges / per-sample durations (no counter subtraction) and guard their
-divisions. `setup_time_tracking.py` uses next-transition interval logic and
-guards its denominators. `alarm_management.py` (beyond the low note above) and
-`machine_state.transition_events` handle intervals, empties, and chattering
+`flow_metrics.py` derives everything from boolean rising edges (no counter
+subtraction) and guards its divisions. `setup_time_tracking.py` uses
+next-transition interval logic and guards its denominators.
+`machine_state.transition_events` handles intervals, empties, and chattering
 correctly. Empty/missing-signal handling returns documented columns
 consistently across the pack.
 
@@ -187,10 +206,11 @@ consistently across the pack.
 
 ## Status
 
-All six themes from this screen are complete. Every fix is opt-in and
-backward-compatible: default output (values *and* column sets) is unchanged, so
-existing pipelines are unaffected until they pass the new keyword. Shared
-helpers — `ts_shape.utils.counters`, `ts_shape.utils.intervals`,
-`ts_shape.utils.shifts` — keep the behaviour consistent across the pack.
+All themes from this screen — the six structural themes plus the OEE deep
+screen — are complete. Every fix is opt-in and backward-compatible: default
+output (values *and* column sets) is unchanged, so existing pipelines are
+unaffected until they pass the new keyword. Shared helpers —
+`ts_shape.utils.counters`, `ts_shape.utils.intervals`, `ts_shape.utils.shifts`
+— keep the behaviour consistent across the pack.
 
 No open gaps remain from this screen.

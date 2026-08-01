@@ -64,11 +64,15 @@ class RuntimeAccountingEvents(Base):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _samples(self) -> pd.DataFrame:
+    def _samples(self, max_gap: str | None = None) -> pd.DataFrame:
         """Return the run signal with per-sample duration and start flag.
 
         Columns: ``<time_column>``, ``state`` (bool), ``dur`` (seconds to the
         next sample), ``is_start`` (rising edge).
+
+        When ``max_gap`` is set, a gap to the next sample longer than it is
+        treated as a logging outage and contributes no time, so it inflates
+        neither run nor idle totals.
         """
         sig = (
             self.dataframe[self.dataframe["uuid"] == self.run_uuid]
@@ -83,6 +87,10 @@ class RuntimeAccountingEvents(Base):
         sig["dur"] = (
             sig[self.time_column].shift(-1) - sig[self.time_column]
         ).dt.total_seconds()
+        # A gap longer than max_gap is "no data" -> contributes no time.
+        if max_gap is not None:
+            cap_seconds = pd.to_timedelta(max_gap).total_seconds()
+            sig.loc[sig["dur"] > cap_seconds, "dur"] = 0.0
         # The final sample has no successor; assume it contributes no time.
         sig["dur"] = sig["dur"].fillna(0.0)
         sig["is_start"] = sig["state"] & (~sig["state"].shift(fill_value=False))
@@ -107,8 +115,14 @@ class RuntimeAccountingEvents(Base):
     # Public API
     # ------------------------------------------------------------------
 
-    def runtime_summary(self) -> pd.DataFrame:
+    def runtime_summary(self, *, max_gap: str | None = None) -> pd.DataFrame:
         """Overall operating-time summary across the whole dataset.
+
+        Args:
+            max_gap: Optional cap (e.g. "15min"). A gap to the next sample
+                longer than this is treated as a logging outage and excluded, so
+                it does not inflate run/idle time or utilization. Without it, a
+                gap while the last state was ``running`` is booked as run time.
 
         Returns:
             Summary-shape DataFrame (one row) with columns: start, end,
@@ -125,7 +139,7 @@ class RuntimeAccountingEvents(Base):
             "mean_run_seconds",
             "utilization_pct",
         ]
-        samples = self._samples()
+        samples = self._samples(max_gap)
         if samples.empty:
             return empty_event_df("summary", extra_cols=extra)
 
@@ -156,18 +170,22 @@ class RuntimeAccountingEvents(Base):
         }
         return finalize_summary_df(pd.DataFrame([row]))
 
-    def runtime_per_window(self, window: str = "1D") -> pd.DataFrame:
+    def runtime_per_window(
+        self, window: str = "1D", *, max_gap: str | None = None
+    ) -> pd.DataFrame:
         """Run time per calendar window.
 
         Args:
             window: Resample window (e.g. ``"1D"``, ``"8h"``).
+            max_gap: Optional cap (e.g. "15min") excluding a logging gap from
+                run time and utilization (see :meth:`runtime_summary`).
 
         Returns:
             Summary-shape DataFrame with columns: start, end, duration_seconds,
             run_seconds, run_hours, start_count, utilization_pct.
         """
         extra = ["run_seconds", "run_hours", "start_count", "utilization_pct"]
-        samples = self._samples()
+        samples = self._samples(max_gap)
         if samples.empty:
             return empty_event_df("summary", extra_cols=extra)
 
@@ -191,7 +209,9 @@ class RuntimeAccountingEvents(Base):
             )
         return finalize_summary_df(pd.DataFrame(rows))
 
-    def operating_hours_meter(self, window: str = "1h") -> pd.DataFrame:
+    def operating_hours_meter(
+        self, window: str = "1h", *, max_gap: str | None = None
+    ) -> pd.DataFrame:
         """Cumulative operating-hours meter, sampled per window.
 
         Mirrors a physical equipment hour meter: a monotonically increasing
@@ -199,13 +219,15 @@ class RuntimeAccountingEvents(Base):
 
         Args:
             window: Resample window for the meter readings.
+            max_gap: Optional cap (e.g. "15min") excluding a logging gap from
+                run time so the meter does not advance across an outage.
 
         Returns:
             Summary-shape DataFrame with columns: start, end, duration_seconds,
             run_seconds, cumulative_run_hours.
         """
         extra = ["run_seconds", "cumulative_run_hours"]
-        samples = self._samples()
+        samples = self._samples(max_gap)
         if samples.empty:
             return empty_event_df("summary", extra_cols=extra)
 

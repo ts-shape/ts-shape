@@ -95,6 +95,7 @@ class OEECalculator(Base):
         planned_time_hours: float | None = None,
         *,
         value_column: str = "value_bool",
+        max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate availability percentage from run/idle intervals.
 
@@ -107,6 +108,13 @@ class OEECalculator(Base):
             planned_time_hours: Fixed planned production hours per day.  If None,
                 the time span covered by data each day is used.
             value_column: Column holding the boolean state.
+            max_gap: Optional cap (e.g. "15min"). A sample's duration is the gap
+                to the next reading; a gap longer than this is treated as a
+                logging outage ("no data") and excluded from both run time and
+                planned time. Without it, an overnight or logger gap while the
+                last state was ``running`` is booked as run time, inflating
+                availability. Only meaningful when ``planned_time_hours`` is
+                None (the planned time is derived from the data).
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -133,6 +141,14 @@ class OEECalculator(Base):
         state_data["duration"] = (
             state_data[self.time_column].shift(-1) - state_data[self.time_column]
         ).dt.total_seconds()
+
+        # Treat over-long gaps as "no data" so they inflate neither run nor
+        # planned time.
+        if max_gap is not None:
+            cap_seconds = pd.to_timedelta(max_gap).total_seconds()
+            state_data.loc[state_data["duration"] > cap_seconds, "duration"] = float(
+                "nan"
+            )
 
         # Drop last row per day (NaN duration at boundaries handled by groupby)
         state_data = state_data[state_data["duration"].notna()]
@@ -176,6 +192,7 @@ class OEECalculator(Base):
         value_column: str = "value_integer",
         run_value_column: str = "value_bool",
         handle_resets: bool = False,
+        max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate performance percentage (actual vs ideal throughput).
 
@@ -196,6 +213,9 @@ class OEECalculator(Base):
                 When False (default), ``actual_parts`` is simply
                 ``max(0, last - first)`` and a day containing a reset reports
                 too little.
+            max_gap: Optional cap forwarded to :meth:`calculate_availability`
+                when ``run_state_uuid`` is given, so a logging gap does not
+                inflate the run time used as the performance denominator.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -225,7 +245,7 @@ class OEECalculator(Base):
         run_per_day = {}
         if run_state_uuid is not None:
             avail_df = self.calculate_availability(
-                run_state_uuid, value_column=run_value_column
+                run_state_uuid, value_column=run_value_column, max_gap=max_gap
             )
             for _, row in avail_df.iterrows():
                 run_per_day[row[COL_START].date()] = row["run_seconds"]
@@ -382,6 +402,8 @@ class OEECalculator(Base):
         reject_uuid: str | None = None,
         *,
         planned_time_hours: float | None = None,
+        handle_resets: bool = False,
+        max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate daily OEE = Availability * Performance * Quality.
 
@@ -395,6 +417,15 @@ class OEECalculator(Base):
             total_uuid: Optional UUID of total-parts counter (for quality).
             reject_uuid: Optional UUID of reject-parts counter (for quality).
             planned_time_hours: Fixed planned production hours per day.
+            handle_resets: When True, the part / total / reject counters are
+                treated as reset-aware (see :meth:`calculate_performance` and
+                :meth:`calculate_quality`), so a day where a counter resets does
+                not silently drag OEE toward zero. Forwarded to the performance
+                and quality components. Default False.
+            max_gap: Optional cap (e.g. "15min") forwarded to the availability
+                and performance components so a logging gap is not booked as run
+                time (which would inflate availability and understate
+                performance). Default None.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -411,14 +442,20 @@ class OEECalculator(Base):
             "oee_pct",
         ]
         avail_df = self.calculate_availability(
-            run_state_uuid, planned_time_hours=planned_time_hours
+            run_state_uuid, planned_time_hours=planned_time_hours, max_gap=max_gap
         )
         perf_df = self.calculate_performance(
-            counter_uuid, ideal_cycle_time, run_state_uuid=run_state_uuid
+            counter_uuid,
+            ideal_cycle_time,
+            run_state_uuid=run_state_uuid,
+            handle_resets=handle_resets,
+            max_gap=max_gap,
         )
 
         if total_uuid is not None and reject_uuid is not None:
-            qual_df = self.calculate_quality(total_uuid, reject_uuid)
+            qual_df = self.calculate_quality(
+                total_uuid, reject_uuid, handle_resets=handle_resets
+            )
         else:
             qual_df = None
 

@@ -1,4 +1,20 @@
 # July 31, 2026
+add: OEECalculator.calculate_oee now threads handle_resets to its performance
+  and quality components and max_gap to its availability/performance components.
+  Previously the top-level OEE could not benefit from reset handling, so a day
+  with a counter reset silently dragged OEE toward zero; and availability booked
+  a logging/overnight gap (last state = running) as run time. calculate_availability
+  and calculate_performance gained a max_gap kwarg. Output schema unchanged.
+add: opt-in max_gap on RuntimeAccountingEvents.runtime_summary,
+  runtime_per_window, and operating_hours_meter -- a gap to the next sample
+  longer than max_gap is treated as a logging outage and excluded, so it no
+  longer inflates run time, utilization, or the hour meter.
+fix: LineThroughputEvents.throughput_oee honored the documented
+  availability_threshold parameter, which was previously accepted but ignored.
+  A window now counts as available when its part count reaches
+  availability_threshold x target_rate; the new default 0.0 reproduces the old
+  "produced anything" behaviour. throughput_oee also gained handle_resets
+  (threaded to count_parts).
 add: opt-in infer_dwell_from_next on the traceability timelines
   (OrderTraceabilityEvents.build_timeline / current_status /
   station_dwell_statistics, RoutingTraceabilityEvents.build_routing_timeline /

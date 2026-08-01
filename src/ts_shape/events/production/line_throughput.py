@@ -161,25 +161,41 @@ class LineThroughputEvents(Base):
         value_column: str = "value_integer",
         window: str = "1h",
         target_rate: float | None = None,
-        availability_threshold: float = 0.95,
+        availability_threshold: float = 0.0,
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate Overall Equipment Effectiveness (OEE) metrics.
 
         OEE = Availability × Performance × Quality
 
+        This counter-only estimate has no run-state signal, so availability is
+        a production proxy: a window counts as available when its part count is
+        at least ``availability_threshold`` × ``target_rate``. Quality is
+        assumed to be 1.0.
+
         Args:
             counter_uuid: UUID for the part counter signal
             value_column: Column containing counter values
             window: Time window for aggregation
-            target_rate: Target production rate (parts per window). If None, uses max observed
-            availability_threshold: Threshold for considering equipment available
+            target_rate: Target production rate (parts per window). If None, uses
+                the 95th percentile of observed counts
+            availability_threshold: Fraction of ``target_rate`` a window must
+                reach to count as available (0.0-1.0). The default ``0.0`` keeps
+                the historical behaviour -- any window with at least one part is
+                available. (Previously this argument was accepted but ignored.)
+            handle_resets: When True, the part counter is treated as reset-aware
+                (see :meth:`count_parts`), so a window where the counter resets
+                is not dropped. Default False.
 
         Returns:
             DataFrame with columns: start, uuid, source_uuid, is_delta,
             actual_count, target_count, availability, performance, oee_score
         """
         parts_df = self.count_parts(
-            counter_uuid, value_column=value_column, window=window
+            counter_uuid,
+            value_column=value_column,
+            window=window,
+            handle_resets=handle_resets,
         )
 
         if parts_df.empty:
@@ -204,8 +220,14 @@ class LineThroughputEvents(Base):
         parts_df["target_count"] = target_rate
         parts_df["actual_count"] = parts_df["count"]
 
-        # Availability: percentage of time equipment was running
-        parts_df["availability"] = np.where(parts_df["count"] > 0, 1.0, 0.0)
+        # Availability proxy: a window is available when it produced something
+        # AND reached at least availability_threshold of the target rate. With
+        # the default threshold of 0.0 this reduces to "produced anything",
+        # matching the historical behaviour.
+        min_count = availability_threshold * (target_rate or 0.0)
+        parts_df["availability"] = np.where(
+            (parts_df["count"] > 0) & (parts_df["count"] >= min_count), 1.0, 0.0
+        )
 
         # Performance: actual vs target rate. A non-positive target rate (flat
         # counter, long stoppage, or an explicit 0) would otherwise yield
