@@ -13,6 +13,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments, counter_quantity, count_resets
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ class QualityTracking(Base):
         *,
         value_column: str = "value_integer",
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Calculate NOK (defective) parts per shift.
 
@@ -172,7 +174,12 @@ class QualityTracking(Base):
         if not ok_data.empty:
             ok_data[self.time_column] = pd.to_datetime(ok_data[self.time_column])
             ok_data["shift"] = ok_data[self.time_column].apply(self._assign_shift)
-            ok_data["date"] = ok_data[self.time_column].dt.date
+            if production_day:
+                ok_data["date"] = production_dates(
+                    ok_data[self.time_column], ok_data["shift"], self.shift_definitions
+                )
+            else:
+                ok_data["date"] = ok_data[self.time_column].dt.date
             ok_processed = ok_data
 
         # Process NOK data
@@ -180,7 +187,14 @@ class QualityTracking(Base):
         if not nok_data.empty:
             nok_data[self.time_column] = pd.to_datetime(nok_data[self.time_column])
             nok_data["shift"] = nok_data[self.time_column].apply(self._assign_shift)
-            nok_data["date"] = nok_data[self.time_column].dt.date
+            if production_day:
+                nok_data["date"] = production_dates(
+                    nok_data[self.time_column],
+                    nok_data["shift"],
+                    self.shift_definitions,
+                )
+            else:
+                nok_data["date"] = nok_data[self.time_column].dt.date
             nok_processed = nok_data
 
         # Calculate quantities per shift
@@ -566,6 +580,7 @@ class QualityTracking(Base):
         *,
         value_column: str = "value_integer",
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Daily quality summary.
 
@@ -578,6 +593,9 @@ class QualityTracking(Base):
                 :meth:`nok_by_shift`). The result gains a ``resets`` column
                 with the number of resets observed that day. When False
                 (default), a shift containing a reset reports too little.
+            production_day: Forwarded to :meth:`nok_by_shift`; attributes an
+                overnight shift's post-midnight readings to the shift's start
+                date. Default False (raw calendar date).
 
         Returns:
             DataFrame with daily quality:
@@ -602,6 +620,7 @@ class QualityTracking(Base):
             nok_counter_uuid,
             value_column=value_column,
             handle_resets=handle_resets,
+            production_day=production_day,
         )
 
         base_columns = [

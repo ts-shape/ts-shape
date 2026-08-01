@@ -1,4 +1,18 @@
 # July 31, 2026
+add: opt-in infer_dwell_from_next on the traceability timelines
+  (OrderTraceabilityEvents.build_timeline / current_status /
+  station_dwell_statistics, RoutingTraceabilityEvents.build_routing_timeline /
+  station_statistics, MultiProcessTraceabilityEvents.build_timeline /
+  station_statistics). A station that logs an identifier once on arrival
+  otherwise reports a per-station dwell of 0; when set, each visit's end is the
+  identifier's next station arrival (in multi_process, only for sequential
+  visits -- parallel/overlapping visits keep their own span). Default unchanged.
+add: opt-in production_day extended to the remaining shift-grouping methods that
+  share _assign_shift -- ScrapTracking.scrap_by_shift, ReworkTracking
+  (rework_by_shift, rework_rate), QualityTracking (nok_by_shift,
+  daily_quality_summary), OperatorPerformanceTracking.production_by_operator --
+  so an overnight shift is one contiguous (date, shift) group. Default (raw
+  calendar date) unchanged.
 add: opt-in max_gap on DowntimeTracking.downtime_by_shift / availability_trend
   and max_cycle_gap on CycleTimeTracking.cycle_time_by_part and
   PerformanceLossTracking (performance_by_shift, slow_periods,

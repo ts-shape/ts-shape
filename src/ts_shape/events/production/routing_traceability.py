@@ -166,13 +166,24 @@ class RoutingTraceabilityEvents(Base):
     # build_routing_timeline
     # ------------------------------------------------------------------
 
-    def build_routing_timeline(self) -> pd.DataFrame:
+    def build_routing_timeline(
+        self, *, infer_dwell_from_next: bool = False
+    ) -> pd.DataFrame:
         """Correlate the ID signal with the state/routing signal to build a timeline.
 
         For each sample of the routing signal, the *current* item ID is
         determined via backward-fill merge (most recent ID at that timestamp).
         Contiguous intervals where the same (item_id, state) pair holds
         are grouped into single events.
+
+        Args:
+            infer_dwell_from_next: When False (default), an interval's ``end`` is
+                the last routing sample of the (item, state) segment, so a
+                change-encoded routing signal (one row per change) reports a
+                dwell of ``0``. When True, each visit's ``end`` is set to the
+                item's next routing arrival, giving the honest
+                arrival-here → arrival-at-next-state dwell. The last visit per
+                item stays open.
 
         Returns:
             DataFrame with columns:
@@ -265,6 +276,13 @@ class RoutingTraceabilityEvents(Base):
         timeline["station_sequence"] = timeline.groupby("item_id").cumcount() + 1
         timeline["uuid"] = self.event_uuid
 
+        if infer_dwell_from_next:
+            next_start = timeline.groupby("item_id")["start"].shift(-1)
+            timeline["end"] = next_start.fillna(timeline["end"])
+            timeline["duration_seconds"] = (
+                timeline["end"] - timeline["start"]
+            ).dt.total_seconds()
+
         return timeline
 
     # ------------------------------------------------------------------
@@ -329,8 +347,15 @@ class RoutingTraceabilityEvents(Base):
     # station_statistics
     # ------------------------------------------------------------------
 
-    def station_statistics(self) -> pd.DataFrame:
+    def station_statistics(
+        self, *, infer_dwell_from_next: bool = False
+    ) -> pd.DataFrame:
         """Compute dwell-time statistics per station/step across all items.
+
+        Args:
+            infer_dwell_from_next: Forwarded to :meth:`build_routing_timeline`;
+                pass True for change-encoded routing signals so dwell is measured
+                to the item's next routing arrival instead of collapsing to zero.
 
         Returns:
             DataFrame with columns:
@@ -342,7 +367,9 @@ class RoutingTraceabilityEvents(Base):
             - max_dwell_seconds
             - total_dwell_seconds
         """
-        timeline = self.build_routing_timeline()
+        timeline = self.build_routing_timeline(
+            infer_dwell_from_next=infer_dwell_from_next
+        )
 
         if timeline.empty:
             return pd.DataFrame(

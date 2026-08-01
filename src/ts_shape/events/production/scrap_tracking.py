@@ -12,6 +12,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments, counter_quantity, count_resets
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,7 @@ class ScrapTracking(Base):
         *,
         value_column: str = "value_double",
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Scrap quantity per shift.
 
@@ -120,6 +122,10 @@ class ScrapTracking(Base):
                 number of resets observed in each shift. When False (default),
                 the quantity is simply ``max(0, last - first)`` and a shift
                 containing a reset reports too little (often 0).
+            production_day: When True, an overnight shift's post-midnight
+                readings are attributed to the shift's start date, so a night
+                shift is one contiguous ``(date, shift)`` group. Default False
+                (raw calendar date). Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
@@ -141,7 +147,12 @@ class ScrapTracking(Base):
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
-        data["date"] = data[self.time_column].dt.date
+        if production_day:
+            data["date"] = production_dates(
+                data[self.time_column], data["shift"], self.shift_definitions
+            )
+        else:
+            data["date"] = data[self.time_column].dt.date
 
         results = []
         for (date, shift), grp in data.groupby(["date", "shift"]):

@@ -14,6 +14,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments, counter_quantity, count_resets
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ class ReworkTracking(Base):
         *,
         value_column: str = "value_integer",
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Rework count per shift.
 
@@ -116,6 +118,10 @@ class ReworkTracking(Base):
                 number of resets observed in each shift. When False (default),
                 the quantity is ``max(0, last - first)`` and a shift
                 containing a reset reports too little (often 0).
+            production_day: When True, an overnight shift's post-midnight
+                readings are attributed to the shift's start date, so a night
+                shift is one contiguous ``(date, shift)`` group. Default False
+                (raw calendar date). Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
@@ -137,7 +143,12 @@ class ReworkTracking(Base):
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
-        data["date"] = data[self.time_column].dt.date
+        if production_day:
+            data["date"] = production_dates(
+                data[self.time_column], data["shift"], self.shift_definitions
+            )
+        else:
+            data["date"] = data[self.time_column].dt.date
 
         results = []
         for (date, shift), grp in data.groupby(["date", "shift"]):
@@ -266,6 +277,7 @@ class ReworkTracking(Base):
         value_column_rework: str = "value_integer",
         value_column_production: str = "value_integer",
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Rework rate as percentage of total production per shift.
 
@@ -279,6 +291,9 @@ class ReworkTracking(Base):
                 for both the numerator (rework) and denominator (total
                 produced). When False (default), both use
                 ``max(0, last - first)`` per shift and a reset is lost.
+            production_day: When True, an overnight shift's post-midnight
+                readings are attributed to the shift's start date. Default False
+                (raw calendar date). Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
@@ -310,9 +325,21 @@ class ReworkTracking(Base):
         prod_data[self.time_column] = pd.to_datetime(prod_data[self.time_column])
 
         rework_data["shift"] = rework_data[self.time_column].apply(self._assign_shift)
-        rework_data["date"] = rework_data[self.time_column].dt.date
         prod_data["shift"] = prod_data[self.time_column].apply(self._assign_shift)
-        prod_data["date"] = prod_data[self.time_column].dt.date
+        if production_day:
+            rework_data["date"] = production_dates(
+                rework_data[self.time_column],
+                rework_data["shift"],
+                self.shift_definitions,
+            )
+            prod_data["date"] = production_dates(
+                prod_data[self.time_column],
+                prod_data["shift"],
+                self.shift_definitions,
+            )
+        else:
+            rework_data["date"] = rework_data[self.time_column].dt.date
+            prod_data["date"] = prod_data[self.time_column].dt.date
 
         # Get all date/shift combos
         date_shifts = set(zip(rework_data["date"], rework_data["shift"])) | set(

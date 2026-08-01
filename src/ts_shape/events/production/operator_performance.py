@@ -13,6 +13,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_quantity, count_resets
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,8 @@ class OperatorPerformanceTracking(Base):
         counter_uuid: str,
         value_column_operator: str,
         value_column_counter: str,
+        *,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Merge operator signal with counter signal by timestamp."""
         operator_data = (
@@ -143,7 +146,12 @@ class OperatorPerformanceTracking(Base):
         )
         merged = merged.dropna(subset=["operator"])
         merged["shift"] = merged[self.time_column].apply(self._assign_shift)
-        merged["date"] = merged[self.time_column].dt.date
+        if production_day:
+            merged["date"] = production_dates(
+                merged[self.time_column], merged["shift"], self.shift_definitions
+            )
+        else:
+            merged["date"] = merged[self.time_column].dt.date
 
         return merged
 
@@ -155,6 +163,7 @@ class OperatorPerformanceTracking(Base):
         value_column_operator: str = "value_string",
         value_column_counter: str = "value_integer",
         handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Parts produced per operator.
 
@@ -170,6 +179,10 @@ class OperatorPerformanceTracking(Base):
                 observed across the operator's shifts. When False (default),
                 each shift uses ``max(0, last - first)`` and a shift
                 containing a reset reports too little (often 0).
+            production_day: When True, an overnight shift's post-midnight
+                readings are attributed to the shift's start date, so a night
+                shift counts as one worked shift. Default False (raw calendar
+                date). Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
@@ -186,6 +199,7 @@ class OperatorPerformanceTracking(Base):
             counter_uuid,
             value_column_operator,
             value_column_counter,
+            production_day=production_day,
         )
         if merged.empty:
             return pd.DataFrame(columns=columns)

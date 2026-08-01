@@ -137,8 +137,18 @@ class ValueTraceabilityEvents(Base):
     # build_timeline
     # ------------------------------------------------------------------
 
-    def build_timeline(self) -> pd.DataFrame:
+    def build_timeline(self, *, infer_dwell_from_next: bool = False) -> pd.DataFrame:
         """Build a full timeline of every identifier at every station.
+
+        Args:
+            infer_dwell_from_next: When False (default), an interval's ``end``
+                is the last sample of the identifier at that station, so a
+                station that logs the identifier only once on arrival (the
+                common event/change-encoded case) reports a dwell of ``0``.
+                When True, each visit's ``end`` is set to the same identifier's
+                *next* station arrival, so the dwell is the honest
+                arrival-here → arrival-at-next-station time. The last visit per
+                identifier stays open (keeps its own last sample).
 
         Returns:
             DataFrame with columns:
@@ -179,6 +189,13 @@ class ValueTraceabilityEvents(Base):
         # Assign station visit sequence per identifier
         timeline["station_sequence"] = timeline.groupby("identifier").cumcount() + 1
         timeline["uuid"] = self.event_uuid
+
+        if infer_dwell_from_next:
+            next_start = timeline.groupby("identifier")["start"].shift(-1)
+            timeline["end"] = next_start.fillna(timeline["end"])
+            timeline["duration_seconds"] = (
+                timeline["end"] - timeline["start"]
+            ).dt.total_seconds()
 
         return timeline
 
@@ -244,8 +261,15 @@ class ValueTraceabilityEvents(Base):
     # current_status
     # ------------------------------------------------------------------
 
-    def current_status(self) -> pd.DataFrame:
+    def current_status(
+        self, *, infer_dwell_from_next: bool = False
+    ) -> pd.DataFrame:
         """Determine the last-known station for each identifier.
+
+        Args:
+            infer_dwell_from_next: Forwarded to :meth:`build_timeline`. Note the
+                *current* (last) station's dwell is still open, so this mainly
+                affects identifiers whose latest visit has a later arrival.
 
         Returns:
             DataFrame with columns:
@@ -256,7 +280,7 @@ class ValueTraceabilityEvents(Base):
             - time_at_station_seconds: Dwell time at the current station so far.
             - uuid: Event UUID.
         """
-        timeline = self.build_timeline()
+        timeline = self.build_timeline(infer_dwell_from_next=infer_dwell_from_next)
 
         if timeline.empty:
             return pd.DataFrame(
@@ -290,8 +314,16 @@ class ValueTraceabilityEvents(Base):
     # station_dwell_statistics
     # ------------------------------------------------------------------
 
-    def station_dwell_statistics(self) -> pd.DataFrame:
+    def station_dwell_statistics(
+        self, *, infer_dwell_from_next: bool = False
+    ) -> pd.DataFrame:
         """Compute dwell-time statistics per station (across all identifiers).
+
+        Args:
+            infer_dwell_from_next: Forwarded to :meth:`build_timeline`. Pass
+                True when stations log an identifier once on arrival, so dwell
+                is measured arrival-here → arrival-at-next-station instead of
+                collapsing to zero.
 
         Returns:
             DataFrame with columns:
@@ -303,7 +335,7 @@ class ValueTraceabilityEvents(Base):
             - max_dwell_seconds
             - total_dwell_seconds
         """
-        timeline = self.build_timeline()
+        timeline = self.build_timeline(infer_dwell_from_next=infer_dwell_from_next)
 
         if timeline.empty:
             return pd.DataFrame(

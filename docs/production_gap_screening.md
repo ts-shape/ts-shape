@@ -83,15 +83,18 @@ are unaffected.
 | `micro_stop_detection.py` | `_intervalize` (→ detect/frequency/impact) | high | `total_micro_stop_time = 0`, `availability_loss_pct = 0` | ✅ (constructor `interval_end`) |
 | `long_downtime_events.py` | `detect_long_downtime` | high | a real multi-hour stop is a single row → `duration 0 < min_gap` → missed | ✅ (`interval_end` kwarg) |
 | `duty_cycle.py` | `on_off_intervals` (→ `excessive_cycling`) | medium | all on/off durations `0` | ✅ (constructor `interval_end`) |
-| `order_traceability.py`, `routing_traceability.py`, `multi_process_traceability.py` | `_detect_intervals` / dwell stats | medium | per-station dwell `0` for single-arrival events | 🔜 |
+| `order_traceability.py`, `routing_traceability.py`, `multi_process_traceability.py` | `build_timeline` / `build_routing_timeline` / dwell stats | medium | per-station dwell `0` for single-arrival events | ✅ (opt-in `infer_dwell_from_next`) |
 
-**Traceability dwell (follow-up):** the three traceability modules share the
-same collapse, but the honest fix has *different* semantics — a station logs a
-part once on arrival, so the dwell is `arrival-at-this-station →
+**Traceability dwell:** the three traceability modules share the same collapse,
+but the honest fix has *different* semantics — a station logs a part once on
+arrival, so the dwell is `arrival-at-this-station →
 arrival-at-the-part's-next-station` (a cross-station, per-identifier lookup),
-not simply the next occupant of the same station. That is a distinct design
-decision (`infer_dwell_from_next`), so it is kept as its own change rather than
-forced through the boolean-state helper.
+not the next occupant of the same station. Opt-in via `infer_dwell_from_next`
+on `build_timeline` / `build_routing_timeline` (threaded into the dwell-stat
+methods); default (last-sample span) unchanged. In `multi_process_traceability`
+the inference applies only to sequential visits — parallel/overlapping visits
+keep their own span, since a "next arrival" is undefined while an item is at two
+stations at once.
 
 **Genuine bug in the same family — fixed now:** ✅
 `downtime_tracking.downtime_by_reason` computed `next_time` *after* filtering to
@@ -150,10 +153,12 @@ time. Default (`False`, sample-mean) is unchanged.
 overnight shift's post-midnight readings to the shift's *start* date (a
 "production day") so each shift is one contiguous group. Opt-in via
 `production_day=True` on `target_tracking.compare_to_target`,
-`shift_reporting.shift_production`, and `shift_handover.generate_report`;
-default (raw calendar date) is unchanged. The scrap/rework/quality/operator
-shift methods share the same `_assign_shift` and can adopt the option the same
-way as a mechanical fast-follow.
+`shift_reporting.shift_production`, `shift_handover.generate_report`, and the
+same-`_assign_shift` shift methods in `scrap_tracking.scrap_by_shift`,
+`rework_tracking` (`rework_by_shift`, `rework_rate`),
+`quality_tracking` (`nok_by_shift`, `daily_quality_summary`), and
+`operator_performance.production_by_operator`. Default (raw calendar date) is
+unchanged.
 
 ---
 
@@ -180,14 +185,12 @@ consistently across the pack.
 
 ---
 
-## Remaining follow-ups (lined out)
+## Status
 
-1. **Theme B traceability dwell** — `infer_dwell_from_next` (cross-station,
-   per-identifier) on `order_traceability`, `routing_traceability`,
-   `multi_process_traceability`. (The boolean-state modules are done.)
-2. **Theme E overnight fast-follow** — extend the `production_day` option to the
-   scrap/rework/quality/operator shift methods (same `_assign_shift`).
+All six themes from this screen are complete. Every fix is opt-in and
+backward-compatible: default output (values *and* column sets) is unchanged, so
+existing pipelines are unaffected until they pass the new keyword. Shared
+helpers — `ts_shape.utils.counters`, `ts_shape.utils.intervals`,
+`ts_shape.utils.shifts` — keep the behaviour consistent across the pack.
 
-Themes A, C, D, F and the boolean-state part of B are complete. The two items
-above are the only remaining gaps from this screen; each is a self-contained
-change with a defined approach.
+No open gaps remain from this screen.
