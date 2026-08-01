@@ -88,9 +88,7 @@ class BottleneckDetectionEvents(Base):
                 )
             else:
                 series = (
-                    station.set_index(self.time_column)["state"]
-                    .resample(window)
-                    .mean()
+                    station.set_index(self.time_column)["state"].resample(window).mean()
                 )
 
             for ts, pct in series.items():

@@ -54,6 +54,8 @@ def test_shift_reporting_production_day_merges_night_shift():
     # yields a single contiguous shift_3 row for 2024-01-01.
     naive_night = naive[naive["shift"] == "shift_3"]
     fixed_night = fixed[fixed["shift"] == "shift_3"]
-    assert len(naive_night) > len(fixed_night[fixed_night["date"] == pd.Timestamp("2024-01-02").date()])
+    assert len(naive_night) > len(
+        fixed_night[fixed_night["date"] == pd.Timestamp("2024-01-02").date()]
+    )
     jan1 = fixed_night[fixed_night["date"] == pd.Timestamp("2024-01-01").date()]
     assert len(jan1) == 1

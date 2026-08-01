@@ -121,9 +121,7 @@ class MachineStateEvents(Base):
                 "uuid": self.event_uuid,
                 "source_uuid": self.run_state_uuid,
                 "is_delta": True,
-                "state": [
-                    "run" if bool(st) else "idle" for st in intervals["state"]
-                ],
+                "state": ["run" if bool(st) else "idle" for st in intervals["state"]],
                 "duration_seconds": intervals["duration_seconds"].to_numpy(),
             }
         )
@@ -270,9 +268,7 @@ class MachineStateEvents(Base):
         - rapid_transitions_detected: number of rapid transition events
         """
         transitions = self.transition_events()
-        intervals = self.detect_run_idle(
-            interval_end=interval_end, data_end=data_end
-        )
+        intervals = self.detect_run_idle(interval_end=interval_end, data_end=data_end)
 
         total_transitions = len(transitions)
 

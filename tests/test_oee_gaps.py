@@ -10,9 +10,7 @@ from ts_shape.events.production.runtime_accounting import RuntimeAccountingEvent
 def _oee_frame(counter_values):
     """One day: run-state always True (hourly), a part counter, no rejects."""
     times = pd.date_range("2024-01-01 00:00:00", periods=len(counter_values), freq="1h")
-    state = pd.DataFrame(
-        {"uuid": "state", "systime": times, "value_bool": True}
-    )
+    state = pd.DataFrame({"uuid": "state", "systime": times, "value_bool": True})
     counter = pd.DataFrame(
         {"uuid": "counter", "systime": times, "value_integer": counter_values}
     )
@@ -40,7 +38,9 @@ def test_calculate_availability_max_gap_excludes_outage():
         pd.Timestamp("2024-01-01 14:00:00"),  # 6h gap while "running"
         pd.Timestamp("2024-01-01 14:05:00"),
     ]
-    df = pd.DataFrame({"uuid": "state", "systime": times, "value_bool": [True, True, True, True]})
+    df = pd.DataFrame(
+        {"uuid": "state", "systime": times, "value_bool": [True, True, True, True]}
+    )
     oee = OEECalculator(df)
     naive = oee.calculate_availability("state")
     capped = oee.calculate_availability("state", max_gap="15min")
@@ -71,7 +71,9 @@ def test_runtime_summary_max_gap():
         pd.Timestamp("2024-01-01 20:00:00"),  # 12h gap while running
         pd.Timestamp("2024-01-01 20:05:00"),
     ]
-    df = pd.DataFrame({"uuid": "run", "systime": times, "value_bool": [True, True, True, True]})
+    df = pd.DataFrame(
+        {"uuid": "run", "systime": times, "value_bool": [True, True, True, True]}
+    )
     rt = RuntimeAccountingEvents(df, run_uuid="run")
     naive = rt.runtime_summary()
     capped = rt.runtime_summary(max_gap="15min")

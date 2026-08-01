@@ -7,9 +7,7 @@ from ts_shape.utils.intervals import state_intervals
 
 
 def _frame(pairs):
-    return pd.DataFrame(
-        [{"systime": pd.Timestamp(t), "state": s} for t, s in pairs]
-    )
+    return pd.DataFrame([{"systime": pd.Timestamp(t), "state": s} for t, s in pairs])
 
 
 def test_change_encoded_last_sample_collapses_to_zero():

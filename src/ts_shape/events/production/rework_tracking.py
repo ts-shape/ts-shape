@@ -13,7 +13,7 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import counter_increments, counter_quantity, count_resets
+from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
@@ -264,10 +264,9 @@ class ReworkTracking(Base):
             (result_df["rework_count"] / total * 100).round(1) if total > 0 else 0.0
         )
 
-        return (
-            result_df.sort_values("rework_count", ascending=False)
-            .reset_index(drop=True)[columns]
-        )
+        return result_df.sort_values("rework_count", ascending=False).reset_index(
+            drop=True
+        )[columns]
 
     def rework_rate(
         self,

@@ -81,7 +81,9 @@ def test_compare_periods_handles_resets():
         period1=("2024-01-01", "2024-01-01"),
         period2=("2024-01-02", "2024-01-02"),
     )
-    p1_default = default[default["metric"] == "total_production"]["period1_value"].iloc[0]
+    p1_default = default[default["metric"] == "total_production"]["period1_value"].iloc[
+        0
+    ]
     assert p1_default == 50  # under-reports
 
     aware = summary.compare_periods(

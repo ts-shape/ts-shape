@@ -12,7 +12,7 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import counter_increments, counter_quantity, count_resets
+from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)

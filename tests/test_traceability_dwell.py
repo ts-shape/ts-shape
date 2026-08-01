@@ -8,9 +8,21 @@ from ts_shape.events.production.order_traceability import OrderTraceabilityEvent
 def _single_arrival_frame():
     # Each station logs ORD-001 exactly once, on arrival (event-encoded).
     rows = [
-        {"uuid": "stA", "systime": pd.Timestamp("2024-01-01 08:00:00"), "value_string": "ORD-001"},
-        {"uuid": "stB", "systime": pd.Timestamp("2024-01-01 08:10:00"), "value_string": "ORD-001"},
-        {"uuid": "stC", "systime": pd.Timestamp("2024-01-01 08:25:00"), "value_string": "ORD-001"},
+        {
+            "uuid": "stA",
+            "systime": pd.Timestamp("2024-01-01 08:00:00"),
+            "value_string": "ORD-001",
+        },
+        {
+            "uuid": "stB",
+            "systime": pd.Timestamp("2024-01-01 08:10:00"),
+            "value_string": "ORD-001",
+        },
+        {
+            "uuid": "stC",
+            "systime": pd.Timestamp("2024-01-01 08:25:00"),
+            "value_string": "ORD-001",
+        },
     ]
     return pd.DataFrame(rows)
 

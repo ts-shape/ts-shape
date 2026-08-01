@@ -15,7 +15,10 @@ def test_downtime_by_shift_max_gap_excludes_logger_outage():
         ("2024-01-01 14:05:00", "Running"),
     ]
     df = pd.DataFrame(
-        [{"uuid": "state", "systime": pd.Timestamp(t), "value_string": v} for t, v in rows]
+        [
+            {"uuid": "state", "systime": pd.Timestamp(t), "value_string": v}
+            for t, v in rows
+        ]
     )
     dt = DowntimeTracking(df)
 
@@ -60,8 +63,7 @@ def test_performance_by_shift_max_cycle_gap():
     times += [t + pd.Timedelta(hours=1) for t in times]  # shifted batch after 1h gap
     times = sorted(times)
     rows = [
-        {"uuid": "c", "systime": t, "value_integer": i}
-        for i, t in enumerate(times)
+        {"uuid": "c", "systime": t, "value_integer": i} for i, t in enumerate(times)
     ]
     df = pd.DataFrame(rows)
     pl = PerformanceLossTracking(df)

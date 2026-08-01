@@ -261,9 +261,7 @@ class ValueTraceabilityEvents(Base):
     # current_status
     # ------------------------------------------------------------------
 
-    def current_status(
-        self, *, infer_dwell_from_next: bool = False
-    ) -> pd.DataFrame:
+    def current_status(self, *, infer_dwell_from_next: bool = False) -> pd.DataFrame:
         """Determine the last-known station for each identifier.
 
         Args:

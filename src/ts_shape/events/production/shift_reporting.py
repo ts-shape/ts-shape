@@ -237,7 +237,9 @@ class ShiftReporting(Base):
                 continue
 
             counter_series = group_data[value_column_counter]
-            quantity = int(counter_quantity(counter_series, handle_resets=handle_resets))
+            quantity = int(
+                counter_quantity(counter_series, handle_resets=handle_resets)
+            )
 
             if part_id_uuid and len(group_cols) == 3:
                 row = {

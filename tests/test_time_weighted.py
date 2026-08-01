@@ -12,9 +12,21 @@ def test_station_utilization_time_weighted():
     # of the hour, but a sample-count mean of [1, 0] reads 50%.
     df = pd.DataFrame(
         [
-            {"uuid": "s1", "systime": pd.Timestamp("2024-01-01 09:00:00"), "value_bool": True},
-            {"uuid": "s1", "systime": pd.Timestamp("2024-01-01 09:59:00"), "value_bool": False},
-            {"uuid": "s1", "systime": pd.Timestamp("2024-01-01 10:00:00"), "value_bool": False},
+            {
+                "uuid": "s1",
+                "systime": pd.Timestamp("2024-01-01 09:00:00"),
+                "value_bool": True,
+            },
+            {
+                "uuid": "s1",
+                "systime": pd.Timestamp("2024-01-01 09:59:00"),
+                "value_bool": False,
+            },
+            {
+                "uuid": "s1",
+                "systime": pd.Timestamp("2024-01-01 10:00:00"),
+                "value_bool": False,
+            },
         ]
     )
     bd = BottleneckDetectionEvents(df)
@@ -31,9 +43,21 @@ def test_station_utilization_time_weighted():
 def test_duty_cycle_per_window_time_weighted():
     df = pd.DataFrame(
         [
-            {"uuid": "sig", "systime": pd.Timestamp("2024-01-01 09:00:00"), "value_bool": True},
-            {"uuid": "sig", "systime": pd.Timestamp("2024-01-01 09:59:00"), "value_bool": False},
-            {"uuid": "sig", "systime": pd.Timestamp("2024-01-01 10:00:00"), "value_bool": False},
+            {
+                "uuid": "sig",
+                "systime": pd.Timestamp("2024-01-01 09:00:00"),
+                "value_bool": True,
+            },
+            {
+                "uuid": "sig",
+                "systime": pd.Timestamp("2024-01-01 09:59:00"),
+                "value_bool": False,
+            },
+            {
+                "uuid": "sig",
+                "systime": pd.Timestamp("2024-01-01 10:00:00"),
+                "value_bool": False,
+            },
         ]
     )
     dc = DutyCycleEvents(df, "sig")
@@ -50,7 +74,11 @@ def test_cycle_quality_check_zero_expected_returns_empty():
     for t in times:
         rows.append({"uuid": "c", "systime": t, "value_bool": False})
         rows.append(
-            {"uuid": "c", "systime": t + pd.Timedelta(milliseconds=1), "value_bool": True}
+            {
+                "uuid": "c",
+                "systime": t + pd.Timedelta(milliseconds=1),
+                "value_bool": True,
+            }
         )
     df = pd.DataFrame(rows)
     lt = LineThroughputEvents(df)

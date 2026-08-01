@@ -32,9 +32,7 @@ def reset_oee_data():
     rows += _counter_rows("total_counter", times, [0, 50, 100, 150, 0, 60, 120])
     # reject counter: 0,1,2,[reset]0,1 (only 5 readings)
     #   naive last-first = 1 ; reset-aware = 3 ; 1 reset
-    rows += _counter_rows(
-        "reject_counter", times[:5], [0, 1, 2, 0, 1]
-    )
+    rows += _counter_rows("reject_counter", times[:5], [0, 1, 2, 0, 1])
     return pd.DataFrame(rows)
 
 

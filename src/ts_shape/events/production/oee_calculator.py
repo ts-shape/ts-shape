@@ -254,11 +254,11 @@ class OEECalculator(Base):
         for date, grp in counter_data.groupby("date"):
             grp = grp.sort_values(self.time_column)
             if handle_resets:
-                actual_parts = counter_quantity(
-                    grp[value_column], handle_resets=True
-                )
+                actual_parts = counter_quantity(grp[value_column], handle_resets=True)
             else:
-                actual_parts = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
+                actual_parts = max(
+                    0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
+                )
 
             if date in run_per_day:
                 run_seconds = run_per_day[date]

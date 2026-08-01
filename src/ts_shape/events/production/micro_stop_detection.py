@@ -88,9 +88,7 @@ class MicroStopEvents(Base):
             {
                 "start": intervals["start"].to_numpy(),
                 "end": intervals["end"].to_numpy(),
-                "state": [
-                    "run" if bool(st) else "idle" for st in intervals["state"]
-                ],
+                "state": ["run" if bool(st) else "idle" for st in intervals["state"]],
                 "duration": pd.to_timedelta(intervals["duration_seconds"], unit="s"),
             }
         )

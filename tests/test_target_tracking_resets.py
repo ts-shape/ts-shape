@@ -24,9 +24,7 @@ def reset_target_data():
 
 def test_compare_to_target_default_under_reports(reset_target_data):
     tracker = TargetTracking(reset_target_data)
-    result = tracker.compare_to_target(
-        "target_counter", targets={"shift_1": 300}
-    )
+    result = tracker.compare_to_target("target_counter", targets={"shift_1": 300})
     assert "resets" not in result.columns
     assert result["actual"].iloc[0] == 150
 
