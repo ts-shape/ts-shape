@@ -109,6 +109,39 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:sample_count": "leader_count",
         },
     ),
+    ("RootCauseCorrelationEvents", "lag_profile"): _r(
+        "correlation.root_cause.lag_profile",
+        _CO,
+        ST,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "method",
+            "ts_shape:confidence": "correlation",
+            "ts_shape:sample_count": "sample_count",
+        },
+    ),
+    ("RootCauseCorrelationEvents", "rank_causes"): _r(
+        "correlation.root_cause.candidate_rank",
+        _CO,
+        ST,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "method",
+            "ts_shape:confidence": "correlation_coefficient",
+            "ts_shape:sample_count": "sample_count",
+        },
+    ),
+    ("RootCauseCorrelationEvents", "top_cause"): _r(
+        "correlation.root_cause.verdict",
+        _CO,
+        ST,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "method",
+            "ts_shape:confidence": "confidence",
+            "ts_shape:sample_count": "candidates_tested",
+        },
+    ),
     ("SignalCorrelationEvents", "correlation_breakdown"): _r(
         "correlation.signal.breakdown",
         _CO,
@@ -754,6 +787,45 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         standard_attrs={"ts_shape:sample_count": None},
     ),
     # ---- maintenance -------------------------------------------------------
+    ("AssetHealthIndexEvents", "health_events"): _r(
+        "maintenance.asset_health.threshold_crossing",
+        _M,
+        P,
+        severity_field="severity",
+        standard_attrs={
+            "ts_shape:method": "asset_health_index",
+            "ts_shape:direction": "direction",
+            "ts_shape:threshold_low": "threshold",
+            "ts_shape:confidence": "confidence_level",
+        },
+    ),
+    ("AssetHealthIndexEvents", "health_index"): _r(
+        "maintenance.asset_health.index_window",
+        _M,
+        S,
+        standard_attrs={
+            "ts_shape:sample_count": "sample_count",
+            "ts_shape:confidence": "confidence_level",
+        },
+    ),
+    ("AssetHealthIndexEvents", "maintenance_forecast"): _r(
+        "maintenance.asset_health.forecast",
+        _M,
+        S,
+        standard_attrs={
+            "ts_shape:method": "method",
+            "ts_shape:confidence": "confidence",
+            "ts_shape:threshold_low": "critical_threshold",
+            "ts_shape:sample_count": "sample_count",
+        },
+    ),
+    ("AssetHealthIndexEvents", "signal_contributions"): _r(
+        "maintenance.asset_health.signal_contribution",
+        _M,
+        ST,
+        objs=("signal",),
+        standard_attrs={"ts_shape:method": "method"},
+    ),
     ("DegradationDetectionEvents", "detect_level_shift"): _r(
         "maintenance.degradation.level_shift",
         _M,
@@ -1439,6 +1511,43 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
+    ),
+    ("ProductionScheduleAdherenceEvents", "adherence_by_period"): _r(
+        "production.schedule.adherence_period",
+        _PR,
+        S,
+        objs=("asset", "work_order"),
+        standard_attrs={
+            "ts_shape:sample_count": "sample_count",
+            "ts_shape:outcome": "deviation_type",
+            "ts_shape:deviation": "deviation_units",
+            "ts_shape:deviation_pct": "schedule_adherence_pct",
+        },
+    ),
+    ("ProductionScheduleAdherenceEvents", "adherence_summary"): _r(
+        "production.schedule.adherence_summary",
+        _PR,
+        S,
+        standard_attrs={
+            "ts_shape:sample_count": "sample_count",
+            "ts_shape:deviation": "deviation_units",
+            "ts_shape:deviation_pct": "overall_adherence_pct",
+        },
+    ),
+    ("ProductionScheduleAdherenceEvents", "deviation_events"): _r(
+        "production.schedule.deviation",
+        _PR,
+        P,
+        objs=("asset", "work_order"),
+        severity_field="severity",
+        standard_attrs={
+            "ts_shape:method": "schedule_adherence",
+            "ts_shape:direction": "direction",
+            "ts_shape:outcome": "deviation_type",
+            "ts_shape:deviation": "deviation_units",
+            "ts_shape:deviation_pct": "schedule_adherence_pct",
+            "ts_shape:threshold_low": "threshold",
+        },
     ),
     ("QualityTracking", "daily_quality_summary"): _r(
         "production.quality.daily_summary",

@@ -4,6 +4,11 @@
 **Scope:** Common manufacturing industry challenges vs. procedures implemented in ts-shape, with proposals for additional methods.  
 **Research basis:** Industry surveys and analyst reports by Deloitte, McKinsey, LNS Research, Siemens, ASQ, MESA International, Gartner, SANS Institute, IBM X-Force, KPMG, and the National Association of Manufacturers (NAM), covering 2024–2026 data.
 
+**Roadmap status (August 2026):** six of the ten proposed modules in §4 are
+implemented — the three energy modules (§4.2–§4.4), plus
+`AssetHealthIndexEvents` (§4.1), `ProductionScheduleAdherenceEvents` (§4.8) and
+`RootCauseCorrelationEvents` (§4.10). The four still open are tracked in §5.
+
 ---
 
 ## 1. Market Research: Top Manufacturing Operations Issues
@@ -217,16 +222,16 @@ The table below maps each identified industry challenge to the corresponding ts-
 
 | # | Manufacturing Issue | ts-shape Coverage | Coverage Level |
 |---|---|---|---|
-| 1.1 | Unplanned Equipment Downtime | `DegradationDetectionEvents`, `FailurePredictionEvents`, `VibrationAnalysisEvents` | **Partial** |
+| 1.1 | Unplanned Equipment Downtime | `DegradationDetectionEvents`, `FailurePredictionEvents`, `VibrationAnalysisEvents`, `AssetHealthIndexEvents` | **Good** |
 | 1.2 | Poor OEE | `OEECalculator`, `MachineStateEvents`, `MicroStopEvents`, `ChangeoverEvents`, `LineThroughputEvents` | **Strong** |
 | 1.3 | Quality Defects & Scrap | `StatisticalProcessControlRuleBased`, `OutlierDetectionEvents`, `ToleranceDeviationEvents`, `CapabilityTrendingEvents`, `GaugeRepeatabilityEvents`, `ScrapTracking`, `QualityTracking` | **Strong** |
 | 1.4 | Supply Chain Disruptions | `InventoryMonitoringEvents`, `LeadTimeAnalysisEvents`, `DemandPatternEvents` | **Partial** |
-| 1.5 | Energy Waste | `ConsumptionAnalysisEvents`, `EfficiencyTrackingEvents` | **Partial** |
+| 1.5 | Energy Waste | `ConsumptionAnalysisEvents`, `EfficiencyTrackingEvents`, `IdleEnergyDetectionEvents`, `EnergyPerformanceIndicatorEvents`, `CarbonIntensityEvents` | **Good** |
 | 1.6 | Workforce Productivity | `OperatorPerformanceTracking`, `ShiftReporting`, `ShiftHandoverReport`, `TargetTracking` | **Good** |
 | 1.7 | Process Variability | `SetpointChangeEvents`, `ControlLoopHealthEvents`, `ProcessStabilityIndex`, `OperatingRangeEvents`, `DisturbanceRecoveryEvents` | **Strong** |
 | 1.8 | Alarm Flood & Fatigue | `AlarmManagementEvents` (chattering, standing alarms, flood detection) | **Strong** |
 | 1.9 | Traceability & Compliance | `ValueTraceabilityEvents`, `OrderTraceabilityEvents`, `RoutingTraceabilityEvents`, `MultiProcessTraceabilityEvents`, `BatchTrackingEvents` | **Strong** |
-| 1.10 | Bottleneck Management | `BottleneckDetectionEvents`, `FlowConstraintEvents`, `LineThroughputEvents`, `ChangeoverEvents` | **Strong** |
+| 1.10 | Bottleneck Management | `BottleneckDetectionEvents`, `FlowConstraintEvents`, `LineThroughputEvents`, `ChangeoverEvents`, `ProductionScheduleAdherenceEvents` | **Strong** |
 | 1.11 | Cybersecurity / IT-OT Threats | No coverage | **Missing** |
 
 ### Coverage Legend
@@ -246,11 +251,24 @@ The table below maps each identified industry challenge to the corresponding ts-
 - `FailurePredictionEvents`: linear/exponential RUL estimation with failure threshold
 - `VibrationAnalysisEvents`: RMS, amplitude, kurtosis, crest factor
 
-**What is missing:**
+**Closed since this screen:**
+- **Multi-signal anomaly fusion** — `AssetHealthIndexEvents.health_index` scores
+  every configured signal on one window grid and fuses them into a single
+  weighted 0–100 index per asset, with a confidence level reporting how much of
+  the configured signal weight actually had data.
+- **Failure mode attribution** — each signal carries a failure-mode label, so
+  the fused row names the `dominant_failure_mode` and
+  `signal_contributions` ranks the signals by the health they cost the asset.
+  This is attribution from the configured mapping, not classification of an
+  unlabelled fault.
+- **Maintenance horizon** — `maintenance_forecast` extrapolates the index to a
+  critical threshold and reports days-to-intervention, suppressed when the
+  trend fit is too weak to support a date.
+
+**What is still missing:**
 - **Thermal imaging / temperature-based degradation**: No integration of thermal sensor analysis for bearing overheating, motor winding faults, or lubrication failures
 - **Oil analysis / contamination signals**: No lubrication health monitoring module
-- **Multi-signal anomaly fusion**: Degradation events are per-signal; no fusion of vibration + temperature + current draw into a single health index per asset
-- **Failure mode classification**: RUL is estimated but the *type* of failure (bearing fault vs. imbalance vs. misalignment) is not classified
+- **Unsupervised failure mode classification**: the failure mode is taken from the caller's signal mapping; the *type* of fault is not inferred from the signal shape (bearing fault vs. imbalance vs. misalignment)
 - **Prescriptive maintenance recommendations**: No mapping from health score to specific maintenance action
 
 ---
@@ -276,12 +294,10 @@ The table below maps each identified industry challenge to the corresponding ts-
 - `ConsumptionAnalysisEvents`: energy consumption trending
 - `EfficiencyTrackingEvents`: energy efficiency KPI tracking
 
-**What is missing:**
-- **Production-normalized energy (EnPI)**: No Energy Performance Indicator calculation — energy per unit produced, per machine, per shift
-- **Carbon intensity tracking**: No CO2/kWh or Scope 1/2 emissions calculation for regulatory reporting
-- **Peak demand event detection**: No identification of demand spikes that trigger penalty tariffs
+**Closed since this screen:** `EnergyPerformanceIndicatorEvents` (production-normalized EnPI), `CarbonIntensityEvents` (Scope 1/2 and per-unit intensity), `IdleEnergyDetectionEvents` (energy drawn while not producing), and peak-demand detection in `EnergyConsumptionEvents.peak_demand_detection`.
+
+**What is still missing:**
 - **Energy baseline modeling**: No regression-based energy baseline (ISO 50001 methodology) to separate structural from behavioral waste
-- **Idle energy detection**: No detection of machines consuming energy during non-production periods
 
 ---
 
@@ -291,9 +307,15 @@ The table below maps each identified industry challenge to the corresponding ts-
 - SPC covers Western Electric rules (8 rules) for univariate signals
 - Gauge R&R is implemented for measurement system analysis
 
-**What is missing:**
+**Closed since this screen:**
+- **Automated root cause suggestion** — `RootCauseCorrelationEvents` takes the
+  events a detector already produced (SPC violation, downtime interval, scrap
+  booking) and ranks candidate signals by lagged correlation with the event
+  onsets, reporting each candidate's lead time and a Bonferroni-corrected
+  p-value so a chance alignment is not promoted to a root cause.
+
+**What is still missing:**
 - **Multivariate SPC (MSPC)**: Hotelling T² and CUSUM charts for processes with correlated quality variables
-- **Automated root cause suggestion**: When an SPC rule fires, no causal factor ranking is proposed (e.g., "this alarm historically correlates with tool wear signal X")
 - **First Article Inspection (FAI) tracking**: No structured new-part introduction quality workflow
 - **Customer complaint / field return linkage**: No feedback loop from field quality to production parameter correlation
 
@@ -306,6 +328,7 @@ The following new modules are recommended to close the identified gaps and align
 ---
 
 ### 4.1 `AssetHealthIndexEvents` (Predictive Maintenance)
+**Status:** ✅ Implemented — `ts_shape.events.maintenance.asset_health_index`.
 **Addresses:** Gap 3.1 — multi-signal health fusion
 
 **Concept:** Fuse degradation signals from vibration, temperature, current, and operational hours into a single normalized asset health index (0–100) per piece of equipment. Weight signals by failure mode criticality. Emit events when health crosses configurable warning and critical thresholds.
@@ -325,6 +348,7 @@ The following new modules are recommended to close the identified gaps and align
 ---
 
 ### 4.2 `IdleEnergyDetectionEvents` (Energy)
+**Status:** ✅ Implemented — `ts_shape.events.energy.idle_energy_detection`.
 **Addresses:** Gap 3.3 — idle energy detection
 
 **Concept:** Cross-reference machine state (from `MachineStateEvents`) with energy consumption data to detect and quantify energy consumed during idle/off-shift periods. Emit events for machines consuming above baseline energy while in non-production state.
@@ -343,6 +367,7 @@ The following new modules are recommended to close the identified gaps and align
 ---
 
 ### 4.3 `EnergyPerformanceIndicatorEvents` (Energy)
+**Status:** ✅ Implemented — `ts_shape.events.energy.energy_performance_indicator`.
 **Addresses:** Gap 3.3 — production-normalized energy (EnPI)
 
 **Concept:** Calculate energy consumed per unit of production output, tracking EnPI trends and deviations. Supports ISO 50001 energy management system requirements. Compares current EnPI vs. baseline period EnPI.
@@ -363,6 +388,7 @@ The following new modules are recommended to close the identified gaps and align
 ---
 
 ### 4.4 `CarbonIntensityEvents` (Energy / Sustainability)
+**Status:** ✅ Implemented — `ts_shape.events.energy.carbon_intensity`.
 **Addresses:** Gap 3.3 — Scope 1/2 emissions tracking
 
 **Concept:** Convert energy consumption and fuel usage signals to CO2-equivalent emissions using configurable emission factors (kgCO2e/kWh for electricity by grid region; kgCO2e/m³ for natural gas, etc.). Supports CSRD and ISO 14064 reporting.
@@ -443,6 +469,10 @@ The following new modules are recommended to close the identified gaps and align
 ---
 
 ### 4.8 `ProductionScheduleAdherenceEvents` (Production)
+**Status:** ✅ Implemented — `ts_shape.events.production.schedule_adherence`.
+Actual quantities are reset-aware by default (`ts_shape.utils.counters`), and
+`recovery_required_rate` is `NaN` once a period is over rather than a number
+that cannot be acted on.
 **Addresses:** Schedule vs. actual tracking — currently absent
 
 **Concept:** Compare planned production schedules (imported as a target DataFrame) against actual production output to detect schedule deviations, catch-up pressure events, and early/late completion patterns.
@@ -485,6 +515,9 @@ The following new modules are recommended to close the identified gaps and align
 ---
 
 ### 4.10 `RootCauseCorrelationEvents` (Correlation — Enhancement)
+**Status:** ✅ Implemented — `ts_shape.events.correlation.root_cause_correlation`.
+Only non-negative lags are searched (a cause precedes its effect) and the
+winning lag's p-value is Bonferroni-corrected for the lag scan.
 **Addresses:** Gap 3.4 — automated root cause suggestion for quality and downtime events
 
 **Concept:** When a quality excursion or downtime event is detected, automatically rank potential causal signals by their temporal correlation with the event onset. Extends existing `AnomalyCorrelationEvents` with an event-driven, directed analysis mode.
@@ -508,18 +541,22 @@ The following new modules are recommended to close the identified gaps and align
 
 Based on industry impact (frequency × cost) and implementation effort, the following priority order is recommended:
 
-| Priority | Proposed Module | Business Driver | Effort Estimate |
-|---|---|---|---|
-| P1 | `AssetHealthIndexEvents` | Downtime cost reduction ($260K/hr) — highest ROI category | Medium |
-| P1 | `IdleEnergyDetectionEvents` | Quick win — idle energy waste is immediately measurable | Low |
-| P1 | `ProductionScheduleAdherenceEvents` | Closes OEE-to-scheduling gap; common customer request | Low |
-| P2 | `EnergyPerformanceIndicatorEvents` | ISO 50001 / sustainability reporting demand | Medium |
-| P2 | `SafetyEventDetectionEvents` | Regulatory & insurance pressure; new market segment | Medium |
-| P2 | `OTAnomalyDetectionEvents` | Cyber is now the #1 manufacturing attack vector (41% share); defensible differentiator | Medium |
-| P2 | `RootCauseCorrelationEvents` | Amplifies value of all existing event detectors | Medium |
-| P3 | `MultivariateProcessControlEvents` | High value in process manufacturing; more complex | High |
-| P3 | `CarbonIntensityEvents` | CSRD compliance deadline pressure — EU market | Medium |
-| P3 | `SupplierPerformanceEvents` | Requires external data (goods receiving); integration dependency | High |
+| Priority | Proposed Module | Business Driver | Effort Estimate | Status |
+|---|---|---|---|---|
+| P1 | `AssetHealthIndexEvents` | Downtime cost reduction ($260K/hr) — highest ROI category | Medium | ✅ Done |
+| P1 | `IdleEnergyDetectionEvents` | Quick win — idle energy waste is immediately measurable | Low | ✅ Done |
+| P1 | `ProductionScheduleAdherenceEvents` | Closes OEE-to-scheduling gap; common customer request | Low | ✅ Done |
+| P2 | `EnergyPerformanceIndicatorEvents` | ISO 50001 / sustainability reporting demand | Medium | ✅ Done |
+| P2 | `SafetyEventDetectionEvents` | Regulatory & insurance pressure; new market segment | Medium | Open |
+| P2 | `OTAnomalyDetectionEvents` | Cyber is now the #1 manufacturing attack vector (41% share); defensible differentiator | Medium | Open |
+| P2 | `RootCauseCorrelationEvents` | Amplifies value of all existing event detectors | Medium | ✅ Done |
+| P3 | `MultivariateProcessControlEvents` | High value in process manufacturing; more complex | High | Open |
+| P3 | `CarbonIntensityEvents` | CSRD compliance deadline pressure — EU market | Medium | ✅ Done |
+| P3 | `SupplierPerformanceEvents` | Requires external data (goods receiving); integration dependency | High | Open |
+
+**Next up:** the two P2 modules — `SafetyEventDetectionEvents` and
+`OTAnomalyDetectionEvents` — are the highest-priority remaining items; both
+open new domains rather than extending an existing pack.
 
 ---
 
@@ -534,16 +571,18 @@ ts-shape is a **highly capable manufacturing analytics platform** with strong co
 - Alarm management (chattering, standing alarms, ISA-18.2 KPIs)
 - Process engineering (control loop health, setpoint analysis, disturbance recovery)
 
-**Key gaps** to address:
-1. **Predictive maintenance** lacks multi-signal health fusion and failure mode classification
-2. **Energy management** lacks production-normalized EnPI, idle energy detection, and carbon reporting
+**Key gaps** identified by this screen, and where they stand:
+
+1. ~~**Predictive maintenance** lacks multi-signal health fusion~~ — closed by `AssetHealthIndexEvents`; unsupervised failure-mode classification and prescriptive actions remain open
+2. ~~**Energy management** lacks production-normalized EnPI, idle energy detection, and carbon reporting~~ — closed by the three energy modules; ISO 50001 regression baselining remains open
 3. **Supply chain** lacks supplier performance scoring and incoming quality integration
 4. **Quality** lacks multivariate SPC for correlated variable processes
 5. **Safety monitoring** is entirely absent — a growing market requirement
-6. **Schedule adherence** tracking is not yet implemented
+6. ~~**Schedule adherence** tracking is not yet implemented~~ — closed by `ProductionScheduleAdherenceEvents`
 7. **Cybersecurity / OT anomaly detection** is entirely absent — manufacturing is the #1 attack target and process-layer detection is an emerging requirement
+8. ~~**Automated root-cause suggestion** when a quality or downtime event fires~~ — closed by `RootCauseCorrelationEvents`
 
-The ten proposed modules (§4) would close these gaps with minimal external dependencies, consistent with ts-shape's existing architecture philosophy (pandas/numpy/scipy only, DataFrame-in/DataFrame-out).
+The ten proposed modules (§4) close these gaps with minimal external dependencies, consistent with ts-shape's existing architecture philosophy (pandas/numpy/scipy only, DataFrame-in/DataFrame-out). Six are implemented; four remain open (§5).
 
 ---
 

@@ -66,6 +66,7 @@ _LAZY: dict[str, str] = {
     "PartProductionTracking": "ts_shape.events.production.part_tracking",
     "PerformanceLossTracking": "ts_shape.events.production.performance_loss",
     "PeriodSummary": "ts_shape.events.production.period_summary",
+    "ProductionScheduleAdherenceEvents": "ts_shape.events.production.schedule_adherence",
     "QualityTracking": "ts_shape.events.production.quality_tracking",
     "ReworkTracking": "ts_shape.events.production.rework_tracking",
     "RoutingTraceabilityEvents": "ts_shape.events.production.routing_traceability",
@@ -90,6 +91,7 @@ _LAZY: dict[str, str] = {
     "ThresholdMonitoringEvents": "ts_shape.events.engineering.threshold_monitoring",
     "WarmUpCoolDownEvents": "ts_shape.events.engineering.warmup_analysis",
     # -- events.maintenance ---------------------------------------------
+    "AssetHealthIndexEvents": "ts_shape.events.maintenance.asset_health_index",
     "DegradationDetectionEvents": "ts_shape.events.maintenance.degradation_detection",
     "FailurePredictionEvents": "ts_shape.events.maintenance.failure_prediction",
     "VibrationAnalysisEvents": "ts_shape.events.maintenance.vibration_analysis",
@@ -107,6 +109,7 @@ _LAZY: dict[str, str] = {
     "IdleEnergyDetectionEvents": "ts_shape.events.energy.idle_energy_detection",
     # -- events.correlation ---------------------------------------------
     "AnomalyCorrelationEvents": "ts_shape.events.correlation.anomaly_correlation",
+    "RootCauseCorrelationEvents": "ts_shape.events.correlation.root_cause_correlation",
     "SignalCorrelationEvents": "ts_shape.events.correlation.signal_correlation",
     # -- events.supplychain ---------------------------------------------
     "DemandPatternEvents": "ts_shape.events.supplychain.demand_pattern",

@@ -66,6 +66,31 @@ fix: GaugeRepeatabilityEvents.repeatability uses within operator x part ranges
 fix: overshoot_metrics undershoot is measured after the setpoint is reached.
 add: detect_warmup / detect_cooldown max_pause; detect_startup_adaptive
   baseline_window is now honoured (default None keeps the sample lookback).
+# August 10, 2026
+add: AssetHealthIndexEvents (events.maintenance.asset_health_index) -- fuses
+  several degradation signals into one weighted 0-100 asset health index using
+  the same drift/variance/trend penalty model as
+  DegradationDetectionEvents.health_score. health_index reports the dominant
+  failure mode and a confidence level (share of configured signal weight that
+  had data); health_events emits warning/critical crossings; signal_contributions
+  ranks the signals by the health they cost the asset; maintenance_forecast
+  extrapolates to a critical threshold and withholds a date when the trend fit
+  is weaker than min_confidence. Closes gap 3.1 of the manufacturing-operations
+  research doc.
+add: ProductionScheduleAdherenceEvents (events.production.schedule_adherence) --
+  joins a planned schedule (start/end/planned_qty/order_id) against actual
+  production from a monotonic counter. adherence_by_period reports adherence %,
+  deviation units, an ahead/on_track/behind/critical_behind band, and the
+  units/hour needed to recover in the time left in the period; deviation_events
+  emits the breaches; adherence_summary rolls the horizon up weighted by planned
+  quantity. Actuals are reset-aware by default (handle_resets=True).
+add: RootCauseCorrelationEvents (events.correlation.root_cause_correlation) --
+  directed, event-driven counterpart to AnomalyCorrelationEvents: takes another
+  detector's events and ranks candidate signals by lagged correlation with the
+  event onsets. Only non-negative lags are searched (a cause precedes its
+  effect) and the winning lag's p-value is Bonferroni-corrected for the lag
+  scan, so noise scanned over many lags is not promoted to a root cause.
+  rank_causes / top_cause / lag_profile.
 
 # July 31, 2026
 add: OEECalculator.calculate_oee now threads handle_resets to its performance
