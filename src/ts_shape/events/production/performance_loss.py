@@ -84,8 +84,14 @@ class PerformanceLossTracking(Base):
         self,
         cycle_uuid: str,
         value_column: str = "value_integer",
+        *,
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
-        """Compute per-cycle times from a counter or trigger signal."""
+        """Compute per-cycle times from a counter or trigger signal.
+
+        When ``max_cycle_gap`` is set, intervals longer than it are dropped as
+        stoppages (breaks, downtime) rather than counted as slow cycles.
+        """
         data = (
             self.dataframe[self.dataframe["uuid"] == cycle_uuid]
             .copy()
@@ -105,6 +111,9 @@ class PerformanceLossTracking(Base):
 
         data["cycle_time_s"] = data[self.time_column].diff().dt.total_seconds()
         data = data[data["cycle_time_s"].notna() & (data["cycle_time_s"] > 0)]
+        if max_cycle_gap is not None:
+            cap_seconds = pd.to_timedelta(max_cycle_gap).total_seconds()
+            data = data[data["cycle_time_s"] <= cap_seconds]
         return data
 
     def performance_by_shift(
@@ -113,6 +122,7 @@ class PerformanceLossTracking(Base):
         target_cycle_time: float,
         *,
         value_column: str = "value_integer",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate performance percentage per shift.
 
@@ -122,13 +132,19 @@ class PerformanceLossTracking(Base):
             cycle_uuid: UUID of cycle trigger or counter signal.
             target_cycle_time: Target (ideal) cycle time in seconds.
             value_column: Column with counter values.
+            max_cycle_gap: Optional cap (e.g. "5min"). Intervals longer than
+                this are treated as stoppages and excluded, so a break or
+                downtime is not counted as slow-running time (which would
+                otherwise report a large, spurious speed loss).
 
         Returns:
             DataFrame with columns:
             - date, shift, actual_parts, avg_cycle_time_s,
               target_cycle_time_s, performance_pct, loss_minutes
         """
-        data = self._compute_cycle_times(cycle_uuid, value_column)
+        data = self._compute_cycle_times(
+            cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
+        )
         if data.empty:
             return pd.DataFrame(
                 columns=[
@@ -181,6 +197,7 @@ class PerformanceLossTracking(Base):
         threshold_pct: float = 90.0,
         window: str = "1h",
         value_column: str = "value_integer",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Identify time windows where performance is below threshold.
 
@@ -196,7 +213,9 @@ class PerformanceLossTracking(Base):
             - start, end, actual_parts, avg_cycle_time_s,
               performance_pct, loss_minutes
         """
-        data = self._compute_cycle_times(cycle_uuid, value_column)
+        data = self._compute_cycle_times(
+            cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
+        )
         if data.empty:
             return pd.DataFrame(
                 columns=[
@@ -248,6 +267,7 @@ class PerformanceLossTracking(Base):
         *,
         window: str = "1D",
         value_column: str = "value_integer",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Track performance trend over time.
 
@@ -261,7 +281,9 @@ class PerformanceLossTracking(Base):
             DataFrame with columns:
             - period, actual_parts, avg_cycle_time_s, performance_pct, loss_minutes
         """
-        data = self._compute_cycle_times(cycle_uuid, value_column)
+        data = self._compute_cycle_times(
+            cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
+        )
         if data.empty:
             return pd.DataFrame(
                 columns=[

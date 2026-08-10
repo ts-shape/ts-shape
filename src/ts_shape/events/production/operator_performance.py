@@ -12,6 +12,8 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -83,13 +85,19 @@ class OperatorPerformanceTracking(Base):
         self,
         data: pd.DataFrame,
         value_column: str,
+        *,
+        handle_resets: bool = False,
     ) -> float:
-        """Get quantity from a monotonic counter (last - first)."""
+        """Get quantity from a monotonic counter.
+
+        When ``handle_resets`` is False the quantity is the
+        backward-compatible ``max(0, last - first)``. When True a decreasing
+        counter is treated as a reset and the post-reset production is
+        counted (see :func:`ts_shape.utils.counters.counter_quantity`).
+        """
         if data.empty:
             return 0.0
-        first_val = data[value_column].iloc[0]
-        last_val = data[value_column].iloc[-1]
-        return max(0.0, last_val - first_val)
+        return counter_quantity(data[value_column], handle_resets=handle_resets)
 
     def _correlate_operator_counter(
         self,
@@ -97,6 +105,8 @@ class OperatorPerformanceTracking(Base):
         counter_uuid: str,
         value_column_operator: str,
         value_column_counter: str,
+        *,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Merge operator signal with counter signal by timestamp."""
         operator_data = (
@@ -136,7 +146,12 @@ class OperatorPerformanceTracking(Base):
         )
         merged = merged.dropna(subset=["operator"])
         merged["shift"] = merged[self.time_column].apply(self._assign_shift)
-        merged["date"] = merged[self.time_column].dt.date
+        if production_day:
+            merged["date"] = production_dates(
+                merged[self.time_column], merged["shift"], self.shift_definitions
+            )
+        else:
+            merged["date"] = merged[self.time_column].dt.date
 
         return merged
 
@@ -147,6 +162,8 @@ class OperatorPerformanceTracking(Base):
         *,
         value_column_operator: str = "value_string",
         value_column_counter: str = "value_integer",
+        handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Parts produced per operator.
 
@@ -155,47 +172,69 @@ class OperatorPerformanceTracking(Base):
             counter_uuid: UUID for production counter signal.
             value_column_operator: Column containing operator names.
             value_column_counter: Column containing counter values.
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the production accumulated after the reset instead
+                of losing it. Production is summed per (date, shift) worked.
+                The result gains a ``resets`` column with the number of resets
+                observed across the operator's shifts. When False (default),
+                each shift uses ``max(0, last - first)`` and a shift
+                containing a reset reports too little (often 0).
+            production_day: When True, an overnight shift's post-midnight
+                readings are attributed to the shift's start date, so a night
+                shift counts as one worked shift. Default False (raw calendar
+                date). Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
             - operator, total_produced, shifts_worked, avg_per_shift
+            - resets: Number of counter resets across the operator's shifts
+              (only when ``handle_resets=True``)
         """
+        columns = ["operator", "total_produced", "shifts_worked", "avg_per_shift"]
+        if handle_resets:
+            columns.append("resets")
+
         merged = self._correlate_operator_counter(
             operator_uuid,
             counter_uuid,
             value_column_operator,
             value_column_counter,
+            production_day=production_day,
         )
         if merged.empty:
-            return pd.DataFrame(
-                columns=["operator", "total_produced", "shifts_worked", "avg_per_shift"]
-            )
+            return pd.DataFrame(columns=columns)
 
         results = []
         for operator, op_data in merged.groupby("operator"):
             # Calculate production per shift, then sum
             shift_production = []
+            resets = 0
             for (date, shift), grp in op_data.groupby(["date", "shift"]):
-                qty = self._get_counter_quantity(grp, "counter_val")
+                qty = self._get_counter_quantity(
+                    grp, "counter_val", handle_resets=handle_resets
+                )
+                if handle_resets:
+                    resets += count_resets(grp["counter_val"])
                 if qty > 0:
                     shift_production.append(qty)
 
             total = sum(shift_production)
             shifts_worked = len(shift_production)
 
-            results.append(
-                {
-                    "operator": operator,
-                    "total_produced": round(total, 0),
-                    "shifts_worked": shifts_worked,
-                    "avg_per_shift": (
-                        round(total / shifts_worked, 1) if shifts_worked > 0 else 0
-                    ),
-                }
-            )
+            row = {
+                "operator": operator,
+                "total_produced": round(total, 0),
+                "shifts_worked": shifts_worked,
+                "avg_per_shift": (
+                    round(total / shifts_worked, 1) if shifts_worked > 0 else 0
+                ),
+            }
+            if handle_resets:
+                row["resets"] = resets
+            results.append(row)
 
         return (
-            pd.DataFrame(results)
+            pd.DataFrame(results, columns=columns)
             .sort_values("total_produced", ascending=False)
             .reset_index(drop=True)
         )
@@ -251,6 +290,7 @@ class OperatorPerformanceTracking(Base):
         *,
         value_column_operator: str = "value_string",
         value_column_counter: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Quality metrics (First Pass Yield) per operator.
 
@@ -260,11 +300,25 @@ class OperatorPerformanceTracking(Base):
             nok_uuid: UUID for bad parts counter.
             value_column_operator: Column containing operator names.
             value_column_counter: Column containing counter values.
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the good/bad parts accumulated after the reset, for
+                both the OK and NOK counters. Because the counts are taken
+                over the whole range, a single reset otherwise wipes out an
+                operator's entire tally. The result gains a ``resets`` column
+                with the number of resets observed across the operator's OK
+                and NOK counters. When False (default), both counters use
+                ``max(0, last - first)`` and a reset is lost.
 
         Returns:
             DataFrame with columns:
             - operator, ok_count, nok_count, first_pass_yield_pct
+            - resets: Number of counter resets across the operator's OK and
+              NOK counters (only when ``handle_resets=True``)
         """
+        columns = ["operator", "ok_count", "nok_count", "first_pass_yield_pct"]
+        if handle_resets:
+            columns.append("resets")
+
         operator_data = (
             self.dataframe[self.dataframe["uuid"] == operator_uuid]
             .copy()
@@ -282,9 +336,7 @@ class OperatorPerformanceTracking(Base):
         )
 
         if operator_data.empty or (ok_data.empty and nok_data.empty):
-            return pd.DataFrame(
-                columns=["operator", "ok_count", "nok_count", "first_pass_yield_pct"]
-            )
+            return pd.DataFrame(columns=columns)
 
         operator_data[self.time_column] = pd.to_datetime(
             operator_data[self.time_column]
@@ -296,6 +348,7 @@ class OperatorPerformanceTracking(Base):
 
         ok_by_operator = {}
         nok_by_operator = {}
+        resets_by_operator: dict[str, int] = {}
 
         # Process OK parts
         if not ok_data.empty:
@@ -312,7 +365,13 @@ class OperatorPerformanceTracking(Base):
             merged_ok = merged_ok.dropna(subset=["operator"])
 
             for op, grp in merged_ok.groupby("operator"):
-                ok_by_operator[op] = self._get_counter_quantity(grp, "counter_val")
+                ok_by_operator[op] = self._get_counter_quantity(
+                    grp, "counter_val", handle_resets=handle_resets
+                )
+                if handle_resets:
+                    resets_by_operator[op] = resets_by_operator.get(
+                        op, 0
+                    ) + count_resets(grp["counter_val"])
 
         # Process NOK parts
         if not nok_data.empty:
@@ -329,7 +388,13 @@ class OperatorPerformanceTracking(Base):
             merged_nok = merged_nok.dropna(subset=["operator"])
 
             for op, grp in merged_nok.groupby("operator"):
-                nok_by_operator[op] = self._get_counter_quantity(grp, "counter_val")
+                nok_by_operator[op] = self._get_counter_quantity(
+                    grp, "counter_val", handle_resets=handle_resets
+                )
+                if handle_resets:
+                    resets_by_operator[op] = resets_by_operator.get(
+                        op, 0
+                    ) + count_resets(grp["counter_val"])
 
         # Combine
         all_operators = set(ok_by_operator.keys()) | set(nok_by_operator.keys())
@@ -340,16 +405,17 @@ class OperatorPerformanceTracking(Base):
             total = ok + nok
             fpy = (ok / total * 100) if total > 0 else 0
 
-            results.append(
-                {
-                    "operator": op,
-                    "ok_count": round(ok, 0),
-                    "nok_count": round(nok, 0),
-                    "first_pass_yield_pct": round(fpy, 1),
-                }
-            )
+            row = {
+                "operator": op,
+                "ok_count": round(ok, 0),
+                "nok_count": round(nok, 0),
+                "first_pass_yield_pct": round(fpy, 1),
+            }
+            if handle_resets:
+                row["resets"] = resets_by_operator.get(op, 0)
+            results.append(row)
 
-        return pd.DataFrame(results)
+        return pd.DataFrame(results, columns=columns)
 
     def operator_comparison(
         self,

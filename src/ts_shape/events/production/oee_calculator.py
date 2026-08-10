@@ -19,6 +19,7 @@ from ts_shape.events._output import (
     empty_event_df,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import count_resets, counter_quantity
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ class OEECalculator(Base):
         planned_time_hours: float | None = None,
         *,
         value_column: str = "value_bool",
+        max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate availability percentage from run/idle intervals.
 
@@ -106,6 +108,13 @@ class OEECalculator(Base):
             planned_time_hours: Fixed planned production hours per day.  If None,
                 the time span covered by data each day is used.
             value_column: Column holding the boolean state.
+            max_gap: Optional cap (e.g. "15min"). A sample's duration is the gap
+                to the next reading; a gap longer than this is treated as a
+                logging outage ("no data") and excluded from both run time and
+                planned time. Without it, an overnight or logger gap while the
+                last state was ``running`` is booked as run time, inflating
+                availability. Only meaningful when ``planned_time_hours`` is
+                None (the planned time is derived from the data).
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -132,6 +141,14 @@ class OEECalculator(Base):
         state_data["duration"] = (
             state_data[self.time_column].shift(-1) - state_data[self.time_column]
         ).dt.total_seconds()
+
+        # Treat over-long gaps as "no data" so they inflate neither run nor
+        # planned time.
+        if max_gap is not None:
+            cap_seconds = pd.to_timedelta(max_gap).total_seconds()
+            state_data.loc[state_data["duration"] > cap_seconds, "duration"] = float(
+                "nan"
+            )
 
         # Drop last row per day (NaN duration at boundaries handled by groupby)
         state_data = state_data[state_data["duration"].notna()]
@@ -174,6 +191,8 @@ class OEECalculator(Base):
         *,
         value_column: str = "value_integer",
         run_value_column: str = "value_bool",
+        handle_resets: bool = False,
+        max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate performance percentage (actual vs ideal throughput).
 
@@ -187,6 +206,16 @@ class OEECalculator(Base):
             run_state_uuid: Optional UUID for run-state to compute actual run time.
             value_column: Column holding counter values.
             run_value_column: Column holding boolean run state.
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset instead of losing it, so
+                ``actual_parts`` is the reset-aware total. The result gains a
+                ``resets`` column with the number of resets observed each day.
+                When False (default), ``actual_parts`` is simply
+                ``max(0, last - first)`` and a day containing a reset reports
+                too little.
+            max_gap: Optional cap forwarded to :meth:`calculate_availability`
+                when ``run_state_uuid`` is given, so a logging gap does not
+                inflate the run time used as the performance denominator.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -195,8 +224,11 @@ class OEECalculator(Base):
             - ideal_parts
             - run_seconds
             - performance_pct
+            - resets (only when ``handle_resets=True``)
         """
         perf_extra = ["actual_parts", "ideal_parts", "run_seconds", "performance_pct"]
+        if handle_resets:
+            perf_extra.append("resets")
         counter_data = (
             self.dataframe[self.dataframe["uuid"] == counter_uuid]
             .copy()
@@ -213,7 +245,7 @@ class OEECalculator(Base):
         run_per_day = {}
         if run_state_uuid is not None:
             avail_df = self.calculate_availability(
-                run_state_uuid, value_column=run_value_column
+                run_state_uuid, value_column=run_value_column, max_gap=max_gap
             )
             for _, row in avail_df.iterrows():
                 run_per_day[row[COL_START].date()] = row["run_seconds"]
@@ -221,8 +253,12 @@ class OEECalculator(Base):
         results = []
         for date, grp in counter_data.groupby("date"):
             grp = grp.sort_values(self.time_column)
-            actual_parts = grp[value_column].iloc[-1] - grp[value_column].iloc[0]
-            actual_parts = max(0, actual_parts)
+            if handle_resets:
+                actual_parts = counter_quantity(grp[value_column], handle_resets=True)
+            else:
+                actual_parts = max(
+                    0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
+                )
 
             if date in run_per_day:
                 run_seconds = run_per_day[date]
@@ -239,15 +275,16 @@ class OEECalculator(Base):
                 ideal_parts = 0.0
                 performance = 0.0
 
-            results.append(
-                {
-                    "date": date,
-                    "actual_parts": int(actual_parts),
-                    "ideal_parts": round(ideal_parts, 2),
-                    "run_seconds": round(run_seconds, 2),
-                    "performance_pct": round(min(performance, 100.0), 2),
-                }
-            )
+            row = {
+                "date": date,
+                "actual_parts": int(actual_parts),
+                "ideal_parts": round(ideal_parts, 2),
+                "run_seconds": round(run_seconds, 2),
+                "performance_pct": round(min(performance, 100.0), 2),
+            }
+            if handle_resets:
+                row["resets"] = count_resets(grp[value_column])
+            results.append(row)
 
         return _daily_summary(results, perf_extra)
 
@@ -261,6 +298,7 @@ class OEECalculator(Base):
         reject_uuid: str,
         *,
         value_column: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate quality percentage (good parts / total parts).
 
@@ -268,6 +306,12 @@ class OEECalculator(Base):
             total_uuid: UUID of the total-parts counter.
             reject_uuid: UUID of the reject-parts counter.
             value_column: Column holding counter values.
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset for both the total and the
+                reject counters, so a day containing a reset is not
+                under-reported. The result gains a ``resets`` column with the
+                combined number of resets (total + reject) observed each day.
+                When False (default), both quantities are ``max(0, last - first)``.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -276,8 +320,11 @@ class OEECalculator(Base):
             - reject_parts
             - good_parts
             - quality_pct
+            - resets (only when ``handle_resets=True``)
         """
         qual_extra = ["total_parts", "reject_parts", "good_parts", "quality_pct"]
+        if handle_resets:
+            qual_extra.append("resets")
         total_data = (
             self.dataframe[self.dataframe["uuid"] == total_uuid]
             .copy()
@@ -296,6 +343,7 @@ class OEECalculator(Base):
         total_data["date"] = total_data[self.time_column].dt.date
 
         reject_by_day = {}
+        reject_resets_by_day = {}
         if not reject_data.empty:
             reject_data[self.time_column] = pd.to_datetime(
                 reject_data[self.time_column]
@@ -303,27 +351,41 @@ class OEECalculator(Base):
             reject_data["date"] = reject_data[self.time_column].dt.date
             for date, grp in reject_data.groupby("date"):
                 grp = grp.sort_values(self.time_column)
-                reject_by_day[date] = max(
-                    0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
-                )
+                if handle_resets:
+                    reject_by_day[date] = counter_quantity(
+                        grp[value_column], handle_resets=True
+                    )
+                    reject_resets_by_day[date] = count_resets(grp[value_column])
+                else:
+                    reject_by_day[date] = max(
+                        0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
+                    )
 
         results = []
         for date, grp in total_data.groupby("date"):
             grp = grp.sort_values(self.time_column)
-            total_parts = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
+            if handle_resets:
+                total_parts = counter_quantity(grp[value_column], handle_resets=True)
+            else:
+                total_parts = max(
+                    0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
+                )
             reject_parts = reject_by_day.get(date, 0)
             good_parts = max(0, total_parts - reject_parts)
             quality = (good_parts / total_parts * 100.0) if total_parts > 0 else 0.0
 
-            results.append(
-                {
-                    "date": date,
-                    "total_parts": int(total_parts),
-                    "reject_parts": int(reject_parts),
-                    "good_parts": int(good_parts),
-                    "quality_pct": round(min(quality, 100.0), 2),
-                }
-            )
+            row = {
+                "date": date,
+                "total_parts": int(total_parts),
+                "reject_parts": int(reject_parts),
+                "good_parts": int(good_parts),
+                "quality_pct": round(min(quality, 100.0), 2),
+            }
+            if handle_resets:
+                row["resets"] = count_resets(grp[value_column]) + int(
+                    reject_resets_by_day.get(date, 0)
+                )
+            results.append(row)
 
         return _daily_summary(results, qual_extra)
 
@@ -340,6 +402,8 @@ class OEECalculator(Base):
         reject_uuid: str | None = None,
         *,
         planned_time_hours: float | None = None,
+        handle_resets: bool = False,
+        max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate daily OEE = Availability * Performance * Quality.
 
@@ -353,6 +417,15 @@ class OEECalculator(Base):
             total_uuid: Optional UUID of total-parts counter (for quality).
             reject_uuid: Optional UUID of reject-parts counter (for quality).
             planned_time_hours: Fixed planned production hours per day.
+            handle_resets: When True, the part / total / reject counters are
+                treated as reset-aware (see :meth:`calculate_performance` and
+                :meth:`calculate_quality`), so a day where a counter resets does
+                not silently drag OEE toward zero. Forwarded to the performance
+                and quality components. Default False.
+            max_gap: Optional cap (e.g. "15min") forwarded to the availability
+                and performance components so a logging gap is not booked as run
+                time (which would inflate availability and understate
+                performance). Default None.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -369,14 +442,20 @@ class OEECalculator(Base):
             "oee_pct",
         ]
         avail_df = self.calculate_availability(
-            run_state_uuid, planned_time_hours=planned_time_hours
+            run_state_uuid, planned_time_hours=planned_time_hours, max_gap=max_gap
         )
         perf_df = self.calculate_performance(
-            counter_uuid, ideal_cycle_time, run_state_uuid=run_state_uuid
+            counter_uuid,
+            ideal_cycle_time,
+            run_state_uuid=run_state_uuid,
+            handle_resets=handle_resets,
+            max_gap=max_gap,
         )
 
         if total_uuid is not None and reject_uuid is not None:
-            qual_df = self.calculate_quality(total_uuid, reject_uuid)
+            qual_df = self.calculate_quality(
+                total_uuid, reject_uuid, handle_resets=handle_resets
+            )
         else:
             qual_df = None
 

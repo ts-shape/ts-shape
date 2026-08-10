@@ -13,6 +13,8 @@ import logging
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -83,54 +85,86 @@ class ReworkTracking(Base):
         self,
         data: pd.DataFrame,
         value_column: str,
+        *,
+        handle_resets: bool = False,
     ) -> float:
-        """Get quantity from a monotonic counter (last - first)."""
+        """Get quantity from a monotonic counter.
+
+        When ``handle_resets`` is False the quantity is the
+        backward-compatible ``max(0, last - first)``. When True a decreasing
+        counter is treated as a reset and the post-reset production is
+        counted (see :func:`ts_shape.utils.counters.counter_quantity`).
+        """
         if data.empty:
             return 0.0
-        first_val = data[value_column].iloc[0]
-        last_val = data[value_column].iloc[-1]
-        return max(0.0, last_val - first_val)
+        return counter_quantity(data[value_column], handle_resets=handle_resets)
 
     def rework_by_shift(
         self,
         rework_uuid: str,
         *,
         value_column: str = "value_integer",
+        handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Rework count per shift.
 
         Args:
             rework_uuid: UUID for rework event counter signal.
             value_column: Column containing counter values.
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the rework accumulated after the reset instead of
+                losing it. The result gains a ``resets`` column with the
+                number of resets observed in each shift. When False (default),
+                the quantity is ``max(0, last - first)`` and a shift
+                containing a reset reports too little (often 0).
+            production_day: When True, an overnight shift's post-midnight
+                readings are attributed to the shift's start date, so a night
+                shift is one contiguous ``(date, shift)`` group. Default False
+                (raw calendar date). Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
             - date, shift, rework_count
+            - resets: Number of counter resets in the shift (only when
+              ``handle_resets=True``)
         """
+        columns = ["date", "shift", "rework_count"]
+        if handle_resets:
+            columns.append("resets")
+
         data = (
             self.dataframe[self.dataframe["uuid"] == rework_uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=["date", "shift", "rework_count"])
+            return pd.DataFrame(columns=columns)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
-        data["date"] = data[self.time_column].dt.date
+        if production_day:
+            data["date"] = production_dates(
+                data[self.time_column], data["shift"], self.shift_definitions
+            )
+        else:
+            data["date"] = data[self.time_column].dt.date
 
         results = []
         for (date, shift), grp in data.groupby(["date", "shift"]):
-            qty = self._get_counter_quantity(grp, value_column)
-            results.append(
-                {
-                    "date": date,
-                    "shift": shift,
-                    "rework_count": round(qty, 0),
-                }
+            qty = self._get_counter_quantity(
+                grp, value_column, handle_resets=handle_resets
             )
+            row = {
+                "date": date,
+                "shift": shift,
+                "rework_count": round(qty, 0),
+            }
+            if handle_resets:
+                row["resets"] = count_resets(grp[value_column])
+            results.append(row)
 
-        return pd.DataFrame(results)
+        return pd.DataFrame(results, columns=columns)
 
     def rework_by_reason(
         self,
@@ -139,6 +173,7 @@ class ReworkTracking(Base):
         *,
         value_column_rework: str = "value_integer",
         value_column_reason: str = "value_string",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Rework quantity by reason code.
 
@@ -147,11 +182,27 @@ class ReworkTracking(Base):
             reason_uuid: UUID for rework reason code signal.
             value_column_rework: Column containing rework counter values.
             value_column_reason: Column containing reason codes.
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the rework accumulated after the reset. The reason
+                is attached to a single global counter, so the reset-aware
+                quantity is the sum of per-reading increments over the full
+                time-sorted series, grouped by reason -- this also corrects
+                the over-count that ``last - first`` produces when reasons
+                alternate over a non-contiguous group. The result gains a
+                ``resets`` column with the number of resets attributed to
+                each reason. When False (default), the quantity is
+                ``max(0, last - first)`` per reason group and a reset is lost.
 
         Returns:
             DataFrame with columns:
             - reason, rework_count, pct_of_total
+            - resets: Number of counter resets for the reason (only when
+              ``handle_resets=True``)
         """
+        columns = ["reason", "rework_count", "pct_of_total"]
+        if handle_resets:
+            columns.append("resets")
+
         rework_data = (
             self.dataframe[self.dataframe["uuid"] == rework_uuid]
             .copy()
@@ -164,7 +215,7 @@ class ReworkTracking(Base):
         )
 
         if rework_data.empty or reason_data.empty:
-            return pd.DataFrame(columns=["reason", "rework_count", "pct_of_total"])
+            return pd.DataFrame(columns=columns)
 
         rework_data[self.time_column] = pd.to_datetime(rework_data[self.time_column])
         reason_data[self.time_column] = pd.to_datetime(reason_data[self.time_column])
@@ -184,15 +235,28 @@ class ReworkTracking(Base):
         merged = merged.dropna(subset=["reason"])
 
         if merged.empty:
-            return pd.DataFrame(columns=["reason", "rework_count", "pct_of_total"])
+            return pd.DataFrame(columns=columns)
+
+        if handle_resets:
+            # Compute increments/resets on the FULL time-sorted counter before
+            # grouping, so alternating reasons neither over-count (interleaving)
+            # nor lose post-reset production.
+            merged["_increment"] = counter_increments(merged["rework_val"])
+            merged["_is_reset"] = (merged["rework_val"].diff() < 0).fillna(False)
 
         results = []
         for reason, grp in merged.groupby("reason"):
-            qty = self._get_counter_quantity(grp, "rework_val")
-            results.append({"reason": reason, "rework_count": round(qty, 0)})
+            if handle_resets:
+                qty = float(grp["_increment"].sum())
+                row = {"reason": reason, "rework_count": round(qty, 0)}
+                row["resets"] = int(grp["_is_reset"].sum())
+            else:
+                qty = self._get_counter_quantity(grp, "rework_val")
+                row = {"reason": reason, "rework_count": round(qty, 0)}
+            results.append(row)
 
         if not results:
-            return pd.DataFrame(columns=["reason", "rework_count", "pct_of_total"])
+            return pd.DataFrame(columns=columns)
 
         result_df = pd.DataFrame(results)
         total = result_df["rework_count"].sum()
@@ -202,7 +266,7 @@ class ReworkTracking(Base):
 
         return result_df.sort_values("rework_count", ascending=False).reset_index(
             drop=True
-        )
+        )[columns]
 
     def rework_rate(
         self,
@@ -211,6 +275,8 @@ class ReworkTracking(Base):
         *,
         value_column_rework: str = "value_integer",
         value_column_production: str = "value_integer",
+        handle_resets: bool = False,
+        production_day: bool = False,
     ) -> pd.DataFrame:
         """Rework rate as percentage of total production per shift.
 
@@ -219,6 +285,14 @@ class ReworkTracking(Base):
             total_production_uuid: UUID for total production counter signal.
             value_column_rework: Column containing rework counter values.
             value_column_production: Column containing production counter values.
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the production/rework accumulated after the reset,
+                for both the numerator (rework) and denominator (total
+                produced). When False (default), both use
+                ``max(0, last - first)`` per shift and a reset is lost.
+            production_day: When True, an overnight shift's post-midnight
+                readings are attributed to the shift's start date. Default False
+                (raw calendar date). Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
@@ -250,9 +324,21 @@ class ReworkTracking(Base):
         prod_data[self.time_column] = pd.to_datetime(prod_data[self.time_column])
 
         rework_data["shift"] = rework_data[self.time_column].apply(self._assign_shift)
-        rework_data["date"] = rework_data[self.time_column].dt.date
         prod_data["shift"] = prod_data[self.time_column].apply(self._assign_shift)
-        prod_data["date"] = prod_data[self.time_column].dt.date
+        if production_day:
+            rework_data["date"] = production_dates(
+                rework_data[self.time_column],
+                rework_data["shift"],
+                self.shift_definitions,
+            )
+            prod_data["date"] = production_dates(
+                prod_data[self.time_column],
+                prod_data["shift"],
+                self.shift_definitions,
+            )
+        else:
+            rework_data["date"] = rework_data[self.time_column].dt.date
+            prod_data["date"] = prod_data[self.time_column].dt.date
 
         # Get all date/shift combos
         date_shifts = set(zip(rework_data["date"], rework_data["shift"])) | set(
@@ -269,12 +355,16 @@ class ReworkTracking(Base):
             ]
 
             rework_count = (
-                self._get_counter_quantity(rw_grp, value_column_rework)
+                self._get_counter_quantity(
+                    rw_grp, value_column_rework, handle_resets=handle_resets
+                )
                 if not rw_grp.empty
                 else 0
             )
             total_produced = (
-                self._get_counter_quantity(pr_grp, value_column_production)
+                self._get_counter_quantity(
+                    pr_grp, value_column_production, handle_resets=handle_resets
+                )
                 if not pr_grp.empty
                 else 0
             )
@@ -301,6 +391,7 @@ class ReworkTracking(Base):
         *,
         value_column_rework: str = "value_integer",
         value_column_part: str = "value_string",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Convert rework counts to monetary cost by part number.
 
@@ -310,11 +401,22 @@ class ReworkTracking(Base):
             rework_costs: Dict mapping part numbers to cost per rework.
             value_column_rework: Column containing rework counter values.
             value_column_part: Column containing part number values.
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the rework accumulated after the reset. The result
+                gains a ``resets`` column with the number of resets observed
+                for each part. When False (default), the quantity is
+                ``max(0, last - first)`` per part and a reset is lost.
 
         Returns:
             DataFrame with columns:
             - part_number, rework_count, cost_per_rework, total_cost
+            - resets: Number of counter resets for the part (only when
+              ``handle_resets=True``)
         """
+        columns = ["part_number", "rework_count", "cost_per_rework", "total_cost"]
+        if handle_resets:
+            columns.append("resets")
+
         rework_data = (
             self.dataframe[self.dataframe["uuid"] == rework_uuid]
             .copy()
@@ -327,9 +429,7 @@ class ReworkTracking(Base):
         )
 
         if rework_data.empty or part_data.empty:
-            return pd.DataFrame(
-                columns=["part_number", "rework_count", "cost_per_rework", "total_cost"]
-            )
+            return pd.DataFrame(columns=columns)
 
         rework_data[self.time_column] = pd.to_datetime(rework_data[self.time_column])
         part_data[self.time_column] = pd.to_datetime(part_data[self.time_column])
@@ -350,19 +450,22 @@ class ReworkTracking(Base):
 
         results = []
         for part_num, grp in merged.groupby("part_number"):
-            qty = self._get_counter_quantity(grp, "rework_val")
-            cost = rework_costs.get(part_num, 0.0)
-            results.append(
-                {
-                    "part_number": part_num,
-                    "rework_count": round(qty, 0),
-                    "cost_per_rework": cost,
-                    "total_cost": round(qty * cost, 2),
-                }
+            qty = self._get_counter_quantity(
+                grp, "rework_val", handle_resets=handle_resets
             )
+            cost = rework_costs.get(part_num, 0.0)
+            row = {
+                "part_number": part_num,
+                "rework_count": round(qty, 0),
+                "cost_per_rework": cost,
+                "total_cost": round(qty * cost, 2),
+            }
+            if handle_resets:
+                row["resets"] = count_resets(grp["rework_val"])
+            results.append(row)
 
         return (
-            pd.DataFrame(results)
+            pd.DataFrame(results, columns=columns)
             .sort_values("total_cost", ascending=False)
             .reset_index(drop=True)
         )
@@ -373,6 +476,7 @@ class ReworkTracking(Base):
         *,
         value_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Track rework count trend over time.
 
@@ -380,18 +484,29 @@ class ReworkTracking(Base):
             rework_uuid: UUID for rework counter signal.
             value_column: Column containing counter values.
             window: Time window for aggregation (default '1D').
+            handle_resets: When True, treat a decreasing counter as a reset
+                and count the rework accumulated after the reset. The result
+                gains a ``resets`` column with the number of resets observed
+                in each period. When False (default), the quantity is
+                ``max(0, last - first)`` per period and a reset is lost.
 
         Returns:
             DataFrame with columns:
             - period, rework_count
+            - resets: Number of counter resets in the period (only when
+              ``handle_resets=True``)
         """
+        columns = ["period", "rework_count"]
+        if handle_resets:
+            columns.append("resets")
+
         data = (
             self.dataframe[self.dataframe["uuid"] == rework_uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=["period", "rework_count"])
+            return pd.DataFrame(columns=columns)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data = data.set_index(self.time_column)
@@ -400,12 +515,16 @@ class ReworkTracking(Base):
         for period, grp in data.groupby(pd.Grouper(freq=window)):
             if grp.empty:
                 continue
-            qty = self._get_counter_quantity(grp.reset_index(), value_column)
-            results.append(
-                {
-                    "period": period,
-                    "rework_count": round(qty, 0),
-                }
+            grp = grp.reset_index()
+            qty = self._get_counter_quantity(
+                grp, value_column, handle_resets=handle_resets
             )
+            row = {
+                "period": period,
+                "rework_count": round(qty, 0),
+            }
+            if handle_resets:
+                row["resets"] = count_resets(grp[value_column])
+            results.append(row)
 
-        return pd.DataFrame(results)
+        return pd.DataFrame(results, columns=columns)

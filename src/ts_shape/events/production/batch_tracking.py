@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import count_resets, counter_quantity
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +179,7 @@ class BatchTrackingEvents(Base):
         counter_uuid: str,
         *,
         value_column_counter: str = "value_integer",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Compute production quantity for each detected batch.
 
@@ -187,6 +189,13 @@ class BatchTrackingEvents(Base):
         Args:
             counter_uuid: UUID of the monotonic part counter.
             value_column_counter: Column holding counter values.
+            handle_resets: When True, treat a decreasing counter as a reset and
+                count the production after the reset instead of losing it, so
+                ``quantity`` is the reset-aware total for the batch. The result
+                gains a ``resets`` column with the number of resets observed in
+                each batch. When False (default), ``quantity`` is simply
+                ``max(0, last - first)`` and a batch containing a reset reports
+                too little.
 
         Returns:
             DataFrame with columns:
@@ -197,21 +206,24 @@ class BatchTrackingEvents(Base):
             - quantity: Parts produced during the batch.
             - uuid
             - source_uuid
+            - resets (only when ``handle_resets=True``)
         """
+        base_columns = [
+            "batch_id",
+            "start",
+            "end",
+            "duration_seconds",
+            "quantity",
+            "uuid",
+            "source_uuid",
+        ]
+        if handle_resets:
+            base_columns.append("resets")
+
         batches = self.detect_batches()
 
         if batches.empty:
-            return pd.DataFrame(
-                columns=[
-                    "batch_id",
-                    "start",
-                    "end",
-                    "duration_seconds",
-                    "quantity",
-                    "uuid",
-                    "source_uuid",
-                ]
-            )
+            return pd.DataFrame(columns=base_columns)
 
         counter_data = (
             self.dataframe[self.dataframe["uuid"] == counter_uuid]
@@ -220,22 +232,16 @@ class BatchTrackingEvents(Base):
         )
 
         if counter_data.empty:
+            batches = batches.copy()
             batches["quantity"] = 0
-            return batches[
-                [
-                    "batch_id",
-                    "start",
-                    "end",
-                    "duration_seconds",
-                    "quantity",
-                    "uuid",
-                    "source_uuid",
-                ]
-            ]
+            if handle_resets:
+                batches["resets"] = 0
+            return batches[base_columns]
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
 
         quantities: list[int] = []
+        resets: list[int] = []
         for _, batch_row in batches.iterrows():
             mask = (counter_data[self.time_column] >= batch_row["start"]) & (
                 counter_data[self.time_column] <= batch_row["end"]
@@ -243,23 +249,22 @@ class BatchTrackingEvents(Base):
             batch_counter = counter_data.loc[mask, value_column_counter]
             if batch_counter.empty or len(batch_counter) < 2:
                 quantities.append(0)
+                resets.append(0)
+            elif handle_resets:
+                quantities.append(
+                    int(counter_quantity(batch_counter, handle_resets=True))
+                )
+                resets.append(count_resets(batch_counter))
             else:
                 qty = int(batch_counter.iloc[-1] - batch_counter.iloc[0])
                 quantities.append(max(0, qty))
+                resets.append(0)
 
         batches = batches.copy()
         batches["quantity"] = quantities
-        return batches[
-            [
-                "batch_id",
-                "start",
-                "end",
-                "duration_seconds",
-                "quantity",
-                "uuid",
-                "source_uuid",
-            ]
-        ].reset_index(drop=True)
+        if handle_resets:
+            batches["resets"] = resets
+        return batches[base_columns].reset_index(drop=True)
 
     # ------------------------------------------------------------------
     # Transition matrix

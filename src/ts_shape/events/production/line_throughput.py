@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_increments
 
 logger = logging.getLogger(__name__)
 
@@ -33,34 +34,58 @@ class LineThroughputEvents(Base):
         *,
         value_column: str = "value_integer",
         window: str = "1m",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Compute parts per window for a counter uuid.
 
+        When ``handle_resets`` is False (default), the count per window is the
+        window-over-window difference of the counter maximum, clipped at zero -
+        so a window in which the counter resets to a lower value silently loses
+        that production. When True, per-reading increments are computed on the
+        raw counter (a decreasing counter is treated as a reset and the
+        post-reset value counted as new production) and summed into each window,
+        and a ``resets`` column reports the number of resets per window.
+
         Returns columns: start, uuid, source_uuid, is_delta, count
+        (plus ``resets`` when ``handle_resets=True``)
         """
+        base_columns = ["start", "uuid", "source_uuid", "is_delta", "count"]
+        if handle_resets:
+            base_columns.append("resets")
         c = (
             self.dataframe[self.dataframe["uuid"] == counter_uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if c.empty:
-            return pd.DataFrame(
-                columns=["start", "uuid", "source_uuid", "is_delta", "count"]
-            )
+            return pd.DataFrame(columns=base_columns)
         c[self.time_column] = pd.to_datetime(c[self.time_column])
         c = c.set_index(self.time_column)
-        # take diff of last values within each window
-        grp = c[value_column].resample(window)
-        counts = grp.max().ffill().diff().fillna(0).clip(lower=0)
-        out = (
-            counts.to_frame("count")
-            .reset_index()
-            .rename(columns={self.time_column: "start"})
-        )
+        if handle_resets:
+            series = c[value_column]
+            increments = counter_increments(series)
+            counts = increments.resample(window).sum()
+            out = (
+                counts.to_frame("count")
+                .reset_index()
+                .rename(columns={self.time_column: "start"})
+            )
+            is_reset = pd.to_numeric(series, errors="coerce").diff() < 0
+            resets = is_reset.resample(window).sum().astype(int)
+            out["resets"] = resets.values
+        else:
+            # take diff of last values within each window
+            grp = c[value_column].resample(window)
+            counts = grp.max().ffill().diff().fillna(0).clip(lower=0)
+            out = (
+                counts.to_frame("count")
+                .reset_index()
+                .rename(columns={self.time_column: "start"})
+            )
         out["uuid"] = self.event_uuid
         out["source_uuid"] = counter_uuid
         out["is_delta"] = True
-        return out
+        return out[base_columns]
 
     def takt_adherence(
         self,
@@ -136,25 +161,41 @@ class LineThroughputEvents(Base):
         value_column: str = "value_integer",
         window: str = "1h",
         target_rate: float | None = None,
-        availability_threshold: float = 0.95,
+        availability_threshold: float = 0.0,
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate Overall Equipment Effectiveness (OEE) metrics.
 
         OEE = Availability × Performance × Quality
 
+        This counter-only estimate has no run-state signal, so availability is
+        a production proxy: a window counts as available when its part count is
+        at least ``availability_threshold`` × ``target_rate``. Quality is
+        assumed to be 1.0.
+
         Args:
             counter_uuid: UUID for the part counter signal
             value_column: Column containing counter values
             window: Time window for aggregation
-            target_rate: Target production rate (parts per window). If None, uses max observed
-            availability_threshold: Threshold for considering equipment available
+            target_rate: Target production rate (parts per window). If None, uses
+                the 95th percentile of observed counts
+            availability_threshold: Fraction of ``target_rate`` a window must
+                reach to count as available (0.0-1.0). The default ``0.0`` keeps
+                the historical behaviour -- any window with at least one part is
+                available. (Previously this argument was accepted but ignored.)
+            handle_resets: When True, the part counter is treated as reset-aware
+                (see :meth:`count_parts`), so a window where the counter resets
+                is not dropped. Default False.
 
         Returns:
             DataFrame with columns: start, uuid, source_uuid, is_delta,
             actual_count, target_count, availability, performance, oee_score
         """
         parts_df = self.count_parts(
-            counter_uuid, value_column=value_column, window=window
+            counter_uuid,
+            value_column=value_column,
+            window=window,
+            handle_resets=handle_resets,
         )
 
         if parts_df.empty:
@@ -179,11 +220,22 @@ class LineThroughputEvents(Base):
         parts_df["target_count"] = target_rate
         parts_df["actual_count"] = parts_df["count"]
 
-        # Availability: percentage of time equipment was running
-        parts_df["availability"] = np.where(parts_df["count"] > 0, 1.0, 0.0)
+        # Availability proxy: a window is available when it produced something
+        # AND reached at least availability_threshold of the target rate. With
+        # the default threshold of 0.0 this reduces to "produced anything",
+        # matching the historical behaviour.
+        min_count = availability_threshold * (target_rate or 0.0)
+        parts_df["availability"] = np.where(
+            (parts_df["count"] > 0) & (parts_df["count"] >= min_count), 1.0, 0.0
+        )
 
-        # Performance: actual vs target rate
-        parts_df["performance"] = np.minimum(parts_df["count"] / target_rate, 1.0)
+        # Performance: actual vs target rate. A non-positive target rate (flat
+        # counter, long stoppage, or an explicit 0) would otherwise yield
+        # inf/NaN performance; treat it as no performance instead.
+        if target_rate and target_rate > 0:
+            parts_df["performance"] = np.minimum(parts_df["count"] / target_rate, 1.0)
+        else:
+            parts_df["performance"] = 0.0
 
         # OEE score (simplified - assumes quality = 1.0)
         parts_df["oee_score"] = parts_df["availability"] * parts_df["performance"]
@@ -341,6 +393,23 @@ class LineThroughputEvents(Base):
         # Calculate expected cycle time if not provided
         if expected_cycle_time is None:
             expected_cycle_time = cycle_times.median()
+
+        # A non-positive (or NaN) reference has no meaningful deviation and
+        # would divide by zero; return the typed empty frame instead.
+        if pd.isna(expected_cycle_time) or expected_cycle_time <= 0:
+            return pd.DataFrame(
+                columns=[
+                    "systime",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "cycle_time_seconds",
+                    "expected_time",
+                    "deviation_pct",
+                    "is_valid",
+                    "quality_flag",
+                ]
+            )
 
         # Calculate deviation
         deviation_pct = (

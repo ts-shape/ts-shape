@@ -62,6 +62,7 @@ class CycleTimeTracking(Base):
         *,
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate cycle time for each part number.
 
@@ -70,6 +71,12 @@ class CycleTimeTracking(Base):
             cycle_trigger_uuid: UUID for cycle completion trigger
             value_column_part: Column containing part numbers
             value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap (e.g. "5min"). Intervals between
+                consecutive completions longer than this are dropped as
+                inter-cycle downtime rather than reported as a cycle. Without
+                it, a stoppage between completions (a break, a jam) becomes one
+                giant "cycle" that inflates max/avg and is falsely flagged as a
+                slow cycle.
 
         Returns:
             DataFrame with columns:
@@ -119,6 +126,12 @@ class CycleTimeTracking(Base):
         # Calculate cycle times
         cycle_times = times.diff().dt.total_seconds()
 
+        cap_seconds = (
+            pd.to_timedelta(max_cycle_gap).total_seconds()
+            if max_cycle_gap is not None
+            else None
+        )
+
         # Get part numbers at each cycle
         part_data = (
             self.dataframe[self.dataframe["uuid"] == part_id_uuid]
@@ -128,13 +141,18 @@ class CycleTimeTracking(Base):
 
         if part_data.empty:
             # Return cycles without part numbers
-            return pd.DataFrame(
+            no_part = pd.DataFrame(
                 {
-                    "systime": times.iloc[1:],
+                    "systime": times.iloc[1:].reset_index(drop=True),
                     "part_number": "UNKNOWN",
-                    "cycle_time_seconds": cycle_times.iloc[1:],
+                    "cycle_time_seconds": cycle_times.iloc[1:].reset_index(drop=True),
                 }
             )
+            if cap_seconds is not None:
+                no_part = no_part[
+                    no_part["cycle_time_seconds"] <= cap_seconds
+                ].reset_index(drop=True)
+            return no_part
 
         part_data[self.time_column] = pd.to_datetime(part_data[self.time_column])
 
@@ -158,6 +176,11 @@ class CycleTimeTracking(Base):
 
         result_df = result_df.rename(columns={value_column_part: "part_number"})
         result_df["part_number"] = result_df["part_number"].fillna("UNKNOWN")
+
+        if cap_seconds is not None:
+            result_df = result_df[
+                result_df["cycle_time_seconds"] <= cap_seconds
+            ].reset_index(drop=True)
 
         return result_df[["systime", "part_number", "cycle_time_seconds"]]
 

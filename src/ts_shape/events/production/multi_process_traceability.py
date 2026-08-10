@@ -182,12 +182,22 @@ class MultiProcessTraceabilityEvents(Base):
     # build_timeline
     # ------------------------------------------------------------------
 
-    def build_timeline(self) -> pd.DataFrame:
+    def build_timeline(self, *, infer_dwell_from_next: bool = False) -> pd.DataFrame:
         """Build a full timeline of every item at every station.
 
         Handles parallel stations: the same item may appear at overlapping
         time intervals at different stations (concurrent processing), or
         different items at parallel cells of the same station type.
+
+        Args:
+            infer_dwell_from_next: When False (default), an interval's ``end`` is
+                the last sample of the item at that station, so a station that
+                logs the item once on arrival reports a dwell of ``0``. When
+                True, each *sequential* (non-parallel) visit's ``end`` is set to
+                the item's next station arrival, giving the honest
+                arrival-here → arrival-at-next-station dwell. Parallel /
+                overlapping visits keep their own span, since a "next arrival"
+                is not meaningful while the item is at two stations at once.
 
         Returns:
             DataFrame with columns:
@@ -247,6 +257,17 @@ class MultiProcessTraceabilityEvents(Base):
                         timeline.loc[idx_j, "is_parallel"] = True
 
         timeline["uuid"] = self.event_uuid
+
+        if infer_dwell_from_next:
+            # Only sequential visits get next-arrival dwell; parallel visits
+            # (item at two stations at once) keep their own span.
+            next_start = timeline.groupby("item_id")["start"].shift(-1)
+            infer = (~timeline["is_parallel"]) & next_start.notna()
+            timeline.loc[infer, "end"] = next_start[infer]
+            timeline["duration_seconds"] = (
+                timeline["end"] - timeline["start"]
+            ).dt.total_seconds()
+
         return timeline
 
     # ------------------------------------------------------------------
@@ -504,10 +525,17 @@ class MultiProcessTraceabilityEvents(Base):
     # station_statistics
     # ------------------------------------------------------------------
 
-    def station_statistics(self) -> pd.DataFrame:
+    def station_statistics(
+        self, *, infer_dwell_from_next: bool = False
+    ) -> pd.DataFrame:
         """Compute dwell-time statistics per station across all items.
 
         Distinguishes parallel cells of the same station type.
+
+        Args:
+            infer_dwell_from_next: Forwarded to :meth:`build_timeline`; pass True
+                when stations log an item once on arrival so dwell is measured
+                to the item's next station arrival instead of collapsing to zero.
 
         Returns:
             DataFrame with columns:
@@ -519,7 +547,7 @@ class MultiProcessTraceabilityEvents(Base):
             - max_dwell_seconds
             - total_dwell_seconds
         """
-        timeline = self.build_timeline()
+        timeline = self.build_timeline(infer_dwell_from_next=infer_dwell_from_next)
 
         if timeline.empty:
             return pd.DataFrame(

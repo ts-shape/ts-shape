@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
 
@@ -68,47 +69,63 @@ class MachineStateEvents(Base):
             return mask
         return col.fillna(False).astype(bool)
 
-    def detect_run_idle(self, min_duration: str = "0s") -> pd.DataFrame:
+    def detect_run_idle(
+        self,
+        min_duration: str = "0s",
+        *,
+        interval_end: str = "last_sample",
+        data_end: pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
         """Return intervals labeled as 'run' or 'idle'.
 
         - min_duration: discard intervals shorter than this duration.
+        - interval_end: how to close each interval. ``"last_sample"``
+          (default) ends an interval at its last sample -- backward
+          compatible, but a change-encoded (``is_delta``) signal logs one row
+          per transition, so every interval collapses to zero duration.
+          ``"next_change"`` closes each interval at the next transition
+          instant, which measures change-encoded signals correctly.
+        - data_end: optional bound for the final, still-open interval when
+          ``interval_end="next_change"`` (e.g. the end of the data window).
         Columns: start, end, uuid, source_uuid, is_delta, state, duration_seconds
         """
+        columns = [
+            "start",
+            "end",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "state",
+            "duration_seconds",
+        ]
         if self.series.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "state",
-                    "duration_seconds",
-                ]
-            )
+            return pd.DataFrame(columns=columns)
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = self._as_state(s[self.value_column])
-        state_change = (s["state"] != s["state"].shift()).cumsum()
+        intervals = state_intervals(
+            s,
+            time_column=self.time_column,
+            state_column="state",
+            interval_end=interval_end,
+            data_end=data_end,
+        )
         min_td = pd.to_timedelta(min_duration)
-        rows: list[dict[str, Any]] = []
-        for _, seg in s.groupby(state_change):
-            state = bool(seg["state"].iloc[0])
-            start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
-            if (end - start) < min_td:
-                continue
-            rows.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.run_state_uuid,
-                    "is_delta": True,
-                    "state": "run" if state else "idle",
-                    "duration_seconds": (end - start).total_seconds(),
-                }
-            )
-        return pd.DataFrame(rows)
+        keep = pd.to_timedelta(intervals["duration_seconds"], unit="s") >= min_td
+        intervals = intervals[keep]
+        if intervals.empty:
+            return pd.DataFrame(columns=columns)
+        result = pd.DataFrame(
+            {
+                "start": intervals["start"].to_numpy(),
+                "end": intervals["end"].to_numpy(),
+                "uuid": self.event_uuid,
+                "source_uuid": self.run_state_uuid,
+                "is_delta": True,
+                "state": ["run" if bool(st) else "idle" for st in intervals["state"]],
+                "duration_seconds": intervals["duration_seconds"].to_numpy(),
+            }
+        )
+        return result
 
     def transition_events(self) -> pd.DataFrame:
         """Return point events at state transitions.
@@ -229,8 +246,18 @@ class MachineStateEvents(Base):
         gaps = time_diffs[time_diffs > max_gap_td]
         return len(gaps)
 
-    def state_quality_metrics(self) -> dict[str, Any]:
+    def state_quality_metrics(
+        self,
+        *,
+        interval_end: str = "last_sample",
+        data_end: pd.Timestamp | None = None,
+    ) -> dict[str, Any]:
         """Return quality metrics for the state data.
+
+        - interval_end / data_end: forwarded to :meth:`detect_run_idle`. Pass
+          ``interval_end="next_change"`` for change-encoded signals so the
+          run/idle durations are measured to the next transition rather than
+          collapsing to zero.
 
         Returns dictionary with:
         - total_transitions: total number of state transitions
@@ -241,7 +268,7 @@ class MachineStateEvents(Base):
         - rapid_transitions_detected: number of rapid transition events
         """
         transitions = self.transition_events()
-        intervals = self.detect_run_idle()
+        intervals = self.detect_run_idle(interval_end=interval_end, data_end=data_end)
 
         total_transitions = len(transitions)
 
