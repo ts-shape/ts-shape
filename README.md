@@ -205,6 +205,20 @@ wip = flow.wip_over_time(window="1h")
 summary = flow.flow_summary(value_add_seconds=120, window="1h")
 ```
 
+Schedule adherence -- planned quantities against what the line actually made:
+
+```python
+from ts_shape.events.production.schedule_adherence import (
+    ProductionScheduleAdherenceEvents,
+)
+
+# schedule: one row per planned period (start, end, planned_qty, order_id)
+adherence = ProductionScheduleAdherenceEvents(df, schedule)
+periods = adherence.adherence_by_period("parts:count")   # reset-aware actuals
+behind = adherence.deviation_events("parts:count")       # ahead / behind / critical
+overall = adherence.adherence_summary("parts:count")
+```
+
 Runtime accounting and unit conversion:
 
 ```python
@@ -259,6 +273,48 @@ rul = fp.remaining_useful_life(degradation_rate=0.01, failure_threshold=120.0)
 # Vibration analysis (RMS, crest factor, kurtosis)
 vib = VibrationAnalysisEvents(df, signal_uuid="sensor:vibration")
 indicators = vib.bearing_health_indicators(window="5m")
+```
+
+Fuse several signals into one asset health index, weighted by failure mode:
+
+```python
+from ts_shape.events.maintenance import AssetHealthIndexEvents
+
+health = AssetHealthIndexEvents(
+    df,
+    asset_id="press-01",
+    signals={
+        "sensor:vibration": "bearing",
+        "sensor:bearing_temp": {"failure_mode": "thermal", "weight": 2.0},
+        "sensor:motor_current": {"failure_mode": "electrical"},
+    },
+)
+index = health.health_index(window="1h", baseline_window="24h")
+alerts = health.health_events(warning_threshold=70.0, critical_threshold=50.0)
+forecast = health.maintenance_forecast(critical_threshold=50.0)
+```
+
+### Correlation Events
+Relate signals to each other -- and detected events back to their likely cause.
+
+```python
+from ts_shape.events.correlation import (
+    SignalCorrelationEvents,
+    RootCauseCorrelationEvents,
+)
+
+# Rolling correlation between two process variables
+corr = SignalCorrelationEvents(df)
+rolling = corr.rolling_correlation("temp:inlet", "temp:outlet", window=60)
+
+# Which signal moved before the stoppages we detected?
+rc = RootCauseCorrelationEvents(df)
+ranked = rc.rank_causes(
+    downtime_events,
+    ["press:hydraulic", "temp:spindle", "flow:coolant"],
+    max_lag=30,          # search up to 30 min of lead time
+)
+verdict = rc.top_cause(downtime_events, ranked["candidate_uuid"].tolist())
 ```
 
 ### Development Events (Product & Process R&D)

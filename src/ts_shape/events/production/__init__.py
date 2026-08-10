@@ -155,6 +155,11 @@ Performance and Target Tracking:
   - target_achievement_summary: Daily target achievement.
   - target_hit_rate: Percentage of days meeting targets.
 
+- ProductionScheduleAdherenceEvents: Planned schedule vs actual production.
+  - adherence_by_period: Planned vs actual and recovery rate per period.
+  - deviation_events: Events for periods breaching the deviation bands.
+  - adherence_summary: Roll-up across the scheduled horizon.
+
 - ShiftHandoverReport: Automated shift handover report generation.
   - generate_report: Full shift report with production, quality, downtime.
   - highlight_issues: Auto-identify metrics below thresholds.
@@ -197,6 +202,7 @@ from .period_summary import PeriodSummary
 from .quality_tracking import QualityTracking
 from .rework_tracking import ReworkTracking
 from .routing_traceability import RoutingTraceabilityEvents
+from .schedule_adherence import ProductionScheduleAdherenceEvents
 from .scrap_tracking import ScrapTracking
 
 # Setup, Rework, and Operator Tracking
@@ -238,6 +244,7 @@ __all__ = [
     "ReworkTracking",
     # Performance, Target, and Reporting
     "PerformanceLossTracking",
+    "ProductionScheduleAdherenceEvents",
     "ScrapTracking",
     "TargetTracking",
     "ShiftHandoverReport",

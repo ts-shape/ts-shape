@@ -5,6 +5,13 @@ prediction, and vibration analysis for predictive maintenance on
 manufacturing/industrial IoT time series data.
 
 Classes:
+- AssetHealthIndexEvents: Fuse several degradation signals into one asset
+  health index, weighted by failure-mode criticality.
+  - health_index: Weighted 0-100 asset score per evaluation window.
+  - health_events: Point events on warning/critical threshold crossings.
+  - signal_contributions: Per-signal share of the asset's health loss.
+  - maintenance_forecast: Days until the index reaches a critical level.
+
 - DegradationDetectionEvents: Detect trend degradation, variance increases,
   level shifts, and compute composite health scores.
   - detect_trend_degradation: Rolling linear regression slope detection.
@@ -24,11 +31,13 @@ Classes:
   - bearing_health_indicators: Kurtosis and crest factor per window.
 """
 
+from .asset_health_index import AssetHealthIndexEvents
 from .degradation_detection import DegradationDetectionEvents
 from .failure_prediction import FailurePredictionEvents
 from .vibration_analysis import VibrationAnalysisEvents
 
 __all__ = [
+    "AssetHealthIndexEvents",
     "DegradationDetectionEvents",
     "FailurePredictionEvents",
     "VibrationAnalysisEvents",
