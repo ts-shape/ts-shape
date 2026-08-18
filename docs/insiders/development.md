@@ -50,6 +50,43 @@ mypy src/ts_shape/features/cross_signal.py \
 
 ---
 
+## 2b. Build the Documentation
+
+```bash
+pip install -e ".[docs]"
+mkdocs build       # blocking in CI
+mkdocs serve       # live preview on http://127.0.0.1:8000
+```
+
+The site is generated **from the source tree** — mkdocstrings reference pages, the
+architecture graph, and `--8<--` snippet includes of the example scripts. A
+renamed module, a nav entry pointing at a file that does not exist, or an example
+script moved out from under `examples/` therefore breaks the docs build and
+nothing else. CI builds the docs on every branch so that surfaces before merge
+rather than in the release pipeline afterwards.
+
+`mkdocs build --strict` is the goal but not yet the gate: the tree still carries
+docstring-indentation warnings from griffe in a handful of older modules. Fixing
+those (continuation lines in Google-style docstrings indented 6 spaces instead of
+8) is a good self-contained contribution; once the count reaches zero, add
+`--strict` to the CI step.
+
+---
+
+## 2c. Quality Gates at a Glance
+
+Everything CI enforces, in the order it is cheapest to run locally:
+
+| Gate | Command | Notes |
+|------|---------|-------|
+| Formatting | `black --check src/ tests/` | Pinned version — see `[project.optional-dependencies] dev`. |
+| Linting | `ruff check src/ tests/` | pyupgrade + isort rules are enabled. |
+| Types | `mypy` | Config in `pyproject.toml`; see the strict rollout above. |
+| Tests | `pytest` | Coverage floor in `[tool.coverage.report] fail_under`; ratchet it up when it rises. |
+| Docs | `mkdocs build` | See above. |
+
+---
+
 ## 3. Build Distribution Packages
 
 ```bash

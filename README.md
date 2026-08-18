@@ -542,7 +542,7 @@ ts-shape/
 ├── tests/                  # pytest test suite (100+ tests)
 ├── examples/               # Runnable demo scripts
 ├── docs/                   # MkDocs documentation
-├── .github/workflows/      # CI/CD pipelines
+├── .github/                # CI/CD pipelines, issue and PR templates
 ├── pyproject.toml          # Package configuration + auto-versioning
 ├── setup.py                # Legacy setup (delegates to pyproject.toml)
 ├── requirements.txt        # Runtime dependencies
@@ -553,13 +553,23 @@ ts-shape/
 
 ## Contributing
 
-Contributions are welcome! Please see `docs/contributing.md` for guidelines.
+Contributions are welcome! Please see `docs/contributing.md` for guidelines and
+the [Development Guide](https://ts-shape.github.io/ts-shape/insiders/development/)
+for the local workflow.
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Write tests for your changes
-4. Ensure all tests pass (`pytest tests/ -v`)
-5. Submit a pull request
+4. Run the same gates CI does:
+   `pytest`, `black --check src/ tests/`, `ruff check src/ tests/`, `mypy`, `mkdocs build`
+5. Add a `CHANGES.txt` entry and submit a pull request
+
+---
+
+## Security
+
+Please report vulnerabilities privately — see [SECURITY.md](SECURITY.md). Do not
+open a public issue for a security problem.
 
 ---
 

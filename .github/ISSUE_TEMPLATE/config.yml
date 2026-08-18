@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/ts-shape/ts-shape/security/advisories/new
+    about: Report privately. Please do not open a public issue for a security problem.
+  - name: Documentation
+    url: https://ts-shape.github.io/ts-shape/
+    about: Guides, module reference, and the full API reference.

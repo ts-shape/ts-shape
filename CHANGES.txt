@@ -60,6 +60,20 @@ build(mypy): ts_shape.reporting.* lands directly in the strict allowlist
   warn_unused_ignores), continuing the incremental strict rollout.
 build(coverage): raised the coverage floor from 82% to 84% after the new package
   landed at 91-100% per module.
+build(ci): the documentation is now built on every branch, not only in the
+  release pipeline after merge. The site is generated from the source tree
+  (mkdocstrings reference pages, the architecture graph, example-script snippet
+  includes), so a renamed module or a nav entry pointing at a missing file
+  breaks the docs and nothing else -- previously that surfaced post-merge.
+docs: added SECURITY.md (private disclosure via GitHub security advisories,
+  response targets, and an explicit scope covering the lambda-rule evaluator,
+  loader path/URL handling, and credential leakage), a pull-request template,
+  and bug-report / feature-request issue templates. The development guide gained
+  a documentation-build section and a quality-gate table, and records that
+  `mkdocs build --strict` is blocked only by pre-existing docstring-indentation
+  warnings in older modules.
+note: ts_shape.reporting adds no new runtime dependencies -- it uses pandas,
+  numpy and the standard library's zoneinfo only.
 
 # July 31, 2026
 add: OEECalculator.calculate_oee now threads handle_resets to its performance
