@@ -16,6 +16,7 @@ Runnable demo scripts covering every ts-shape module. Each example generates syn
 | [Energy Events](energy-events.md) | `EnergyConsumptionEvents`, `EnergyEfficiencyEvents` | `python examples/energy_events_demo.py` |
 | [Correlation Events](correlation-events.md) | `SignalCorrelationEvents`, `AnomalyCorrelationEvents` | `python examples/correlation_events_demo.py` |
 | [Supply Chain Events](supplychain-events.md) | `InventoryMonitoringEvents`, `LeadTimeAnalysisEvents`, `DemandPatternEvents` | `python examples/supplychain_events_demo.py` |
+| [Global Reporting](global-reporting.md) | `FacilityRegistry`, `FacilityCalendar`, `FleetRollup`, `FacilityBenchmark`, `VarianceBridge`, `GlobalScorecard` | `python examples/global_reporting_demo.py` |
 
 ## By Pipeline Stage
 

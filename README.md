@@ -18,6 +18,8 @@
 - **Performance-aware** -- Vectorised ops, chunked DB reads, concurrent I/O.
 - **Zero ML dependencies** -- Core uses only pandas, numpy, scipy.
 - **Multi-source loaders** -- Parquet, S3, Azure Blob, TimescaleDB, REST APIs.
+- **Cross-facility reporting** -- Consolidate KPIs across plants, timezones and
+  currencies with weighted rollups, coverage checks, benchmarking and variance bridges.
 
 ---
 
@@ -114,6 +116,18 @@ ts_shape/
 │   ├── energy/          # Consumption analysis, efficiency tracking
 │   ├── correlation/     # Signal correlation, anomaly co-occurrence
 │   └── supplychain/     # Inventory monitoring, lead time, demand patterns
+│
+├── reporting/           # Cross-Facility Consolidation
+│   ├── facility.py      # Site master data: timezone, region, currency, shifts
+│   ├── calendar.py      # Local production days, per-site shifts, DST-correct periods
+│   ├── hierarchy.py     # ISA-95 equipment tree and roll-up along it
+│   ├── aggregation.py   # Weighted / ratio / additive aggregation semantics
+│   ├── rollup.py        # Site → region → global consolidation
+│   ├── normalize.py     # Currency, scale and exposure normalisation
+│   ├── benchmark.py     # Ranking, quartiles, opportunity sizing
+│   ├── variance.py      # Contribution bridges, rate vs mix decomposition
+│   ├── coverage.py      # Did every site report? Completeness and freshness
+│   └── scorecard.py     # KPI targets, RAG status, management table
 │
 ├── context/             # Value mapping (categorical codes → labels)
 └── utils/               # Base class and shared utilities
@@ -389,6 +403,45 @@ hourly = TimeGroupedStatistics.calculate_statistic(
 extractor = CycleExtractor(df, start_uuid="cycle:trigger")
 cycles = extractor.process_persistent_cycle()
 ```
+
+### Cross-Facility Reporting
+Consolidate per-site KPIs into regional and global figures — correctly weighted,
+in local time, in one currency, with the coverage of the number attached.
+
+```python
+from ts_shape.reporting import (
+    Facility, FacilityRegistry, FacilityCalendar,
+    FleetRollup, MetricSpec, ReportingCoverage, VarianceBridge,
+)
+
+registry = FacilityRegistry([
+    Facility("DE-STR", timezone="Europe/Berlin", region="EMEA", currency="EUR"),
+    Facility("US-DTW", timezone="America/Detroit", region="AMER", currency="USD"),
+    Facility("CN-SHA", timezone="Asia/Shanghai", region="APAC", currency="CNY"),
+])
+assert registry.validate().empty          # master data is sound
+
+# Raw UTC readings -> each site's own local production day (DST-correct)
+calendar = FacilityCalendar(registry)
+labelled = calendar.assign_shifts(readings)      # + shift, production_date
+
+# Did every plant report? Ask before consolidating, not after.
+expected = calendar.period_grid("2026-01-01", "2026-01-31")
+ReportingCoverage(site_kpis).summary(expected)
+
+# Consolidate with the right semantics per metric
+specs = [
+    MetricSpec.sum("parts_produced"),
+    MetricSpec.weighted("oee_pct", weight="planned_minutes"),   # not a naive mean
+]
+FleetRollup(site_kpis, registry=registry).consolidate(specs)    # global + region + site
+
+# Why did the fleet rate move -- performance, or volume mix?
+VarianceBridge(site_kpis).rate_bridge("oee_pct", weight_column="planned_minutes")
+```
+
+Full walkthrough: [`examples/global_reporting_demo.py`](examples/global_reporting_demo.py)
+and the [Global Reporting guide](https://ts-shape.github.io/ts-shape/guides/global-reporting/).
 
 ---
 

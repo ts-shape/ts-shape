@@ -1,3 +1,66 @@
+# August 18, 2026
+add: ts_shape.reporting -- a new top-level package for production reporting across
+  global facilities. The event packs answer questions about one asset; this layer
+  consolidates their per-site KPI frames into regional and global figures. Ten
+  modules, all re-exported from ts_shape and held to strict typing:
+  * Facility / FacilityRegistry -- site master data (timezone, region, currency,
+    shift pattern, working days, capacity) plus validate(), which reports the
+    defects that silently corrupt a consolidated report: an unresolvable
+    timezone, a missing region, and shift patterns that overlap (readings
+    counted twice) or leave a gap (readings counted nowhere).
+  * FacilityCalendar -- each site's own local production day, shift and reporting
+    period from UTC input, using real IANA zones. period_grid() emits the
+    expected facility x period calendar with exact UTC bounds, so a local day is
+    23 or 25 hours long across a DST boundary instead of a fixed offset that
+    shifts a whole shift across it; utc_window() maps a site-local window back to
+    the UTC range to query.
+  * AssetHierarchy -- the ISA-95 equipment tree (region / site / area / line) with
+    validate() for multiple_parents (a node counted once per parent inflates the
+    enterprise total), missing_parent and duplicate_leaf, plus enrich() and
+    roll_up() along the levels.
+  * MetricSpec / aggregate_metrics -- explicit per-metric aggregation semantics:
+    sum for quantities, ratio for a rate recomputed from summed components
+    (exact), weighted_mean for a rate weighted by its own exposure. The
+    unweighted mean of a rate is the classic consolidation defect -- one plant at
+    95% for 30 minutes and two at 60% for three shifts average to 77.5%
+    unweighted and 60.2% weighted by planned minutes.
+  * FleetRollup -- total / by_facility / by_period / by(dimensions) /
+    consolidate() (global + region + site stacked in one frame), plus
+    contribution() (Pareto across sites) and pivot() (site x period matrix).
+    Every aggregate carries `contributors`, the number of facilities behind it.
+  * MetricNormalizer -- currency conversion to one reporting currency (flat or
+    period-dated rates applied as-of, keeping the source figures and the fx_rate
+    used), per-unit / per-hour / per-capacity exposure normalisation, unit
+    rescaling, and index-to-baseline.
+  * FacilityBenchmark -- rank (percentile, quartile, z-score, gap to best and
+    median), quartiles, opportunity() (the gap to the top quartile expressed in
+    exposure units rather than percentage points), a normalised 0-100 scorecard,
+    stability() (a plant averaging 70% every week and one alternating 40% and
+    100% rank identically on the mean), and outliers().
+  * VarianceBridge -- facility_bridge() for per-site contributions to a fleet
+    delta, and rate_bridge(), which splits a change in a weighted fleet rate
+    into rate effect, mix effect and interaction that sum exactly to the observed
+    change. This is what answers "the fleet rate fell although every plant
+    improved": volume moved to a weaker site. Also plan_vs_actual() and
+    period_over_period().
+  * ReportingCoverage -- completeness, explicit missing facility/period rows,
+    per-column null rates and freshness against an expected calendar. A total
+    computed over 34 of 37 plants looks exactly like one over all 37; without an
+    expected grid a silent site is invisible.
+  * GlobalScorecard / KpiTarget -- per-target direction, tolerance, weight and
+    aggregation; evaluate / facility_summary / fleet_summary / trend. A site with
+    no data reports no_data rather than passing by omission, and fleet_summary
+    reports facilities_at_risk next to the fleet value, because a green fleet
+    number with two of three plants below target is the most common way a
+    consolidated scorecard misleads.
+  Docs: new guide (guides/global-reporting.md), 10 module pages, and a runnable
+  self-contained demo (examples/global_reporting_demo.py).
+build(mypy): ts_shape.reporting.* lands directly in the strict allowlist
+  (disallow_untyped_defs, disallow_incomplete_defs, warn_return_any,
+  warn_unused_ignores), continuing the incremental strict rollout.
+build(coverage): raised the coverage floor from 82% to 84% after the new package
+  landed at 91-100% per module.
+
 # July 31, 2026
 add: OEECalculator.calculate_oee now threads handle_resets to its performance
   and quality components and max_gap to its availability/performance components.

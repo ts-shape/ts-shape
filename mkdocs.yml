@@ -37,6 +37,7 @@ nav:
   - Product Traceability: guides/traceability.md
   - Process Engineering: guides/engineering.md
   - Shift Reports & KPIs: guides/reporting.md
+  - Global Reporting (Multi-Site): guides/global-reporting.md
   - Event Log (XES & OCEL):
     - Overview: guides/eventlog/index.md
     - Object Detection: guides/eventlog/objects.md
@@ -97,6 +98,17 @@ nav:
       - Target Tracking: modules/production/target-tracking.md
       - Shift Handover: modules/production/shift-handover.md
       - Period Summary: modules/production/period-summary.md
+  - Reporting (Cross-Facility):
+    - Facility Registry: modules/reporting/facility-registry.md
+    - Facility Calendar: modules/reporting/facility-calendar.md
+    - Asset Hierarchy: modules/reporting/asset-hierarchy.md
+    - Metric Aggregation: modules/reporting/metric-aggregation.md
+    - Fleet Rollup: modules/reporting/fleet-rollup.md
+    - Metric Normalizer: modules/reporting/metric-normalizer.md
+    - Facility Benchmark: modules/reporting/facility-benchmark.md
+    - Variance Bridge: modules/reporting/variance-bridge.md
+    - Reporting Coverage: modules/reporting/reporting-coverage.md
+    - Global Scorecard: modules/reporting/global-scorecard.md
   - Engineering:
     - Setpoint Events: modules/engineering/setpoint-events.md
     - Startup Detection: modules/engineering/startup-detection.md
@@ -135,6 +147,7 @@ nav:
   - Energy Events: examples/energy-events.md
   - Correlation Events: examples/correlation-events.md
   - Supply Chain Events: examples/supplychain-events.md
+  - Global Reporting: examples/global-reporting.md
   - Loader Usage: examples/loader-usage.md
   - Transform Operations: examples/transform-operations.md
   - Statistics & Features: examples/statistics-features.md

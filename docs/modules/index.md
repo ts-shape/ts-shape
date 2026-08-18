@@ -68,3 +68,19 @@ For exhaustive parameter docs, see the [API Reference](../reference/index.md).
     **3 modules**
 
 </div>
+
+---
+
+## Cross-Facility Reporting
+
+<div class="grid cards" markdown>
+
+-   :material-earth:{ .lg .middle } **[Reporting](reporting/facility-registry.md)**
+
+    ---
+
+    Facility master data, local production days across timezones, asset hierarchy, weighted rollups, currency normalisation, coverage checks, benchmarking, variance bridges, and the KPI scorecard.
+
+    **10 modules**
+
+</div>

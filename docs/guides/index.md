@@ -54,7 +54,14 @@ flowchart LR
         E3["Target Tracking"]
     end
 
-    ACQ --> COND --> FEAT --> ANA --> EVT --> RPT
+    subgraph GLOB["<b>Global Consolidation</b>"]
+        direction TB
+        F1["Fleet Rollup"]
+        F2["Benchmark & Variance"]
+        F3["Global Scorecard"]
+    end
+
+    ACQ --> COND --> FEAT --> ANA --> EVT --> RPT --> GLOB
 
     style FEAT fill:#1a3a4a,stroke:#f59e0b,color:#fef3c7
 
@@ -168,6 +175,14 @@ Pick the stage that matches where you are in your analysis.
     Performance loss, scrap costs, target tracking, setup time (SMED), operator comparison, rework analysis, and auto-generated shift handover reports.
 
     `PerformanceLossTracking` | `ScrapTracking` | `TargetTracking` | `SetupTimeTracking` | +4 more
+
+-   :material-earth:{ .lg .middle } **[Global Reporting (Multi-Site)](global-reporting.md)**
+
+    ---
+
+    Consolidate KPIs across plants, timezones and currencies. Local production days, coverage checks, weighted global rollups, benchmarking, rate-vs-mix variance, and the management scorecard.
+
+    `FacilityRegistry` | `FacilityCalendar` | `FleetRollup` | `FacilityBenchmark` | `VarianceBridge` | +5 more
 
 -   :material-graph-outline:{ .lg .middle } **[Event Log (XES & OCEL)](eventlog/index.md)**
 

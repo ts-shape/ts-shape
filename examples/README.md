@@ -24,6 +24,12 @@ python examples/quality_events_demo.py
 | `supplychain_events_demo.py` | Supply-chain pack — inventory, lead time, demand patterns |
 | `setpoint_events_advanced_usage.py` | Engineering pack — advanced `SetpointChangeEvents` usage |
 
+## Cross-facility reporting
+
+| Script | What it shows |
+|--------|---------------|
+| `global_reporting_demo.py` | `ts_shape.reporting` — facility master data, local production days across timezones, coverage, weighted global/regional rollups, benchmarking, rate-vs-mix variance, currency normalisation, and the KPI scorecard |
+
 ## Pipeline stages
 
 | Script | What it shows |
