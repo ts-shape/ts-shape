@@ -97,7 +97,7 @@ ts_shape/
 │
 ├── transform/           # Data Transformation
 │   ├── filter/          # Numeric, String, Boolean, DateTime, Custom filters
-│   ├── calculator/      # Arithmetic operations (scale, offset, power, etc.)
+│   ├── calculator/      # Arithmetic ops, unit conversion, kW -> kWh integration
 │   ├── functions/       # Lambda/callable application
 │   └── time_functions/  # Timestamp conversion, timezone operations
 │
@@ -111,7 +111,7 @@ ts_shape/
 │   ├── production/      # OEE, machine state, throughput, shift, downtime, alarms, batches
 │   ├── engineering/     # Setpoint changes, startup detection, control quality
 │   ├── maintenance/     # Degradation, failure prediction, vibration analysis
-│   ├── energy/          # Consumption analysis, efficiency tracking
+│   ├── energy/          # Consumption analysis, efficiency tracking, EnPI, carbon
 │   ├── correlation/     # Signal correlation, anomaly co-occurrence
 │   └── supplychain/     # Inventory monitoring, lead time, demand patterns
 │

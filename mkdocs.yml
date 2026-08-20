@@ -116,6 +116,7 @@ nav:
     - Failure Prediction: modules/maintenance/failure-prediction.md
     - Vibration Analysis: modules/maintenance/vibration-analysis.md
   - Energy:
+    - Power Integration: modules/energy/power-integration.md
     - Consumption Analysis: modules/energy/consumption-analysis.md
     - Efficiency Tracking: modules/energy/efficiency-tracking.md
   - Correlation:

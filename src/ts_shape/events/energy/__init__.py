@@ -8,6 +8,18 @@ All classes accept both the standard ts-shape schema (systime | uuid | value_*)
 and the raw CSV model (time | id | value) via time_column and uuid_column
 constructor parameters.
 
+Input units:
+    These detectors treat their input values as energy *deltas* in kWh -- the
+    amount consumed since the previous reading -- because they aggregate with
+    ``sum()``. Feeding an instantaneous power signal (kW, e.g. a
+    ``*.Total_Active_Power-kW`` tag) in directly yields a number that scales
+    with the logging rate rather than with consumption. Integrate it first::
+
+        from ts_shape.transform.calculator.power_integration import PowerIntegrator
+
+        deltas = PowerIntegrator.to_energy_deltas(power_df, freq="1h", max_gap="15min")
+        EnergyConsumptionEvents(deltas).consumption_by_window(uuid, window="1h")
+
 Classes:
 - EnergyConsumptionEvents: Analyze energy consumption patterns.
   - consumption_by_window: Aggregate energy consumption per time window.

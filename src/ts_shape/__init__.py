@@ -133,6 +133,7 @@ _LAZY: dict[str, str] = {
     "make_timeseries": "ts_shape.datasets",
     "make_id_signal": "ts_shape.datasets",
     "UnitConverter": "ts_shape.transform.calculator.unit_conversion",
+    "PowerIntegrator": "ts_shape.transform.calculator.power_integration",
     "Pipeline": "ts_shape.pipeline",
 }
 
