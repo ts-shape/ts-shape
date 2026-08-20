@@ -66,6 +66,24 @@ fix: GaugeRepeatabilityEvents.repeatability uses within operator x part ranges
 fix: overshoot_metrics undershoot is measured after the setpoint is reached.
 add: detect_warmup / detect_cooldown max_pause; detect_startup_adaptive
   baseline_window is now honoured (default None keeps the sample lookback).
+# August 20, 2026
+add: PowerIntegrator (ts_shape.transform.calculator.power_integration) --
+  the missing kW -> kWh step. The events.energy detectors aggregate their
+  input with sum(), i.e. they assume energy deltas in kWh; feeding an
+  instantaneous active-power tag (e.g. *.Total_Active_Power-kW) in directly
+  produced a number that scaled with the logging rate rather than with
+  consumption, and a plain mean() was a sample-count average that over-weighted
+  bursts. PowerIntegrator.energy_by_window integrates properly -- each sample
+  weighted by how long it was valid, segments split at window boundaries
+  (a hold from 00:55 to 01:05 books 5 minutes to each hour), locf or linear
+  interpolation, max_gap to drop logging outages instead of billing phantom
+  energy, power_unit for W/kW/MW tags, and per-signal integration before
+  summing (energy adds across machines, power does not). Reports coverage per
+  window and omits unmeasured windows rather than reporting them as 0 kWh.
+  to_energy_deltas emits the result in the standard ts-shape schema so the
+  energy pack can consume it; segment_energy exposes the per-sample audit
+  trail. Exported at the top level as ts_shape.PowerIntegrator.
+
 # August 10, 2026
 add: AssetHealthIndexEvents (events.maintenance.asset_health_index) -- fuses
   several degradation signals into one weighted 0-100 asset health index using

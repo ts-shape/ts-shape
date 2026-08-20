@@ -14,6 +14,11 @@ class EnergyConsumptionEvents(Base):
 
     Analyze energy consumption patterns from meter/sensor signals.
 
+    Values are expected to be energy *deltas* in kWh (consumption since the
+    previous reading). For an instantaneous power signal in kW, integrate it
+    with :class:`~ts_shape.transform.calculator.power_integration.PowerIntegrator`
+    first -- summing kW samples measures the logging rate, not the energy.
+
     Supports two data models via constructor parameters:
 
     - Standard (ts-shape default)::
