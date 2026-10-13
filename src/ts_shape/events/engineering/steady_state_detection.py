@@ -45,10 +45,15 @@ class SteadyStateDetectionEvents(Base):
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
     def _rolling_std(self, window: str) -> pd.Series:
-        """Compute rolling std indexed by time."""
+        """Compute rolling std indexed by time.
+
+        A window with fewer than two samples has no std (NaN) and is neither
+        steady nor transient. (It used to be filled with 0 and read as
+        perfectly steady, so sparse data looked steady between samples.)
+        """
         sig = self.signal.set_index(self.time_column)[self.value_column]
         td = pd.Timedelta(window)
-        return sig.rolling(td, min_periods=2).std().fillna(0.0)
+        return sig.rolling(td, min_periods=2).std()
 
     def _intervalize(
         self,
