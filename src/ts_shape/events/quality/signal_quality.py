@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -138,12 +139,23 @@ class SignalQualityEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
-    def detect_out_of_range(self, min_value: float, max_value: float) -> pd.DataFrame:
+    def detect_out_of_range(
+        self,
+        min_value: float,
+        max_value: float,
+        *,
+        interval_end: str = "last_sample",
+    ) -> pd.DataFrame:
         """Flag intervals where signal is outside expected range.
 
         Args:
             min_value: Minimum acceptable value.
             max_value: Maximum acceptable value.
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start_time, end_time, duration,
@@ -173,6 +185,7 @@ class SignalQualityEvents(Base):
             return pd.DataFrame(columns=cols)
 
         groups = (out_of_range != out_of_range.shift()).cumsum()
+        ends = interval_end_times(sig[self.time_column], interval_end)
         events: list[dict[str, Any]] = []
 
         for _, seg in sig.groupby(groups):
@@ -180,7 +193,7 @@ class SignalQualityEvents(Base):
             if not seg_oor.iloc[0]:
                 continue
             start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
+            end = ends.loc[seg.index[-1]]
             min_obs = float(seg[self.value_column].min())
             max_obs = float(seg[self.value_column].max())
 

@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 from scipy.stats import kurtosis  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,8 @@ class VibrationAnalysisEvents(Base):
         baseline_rms: float,
         threshold_factor: float = 1.5,
         window: str = "1m",
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """
         Compute rolling RMS and flag intervals exceeding baseline_rms * threshold_factor.
@@ -53,6 +56,11 @@ class VibrationAnalysisEvents(Base):
             baseline_rms: Known baseline RMS value for healthy equipment.
             threshold_factor: Multiplier above baseline to trigger alarm.
             window: Rolling window size.
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, is_delta,
@@ -99,13 +107,14 @@ class VibrationAnalysisEvents(Base):
 
         # Group contiguous exceeded intervals
         group_id = (exceeded != exceeded.shift()).cumsum()
+        ends = interval_end_times(sig[self.time_column], interval_end)
         events: list[dict[str, Any]] = []
         for gid, seg in sig.groupby(group_id):
             seg_exc = exceeded.loc[seg.index]
             if not seg_exc.iloc[0]:
                 continue
             start_time = seg[self.time_column].iloc[0]
-            end_time = seg[self.time_column].iloc[-1]
+            end_time = ends.loc[seg.index[-1]]
             avg_rms = float(seg["rms"].mean())
             events.append(
                 {

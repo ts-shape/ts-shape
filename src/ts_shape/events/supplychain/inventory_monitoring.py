@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,8 @@ class InventoryMonitoringEvents(Base):
         self,
         min_level: float,
         hold: str = "0s",
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """Flag intervals where inventory stays below *min_level* for at least *hold*.
 
@@ -76,6 +79,11 @@ class InventoryMonitoringEvents(Base):
             min_level: Threshold below which stock is considered low.
             hold: Minimum duration the level must stay below threshold
                   (e.g. ``'0s'``, ``'5min'``, ``'1h'``).
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
@@ -95,8 +103,13 @@ class InventoryMonitoringEvents(Base):
             return pd.DataFrame(columns=empty_cols)
 
         hold_td = pd.to_timedelta(hold)
-        lv = self.levels[[self.time_column, self.value_column]].copy()
+        lv = (
+            self.levels[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         lv["below"] = lv[self.value_column] < min_level
+        ends = interval_end_times(lv[self.time_column], interval_end)
 
         # Group contiguous below-threshold segments
         lv["group"] = (lv["below"] != lv["below"].shift()).cumsum()
@@ -104,7 +117,7 @@ class InventoryMonitoringEvents(Base):
         rows: list[dict[str, Any]] = []
         for _, seg in lv[lv["below"]].groupby("group"):
             start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
+            end = ends.loc[seg.index[-1]]
             duration = (end - start).total_seconds()
             if (end - start) < hold_td:
                 continue

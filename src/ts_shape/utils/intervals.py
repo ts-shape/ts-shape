@@ -20,11 +20,42 @@ opt-in via ``interval_end`` so existing callers are unaffected by default.
 
 import pandas as pd  # type: ignore
 
-__all__ = ["state_intervals", "INTERVAL_END_MODES"]
+__all__ = ["state_intervals", "interval_end_times", "INTERVAL_END_MODES"]
 
 INTERVAL_END_MODES = ("last_sample", "next_change")
 
 _COLUMNS = ["start", "end", "state", "duration_seconds", "sample_count"]
+
+
+def _check_mode(interval_end: str) -> None:
+    if interval_end not in INTERVAL_END_MODES:
+        raise ValueError(
+            f"interval_end must be one of {INTERVAL_END_MODES}, got {interval_end!r}"
+        )
+
+
+def interval_end_times(
+    times: pd.Series, interval_end: str = "last_sample"
+) -> pd.Series:
+    """Per-row closing time for a segment that ends at that row.
+
+    For code that groups consecutive rows into segments itself: a segment
+    whose last row has label ``i`` ends at ``interval_end_times(times)[i]``.
+
+    Args:
+        times: Timestamps of one signal, ordered in time.
+        interval_end: ``"last_sample"`` (default) returns ``times`` unchanged,
+            so a segment ends at its own last sample. ``"next_change"``
+            returns the *next* row's timestamp, i.e. the instant the following
+            segment starts; the final row keeps its own timestamp.
+
+    Returns:
+        A Series aligned with ``times``.
+    """
+    _check_mode(interval_end)
+    if interval_end == "last_sample":
+        return times
+    return times.shift(-1).fillna(times)
 
 
 def state_intervals(
@@ -66,10 +97,7 @@ def state_intervals(
     Raises:
         ValueError: If ``interval_end`` is not one of :data:`INTERVAL_END_MODES`.
     """
-    if interval_end not in INTERVAL_END_MODES:
-        raise ValueError(
-            f"interval_end must be one of {INTERVAL_END_MODES}, got {interval_end!r}"
-        )
+    _check_mode(interval_end)
 
     if dataframe.empty:
         return pd.DataFrame(columns=_COLUMNS)

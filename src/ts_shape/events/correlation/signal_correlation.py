@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,7 @@ class SignalCorrelationEvents(Base):
         resample: str = "1min",
         window: int = 60,
         threshold: float = 0.5,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """Detect periods where correlation drops below a threshold.
 
@@ -132,6 +134,11 @@ class SignalCorrelationEvents(Base):
             resample: Resample interval for alignment.
             window: Rolling window size.
             threshold: Correlation threshold below which to flag.
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame: start, end, uuid, source_uuid_a, source_uuid_b,
@@ -157,21 +164,22 @@ class SignalCorrelationEvents(Base):
         corr_df["below"] = corr_df["correlation"] < threshold
         corr_df["group"] = (corr_df["below"] != corr_df["below"].shift()).cumsum()
 
+        corr_df = corr_df.reset_index(drop=True)
+        ends = interval_end_times(corr_df["systime"], interval_end)
         breakdowns = corr_df[corr_df["below"]].groupby("group")
         rows: list[dict[str, Any]] = []
         for _, grp in breakdowns:
+            end = ends.loc[grp.index[-1]]
             rows.append(
                 {
                     "start": grp["systime"].iloc[0],
-                    "end": grp["systime"].iloc[-1],
+                    "end": end,
                     "uuid": self.event_uuid,
                     "source_uuid_a": uuid_a,
                     "source_uuid_b": uuid_b,
                     "is_delta": True,
                     "min_correlation": grp["correlation"].min(),
-                    "duration_seconds": (
-                        grp["systime"].iloc[-1] - grp["systime"].iloc[0]
-                    ).total_seconds(),
+                    "duration_seconds": (end - grp["systime"].iloc[0]).total_seconds(),
                 }
             )
 

@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -50,21 +51,26 @@ class SteadyStateDetectionEvents(Base):
         return sig.rolling(td, min_periods=2).std().fillna(0.0)
 
     def _intervalize(
-        self, mask: pd.Series, min_duration: str = "0s"
+        self,
+        mask: pd.Series,
+        min_duration: str = "0s",
+        interval_end: str = "last_sample",
     ) -> list[dict[str, Any]]:
         """Convert a boolean mask (indexed by timestamp) into intervals."""
         if mask.empty or not mask.any():
             return []
 
         min_td = pd.Timedelta(min_duration)
-        groups = (mask != mask.shift()).cumsum()
+        positional = mask.reset_index(drop=True)
+        ends = interval_end_times(pd.Series(mask.index), interval_end)
+        groups = (positional != positional.shift()).cumsum()
         intervals: list[dict[str, Any]] = []
 
-        for _, seg in mask.groupby(groups):
+        for _, seg in positional.groupby(groups):
             if not seg.iloc[0]:
                 continue
-            start = seg.index[0]
-            end = seg.index[-1]
+            start = mask.index[seg.index[0]]
+            end = ends.iloc[seg.index[-1]]
             dur = end - start
             if dur >= min_td:
                 intervals.append({"start": start, "end": end})
@@ -75,6 +81,8 @@ class SteadyStateDetectionEvents(Base):
         window: str = "5m",
         std_threshold: float = 1.0,
         min_duration: str = "10m",
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """Detect intervals where signal is in steady state.
 
@@ -82,6 +90,11 @@ class SteadyStateDetectionEvents(Base):
             window: Rolling window for std computation.
             std_threshold: Maximum rolling std to consider steady.
             min_duration: Minimum duration of a steady interval.
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, is_delta,
@@ -101,7 +114,9 @@ class SteadyStateDetectionEvents(Base):
 
         rolling_std = self._rolling_std(window)
         steady_mask = rolling_std < std_threshold
-        intervals = self._intervalize(steady_mask, min_duration)
+        intervals = self._intervalize(
+            steady_mask, min_duration, interval_end=interval_end
+        )
 
         if not intervals:
             return pd.DataFrame(columns=cols)
@@ -128,12 +143,19 @@ class SteadyStateDetectionEvents(Base):
         self,
         window: str = "5m",
         std_threshold: float = 1.0,
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """Detect intervals where signal is in transient/dynamic state.
 
         Args:
             window: Rolling window for std computation.
             std_threshold: Minimum rolling std to consider transient.
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, is_delta,
@@ -152,7 +174,7 @@ class SteadyStateDetectionEvents(Base):
 
         rolling_std = self._rolling_std(window)
         transient_mask = rolling_std >= std_threshold
-        intervals = self._intervalize(transient_mask)
+        intervals = self._intervalize(transient_mask, interval_end=interval_end)
 
         if not intervals:
             return pd.DataFrame(columns=cols)
