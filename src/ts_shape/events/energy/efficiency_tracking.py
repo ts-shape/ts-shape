@@ -4,6 +4,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_increments
 
 logger = logging.getLogger(__name__)
 
@@ -419,7 +420,9 @@ class EnergyEfficiencyEvents(Base):
 
         Returns:
             DataFrame: shift, avg_energy, avg_output, avg_efficiency,
-                       total_energy, total_output
+                       total_energy, total_output. ``total_output`` is the
+                       counter increase within the shift (reset-aware) and
+                       ``avg_output`` the mean increase per counter reading.
         """
         if shift_definitions is None:
             shift_definitions = {
@@ -477,8 +480,12 @@ class EnergyEfficiencyEvents(Base):
             .reset_index()
         )
 
+        # The counter is cumulative: output is the sum of reset-aware
+        # per-reading increments, not the sum of raw readings (which made
+        # 100, 101, 102 count as 303 parts instead of 2).
+        counter["_increment"] = counter_increments(counter[counter_column])
         counter_by_shift = (
-            counter.groupby("shift")[counter_column]
+            counter.groupby("shift")["_increment"]
             .agg(total_output="sum", avg_output="mean")
             .reset_index()
         )

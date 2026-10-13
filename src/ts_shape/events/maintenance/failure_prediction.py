@@ -51,10 +51,14 @@ class FailurePredictionEvents(Base):
             degradation_rate: Expected rate of change per second (used as
                 fallback if local slope cannot be computed).
             failure_threshold: The signal level that represents failure.
+                The sign of ``degradation_rate`` gives the failure direction
+                (positive: failure when the value rises to the threshold).
 
         Returns:
             DataFrame with columns: systime, uuid, is_delta, current_value,
-            rul_seconds, rul_hours, confidence.
+            rul_seconds, rul_hours, confidence. ``rul_*`` is 0 once the
+            threshold is reached or passed, and None when no failure is
+            projected (flat trend, or a trend moving away from the threshold).
         """
         cols = [
             "systime",
@@ -84,7 +88,8 @@ class FailurePredictionEvents(Base):
 
             # Use recent points (up to last 10) for local slope estimate
             start_idx = max(0, i - 9)
-            recent = sig.iloc[start_idx : i + 1]
+            # NaN samples make polyfit return NaN silently; fit on the rest.
+            recent = sig.iloc[start_idx : i + 1].dropna(subset=[self.value_column])
 
             if len(recent) >= 2:
                 x = recent["t_seconds"].values
@@ -118,18 +123,23 @@ class FailurePredictionEvents(Base):
 
             # Calculate RUL
             distance_to_threshold = failure_threshold - current_val
-            if effective_rate == 0:
+            failure_dir = np.sign(degradation_rate) or np.sign(effective_rate)
+            if np.isnan(current_val) or np.isnan(effective_rate):
+                rul_seconds = None
+                rul_hours = None
+            elif failure_dir != 0 and failure_dir * -distance_to_threshold >= 0:
+                # Threshold already reached or passed in the failure direction
+                rul_seconds = 0.0
+                rul_hours = 0.0
+            elif effective_rate == 0 or distance_to_threshold / effective_rate < 0:
+                # Flat, or trending away from the threshold: no failure projected.
+                # (Previously reported as 0, i.e. imminent failure.)
                 rul_seconds = None
                 rul_hours = None
             else:
                 rul_s = distance_to_threshold / effective_rate
-                if rul_s < 0:
-                    # Already past threshold or moving away
-                    rul_seconds = 0.0
-                    rul_hours = 0.0
-                else:
-                    rul_seconds = float(rul_s)
-                    rul_hours = float(rul_s / 3600.0)
+                rul_seconds = float(rul_s)
+                rul_hours = float(rul_s / 3600.0)
 
             rows.append(
                 {
@@ -273,7 +283,8 @@ class FailurePredictionEvents(Base):
 
             # Use recent points for rate of change
             start_idx = max(0, i - 9)
-            recent = sig.iloc[start_idx : i + 1]
+            # NaN samples make polyfit return NaN silently; fit on the rest.
+            recent = sig.iloc[start_idx : i + 1].dropna(subset=[self.value_column])
 
             if len(recent) >= 2:
                 x = recent["t_seconds"].values

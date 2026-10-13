@@ -86,7 +86,10 @@ class DisturbanceRecoveryEvents(Base):
                 sig.reset_index().sort_values(self.time_column),
                 sp.reset_index().sort_values(self.time_column),
                 on=self.time_column,
-                direction="nearest",
+                # The setpoint in force at each sample: ``nearest`` let samples
+                # just before a setpoint step take the new value and read as a
+                # false deviation.
+                direction="backward",
             ).set_index(self.time_column)
             merged["baseline"] = merged["sp"]
             merged["deviation"] = merged["value"] - merged["baseline"]
