@@ -43,7 +43,9 @@ from __future__ import annotations
 import logging
 
 import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import pandas as pd
+from pandas.tseries.frequencies import to_offset
+from pandas.tseries.offsets import Tick  # type: ignore
 
 from ts_shape.utils.base import Base
 
@@ -79,6 +81,19 @@ _WINDOW_COLUMNS = [
     "coverage",
     "sample_count",
 ]
+
+
+def _is_fixed(offset: object) -> bool:
+    """Whether a frequency has a fixed length (Tick: h, min, s, ...)."""
+    return isinstance(offset, Tick)
+
+
+def _calendar_floor(ts: pd.Timestamp, freq: str) -> pd.Timestamp:
+    """Start of the calendar period containing ``ts`` (e.g. local midnight)."""
+    period_start = (
+        pd.Series(1, index=pd.DatetimeIndex([ts])).resample(freq).sum().index[0]
+    )
+    return period_start
 
 
 class PowerIntegrator(Base):
@@ -208,21 +223,31 @@ class PowerIntegrator(Base):
         minutes to hour 01. Flooring the sample timestamp instead would book
         all ten minutes to hour 00.
         """
-        step = pd.Timedelta(freq)
-        if step <= pd.Timedelta(0):
-            raise ValueError(f"freq must be a positive fixed frequency, got {freq!r}")
-
+        offset = to_offset(freq)
         start = segments["ts"]
         end = segments["end"]
-        first_bucket = start.dt.floor(freq)
-        # How many fixed steps from the first bucket it takes to cover the
-        # segment. ``end`` is exclusive, so a segment ending exactly on a
-        # boundary does not reach into the next window -- hence ceil-division
-        # on elapsed nanoseconds rather than a count of floored boundaries,
-        # which undercounts wherever local buckets and elapsed time disagree
-        # (a daylight-saving changeover).
-        elapsed_ns = ((end - first_bucket) // pd.Timedelta(1, "ns")).to_numpy()
-        n_buckets = -(-elapsed_ns.astype(np.int64) // np.int64(step.value))
+        if start.empty:
+            return pd.DataFrame(columns=_SEGMENT_COLUMNS)
+        first = (
+            start.min().floor(freq)
+            if _is_fixed(offset)
+            else _calendar_floor(start.min(), freq)
+        )
+        if first + offset <= first:
+            raise ValueError(f"freq must be a positive frequency, got {freq!r}")
+        # Window boundaries on the calendar of the data's timezone: hourly
+        # windows stay one real hour across DST, daily windows are 23 h / 25 h.
+        grid = pd.date_range(first, end.max(), freq=freq)
+        grid = grid.append(pd.DatetimeIndex([grid[-1] + offset]))
+        while grid[-1] < end.max():
+            grid = grid.append(pd.DatetimeIndex([grid[-1] + offset]))
+
+        # Bucket of each segment's start, and the first boundary at/after its
+        # (exclusive) end: a segment ending exactly on a boundary does not
+        # reach into the next window.
+        i0 = grid.searchsorted(start, side="right") - 1
+        i1 = grid.searchsorted(end, side="left")
+        n_buckets = np.maximum(i1 - i0, 0)
 
         idx = np.repeat(np.arange(len(segments)), n_buckets)
         if idx.size == 0:
@@ -232,16 +257,14 @@ class PowerIntegrator(Base):
         offsets = np.arange(idx.size) - np.repeat(
             np.cumsum(n_buckets) - n_buckets, n_buckets
         )
-        # Stay in pandas rather than numpy so tz-aware timestamps keep their
-        # dtype (a datetime64 numpy round-trip drops the timezone).
+        bucket = np.repeat(i0, n_buckets) + offsets
 
         def take(col: str) -> pd.Series:
             return segments[col].take(idx).reset_index(drop=True)
 
-        window_start = first_bucket.take(idx).reset_index(drop=True) + pd.to_timedelta(
-            offsets * step.value, unit="ns"
-        )
-        window_end = window_start + step
+        # Stay in pandas so tz-aware timestamps keep their dtype.
+        window_start = pd.Series(grid[bucket])
+        window_end = pd.Series(grid[bucket + 1])
         seg_start = take("ts")
         seg_end = take("end")
         sub_start = seg_start.where(seg_start > window_start, window_start)
@@ -427,7 +450,12 @@ class PowerIntegrator(Base):
         if parts.empty:
             return empty
 
-        step_seconds = pd.Timedelta(freq).total_seconds()
+        offset = to_offset(freq)
+
+        def window_seconds(starts: pd.Series) -> pd.Series:
+            # Real window length: calendar windows are 23 h / 25 h on DST days.
+            return (starts + offset - starts).dt.total_seconds()
+
         per_uuid = (
             parts.groupby(["uuid", "window_start"], sort=True)
             .agg(
@@ -437,7 +465,9 @@ class PowerIntegrator(Base):
             )
             .reset_index()
         )
-        per_uuid["coverage"] = per_uuid["covered_seconds"] / step_seconds
+        per_uuid["coverage"] = per_uuid["covered_seconds"] / window_seconds(
+            per_uuid["window_start"]
+        )
 
         if total:
             grouped = (
@@ -472,8 +502,8 @@ class PowerIntegrator(Base):
             )
 
         out = out.rename(columns={"window_start": "start"})
-        out["end"] = out["start"] + pd.Timedelta(freq)
-        out["duration_seconds"] = step_seconds
+        out["end"] = out["start"] + offset
+        out["duration_seconds"] = window_seconds(out["start"])
         return out[extra + _WINDOW_COLUMNS].reset_index(drop=True)
 
     @classmethod
