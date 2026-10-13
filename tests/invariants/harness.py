@@ -179,7 +179,49 @@ INIT_OVERRIDES: dict[str, dict[str, Any]] = {
         "actual_uuid": CONT,
         "event_uuid": "evt",
     },
+    "AssetHealthIndexEvents": {
+        "asset_id": "asset:1",
+        "signals": {CONT: "cont", CONT2: "cont2"},
+    },
+    "ProductionScheduleAdherenceEvents": {"schedule": lambda df: _schedule(df)},
 }
+
+#: Method arguments that are themselves data (built from the input frame).
+METHOD_OVERRIDES: dict[str, dict[str, Any]] = {
+    "RootCauseCorrelationEvents": {
+        "trigger_events": lambda df: _trigger_events(df),
+        "candidate_uuids": [CONT, CONT2],
+        "candidate_uuid": CONT,
+    },
+}
+
+
+def _span(df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp]:
+    times = pd.to_datetime(df["systime"]) if len(df) else plant_frame()["systime"]
+    return times.min(), times.max()
+
+
+def _schedule(df: pd.DataFrame) -> pd.DataFrame:
+    t0, t1 = _span(df)
+    mid = t0 + (t1 - t0) / 2
+    return pd.DataFrame(
+        {
+            "start": [t0, mid],
+            "end": [mid, t1],
+            "planned_qty": [100, 100],
+            "order_id": ["o1", "o2"],
+        }
+    )
+
+
+def _trigger_events(df: pd.DataFrame) -> pd.DataFrame:
+    t0, t1 = _span(df)
+    times = [t0 + (t1 - t0) * f for f in (0.25, 0.5, 0.75)]
+    return pd.DataFrame({"systime": times, "uuid": "trigger", "source_uuid": STATE})
+
+
+def _resolve(value: Any, df: pd.DataFrame) -> Any:
+    return value(df) if callable(value) else value
 
 
 class Unsupported(Exception):
@@ -246,6 +288,7 @@ def build_call(cls: Any, method: str, df: pd.DataFrame) -> Any:
     is_cm = isinstance(raw, (classmethod, staticmethod))
     fn = getattr(cls, method)
 
+    overrides = METHOD_OVERRIDES.get(cls.__name__, {})
     m_kwargs = {}
     m_params = _required(fn, 0 if is_cm else 1)
     if is_cm:
@@ -253,14 +296,21 @@ def build_call(cls: Any, method: str, df: pd.DataFrame) -> Any:
             raise Unsupported("classmethod without a dataframe first parameter")
         m_params = m_params[1:]
     for name, param in m_params:
-        m_kwargs[name] = _value_for(name, param)
+        m_kwargs[name] = (
+            _resolve(overrides[name], df)
+            if name in overrides
+            else _value_for(name, param)
+        )
 
     if is_cm:
         return lambda: fn(df, **m_kwargs)
 
-    c_kwargs = dict(INIT_OVERRIDES.get(cls.__name__, {}))
+    c_kwargs = {
+        k: _resolve(v, df) for k, v in INIT_OVERRIDES.get(cls.__name__, {}).items()
+    }
     for name, param in _required(cls.__init__, 2):
-        c_kwargs.setdefault(name, _value_for(name, param))
+        if name not in c_kwargs:
+            c_kwargs[name] = _value_for(name, param)
 
     def call() -> Any:
         with warnings.catch_warnings():

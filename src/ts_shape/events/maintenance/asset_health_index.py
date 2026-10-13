@@ -591,7 +591,7 @@ class AssetHealthIndexEvents(Base):
             remaining_days = float("nan")
             forecast_time = pd.NaT
 
-        return pd.DataFrame(
+        out = pd.DataFrame(
             [
                 {
                     "start": index["start"].iloc[0],
@@ -618,3 +618,7 @@ class AssetHealthIndexEvents(Base):
             ],
             columns=cols,
         )
+        # Keep the input's datetime dtype (and timezone) even when there is
+        # no forecast (NaT).
+        out["forecast_time"] = pd.Series([forecast_time], dtype=times.dtype)
+        return out

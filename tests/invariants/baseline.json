@@ -54,6 +54,26 @@
   "extra_uuid": "ok",
   "tz": "ok"
  },
+ "AssetHealthIndexEvents.health_events": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "AssetHealthIndexEvents.health_index": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "AssetHealthIndexEvents.maintenance_forecast": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "AssetHealthIndexEvents.signal_contributions": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
  "BatchTrackingEvents.batch_duration_stats": {
   "empty": "ok",
   "extra_uuid": "ok",
@@ -894,6 +914,21 @@
   "extra_uuid": "ok",
   "tz": "ok"
  },
+ "ProductionScheduleAdherenceEvents.adherence_by_period": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "ProductionScheduleAdherenceEvents.adherence_summary": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "ProductionScheduleAdherenceEvents.deviation_events": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
  "QualityTracking.daily_quality_summary": {
   "empty": "ok",
   "extra_uuid": "ok",
@@ -955,6 +990,21 @@
   "tz": "ok"
  },
  "ReworkTracking.rework_trend": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "RootCauseCorrelationEvents.lag_profile": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "RootCauseCorrelationEvents.rank_causes": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "RootCauseCorrelationEvents.top_cause": {
   "empty": "ok",
   "extra_uuid": "ok",
   "tz": "ok"
