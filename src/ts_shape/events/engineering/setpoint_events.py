@@ -503,11 +503,11 @@ class SetpointChangeEvents(Base):
                 else None
             )
 
-            # Oscillation detection: count zero crossings
-            err_sign = np.sign(err)
-            sign_changes = (
-                err_sign.diff() != 0
-            ).sum() - 1  # -1 to exclude initial transition
+            # Oscillation detection: count zero crossings. A sample exactly
+            # on the setpoint holds the previous sign so a crossing through
+            # an exact zero is counted once, not twice.
+            err_sign = np.sign(err).replace(0.0, np.nan).ffill().bfill()
+            sign_changes = (err_sign.diff().dropna() != 0).sum()
             oscillation_count = max(0, int(sign_changes))
 
             # Oscillation amplitude: average of peak deviations
@@ -962,8 +962,11 @@ class SetpointChangeEvents(Base):
             # Calculate error
             err = win[self.value_column] - s_new
 
-            # Detect zero crossings
-            err_sign = np.sign(err)
+            # Detect zero crossings. A sample exactly on the setpoint (sign 0)
+            # holds the previous sign; otherwise one crossing through an exact
+            # zero counted twice, 1 sample apart, halving the period.
+            err_sign = pd.Series(np.sign(err.to_numpy()), dtype=float)
+            err_sign = err_sign.replace(0.0, np.nan).ffill().bfill().to_numpy()
             sign_changes = np.where(np.diff(err_sign) != 0)[0]
             num_crossings = len(sign_changes)
 

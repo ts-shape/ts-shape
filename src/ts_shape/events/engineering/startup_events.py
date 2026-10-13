@@ -346,21 +346,25 @@ class StartupDetectionEvents(Base):
 
         events: list[dict[str, Any]] = []
 
-        # Calculate rolling statistics
-        s["rolling_mean"] = (
-            s[self.value_column].rolling(window=lookback_periods, min_periods=1).mean()
-        )
-        s["rolling_std"] = (
-            s[self.value_column].rolling(window=lookback_periods, min_periods=1).std()
-        )
+        # Baseline statistics from the *preceding* samples: including the
+        # current sample let a rising value raise its own threshold.
+        previous = s[self.value_column].shift(1)
+        s["rolling_mean"] = previous.rolling(
+            window=lookback_periods, min_periods=1
+        ).mean()
+        s["rolling_std"] = previous.rolling(
+            window=lookback_periods, min_periods=1
+        ).std()
 
         # Calculate adaptive threshold
         s["adaptive_threshold"] = s["rolling_mean"] + sensitivity * s[
             "rolling_std"
         ].fillna(0)
 
-        # Detect crossings above adaptive threshold
-        s["above_threshold"] = s[self.value_column] >= s["adaptive_threshold"]
+        # Detect crossings strictly above the adaptive threshold. With a flat
+        # baseline (std 0) the threshold equals the idle value, and ">=" made
+        # the idle machine itself read as a startup.
+        s["above_threshold"] = s[self.value_column] > s["adaptive_threshold"]
         s["crossing_up"] = (~s["above_threshold"].shift(fill_value=False)) & s[
             "above_threshold"
         ]
@@ -381,7 +385,7 @@ class StartupDetectionEvents(Base):
                 continue
 
             # Value must stay above the threshold calculated at crossing time
-            if (win[self.value_column] >= threshold_at_crossing).all():
+            if (win[self.value_column] > threshold_at_crossing).all():
                 events.append(
                     {
                         "start": t0,
@@ -644,6 +648,32 @@ class StartupDetectionEvents(Base):
                                 )
                                 break
             else:
+                next_phase_idx = current_phase_idx + 1
+                if (
+                    phase_start is not None
+                    and row[self.time_column] - phase_start >= min_duration
+                    and next_phase_idx < len(phases)
+                    and self._check_phase_condition(row, phases[next_phase_idx])
+                ):
+                    # Left this phase straight into the next one. Adjacent
+                    # phases rarely overlap (e.g. ramp 10-90, run >= 90), so
+                    # requiring a row inside both never advanced the sequence.
+                    phase_results.append(
+                        {
+                            "phase_name": phase["name"],
+                            "phase_number": current_phase_idx,
+                            "start": phase_start,
+                            "end": row[self.time_column],
+                            "duration": row[self.time_column] - phase_start,
+                            "next_phase": phases[next_phase_idx]["name"],
+                            "completed": False,  # Will update at end
+                        }
+                    )
+                    current_phase_idx = next_phase_idx
+                    phase_start = row[self.time_column]
+                    i += 1
+                    continue
+
                 # Lost phase condition
                 if (
                     phase_start is not None
