@@ -33,6 +33,13 @@ class IsDeltaFilter(Base):
         ]  # noqa: E712 pandas-series-bool-comparison
 
 
+def _previous(dataframe: pd.DataFrame, column_name: str, group_by_uuid: bool):
+    """Previous value of ``column_name``, optionally within each uuid."""
+    if group_by_uuid and "uuid" in dataframe.columns:
+        return dataframe.groupby("uuid", sort=False)[column_name].shift(1)
+    return dataframe[column_name].shift(1)
+
+
 class BooleanFilter(Base):
     """
     Provides class methods for filtering boolean columns in a pandas DataFrame,
@@ -41,11 +48,22 @@ class BooleanFilter(Base):
 
     @classmethod
     def filter_falling_value_bool(
-        cls, dataframe: pd.DataFrame, column_name: str = "value_bool"
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_bool",
+        *,
+        group_by_uuid: bool = False,
     ) -> pd.DataFrame:
-        """Filters rows where 'value_bool' changes from True to False."""
+        """Filters rows where 'value_bool' changes from True to False.
+
+        Args:
+            group_by_uuid: Compare each row with the previous row of the same
+                ``uuid``. Default ``False`` compares with the previous row of
+                the frame, so on a multi-signal frame the last row of one uuid
+                and the first of the next produce a false edge.
+        """
         Base._validate_column(dataframe, column_name)
-        previous = dataframe[column_name].shift(1)
+        previous = _previous(dataframe, column_name, group_by_uuid)
         return dataframe[
             (previous == True)  # noqa: E712 pandas-series-bool-comparison
             & (
@@ -56,11 +74,22 @@ class BooleanFilter(Base):
 
     @classmethod
     def filter_raising_value_bool(
-        cls, dataframe: pd.DataFrame, column_name: str = "value_bool"
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_bool",
+        *,
+        group_by_uuid: bool = False,
     ) -> pd.DataFrame:
-        """Filters rows where 'value_bool' changes from False to True."""
+        """Filters rows where 'value_bool' changes from False to True.
+
+        Args:
+            group_by_uuid: Compare each row with the previous row of the same
+                ``uuid``. Default ``False`` compares with the previous row of
+                the frame, so on a multi-signal frame the last row of one uuid
+                and the first of the next produce a false edge.
+        """
         Base._validate_column(dataframe, column_name)
-        previous = dataframe[column_name].shift(1)
+        previous = _previous(dataframe, column_name, group_by_uuid)
         return dataframe[
             (previous == False)  # noqa: E712 pandas-series-bool-comparison
             & (

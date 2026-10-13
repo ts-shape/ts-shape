@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd  # type: ignore
@@ -29,6 +30,7 @@ class OutlierDetectionEvents(Base):
         value_column: str,
         event_uuid: str = "outlier_event",
         time_threshold: str = "5min",
+        group_by_uuid: bool = False,
     ) -> None:
         """
         Initializes the OutlierDetectionEvents with specific attributes for outlier detection.
@@ -38,11 +40,16 @@ class OutlierDetectionEvents(Base):
             value_column (str): The name of the column containing the values for outlier detection.
             event_uuid (str): A UUID or identifier for detected outlier events.
             time_threshold (str): The time threshold to group close events together.
+            group_by_uuid (bool): Compute the statistics (mean/std, quartiles,
+                median/MAD, forest) and group events per ``uuid``. Default
+                ``False`` pools every row, so a frame holding e.g. a
+                temperature (~80) and a pressure (~2) shares one mean/std.
         """
         super().__init__(dataframe)
         self.value_column = value_column
         self.event_uuid = event_uuid
         self.time_threshold = time_threshold
+        self.group_by_uuid = group_by_uuid
 
     def _group_outliers(
         self, outliers_df: pd.DataFrame, include_singles: bool = True
@@ -106,11 +113,50 @@ class OutlierDetectionEvents(Base):
 
         return finalize_point_df(events_df, uuid=self.event_uuid, source_uuid=None)
 
+    def _detect(
+        self,
+        scorer: Callable[[pd.Series], tuple[pd.Series, pd.Series]],
+        include_singles: bool,
+    ) -> pd.DataFrame:
+        """Score values (pooled or per uuid), keep outliers and group them.
+
+        ``scorer`` maps a value Series to an index-aligned boolean outlier
+        mask and a severity Series.
+        """
+        df = self.dataframe.copy()
+
+        # Convert 'systime' to datetime and sort the DataFrame by 'systime'
+        df["systime"] = pd.to_datetime(df["systime"])
+        # Unique labels: masks and severities are aligned by index.
+        df = df.sort_values(by="systime", ascending=True).reset_index(drop=True)
+
+        if not (self.group_by_uuid and "uuid" in df.columns):
+            mask, severity = scorer(df[self.value_column])
+            outliers_df = df.loc[mask].copy()
+            outliers_df["severity"] = severity[mask]
+            return self._group_outliers(outliers_df, include_singles=include_singles)
+
+        parts = []
+        for _, group in df.groupby("uuid", sort=True):
+            mask, severity = scorer(group[self.value_column])
+            outliers = group.loc[mask].copy()
+            outliers["severity"] = severity[mask]
+            if not outliers.empty:
+                parts.append(
+                    self._group_outliers(outliers, include_singles=include_singles)
+                )
+        if not parts:
+            return self._group_outliers(df.iloc[0:0], include_singles=include_singles)
+        return pd.concat(parts, ignore_index=True).sort_values("systime")
+
     def detect_outliers_zscore(
         self, threshold: float = 3.0, include_singles: bool = True
     ) -> pd.DataFrame:
         """
         Detects outliers using the Z-score method.
+
+        NaN values are ignored when computing the mean and standard deviation
+        (one NaN used to turn every z-score into NaN, so nothing was found).
 
         Args:
             threshold (float): The Z-score threshold for detecting outliers.
@@ -119,24 +165,15 @@ class OutlierDetectionEvents(Base):
         Returns:
             pd.DataFrame: A DataFrame of detected outliers and grouped events.
         """
-        df = self.dataframe.copy()
 
-        # Convert 'systime' to datetime and sort the DataFrame by 'systime'
-        df["systime"] = pd.to_datetime(df["systime"])
-        df = df.sort_values(by="systime", ascending=True)
+        def scorer(values: pd.Series) -> tuple[pd.Series, pd.Series]:
+            z = pd.Series(
+                np.abs(zscore(values.astype(float), nan_policy="omit")),
+                index=values.index,
+            )
+            return z > threshold, z
 
-        # Calculate z-scores and detect outliers
-        z_scores = np.abs(zscore(df[self.value_column]))
-        df["outlier"] = z_scores > threshold
-
-        # Filter to keep only outliers
-        outliers_df = df.loc[df["outlier"]].copy()
-
-        # Add severity score (absolute z-score value)
-        outliers_df["severity"] = z_scores[df["outlier"]]
-
-        # Group and return the outliers
-        return self._group_outliers(outliers_df, include_singles=include_singles)
+        return self._detect(scorer, include_singles)
 
     def detect_outliers_iqr(
         self, threshold: tuple = (1.5, 1.5), include_singles: bool = True
@@ -151,39 +188,24 @@ class OutlierDetectionEvents(Base):
         Returns:
             pd.DataFrame: A DataFrame of detected outliers and grouped events.
         """
-        df = self.dataframe.copy()
 
-        # Convert 'systime' to datetime and sort the DataFrame by 'systime'
-        df["systime"] = pd.to_datetime(df["systime"])
-        df = df.sort_values(by="systime", ascending=True)
+        def scorer(values: pd.Series) -> tuple[pd.Series, pd.Series]:
+            q1 = values.quantile(0.25)
+            q3 = values.quantile(0.75)
+            iqr = q3 - q1
+            lower_bound = q1 - threshold[0] * iqr
+            upper_bound = q3 + threshold[1] * iqr
+            mask = (values < lower_bound) | (values > upper_bound)
+            # Severity: normalized distance from bounds in terms of IQR
+            if iqr > 0:
+                severity = np.maximum(0, (lower_bound - values) / iqr) + np.maximum(
+                    0, (values - upper_bound) / iqr
+                )
+            else:
+                severity = pd.Series(0.0, index=values.index)
+            return mask, severity
 
-        # Detect outliers using the IQR method
-        Q1 = df[self.value_column].quantile(0.25)
-        Q3 = df[self.value_column].quantile(0.75)
-        IQR = Q3 - Q1
-        lower_bound = Q1 - threshold[0] * IQR
-        upper_bound = Q3 + threshold[1] * IQR
-        df["outlier"] = (df[self.value_column] < lower_bound) | (
-            df[self.value_column] > upper_bound
-        )
-
-        # Filter to keep only outliers
-        outliers_df = df.loc[df["outlier"]].copy()
-
-        # Add severity score (normalized distance from bounds in terms of IQR)
-        if IQR > 0:
-            lower_distance = np.maximum(
-                0, (lower_bound - outliers_df[self.value_column]) / IQR
-            )
-            upper_distance = np.maximum(
-                0, (outliers_df[self.value_column] - upper_bound) / IQR
-            )
-            outliers_df["severity"] = lower_distance + upper_distance
-        else:
-            outliers_df["severity"] = 0.0
-
-        # Group and return the outliers
-        return self._group_outliers(outliers_df, include_singles=include_singles)
+        return self._detect(scorer, include_singles)
 
     def detect_outliers_mad(
         self, threshold: float = 3.5, include_singles: bool = True
@@ -192,6 +214,12 @@ class OutlierDetectionEvents(Base):
         Detects outliers using the Median Absolute Deviation (MAD) method.
         This method is more robust to outliers than z-score.
 
+        When more than half of the values are identical the MAD is 0. The
+        modified z-score then falls back to the mean absolute deviation
+        (``(x - median) / (1.253314 * MeanAD)``); if that is 0 too, no point
+        is an outlier. (Previously MAD was replaced by machine epsilon, which
+        flagged every value that differed from the median at all.)
+
         Args:
             threshold (float): The MAD threshold for detecting outliers. Default is 3.5.
             include_singles (bool): Whether to include single outliers in the output. Default is True.
@@ -199,33 +227,24 @@ class OutlierDetectionEvents(Base):
         Returns:
             pd.DataFrame: A DataFrame of detected outliers and grouped events.
         """
-        df = self.dataframe.copy()
 
-        # Convert 'systime' to datetime and sort the DataFrame by 'systime'
-        df["systime"] = pd.to_datetime(df["systime"])
-        df = df.sort_values(by="systime", ascending=True)
+        def scorer(values: pd.Series) -> tuple[pd.Series, pd.Series]:
+            values = values.astype(float)
+            median = values.median()
+            deviation = values - median
+            mad = deviation.abs().median()
+            if mad > 0:
+                modified_z = 0.6745 * deviation / mad
+            else:
+                mean_ad = deviation.abs().mean()
+                if not mean_ad > 0:
+                    none = pd.Series(False, index=values.index)
+                    return none, pd.Series(0.0, index=values.index)
+                modified_z = deviation / (1.253314 * mean_ad)
+            severity = modified_z.abs()
+            return severity > threshold, severity
 
-        # Calculate MAD
-        median = df[self.value_column].median()
-        mad = np.median(np.abs(df[self.value_column] - median))
-
-        # Handle case where MAD is 0 (all values are the same)
-        if mad == 0:
-            # Use a small constant to avoid division by zero
-            mad = np.finfo(float).eps
-
-        # Detect outliers using the MAD method
-        modified_z_scores = 0.6745 * (df[self.value_column] - median) / mad
-        df["outlier"] = np.abs(modified_z_scores) > threshold
-
-        # Filter to keep only outliers
-        outliers_df = df.loc[df["outlier"]].copy()
-
-        # Add severity score (absolute modified z-score)
-        outliers_df["severity"] = np.abs(modified_z_scores[df["outlier"]])
-
-        # Group and return the outliers
-        return self._group_outliers(outliers_df, include_singles=include_singles)
+        return self._detect(scorer, include_singles)
 
     def detect_outliers_isolation_forest(
         self,
@@ -236,6 +255,8 @@ class OutlierDetectionEvents(Base):
         """
         Detects outliers using sklearn's IsolationForest algorithm.
         Falls back gracefully if sklearn is not available.
+
+        Rows with a NaN value are not scored.
 
         Args:
             contamination (float): The proportion of outliers in the dataset. Default is 0.1.
@@ -253,34 +274,24 @@ class OutlierDetectionEvents(Base):
                 "sklearn is not available. Please install it with: pip install scikit-learn"
             )
 
-        df = self.dataframe.copy()
+        def scorer(values: pd.Series) -> tuple[pd.Series, pd.Series]:
+            mask = pd.Series(False, index=values.index)
+            severity = pd.Series(np.nan, index=values.index)
+            valid = values.dropna()
+            if valid.empty:
+                return mask, severity
+            X = valid.to_numpy(dtype=float).reshape(-1, 1)
+            iso_forest = IsolationForest(
+                contamination=contamination, random_state=random_state
+            )
+            # IsolationForest returns -1 for outliers, 1 for inliers
+            predictions = iso_forest.fit_predict(X)
+            # More negative scores are more anomalous: severity = -score
+            mask.loc[valid.index] = predictions == -1
+            severity.loc[valid.index] = -iso_forest.score_samples(X)
+            return mask, severity
 
-        # Convert 'systime' to datetime and sort the DataFrame by 'systime'
-        df["systime"] = pd.to_datetime(df["systime"])
-        df = df.sort_values(by="systime", ascending=True)
-
-        # Prepare data for IsolationForest (needs 2D array)
-        X = df[[self.value_column]].values
-
-        # Detect outliers using IsolationForest
-        iso_forest = IsolationForest(
-            contamination=contamination, random_state=random_state
-        )
-        predictions = iso_forest.fit_predict(X)
-        anomaly_scores = iso_forest.score_samples(X)
-
-        # Mark outliers (IsolationForest returns -1 for outliers, 1 for inliers)
-        df["outlier"] = predictions == -1
-
-        # Filter to keep only outliers
-        outliers_df = df.loc[df["outlier"]].copy()
-
-        # Add severity score (inverse of anomaly score, normalized to positive values)
-        # More negative scores indicate more anomalous points
-        outliers_df["severity"] = -anomaly_scores[df["outlier"]]
-
-        # Group and return the outliers
-        return self._group_outliers(outliers_df, include_singles=include_singles)
+        return self._detect(scorer, include_singles)
 
 
 # Example usage:
