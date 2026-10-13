@@ -74,7 +74,7 @@ cycles = extractor.process_persistent_cycle()   # boolean: True = in cycle
 # cycles = extractor.process_value_change_cycle()  # any value change = new cycle
 
 # Validate: drop cycles that are too short or too long
-cycles = extractor.validate_cycles(cycles, min_duration='5s', max_duration='10m')
+cycles = extractor.validate_cycles(cycles, min_duration='5s', max_duration='10min')
 
 # Check extraction quality
 stats = extractor.get_extraction_stats()

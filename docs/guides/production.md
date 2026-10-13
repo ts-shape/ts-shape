@@ -74,7 +74,7 @@ from ts_shape.events.production.line_throughput import LineThroughputEvents
 throughput = LineThroughputEvents(df)
 
 # Parts per minute
-counts = throughput.count_parts(counter_uuid='part_counter', window='1m')
+counts = throughput.count_parts(counter_uuid='part_counter', window='1min')
 
 # Takt adherence — flag cycles exceeding takt time
 violations = throughput.takt_adherence(
@@ -99,13 +99,13 @@ from ts_shape.events.production.changeover import ChangeoverEvents
 changeover = ChangeoverEvents(df)
 
 # Detect changeovers (product signal changes)
-changes = changeover.detect_changeover(product_uuid='product_signal', min_hold='5m')
+changes = changeover.detect_changeover(product_uuid='product_signal', min_hold='5min')
 
 # Fixed-duration changeover window
 windows = changeover.changeover_window(
     product_uuid='product_signal',
     until='fixed_window',
-    config={'duration': '10m'}
+    config={'duration': '10min'}
 )
 
 # Stability-based changeover window (waits for process to settle)
@@ -114,8 +114,8 @@ windows = changeover.changeover_window(
     until='stable_band',
     config={
         'metrics': [
-            {'uuid': 'temperature', 'band': 2.0, 'hold': '2m'},
-            {'uuid': 'pressure', 'band': 5.0, 'hold': '2m'},
+            {'uuid': 'temperature', 'band': 2.0, 'hold': '2min'},
+            {'uuid': 'pressure', 'band': 5.0, 'hold': '2min'},
         ],
         'reference_method': 'ewma'
     }

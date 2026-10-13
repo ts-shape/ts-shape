@@ -316,6 +316,11 @@ class CycleExtractor(Base):
 
         match = re.match(r"^(\d+(?:\.\d+)?)\s*([smhd])$", duration_str.lower().strip())
         if not match:
+            # Anything pandas understands ('5min', '90s', '1h30min', ...).
+            try:
+                return pd.Timedelta(duration_str)
+            except ValueError:
+                pass
             raise ValueError(
                 f"Invalid duration format: '{duration_str}'. Expected format: number followed by s/m/h/d (e.g., '1s', '5m', '1h')"
             )

@@ -147,8 +147,8 @@ class BottleneckDetectionEvents(Base):
 
         return pd.DataFrame(
             {
-                "start": bottlenecks["start"].values,
-                "end": bottlenecks["start"].values + window_td,
+                "start": bottlenecks["start"].array,
+                "end": bottlenecks["start"].array + window_td,
                 "bottleneck_uuid": bottlenecks["uuid"].values,
                 "utilization_pct": bottlenecks["utilization_pct"].values,
             }

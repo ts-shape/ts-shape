@@ -130,7 +130,7 @@ frequency = alarms.alarm_frequency(window='1h')
 durations = alarms.alarm_duration_stats()
 
 # Chattering detection (>5 transitions in 10 minutes)
-chattering = alarms.chattering_detection(min_transitions=5, window='10m')
+chattering = alarms.chattering_detection(min_transitions=5, window='10min')
 
 # Standing alarms (active longer than 1 hour)
 standing = alarms.standing_alarms(min_duration='1h')

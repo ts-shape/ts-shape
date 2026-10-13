@@ -245,13 +245,13 @@ class ToleranceDeviationEvents(Base):
         df = df[self.compare_func(df[self.actual_column], df["tolerance_value"])]
         df["value_bool"] = True  # Assign True in the value_bool column for kept rows
 
-        # Grouping events that are close to each other in terms of time
-        df["group_id"] = (
-            df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
+        # Group the actual signal's events that are close in time. Gaps are
+        # measured on the actual signal only: rows of other uuids in the frame
+        # must not split or merge its events.
+        filtered_df = df[df["uuid"] == self.actual_uuid].copy()
+        filtered_df["group_id"] = (
+            filtered_df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
         ).cumsum()
-
-        # Filter for specific UUID and prepare events DataFrame
-        filtered_df = df[df["uuid"] == self.actual_uuid]
         events_data = []
 
         for group_id in filtered_df["group_id"].unique():
@@ -380,13 +380,13 @@ class ToleranceDeviationEvents(Base):
         df = df[outside_bounds]
         df["value_bool"] = True
 
-        # Grouping events that are close to each other in terms of time
-        df["group_id"] = (
-            df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
+        # Group the actual signal's events that are close in time. Gaps are
+        # measured on the actual signal only: rows of other uuids in the frame
+        # must not split or merge its events.
+        filtered_df = df[df["uuid"] == self.actual_uuid].copy()
+        filtered_df["group_id"] = (
+            filtered_df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
         ).cumsum()
-
-        # Filter for specific UUID and prepare events DataFrame
-        filtered_df = df[df["uuid"] == self.actual_uuid]
         events_data = []
 
         for group_id in filtered_df["group_id"].unique():

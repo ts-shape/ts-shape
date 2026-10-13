@@ -1,0 +1,419 @@
+"""Registry-wide invariant harness for every ts-shape detector method.
+
+Walks :data:`ts_shape.eventlog.taxonomy.REGISTRY` (284 ``(class, method)``
+pairs), synthesises constructor and method arguments from parameter names,
+and checks three invariants on a small synthetic plant dataset:
+
+``empty``
+    An empty frame (correct columns, zero rows) must not raise.
+``tz``
+    With tz-aware (Europe/Berlin) ``systime`` the call must succeed and no
+    datetime column of the result may come back tz-naive (a stripped tz
+    shifts every timestamp by the UTC offset).
+``extra_uuid``
+    Appending rows of an unrelated uuid must not change the result.
+
+Each check yields a status string: ``"ok"``, ``"fail: <reason>"``, or
+``"n/a: <reason>"`` (the harness could not build a valid call -- e.g. a
+method that needs the output of another method). The current statuses are
+pinned in ``baseline.json``: the test fails when a status changes in either
+direction, so regressions are caught and fixes must update the baseline
+(a ratchet). Regenerate with::
+
+    python -m tests.invariants.harness --update
+"""
+
+from __future__ import annotations
+
+import inspect
+import json
+import sys
+import warnings
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+import ts_shape
+from ts_shape.eventlog.taxonomy import REGISTRY
+
+BASELINE = Path(__file__).with_name("baseline.json")
+BERLIN = "Europe/Berlin"
+CHECKS = ("empty", "tz", "extra_uuid")
+
+CONT, CONT2, STATE, COUNTER, SETPOINT, TEXT = (
+    "sig:cont",
+    "sig:cont2",
+    "sig:state",
+    "sig:counter",
+    "sig:setpoint",
+    "sig:text",
+)
+NOISE = "zz:unrelated"
+
+_VALUE_COLUMNS = ["value_double", "value_integer", "value_bool", "value_string"]
+
+
+# ---------------------------------------------------------------------------
+# Data
+# ---------------------------------------------------------------------------
+
+
+def plant_frame(tz: str | None = None) -> pd.DataFrame:
+    """Six signals over six hours at one-minute resolution."""
+    rng = np.random.default_rng(42)
+    n = 360
+    t = pd.date_range("2024-03-30 22:00", periods=n, freq="1min")
+    if tz is not None:
+        t = t.tz_localize("UTC").tz_convert(tz)
+    counter = np.cumsum(rng.integers(0, 3, n))
+    counter[200:] -= counter[199]
+    state = (np.arange(n) // 30) % 3 != 0
+    rows = [
+        pd.DataFrame(
+            {"systime": t, "uuid": CONT, "value_double": 50 + rng.normal(0, 2, n)}
+        ),
+        pd.DataFrame(
+            {"systime": t, "uuid": CONT2, "value_double": 20 + rng.normal(0, 1, n)}
+        ),
+        pd.DataFrame({"systime": t, "uuid": STATE, "value_bool": state}),
+        pd.DataFrame({"systime": t, "uuid": COUNTER, "value_integer": counter}),
+        pd.DataFrame(
+            {
+                "systime": t[::60],
+                "uuid": SETPOINT,
+                "value_double": np.tile([50.0, 55.0], 3),
+            }
+        ),
+        pd.DataFrame(
+            {
+                "systime": t,
+                "uuid": TEXT,
+                "value_string": np.where(state, "Running", "Stopped"),
+            }
+        ),
+    ]
+    df = pd.concat(rows, ignore_index=True)
+    for col in _VALUE_COLUMNS:
+        if col not in df.columns:
+            df[col] = np.nan
+    df["is_delta"] = True
+    return df.sort_values(["systime", "uuid"]).reset_index(drop=True)
+
+
+def with_noise(df: pd.DataFrame) -> pd.DataFrame:
+    noise = df[df["uuid"] == CONT].copy()
+    noise["uuid"] = NOISE
+    noise["value_double"] = noise["value_double"] * 7 + 1000
+    return pd.concat([df, noise], ignore_index=True).sort_values(["systime", "uuid"])
+
+
+# ---------------------------------------------------------------------------
+# Argument synthesis
+# ---------------------------------------------------------------------------
+
+_UUID_HINTS = (
+    (("setpoint", "sp_", "target_uuid", "reference"), SETPOINT),
+    (
+        (
+            "counter",
+            "count",
+            "part",
+            "scrap",
+            "reject",
+            "good",
+            "total",
+            "output",
+            "production",
+        ),
+        COUNTER,
+    ),
+    (
+        (
+            "state",
+            "run",
+            "status",
+            "mode",
+            "alarm",
+            "machine",
+            "door",
+            "running",
+            "tower",
+        ),
+        STATE,
+    ),
+    (
+        (
+            "reason",
+            "order",
+            "batch",
+            "recipe",
+            "product",
+            "operator",
+            "string",
+            "text",
+            "id_uuid",
+        ),
+        TEXT,
+    ),
+)
+
+
+def _uuid_for(name: str) -> str:
+    low = name.lower()
+    for keys, uuid in _UUID_HINTS:
+        if any(k in low for k in keys):
+            return uuid
+    return CONT
+
+
+#: Constructor arguments the harness cannot infer from names alone (one of
+#: several optional parameters must be given).
+INIT_OVERRIDES: dict[str, dict[str, Any]] = {
+    "CapabilityTrendingEvents": {"upper_spec": 60.0, "lower_spec": 40.0},
+    "ToleranceDeviationEvents": {
+        "tolerance_column": "value_double",
+        "actual_column": "value_double",
+        "tolerance_uuid": SETPOINT,
+        "actual_uuid": CONT,
+        "event_uuid": "evt",
+    },
+}
+
+
+class Unsupported(Exception):
+    """The harness cannot synthesise a valid value for a parameter."""
+
+
+def _value_for(name: str, param: inspect.Parameter) -> Any:
+    low = name.lower()
+    ann = str(param.annotation).lower()
+    if low in ("dataframe", "df", "data"):
+        raise Unsupported("dataframe handled by caller")
+    if "dict" in ann or "mapping" in ann:
+        if "factor" in low:
+            return {CONT: 0.4, CONT2: 0.2}
+        if "level" in low:
+            return {"warn": 52.0, "alarm": 55.0}
+        if "uuid" in low or "station" in low:
+            return {STATE: "S1", CONT: "S2"}  # uuid -> station name
+        raise Unsupported(f"no rule for mapping parameter {name!r}")
+    if "uuid" in low:
+        if "list" in ann or low.endswith("uuids") or "sequence" in ann:
+            return [CONT, CONT2]
+        if "part_id" in low or "order" in low:
+            return TEXT
+        if "trigger" in low or "cycle" in low:
+            return STATE
+        return _uuid_for(low)
+    if low.endswith("_column") or low == "column":
+        return "value_double"
+    # Numeric thresholds before durations: "threshold" contains "hold".
+    if "threshold" in low or "limit" in low or "delta" in low:
+        return 1.0
+    if "cycle_time" in low and "float" in ann:
+        return 30.0
+    if low in ("window", "freq", "frequency", "period", "resample", "baseline_window"):
+        return "1h"
+    if any(k in low for k in ("duration", "hold", "gap", "lookahead", "time")):
+        return "5min"
+    if low.startswith(("min_", "max_")):
+        return 1.0
+    if low in ("high", "upper", "usl", "upper_spec", "target", "target_value"):
+        return 55.0
+    if low in ("low", "lower", "lsl", "lower_spec"):
+        return 45.0
+    if any(k in low for k in ("rate", "factor", "level", "value", "sigma")):
+        return 1.0
+    raise Unsupported(f"no rule for required parameter {name!r}")
+
+
+def _required(fn: Any, skip: int) -> list[tuple[str, inspect.Parameter]]:
+    params = list(inspect.signature(fn).parameters.items())[skip:]
+    return [
+        (n, p)
+        for n, p in params
+        if p.default is inspect.Parameter.empty
+        and p.kind
+        not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    ]
+
+
+def build_call(cls: Any, method: str, df: pd.DataFrame) -> Any:
+    """Return a zero-argument callable that runs ``cls(df, ...).method(...)``."""
+    raw = inspect.getattr_static(cls, method)
+    is_cm = isinstance(raw, (classmethod, staticmethod))
+    fn = getattr(cls, method)
+
+    m_kwargs = {}
+    m_params = _required(fn, 0 if is_cm else 1)
+    if is_cm:
+        if not m_params or m_params[0][0] not in ("dataframe", "df", "data"):
+            raise Unsupported("classmethod without a dataframe first parameter")
+        m_params = m_params[1:]
+    for name, param in m_params:
+        m_kwargs[name] = _value_for(name, param)
+
+    if is_cm:
+        return lambda: fn(df, **m_kwargs)
+
+    c_kwargs = dict(INIT_OVERRIDES.get(cls.__name__, {}))
+    for name, param in _required(cls.__init__, 2):
+        c_kwargs.setdefault(name, _value_for(name, param))
+
+    def call() -> Any:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            obj = cls(df, **c_kwargs)
+            return getattr(obj, method)(**m_kwargs)
+
+    return call
+
+
+# ---------------------------------------------------------------------------
+# Checks
+# ---------------------------------------------------------------------------
+
+
+def _short(exc: BaseException) -> str:
+    msg = str(exc).splitlines()[0] if str(exc) else ""
+    return f"{type(exc).__name__}: {msg[:80]}"
+
+
+def _run(cls: Any, method: str, df: pd.DataFrame) -> tuple[str, Any]:
+    try:
+        call = build_call(cls, method, df)
+    except Unsupported as exc:
+        return f"n/a: {exc}", None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return "ok", call()
+    except ImportError as exc:
+        return f"n/a: optional dependency missing ({exc.name or exc})", None
+    except Exception as exc:  # noqa: BLE001 - the harness records every failure
+        return f"fail: {_short(exc)}", None
+
+
+def _frames(result: Any) -> list[pd.DataFrame]:
+    if isinstance(result, pd.DataFrame):
+        return [result]
+    if isinstance(result, pd.Series):
+        return [result.to_frame()]
+    if isinstance(result, dict):
+        return [v for v in result.values() if isinstance(v, pd.DataFrame)]
+    return []
+
+
+#: Calendar-date columns are legitimately tz-naive.
+_DATE_COLUMNS = {"date", "production_day", "day"}
+
+
+def _naive_datetime_columns(result: Any) -> list[str]:
+    bad = []
+    for frame in _frames(result):
+        for col in frame.columns:
+            if str(col) in _DATE_COLUMNS:
+                continue
+            s = frame[col]
+            if (
+                pd.api.types.is_datetime64_any_dtype(s)
+                and getattr(s.dt, "tz", None) is None
+            ):
+                bad.append(str(col))
+            elif s.dtype == object and len(s.dropna()):
+                first = s.dropna().iloc[0]
+                if isinstance(first, pd.Timestamp) and first.tzinfo is None:
+                    bad.append(str(col))
+        if isinstance(frame.index, pd.DatetimeIndex) and frame.index.tz is None:
+            bad.append("<index>")
+    return bad
+
+
+def _same(a: Any, b: Any) -> bool:
+    fa, fb = _frames(a), _frames(b)
+    if len(fa) != len(fb):
+        return False
+    for x, y in zip(fa, fb, strict=True):
+        x = x.drop(columns=[c for c in x.columns if "uuid" in str(c)], errors="ignore")
+        y = y.drop(columns=[c for c in y.columns if "uuid" in str(c)], errors="ignore")
+        try:
+            pd.testing.assert_frame_equal(
+                x.reset_index(drop=True),
+                y.reset_index(drop=True),
+                check_dtype=False,
+                check_like=True,
+                atol=1e-9,
+            )
+        except (AssertionError, TypeError, ValueError):
+            return False
+    if not fa and a != b:  # scalars / dicts of scalars
+        try:
+            return bool(a == b)
+        except Exception:  # noqa: BLE001
+            return False
+    return True
+
+
+def check(cls_name: str, method: str) -> dict[str, str]:
+    cls = getattr(ts_shape, cls_name)
+    base = plant_frame()
+    status: dict[str, str] = {}
+
+    empty = base.iloc[0:0]
+    status["empty"] = _run(cls, method, empty)[0]
+
+    tz_status, tz_result = _run(cls, method, plant_frame(BERLIN))
+    if tz_status == "ok":
+        naive = _naive_datetime_columns(tz_result)
+        tz_status = f"fail: tz stripped in {sorted(set(naive))[:4]}" if naive else "ok"
+    status["tz"] = tz_status
+
+    plain_status, plain = _run(cls, method, base)
+    if plain_status != "ok":
+        status["extra_uuid"] = plain_status
+    else:
+        noisy_status, noisy = _run(cls, method, with_noise(base))
+        if noisy_status != "ok":
+            status["extra_uuid"] = noisy_status
+        else:
+            status["extra_uuid"] = (
+                "ok" if _same(plain, noisy) else "fail: result changed"
+            )
+    return status
+
+
+def entries() -> list[tuple[str, str]]:
+    return sorted(REGISTRY)
+
+
+def run_all() -> dict[str, dict[str, str]]:
+    return {f"{c}.{m}": check(c, m) for c, m in entries()}
+
+
+def load_baseline() -> dict[str, dict[str, str]]:
+    if not BASELINE.exists():
+        return {}
+    return json.loads(BASELINE.read_text(encoding="utf-8"))
+
+
+def _summary(results: dict[str, dict[str, str]]) -> str:
+    lines = []
+    for chk in CHECKS:
+        values = [r[chk] for r in results.values()]
+        ok = sum(v == "ok" for v in values)
+        fail = sum(v.startswith("fail") for v in values)
+        na = sum(v.startswith("n/a") for v in values)
+        lines.append(f"{chk:>11}: {ok} ok, {fail} fail, {na} n/a")
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":  # pragma: no cover - maintenance entry point
+    results = run_all()
+    print(_summary(results))
+    if "--update" in sys.argv:
+        BASELINE.write_text(
+            json.dumps(results, indent=1, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        print(f"baseline written: {BASELINE}")

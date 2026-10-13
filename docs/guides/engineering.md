@@ -45,7 +45,7 @@ ramps = setpoint.detect_setpoint_ramps(min_rate=0.1, min_duration='10s')
 ```python
 # Time to settle within tolerance band
 settling = setpoint.time_to_settle(
-    actual_uuid='temperature_actual', tol=1.0, hold='10s', lookahead='5m'
+    actual_uuid='temperature_actual', tol=1.0, hold='10s', lookahead='5min'
 )
 
 # Rise time (10% to 90% of step)
@@ -189,7 +189,7 @@ quality = detector.assess_startup_quality(events)
 # Failed startup detection
 failed = detector.detect_failed_startups(
     threshold=60.0, min_rise_duration="5s",
-    max_completion_time="5m", completion_threshold=120.0,
+    max_completion_time="5min", completion_threshold=120.0,
 )
 
 # Phase tracking (preheat → ramp → operating)

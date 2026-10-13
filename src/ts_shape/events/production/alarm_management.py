@@ -26,7 +26,7 @@ class AlarmManagementEvents(Base):
 
         freq = alarms.alarm_frequency(window='1h')
         stats = alarms.alarm_duration_stats()
-        chatter = alarms.chattering_detection(min_transitions=5, window='10m')
+        chatter = alarms.chattering_detection(min_transitions=5, window='10min')
         standing = alarms.standing_alarms(min_duration='1h')
     """
 
@@ -199,7 +199,7 @@ class AlarmManagementEvents(Base):
     def chattering_detection(
         self,
         min_transitions: int = 5,
-        window: str = "10m",
+        window: str = "10min",
     ) -> pd.DataFrame:
         """Detect chattering alarms (too many transitions in a short window).
 

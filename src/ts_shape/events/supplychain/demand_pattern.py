@@ -163,7 +163,7 @@ class DemandPatternEvents(Base):
 
         result = pd.DataFrame(
             {
-                "start": spikes["start"].values,
+                "start": spikes["start"].array,
                 "uuid": self.event_uuid,
                 "is_delta": True,
                 "demand": spikes["total_demand"].values,

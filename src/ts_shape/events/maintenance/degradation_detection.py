@@ -55,7 +55,7 @@ class DegradationDetectionEvents(Base):
         in the given direction, indicating trend-based degradation.
 
         Args:
-            window: Rolling window size (e.g. '1h', '30m').
+            window: Rolling window size (e.g. '1h', '30min').
             min_slope: Minimum absolute slope to consider degradation.
             direction: 'decreasing' (negative slope) or 'increasing' (positive slope).
             interval_end: ``"last_sample"`` (default) ends an interval at its
@@ -254,7 +254,7 @@ class DegradationDetectionEvents(Base):
     def detect_level_shift(
         self,
         min_shift: float,
-        hold: str = "5m",
+        hold: str = "5min",
     ) -> pd.DataFrame:
         """
         CUSUM-like detection for permanent mean shifts in the signal.

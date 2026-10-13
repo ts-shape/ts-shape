@@ -741,7 +741,7 @@ class StartupDetectionEvents(Base):
         *,
         threshold: float,
         min_rise_duration: str = "5s",
-        max_completion_time: str = "5m",
+        max_completion_time: str = "5min",
         completion_threshold: float | None = None,
         required_stability: str = "10s",
     ) -> pd.DataFrame:

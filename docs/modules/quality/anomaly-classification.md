@@ -21,11 +21,11 @@ from ts_shape.events.quality.anomaly_classification import AnomalyClassification
 classifier = AnomalyClassificationEvents(df, value_column="value_double")
 
 # Full multi-type classification in one pass
-classified = classifier.classify_anomalies(window="10m", z_threshold=3.0)
+classified = classifier.classify_anomalies(window="10min", z_threshold=3.0)
 
 # Or detect specific anomaly types individually
-flatlines = classifier.detect_flatline(min_duration="1m", tolerance=1e-6)
-oscillations = classifier.detect_oscillation(window="1m", min_crossings=6)
+flatlines = classifier.detect_flatline(min_duration="1min", tolerance=1e-6)
+oscillations = classifier.detect_oscillation(window="1min", min_crossings=6)
 drifts = classifier.detect_drift(window="1h", min_slope=0.01)
 ```
 
@@ -35,10 +35,10 @@ drifts = classifier.detect_drift(window="1h", min_slope=0.01)
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_flatline(min_duration='1m', tolerance=1e-6)` | Detect stuck/frozen signal segments | DataFrame with flatline event intervals |
-| `detect_oscillation(window='1m', min_crossings=6)` | Detect excessive oscillation (e.g., control valve hunting) | DataFrame with oscillation flags |
+| `detect_flatline(min_duration='1min', tolerance=1e-6)` | Detect stuck/frozen signal segments | DataFrame with flatline event intervals |
+| `detect_oscillation(window='1min', min_crossings=6)` | Detect excessive oscillation (e.g., control valve hunting) | DataFrame with oscillation flags |
 | `detect_drift(window='1h', min_slope=0.01)` | Detect gradual drift in signal mean | DataFrame with drift events |
-| `classify_anomalies(window='10m', z_threshold=3.0)` | Multi-type classification: spike, drift, oscillation, flatline, level shift | DataFrame with anomaly type labels |
+| `classify_anomalies(window='10min', z_threshold=3.0)` | Multi-type classification: spike, drift, oscillation, flatline, level shift | DataFrame with anomaly type labels |
 
 ---
 

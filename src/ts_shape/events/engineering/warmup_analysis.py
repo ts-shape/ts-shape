@@ -61,7 +61,7 @@ class WarmUpCoolDownEvents(Base):
         self,
         direction: str,
         min_change: float,
-        min_duration: str = "1m",
+        min_duration: str = "1min",
         max_pause: int = 0,
     ) -> list[dict[str, Any]]:
         """Detect monotonic ramp intervals (rising or falling).
@@ -153,7 +153,7 @@ class WarmUpCoolDownEvents(Base):
     def detect_warmup(
         self,
         min_rise: float,
-        min_duration: str = "1m",
+        min_duration: str = "1min",
         *,
         max_pause: int = 0,
     ) -> pd.DataFrame:
@@ -205,7 +205,7 @@ class WarmUpCoolDownEvents(Base):
     def detect_cooldown(
         self,
         min_fall: float,
-        min_duration: str = "1m",
+        min_duration: str = "1min",
         *,
         max_pause: int = 0,
     ) -> pd.DataFrame:
@@ -257,7 +257,7 @@ class WarmUpCoolDownEvents(Base):
     def warmup_consistency(
         self,
         min_rise: float,
-        min_duration: str = "1m",
+        min_duration: str = "1min",
     ) -> pd.DataFrame:
         """Compare warm-up curves for consistency in duration and rate.
 
@@ -280,7 +280,7 @@ class WarmUpCoolDownEvents(Base):
         result = pd.DataFrame(
             {
                 "warmup_index": range(len(warmups)),
-                "start": warmups["start"].values,
+                "start": warmups["start"].array,
                 "duration_seconds": warmups["duration_seconds"].values,
                 "avg_rate": warmups["avg_rate"].values,
                 "deviation_from_median_duration": (

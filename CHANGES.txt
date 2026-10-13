@@ -1,3 +1,23 @@
+# October 14, 2026
+add: ts_shape.signals -- SignalSpec / SignalSpecs (dict/YAML round trip),
+  infer_specs() with per-field reasons, and spec-driven primitives:
+  intervals, increments, per_window, align, windows, shift_windows.
+add: ts_shape.profile(df) -- per-signal data-quality and semantics report
+  (gaps, resets, duplicates, NaT, missing values, mixed value columns,
+  change-encoded and possibly-stuck signals) with .summary() / .issues().
+add: specs= on MachineStateEvents and DowntimeTracking (defaults follow the
+  signal's spec; explicit arguments win).
+add: registry-wide invariant harness (tests/invariants) pinned to a ratchet
+  baseline, and hypothesis property tests for the primitives.
+fix: 36 frequency defaults such as window="5m" crashed resample on pandas 3
+  ('m' is no longer an offset); now "5min". CycleExtractor durations accept
+  any pandas duration string.
+fix: OEECalculator daily summaries are tz-aware with real day lengths
+  (23 h / 25 h on DST days); BottleneckDetectionEvents, warmup_consistency and
+  demand spikes keep the timezone.
+fix: MachineStateEvents accepts an empty frame; ToleranceDeviationEvents groups
+  events on the actual signal only (other uuids split or merged them).
+
 # October 13, 2026
 Weekly screen of the non-production packs (see docs/gap_screening_other_packs.md).
 fix: CycleExtractor -- every process_* method returned cycle_end=NaT and

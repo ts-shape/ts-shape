@@ -45,7 +45,7 @@ class VibrationAnalysisEvents(Base):
         self,
         baseline_rms: float,
         threshold_factor: float = 1.5,
-        window: str = "1m",
+        window: str = "1min",
         *,
         interval_end: str = "last_sample",
     ) -> pd.DataFrame:
@@ -209,7 +209,7 @@ class VibrationAnalysisEvents(Base):
 
     def bearing_health_indicators(
         self,
-        window: str = "5m",
+        window: str = "5min",
     ) -> pd.DataFrame:
         """
         Compute bearing health indicators per window: RMS, peak value,

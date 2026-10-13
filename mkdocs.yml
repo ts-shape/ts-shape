@@ -18,6 +18,7 @@ nav:
   - Concept: concept.md
   - Migration & Deprecations: migration.md
   - Changelog: changelog.md
+  - Roadmap: roadmap.md
   - License: license.md
 - Getting Started:
   - Installation: user_guide/installation.md
@@ -26,6 +27,7 @@ nav:
   - Overview: guides/index.md
   - Architecture: guides/architecture.md
   - Architecture Map: guides/architecture-map.md
+  - Signal Semantics & Profiling: guides/signals.md
   - Data Acquisition: guides/loading.md
   - Signal Conditioning: guides/transforms.md
   - Feature Extraction: guides/feature-extraction.md

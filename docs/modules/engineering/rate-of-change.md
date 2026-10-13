@@ -24,7 +24,7 @@ detector = RateOfChangeEvents(
 )
 
 # Detect intervals where rate exceeds 10 units/min
-rapid = detector.detect_rapid_change(threshold=10.0, window="1m")
+rapid = detector.detect_rapid_change(threshold=10.0, window="1min")
 
 # Get rate statistics per hour for trend reporting
 stats = detector.rate_statistics(window="1h")
@@ -39,7 +39,7 @@ steps = detector.detect_step_changes(min_delta=20.0, max_duration="5s")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_rapid_change(threshold, window='1m')` | Rapid change intervals | DataFrame of rapid-change events |
+| `detect_rapid_change(threshold, window='1min')` | Rapid change intervals | DataFrame of rapid-change events |
 | `rate_statistics(window='1h')` | Rate statistics per window | DataFrame with rate stats |
 | `detect_step_changes(min_delta, max_duration='5s')` | Sudden value jumps | DataFrame of step events |
 

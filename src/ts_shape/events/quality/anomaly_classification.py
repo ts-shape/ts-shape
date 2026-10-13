@@ -47,7 +47,7 @@ class AnomalyClassificationEvents(Base):
 
     def detect_flatline(
         self,
-        min_duration: str = "1m",
+        min_duration: str = "1min",
         tolerance: float = 1e-6,
         *,
         interval_end: str = "last_sample",
@@ -113,7 +113,7 @@ class AnomalyClassificationEvents(Base):
         )
 
     def detect_oscillation(
-        self, window: str = "1m", min_crossings: int = 6
+        self, window: str = "1min", min_crossings: int = 6
     ) -> pd.DataFrame:
         """Detect windows with excessive zero-crossings of the detrended signal.
 
@@ -221,7 +221,7 @@ class AnomalyClassificationEvents(Base):
         )
 
     def classify_anomalies(
-        self, window: str = "10m", z_threshold: float = 3.0
+        self, window: str = "10min", z_threshold: float = 3.0
     ) -> pd.DataFrame:
         """Detect anomalous windows and classify by type.
 

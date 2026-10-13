@@ -27,7 +27,7 @@ comparator = SignalComparisonEvents(
 divergence = comparator.detect_divergence(
     actual_uuid="actual_pressure_01",
     tolerance=2.0,
-    min_duration="1m"
+    min_duration="1min"
 )
 
 # Per-hour deviation statistics
@@ -49,7 +49,7 @@ correlation = comparator.correlation_windows(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_divergence(actual_uuid, tolerance, min_duration='1m')` | Divergence intervals | DataFrame of divergence events |
+| `detect_divergence(actual_uuid, tolerance, min_duration='1min')` | Divergence intervals | DataFrame of divergence events |
 | `deviation_statistics(actual_uuid, window='1h')` | Per-window deviation stats | DataFrame with deviation metrics |
 | `tracking_error_trend(actual_uuid, window='1D')` | Deviation trend over time | DataFrame with daily trend |
 | `correlation_windows(actual_uuid, window='1h')` | Per-window correlation | DataFrame with correlation values |

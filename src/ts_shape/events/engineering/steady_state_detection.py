@@ -83,9 +83,9 @@ class SteadyStateDetectionEvents(Base):
 
     def detect_steady_state(
         self,
-        window: str = "5m",
+        window: str = "5min",
         std_threshold: float = 1.0,
-        min_duration: str = "10m",
+        min_duration: str = "10min",
         *,
         interval_end: str = "last_sample",
     ) -> pd.DataFrame:
@@ -146,7 +146,7 @@ class SteadyStateDetectionEvents(Base):
 
     def detect_transient_periods(
         self,
-        window: str = "5m",
+        window: str = "5min",
         std_threshold: float = 1.0,
         *,
         interval_end: str = "last_sample",
@@ -202,9 +202,9 @@ class SteadyStateDetectionEvents(Base):
 
     def steady_state_statistics(
         self,
-        window: str = "5m",
+        window: str = "5min",
         std_threshold: float = 1.0,
-        min_duration: str = "10m",
+        min_duration: str = "10min",
     ) -> dict[str, Any]:
         """Summary statistics of steady vs transient time.
 
@@ -242,9 +242,9 @@ class SteadyStateDetectionEvents(Base):
 
     def steady_state_value_bands(
         self,
-        window: str = "5m",
+        window: str = "5min",
         std_threshold: float = 1.0,
-        min_duration: str = "10m",
+        min_duration: str = "10min",
     ) -> pd.DataFrame:
         """Operating band (mean +/- std) for each steady-state interval.
 

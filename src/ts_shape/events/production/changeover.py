@@ -96,11 +96,11 @@ class ChangeoverEvents(Base):
         """Compute changeover windows per product change with enhanced configurability.
 
         until:
-          - fixed_window: end = start + config['duration'] (e.g., '10m')
+          - fixed_window: end = start + config['duration'] (e.g., '10min')
           - stable_band: end when all metrics stabilize within band for hold:
                 config = {
                   'metrics': [
-                    {'uuid': 'm1', 'value_column': 'value_double', 'band': 0.2, 'hold': '2m'},
+                    {'uuid': 'm1', 'value_column': 'value_double', 'band': 0.2, 'hold': '2min'},
                     ...
                   ],
                   'reference_method': 'expanding_median' | 'rolling_mean' | 'ewma' | 'target_value',
@@ -108,10 +108,10 @@ class ChangeoverEvents(Base):
                   'ewma_span': 10,  # for ewma
                   'target_values': {'m1': 100.0, ...}  # for target_value
                 }
-        fallback: {'default_duration': '10m', 'completed': False}
+        fallback: {'default_duration': '10min', 'completed': False}
         """
         config = config or {}
-        fallback = fallback or {"default_duration": "10m", "completed": False}
+        fallback = fallback or {"default_duration": "10min", "completed": False}
 
         changes = self.detect_changeover(
             product_uuid,
@@ -137,7 +137,7 @@ class ChangeoverEvents(Base):
         for _, r in changes.iterrows():
             t0 = pd.to_datetime(r["systime"])
             if until == "fixed_window":
-                duration = pd.to_timedelta(config.get("duration", "10m"))
+                duration = pd.to_timedelta(config.get("duration", "10min"))
                 end = t0 + duration
                 rows.append(
                     {
@@ -169,7 +169,7 @@ class ChangeoverEvents(Base):
                     continue
 
             # fallback
-            end = t0 + pd.to_timedelta(fallback.get("default_duration", "10m"))
+            end = t0 + pd.to_timedelta(fallback.get("default_duration", "10min"))
             rows.append(
                 {
                     "start": t0,

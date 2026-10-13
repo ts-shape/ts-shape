@@ -289,7 +289,7 @@ class SetpointChangeEvents(Base):
         tol: float = 0.0,
         settle_pct: float | None = None,
         hold: str = "0s",
-        lookahead: str = "10m",
+        lookahead: str = "10min",
     ) -> pd.DataFrame:
         """
         For each setpoint change (any change), compute time until the actual signal
@@ -392,7 +392,7 @@ class SetpointChangeEvents(Base):
         self,
         actual_uuid: str,
         *,
-        window: str = "10m",
+        window: str = "10min",
     ) -> pd.DataFrame:
         """
         For each change, compute peak overshoot, undershoot, and oscillation metrics
@@ -560,7 +560,7 @@ class SetpointChangeEvents(Base):
         actual_uuid: str,
         *,
         rate_threshold: float = 0.01,
-        lookahead: str = "10m",
+        lookahead: str = "10min",
         hold: str = "0s",
     ) -> pd.DataFrame:
         """
@@ -682,7 +682,7 @@ class SetpointChangeEvents(Base):
         *,
         start_pct: float = 0.1,
         end_pct: float = 0.9,
-        lookahead: str = "10m",
+        lookahead: str = "10min",
     ) -> pd.DataFrame:
         """
         Compute rise time: time for actual to go from start_pct to end_pct of the setpoint change.
@@ -789,7 +789,7 @@ class SetpointChangeEvents(Base):
         self,
         actual_uuid: str,
         *,
-        lookahead: str = "10m",
+        lookahead: str = "10min",
         min_points: int = 5,
     ) -> pd.DataFrame:
         """
@@ -909,7 +909,7 @@ class SetpointChangeEvents(Base):
         self,
         actual_uuid: str,
         *,
-        window: str = "10m",
+        window: str = "10min",
         min_oscillations: int = 2,
     ) -> pd.DataFrame:
         """
@@ -1032,7 +1032,7 @@ class SetpointChangeEvents(Base):
         tol: float = 0.0,
         settle_pct: float | None = None,
         hold: str = "0s",
-        lookahead: str = "10m",
+        lookahead: str = "10min",
         rate_threshold: float = 0.01,
     ) -> pd.DataFrame:
         """

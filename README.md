@@ -52,6 +52,11 @@ import ts_shape
 # Generate a sample dataset (or load your own via pandas / a ts-shape loader)
 df = ts_shape.make_timeseries(["sensor:temp"], n_points=2000, n_outliers=6)
 
+# Start every analysis here: what each signal is, and what is wrong with it
+report = ts_shape.profile(df)
+print(report.summary())        # kinds, encodings, gaps, resets, duplicates, ...
+specs = report.specs           # signal semantics to hand to detectors
+
 # Discover what is available -- 70+ detectors across 8 packs
 ts_shape.list_detectors("events.quality")
 
@@ -181,7 +186,7 @@ result = oee.calculate_oee(
 
 # Alarm analysis (ISA-18.2 style)
 alarms = AlarmManagementEvents(df, alarm_uuid="alarm:overtemp")
-chattering = alarms.chattering_detection(min_transitions=5, window="10m")
+chattering = alarms.chattering_detection(min_transitions=5, window="10min")
 
 # Batch tracking
 batches = BatchTrackingEvents(df, batch_uuid="batch:id")
@@ -258,7 +263,7 @@ rul = fp.remaining_useful_life(degradation_rate=0.01, failure_threshold=120.0)
 
 # Vibration analysis (RMS, crest factor, kurtosis)
 vib = VibrationAnalysisEvents(df, signal_uuid="sensor:vibration")
-indicators = vib.bearing_health_indicators(window="5m")
+indicators = vib.bearing_health_indicators(window="5min")
 ```
 
 ### Development Events (Product & Process R&D)
@@ -310,7 +315,7 @@ from ts_shape.events.supplychain.demand_pattern import DemandPatternEvents
 
 # Inventory monitoring with stockout prediction
 inv = InventoryMonitoringEvents(df, level_uuid="inventory:raw_material")
-low_stock = inv.detect_low_stock(min_level=100, hold="30m")
+low_stock = inv.detect_low_stock(min_level=100, hold="30min")
 prediction = inv.stockout_prediction(consumption_rate_window="4h")
 
 # Lead time analysis

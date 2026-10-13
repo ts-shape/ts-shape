@@ -27,7 +27,7 @@ df = pd.DataFrame({
 })
 
 tp = LineThroughputEvents(df, timestamp_column="timestamp")
-parts = tp.count_parts(counter_uuid="part_counter", window="1m")
+parts = tp.count_parts(counter_uuid="part_counter", window="1min")
 violations = tp.takt_adherence(cycle_uuid="cycle_time_s", takt_time="60s")
 print(parts.head())
 ```
@@ -38,7 +38,7 @@ print(parts.head())
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `count_parts(counter_uuid, window='1m')` | Count produced parts per time window from a monotonic counter signal | DataFrame with window start and part count |
+| `count_parts(counter_uuid, window='1min')` | Count produced parts per time window from a monotonic counter signal | DataFrame with window start and part count |
 | `takt_adherence(cycle_uuid, takt_time='60s')` | Identify cycles that exceed the target takt time | DataFrame of violations with timestamp and overshoot |
 | `throughput_oee(counter_uuid, window='1h')` | Compute OEE-style throughput metrics per window | DataFrame with actual vs ideal counts and performance ratio |
 | `throughput_trends(counter_uuid, window='1h')` | Analyze throughput trends over time for shift or daily review | DataFrame with trend statistics per window |
