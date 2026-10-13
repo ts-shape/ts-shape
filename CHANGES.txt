@@ -1,3 +1,41 @@
+# October 13, 2026
+Weekly screen of the non-production packs (see docs/gap_screening_other_packs.md).
+fix: CycleExtractor -- every process_* method returned cycle_end=NaT and
+  is_complete=False; cycles now open on rising edges / step entries, never
+  close at themselves, keep a tz-aware systime and ignore other uuids.
+fix: ToleranceDeviationEvents applied each measurement the next (future)
+  tolerance; capability indices use the latest limits, a single tolerance is
+  one-sided, and one measurement raises.
+fix: ControlLoopHealthEvents / DisturbanceRecoveryEvents align PV with the
+  setpoint in force (backward as-of) instead of SP-left / nearest.
+fix: FailurePredictionEvents.remaining_useful_life no longer reports RUL 0 for a
+  trend moving away from the threshold; NaN samples are skipped.
+fix: LeadTimeAnalysisEvents matches deliveries by order id when present.
+fix: EnergyEfficiencyEvents.efficiency_comparison summed raw counter readings.
+fix: tz-aware systime is preserved across quality/engineering/maintenance/
+  supplychain events (no more naive-UTC .values); DateTimeFilter accepts naive
+  bounds on tz-aware columns.
+fix: MaterialBalanceEvents reported a zero-input window with output as balanced.
+fix: OutlierDetectionEvents -- zscore ignores NaN, MAD=0 falls back to mean
+  absolute deviation, IsolationForest skips NaN.
+fix: SPC CUSUM with sigma 0/NaN returns no shifts (warning); steady-state
+  windows with <2 samples are no longer "steady"; demand empty periods are not
+  zero demand and calendar periods work in seasonality_summary.
+fix: setpoint oscillation crossings through an exact zero counted once;
+  detect_startup_adaptive no longer flags a flat idle signal; track_startup_phases
+  advances through non-overlapping phases.
+add: opt-in handle_resets (energy per-unit/EnPI/carbon/SEC, TimeGroupedStatistics
+  'diff'), handle_refills (inventory consumption_rate), interval_end="next_change"
+  (threshold, signal quality, degradation, vibration, steady state, segments, low
+  stock, correlation breakdown, time_above_threshold), time_weighted (material
+  balance, idle energy), max_gap (error_integrals), missing_as_zero (material
+  balance), group_by_uuid (outlier detection, boolean/string edge filters,
+  TimeGroupedStatistics), inclusive (DateTimeFilter), ambiguous/nonexistent
+  (TimezoneShift). Defaults unchanged.
+add: helpers utils.counters.counter_per_window, utils.intervals.interval_end_times,
+  utils.time_weighted.time_weighted_resample.
+add: Base warns (DataQualityWarning) on NaT timestamps.
+
 # July 31, 2026
 add: OEECalculator.calculate_oee now threads handle_resets to its performance
   and quality components and max_gap to its availability/performance components.
