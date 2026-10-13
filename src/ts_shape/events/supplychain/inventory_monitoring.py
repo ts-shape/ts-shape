@@ -128,14 +128,21 @@ class InventoryMonitoringEvents(Base):
     def consumption_rate(
         self,
         window: str = "1h",
+        *,
+        handle_refills: bool = False,
     ) -> pd.DataFrame:
         """Calculate rolling consumption rate from inventory level decreases.
 
-        Only considers intervals where the level decreased (consumption).
         The rate is expressed as units consumed per hour within each window.
 
         Args:
             window: Time-based window for grouping (e.g. ``'1h'``, ``'30min'``).
+            handle_refills: When ``False`` (default) consumption is
+                ``first - last`` level of the window, so a refill inside the
+                window cancels out the consumption (100 -> 40 -> 100 -> 40
+                reads as 0). When ``True`` only level decreases are summed
+                (a refill is treated like a counter reset), booked in the
+                window of the reading that reports them.
 
         Returns:
             DataFrame with columns: start, uuid, is_delta,
@@ -177,9 +184,17 @@ class InventoryMonitoringEvents(Base):
         # Consumption is positive when level decreases
         window_td = pd.to_timedelta(window)
         window_hours = window_td.total_seconds() / 3600.0
-        result["consumption_rate"] = (
-            result["level_start"] - result["level_end"]
-        ) / window_hours
+        if handle_refills:
+            consumed = (
+                (-lv[self.value_column].diff()).clip(lower=0).resample(window).sum()
+            )
+            result["consumption_rate"] = (
+                consumed.reindex(result["start"]).to_numpy() / window_hours
+            )
+        else:
+            result["consumption_rate"] = (
+                result["level_start"] - result["level_end"]
+            ) / window_hours
         result["uuid"] = self.event_uuid
         result["is_delta"] = True
 

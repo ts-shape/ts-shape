@@ -25,7 +25,12 @@ Example::
 
 import pandas as pd  # type: ignore
 
-__all__ = ["counter_increments", "counter_quantity", "count_resets"]
+__all__ = [
+    "counter_increments",
+    "counter_per_window",
+    "counter_quantity",
+    "count_resets",
+]
 
 
 def counter_increments(values: pd.Series) -> pd.Series:
@@ -87,3 +92,36 @@ def count_resets(values: pd.Series) -> int:
     """
     numeric = pd.to_numeric(values, errors="coerce")
     return int((numeric.diff() < 0).sum())
+
+
+def counter_per_window(
+    values: pd.Series, window: str, *, handle_resets: bool = False
+) -> pd.Series:
+    """Counter quantity per time window.
+
+    Args:
+        values: Counter readings with a ``DatetimeIndex``, ordered in time.
+        window: Resample frequency (e.g. ``'1h'``, ``'1D'``).
+        handle_resets: When ``False`` (default) each window reports the
+            backward-compatible ``max - min`` of the readings inside it (``0``
+            for a window with fewer than two readings). That loses the
+            production between the last reading of one window and the first
+            of the next, counts nothing for a single-reading window, and
+            mis-counts a reset. When ``True`` the reset-aware per-reading
+            increments (see :func:`counter_increments`) are computed on the
+            whole series and summed per window, so every increment is booked
+            exactly once, in the window of the reading that reports it.
+
+    Returns:
+        A Series indexed by window start, clipped at ``0`` (float when
+        ``handle_resets`` is set; the reading dtype otherwise).
+    """
+    if handle_resets:
+        increments = counter_increments(values)
+        return increments.resample(window).sum().clip(lower=0).astype(float)
+    numeric = pd.to_numeric(values, errors="coerce")
+    return (
+        numeric.resample(window)
+        .agg(lambda x: x.max() - x.min() if len(x) > 1 else 0)
+        .clip(lower=0)
+    )

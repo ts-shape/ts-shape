@@ -4,6 +4,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_per_window
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate energy per unit produced (EnPI) for each time window.
 
@@ -62,6 +64,10 @@ class EnergyPerformanceIndicatorEvents(Base):
             energy_column: Column containing energy readings.
             counter_column: Column containing counter readings.
             window: Aggregation window (e.g. '1D', '1h', '1W').
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, source_uuid, is_delta,
@@ -73,6 +79,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             energy_column=energy_column,
             counter_column=counter_column,
             window=window,
+            handle_resets=handle_resets,
         )
         empty_cols = [
             "start",
@@ -106,6 +113,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
         baseline_window: int = 30,
         deviation_threshold: float = 0.1,
     ) -> pd.DataFrame:
@@ -119,6 +127,10 @@ class EnergyPerformanceIndicatorEvents(Base):
             window: Aggregation window.
             baseline_window: Number of windows for rolling baseline.
             deviation_threshold: Fractional deviation to flag as anomaly (0.1 = 10%).
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, source_uuid, enpi, baseline_enpi,
@@ -130,6 +142,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             energy_column=energy_column,
             counter_column=counter_column,
             window=window,
+            handle_resets=handle_resets,
         )
         empty_cols = [
             "start",
@@ -172,6 +185,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate EnPI per meter for cross-area comparison.
 
@@ -185,6 +199,10 @@ class EnergyPerformanceIndicatorEvents(Base):
             energy_column: Column containing energy readings.
             counter_column: Column containing counter readings.
             window: Aggregation window.
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, meter_uuid, energy_kwh, units_produced, enpi
@@ -197,6 +215,7 @@ class EnergyPerformanceIndicatorEvents(Base):
                 energy_column=energy_column,
                 counter_column=counter_column,
                 window=window,
+                handle_resets=handle_resets,
             )
             if not df.empty:
                 df = df.rename(columns={"source_uuid": "meter_uuid"})
@@ -239,6 +258,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_column: str,
         counter_column: str,
         window: str,
+        handle_resets: bool = False,
     ) -> "tuple[pd.DataFrame, pd.DataFrame]":
         """Resample energy and counter to window, return as two indexed DataFrames."""
         energy_raw = (
@@ -264,11 +284,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_agg = (
             energy_idx[energy_column].resample(window).sum().to_frame("energy_kwh")
         )
-        counter_agg = (
-            counter_idx[counter_column]
-            .resample(window)
-            .agg(lambda x: max(x.max() - x.min(), 0) if len(x) > 1 else 0)
-            .to_frame("units_produced")
-        )
+        counter_agg = counter_per_window(
+            counter_idx[counter_column], window, handle_resets=handle_resets
+        ).to_frame("units_produced")
 
         return energy_agg, counter_agg

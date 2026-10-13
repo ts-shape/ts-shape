@@ -4,7 +4,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import counter_increments
+from ts_shape.utils.counters import counter_increments, counter_per_window
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,7 @@ class EnergyEfficiencyEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1h",
+        handle_resets: bool = False,
         trend_window: int = 24,
     ) -> pd.DataFrame:
         """Rolling energy efficiency trend (units produced per kWh).
@@ -97,6 +98,10 @@ class EnergyEfficiencyEvents(Base):
             counter_column: Column with counter readings.
             window: Time window for aggregation.
             trend_window: Number of windows for rolling average.
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, source_uuid, is_delta,
@@ -139,13 +144,9 @@ class EnergyEfficiencyEvents(Base):
         energy_agg = (
             energy_data[energy_column].resample(window).sum().to_frame("energy")
         )
-        counter_agg = (
-            counter_data[counter_column]
-            .resample(window)
-            .agg(lambda x: x.max() - x.min() if len(x) > 1 else 0)
-            .clip(lower=0)
-            .to_frame("units")
-        )
+        counter_agg = counter_per_window(
+            counter_data[counter_column], window, handle_resets=handle_resets
+        ).to_frame("units")
 
         merged = energy_agg.join(counter_agg, how="inner").reset_index()
         merged = merged.rename(columns={self.time_column: "start"})
@@ -307,6 +308,7 @@ class EnergyEfficiencyEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Daily/periodic specific energy consumption (SEC = energy / output).
 
@@ -318,6 +320,10 @@ class EnergyEfficiencyEvents(Base):
             energy_column: Column with energy readings.
             counter_column: Column with counter readings.
             window: Time window (default daily).
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, source_uuid, is_delta,
@@ -357,13 +363,9 @@ class EnergyEfficiencyEvents(Base):
         energy_agg = (
             energy[energy_column].resample(window).sum().to_frame("total_energy")
         )
-        counter_agg = (
-            counter[counter_column]
-            .resample(window)
-            .agg(lambda x: x.max() - x.min() if len(x) > 1 else 0)
-            .clip(lower=0)
-            .to_frame("total_output")
-        )
+        counter_agg = counter_per_window(
+            counter[counter_column], window, handle_resets=handle_resets
+        ).to_frame("total_output")
 
         merged = energy_agg.join(counter_agg, how="inner").reset_index()
         merged = merged.rename(columns={self.time_column: "start"})
