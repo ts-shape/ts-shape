@@ -306,7 +306,7 @@ class StartupDetectionEvents(Base):
     def detect_startup_adaptive(
         self,
         *,
-        baseline_window: str = "1h",
+        baseline_window: str | None = None,
         sensitivity: float = 2.0,
         min_above: str = "10s",
         lookback_periods: int = 5,
@@ -314,11 +314,18 @@ class StartupDetectionEvents(Base):
         """
         Detect startups using adaptive thresholds calculated from historical baseline data.
 
+        The baseline (mean and std) is computed from samples *before* each
+        point, so a rising value does not raise its own threshold.
+
         Args:
-            baseline_window: Window size for calculating baseline statistics
+            baseline_window: Time span of preceding samples for the baseline
+                (e.g. ``'1h'``). Default ``None`` uses the last
+                ``lookback_periods`` samples instead. (This parameter used to
+                default to ``'1h'`` but was ignored.)
             sensitivity: Multiplier for standard deviation (threshold = mean + sensitivity * std)
             min_above: Minimum time the value must stay above threshold
-            lookback_periods: Number of baseline periods to use for statistics
+            lookback_periods: Number of preceding samples for the baseline
+                when ``baseline_window`` is None
 
         Returns:
             DataFrame with columns: start, end, uuid, is_delta, method, adaptive_threshold,
@@ -338,7 +345,6 @@ class StartupDetectionEvents(Base):
                 ]
             )
 
-        _window_td = pd.to_timedelta(baseline_window)
         min_above_td = pd.to_timedelta(min_above)
 
         s = self.series[[self.time_column, self.value_column]].copy()
@@ -348,13 +354,20 @@ class StartupDetectionEvents(Base):
 
         # Baseline statistics from the *preceding* samples: including the
         # current sample let a rising value raise its own threshold.
-        previous = s[self.value_column].shift(1)
-        s["rolling_mean"] = previous.rolling(
-            window=lookback_periods, min_periods=1
-        ).mean()
-        s["rolling_std"] = previous.rolling(
-            window=lookback_periods, min_periods=1
-        ).std()
+        if baseline_window is not None:
+            # Time-based: samples in [t - baseline_window, t), current excluded.
+            values = s.set_index(self.time_column)[self.value_column]
+            roll = values.rolling(pd.to_timedelta(baseline_window), closed="left")
+            s["rolling_mean"] = roll.mean().to_numpy()
+            s["rolling_std"] = roll.std().to_numpy()
+        else:
+            previous = s[self.value_column].shift(1)
+            s["rolling_mean"] = previous.rolling(
+                window=lookback_periods, min_periods=1
+            ).mean()
+            s["rolling_std"] = previous.rolling(
+                window=lookback_periods, min_periods=1
+            ).std()
 
         # Calculate adaptive threshold
         s["adaptive_threshold"] = s["rolling_mean"] + sensitivity * s[

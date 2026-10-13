@@ -35,6 +35,17 @@ add: opt-in handle_resets (energy per-unit/EnPI/carbon/SEC, TimeGroupedStatistic
 add: helpers utils.counters.counter_per_window, utils.intervals.interval_end_times,
   utils.time_weighted.time_weighted_resample.
 add: Base warns (DataQualityWarning) on NaT timestamps.
+fix: data_completeness / coverage_by_period use each window's real length (DST
+  days are 23 h / 25 h); auto min_gap ignores duplicate timestamps.
+fix: lag_correlation / rolling_correlation lag and window in time on the
+  regular grid instead of rows after dropna().
+fix: detect_flatline starts a run at its first stuck sample; opt-in
+  interval_end="next_change" for deadband historians.
+fix: GaugeRepeatabilityEvents.repeatability uses within operator x part ranges
+  when operator_column is set.
+fix: overshoot_metrics undershoot is measured after the setpoint is reached.
+add: detect_warmup / detect_cooldown max_pause; detect_startup_adaptive
+  baseline_window is now honoured (default None keeps the sample lookback).
 
 # July 31, 2026
 add: OEECalculator.calculate_oee now threads handle_resets to its performance

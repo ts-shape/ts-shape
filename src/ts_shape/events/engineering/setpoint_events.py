@@ -463,14 +463,20 @@ class SetpointChangeEvents(Base):
 
             err = win[self.value_column] - s_new
 
+            # Undershoot is the swing back past the new setpoint *after* the
+            # process first reaches it. Measured over the whole window it was
+            # always the initial step deviation (100 % on every step).
+            reached = err >= 0 if delta >= 0 else err <= 0
+            after = err.loc[reached.idxmax() :] if reached.any() else err.iloc[0:0]
+
             # Overshoot (in direction of change)
             if delta >= 0:
                 peak = err.max()
                 t_peak = win.loc[err.idxmax(), self.time_column] if peak > 0 else None
                 # Undershoot (opposite direction)
-                undershoot_val = err.min()
+                undershoot_val = after.min() if not after.empty else 0.0
                 t_undershoot = (
-                    win.loc[err.idxmin(), self.time_column]
+                    win.loc[after.idxmin(), self.time_column]
                     if undershoot_val < 0
                     else None
                 )
@@ -480,9 +486,11 @@ class SetpointChangeEvents(Base):
                     win.loc[err.idxmin(), self.time_column] if err.min() < 0 else None
                 )
                 # Undershoot (opposite direction)
-                undershoot_val = -err.max()
+                undershoot_val = -after.max() if not after.empty else 0.0
                 t_undershoot = (
-                    win.loc[err.idxmax(), self.time_column] if err.max() > 0 else None
+                    win.loc[after.idxmax(), self.time_column]
+                    if not after.empty and after.max() > 0
+                    else None
                 )
 
             overshoot_abs = float(peak) if pd.notna(peak) and peak > 0 else 0.0

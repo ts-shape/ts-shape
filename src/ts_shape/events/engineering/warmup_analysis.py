@@ -9,6 +9,18 @@ from ts_shape.utils.base import Base
 logger = logging.getLogger(__name__)
 
 
+def _bridge_pauses(moving: np.ndarray, max_pause: int) -> np.ndarray:
+    """Set short False runs between two True runs to True."""
+    out = moving.copy()
+    true_idx = np.flatnonzero(moving)
+    if len(true_idx) < 2:
+        return out
+    for left, right in zip(true_idx[:-1], true_idx[1:], strict=True):
+        if 1 < right - left <= max_pause + 1:
+            out[left + 1 : right] = True
+    return out
+
+
 class WarmUpCoolDownEvents(Base):
     """Engineering: Warm-Up / Cool-Down Analysis
 
@@ -46,12 +58,18 @@ class WarmUpCoolDownEvents(Base):
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
     def _detect_ramps(
-        self, direction: str, min_change: float, min_duration: str = "1m"
+        self,
+        direction: str,
+        min_change: float,
+        min_duration: str = "1m",
+        max_pause: int = 0,
     ) -> list[dict[str, Any]]:
         """Detect monotonic ramp intervals (rising or falling).
 
-        Uses a smoothed diff to identify sustained directional movement.
-        Merges short gaps to handle noise in the signal.
+        A ramp is a run of sample-to-sample steps in ``direction``. With
+        ``max_pause > 0``, up to that many consecutive flat or reversed steps
+        between two moving stretches are bridged, so one noisy or repeated
+        sample does not split a ramp in two.
         """
         if self.signal.empty or len(self.signal) < 3:
             return []
@@ -71,6 +89,8 @@ class WarmUpCoolDownEvents(Base):
             moving = diff > 0
         else:
             moving = diff < 0
+        if max_pause > 0:
+            moving = _bridge_pauses(moving, max_pause)
 
         # Intervalize the boolean mask over the diff indices
         intervals: list[dict[str, Any]] = []
@@ -134,12 +154,16 @@ class WarmUpCoolDownEvents(Base):
         self,
         min_rise: float,
         min_duration: str = "1m",
+        *,
+        max_pause: int = 0,
     ) -> pd.DataFrame:
         """Detect intervals where signal rises by at least min_rise.
 
         Args:
             min_rise: Minimum total value increase to qualify.
             min_duration: Minimum duration of the ramp.
+            max_pause: Number of consecutive flat or reversed sample steps
+                tolerated inside a ramp (default 0: any pause ends it).
 
         Returns:
             DataFrame with columns: start, end, uuid, is_delta,
@@ -156,7 +180,7 @@ class WarmUpCoolDownEvents(Base):
             "duration_seconds",
             "avg_rate",
         ]
-        ramps = self._detect_ramps("rising", min_rise, min_duration)
+        ramps = self._detect_ramps("rising", min_rise, min_duration, max_pause)
         if not ramps:
             return pd.DataFrame(columns=cols)
 
@@ -182,12 +206,16 @@ class WarmUpCoolDownEvents(Base):
         self,
         min_fall: float,
         min_duration: str = "1m",
+        *,
+        max_pause: int = 0,
     ) -> pd.DataFrame:
         """Detect intervals where signal falls by at least min_fall.
 
         Args:
             min_fall: Minimum total value decrease to qualify (positive number).
             min_duration: Minimum duration of the ramp.
+            max_pause: Number of consecutive flat or reversed sample steps
+                tolerated inside a ramp (default 0: any pause ends it).
 
         Returns:
             DataFrame with columns: start, end, uuid, is_delta,
@@ -204,7 +232,7 @@ class WarmUpCoolDownEvents(Base):
             "duration_seconds",
             "avg_rate",
         ]
-        ramps = self._detect_ramps("falling", min_fall, min_duration)
+        ramps = self._detect_ramps("falling", min_fall, min_duration, max_pause)
         if not ramps:
             return pd.DataFrame(columns=cols)
 

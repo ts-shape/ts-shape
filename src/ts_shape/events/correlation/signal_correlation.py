@@ -36,9 +36,14 @@ class SignalCorrelationEvents(Base):
         self.time_column = time_column
 
     def _align_signals(
-        self, uuid_a: str, uuid_b: str, resample: str = "1min"
+        self, uuid_a: str, uuid_b: str, resample: str = "1min", keep_gaps: bool = False
     ) -> pd.DataFrame:
-        """Align two signals on a common time index via resampling."""
+        """Align two signals on a common time index via resampling.
+
+        With ``keep_gaps`` the full regular grid is returned (NaN where either
+        signal has no data), so a shift of k rows is a lag of k periods and a
+        rolling window of k rows spans k periods of real time.
+        """
         a = (
             self.dataframe[self.dataframe["uuid"] == uuid_a]
             .copy()
@@ -59,8 +64,10 @@ class SignalCorrelationEvents(Base):
         a = a.set_index(self.time_column)[self.value_column].resample(resample).mean()
         b = b.set_index(self.time_column)[self.value_column].resample(resample).mean()
 
-        aligned = pd.DataFrame({"signal_a": a, "signal_b": b}).dropna()
-        return aligned
+        aligned = pd.DataFrame({"signal_a": a, "signal_b": b})
+        if keep_gaps:
+            return aligned.loc[aligned.notna().any(axis=1).cummax()]
+        return aligned.dropna()
 
     def rolling_correlation(
         self,
@@ -82,8 +89,10 @@ class SignalCorrelationEvents(Base):
             DataFrame: systime, uuid, source_uuid_a, source_uuid_b,
                        is_delta, correlation
         """
-        aligned = self._align_signals(uuid_a, uuid_b, resample=resample)
-        if aligned.empty or len(aligned) < window:
+        # Keep the regular grid: rolling over dropna()'d rows let a window of
+        # `window` rows span a multi-day gap.
+        aligned = self._align_signals(uuid_a, uuid_b, resample=resample, keep_gaps=True)
+        if aligned.dropna().empty or len(aligned) < window:
             return pd.DataFrame(
                 columns=[
                     "systime",
@@ -206,22 +215,20 @@ class SignalCorrelationEvents(Base):
         Returns:
             DataFrame: lag_periods, correlation, is_best_lag
         """
-        aligned = self._align_signals(uuid_a, uuid_b, resample=resample)
-        if aligned.empty or len(aligned) < max_lag * 2:
+        # Shift on the regular grid (gaps kept as NaN) so a lag of k periods
+        # is k * resample of real time; shifting dropna()'d rows mixed lags
+        # across gaps.
+        aligned = self._align_signals(uuid_a, uuid_b, resample=resample, keep_gaps=True)
+        if aligned.dropna().shape[0] < max_lag * 2:
             return pd.DataFrame(columns=["lag_periods", "correlation", "is_best_lag"])
 
-        a = aligned["signal_a"].values
-        b = aligned["signal_b"].values
-        n = len(a)
+        a = aligned["signal_a"]
+        b = aligned["signal_b"]
 
         rows: list[dict[str, Any]] = []
         for lag in range(-max_lag, max_lag + 1):
-            if lag < 0:
-                corr = np.corrcoef(a[:lag], b[-lag:])[0, 1]
-            elif lag > 0:
-                corr = np.corrcoef(a[lag:], b[: n - lag])[0, 1]
-            else:
-                corr = np.corrcoef(a, b)[0, 1]
+            # lag > 0 pairs a[t] with b[t - lag]; pairs with a NaN are skipped.
+            corr = a.corr(b.shift(lag))
 
             if not np.isnan(corr):
                 rows.append({"lag_periods": lag, "correlation": corr})

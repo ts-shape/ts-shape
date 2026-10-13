@@ -126,13 +126,18 @@ The coverage tests found three more bugs, all ✅:
 | `engineering/startup_events.py` | `detect_startup_adaptive` | the baseline included the current sample and the test was `>=`, so a flat idle signal read as a startup at t0 and the real start was missed |
 | `engineering/startup_events.py` | `track_startup_phases` | non-overlapping phases (ramp 10–90, run ≥ 90) never advanced |
 
-## Lined out 🔜
+## Round 2 — lined-out items ✅
 
-- `startup_events.detect_startup_adaptive`: `baseline_window` is accepted but unused (the baseline is `lookback_periods` samples).
-- `setpoint_events.overshoot_metrics`: `undershoot` is the minimum error, which on a rising step is always the initial deviation (100 %).
-- `signal_quality.data_completeness`, `data_gap_analysis.coverage_by_period`: fixed window length on 23 h / 25 h DST days, and partial first/last windows.
-- `signal_correlation.lag_correlation` / `rolling_correlation`: lags and windows count rows, not time, after `dropna()`.
-- `anomaly_classification.detect_flatline`: starts one sample late; a deadband historian's single-row flatline is never detected.
-- `gauge_repeatability.repeatability`: EV range taken across operators (AIAG uses per operator×part).
-- `warmup_analysis._detect_ramps`: one flat or noisy sample splits a ramp.
-- Energy `meter_type="cumulative"` (see Theme A).
+| Module | Method | Sev | Issue / fix |
+|---|---|---|---|
+| `quality/signal_quality.py`, `quality/data_gap_analysis.py` | `data_completeness`, `coverage_by_period` | medium | assumed a fixed window length, so a perfect feed read 95.8 % on the 23 h spring-forward day. Now uses each window's real length (`start + to_offset(freq)`); the auto `min_gap` ignores duplicate timestamps (a zero median made every interval a gap). |
+| `correlation/signal_correlation.py` | `lag_correlation`, `rolling_correlation` (→ `correlation_breakdown`) | medium | lags and rolling windows counted rows after `dropna()`, so they spanned gaps. Now computed on the regular grid with gaps kept as NaN: a lag of k is k periods, and a window spans real time. Results are identical on gap-free data. |
+| `quality/anomaly_classification.py` | `detect_flatline` | medium | a run started one sample late. Opt-in `interval_end="next_change"` detects a deadband historian's single-row stuck value. |
+| `quality/gauge_repeatability.py` | `repeatability` (→ `gauge_rr_summary`) | medium | with `operator_column`, EV now uses within operator × part ranges (AIAG); before, operator bias was folded into repeatability. |
+| `engineering/warmup_analysis.py` | `detect_warmup` / `detect_cooldown` | low | opt-in `max_pause` bridges flat or reversed steps inside a ramp; the docstring had claimed smoothing that did not exist |
+| `engineering/startup_events.py` | `detect_startup_adaptive` | low | `baseline_window` was accepted but ignored. It now defaults to `None` (unchanged behaviour); when set, it gives a time-based baseline of preceding samples. |
+| `engineering/setpoint_events.py` | `overshoot_metrics` | medium | undershoot was the minimum error over the whole window, i.e. the initial step (100 % on every step). Now it is the swing back past the setpoint after the setpoint is first reached. |
+| `energy/*` | cumulative kWh register | 📝 | no new parameter. Convert the register with `utils.counters.counter_increments` before passing it as interval energy (reset-aware; pinned by a test). |
+
+No lined-out items remain from this screen. Remaining simplifications: AV
+uses the range of operator means without the AIAG `EV²/(n·r)` correction.

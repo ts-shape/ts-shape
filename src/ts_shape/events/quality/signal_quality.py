@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 import pandas as pd  # type: ignore
+from pandas.tseries.frequencies import to_offset
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.intervals import interval_end_times
@@ -241,15 +242,21 @@ class SignalQualityEvents(Base):
             .copy()
             .set_index(self.time_column)
         )
-        window_td = pd.to_timedelta(window)
         expected_td = pd.to_timedelta(expected_freq)
-        expected_per_window = int(window_td / expected_td)
+        offset = to_offset(window)
 
         counts = sig[self.value_column].resample(window).count()
 
         events: list[dict[str, Any]] = []
         for ts, actual in counts.items():
-            completeness = min(100.0, round(actual / expected_per_window * 100, 2))
+            # The window's real length: a '1D' window on the DST days of a
+            # tz-aware signal is 23 h or 25 h, not 24 h.
+            expected_per_window = int(((ts + offset) - ts) / expected_td)
+            completeness = (
+                min(100.0, round(actual / expected_per_window * 100, 2))
+                if expected_per_window > 0
+                else 100.0
+            )
             events.append(
                 {
                     "start": ts,

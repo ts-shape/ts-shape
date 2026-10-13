@@ -69,6 +69,11 @@ class GaugeRepeatabilityEvents(Base):
         Groups measurements by part, computes range-based or pooled
         standard deviation estimate of repeatability.
 
+        When ``operator_column`` is set, ranges and standard deviations are
+        taken within each operator x part cell and averaged per part (AIAG
+        average-and-range method). Pooling every operator's trials into one
+        range folded operator bias (reproducibility) into EV.
+
         Args:
             n_trials: Expected number of trials per part. If None,
                 auto-detected from data.
@@ -84,15 +89,32 @@ class GaugeRepeatabilityEvents(Base):
         grouped = self.signal.groupby(self.part_column)
 
         ranges = []
+        by_operator = (
+            self.operator_column is not None
+            and self.operator_column in self.signal.columns
+        )
         for part, group in grouped:
             vals = group[self.value_column].dropna()
             if len(vals) < 2:
                 continue
 
             part_mean = float(vals.mean())
-            part_range = float(vals.max() - vals.min())
-            part_std = float(vals.std())
-            trials = n_trials if n_trials else len(vals)
+            if by_operator:
+                cells = [
+                    cell[self.value_column].dropna()
+                    for _, cell in group.groupby(self.operator_column)
+                ]
+                cells = [c for c in cells if len(c) >= 2]
+                if not cells:
+                    continue
+                part_range = float(np.mean([c.max() - c.min() for c in cells]))
+                part_std = float(np.sqrt(np.mean([c.var() for c in cells])))
+                cell_trials = int(round(np.mean([len(c) for c in cells])))
+                trials = n_trials if n_trials else cell_trials
+            else:
+                part_range = float(vals.max() - vals.min())
+                part_std = float(vals.std())
+                trials = n_trials if n_trials else len(vals)
 
             # EV using range/d2 method (AIAG)
             d2 = _D2.get(min(trials, 10), _D2[10])
