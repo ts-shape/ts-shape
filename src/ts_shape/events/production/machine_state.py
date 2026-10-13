@@ -1,9 +1,12 @@
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.signals.primitives import intervals as spec_intervals
+from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
 from ts_shape.utils.intervals import state_intervals
 
@@ -30,15 +33,22 @@ class MachineStateEvents(Base):
         value_column: str = "value_bool",
         time_column: str = "systime",
         value_range: tuple[float | None, float | None] | None = None,
+        specs: Mapping[str, SignalSpec] | None = None,
     ) -> None:
         super().__init__(dataframe, column_name=time_column)
         self.run_state_uuid = run_state_uuid
+        # Optional signal semantics (see ts_shape.signals). When the run-state
+        # signal has a spec, interval closing and gap handling follow it.
+        self.spec: SignalSpec | None = (specs or {}).get(run_state_uuid)
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
         self.value_range = value_range
+        # An empty frame has no signals at all: return empty results rather
+        # than raising. A non-empty frame without the uuid is a caller error.
         if (
             "uuid" in self.dataframe.columns
+            and not self.dataframe.empty
             and run_state_uuid not in self.dataframe["uuid"].values
         ):
             raise ValueError(
@@ -73,20 +83,22 @@ class MachineStateEvents(Base):
         self,
         min_duration: str = "0s",
         *,
-        interval_end: str = "last_sample",
+        interval_end: str | None = None,
         data_end: pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         """Return intervals labeled as 'run' or 'idle'.
 
         - min_duration: discard intervals shorter than this duration.
-        - interval_end: how to close each interval. ``"last_sample"``
-          (default) ends an interval at its last sample -- backward
-          compatible, but a change-encoded (``is_delta``) signal logs one row
-          per transition, so every interval collapses to zero duration.
-          ``"next_change"`` closes each interval at the next transition
-          instant, which measures change-encoded signals correctly.
+        - interval_end: how to close each interval. ``"last_sample"`` ends an
+          interval at its last sample -- backward compatible, but a
+          change-encoded (``is_delta``) signal logs one row per transition, so
+          every interval collapses to zero duration. ``"next_change"`` closes
+          each interval at the next transition instant. Default (``None``):
+          follow the signal's spec when ``specs=`` was given (held states
+          close at the next change, and gaps longer than the spec's
+          ``max_gap`` are "no data"), otherwise ``"last_sample"``.
         - data_end: optional bound for the final, still-open interval when
-          ``interval_end="next_change"`` (e.g. the end of the data window).
+          intervals close at the next change (e.g. the end of the data window).
         Columns: start, end, uuid, source_uuid, is_delta, state, duration_seconds
         """
         columns = [
@@ -102,13 +114,26 @@ class MachineStateEvents(Base):
             return pd.DataFrame(columns=columns)
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = self._as_state(s[self.value_column])
-        intervals = state_intervals(
-            s,
-            time_column=self.time_column,
-            state_column="state",
-            interval_end=interval_end,
-            data_end=data_end,
-        )
+        if interval_end is None and self.spec is not None:
+            # Spec-driven: the primitive closes held states at the next change
+            # and splits at gaps longer than max_gap.
+            run_spec = self.spec.with_(value_column="value_bool")
+            frame = pd.DataFrame(
+                {
+                    "systime": s[self.time_column].to_numpy(),
+                    "uuid": run_spec.uuid,
+                    "value_bool": s["state"].to_numpy(),
+                }
+            )
+            intervals = spec_intervals(frame, run_spec, data_end=data_end)
+        else:
+            intervals = state_intervals(
+                s,
+                time_column=self.time_column,
+                state_column="state",
+                interval_end=interval_end or "last_sample",
+                data_end=data_end,
+            )
         min_td = pd.to_timedelta(min_duration)
         keep = pd.to_timedelta(intervals["duration_seconds"], unit="s") >= min_td
         intervals = intervals[keep]
@@ -232,7 +257,7 @@ class MachineStateEvents(Base):
 
         return pd.DataFrame(rapid_events)
 
-    def _detect_data_gaps(self, max_gap: str = "5m") -> int:
+    def _detect_data_gaps(self, max_gap: str = "5min") -> int:
         """Detect missing data gaps in the time series.
 
         - max_gap: maximum acceptable gap between data points

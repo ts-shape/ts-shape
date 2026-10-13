@@ -8,9 +8,11 @@ Essential module for daily downtime analysis:
 """
 
 import logging
+from collections.abc import Mapping
 
 import pandas as pd  # type: ignore
 
+from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ class DowntimeTracking(Base):
         *,
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
+        specs: Mapping[str, SignalSpec] | None = None,
     ) -> None:
         """Initialize downtime tracker.
 
@@ -64,9 +67,12 @@ class DowntimeTracking(Base):
             time_column: Name of timestamp column (default: 'systime')
             shift_definitions: Dictionary mapping shift names to (start, end) times
                               Default: 3-shift operation (06:00-14:00, 14:00-22:00, 22:00-06:00)
+            specs: Optional signal semantics (see :mod:`ts_shape.signals`). A
+                state signal's ``max_gap`` then caps durations by default.
         """
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
+        self.specs: Mapping[str, SignalSpec] = specs or {}
 
         # Default 3-shift operation
         self.shift_definitions = shift_definitions or {
@@ -112,6 +118,8 @@ class DowntimeTracking(Base):
                 the preceding state. Without it, a logger outage between a
                 ``Running`` sample and the next reading is booked as uptime,
                 inflating availability toward 100 % over a period with no data.
+                Defaults to the state signal's spec ``max_gap`` when ``specs``
+                were given.
 
         Returns:
             DataFrame with downtime by shift:
@@ -158,6 +166,10 @@ class DowntimeTracking(Base):
         state_data["duration_minutes"] = (
             state_data["next_time"] - state_data[self.time_column]
         ).dt.total_seconds() / 60
+
+        if max_gap is None and state_uuid in self.specs:
+            spec_gap = self.specs[state_uuid].max_gap
+            max_gap = str(spec_gap) if spec_gap is not None else None
 
         # Treat over-long gaps as "no data" so they are excluded from the sums.
         if max_gap is not None:
