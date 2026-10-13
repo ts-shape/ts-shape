@@ -4,6 +4,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class IdleEnergyDetectionEvents(Base):
         state_column: str = "value_bool",
         window: str = "1h",
         idle_threshold: float = 0.1,
+        time_weighted: bool = False,
     ) -> pd.DataFrame:
         """Aggregate energy consumed during idle periods per time window.
 
@@ -72,6 +74,11 @@ class IdleEnergyDetectionEvents(Base):
             state_column: Column containing boolean state values.
             window: Resample window (e.g. '1h', '15min').
             idle_threshold: machine_running_pct below this classifies the window as idle.
+            time_weighted: Weight the machine state by how long it was held
+                (until the next state change) and keep every energy window. Default
+                ``False`` averages state *samples* and inner-joins, so a change-encoded
+                state signal reads as a sample count and windows without a state row
+                drop their energy.
 
         Returns:
             DataFrame: start, uuid, source_uuid, is_delta,
@@ -99,16 +106,27 @@ class IdleEnergyDetectionEvents(Base):
         energy_agg = (
             energy[energy_column].resample(window).sum().to_frame("total_energy")
         )
-        state_agg = (
-            state[state_column]
-            .fillna(False)
-            .astype(float)
-            .resample(window)
-            .mean()
-            .to_frame("machine_running_pct")
-        )
-
-        out = energy_agg.join(state_agg, how="inner").reset_index()
+        if time_weighted:
+            state_agg = (
+                time_weighted_resample(
+                    state[state_column].astype("boolean").astype(float),
+                    window,
+                    data_end=energy.index.max(),
+                )
+                .reindex(energy_agg.index)
+                .to_frame("machine_running_pct")
+            )
+            out = energy_agg.join(state_agg, how="left").reset_index()
+        else:
+            state_agg = (
+                state[state_column]
+                .fillna(False)
+                .astype(float)
+                .resample(window)
+                .mean()
+                .to_frame("machine_running_pct")
+            )
+            out = energy_agg.join(state_agg, how="inner").reset_index()
         out = out.rename(columns={self.time_column: "start"})
 
         out["machine_running_pct"] = out["machine_running_pct"].fillna(0.0)

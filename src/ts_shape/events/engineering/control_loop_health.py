@@ -82,11 +82,20 @@ class ControlLoopHealthEvents(Base):
         merged["error"] = merged["pv"] - merged["sp"]
         return merged.dropna(subset=["sp", "pv"])
 
-    def error_integrals(self, window: str = "1h") -> pd.DataFrame:
+    def error_integrals(
+        self, window: str = "1h", *, max_gap: str | None = None
+    ) -> pd.DataFrame:
         """Per-window error integrals for control loop performance.
 
         Args:
             window: Resample window (e.g. '1h', '8h').
+            max_gap: Opt-in. When set, each error is held until the next
+                sample (zero-order hold, i.e. weighted by the time *after*
+                it) and any interval longer than ``max_gap`` contributes
+                nothing, so a communication gap is not integrated as one
+                huge error. Default ``None`` keeps the original weighting:
+                each error times the time since the previous sample, with
+                no gap cap.
 
         Returns:
             DataFrame with columns: start, iae, ise, itae, bias,
@@ -104,7 +113,11 @@ class ControlLoopHealthEvents(Base):
             if len(group) < 2:
                 continue
             error = group["error"]
-            dt = group.index.to_series().diff().dt.total_seconds().fillna(0)
+            if max_gap is None:
+                dt = group.index.to_series().diff().dt.total_seconds().fillna(0)
+            else:
+                dt = (-group.index.to_series().diff(-1).dt.total_seconds()).fillna(0)
+                dt = dt.where(dt <= pd.Timedelta(max_gap).total_seconds(), 0.0)
             t_rel = (group.index - group.index[0]).total_seconds()
 
             iae = float((error.abs() * dt).sum())
