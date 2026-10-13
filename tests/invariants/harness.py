@@ -184,6 +184,7 @@ INIT_OVERRIDES: dict[str, dict[str, Any]] = {
         "signals": {CONT: "cont", CONT2: "cont2"},
     },
     "ProductionScheduleAdherenceEvents": {"schedule": lambda df: _schedule(df)},
+    "EnvironmentalCompensationEvents": {"env_uuid": CONT2},
 }
 
 #: Method arguments that are themselves data (built from the input frame).
@@ -193,6 +194,7 @@ METHOD_OVERRIDES: dict[str, dict[str, Any]] = {
         "candidate_uuids": [CONT, CONT2],
         "candidate_uuid": CONT,
     },
+    "EnvironmentalCompensationEvents": {"valid_range": (15.0, 25.0)},
 }
 
 

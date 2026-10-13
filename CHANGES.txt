@@ -5,6 +5,21 @@ add: ts_shape.signals -- SignalSpec / SignalSpecs (dict/YAML round trip),
 add: ts_shape.profile(df) -- per-signal data-quality and semantics report
   (gaps, resets, duplicates, NaT, missing values, mixed value columns,
   change-encoded and possibly-stuck signals) with .summary() / .issues().
+add: recovered unmerged work from earlier sessions:
+  AssetHealthIndexEvents, ProductionScheduleAdherenceEvents,
+  RootCauseCorrelationEvents (Aug 10 entry below), PowerIntegrator
+  (Aug 20 entry below), and the four inline-metrology quality modules
+  MeasurementUncertaintyEvents (GUM type A/B, combined/expanded uncertainty,
+  budget), EnvironmentalCompensationEvents (correlation, sensitivity,
+  compensation, exceedance), CalibrationValidationEvents (linearity,
+  calibration curve, recalibration need, stability) and
+  SamplingResolutionEvents (quantization, effective resolution, aliasing,
+  jitter). All are registered in the taxonomy and covered by the
+  invariant harness (260 methods).
+fix: PowerIntegrator daily windows on DST days (23 h / 25 h) and
+  AssetHealthIndexEvents.maintenance_forecast timezone.
+build: lean core install (pandas, numpy, scipy); loader backends are the
+  extras [s3], [azure], [api], [sql], [postgres], [yaml], [all].
 add: specs= on MachineStateEvents and DowntimeTracking (defaults follow the
   signal's spec; explicit arguments win).
 add: registry-wide invariant harness (tests/invariants) pinned to a ratchet

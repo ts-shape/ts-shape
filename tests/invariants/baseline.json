@@ -109,6 +109,26 @@
   "extra_uuid": "ok",
   "tz": "ok"
  },
+ "CalibrationValidationEvents.calibration_curve": {
+  "empty": "n/a: classmethod without a dataframe first parameter",
+  "extra_uuid": "n/a: classmethod without a dataframe first parameter",
+  "tz": "n/a: classmethod without a dataframe first parameter"
+ },
+ "CalibrationValidationEvents.calibration_stability": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "CalibrationValidationEvents.detect_recalibration_need": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "CalibrationValidationEvents.linearity_assessment": {
+  "empty": "n/a: classmethod without a dataframe first parameter",
+  "extra_uuid": "n/a: classmethod without a dataframe first parameter",
+  "tz": "n/a: classmethod without a dataframe first parameter"
+ },
  "CapabilityTrendingEvents.capability_forecast": {
   "empty": "ok",
   "extra_uuid": "ok",
@@ -439,6 +459,26 @@
   "extra_uuid": "ok",
   "tz": "ok"
  },
+ "EnvironmentalCompensationEvents.compensated_signal": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "EnvironmentalCompensationEvents.detect_correlation": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "EnvironmentalCompensationEvents.detect_env_exceedance": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "EnvironmentalCompensationEvents.estimate_sensitivity": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
  "FailurePredictionEvents.detect_exceedance_pattern": {
   "empty": "ok",
   "extra_uuid": "ok",
@@ -645,6 +685,26 @@
   "tz": "ok"
  },
  "MaterialBalanceEvents.imbalance_trend": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "MeasurementUncertaintyEvents.combined_uncertainty": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "MeasurementUncertaintyEvents.type_a_uncertainty": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "MeasurementUncertaintyEvents.type_b_uncertainty": {
+  "empty": "n/a: classmethod without a dataframe first parameter",
+  "extra_uuid": "n/a: classmethod without a dataframe first parameter",
+  "tz": "n/a: classmethod without a dataframe first parameter"
+ },
+ "MeasurementUncertaintyEvents.uncertainty_budget": {
   "empty": "ok",
   "extra_uuid": "ok",
   "tz": "ok"
@@ -1040,6 +1100,26 @@
   "tz": "ok"
  },
  "RuntimeAccountingEvents.runtime_summary": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "SamplingResolutionEvents.detect_aliasing": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "SamplingResolutionEvents.detect_quantization": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "SamplingResolutionEvents.effective_resolution": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "SamplingResolutionEvents.sampling_jitter": {
   "empty": "ok",
   "extra_uuid": "ok",
   "tz": "ok"
