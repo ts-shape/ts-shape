@@ -11,7 +11,13 @@ import logging
 from typing import Any
 
 import pandas as pd  # type: ignore
-import requests
+
+try:
+    import requests
+except ImportError:  # optional extra: ts-shape[api]
+    requests = None  # type: ignore[assignment]
+
+from ts_shape.loader._utils import require_optional
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +59,7 @@ class EnergyAPILoader:
             headers: Optional HTTP headers (e.g. auth tokens).
             timeout: Request timeout in seconds.
         """
+        require_optional(requests, "requests", "api")
         self.base_url = base_url.rstrip("/")
         self.headers = headers or {}
         self.timeout = timeout

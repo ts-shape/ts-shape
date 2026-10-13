@@ -2,7 +2,13 @@ import json
 import logging
 
 import pandas as pd  # type: ignore
-from sqlalchemy import create_engine, text
+
+try:
+    from sqlalchemy import create_engine, text
+except ImportError:  # optional extra: ts-shape[sql]
+    create_engine = text = None  # type: ignore[assignment]
+
+from ts_shape.loader._utils import require_optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +39,7 @@ class DatapointDB:
         :param required_uuid_list: List of UUIDs to filter the metadata (optional).
         :param filter_enabled: Whether to filter metadata by "enabled == True" and "archived == False" (default is True).
         """
+        require_optional(create_engine, "sqlalchemy", "sql")
         self.device_names = device_names
         self.db_user = db_user
         self.db_pass = db_pass

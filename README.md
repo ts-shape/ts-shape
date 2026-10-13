@@ -30,10 +30,20 @@ pip install ts-shape
 pip install pyarrow          # or: pip install fastparquet
 ```
 
-Optional integrations:
+The core install needs only pandas, numpy and scipy. Loader backends are extras:
 
 | Integration | Install |
 |-------------|---------|
+| S3 / S3-compatible proxy | `pip install ts-shape[s3]` |
+| Azure Blob Storage | `pip install ts-shape[azure]` |
+| Azure AAD + management | `pip install azure-identity azure-mgmt-storage` |
+| REST APIs (metadata, energy) | `pip install ts-shape[api]` |
+| TimescaleDB / SQL metadata | `pip install ts-shape[sql]` (`[postgres]` adds the psycopg2 driver) |
+| Signal specs from YAML | `pip install ts-shape[yaml]` |
+| Everything above | `pip install ts-shape[all]` |
+| Unit conversion (`UnitConverter`) | `pip install ts-shape[units]` (pulls in `pint`) |
+
+-------------|---------|
 | Azure Blob Storage | `pip install azure-storage-blob` |
 | Azure AAD + management | `pip install azure-identity azure-mgmt-storage` |
 | S3 proxy access | Included via `s3fs` |
