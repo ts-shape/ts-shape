@@ -309,7 +309,7 @@ class PartProductionTracking(Base):
 
         out = pd.DataFrame(
             {
-                self.time_column: resets[self.time_column].values,
+                self.time_column: resets[self.time_column].array,
                 "part_number": resets["part_number"].values,
                 "count_before": resets["_prev"]
                 .astype(resets[value_column_counter].dtype)

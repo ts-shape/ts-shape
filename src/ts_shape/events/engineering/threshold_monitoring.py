@@ -133,7 +133,7 @@ class ThresholdMonitoringEvents(Base):
             .reset_index(drop=True)
         )
         values = sig[self.value_column].values
-        times = sig[self.time_column].values
+        times = sig[self.time_column].array
 
         events: list[dict[str, Any]] = []
         in_alarm = False

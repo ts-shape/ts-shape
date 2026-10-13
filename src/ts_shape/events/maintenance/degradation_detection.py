@@ -269,7 +269,7 @@ class DegradationDetectionEvents(Base):
         hold_td = pd.to_timedelta(hold)
 
         values = sig[self.value_column].values
-        times = sig[self.time_column].values
+        times = sig[self.time_column].array
 
         events: list[dict[str, Any]] = []
 

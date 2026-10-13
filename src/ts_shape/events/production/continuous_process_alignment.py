@@ -389,8 +389,7 @@ class ContinuousProcessAlignmentEvents(Base):
             speed_df = self._get_speed_df()
             if not speed_df.empty and offset_m > 0:
                 idx = (
-                    np.searchsorted(speed_df[self.time_column].values, ts, side="right")
-                    - 1
+                    speed_df[self.time_column].array.searchsorted(ts, side="right") - 1
                 )
                 idx = max(0, min(idx, len(speed_df) - 1))
                 raw_speed = speed_df.iloc[idx][self.value_column]

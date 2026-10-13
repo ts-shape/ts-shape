@@ -14,7 +14,25 @@ class DateTimeFilter(Base):
 
     Inherits from:
         Base (class): Base class with common initializations for DataFrame handling.
+
+    Bounds given without a timezone are interpreted in the column's timezone,
+    so the same ``"2024-01-02"`` works on naive and tz-aware ``systime``
+    columns (previously a tz-aware column raised ``TypeError``).
     """
+
+    @staticmethod
+    def _bound(column: pd.Series, value: str) -> pd.Timestamp:
+        """Parse a bound and align its timezone with ``column``."""
+        ts = pd.Timestamp(value)
+        tz = getattr(column.dt, "tz", None)
+        if tz is not None and ts.tzinfo is None:
+            return ts.tz_localize(tz)
+        if tz is None and ts.tzinfo is not None:
+            raise ValueError(
+                f"Bound {value!r} is tz-aware but the column is naive; "
+                "pass a naive bound or localize the column first."
+            )
+        return ts
 
     @classmethod
     def filter_after_date(
@@ -37,7 +55,9 @@ class DateTimeFilter(Base):
         if date is None:
             raise ValueError("date parameter is required")
         Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name] > pd.to_datetime(date)]
+        return dataframe[
+            dataframe[column_name] > cls._bound(dataframe[column_name], date)
+        ]
 
     @classmethod
     def filter_before_date(
@@ -60,7 +80,9 @@ class DateTimeFilter(Base):
         if date is None:
             raise ValueError("date parameter is required")
         Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name] < pd.to_datetime(date)]
+        return dataframe[
+            dataframe[column_name] < cls._bound(dataframe[column_name], date)
+        ]
 
     @classmethod
     def filter_between_dates(
@@ -69,6 +91,7 @@ class DateTimeFilter(Base):
         column_name: str = "systime",
         start_date: str = None,
         end_date: str = None,
+        inclusive: str = "neither",
     ) -> pd.DataFrame:
         """
         Filters the DataFrame to include only rows between the specified start and end dates.
@@ -76,6 +99,8 @@ class DateTimeFilter(Base):
         Args:
             start_date (str): The start date of the interval in 'YYYY-MM-DD' format.
             end_date (str): The end date of the interval in 'YYYY-MM-DD' format.
+            inclusive (str): Which bounds to include: 'neither' (default),
+                'both', 'left' or 'right'.
 
         Returns:
             pd.DataFrame: A DataFrame containing rows where the 'systime' is between the specified dates.
@@ -88,8 +113,9 @@ class DateTimeFilter(Base):
         if start_date is None or end_date is None:
             raise ValueError("start_date and end_date parameters are required")
         Base._validate_column(dataframe, column_name)
-        mask = (dataframe[column_name] > pd.to_datetime(start_date)) & (
-            dataframe[column_name] < pd.to_datetime(end_date)
+        col = dataframe[column_name]
+        mask = col.between(
+            cls._bound(col, start_date), cls._bound(col, end_date), inclusive=inclusive
         )
         return dataframe[mask]
 
@@ -114,7 +140,9 @@ class DateTimeFilter(Base):
         if datetime is None:
             raise ValueError("datetime parameter is required")
         Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name] > pd.to_datetime(datetime)]
+        return dataframe[
+            dataframe[column_name] > cls._bound(dataframe[column_name], datetime)
+        ]
 
     @classmethod
     def filter_before_datetime(
@@ -137,7 +165,9 @@ class DateTimeFilter(Base):
         if datetime is None:
             raise ValueError("datetime parameter is required")
         Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name] < pd.to_datetime(datetime)]
+        return dataframe[
+            dataframe[column_name] < cls._bound(dataframe[column_name], datetime)
+        ]
 
     @classmethod
     def filter_between_datetimes(
@@ -146,6 +176,7 @@ class DateTimeFilter(Base):
         column_name: str = "systime",
         start_datetime: str = None,
         end_datetime: str = None,
+        inclusive: str = "neither",
     ) -> pd.DataFrame:
         """
         Filters the DataFrame to include only rows between the specified start and end datetimes.
@@ -153,6 +184,8 @@ class DateTimeFilter(Base):
         Args:
             start_datetime (str): The start datetime of the interval in 'YYYY-MM-DD HH:MM:SS' format.
             end_datetime (str): The end datetime of the interval in 'YYYY-MM-DD HH:MM:SS' format.
+            inclusive (str): Which bounds to include: 'neither' (default),
+                'both', 'left' or 'right'.
 
         Returns:
             pd.DataFrame: A DataFrame containing rows where the 'systime' is between the specified datetimes.
@@ -165,7 +198,10 @@ class DateTimeFilter(Base):
         if start_datetime is None or end_datetime is None:
             raise ValueError("start_datetime and end_datetime parameters are required")
         Base._validate_column(dataframe, column_name)
-        mask = (dataframe[column_name] > pd.to_datetime(start_datetime)) & (
-            dataframe[column_name] < pd.to_datetime(end_datetime)
+        col = dataframe[column_name]
+        mask = col.between(
+            cls._bound(col, start_datetime),
+            cls._bound(col, end_datetime),
+            inclusive=inclusive,
         )
         return dataframe[mask]

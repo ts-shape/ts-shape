@@ -63,7 +63,7 @@ class WarmUpCoolDownEvents(Base):
             .reset_index(drop=True)
         )
         vals = sig[self.value_column].values
-        times = sig[self.time_column].values
+        times = sig[self.time_column].array
 
         # Smoothed diff direction
         diff = np.diff(vals)

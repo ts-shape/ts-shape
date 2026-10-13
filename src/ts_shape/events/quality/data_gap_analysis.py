@@ -73,8 +73,8 @@ class DataGapAnalysisEvents(Base):
             return pd.DataFrame(columns=cols)
 
         threshold = pd.to_timedelta(min_gap)
-        times = self.signal[self.time_column].values
-        diffs = np.diff(times)
+        times = self.signal[self.time_column].array
+        diffs = times[1:] - times[:-1]
 
         events: list[dict[str, Any]] = []
         for i, d in enumerate(diffs):
@@ -184,9 +184,9 @@ class DataGapAnalysisEvents(Base):
 
         # Auto-detect a sensible min_gap if not provided
         if min_gap is None:
-            times = self.signal[self.time_column].values
+            times = self.signal[self.time_column].array
             if len(times) >= 2:
-                diffs = pd.to_timedelta(np.diff(times))
+                diffs = pd.to_timedelta(times[1:] - times[:-1])
                 median_interval = diffs.median()
                 min_gap_td = median_interval * 2
                 min_gap = str(min_gap_td)
@@ -259,9 +259,9 @@ class DataGapAnalysisEvents(Base):
 
         max_td = pd.to_timedelta(max_gap)
         min_td = pd.to_timedelta(min_gap)
-        times = self.signal[self.time_column].values
+        times = self.signal[self.time_column].array
         values = self.signal[self.value_column].values
-        diffs = np.diff(times)
+        diffs = times[1:] - times[:-1]
 
         # Use 2 * global std as a "safe jump" threshold
         signal_std = float(np.nanstd(values))

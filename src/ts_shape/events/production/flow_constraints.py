@@ -103,7 +103,7 @@ class FlowConstraintEvents(Base):
         )
 
         # Store original upstream time for quality calculation
-        merged["time_up"] = up[self.time_column].values
+        merged["time_up"] = up[self.time_column].array
 
         # Apply directional tolerance filtering if asymmetric tolerances are specified
         if tolerance_before or tolerance_after:
@@ -218,7 +218,7 @@ class FlowConstraintEvents(Base):
         )
 
         # Store original downstream time for quality calculation
-        merged["time_dn"] = dn[self.time_column].values
+        merged["time_dn"] = dn[self.time_column].array
 
         # Apply directional tolerance filtering if asymmetric tolerances are specified
         if tolerance_before or tolerance_after:

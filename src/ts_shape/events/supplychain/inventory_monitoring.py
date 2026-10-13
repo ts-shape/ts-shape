@@ -296,7 +296,7 @@ class InventoryMonitoringEvents(Base):
         window_td = pd.to_timedelta(consumption_rate_window)
 
         rows: list[dict[str, Any]] = []
-        times = lv[self.time_column].values
+        times = lv[self.time_column].array
         values = lv[self.value_column].values
 
         for i in range(len(lv)):

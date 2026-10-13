@@ -127,6 +127,19 @@ class Base:
         if column_name in self.dataframe.columns:
             self.dataframe = self.dataframe.sort_values(by=column_name)
 
+        # Warn on missing/unparseable timestamps. They are kept (sorted last),
+        # but every duration or interval touching them comes out NaT/NaN.
+        if column_name in self.dataframe.columns:
+            nat_count = int(self.dataframe[column_name].isna().sum())
+            if 0 < nat_count < len(self.dataframe):
+                warnings.warn(
+                    f"Column '{column_name}' contains {nat_count} missing or "
+                    "unparseable timestamp(s) (NaT). Consider dropping them "
+                    "before processing.",
+                    DataQualityWarning,
+                    stacklevel=3,
+                )
+
         # Warn on duplicate timestamps (per UUID when available)
         if column_name in self.dataframe.columns:
             subset = (

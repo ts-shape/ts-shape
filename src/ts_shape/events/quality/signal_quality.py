@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
@@ -61,8 +60,8 @@ class SignalQualityEvents(Base):
         if self.signal.empty or len(self.signal) < 2:
             return pd.DataFrame(columns=cols)
 
-        times = self.signal[self.time_column].values
-        diffs = np.diff(times)
+        times = self.signal[self.time_column].array
+        diffs = times[1:] - times[:-1]
         expected_td = pd.to_timedelta(expected_freq)
         threshold = expected_td * tolerance_factor
 

@@ -161,7 +161,7 @@ class RateOfChangeEvents(Base):
 
         events: list[dict[str, Any]] = []
         values = sig[self.value_column].values
-        times = sig[self.time_column].values
+        times = sig[self.time_column].array
 
         for i in range(1, len(values)):
             delta = values[i] - values[i - 1]
