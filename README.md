@@ -547,13 +547,12 @@ The project uses GitHub Actions for continuous integration and deployment:
 
 | Workflow | Trigger | Description |
 |----------|---------|-------------|
-| **CI** | Push / PR | Lint (black, ruff, mypy), strict docs build, tests on Python 3.11-3.14 |
-| **Release** | Push to `main` | Tests, then bumps the patch tag, builds and deploys the docs to GitHub Pages, and publishes to PyPI |
+| **CI** | Push / PR | Lint (black, ruff, mypy), strict docs build, tests on Python 3.11-3.14, package build check |
+| **Release** | Push to `main` | Full CI, then builds and publishes to PyPI, tags `X.Y.Z`, creates the GitHub release and deploys the docs |
 
-Every merge to `main` is a release: the pipeline takes the latest `X.Y.Z`
-tag, increments the patch number, tags the commit and builds the package with
-that version. For a minor or major bump, push the new `X.Y.0` tag yourself
-before merging; the next release increments from it.
+Every merge to `main` is a release, a patch release by default. A commit
+trailer `Release-Bump: minor` (or `major`, `none`) or `Release-As: X.Y.Z`
+chooses another version; see the [development guide](https://ts-shape.github.io/ts-shape/insiders/development/).
 
 ---
 

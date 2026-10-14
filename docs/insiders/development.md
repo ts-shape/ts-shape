@@ -61,46 +61,60 @@ python -m build
 
 ## 4. Publish to PyPI
 
+Releases are published by CI (next section); do not upload by hand. To check a
+build locally:
+
 ```bash
-twine upload dist/* --verbose --skip-existing
+python -m build
+twine check --strict dist/*
 ```
-> Uploads your package to [PyPI](https://pypi.org/).  
-> **Tip:** Ensure your credentials are set up in `~/.pypirc`.
+
+The version comes from the git tags (`setuptools-scm`): a checkout 13 commits
+after `0.0.62` builds `0.0.63.dev13`.
 
 ---
 
-## 5. Automatic Version Bumping and Publishing (CI)
+## 5. Releases (CI)
 
 Two workflows run in GitHub Actions:
 
-- `.github/workflows/ci.yml` runs on every push and pull request. It lints
-  (black, ruff, mypy), builds the docs with `mkdocs build --strict`, and runs
-  the tests on Python 3.11 to 3.14.
+- `.github/workflows/ci.yml` runs on every pull request and every push to a
+  branch other than `main`. It lints (black, ruff, mypy), builds the docs with
+  `mkdocs build --strict`, runs the tests on Python 3.11 to 3.14, and builds
+  the package (`twine check --strict`, no `0.0.0` version, the wheel imports).
 - `.github/workflows/release.yml` runs on every push to `main`:
-  1. it runs the tests;
-  2. it takes the latest `X.Y.Z` tag, increments the patch number, and pushes
-     the new tag;
-  3. it builds the docs and deploys them to GitHub Pages;
-  4. it builds the sdist and wheel with that version (injected into
-     `pyproject.toml`; locally `setuptools-scm` derives it from the tags);
-  5. it publishes them to PyPI.
+  1. it runs the full CI workflow;
+  2. it decides the version (`.github/scripts/next_version.py`);
+  3. it builds the sdist and wheel with that version and checks them;
+  4. it publishes them to PyPI;
+  5. only then it pushes the `X.Y.Z` tag and creates the GitHub release;
+  6. it builds the docs and deploys them to GitHub Pages.
 
-The bump is always a patch bump, whatever the commit message says. For a minor
-or major release, push the new tag yourself before merging:
+Every merge is a release. By default it is a patch release. To choose another
+version, put a trailer in the message of any commit since the last release
+(the most recent trailer wins):
 
-```bash
-git tag -a 1.0.0 -m "Release 1.0.0"
-git push origin 1.0.0
+```text
+Release-Bump: minor      # patch | minor | major | none (no release)
+Release-As: 1.0.0        # an exact version, higher than the last release
 ```
 
-The next merge to `main` then releases `1.0.1`.
+A manual run of the Release workflow (Actions → Release Pipeline → Run
+workflow) takes the same choice as inputs.
 
-One-time repo setting required: enable "Read and write permissions" for GitHub
-Actions under Settings → Actions → General → Workflow permissions.
+Versioning follows [semver](https://semver.org/) from 1.0.0: a patch fixes
+bugs, a minor adds features, a major removes or changes behavior. Renamed
+names keep working with a `DeprecationWarning` for at least one minor release
+and are removed only in a major release.
+
+One-time repo settings: enable "Read and write permissions" for GitHub Actions
+under Settings → Actions → General → Workflow permissions, and set the
+`PYPI_API_TOKEN` secret (or configure PyPI Trusted Publishing for
+`release.yml` and drop the token).
 
 ## 6. Manage Requirements (pip-tools)
 
-Keep only direct dependencies in `requirements.in` and compile pinned versions into `requirements.txt`.
+Direct dependencies live in `pyproject.toml`; `requirements.txt` pins the core dependencies (Renovate refreshes it in CI).
 
 Setup (once per environment):
 
@@ -111,7 +125,7 @@ python -m pip install --upgrade pip-tools
 Compile/update pins:
 
 ```bash
-# Compile requirements.in -> requirements.txt
+# Compile pyproject.toml -> requirements.txt
 python scripts/requirements.py compile
 
 # Upgrade all pins to latest compatible versions
@@ -125,5 +139,5 @@ python scripts/requirements.py sync
 ```
 
 Notes:
-- Edit direct deps in `requirements.in` (not `requirements.txt`).
+- Edit direct deps in `pyproject.toml` (not `requirements.txt`).
 - `pip-sync` will uninstall anything not listed in `requirements.txt`.

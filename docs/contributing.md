@@ -57,4 +57,4 @@ When proposing a new dependency, please consider:
 1. **License compatibility** — MIT, BSD, and Apache-2.0 are preferred. Avoid GPL-licensed packages as they are incompatible with MIT distribution.
 2. **Necessity** — prefer the standard library or existing dependencies where possible.
 3. **Maintenance** — choose well-maintained packages with active communities.
-4. **Update `requirements.in`** — add direct dependencies there, then run `python scripts/requirements.py compile` to pin versions (see [Development Guide](insiders/development.md#6-manage-requirements-pip-tools)).
+4. **Update `pyproject.toml`** — add direct dependencies there, then run `python scripts/requirements.py compile` to pin versions (see [Development Guide](insiders/development.md#6-manage-requirements-pip-tools)).
