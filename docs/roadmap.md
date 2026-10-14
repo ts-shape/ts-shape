@@ -35,11 +35,13 @@ semantics row by row. See [Signal semantics & profiling](guides/signals.md).
   method on empty input, on tz-aware input, and with an unrelated extra
   signal. It is pinned to a ratchet baseline.
 - Property-based tests (hypothesis) cover the primitives.
-- Next: reference-validated KPI tests:
-  - ISO 22400 OEE, MTBF/MTTR;
-  - AIAG SPC rules and Cp/Cpk;
-  - AIAG MSA Gauge R&R;
-  - ISO 50001 EnPI.
+- Reference-validated KPI tests:
+  - AIAG MSA Gauge R&R ✅ (average-and-range worksheet: K1/K2/K3 and the
+    `EV²/(n·r)` AV correction);
+  - ISO 50001 / 50006 EnPI ✅ (opt-in regression baseline);
+  - next: ISO 22400 OEE, MTBF/MTTR, AIAG SPC rules and Cp/Cpk.
+- The docs are tested: every `ts_shape` name in a code block must import,
+  and CI builds the docs with `mkdocs build --strict`.
 
 ## W4 — Scale and lean install
 - Core install: pandas, numpy and scipy only. Cloud and SQL loaders become
@@ -60,3 +62,53 @@ semantics row by row. See [Signal semantics & profiling](guides/signals.md).
 - Grafana / TimescaleDB recipes.
 - A CLI (`ts-shape profile data.parquet`).
 - Semver with a deprecation policy from 1.0.
+
+## Process analytics
+Added: change-point detection (`ChangePointEvents`: exact PELT and binary
+segmentation) and multivariate SPC (`MultivariateSPCEvents`: Hotelling T²
+with Phase I / II limits and contributions).
+
+Candidates from past sessions, by value and effort:
+
+| Feature | Value | Effort |
+|---|---|---|
+| Reliability: Weibull fit, MTBF / MTTR | high | S–M |
+| Vibration: FFT spectral band energy | high | M |
+| Tool wear vs. measurement drift; first-article / setup verification; part disposition | high | M each |
+| MQTT / Kafka streaming loader | med-high | M |
+| Detector evaluation (precision / recall against labels) | med | M |
+| Scaling transforms | med | S |
+| Energy / production plot helpers in an optional `[viz]` extra | med | S |
+
+## Recoverable work on other branches
+Two large branches from earlier sessions were never merged. Both are intact
+and can be ported in their own PRs. Reconcile each with the core first:
+
+- **`claude/reporting-python-library-2fhu1a`**: `ts_shape.reporting`
+  (8.7k lines, 211 tests).
+  - Contents:
+    - facility calendar with IANA time zones;
+    - weighted KPI roll-up;
+    - ISA-95 hierarchy;
+    - benchmarking, scorecard and variance bridge;
+    - FX normalisation;
+    - reporting coverage.
+  - Reconcile:
+    - build the calendar on `signals.windows` / `shift_windows` (DST-correct
+      already) instead of a second implementation;
+    - drop its docs-CI job (the strict docs build is now in `ci.yml`);
+    - keep SECURITY.md and the issue templates.
+- **`claude/global-production-reporting-w5f10n`**: `FleetProductionReport`
+  and `FleetSpec` (11k lines).
+  - Contents:
+    - machine-status adapters (PackML, stacklight, code maps);
+    - counter wrap vs. reset;
+    - part-done pulses;
+    - cycle-time unit inference;
+    - production context with late binding.
+  - Reconcile:
+    - map the status adapters onto `SignalSpec(kind="state")` and
+      `OperatingStateEvents`;
+    - add counter wrap as a `reset_policy` (`"wrap"`) in `SignalSpec` and
+      `utils.counters`, instead of a parallel counter model;
+    - fold cycle-time unit inference into `infer_specs`.
