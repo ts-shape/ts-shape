@@ -2,7 +2,13 @@ import logging
 from pathlib import Path
 
 import pandas as pd  # type: ignore
-from sqlalchemy import create_engine, text
+
+try:
+    from sqlalchemy import create_engine, text
+except ImportError:  # optional extra: ts-shape[sql]
+    create_engine = text = None  # type: ignore[assignment]
+
+from ts_shape.loader._utils import require_optional
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +21,7 @@ class TimescaleDBDataAccess:
         uuids: list[str],
         db_config: dict[str, str],
     ):
+        require_optional(create_engine, "sqlalchemy", "sql")
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
         self.uuids = uuids

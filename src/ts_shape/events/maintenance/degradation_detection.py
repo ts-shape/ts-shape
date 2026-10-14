@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +47,22 @@ class DegradationDetectionEvents(Base):
         window: str = "1h",
         min_slope: float = 0.0,
         direction: str = "decreasing",
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """
         Detect intervals where a rolling linear regression slope exceeds min_slope
         in the given direction, indicating trend-based degradation.
 
         Args:
-            window: Rolling window size (e.g. '1h', '30m').
+            window: Rolling window size (e.g. '1h', '30min').
             min_slope: Minimum absolute slope to consider degradation.
             direction: 'decreasing' (negative slope) or 'increasing' (positive slope).
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, is_delta, avg_slope,
@@ -118,13 +126,14 @@ class DegradationDetectionEvents(Base):
 
         # Group contiguous degrading intervals
         group_id = (degrading != degrading.shift()).cumsum()
+        ends = interval_end_times(sig[self.time_column], interval_end)
         events: list[dict[str, Any]] = []
         for gid, seg in sig.groupby(group_id):
             seg_deg = degrading.loc[seg.index]
             if not seg_deg.iloc[0]:
                 continue
             start_time = seg[self.time_column].iloc[0]
-            end_time = seg[self.time_column].iloc[-1]
+            end_time = ends.loc[seg.index[-1]]
             avg_slope = float(seg["slope"].mean())
             total_change = float(
                 seg[self.value_column].iloc[-1] - seg[self.value_column].iloc[0]
@@ -150,6 +159,8 @@ class DegradationDetectionEvents(Base):
         self,
         window: str = "1h",
         threshold_factor: float = 2.0,
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """
         Compare rolling variance against a baseline (first window) and flag
@@ -158,6 +169,11 @@ class DegradationDetectionEvents(Base):
         Args:
             window: Rolling window size.
             threshold_factor: Minimum variance ratio to flag.
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, is_delta,
@@ -213,6 +229,7 @@ class DegradationDetectionEvents(Base):
 
         # Group contiguous exceeded intervals
         group_id = (exceeded != exceeded.shift()).cumsum()
+        ends = interval_end_times(sig[self.time_column], interval_end)
         events: list[dict[str, Any]] = []
         for gid, seg in sig.groupby(group_id):
             seg_exc = exceeded.loc[seg.index]
@@ -221,7 +238,7 @@ class DegradationDetectionEvents(Base):
             events.append(
                 {
                     "start": seg[self.time_column].iloc[0],
-                    "end": seg[self.time_column].iloc[-1],
+                    "end": ends.loc[seg.index[-1]],
                     "uuid": self.event_uuid,
                     "is_delta": True,
                     "baseline_variance": baseline_var,
@@ -237,7 +254,7 @@ class DegradationDetectionEvents(Base):
     def detect_level_shift(
         self,
         min_shift: float,
-        hold: str = "5m",
+        hold: str = "5min",
     ) -> pd.DataFrame:
         """
         CUSUM-like detection for permanent mean shifts in the signal.
@@ -269,7 +286,7 @@ class DegradationDetectionEvents(Base):
         hold_td = pd.to_timedelta(hold)
 
         values = sig[self.value_column].values
-        times = sig[self.time_column].values
+        times = sig[self.time_column].array
 
         events: list[dict[str, Any]] = []
 

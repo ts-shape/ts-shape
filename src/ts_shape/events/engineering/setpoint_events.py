@@ -289,7 +289,7 @@ class SetpointChangeEvents(Base):
         tol: float = 0.0,
         settle_pct: float | None = None,
         hold: str = "0s",
-        lookahead: str = "10m",
+        lookahead: str = "10min",
     ) -> pd.DataFrame:
         """
         For each setpoint change (any change), compute time until the actual signal
@@ -392,7 +392,7 @@ class SetpointChangeEvents(Base):
         self,
         actual_uuid: str,
         *,
-        window: str = "10m",
+        window: str = "10min",
     ) -> pd.DataFrame:
         """
         For each change, compute peak overshoot, undershoot, and oscillation metrics
@@ -463,14 +463,20 @@ class SetpointChangeEvents(Base):
 
             err = win[self.value_column] - s_new
 
+            # Undershoot is the swing back past the new setpoint *after* the
+            # process first reaches it. Measured over the whole window it was
+            # always the initial step deviation (100 % on every step).
+            reached = err >= 0 if delta >= 0 else err <= 0
+            after = err.loc[reached.idxmax() :] if reached.any() else err.iloc[0:0]
+
             # Overshoot (in direction of change)
             if delta >= 0:
                 peak = err.max()
                 t_peak = win.loc[err.idxmax(), self.time_column] if peak > 0 else None
                 # Undershoot (opposite direction)
-                undershoot_val = err.min()
+                undershoot_val = after.min() if not after.empty else 0.0
                 t_undershoot = (
-                    win.loc[err.idxmin(), self.time_column]
+                    win.loc[after.idxmin(), self.time_column]
                     if undershoot_val < 0
                     else None
                 )
@@ -480,9 +486,11 @@ class SetpointChangeEvents(Base):
                     win.loc[err.idxmin(), self.time_column] if err.min() < 0 else None
                 )
                 # Undershoot (opposite direction)
-                undershoot_val = -err.max()
+                undershoot_val = -after.max() if not after.empty else 0.0
                 t_undershoot = (
-                    win.loc[err.idxmax(), self.time_column] if err.max() > 0 else None
+                    win.loc[after.idxmax(), self.time_column]
+                    if not after.empty and after.max() > 0
+                    else None
                 )
 
             overshoot_abs = float(peak) if pd.notna(peak) and peak > 0 else 0.0
@@ -503,11 +511,11 @@ class SetpointChangeEvents(Base):
                 else None
             )
 
-            # Oscillation detection: count zero crossings
-            err_sign = np.sign(err)
-            sign_changes = (
-                err_sign.diff() != 0
-            ).sum() - 1  # -1 to exclude initial transition
+            # Oscillation detection: count zero crossings. A sample exactly
+            # on the setpoint holds the previous sign so a crossing through
+            # an exact zero is counted once, not twice.
+            err_sign = np.sign(err).replace(0.0, np.nan).ffill().bfill()
+            sign_changes = (err_sign.diff().dropna() != 0).sum()
             oscillation_count = max(0, int(sign_changes))
 
             # Oscillation amplitude: average of peak deviations
@@ -552,7 +560,7 @@ class SetpointChangeEvents(Base):
         actual_uuid: str,
         *,
         rate_threshold: float = 0.01,
-        lookahead: str = "10m",
+        lookahead: str = "10min",
         hold: str = "0s",
     ) -> pd.DataFrame:
         """
@@ -674,7 +682,7 @@ class SetpointChangeEvents(Base):
         *,
         start_pct: float = 0.1,
         end_pct: float = 0.9,
-        lookahead: str = "10m",
+        lookahead: str = "10min",
     ) -> pd.DataFrame:
         """
         Compute rise time: time for actual to go from start_pct to end_pct of the setpoint change.
@@ -781,7 +789,7 @@ class SetpointChangeEvents(Base):
         self,
         actual_uuid: str,
         *,
-        lookahead: str = "10m",
+        lookahead: str = "10min",
         min_points: int = 5,
     ) -> pd.DataFrame:
         """
@@ -901,7 +909,7 @@ class SetpointChangeEvents(Base):
         self,
         actual_uuid: str,
         *,
-        window: str = "10m",
+        window: str = "10min",
         min_oscillations: int = 2,
     ) -> pd.DataFrame:
         """
@@ -962,8 +970,11 @@ class SetpointChangeEvents(Base):
             # Calculate error
             err = win[self.value_column] - s_new
 
-            # Detect zero crossings
-            err_sign = np.sign(err)
+            # Detect zero crossings. A sample exactly on the setpoint (sign 0)
+            # holds the previous sign; otherwise one crossing through an exact
+            # zero counted twice, 1 sample apart, halving the period.
+            err_sign = pd.Series(np.sign(err.to_numpy()), dtype=float)
+            err_sign = err_sign.replace(0.0, np.nan).ffill().bfill().to_numpy()
             sign_changes = np.where(np.diff(err_sign) != 0)[0]
             num_crossings = len(sign_changes)
 
@@ -1021,7 +1032,7 @@ class SetpointChangeEvents(Base):
         tol: float = 0.0,
         settle_pct: float | None = None,
         hold: str = "0s",
-        lookahead: str = "10m",
+        lookahead: str = "10min",
         rate_threshold: float = 0.01,
     ) -> pd.DataFrame:
         """

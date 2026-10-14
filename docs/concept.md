@@ -101,10 +101,10 @@ catalogue programmatically.
 ```python
 # 1. LOAD
 from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
-from ts_shape.loader.metadata.metadata_json_loader import MetadataLoader
+from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
 
 ts_df = ParquetLoader.load_all_files("data/")
-meta_df = MetadataLoader("config/signals.json").to_df()
+meta_df = MetadataJsonLoader.from_file("config/signals.json").to_df()
 
 # 2. COMBINE
 from ts_shape.loader.combine.integrator import DataIntegratorHybrid
@@ -117,17 +117,19 @@ df = DataIntegratorHybrid.combine_data(
 
 # 3. TRANSFORM
 from ts_shape.transform.filter.datetime_filter import DateTimeFilter
-from ts_shape.transform.filter.numeric_filter import NumericFilter
+from ts_shape.transform.filter.numeric_filter import DoubleFilter
 
-df = DateTimeFilter.filter_after(df, "systime", "2024-01-01")
-df = NumericFilter.filter_not_null(df, "value_double")
+df = DateTimeFilter.filter_after_date(df, "systime", "2024-01-01")
+df = DoubleFilter.filter_nan_value_double(df, "value_double")
 
 # 4. ANALYZE
 from ts_shape.features.stats.numeric_stats import NumericStatistics
-from ts_shape.events.quality.outlier_detection import OutlierDetection
+from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
 stats = NumericStatistics(df, "value_double")
-outliers = OutlierDetection.detect_zscore_outliers(df, "value_double", threshold=3.0)
+outliers = OutlierDetectionEvents(
+    df, value_column="value_double", group_by_uuid=True
+).detect_outliers_zscore(threshold=3.0)
 ```
 
 ## Design Decisions

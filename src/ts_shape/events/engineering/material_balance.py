@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,29 @@ class MaterialBalanceEvents(Base):
         event_uuid: str = "eng:material_balance",
         value_column: str = "value_double",
         time_column: str = "systime",
+        time_weighted: bool = False,
+        missing_as_zero: bool = True,
     ) -> None:
+        """
+        Args:
+            dataframe: Long-format input data.
+            input_uuids: Signals flowing into the balance boundary.
+            output_uuids: Signals flowing out of it.
+            event_uuid: UUID assigned to generated events.
+            value_column: Column holding the flow values.
+            time_column: Timestamp column.
+            time_weighted: Average each flow by time (value held until the
+                next sample) instead of by sample count. Default ``False``
+                keeps ``resample().mean()``, which is biased on irregular or
+                change-encoded flow signals.
+            missing_as_zero: Default ``True`` treats a window without data for
+                a signal as zero flow (backward compatible). ``False`` leaves
+                the window's totals NaN and marks it not balanced, so a sensor
+                outage is not read as a real imbalance.
+        """
         super().__init__(dataframe, column_name=time_column)
+        self.time_weighted = time_weighted
+        self.missing_as_zero = missing_as_zero
         self.input_uuids = input_uuids
         self.output_uuids = output_uuids
         self.event_uuid = event_uuid
@@ -50,19 +72,20 @@ class MaterialBalanceEvents(Base):
             sig = self.dataframe[self.dataframe["uuid"] == uid]
             if sig.empty:
                 continue
-            s = (
-                sig.set_index(self.time_column)[self.value_column]
-                .resample(window)
-                .mean()
-                .fillna(0.0)
-            )
+            values = sig.set_index(self.time_column)[self.value_column]
+            if self.time_weighted:
+                s = time_weighted_resample(values, window)
+            else:
+                s = values.resample(window).mean()
+            if self.missing_as_zero:
+                s = s.fillna(0.0)
             frames.append(s.rename(uid))
 
         if not frames:
             return pd.DataFrame()
 
-        combined = pd.concat(frames, axis=1).fillna(0.0)
-        return combined
+        combined = pd.concat(frames, axis=1)
+        return combined.fillna(0.0) if self.missing_as_zero else combined
 
     def balance_check(
         self,
@@ -100,19 +123,31 @@ class MaterialBalanceEvents(Base):
             else (inputs.index if not inputs.empty else outputs.index)
         )
 
+        fill = 0.0 if self.missing_as_zero else np.nan
         if inputs.empty:
-            total_in = pd.Series(0.0, index=all_idx)
+            total_in = pd.Series(fill, index=all_idx)
         else:
-            total_in = inputs.reindex(all_idx, fill_value=0.0).sum(axis=1)
+            total_in = inputs.reindex(all_idx, fill_value=fill).sum(
+                axis=1, skipna=self.missing_as_zero
+            )
 
         if outputs.empty:
-            total_out = pd.Series(0.0, index=all_idx)
+            total_out = pd.Series(fill, index=all_idx)
         else:
-            total_out = outputs.reindex(all_idx, fill_value=0.0).sum(axis=1)
+            total_out = outputs.reindex(all_idx, fill_value=fill).sum(
+                axis=1, skipna=self.missing_as_zero
+            )
 
         imbalance = total_in - total_out
         denom = total_in.replace(0, np.nan)
-        imbalance_pct = (imbalance.abs() / denom * 100).fillna(0.0)
+        imbalance_pct = imbalance.abs() / denom * 100
+        # Zero input: balanced only if nothing flowed out either. (Previously
+        # any zero-input window read 0 % imbalance, i.e. balanced, even with
+        # output flowing.)
+        zero_in = total_in == 0
+        imbalance_pct = imbalance_pct.mask(
+            zero_in, np.where(total_out.abs() > 0, np.inf, 0.0)
+        )
 
         result = pd.DataFrame(
             {

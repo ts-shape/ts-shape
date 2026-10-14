@@ -50,10 +50,10 @@ quality = detector.control_quality_metrics(
 | `detect_setpoint_ramps(min_rate, min_duration='0s')` | Interval events for ramps | DataFrame of ramp intervals |
 | `detect_setpoint_changes(min_delta=0.0, min_rate=None)` | Unified step+ramp table | DataFrame of all changes |
 | `time_to_settle(actual_uuid, tol=0.0, settle_pct=None)` | Settling time after each change | DataFrame with settling times |
-| `overshoot_metrics(actual_uuid, window='10m')` | Overshoot/undershoot per change | DataFrame with overshoot stats |
+| `overshoot_metrics(actual_uuid, window='10min')` | Overshoot/undershoot per change | DataFrame with overshoot stats |
 | `rise_time(actual_uuid, start_pct=0.1, end_pct=0.9)` | Rise time (10-90% by default) | DataFrame with rise times |
-| `decay_rate(actual_uuid, lookahead='10m')` | Exponential decay rate | DataFrame with decay constants |
-| `oscillation_frequency(actual_uuid, window='10m')` | Oscillation frequency | DataFrame with frequency estimates |
+| `decay_rate(actual_uuid, lookahead='10min')` | Exponential decay rate | DataFrame with decay constants |
+| `oscillation_frequency(actual_uuid, window='10min')` | Oscillation frequency | DataFrame with frequency estimates |
 | `control_quality_metrics(actual_uuid, tol=0.0)` | Comprehensive control quality | DataFrame with combined KPIs |
 
 ---

@@ -79,7 +79,7 @@ class SignalComparisonEvents(Base):
         self,
         actual_uuid: str,
         tolerance: float,
-        min_duration: str = "1m",
+        min_duration: str = "1min",
     ) -> pd.DataFrame:
         """Detect intervals where |actual - reference| > tolerance.
 

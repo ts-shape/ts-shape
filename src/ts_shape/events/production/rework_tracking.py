@@ -127,7 +127,7 @@ class ReworkTracking(Base):
             DataFrame with columns:
             - date, shift, rework_count
             - resets: Number of counter resets in the shift (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         columns = ["date", "shift", "rework_count"]
         if handle_resets:
@@ -197,7 +197,7 @@ class ReworkTracking(Base):
             DataFrame with columns:
             - reason, rework_count, pct_of_total
             - resets: Number of counter resets for the reason (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         columns = ["reason", "rework_count", "pct_of_total"]
         if handle_resets:
@@ -411,7 +411,7 @@ class ReworkTracking(Base):
             DataFrame with columns:
             - part_number, rework_count, cost_per_rework, total_cost
             - resets: Number of counter resets for the part (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         columns = ["part_number", "rework_count", "cost_per_rework", "total_cost"]
         if handle_resets:
@@ -494,7 +494,7 @@ class ReworkTracking(Base):
             DataFrame with columns:
             - period, rework_count
             - resets: Number of counter resets in the period (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         columns = ["period", "rework_count"]
         if handle_resets:

@@ -1,10 +1,18 @@
+"""Signal quality: is the data itself trustworthy?
+
+Finds missing data (gaps longer than the expected period), measures
+sampling regularity, flags out-of-range values, and reports data
+completeness per calendar window (real window lengths on DST days).
+"""
+
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
+from pandas.tseries.frequencies import to_offset
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +69,8 @@ class SignalQualityEvents(Base):
         if self.signal.empty or len(self.signal) < 2:
             return pd.DataFrame(columns=cols)
 
-        times = self.signal[self.time_column].values
-        diffs = np.diff(times)
+        times = self.signal[self.time_column].array
+        diffs = times[1:] - times[:-1]
         expected_td = pd.to_timedelta(expected_freq)
         threshold = expected_td * tolerance_factor
 
@@ -139,12 +147,23 @@ class SignalQualityEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
-    def detect_out_of_range(self, min_value: float, max_value: float) -> pd.DataFrame:
+    def detect_out_of_range(
+        self,
+        min_value: float,
+        max_value: float,
+        *,
+        interval_end: str = "last_sample",
+    ) -> pd.DataFrame:
         """Flag intervals where signal is outside expected range.
 
         Args:
             min_value: Minimum acceptable value.
             max_value: Maximum acceptable value.
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start_time, end_time, duration,
@@ -174,6 +193,7 @@ class SignalQualityEvents(Base):
             return pd.DataFrame(columns=cols)
 
         groups = (out_of_range != out_of_range.shift()).cumsum()
+        ends = interval_end_times(sig[self.time_column], interval_end)
         events: list[dict[str, Any]] = []
 
         for _, seg in sig.groupby(groups):
@@ -181,7 +201,7 @@ class SignalQualityEvents(Base):
             if not seg_oor.iloc[0]:
                 continue
             start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
+            end = ends.loc[seg.index[-1]]
             min_obs = float(seg[self.value_column].min())
             max_obs = float(seg[self.value_column].max())
 
@@ -229,15 +249,21 @@ class SignalQualityEvents(Base):
             .copy()
             .set_index(self.time_column)
         )
-        window_td = pd.to_timedelta(window)
         expected_td = pd.to_timedelta(expected_freq)
-        expected_per_window = int(window_td / expected_td)
+        offset = to_offset(window)
 
         counts = sig[self.value_column].resample(window).count()
 
         events: list[dict[str, Any]] = []
         for ts, actual in counts.items():
-            completeness = min(100.0, round(actual / expected_per_window * 100, 2))
+            # The window's real length: a '1D' window on the DST days of a
+            # tz-aware signal is 23 h or 25 h, not 24 h.
+            expected_per_window = int(((ts + offset) - ts) / expected_td)
+            completeness = (
+                min(100.0, round(actual / expected_per_window * 100, 2))
+                if expected_per_window > 0
+                else 100.0
+            )
             events.append(
                 {
                     "start": ts,

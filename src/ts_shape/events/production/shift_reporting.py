@@ -154,7 +154,7 @@ class ShiftReporting(Base):
             - part_number: Part number (if part_id_uuid provided)
             - quantity: Parts produced
             - resets: Number of counter resets in the shift (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
 
         Example:
             >>> shift_production('counter', part_id_uuid='part_id')

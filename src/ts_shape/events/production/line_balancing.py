@@ -155,7 +155,7 @@ class LineBalancingEvents(Base):
         """Per-station cycle-time statistics per time window.
 
         Args:
-            window: Resample window (e.g. ``"1h"``, ``"30m"``).
+            window: Resample window (e.g. ``"1h"``, ``"30min"``).
 
         Returns:
             Summary-shape DataFrame with columns: start, end, duration_seconds,

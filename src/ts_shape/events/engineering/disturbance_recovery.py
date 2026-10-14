@@ -86,7 +86,10 @@ class DisturbanceRecoveryEvents(Base):
                 sig.reset_index().sort_values(self.time_column),
                 sp.reset_index().sort_values(self.time_column),
                 on=self.time_column,
-                direction="nearest",
+                # The setpoint in force at each sample: ``nearest`` let samples
+                # just before a setpoint step take the new value and read as a
+                # false deviation.
+                direction="backward",
             ).set_index(self.time_column)
             merged["baseline"] = merged["sp"]
             merged["deviation"] = merged["value"] - merged["baseline"]
@@ -105,7 +108,7 @@ class DisturbanceRecoveryEvents(Base):
 
     def detect_disturbances(
         self,
-        baseline_window: str = "10m",
+        baseline_window: str = "10min",
         threshold_sigma: float = 3.0,
         min_duration: str = "30s",
     ) -> pd.DataFrame:
@@ -194,7 +197,7 @@ class DisturbanceRecoveryEvents(Base):
 
     def recovery_time(
         self,
-        baseline_window: str = "10m",
+        baseline_window: str = "10min",
         threshold_sigma: float = 3.0,
         recovery_pct: float = 0.95,
         max_recovery: str = "1h",
@@ -284,7 +287,7 @@ class DisturbanceRecoveryEvents(Base):
     def disturbance_frequency(
         self,
         window: str = "8h",
-        baseline_window: str = "10m",
+        baseline_window: str = "10min",
         threshold_sigma: float = 3.0,
     ) -> pd.DataFrame:
         """Count disturbances per time window.
@@ -356,9 +359,9 @@ class DisturbanceRecoveryEvents(Base):
 
     def before_after_comparison(
         self,
-        baseline_window: str = "10m",
+        baseline_window: str = "10min",
         threshold_sigma: float = 3.0,
-        comparison_window: str = "5m",
+        comparison_window: str = "5min",
     ) -> pd.DataFrame:
         """Compare process statistics before vs after each disturbance.
 

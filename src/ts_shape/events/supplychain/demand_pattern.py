@@ -91,7 +91,9 @@ class DemandPatternEvents(Base):
         dm = dm.set_index(self.time_column)
 
         grouped = dm[self.value_column].resample(period)
-        total = grouped.sum()
+        # min_count=1: an empty period is "no data" (NaN, dropped below), not
+        # zero demand -- zeros skewed the spike and seasonality statistics.
+        total = grouped.sum(min_count=1)
         avg = grouped.mean()
         peak = grouped.max()
 
@@ -161,7 +163,7 @@ class DemandPatternEvents(Base):
 
         result = pd.DataFrame(
             {
-                "start": spikes["start"].values,
+                "start": spikes["start"].array,
                 "uuid": self.event_uuid,
                 "is_delta": True,
                 "demand": spikes["total_demand"].values,
@@ -204,9 +206,15 @@ class DemandPatternEvents(Base):
         if period_data.empty:
             return pd.DataFrame(columns=empty_cols)
 
-        period_td = pd.to_timedelta(period)
+        # Calendar periods ('MS', 'W', ...) have no fixed length and made
+        # pd.to_timedelta raise; they are all at least a day long.
+        offset = pd.tseries.frequencies.to_offset(period)
+        try:
+            daily_or_longer = pd.Timedelta(offset) >= pd.Timedelta("1D")
+        except ValueError:
+            daily_or_longer = True
 
-        if period_td >= pd.Timedelta("1D"):
+        if daily_or_longer:
             # Day-of-week grouping
             day_names = [
                 "Monday",

@@ -12,14 +12,14 @@ pip install ts-shape
 
 ```python
 import pandas as pd
-from ts_shape.transform.filter.numeric_filter import NumericFilter
+from ts_shape.transform.filter.numeric_filter import DoubleFilter
 from ts_shape.features.stats.numeric_stats import NumericStatistics
 
 # Load your data
 df = pd.read_parquet("sensors.parquet")
 
 # Filter to valid range
-clean = NumericFilter.filter_value_in_range(df, "value_double", 0, 100)
+clean = DoubleFilter.filter_value_double_between(df, "value_double", 0, 100)
 
 # Compute statistics
 stats = NumericStatistics(clean, "value_double")
@@ -49,28 +49,32 @@ Not all columns are required - use only what you need.
 ```python
 from ts_shape.transform.filter.datetime_filter import DateTimeFilter
 
-df = DateTimeFilter.filter_between(df, "systime", "2024-01-01", "2024-03-31")
+df = DateTimeFilter.filter_between_dates(
+    df, "systime", "2024-01-01", "2024-03-31", inclusive="both"
+)
 ```
 
 ### Detect Outliers
 
 ```python
-from ts_shape.events.quality.outlier_detection import OutlierDetection
+from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
-outliers = OutlierDetection.detect_zscore_outliers(df, "value_double", threshold=3.0)
-clean = df[~df.index.isin(outliers.index)]
+# One mean/std per signal; one row per group of nearby outliers
+outliers = OutlierDetectionEvents(
+    df, value_column="value_double", group_by_uuid=True
+).detect_outliers_zscore(threshold=3.0)
 ```
 
 ### Load from Multiple Sources
 
 ```python
 from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
-from ts_shape.loader.metadata.metadata_json_loader import MetadataLoader
+from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
 from ts_shape.loader.combine.integrator import DataIntegratorHybrid
 
 # Load timeseries and metadata
 ts_df = ParquetLoader.load_all_files("data/")
-meta_df = MetadataLoader("config/signals.json").to_df()
+meta_df = MetadataJsonLoader.from_file("config/signals.json").to_df()
 
 # Combine them
 df = DataIntegratorHybrid.combine_data(

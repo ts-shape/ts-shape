@@ -72,3 +72,28 @@ def duplicate_timestamps_df():
             "value_double": [1.0, 2.0, 3.0, 4.0],
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Timezone / DST fixtures (Europe/Berlin)
+# ---------------------------------------------------------------------------
+
+BERLIN = "Europe/Berlin"
+
+
+@pytest.fixture()
+def berlin_signal():
+    """Factory for a single-uuid ``value_double`` signal with tz-aware systime.
+
+    ``berlin_signal(values, start=..., freq=...)`` returns a long-format frame
+    whose ``systime`` is localised to Europe/Berlin. The default start sits
+    just before the 2024-03-31 spring-forward transition, so 23-hour days and
+    the 02:00 -> 03:00 jump are exercised; pass ``start="2024-10-27 01:30"``
+    for the autumn fall-back day.
+    """
+
+    def _make(values, start="2024-03-31 00:00", freq="10min", uuid="sig"):
+        t = pd.date_range(start, periods=len(values), freq=freq, tz=BERLIN)
+        return pd.DataFrame({"systime": t, "uuid": uuid, "value_double": values})
+
+    return _make

@@ -187,3 +187,65 @@ class TestMeasurementBias:
         df = pd.DataFrame(columns=["systime", "uuid", "value_double", "value_string"])
         grr = GaugeRepeatabilityEvents(df, "gauge_1")
         assert len(grr.measurement_bias({"p1": 1.0})) == 0
+
+
+def _aiag_frame(seed: int, op_bias: dict[str, float], noise: float = 0.1):
+    """10 parts x 3 appraisers x 3 trials, the AIAG MSA study layout."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    t = pd.Timestamp("2024-01-01")
+    for p in range(10):
+        for op, bias in op_bias.items():
+            for _ in range(3):
+                rows.append(
+                    {
+                        "systime": t,
+                        "uuid": "gauge",
+                        "value_double": p * 0.5 + bias + rng.normal(0, noise),
+                        "value_string": f"part_{p}",
+                        "operator": op,
+                    }
+                )
+                t += pd.Timedelta(seconds=1)
+    return pd.DataFrame(rows)
+
+
+class TestAIAGAverageAndRange:
+    """Against the AIAG MSA (4th ed.) average-and-range worksheet constants:
+    K1 = 0.5908 (3 trials), K2 = 0.5231 (3 appraisers), K3 = 0.3146 (10 parts).
+    """
+
+    def _worksheet(self, df):
+        cell = df.groupby(["value_string", "operator"])["value_double"]
+        r_bar = float((cell.max() - cell.min()).mean())
+        op_means = df.groupby("operator")["value_double"].mean()
+        x_diff = float(op_means.max() - op_means.min())
+        part_means = df.groupby("value_string")["value_double"].mean()
+        r_p = float(part_means.max() - part_means.min())
+        ev = r_bar * 0.5908
+        av = np.sqrt(max((x_diff * 0.5231) ** 2 - ev**2 / (10 * 3), 0.0))
+        pv = r_p * 0.3146
+        return ev, av, pv
+
+    def test_summary_matches_worksheet(self):
+        df = _aiag_frame(7, {"A": 0.0, "B": 0.25, "C": -0.15})
+        ev, av, pv = self._worksheet(df)
+        out = GaugeRepeatabilityEvents(
+            df, "gauge", part_column="value_string", operator_column="operator"
+        ).gauge_rr_summary()
+        row = out.iloc[0]
+        assert row["EV"] == pytest.approx(ev, rel=1e-3)
+        assert row["AV"] == pytest.approx(av, rel=1e-3)
+        assert row["PV"] == pytest.approx(pv, rel=1e-3)
+        assert row["GRR"] == pytest.approx(np.hypot(ev, av), rel=1e-3)
+
+    def test_noise_only_appraisers_give_zero_av(self):
+        # Identical appraisers: the operator means differ only by
+        # repeatability noise, which the EV^2/(n r) term removes.
+        df = _aiag_frame(3, {"A": 0.0, "B": 0.0, "C": 0.0}, noise=0.2)
+        ev, av, _ = self._worksheet(df)
+        out = GaugeRepeatabilityEvents(
+            df, "gauge", part_column="value_string", operator_column="operator"
+        ).reproducibility()
+        assert out["AV"].iloc[0] == pytest.approx(av, abs=1e-6)
+        assert out["AV"].iloc[0] < 0.05

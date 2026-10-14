@@ -1,3 +1,10 @@
+"""Value distribution: shape and stability of a signal's values.
+
+Detects mode changes and bimodality, tests normality per window, and
+tracks percentiles over time: the distribution checks behind capability
+indices and SPC limits.
+"""
+
 import logging
 from collections.abc import Sequence
 from typing import Any

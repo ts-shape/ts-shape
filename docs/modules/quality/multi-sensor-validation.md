@@ -24,7 +24,7 @@ validator = MultiSensorValidationEvents(
 )
 
 # Flag windows where sensor spread exceeds 0.5 degrees
-disagreements = validator.detect_disagreement(threshold=0.5, window="5m")
+disagreements = validator.detect_disagreement(threshold=0.5, window="5min")
 
 # Compute pairwise bias between all sensor pairs
 bias = validator.pairwise_bias(window="1h")
@@ -40,7 +40,7 @@ print(outlier[["start", "outlier_sensor", "deviation"]].head())
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_disagreement(threshold, window='5m')` | Flag windows where sensor spread exceeds threshold | DataFrame with disagreement events |
+| `detect_disagreement(threshold, window='5min')` | Flag windows where sensor spread exceeds threshold | DataFrame with disagreement events |
 | `pairwise_bias(window='1h')` | Mean difference between all sensor pairs per window | DataFrame with pairwise bias values |
 | `consensus_score(window='1h')` | Measurement consensus metric across all sensors | DataFrame with consensus scores |
 | `identify_outlier_sensor(window='1h', method='median')` | Identify the sensor furthest from group consensus | DataFrame with outlier sensor labels |

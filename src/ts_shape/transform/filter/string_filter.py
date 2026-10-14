@@ -71,11 +71,26 @@ class StringFilter(Base):
 
     @classmethod
     def detect_changes_in_string(
-        cls, dataframe: pd.DataFrame, column_name: str = "value_string"
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "value_string",
+        *,
+        group_by_uuid: bool = False,
     ) -> pd.DataFrame:
-        """Detects changes from row to row in the specified string column."""
+        """Detects changes from row to row in the specified string column.
+
+        Args:
+            group_by_uuid: Compare each row with the previous row of the same
+                ``uuid``. Default ``False`` compares with the previous row of
+                the frame, so on a multi-signal frame the last row of one uuid
+                and the first of the next produce a false edge.
+        """
         Base._validate_column(dataframe, column_name)
-        changes_detected = dataframe[column_name].ne(dataframe[column_name].shift())
+        if group_by_uuid and "uuid" in dataframe.columns:
+            previous = dataframe.groupby("uuid", sort=False)[column_name].shift()
+        else:
+            previous = dataframe[column_name].shift()
+        changes_detected = dataframe[column_name].ne(previous)
         result = dataframe[changes_detected]
         if result.empty:
             logger.info(

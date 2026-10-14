@@ -3,9 +3,13 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pandas as pd
-import s3fs
 
-from ts_shape.loader._utils import require_config, retry_call
+try:
+    import s3fs
+except ImportError:  # optional extra: ts-shape[s3]
+    s3fs = None
+
+from ts_shape.loader._utils import require_config, require_optional, retry_call
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,7 @@ class S3ProxyDataAccess:
         :param uuids: List of UUIDs to retrieve data for.
         :param s3_config: Configuration dictionary for S3 connection.
         """
+        require_optional(s3fs, "s3fs", "s3")
         require_config(s3_config, _REQUIRED_S3_KEYS, name="s3_config")
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp

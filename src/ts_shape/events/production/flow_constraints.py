@@ -103,7 +103,7 @@ class FlowConstraintEvents(Base):
         )
 
         # Store original upstream time for quality calculation
-        merged["time_up"] = up[self.time_column].values
+        merged["time_up"] = up[self.time_column].array
 
         # Apply directional tolerance filtering if asymmetric tolerances are specified
         if tolerance_before or tolerance_after:
@@ -218,7 +218,7 @@ class FlowConstraintEvents(Base):
         )
 
         # Store original downstream time for quality calculation
-        merged["time_dn"] = dn[self.time_column].values
+        merged["time_dn"] = dn[self.time_column].array
 
         # Apply directional tolerance filtering if asymmetric tolerances are specified
         if tolerance_before or tolerance_after:
@@ -330,10 +330,10 @@ class FlowConstraintEvents(Base):
                 - starved_severity_breakdown: Count by severity level
                 - overall_alignment_quality: Average alignment quality across both types
 
-        Example:
-            roles = {'upstream_run': 'uuid1', 'downstream_run': 'uuid2'}
-            analytics = flow.flow_constraint_analytics(roles=roles)
-            print(analytics['summary']['blocked_count'])
+        Examples:
+            >>> roles = {'upstream_run': 'uuid1', 'downstream_run': 'uuid2'}
+            >>> analytics = flow.flow_constraint_analytics(roles=roles)
+            >>> print(analytics['summary']['blocked_count'])
         """
         # Get blocked and starved events
         blocked_df = self.blocked_events(

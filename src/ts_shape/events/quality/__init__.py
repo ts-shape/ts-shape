@@ -61,6 +61,39 @@ Classes:
   - gauge_rr_summary: Full Gauge R&R table with %GRR and ndc.
   - measurement_bias: Compare measurements to known reference values.
 
+- ChangePointEvents: Offline change-point detection (PELT, binary segmentation).
+  - detect_change_points: Level (and spread) shifts with before/after stats.
+  - segment_statistics: Stable segments between change points.
+
+- MultivariateSPCEvents: Hotelling T² multivariate SPC.
+  - hotelling_t2: T² with Phase I / Phase II control limits.
+  - contributions: Per-variable T² decomposition.
+  - detect_out_of_control: Out-of-control runs with the top contributor.
+
+- MeasurementUncertaintyEvents: GUM-based measurement uncertainty estimation.
+  - type_a_uncertainty: Statistical (Type A) uncertainty per window.
+  - type_b_uncertainty: Uncertainty from external sources (calibration, resolution).
+  - combined_uncertainty: Combined and expanded uncertainty (u_c, U).
+  - uncertainty_budget: Contribution breakdown by source.
+
+- EnvironmentalCompensationEvents: Environmental effect compensation.
+  - detect_correlation: Pearson correlation with environmental signal per window.
+  - estimate_sensitivity: Environmental sensitivity coefficient estimation.
+  - compensated_signal: Apply linear compensation model.
+  - detect_env_exceedance: Flag out-of-range environmental conditions.
+
+- CalibrationValidationEvents: Multi-point calibration validation.
+  - linearity_assessment: Residual analysis at calibration points.
+  - calibration_curve: Polynomial fit to calibration data.
+  - detect_recalibration_need: Monitor bias/drift for recal triggers.
+  - calibration_stability: Bias stability scoring over time.
+
+- SamplingResolutionEvents: Sampling and resolution analysis.
+  - detect_quantization: Detect A/D quantization in measurements.
+  - effective_resolution: Estimate effective vs theoretical resolution.
+  - detect_aliasing: Check for Nyquist violations via FFT.
+  - sampling_jitter: Measure timing regularity of sampling.
+
 - DataGapAnalysisEvents: Analyse gaps and coverage in signal data.
   - find_gaps: Locate all gaps longer than a threshold.
   - gap_summary: Aggregate statistics across all gaps.

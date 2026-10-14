@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +46,26 @@ class AnomalyClassificationEvents(Base):
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
     def detect_flatline(
-        self, min_duration: str = "1m", tolerance: float = 1e-6
+        self,
+        min_duration: str = "1min",
+        tolerance: float = 1e-6,
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """Detect intervals where the signal is stuck at a constant value.
 
+        A run starts at its first sample (the value was already stuck there)
+        and continues while each sample is within ``tolerance`` of the
+        previous one.
+
         Args:
             min_duration: Minimum duration to qualify as a flatline.
-            tolerance: Maximum std to consider as flat.
+            tolerance: Maximum step between consecutive samples to count as flat.
+            interval_end: ``"last_sample"`` (default) ends a run at its last
+                sample and needs at least two samples. ``"next_change"`` ends
+                it at the next differing sample, so a historian with a
+                deadband -- one row, then nothing until the value moves --
+                still reports a stuck sensor.
 
         Returns:
             DataFrame with columns: start_time, end_time, duration, stuck_value.
@@ -66,23 +80,23 @@ class AnomalyClassificationEvents(Base):
             .reset_index(drop=True)
         )
         min_td = pd.to_timedelta(min_duration)
+        ends = interval_end_times(sig[self.time_column], interval_end)
 
-        # Detect consecutive identical (within tolerance) values
-        values = sig[self.value_column].values
-        diffs = np.abs(np.diff(values))
-        is_same = np.concatenate([[True], diffs <= tolerance])
-        groups = (is_same != np.roll(is_same, 1)).cumsum()
+        values = sig[self.value_column]
+        # A new run starts wherever the step from the previous sample exceeds
+        # the tolerance (or there is no comparable previous sample).
+        new_run = ~(values.diff().abs() <= tolerance)
+        groups = new_run.cumsum()
 
         events: list[dict[str, Any]] = []
-        for gid in np.unique(groups):
-            mask = groups == gid
-            if not is_same[mask][0]:
+        for _, run in sig.groupby(groups):
+            stuck = run[self.value_column].iloc[0]
+            if pd.isna(stuck):
                 continue
-            indices = np.where(mask)[0]
-            if len(indices) < 2:
+            if interval_end == "last_sample" and len(run) < 2:
                 continue
-            start = sig[self.time_column].iloc[indices[0]]
-            end = sig[self.time_column].iloc[indices[-1]]
+            start = run[self.time_column].iloc[0]
+            end = ends.loc[run.index[-1]]
             duration = end - start
             if duration >= min_td:
                 events.append(
@@ -90,7 +104,7 @@ class AnomalyClassificationEvents(Base):
                         "start": start,
                         "end": end,
                         "duration": duration,
-                        "stuck_value": float(values[indices[0]]),
+                        "stuck_value": float(stuck),
                     }
                 )
 
@@ -99,7 +113,7 @@ class AnomalyClassificationEvents(Base):
         )
 
     def detect_oscillation(
-        self, window: str = "1m", min_crossings: int = 6
+        self, window: str = "1min", min_crossings: int = 6
     ) -> pd.DataFrame:
         """Detect windows with excessive zero-crossings of the detrended signal.
 
@@ -207,7 +221,7 @@ class AnomalyClassificationEvents(Base):
         )
 
     def classify_anomalies(
-        self, window: str = "10m", z_threshold: float = 3.0
+        self, window: str = "10min", z_threshold: float = 3.0
     ) -> pd.DataFrame:
         """Detect anomalous windows and classify by type.
 

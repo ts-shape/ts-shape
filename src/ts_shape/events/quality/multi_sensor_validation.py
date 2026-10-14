@@ -63,7 +63,9 @@ class MultiSensorValidationEvents(Base):
         pivot = pivot.sort_index().ffill(limit=5)
         return pivot
 
-    def detect_disagreement(self, threshold: float, window: str = "5m") -> pd.DataFrame:
+    def detect_disagreement(
+        self, threshold: float, window: str = "5min"
+    ) -> pd.DataFrame:
         """Flag windows where sensor spread exceeds threshold.
 
         Args:

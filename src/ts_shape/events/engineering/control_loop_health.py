@@ -57,7 +57,13 @@ class ControlLoopHealthEvents(Base):
         return sig
 
     def _align(self) -> pd.DataFrame:
-        """Align SP and PV by nearest timestamp."""
+        """Align each PV sample with the setpoint in force at that time.
+
+        PV drives the timeline and the setpoint is held until it changes
+        (backward as-of match). Using SP as the left side dropped dense PV
+        data on a change-encoded setpoint, and ``nearest`` let a sample pick
+        up a setpoint that had not been set yet.
+        """
         if self._sp.empty or self._pv.empty:
             return pd.DataFrame(columns=[self.time_column, "sp", "pv", "error"])
 
@@ -68,19 +74,28 @@ class ControlLoopHealthEvents(Base):
             columns={self.value_column: "pv"}
         )
         merged = pd.merge_asof(
-            sp.sort_values(self.time_column),
             pv.sort_values(self.time_column),
+            sp.sort_values(self.time_column),
             on=self.time_column,
-            direction="nearest",
-        )
+            direction="backward",
+        )[[self.time_column, "sp", "pv"]]
         merged["error"] = merged["pv"] - merged["sp"]
         return merged.dropna(subset=["sp", "pv"])
 
-    def error_integrals(self, window: str = "1h") -> pd.DataFrame:
+    def error_integrals(
+        self, window: str = "1h", *, max_gap: str | None = None
+    ) -> pd.DataFrame:
         """Per-window error integrals for control loop performance.
 
         Args:
             window: Resample window (e.g. '1h', '8h').
+            max_gap: Opt-in. When set, each error is held until the next
+                sample (zero-order hold, i.e. weighted by the time *after*
+                it) and any interval longer than ``max_gap`` contributes
+                nothing, so a communication gap is not integrated as one
+                huge error. Default ``None`` keeps the original weighting:
+                each error times the time since the previous sample, with
+                no gap cap.
 
         Returns:
             DataFrame with columns: start, iae, ise, itae, bias,
@@ -98,7 +113,11 @@ class ControlLoopHealthEvents(Base):
             if len(group) < 2:
                 continue
             error = group["error"]
-            dt = group.index.to_series().diff().dt.total_seconds().fillna(0)
+            if max_gap is None:
+                dt = group.index.to_series().diff().dt.total_seconds().fillna(0)
+            else:
+                dt = (-group.index.to_series().diff(-1).dt.total_seconds()).fillna(0)
+                dt = dt.where(dt <= pd.Timedelta(max_gap).total_seconds(), 0.0)
             t_rel = (group.index - group.index[0]).total_seconds()
 
             iae = float((error.abs() * dt).sum())

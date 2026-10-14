@@ -24,27 +24,28 @@ pip install -e .
 
 ```python
 import ts_shape
-from ts_shape.transform.filter.numeric_filter import NumericFilter
+from ts_shape.transform.filter.numeric_filter import DoubleFilter
 
 print("ts-shape installed successfully!")
 ```
 
 ## Optional Dependencies
 
-Install extras for specific backends:
+The core install needs only pandas, numpy and scipy. Loader backends are
+extras; a loader whose backend is missing raises an `ImportError` naming the
+extra to install.
 
 ```bash
 # Parquet support (recommended)
 pip install pyarrow
 
-# S3 storage
-pip install s3fs
-
-# Azure Blob storage
-pip install azure-storage-blob
-
-# TimescaleDB / PostgreSQL
-pip install ts-shape[postgres]
+pip install ts-shape[s3]        # S3 / S3-compatible proxy (s3fs)
+pip install ts-shape[azure]     # Azure Blob Storage
+pip install ts-shape[api]       # REST metadata / energy APIs (requests)
+pip install ts-shape[sql]       # TimescaleDB / SQL metadata (sqlalchemy)
+pip install ts-shape[postgres]  # sql + psycopg2 driver
+pip install ts-shape[yaml]      # SignalSpecs.from_yaml
+pip install ts-shape[all]       # everything above
 ```
 
 ## Development Installation
@@ -58,8 +59,8 @@ cd ts-shape
 # Install in development mode
 pip install -e .
 
-# Install dev dependencies
-pip install pytest black flake8
+# Install dev dependencies (tests, linters, all loader backends)
+pip install -e ".[dev]"
 
 # Run tests
 pytest

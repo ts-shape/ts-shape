@@ -2,7 +2,13 @@ import json
 import logging
 
 import pandas as pd  # type: ignore
-import requests
+
+try:
+    import requests
+except ImportError:  # optional extra: ts-shape[api]
+    requests = None  # type: ignore[assignment]
+
+from ts_shape.loader._utils import require_optional
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +54,7 @@ class DatapointAPI:
         :param timeout: Per-request timeout in seconds; prevents an unresponsive
             server from hanging the loader indefinitely.
         """
+        require_optional(requests, "requests", "api")
         self.device_names = device_names
         self.base_url = base_url.rstrip("/")
         self.api_token = api_token

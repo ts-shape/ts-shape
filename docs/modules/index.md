@@ -43,13 +43,13 @@ For exhaustive parameter docs, see the [API Reference](../reference/index.md).
 
     **3 modules**
 
--   :material-lightning-bolt:{ .lg .middle } **[Energy](energy/consumption-analysis.md)**
+-   :material-lightning-bolt:{ .lg .middle } **[Energy](energy/power-integration.md)**
 
     ---
 
-    Consumption patterns, peak demand, idle waste, efficiency tracking.
+    kW to kWh integration, consumption patterns, peak demand, idle waste, efficiency tracking.
 
-    **2 modules**
+    **3 modules**
 
 -   :material-chart-scatter-plot:{ .lg .middle } **[Correlation](correlation/signal-correlation.md)**
 

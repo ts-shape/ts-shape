@@ -8,7 +8,7 @@ For development setup, building, testing, and publishing workflows, see the [Dev
 
 ## Project License
 
-ts-shape is released under the **MIT License**. See the full license text in [`LICENSE.txt`](../LICENSE.txt).
+ts-shape is released under the **MIT License**. See the full license text in [`LICENSE.txt`](https://github.com/ts-shape/ts-shape/blob/main/LICENSE.txt).
 
 All contributions to this repository are accepted under the same MIT License.
 

@@ -29,7 +29,7 @@ df = pd.DataFrame({
 
 alarms = AlarmManagementEvents(df, timestamp_column="timestamp")
 freq = alarms.alarm_frequency(window="1h")
-chattering = alarms.chattering_detection(min_transitions=5, window="10m")
+chattering = alarms.chattering_detection(min_transitions=5, window="10min")
 standing = alarms.standing_alarms(min_duration="1h")
 print(freq.head())
 ```
@@ -42,7 +42,7 @@ print(freq.head())
 |--------|---------|---------|
 | `alarm_frequency(window='1h')` | Count alarm activations per time window to identify alarm flood periods | DataFrame with window and activation count per alarm |
 | `alarm_duration_stats()` | Compute statistics on how long each alarm stays active (ON duration) | DataFrame with min, mean, max, and percentile durations |
-| `chattering_detection(min_transitions=5, window='10m')` | Detect chattering alarms that toggle rapidly within a short window | DataFrame of chattering alarm instances with transition count |
+| `chattering_detection(min_transitions=5, window='10min')` | Detect chattering alarms that toggle rapidly within a short window | DataFrame of chattering alarm instances with transition count |
 | `standing_alarms(min_duration='1h')` | Find alarms that remain active beyond a threshold, indicating stale or ignored alarms | DataFrame of standing alarm intervals |
 
 ---

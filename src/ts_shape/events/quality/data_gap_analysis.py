@@ -3,6 +3,7 @@ from typing import Any
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
+from pandas.tseries.frequencies import to_offset
 
 from ts_shape.utils.base import Base
 
@@ -73,8 +74,8 @@ class DataGapAnalysisEvents(Base):
             return pd.DataFrame(columns=cols)
 
         threshold = pd.to_timedelta(min_gap)
-        times = self.signal[self.time_column].values
-        diffs = np.diff(times)
+        times = self.signal[self.time_column].array
+        diffs = times[1:] - times[:-1]
 
         events: list[dict[str, Any]] = []
         for i, d in enumerate(diffs):
@@ -179,19 +180,15 @@ class DataGapAnalysisEvents(Base):
             .copy()
             .set_index(self.time_column)
         )
-        window_td = pd.to_timedelta(freq)
-        window_secs = window_td.total_seconds()
+        offset = to_offset(freq)
 
-        # Auto-detect a sensible min_gap if not provided
+        # Auto-detect a sensible min_gap if not provided. Duplicate timestamps
+        # (zero intervals) are ignored: a zero median made every interval a gap.
         if min_gap is None:
-            times = self.signal[self.time_column].values
-            if len(times) >= 2:
-                diffs = pd.to_timedelta(np.diff(times))
-                median_interval = diffs.median()
-                min_gap_td = median_interval * 2
-                min_gap = str(min_gap_td)
-            else:
-                min_gap = "1s"
+            times = self.signal[self.time_column].array
+            diffs = pd.to_timedelta(times[1:] - times[:-1]) if len(times) >= 2 else []
+            positive = pd.Series(diffs)[pd.Series(diffs) > pd.Timedelta(0)]
+            min_gap = str(positive.median() * 2) if len(positive) else "1s"
 
         # Get gaps for context
         all_gaps = self.find_gaps(min_gap=min_gap)
@@ -200,7 +197,9 @@ class DataGapAnalysisEvents(Base):
 
         events: list[dict[str, Any]] = []
         for ts, count in counts.items():
-            end = ts + window_td
+            # The window's real length (23 h / 25 h on DST days for '1D').
+            end = ts + offset
+            window_secs = (end - ts).total_seconds()
             # Find gaps overlapping this window
             gap_secs = 0.0
             gap_count = 0
@@ -259,9 +258,9 @@ class DataGapAnalysisEvents(Base):
 
         max_td = pd.to_timedelta(max_gap)
         min_td = pd.to_timedelta(min_gap)
-        times = self.signal[self.time_column].values
+        times = self.signal[self.time_column].array
         values = self.signal[self.value_column].values
-        diffs = np.diff(times)
+        diffs = times[1:] - times[:-1]
 
         # Use 2 * global std as a "safe jump" threshold
         signal_std = float(np.nanstd(values))

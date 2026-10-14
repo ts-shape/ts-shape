@@ -24,10 +24,10 @@ class MetadataJsonLoader:
         Create a loader from JSON-like data.
 
         Args:
-            json_data: Supported shapes:
-              - dict of columns with index-maps: {"uuid": {"0": ...}, "label": {...}, "config": {...}}
-              - dict of columns with lists: {"uuid": [...], "label": [...], "config": [...]}
-              - list of records: [{"uuid": ..., "label": ..., "config": {...}}, ...]
+            json_data: One of three shapes: a dict of columns with index
+                maps (``{"uuid": {"0": ...}, "label": {...}, "config": {...}}``),
+                a dict of columns with lists (``{"uuid": [...], ...}``), or a
+                list of records (``[{"uuid": ..., "label": ..., "config": {...}}]``).
             strict: If True, enforce presence of required keys and unique UUIDs.
         """
         self.json_data = json_data

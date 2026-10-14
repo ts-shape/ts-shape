@@ -24,15 +24,15 @@ analyzer = WarmUpCoolDownEvents(
 )
 
 # Detect warm-up intervals (rising at least 50 deg over 1+ min)
-warmups = analyzer.detect_warmup(min_rise=50.0, min_duration="1m")
+warmups = analyzer.detect_warmup(min_rise=50.0, min_duration="1min")
 
 # Detect cool-down intervals
-cooldowns = analyzer.detect_cooldown(min_fall=30.0, min_duration="1m")
+cooldowns = analyzer.detect_cooldown(min_fall=30.0, min_duration="1min")
 
 # Check consistency of warm-up curves across days
 consistency = analyzer.warmup_consistency(
     min_rise=50.0,
-    min_duration="1m"
+    min_duration="1min"
 )
 
 # Time to reach 180C operating temperature
@@ -48,9 +48,9 @@ time_to_temp = analyzer.time_to_target(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_warmup(min_rise, min_duration='1m')` | Warm-up interval detection | DataFrame of warm-up events |
-| `detect_cooldown(min_fall, min_duration='1m')` | Cool-down interval detection | DataFrame of cool-down events |
-| `warmup_consistency(min_rise, min_duration='1m')` | Warm-up curve consistency | DataFrame with consistency metrics |
+| `detect_warmup(min_rise, min_duration='1min')` | Warm-up interval detection | DataFrame of warm-up events |
+| `detect_cooldown(min_fall, min_duration='1min')` | Cool-down interval detection | DataFrame of cool-down events |
+| `warmup_consistency(min_rise, min_duration='1min')` | Warm-up curve consistency | DataFrame with consistency metrics |
 | `time_to_target(target_value, direction='rising')` | Time to reach a target value | DataFrame with time-to-target |
 
 ---

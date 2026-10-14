@@ -133,7 +133,7 @@ class QualityTracking(Base):
             - nok_rate_pct: Percentage of defective parts
             - first_pass_yield_pct: Percentage of good parts
             - resets: Number of counter resets in the shift (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
 
         Example:
             >>> nok_by_shift('good_counter', 'bad_counter')
@@ -300,7 +300,7 @@ class QualityTracking(Base):
             - nok_rate_pct: Percentage of defective parts
             - first_pass_yield_pct: Percentage of good parts
             - resets: Number of counter resets for the part (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
 
         Example:
             >>> quality_by_part('good', 'bad', 'part_id')
@@ -485,7 +485,7 @@ class QualityTracking(Base):
             - nok_parts: Number of defective parts
             - pct_of_total: Percentage of total NOK
             - resets: Number of counter resets for the reason (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
 
         Example:
             >>> nok_by_reason('bad_parts', 'defect_reason')
@@ -606,7 +606,7 @@ class QualityTracking(Base):
             - nok_rate_pct: Percentage of defective parts
             - first_pass_yield_pct: Percentage of good parts
             - resets: Number of counter resets that day (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
 
         Example:
             >>> daily_quality_summary('good', 'bad')

@@ -32,9 +32,15 @@ _LAZY: dict[str, str] = {
     # -- events.quality --------------------------------------------------
     "AnomalyClassificationEvents": "ts_shape.events.quality.anomaly_classification",
     "CapabilityTrendingEvents": "ts_shape.events.quality.capability_trending",
+    "ChangePointEvents": "ts_shape.events.quality.change_point",
     "DataGapAnalysisEvents": "ts_shape.events.quality.data_gap_analysis",
     "GaugeRepeatabilityEvents": "ts_shape.events.quality.gauge_repeatability",
+    "CalibrationValidationEvents": "ts_shape.events.quality.calibration_validation",
+    "EnvironmentalCompensationEvents": "ts_shape.events.quality.environmental_compensation",
+    "MeasurementUncertaintyEvents": "ts_shape.events.quality.measurement_uncertainty",
+    "SamplingResolutionEvents": "ts_shape.events.quality.sampling_resolution",
     "MultiSensorValidationEvents": "ts_shape.events.quality.multi_sensor_validation",
+    "MultivariateSPCEvents": "ts_shape.events.quality.multivariate_spc",
     "OutlierDetectionEvents": "ts_shape.events.quality.outlier_detection",
     "SensorDriftEvents": "ts_shape.events.quality.sensor_drift",
     "SignalQualityEvents": "ts_shape.events.quality.signal_quality",
@@ -56,6 +62,7 @@ _LAZY: dict[str, str] = {
     "LineThroughputEvents": "ts_shape.events.production.line_throughput",
     "LongDowntimeEvents": "ts_shape.events.production.long_downtime_events",
     "MachineStateEvents": "ts_shape.events.production.machine_state",
+    "OperatingStateEvents": "ts_shape.events.production.operating_state",
     "MicroStopEvents": "ts_shape.events.production.micro_stop_detection",
     "MultiProcessTraceabilityEvents": "ts_shape.events.production.multi_process_traceability",
     "OEECalculator": "ts_shape.events.production.oee_calculator",
@@ -66,6 +73,7 @@ _LAZY: dict[str, str] = {
     "PartProductionTracking": "ts_shape.events.production.part_tracking",
     "PerformanceLossTracking": "ts_shape.events.production.performance_loss",
     "PeriodSummary": "ts_shape.events.production.period_summary",
+    "ProductionScheduleAdherenceEvents": "ts_shape.events.production.schedule_adherence",
     "QualityTracking": "ts_shape.events.production.quality_tracking",
     "ReworkTracking": "ts_shape.events.production.rework_tracking",
     "RoutingTraceabilityEvents": "ts_shape.events.production.routing_traceability",
@@ -83,6 +91,7 @@ _LAZY: dict[str, str] = {
     "ProcessStabilityIndex": "ts_shape.events.engineering.process_stability_index",
     "ProcessWindowEvents": "ts_shape.events.engineering.process_window",
     "RateOfChangeEvents": "ts_shape.events.engineering.rate_of_change",
+    "TimeToThresholdEvents": "ts_shape.events.engineering.time_to_threshold",
     "SetpointChangeEvents": "ts_shape.events.engineering.setpoint_events",
     "SignalComparisonEvents": "ts_shape.events.engineering.signal_comparison",
     "StartupDetectionEvents": "ts_shape.events.engineering.startup_events",
@@ -90,6 +99,7 @@ _LAZY: dict[str, str] = {
     "ThresholdMonitoringEvents": "ts_shape.events.engineering.threshold_monitoring",
     "WarmUpCoolDownEvents": "ts_shape.events.engineering.warmup_analysis",
     # -- events.maintenance ---------------------------------------------
+    "AssetHealthIndexEvents": "ts_shape.events.maintenance.asset_health_index",
     "DegradationDetectionEvents": "ts_shape.events.maintenance.degradation_detection",
     "FailurePredictionEvents": "ts_shape.events.maintenance.failure_prediction",
     "VibrationAnalysisEvents": "ts_shape.events.maintenance.vibration_analysis",
@@ -107,6 +117,7 @@ _LAZY: dict[str, str] = {
     "IdleEnergyDetectionEvents": "ts_shape.events.energy.idle_energy_detection",
     # -- events.correlation ---------------------------------------------
     "AnomalyCorrelationEvents": "ts_shape.events.correlation.anomaly_correlation",
+    "RootCauseCorrelationEvents": "ts_shape.events.correlation.root_cause_correlation",
     "SignalCorrelationEvents": "ts_shape.events.correlation.signal_correlation",
     # -- events.supplychain ---------------------------------------------
     "DemandPatternEvents": "ts_shape.events.supplychain.demand_pattern",
@@ -131,8 +142,14 @@ _LAZY: dict[str, str] = {
     # -- top-level utilities --------------------------------------------
     "list_detectors": "ts_shape.catalog",
     "make_timeseries": "ts_shape.datasets",
+    "profile": "ts_shape.profiling",
+    "ProfileReport": "ts_shape.profiling",
+    "infer_specs": "ts_shape.signals",
+    "SignalSpec": "ts_shape.signals",
+    "SignalSpecs": "ts_shape.signals",
     "make_id_signal": "ts_shape.datasets",
     "UnitConverter": "ts_shape.transform.calculator.unit_conversion",
+    "PowerIntegrator": "ts_shape.transform.calculator.power_integration",
     "Pipeline": "ts_shape.pipeline",
 }
 

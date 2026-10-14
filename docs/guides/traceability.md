@@ -45,7 +45,7 @@ flowchart LR
 Track a part ID at a single station. The simplest form of traceability.
 
 ```python
-from ts_shape.events.production.value_traceability import ValueTraceabilityEvents
+from ts_shape.events.production.order_traceability import ValueTraceabilityEvents
 
 trace = ValueTraceabilityEvents(
     dataframe=df,

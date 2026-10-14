@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,8 @@ class InventoryMonitoringEvents(Base):
         self,
         min_level: float,
         hold: str = "0s",
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """Flag intervals where inventory stays below *min_level* for at least *hold*.
 
@@ -76,6 +79,11 @@ class InventoryMonitoringEvents(Base):
             min_level: Threshold below which stock is considered low.
             hold: Minimum duration the level must stay below threshold
                   (e.g. ``'0s'``, ``'5min'``, ``'1h'``).
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
@@ -95,8 +103,13 @@ class InventoryMonitoringEvents(Base):
             return pd.DataFrame(columns=empty_cols)
 
         hold_td = pd.to_timedelta(hold)
-        lv = self.levels[[self.time_column, self.value_column]].copy()
+        lv = (
+            self.levels[[self.time_column, self.value_column]]
+            .copy()
+            .reset_index(drop=True)
+        )
         lv["below"] = lv[self.value_column] < min_level
+        ends = interval_end_times(lv[self.time_column], interval_end)
 
         # Group contiguous below-threshold segments
         lv["group"] = (lv["below"] != lv["below"].shift()).cumsum()
@@ -104,7 +117,7 @@ class InventoryMonitoringEvents(Base):
         rows: list[dict[str, Any]] = []
         for _, seg in lv[lv["below"]].groupby("group"):
             start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
+            end = ends.loc[seg.index[-1]]
             duration = (end - start).total_seconds()
             if (end - start) < hold_td:
                 continue
@@ -128,14 +141,21 @@ class InventoryMonitoringEvents(Base):
     def consumption_rate(
         self,
         window: str = "1h",
+        *,
+        handle_refills: bool = False,
     ) -> pd.DataFrame:
         """Calculate rolling consumption rate from inventory level decreases.
 
-        Only considers intervals where the level decreased (consumption).
         The rate is expressed as units consumed per hour within each window.
 
         Args:
             window: Time-based window for grouping (e.g. ``'1h'``, ``'30min'``).
+            handle_refills: When ``False`` (default) consumption is
+                ``first - last`` level of the window, so a refill inside the
+                window cancels out the consumption (100 -> 40 -> 100 -> 40
+                reads as 0). When ``True`` only level decreases are summed
+                (a refill is treated like a counter reset), booked in the
+                window of the reading that reports them.
 
         Returns:
             DataFrame with columns: start, uuid, is_delta,
@@ -177,9 +197,17 @@ class InventoryMonitoringEvents(Base):
         # Consumption is positive when level decreases
         window_td = pd.to_timedelta(window)
         window_hours = window_td.total_seconds() / 3600.0
-        result["consumption_rate"] = (
-            result["level_start"] - result["level_end"]
-        ) / window_hours
+        if handle_refills:
+            consumed = (
+                (-lv[self.value_column].diff()).clip(lower=0).resample(window).sum()
+            )
+            result["consumption_rate"] = (
+                consumed.reindex(result["start"]).to_numpy() / window_hours
+            )
+        else:
+            result["consumption_rate"] = (
+                result["level_start"] - result["level_end"]
+            ) / window_hours
         result["uuid"] = self.event_uuid
         result["is_delta"] = True
 
@@ -296,7 +324,7 @@ class InventoryMonitoringEvents(Base):
         window_td = pd.to_timedelta(consumption_rate_window)
 
         rows: list[dict[str, Any]] = []
-        times = lv[self.time_column].values
+        times = lv[self.time_column].array
         values = lv[self.value_column].values
 
         for i in range(len(lv)):

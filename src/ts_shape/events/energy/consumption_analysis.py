@@ -4,6 +4,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_per_window
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,11 @@ class EnergyConsumptionEvents(Base):
     """Energy: Consumption Analysis
 
     Analyze energy consumption patterns from meter/sensor signals.
+
+    Values are expected to be energy *deltas* in kWh (consumption since the
+    previous reading). For an instantaneous power signal in kW, integrate it
+    with :class:`~ts_shape.transform.calculator.power_integration.PowerIntegrator`
+    first -- summing kW samples measures the logging rate, not the energy.
 
     Supports two data models via constructor parameters:
 
@@ -272,6 +278,7 @@ class EnergyConsumptionEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1h",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate energy consumption per production unit.
 
@@ -281,6 +288,10 @@ class EnergyConsumptionEvents(Base):
             energy_column: Column with energy readings.
             counter_column: Column with counter readings.
             window: Time window for aggregation.
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, source_uuid, is_delta,
@@ -311,12 +322,10 @@ class EnergyConsumptionEvents(Base):
 
         counter[self.time_column] = pd.to_datetime(counter[self.time_column])
         counter = counter.set_index(self.time_column)
-        counts = (
-            counter[counter_column]
-            .resample(window)
-            .agg(lambda x: x.max() - x.min() if len(x) > 1 else 0)
+        counts = counter_per_window(
+            counter[counter_column], window, handle_resets=handle_resets
         )
-        counts = counts.clip(lower=0).to_frame("units_produced").reset_index()
+        counts = counts.to_frame("units_produced").reset_index()
         counts = counts.rename(columns={self.time_column: "start"})
 
         merged = energy.merge(counts, on="start", how="inner")

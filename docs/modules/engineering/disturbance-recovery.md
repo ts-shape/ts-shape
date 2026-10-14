@@ -25,13 +25,13 @@ analyzer = DisturbanceRecoveryEvents(
 
 # Detect disturbances exceeding 3 sigma from baseline
 disturbances = analyzer.detect_disturbances(
-    baseline_window="10m",
+    baseline_window="10min",
     threshold_sigma=3.0
 )
 
 # Measure recovery time for each disturbance
 recovery = analyzer.recovery_time(
-    baseline_window="10m",
+    baseline_window="10min",
     recovery_pct=0.95
 )
 
@@ -39,7 +39,7 @@ recovery = analyzer.recovery_time(
 frequency = analyzer.disturbance_frequency(window="8h")
 
 # Compare process behavior before vs after each upset
-comparison = analyzer.before_after_comparison(baseline_window="10m")
+comparison = analyzer.before_after_comparison(baseline_window="10min")
 ```
 
 ---
@@ -48,10 +48,10 @@ comparison = analyzer.before_after_comparison(baseline_window="10m")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_disturbances(baseline_window='10m', threshold_sigma=3.0)` | Detect process upsets | DataFrame of disturbance events |
-| `recovery_time(baseline_window='10m', recovery_pct=0.95)` | Recovery time per disturbance | DataFrame with recovery metrics |
+| `detect_disturbances(baseline_window='10min', threshold_sigma=3.0)` | Detect process upsets | DataFrame of disturbance events |
+| `recovery_time(baseline_window='10min', recovery_pct=0.95)` | Recovery time per disturbance | DataFrame with recovery metrics |
 | `disturbance_frequency(window='8h')` | Count disturbances per window | DataFrame with counts |
-| `before_after_comparison(baseline_window='10m')` | Before vs after statistics | DataFrame with comparison stats |
+| `before_after_comparison(baseline_window='10min')` | Before vs after statistics | DataFrame with comparison stats |
 
 ---
 

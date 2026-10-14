@@ -30,10 +30,20 @@ pip install ts-shape
 pip install pyarrow          # or: pip install fastparquet
 ```
 
-Optional integrations:
+The core install needs only pandas, numpy and scipy. Loader backends are extras:
 
 | Integration | Install |
 |-------------|---------|
+| S3 / S3-compatible proxy | `pip install ts-shape[s3]` |
+| Azure Blob Storage | `pip install ts-shape[azure]` |
+| Azure AAD + management | `pip install azure-identity azure-mgmt-storage` |
+| REST APIs (metadata, energy) | `pip install ts-shape[api]` |
+| TimescaleDB / SQL metadata | `pip install ts-shape[sql]` (`[postgres]` adds the psycopg2 driver) |
+| Signal specs from YAML | `pip install ts-shape[yaml]` |
+| Everything above | `pip install ts-shape[all]` |
+| Unit conversion (`UnitConverter`) | `pip install ts-shape[units]` (pulls in `pint`) |
+
+-------------|---------|
 | Azure Blob Storage | `pip install azure-storage-blob` |
 | Azure AAD + management | `pip install azure-identity azure-mgmt-storage` |
 | S3 proxy access | Included via `s3fs` |
@@ -51,6 +61,11 @@ import ts_shape
 
 # Generate a sample dataset (or load your own via pandas / a ts-shape loader)
 df = ts_shape.make_timeseries(["sensor:temp"], n_points=2000, n_outliers=6)
+
+# Start every analysis here: what each signal is, and what is wrong with it
+report = ts_shape.profile(df)
+print(report.summary())        # kinds, encodings, gaps, resets, duplicates, ...
+specs = report.specs           # signal semantics to hand to detectors
 
 # Discover what is available -- 70+ detectors across 8 packs
 ts_shape.list_detectors("events.quality")
@@ -97,7 +112,7 @@ ts_shape/
 │
 ├── transform/           # Data Transformation
 │   ├── filter/          # Numeric, String, Boolean, DateTime, Custom filters
-│   ├── calculator/      # Arithmetic operations (scale, offset, power, etc.)
+│   ├── calculator/      # Arithmetic ops, unit conversion, kW -> kWh integration
 │   ├── functions/       # Lambda/callable application
 │   └── time_functions/  # Timestamp conversion, timezone operations
 │
@@ -111,7 +126,7 @@ ts_shape/
 │   ├── production/      # OEE, machine state, throughput, shift, downtime, alarms, batches
 │   ├── engineering/     # Setpoint changes, startup detection, control quality
 │   ├── maintenance/     # Degradation, failure prediction, vibration analysis
-│   ├── energy/          # Consumption analysis, efficiency tracking
+│   ├── energy/          # Consumption analysis, efficiency tracking, EnPI, carbon
 │   ├── correlation/     # Signal correlation, anomaly co-occurrence
 │   └── supplychain/     # Inventory monitoring, lead time, demand patterns
 │
@@ -181,7 +196,7 @@ result = oee.calculate_oee(
 
 # Alarm analysis (ISA-18.2 style)
 alarms = AlarmManagementEvents(df, alarm_uuid="alarm:overtemp")
-chattering = alarms.chattering_detection(min_transitions=5, window="10m")
+chattering = alarms.chattering_detection(min_transitions=5, window="10min")
 
 # Batch tracking
 batches = BatchTrackingEvents(df, batch_uuid="batch:id")
@@ -203,6 +218,20 @@ yamazumi = lb.yamazumi(demand=480, available_time="8h")
 flow = FlowMetricsEvents(df, entry_uuid="process:in", exit_uuid="process:out")
 wip = flow.wip_over_time(window="1h")
 summary = flow.flow_summary(value_add_seconds=120, window="1h")
+```
+
+Schedule adherence -- planned quantities against what the line actually made:
+
+```python
+from ts_shape.events.production.schedule_adherence import (
+    ProductionScheduleAdherenceEvents,
+)
+
+# schedule: one row per planned period (start, end, planned_qty, order_id)
+adherence = ProductionScheduleAdherenceEvents(df, schedule)
+periods = adherence.adherence_by_period("parts:count")   # reset-aware actuals
+behind = adherence.deviation_events("parts:count")       # ahead / behind / critical
+overall = adherence.adherence_summary("parts:count")
 ```
 
 Runtime accounting and unit conversion:
@@ -258,7 +287,49 @@ rul = fp.remaining_useful_life(degradation_rate=0.01, failure_threshold=120.0)
 
 # Vibration analysis (RMS, crest factor, kurtosis)
 vib = VibrationAnalysisEvents(df, signal_uuid="sensor:vibration")
-indicators = vib.bearing_health_indicators(window="5m")
+indicators = vib.bearing_health_indicators(window="5min")
+```
+
+Fuse several signals into one asset health index, weighted by failure mode:
+
+```python
+from ts_shape.events.maintenance import AssetHealthIndexEvents
+
+health = AssetHealthIndexEvents(
+    df,
+    asset_id="press-01",
+    signals={
+        "sensor:vibration": "bearing",
+        "sensor:bearing_temp": {"failure_mode": "thermal", "weight": 2.0},
+        "sensor:motor_current": {"failure_mode": "electrical"},
+    },
+)
+index = health.health_index(window="1h", baseline_window="24h")
+alerts = health.health_events(warning_threshold=70.0, critical_threshold=50.0)
+forecast = health.maintenance_forecast(critical_threshold=50.0)
+```
+
+### Correlation Events
+Relate signals to each other -- and detected events back to their likely cause.
+
+```python
+from ts_shape.events.correlation import (
+    SignalCorrelationEvents,
+    RootCauseCorrelationEvents,
+)
+
+# Rolling correlation between two process variables
+corr = SignalCorrelationEvents(df)
+rolling = corr.rolling_correlation("temp:inlet", "temp:outlet", window=60)
+
+# Which signal moved before the stoppages we detected?
+rc = RootCauseCorrelationEvents(df)
+ranked = rc.rank_causes(
+    downtime_events,
+    ["press:hydraulic", "temp:spindle", "flow:coolant"],
+    max_lag=30,          # search up to 30 min of lead time
+)
+verdict = rc.top_cause(downtime_events, ranked["candidate_uuid"].tolist())
 ```
 
 ### Development Events (Product & Process R&D)
@@ -310,7 +381,7 @@ from ts_shape.events.supplychain.demand_pattern import DemandPatternEvents
 
 # Inventory monitoring with stockout prediction
 inv = InventoryMonitoringEvents(df, level_uuid="inventory:raw_material")
-low_stock = inv.detect_low_stock(min_level=100, hold="30m")
+low_stock = inv.detect_low_stock(min_level=100, hold="30min")
 prediction = inv.stockout_prediction(consumption_rate_window="4h")
 
 # Lead time analysis
@@ -370,7 +441,7 @@ Extract statistical features and detect cycles.
 
 ```python
 from ts_shape.features.stats.numeric_stats import NumericStatistics
-from ts_shape.features.stats.time_stats_numeric import TimeGroupedStatistics
+from ts_shape.features.time_stats.time_stats_numeric import TimeGroupedStatistics
 from ts_shape.features.cycles.cycles_extractor import CycleExtractor
 
 # Descriptive statistics
@@ -469,15 +540,13 @@ The project uses GitHub Actions for continuous integration and deployment:
 
 | Workflow | Trigger | Description |
 |----------|---------|-------------|
-| **CI** | Push / PR | Runs tests on Python 3.10, 3.11, 3.12 |
-| **Release** | Push to `main` / Tag `v*` | Build docs, deploy to GitHub Pages, publish to PyPI |
+| **CI** | Push / PR | Lint (black, ruff, mypy), strict docs build, tests on Python 3.11-3.14 |
+| **Release** | Push to `main` | Tests, then bumps the patch tag, builds and deploys the docs to GitHub Pages, and publishes to PyPI |
 
-Versioning is managed with `setuptools-scm` -- version numbers are derived automatically from git tags. To release:
-
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
+Every merge to `main` is a release: the pipeline takes the latest `X.Y.Z`
+tag, increments the patch number, tags the commit and builds the package with
+that version. For a minor or major bump, push the new `X.Y.0` tag yourself
+before merging; the next release increments from it.
 
 ---
 

@@ -4,6 +4,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_per_window
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +210,7 @@ class CarbonIntensityEvents(Base):
         value_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Carbon intensity per unit produced (kgCO2e / unit).
 
@@ -217,6 +219,10 @@ class CarbonIntensityEvents(Base):
             value_column: Column containing energy/fuel readings.
             counter_column: Column containing counter readings.
             window: Aggregation window.
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, total_kgco2e, units_produced,
@@ -247,9 +253,9 @@ class CarbonIntensityEvents(Base):
         counter_raw[self.time_column] = pd.to_datetime(counter_raw[self.time_column])
         counter_raw = counter_raw.set_index(self.time_column)
         counter_agg = (
-            counter_raw[counter_column]
-            .resample(window)
-            .agg(lambda x: max(x.max() - x.min(), 0) if len(x) > 1 else 0)
+            counter_per_window(
+                counter_raw[counter_column], window, handle_resets=handle_resets
+            )
             .to_frame("units_produced")
             .reset_index()
             .rename(columns={self.time_column: "start"})

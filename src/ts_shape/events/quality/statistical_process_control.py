@@ -23,7 +23,7 @@ class StatisticalProcessControlRuleBased(Base):
         event_uuid: str,
     ) -> None:
         """
-        Initializes the SPCMonitor with UUIDs for tolerance, actual, and event values.
+        Initializes StatisticalProcessControlRuleBased with UUIDs for tolerance, actual, and event values.
         Inherits the sorted dataframe from the Base class.
 
         Args:
@@ -53,6 +53,17 @@ class StatisticalProcessControlRuleBased(Base):
         df = self.dataframe[self.dataframe["uuid"] == self.tolerance_uuid]
         mean = df[self.value_column].mean()
         sigma = df[self.value_column].std()
+        if not sigma > 0:
+            # Fewer than two tolerance rows (sigma NaN) or a constant signal
+            # (sigma 0): the limits are NaN or collapse onto the mean, so the
+            # Western Electric rules silently never fire (or always fire).
+            logger.warning(
+                "Control limits for uuid %r are degenerate (sigma=%s from %d "
+                "row(s)); rule checks will not be meaningful.",
+                self.tolerance_uuid,
+                sigma,
+                len(df),
+            )
 
         control_limits = {
             "mean": mean,
@@ -513,6 +524,26 @@ class StatisticalProcessControlRuleBased(Base):
 
         tolerance_df = self.dataframe[self.dataframe["uuid"] == self.tolerance_uuid]
         sigma = tolerance_df[self.value_column].std()
+        result_cols = [
+            "systime",
+            self.value_column,
+            "cusum_high",
+            "cusum_low",
+            "shift_direction",
+            "severity",
+            "uuid",
+        ]
+        if not sigma > 0:
+            # sigma NaN (fewer than two rows) or 0 (constant): k*sigma and the
+            # decision interval h*sigma are 0/NaN, which flags every deviation
+            # (or none). Report nothing rather than a wall of false shifts.
+            logger.warning(
+                "CUSUM skipped for uuid %r: tolerance sigma is %s; at least two "
+                "non-constant tolerance values are needed.",
+                self.tolerance_uuid,
+                sigma,
+            )
+            return pd.DataFrame(columns=result_cols)
 
         # Initialize CUSUM statistics
         cusum_high = np.zeros(len(df))
@@ -556,19 +587,7 @@ class StatisticalProcessControlRuleBased(Base):
 
         # Return only rows with detected shifts
         result = df[df["shift_detected"]].copy()
-        result = result[
-            [
-                "systime",
-                self.value_column,
-                "cusum_high",
-                "cusum_low",
-                "shift_direction",
-                "severity",
-                "uuid",
-            ]
-        ]
-
-        return result
+        return result[result_cols]
 
     def interpret_violations(self, violations_df: pd.DataFrame) -> pd.DataFrame:
         """

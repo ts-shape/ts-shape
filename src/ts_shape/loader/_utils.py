@@ -133,3 +133,16 @@ def retry_call(
     raise LoaderError(
         f"{description} failed after {attempts} attempt(s): {last_exc}"
     ) from last_exc
+
+
+def require_optional(obj: object, package: str, extra: str) -> None:
+    """Raise a clear ImportError when an optional backend is not installed.
+
+    ts-shape's core needs only pandas, numpy and scipy; each loader backend
+    lives in an extra (``pip install ts-shape[extra]``).
+    """
+    if obj is None:
+        raise ImportError(
+            f"This loader needs the optional package {package!r}. Install it with "
+            f"`pip install ts-shape[{extra}]` (or `pip install {package}`)."
+        )

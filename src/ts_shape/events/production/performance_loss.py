@@ -140,7 +140,7 @@ class PerformanceLossTracking(Base):
         Returns:
             DataFrame with columns:
             - date, shift, actual_parts, avg_cycle_time_s,
-              target_cycle_time_s, performance_pct, loss_minutes
+                target_cycle_time_s, performance_pct, loss_minutes
         """
         data = self._compute_cycle_times(
             cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
@@ -211,7 +211,7 @@ class PerformanceLossTracking(Base):
         Returns:
             DataFrame with columns:
             - start, end, actual_parts, avg_cycle_time_s,
-              performance_pct, loss_minutes
+                performance_pct, loss_minutes
         """
         data = self._compute_cycle_times(
             cycle_uuid, value_column, max_cycle_gap=max_cycle_gap

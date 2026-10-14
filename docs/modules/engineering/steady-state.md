@@ -25,19 +25,19 @@ detector = SteadyStateDetectionEvents(
 
 # Detect steady-state intervals
 steady = detector.detect_steady_state(
-    window="5m",
+    window="5min",
     std_threshold=1.0,
-    min_duration="10m"
+    min_duration="10min"
 )
 
 # Get transient periods (inverse of steady state)
 transients = detector.detect_transient_periods(
-    window="5m",
+    window="5min",
     std_threshold=1.0
 )
 
 # Identify distinct operating bands within steady state
-bands = detector.steady_state_value_bands(window="5m")
+bands = detector.steady_state_value_bands(window="5min")
 ```
 
 ---
@@ -46,10 +46,10 @@ bands = detector.steady_state_value_bands(window="5m")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_steady_state(window='5m', std_threshold=1.0, min_duration='10m')` | Steady-state intervals | DataFrame of steady intervals |
-| `detect_transient_periods(window='5m', std_threshold=1.0)` | Transient/dynamic intervals | DataFrame of transient intervals |
-| `steady_state_statistics(window='5m')` | Summary statistics | DataFrame with steady-state stats |
-| `steady_state_value_bands(window='5m')` | Distinct operating bands | DataFrame of value bands |
+| `detect_steady_state(window='5min', std_threshold=1.0, min_duration='10min')` | Steady-state intervals | DataFrame of steady intervals |
+| `detect_transient_periods(window='5min', std_threshold=1.0)` | Transient/dynamic intervals | DataFrame of transient intervals |
+| `steady_state_statistics(window='5min')` | Summary statistics | DataFrame with steady-state stats |
+| `steady_state_value_bands(window='5min')` | Distinct operating bands | DataFrame of value bands |
 
 ---
 

@@ -55,31 +55,39 @@ class CycleExtractor(Base):
             f"CycleExtractor initialized with start_uuid: {self.start_uuid} and end_uuid: {self.end_uuid}"
         )
 
-    def process_persistent_cycle(self) -> pd.DataFrame:
-        """Processes cycles where the value of the variable stays true during the cycle."""
-        # Assuming dataframe is pre-filtered
-        cycle_starts = self.df[
-            self.df["value_bool"] == True  # noqa: E712 pandas-series-bool-comparison
-        ]  # noqa: E712 pandas-series-bool-comparison
-        cycle_ends = self.df[
-            self.df["value_bool"] == False  # noqa: E712 pandas-series-bool-comparison
-        ]  # noqa: E712 pandas-series-bool-comparison
+    def _signal_frame(self) -> pd.DataFrame:
+        """Rows of the start signal (all rows when the frame is pre-filtered)."""
+        if "uuid" in self.df.columns and (self.df["uuid"] == self.start_uuid).any():
+            return self.df[self.df["uuid"] == self.start_uuid]
+        return self.df
 
+    @staticmethod
+    def _bool_edges(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Rising (False->True) and falling (True->False) edge rows of value_bool."""
+        state = frame["value_bool"].astype("boolean").fillna(False).astype(bool)
+        prev = state.shift(fill_value=False)
+        return frame[state & ~prev], frame[~state & prev]
+
+    def process_persistent_cycle(self) -> pd.DataFrame:
+        """Processes cycles where the value of the variable stays true during the cycle.
+
+        A cycle starts at a rising edge (False -> True) and ends at the next
+        falling edge (True -> False). Consecutive True samples belong to the
+        same cycle.
+        """
+        cycle_starts, cycle_ends = self._bool_edges(self._signal_frame())
         return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
 
     def process_trigger_cycle(self) -> pd.DataFrame:
-        """Processes cycles where the value of the variable goes from true to false during the cycle."""
-        # Assuming dataframe is pre-filtered
-        cycle_starts = self.df[
-            self.df["value_bool"] == True  # noqa: E712 pandas-series-bool-comparison
-        ]  # noqa: E712 pandas-series-bool-comparison
-        cycle_ends = self.df[
-            self.df["value_bool"] == False  # noqa: E712 pandas-series-bool-comparison
-        ].shift(  # noqa: E712 pandas-series-bool-comparison
-            -1
-        )  # noqa: E712 pandas-series-bool-comparison
+        """Processes cycles triggered by a true pulse (true, then back to false).
 
-        return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
+        Each rising edge (False -> True) starts a cycle that ends at the next
+        rising edge, i.e. the next trigger. The last trigger is incomplete.
+        """
+        cycle_starts, _ = self._bool_edges(self._signal_frame())
+        return self._generate_cycle_dataframe(
+            cycle_starts, cycle_starts, allow_exact_matches=False
+        )
 
     def process_separate_start_end_cycle(self) -> pd.DataFrame:
         """Processes cycles where different variables indicate cycle start and end.
@@ -112,14 +120,23 @@ class CycleExtractor(Base):
                 self.df["value_bool"]  # noqa: E712 pandas-series-bool-comparison
                 == True  # noqa: E712 pandas-series-bool-comparison
             ]  # noqa: E712 pandas-series-bool-comparison
+            # Starts and ends are the same rows: a start must close at the
+            # *next* True, not at itself (which gave zero-length cycles).
+            return self._generate_cycle_dataframe(
+                cycle_starts, cycle_ends, allow_exact_matches=False
+            )
 
         return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
 
     def process_step_sequence(self, start_step: int, end_step: int) -> pd.DataFrame:
         """Processes cycles based on a step sequence, where specific integer values denote cycle start and end."""
-        # Assuming dataframe is pre-filtered
-        cycle_starts = self.df[self.df["value_integer"] == start_step]
-        cycle_ends = self.df[self.df["value_integer"] == end_step]
+        # A step held over several samples is entered once: only the first
+        # sample of each run opens (or closes) a cycle.
+        frame = self._signal_frame()
+        step = frame["value_integer"]
+        entered = step.ne(step.shift())
+        cycle_starts = frame[(step == start_step) & entered]
+        cycle_ends = frame[(step == end_step) & entered]
 
         return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
 
@@ -127,9 +144,11 @@ class CycleExtractor(Base):
         """Processes cycles where the start of a new cycle is the end of the previous cycle."""
         # Assuming dataframe is pre-filtered
         cycle_starts = self.df.copy()
-        cycle_ends = self.df.shift(-1)
 
-        return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
+        # Each row closes at the next row (strictly later), never at itself.
+        return self._generate_cycle_dataframe(
+            cycle_starts, cycle_starts, allow_exact_matches=False
+        )
 
     def process_value_change_cycle(self) -> pd.DataFrame:
         """Processes cycles where a change in the value indicates a new cycle.
@@ -164,27 +183,39 @@ class CycleExtractor(Base):
         cycle_starts = self.df[
             self.df["value_change"] == True  # noqa: E712 pandas-series-bool-comparison
         ]  # noqa: E712 pandas-series-bool-comparison
-        cycle_ends = self.df[
-            self.df["value_change"] == True  # noqa: E712 pandas-series-bool-comparison
-        ].shift(  # noqa: E712 pandas-series-bool-comparison
-            -1
-        )  # noqa: E712 pandas-series-bool-comparison
 
-        return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
+        # Each change closes at the next change (strictly later), never at itself.
+        return self._generate_cycle_dataframe(
+            cycle_starts, cycle_starts, allow_exact_matches=False
+        )
 
     def _generate_cycle_dataframe(
-        self, cycle_starts: pd.DataFrame, cycle_ends: pd.DataFrame
+        self,
+        cycle_starts: pd.DataFrame,
+        cycle_ends: pd.DataFrame,
+        allow_exact_matches: bool = True,
     ) -> pd.DataFrame:
         """Generates a DataFrame with cycle start and end times.
 
         Uses a vectorized merge_asof approach (O(n log n)) instead of a Python
         iterator loop, significantly faster on large datasets.  Tracks incomplete
         cycles and adds an 'is_complete' flag.
+
+        Args:
+            cycle_starts: Rows whose ``systime`` opens a cycle.
+            cycle_ends: Rows whose ``systime`` can close a cycle.
+            allow_exact_matches: If False, a start never closes at an end with
+                the same timestamp (used when starts and ends are the same rows).
         """
+        time_dtype = (
+            self.df["systime"].dtype
+            if "systime" in self.df.columns
+            else pd.Series(dtype="datetime64[ns]").dtype
+        )
         empty = pd.DataFrame(
             {
-                "cycle_start": pd.Series(dtype="datetime64[ns]"),
-                "cycle_end": pd.Series(dtype="datetime64[ns]"),
+                "cycle_start": pd.Series(dtype=time_dtype),
+                "cycle_end": pd.Series(dtype=time_dtype),
                 "cycle_uuid": pd.Series(dtype="string"),
                 "is_complete": pd.Series(dtype="bool"),
             }
@@ -212,7 +243,7 @@ class CycleExtractor(Base):
         ends_raw = (
             cycle_ends["systime"].dropna()
             if "systime" in cycle_ends.columns
-            else pd.Series(dtype="datetime64[ns]")
+            else pd.Series(dtype=time_dtype)
         )
         ends = (
             pd.DataFrame({"cycle_end": ends_raw})
@@ -224,22 +255,22 @@ class CycleExtractor(Base):
             starts["cycle_end"] = pd.NaT
             starts["is_complete"] = False
         else:
-            # For each start, find the nearest end that is >= start (forward match).
-            # merge_asof requires both keys to have the same name; use a temporary key.
+            # For each start, find the nearest end that is >= start (forward
+            # match; strictly > start when allow_exact_matches is False).
+            # merge_asof joins on a shared key name, so the end time is carried
+            # in its own column; otherwise it is lost in the join key.
             starts_keyed = starts.rename(columns={"cycle_start": "_key"})
-            ends_keyed = ends.rename(columns={"cycle_end": "_key"})
+            ends_keyed = ends.assign(_key=ends["cycle_end"])
             merged = pd.merge_asof(
                 starts_keyed,
                 ends_keyed,
                 on="_key",
                 direction="forward",
-                suffixes=("", "_end"),
+                allow_exact_matches=allow_exact_matches,
             )
-            starts["cycle_start"] = merged["_key"].values
-            starts["cycle_end"] = (
-                merged["_key_end"].values if "_key_end" in merged.columns else pd.NaT
-            )
-            # merge_asof forward: unmatched rows have NaT in right key
+            # Assign Series (not .values) so a tz-aware systime keeps its tz.
+            starts["cycle_end"] = merged["cycle_end"]
+            # merge_asof forward: unmatched rows have NaT in the end column
             starts["is_complete"] = starts["cycle_end"].notna()
 
         starts["cycle_uuid"] = [str(uuid.uuid4()) for _ in range(len(starts))]
@@ -285,6 +316,11 @@ class CycleExtractor(Base):
 
         match = re.match(r"^(\d+(?:\.\d+)?)\s*([smhd])$", duration_str.lower().strip())
         if not match:
+            # Anything pandas understands ('5min', '90s', '1h30min', ...).
+            try:
+                return pd.Timedelta(duration_str)
+            except ValueError:
+                pass
             raise ValueError(
                 f"Invalid duration format: '{duration_str}'. Expected format: number followed by s/m/h/d (e.g., '1s', '5m', '1h')"
             )

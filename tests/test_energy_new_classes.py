@@ -398,3 +398,70 @@ class TestCarbonIntensityEvents:
         result = events.emissions_by_window(value_column="value", window="1h")
         assert not result.empty
         assert (result["kgco2e"] > 0).all()
+
+
+class TestEnPIRegressionBaseline:
+    """ISO 50006 regression baseline: energy = a + b * units."""
+
+    @staticmethod
+    def _frame(days=40, improve_from=30, base_load=200.0, slope=2.0):
+        rng = np.random.default_rng(0)
+        rows, count = [], 0
+        start = pd.Timestamp("2024-01-01", tz="UTC")
+        for d in range(days):
+            units = int(rng.integers(50, 300))
+            b = slope * (0.9 if d >= improve_from else 1.0)
+            day = start + pd.Timedelta(days=d)
+            # one interval-energy reading and two counter readings per day
+            rows.append(
+                (day + pd.Timedelta(hours=12), "meter", base_load + b * units, None)
+            )
+            rows.append((day, "counter", None, count))
+            count += units
+            rows.append(
+                (day + pd.Timedelta(hours=23, minutes=59), "counter", None, count)
+            )
+        return pd.DataFrame(
+            rows, columns=["systime", "uuid", "value_double", "value_integer"]
+        )
+
+    def test_volume_normalised_and_detects_lasting_improvement(self):
+        ev = EnergyPerformanceIndicatorEvents(self._frame())
+        out = ev.enpi_vs_baseline(
+            "meter", "counter", baseline="regression", baseline_window=20
+        )
+        assert {"expected_energy_kwh", "energy_savings_kwh"} <= set(out.columns)
+        before, after = out.iloc[:30], out.iloc[30:]
+        # Baseline period: the model explains the load-dependent EnPI exactly.
+        assert before["deviation_pct"].abs().max() < 1e-6
+        assert not before["is_anomaly"].any()
+        # After the 10 % slope improvement: savings on every day, kept.
+        assert (after["energy_savings_kwh"] > 0).all()
+        assert (after["deviation_pct"] < 0).all()
+
+    def test_rolling_baseline_flags_low_output_days(self):
+        # The default rolling baseline reads low-output days as anomalies
+        # (base load per unit), the regression baseline does not.
+        ev = EnergyPerformanceIndicatorEvents(self._frame(improve_from=99))
+        rolling = ev.enpi_vs_baseline("meter", "counter", baseline_window=20)
+        regression = ev.enpi_vs_baseline(
+            "meter", "counter", baseline="regression", baseline_window=20
+        )
+        assert rolling["is_anomaly"].sum() > 0
+        assert regression["is_anomaly"].sum() == 0
+
+    def test_baseline_period_and_validation(self):
+        ev = EnergyPerformanceIndicatorEvents(self._frame())
+        out = ev.enpi_vs_baseline(
+            "meter",
+            "counter",
+            baseline="regression",
+            baseline_period=("2024-01-01", "2024-01-15"),
+        )
+        assert out.iloc[:30]["deviation_pct"].abs().max() < 1e-6
+        with pytest.raises(ValueError, match="baseline must be"):
+            ev.enpi_vs_baseline("meter", "counter", baseline="mean")
+        with pytest.raises(ValueError, match="different production volumes"):
+            ev.enpi_vs_baseline(
+                "meter", "counter", baseline="regression", baseline_window=1
+            )

@@ -101,7 +101,7 @@ class ToleranceDeviationEvents(Base):
         if self.tolerance_lag != "0s":
             lag_timedelta = pd.to_timedelta(self.tolerance_lag)
             df["systime_shifted"] = df["systime"] + lag_timedelta
-            df = df.sort_values(by="systime_shifted", ascending=False)
+            df = df.sort_values(by="systime_shifted", kind="stable")
             df["systime"] = df["systime_shifted"]
             df = df.drop("systime_shifted", axis=1)
         return df
@@ -162,9 +162,11 @@ class ToleranceDeviationEvents(Base):
         """
         df = self.dataframe.copy()  # Inherited from Base class
 
-        # Convert 'systime' to datetime and sort the DataFrame by 'systime' in descending order
+        # Sort chronologically so the forward-fill below hands each measurement
+        # the tolerance most recently set *before* it (a descending sort made
+        # every measurement pick up the next, future tolerance instead).
         df["systime"] = pd.to_datetime(df["systime"])
-        df = df.sort_values(by="systime", ascending=False)
+        df = df.sort_values(by="systime", kind="stable")
 
         if not self.separate_tolerances:
             # Backward compatibility: use single tolerance
@@ -243,13 +245,13 @@ class ToleranceDeviationEvents(Base):
         df = df[self.compare_func(df[self.actual_column], df["tolerance_value"])]
         df["value_bool"] = True  # Assign True in the value_bool column for kept rows
 
-        # Grouping events that are close to each other in terms of time
-        df["group_id"] = (
-            df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
+        # Group the actual signal's events that are close in time. Gaps are
+        # measured on the actual signal only: rows of other uuids in the frame
+        # must not split or merge its events.
+        filtered_df = df[df["uuid"] == self.actual_uuid].copy()
+        filtered_df["group_id"] = (
+            filtered_df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
         ).cumsum()
-
-        # Filter for specific UUID and prepare events DataFrame
-        filtered_df = df[df["uuid"] == self.actual_uuid]
         events_data = []
 
         for group_id in filtered_df["group_id"].unique():
@@ -378,13 +380,13 @@ class ToleranceDeviationEvents(Base):
         df = df[outside_bounds]
         df["value_bool"] = True
 
-        # Grouping events that are close to each other in terms of time
-        df["group_id"] = (
-            df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
+        # Group the actual signal's events that are close in time. Gaps are
+        # measured on the actual signal only: rows of other uuids in the frame
+        # must not split or merge its events.
+        filtered_df = df[df["uuid"] == self.actual_uuid].copy()
+        filtered_df["group_id"] = (
+            filtered_df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
         ).cumsum()
-
-        # Filter for specific UUID and prepare events DataFrame
-        filtered_df = df[df["uuid"] == self.actual_uuid]
         events_data = []
 
         for group_id in filtered_df["group_id"].unique():
@@ -455,9 +457,9 @@ class ToleranceDeviationEvents(Base):
         """
         df = self.dataframe.copy()
         df["systime"] = pd.to_datetime(df["systime"])
-        df = df.sort_values(by="systime", ascending=False)
+        df = df.sort_values(by="systime", kind="stable")
 
-        # Get tolerance limits
+        # Get tolerance limits: the latest setting is the one currently in force.
         if not self.separate_tolerances:
             # Single tolerance case
             tolerance_rows = df[df["uuid"] == self.tolerance_uuid]
@@ -466,9 +468,12 @@ class ToleranceDeviationEvents(Base):
                     f"No tolerance data found for uuid: {self.tolerance_uuid}"
                 )
 
-            tolerance_value = tolerance_rows[self.tolerance_column].iloc[0]
-            usl = tolerance_value  # Upper Specification Limit
-            lsl = tolerance_value  # Lower Specification Limit (same as upper for single tolerance)
+            # A single tolerance is a one-sided upper limit (the default
+            # compare_func flags actual >= tolerance). Using it as both USL and
+            # LSL gave a zero-width spec and Cp == 0 for every process; now Cp/Pp
+            # are undefined (NaN) and Cpk/Ppk are the one-sided upper index.
+            usl = tolerance_rows[self.tolerance_column].iloc[-1]
+            lsl = np.nan
         else:
             # Separate tolerances case
             upper_rows = df[df["uuid"] == self.upper_tolerance_uuid]
@@ -483,8 +488,8 @@ class ToleranceDeviationEvents(Base):
                     f"No lower tolerance data found for uuid: {self.lower_tolerance_uuid}"
                 )
 
-            usl = upper_rows[self.tolerance_column].iloc[0]
-            lsl = lower_rows[self.tolerance_column].iloc[0]
+            usl = upper_rows[self.tolerance_column].iloc[-1]
+            lsl = lower_rows[self.tolerance_column].iloc[-1]
 
         # Get actual measurements
         actual_data = df[df["uuid"] == self.actual_uuid][self.actual_column].dropna()
@@ -498,14 +503,16 @@ class ToleranceDeviationEvents(Base):
         process_mean = actual_data.mean()
         process_std = actual_data.std(ddof=1)  # Sample standard deviation
 
-        if process_std == 0:
+        # NaN (a single measurement) must not slip past the zero check.
+        if not process_std > 0:
             raise ValueError(
-                "Process standard deviation is zero - cannot calculate capability indices"
+                "Process standard deviation is zero or undefined (fewer than two "
+                "measurements) - cannot calculate capability indices"
             )
 
         # Determine target value
         if target_value is None:
-            target_value = (usl + lsl) / 2
+            target_value = usl if pd.isna(lsl) else (usl + lsl) / 2
 
         # Calculate Cp (potential capability)
         cp = (usl - lsl) / (6 * process_std)
@@ -513,7 +520,7 @@ class ToleranceDeviationEvents(Base):
         # Calculate Cpk (actual capability accounting for centering)
         cpu = (usl - process_mean) / (3 * process_std)
         cpl = (process_mean - lsl) / (3 * process_std)
-        cpk = min(cpu, cpl)
+        cpk = cpu if pd.isna(cpl) else min(cpu, cpl)
 
         # For Pp and Ppk, we use the same formulas as Cp and Cpk
         # In practice, Pp/Ppk would use long-term std dev, but without subgroups, we use overall std

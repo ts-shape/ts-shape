@@ -222,9 +222,9 @@ class PeriodSummary(Base):
         Returns:
             DataFrame with columns:
             - week_start, week_end, total_production, daily_avg,
-              production_days, [ok_parts, nok_parts, quality_pct]
+                production_days, [ok_parts, nok_parts, quality_pct]
             - resets: Number of counter resets in the week (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         daily = self._daily_counter(
             counter_uuid, value_column, handle_resets=handle_resets
@@ -340,9 +340,9 @@ class PeriodSummary(Base):
         Returns:
             DataFrame with columns:
             - year, month, total_production, daily_avg,
-              production_days, [ok_parts, nok_parts, quality_pct]
+                production_days, [ok_parts, nok_parts, quality_pct]
             - resets: Number of counter resets in the month (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         daily = self._daily_counter(
             counter_uuid, value_column, handle_resets=handle_resets

@@ -25,16 +25,19 @@ flowchart LR
 Remove out-of-range readings, null values, and threshold violations.
 
 ```python
-from ts_shape.transform.filter.numeric_filter import NumericFilter
+from ts_shape.transform.filter.numeric_filter import DoubleFilter, IntegerFilter
 
-# Keep values within valid sensor range
-df = NumericFilter.filter_value_in_range(df, "value_double", min_value=0, max_value=100)
+# Keep values within valid sensor range (inclusive)
+df = DoubleFilter.filter_value_double_between(df, "value_double", min_value=0, max_value=100)
 
 # Remove null readings
-df = NumericFilter.filter_not_null(df, "value_double")
+df = DoubleFilter.filter_nan_value_double(df, "value_double")
 
-# Keep values above alarm threshold
-df = NumericFilter.filter_greater_than(df, "value_double", threshold=50)
+# Integer codes, e.g. a state signal
+df = IntegerFilter.filter_value_integer_between(df, "value_integer", min_value=1, max_value=4)
+
+# Anything else: plain pandas
+df = df[df["value_double"] > 50]
 ```
 
 ---
@@ -46,14 +49,21 @@ Isolate data to specific production periods, shifts, or analysis windows.
 ```python
 from ts_shape.transform.filter.datetime_filter import DateTimeFilter
 
-# Filter to specific production period
-df = DateTimeFilter.filter_between(df, "systime", "2024-01-01", "2024-01-31")
+# Filter to specific production period (naive bounds use the column's tz)
+df = DateTimeFilter.filter_between_dates(
+    df, "systime", "2024-01-01", "2024-01-31", inclusive="both"
+)
 
 # Keep only data after commissioning date
-df = DateTimeFilter.filter_after(df, "systime", "2024-06-01")
+df = DateTimeFilter.filter_after_date(df, "systime", "2024-06-01")
 
-# Filter to production hours only (skip nights/weekends)
-df = DateTimeFilter.filter_by_hour_range(df, "systime", start_hour=6, end_hour=22)
+# Down to the second
+df = DateTimeFilter.filter_between_datetimes(
+    df, "systime", "2024-06-03 06:00:00", "2024-06-03 22:00:00"
+)
+
+# Production hours only: plain pandas on the hour
+df = df[df["systime"].dt.hour.between(6, 21)]
 ```
 
 ---
@@ -66,13 +76,13 @@ Filter signals by UUID, machine name, or any string column.
 from ts_shape.transform.filter.string_filter import StringFilter
 
 # Single signal
-df = StringFilter.filter_equals(df, "uuid", "temperature")
+df = StringFilter.filter_value_string_match(df, "temperature", column_name="uuid")
 
 # Pattern match (all sensors on line 1)
-df = StringFilter.filter_contains(df, "uuid", "line_1_")
+df = StringFilter.filter_string_contains(df, "line_1_", column_name="uuid")
 
-# Specific signal list
-df = StringFilter.filter_in_list(df, "uuid", ["temp_1", "temp_2", "temp_3"])
+# Specific signal list: plain pandas
+df = df[df["uuid"].isin(["temp_1", "temp_2", "temp_3"])]
 ```
 
 ---
@@ -121,16 +131,16 @@ df = TimezoneShift.shift_timezone(
 Compute rolling averages, differences, and normalized values.
 
 ```python
-from ts_shape.transform.calculator.numeric_calc import NumericCalc
+from ts_shape.transform.calculator.numeric_calc import IntegerCalc
 
-# Rolling average (smooth noisy signals)
-df = NumericCalc.add_rolling_mean(df, "value_double", window=10)
+# Raw counts to engineering units: value * 0.1 + 4
+df = IntegerCalc.scale_column(df, "value_integer", factor=0.1)
+df = IntegerCalc.offset_column(df, "value_integer", offset_value=4)
 
-# Rate of change
-df = NumericCalc.add_diff(df, "value_double")
-
-# Normalize to 0-1 scale
-df = NumericCalc.normalize(df, "value_double")
+# Rolling average and rate of change: plain pandas, per signal
+g = df.sort_values("systime").groupby("uuid")["value_double"]
+df["rolling_mean"] = g.transform(lambda s: s.rolling(10, min_periods=1).mean())
+df["diff"] = g.diff()
 ```
 
 ---

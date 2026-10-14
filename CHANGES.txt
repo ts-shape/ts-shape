@@ -1,3 +1,160 @@
+# October 14, 2026
+add: ChangePointEvents (events/quality/change_point.py) -- offline
+  change-point detection: exact PELT (Killick et al. 2012) and binary
+  segmentation in plain numpy, Gaussian mean or mean+variance costs, BIC
+  penalty; detect_change_points (point) and segment_statistics (interval).
+add: MultivariateSPCEvents (events/quality/multivariate_spc.py) -- Hotelling
+  T² with Phase I (beta) and Phase II (F) limits on a reference period,
+  per-variable contributions, and out-of-control runs with the top
+  contributor. Signals aligned backward with an optional max_gap.
+fix: Gauge R&R follows the AIAG average-and-range method: AV subtracts the
+  repeatability share EV^2/(n*r) (a negative radicand gives AV = 0), and AV
+  and PV use K2/K3 = 1/d2* (g = 1) instead of the large-sample d2. Before,
+  AV and PV were overstated (2 appraisers: by 25 %), and so were GRR and
+  %GRR. Checked against the AIAG worksheet constants.
+add: EnergyPerformanceIndicatorEvents.enpi_vs_baseline(baseline="regression")
+  -- ISO 50006 energy baseline energy = a + b*units fitted on a fixed
+  baseline period (baseline_period= or the first baseline_window windows);
+  adds expected_energy_kwh and energy_savings_kwh. Default unchanged.
+docs: every page now shows only names that exist (NumericFilter,
+  OutlierDetection, MetadataLoader, S3ProxyParquetLoader, NumericCalc and
+  wrong module paths replaced with the real API); tests/docs checks every
+  ts_shape import and attribute in the docs' code blocks. CI builds the docs
+  with mkdocs build --strict (38 warnings fixed). Python 3.14 classifier;
+  README and the development guide describe the real CI/release pipeline.
+fix: eventlog static-shape event ids hashed the export time, so re-exporting
+  the same detector output gave different ocel:eid values; they are now
+  stable (ported from the open PR #60).
+add: ts_shape.eventlog.describe("Class.method"), has_override() and
+  clear_overrides(); severity is coerced to the info/warn/critical
+  vocabulary (low/minor -> info, medium/major/warning -> warn,
+  high/alarm/error -> critical; anything else warns and becomes <NA>).
+add: ts_shape.signals -- SignalSpec / SignalSpecs (dict/YAML round trip),
+  infer_specs() with per-field reasons, and spec-driven primitives:
+  intervals, increments, per_window, align, windows, shift_windows.
+add: ts_shape.profile(df) -- per-signal data-quality and semantics report
+  (gaps, resets, duplicates, NaT, missing values, mixed value columns,
+  change-encoded and possibly-stuck signals) with .summary() / .issues().
+add: recovered unmerged work from earlier sessions:
+  AssetHealthIndexEvents, ProductionScheduleAdherenceEvents,
+  RootCauseCorrelationEvents (Aug 10 entry below), PowerIntegrator
+  (Aug 20 entry below), and the four inline-metrology quality modules
+  MeasurementUncertaintyEvents (GUM type A/B, combined/expanded uncertainty,
+  budget), EnvironmentalCompensationEvents (correlation, sensitivity,
+  compensation, exceedance), CalibrationValidationEvents (linearity,
+  calibration curve, recalibration need, stability) and
+  SamplingResolutionEvents (quantization, effective resolution, aliasing,
+  jitter). All are registered in the taxonomy and covered by the
+  invariant harness (260 methods).
+fix: PowerIntegrator daily windows on DST days (23 h / 25 h) and
+  AssetHealthIndexEvents.maintenance_forecast timezone.
+build: lean core install (pandas, numpy, scipy); loader backends are the
+  extras [s3], [azure], [api], [sql], [postgres], [yaml], [all].
+add: specs= on MachineStateEvents and DowntimeTracking (defaults follow the
+  signal's spec; explicit arguments win).
+add: registry-wide invariant harness (tests/invariants) pinned to a ratchet
+  baseline, and hypothesis property tests for the primitives.
+fix: 36 frequency defaults such as window="5m" crashed resample on pandas 3
+  ('m' is no longer an offset); now "5min". CycleExtractor durations accept
+  any pandas duration string.
+fix: OEECalculator daily summaries are tz-aware with real day lengths
+  (23 h / 25 h on DST days); BottleneckDetectionEvents, warmup_consistency and
+  demand spikes keep the timezone.
+fix: MachineStateEvents accepts an empty frame; ToleranceDeviationEvents groups
+  events on the actual signal only (other uuids split or merged them).
+
+# October 13, 2026
+Weekly screen of the non-production packs (see docs/gap_screening_other_packs.md).
+fix: CycleExtractor -- every process_* method returned cycle_end=NaT and
+  is_complete=False; cycles now open on rising edges / step entries, never
+  close at themselves, keep a tz-aware systime and ignore other uuids.
+fix: ToleranceDeviationEvents applied each measurement the next (future)
+  tolerance; capability indices use the latest limits, a single tolerance is
+  one-sided, and one measurement raises.
+fix: ControlLoopHealthEvents / DisturbanceRecoveryEvents align PV with the
+  setpoint in force (backward as-of) instead of SP-left / nearest.
+fix: FailurePredictionEvents.remaining_useful_life no longer reports RUL 0 for a
+  trend moving away from the threshold; NaN samples are skipped.
+fix: LeadTimeAnalysisEvents matches deliveries by order id when present.
+fix: EnergyEfficiencyEvents.efficiency_comparison summed raw counter readings.
+fix: tz-aware systime is preserved across quality/engineering/maintenance/
+  supplychain events (no more naive-UTC .values); DateTimeFilter accepts naive
+  bounds on tz-aware columns.
+fix: MaterialBalanceEvents reported a zero-input window with output as balanced.
+fix: OutlierDetectionEvents -- zscore ignores NaN, MAD=0 falls back to mean
+  absolute deviation, IsolationForest skips NaN.
+fix: SPC CUSUM with sigma 0/NaN returns no shifts (warning); steady-state
+  windows with <2 samples are no longer "steady"; demand empty periods are not
+  zero demand and calendar periods work in seasonality_summary.
+fix: setpoint oscillation crossings through an exact zero counted once;
+  detect_startup_adaptive no longer flags a flat idle signal; track_startup_phases
+  advances through non-overlapping phases.
+add: opt-in handle_resets (energy per-unit/EnPI/carbon/SEC, TimeGroupedStatistics
+  'diff'), handle_refills (inventory consumption_rate), interval_end="next_change"
+  (threshold, signal quality, degradation, vibration, steady state, segments, low
+  stock, correlation breakdown, time_above_threshold), time_weighted (material
+  balance, idle energy), max_gap (error_integrals), missing_as_zero (material
+  balance), group_by_uuid (outlier detection, boolean/string edge filters,
+  TimeGroupedStatistics), inclusive (DateTimeFilter), ambiguous/nonexistent
+  (TimezoneShift). Defaults unchanged.
+add: helpers utils.counters.counter_per_window, utils.intervals.interval_end_times,
+  utils.time_weighted.time_weighted_resample.
+add: Base warns (DataQualityWarning) on NaT timestamps.
+fix: data_completeness / coverage_by_period use each window's real length (DST
+  days are 23 h / 25 h); auto min_gap ignores duplicate timestamps.
+fix: lag_correlation / rolling_correlation lag and window in time on the
+  regular grid instead of rows after dropna().
+fix: detect_flatline starts a run at its first stuck sample; opt-in
+  interval_end="next_change" for deadband historians.
+fix: GaugeRepeatabilityEvents.repeatability uses within operator x part ranges
+  when operator_column is set.
+fix: overshoot_metrics undershoot is measured after the setpoint is reached.
+add: detect_warmup / detect_cooldown max_pause; detect_startup_adaptive
+  baseline_window is now honoured (default None keeps the sample lookback).
+# August 20, 2026
+add: PowerIntegrator (ts_shape.transform.calculator.power_integration) --
+  the missing kW -> kWh step. The events.energy detectors aggregate their
+  input with sum(), i.e. they assume energy deltas in kWh; feeding an
+  instantaneous active-power tag (e.g. *.Total_Active_Power-kW) in directly
+  produced a number that scaled with the logging rate rather than with
+  consumption, and a plain mean() was a sample-count average that over-weighted
+  bursts. PowerIntegrator.energy_by_window integrates properly -- each sample
+  weighted by how long it was valid, segments split at window boundaries
+  (a hold from 00:55 to 01:05 books 5 minutes to each hour), locf or linear
+  interpolation, max_gap to drop logging outages instead of billing phantom
+  energy, power_unit for W/kW/MW tags, and per-signal integration before
+  summing (energy adds across machines, power does not). Reports coverage per
+  window and omits unmeasured windows rather than reporting them as 0 kWh.
+  to_energy_deltas emits the result in the standard ts-shape schema so the
+  energy pack can consume it; segment_energy exposes the per-sample audit
+  trail. Exported at the top level as ts_shape.PowerIntegrator.
+
+# August 10, 2026
+add: AssetHealthIndexEvents (events.maintenance.asset_health_index) -- fuses
+  several degradation signals into one weighted 0-100 asset health index using
+  the same drift/variance/trend penalty model as
+  DegradationDetectionEvents.health_score. health_index reports the dominant
+  failure mode and a confidence level (share of configured signal weight that
+  had data); health_events emits warning/critical crossings; signal_contributions
+  ranks the signals by the health they cost the asset; maintenance_forecast
+  extrapolates to a critical threshold and withholds a date when the trend fit
+  is weaker than min_confidence. Closes gap 3.1 of the manufacturing-operations
+  research doc.
+add: ProductionScheduleAdherenceEvents (events.production.schedule_adherence) --
+  joins a planned schedule (start/end/planned_qty/order_id) against actual
+  production from a monotonic counter. adherence_by_period reports adherence %,
+  deviation units, an ahead/on_track/behind/critical_behind band, and the
+  units/hour needed to recover in the time left in the period; deviation_events
+  emits the breaches; adherence_summary rolls the horizon up weighted by planned
+  quantity. Actuals are reset-aware by default (handle_resets=True).
+add: RootCauseCorrelationEvents (events.correlation.root_cause_correlation) --
+  directed, event-driven counterpart to AnomalyCorrelationEvents: takes another
+  detector's events and ranks candidate signals by lagged correlation with the
+  event onsets. Only non-negative lags are searched (a cause precedes its
+  effect) and the winning lag's p-value is Bonferroni-corrected for the lag
+  scan, so noise scanned over many lags is not promoted to a root cause.
+  rank_causes / top_cause / lag_profile.
+
 # July 31, 2026
 add: OEECalculator.calculate_oee now threads handle_resets to its performance
   and quality components and max_gap to its availability/performance components.

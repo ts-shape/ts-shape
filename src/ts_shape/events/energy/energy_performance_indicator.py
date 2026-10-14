@@ -4,6 +4,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_per_window
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate energy per unit produced (EnPI) for each time window.
 
@@ -62,6 +64,10 @@ class EnergyPerformanceIndicatorEvents(Base):
             energy_column: Column containing energy readings.
             counter_column: Column containing counter readings.
             window: Aggregation window (e.g. '1D', '1h', '1W').
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, source_uuid, is_delta,
@@ -73,6 +79,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             energy_column=energy_column,
             counter_column=counter_column,
             window=window,
+            handle_resets=handle_resets,
         )
         empty_cols = [
             "start",
@@ -106,10 +113,28 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
         baseline_window: int = 30,
         deviation_threshold: float = 0.1,
+        baseline: str = "rolling",
+        baseline_period: tuple[str | pd.Timestamp, str | pd.Timestamp] | None = None,
     ) -> pd.DataFrame:
-        """Compare current EnPI against a rolling baseline.
+        """Compare current EnPI against a baseline.
+
+        ``baseline="rolling"`` (default) compares each window with the mean
+        EnPI of the preceding ``baseline_window`` windows (itself included).
+        A rolling baseline drifts with the process, so it never shows a
+        lasting improvement, and kWh/unit is biased by load: a fixed base
+        load makes EnPI look worse whenever output is low.
+
+        ``baseline="regression"`` is the ISO 50006 energy baseline: fit
+        ``energy = a + b * units`` on a fixed baseline period, then compare
+        each window's energy with what the model expects for its output.
+        ``baseline_enpi`` is that expected energy per unit and
+        ``deviation_pct`` is ``(actual - expected) / expected`` energy, so
+        the comparison is normalised for production volume. Two columns are
+        added: ``expected_energy_kwh`` and ``energy_savings_kwh``
+        (``expected - actual``; its cumulative sum is the CUSUM of savings).
 
         Args:
             meter_uuid: Identifier of the energy meter signal.
@@ -119,6 +144,14 @@ class EnergyPerformanceIndicatorEvents(Base):
             window: Aggregation window.
             baseline_window: Number of windows for rolling baseline.
             deviation_threshold: Fractional deviation to flag as anomaly (0.1 = 10%).
+            baseline: ``"rolling"`` or ``"regression"`` (see above).
+            baseline_period: ``(start, end)`` of the regression baseline
+                period, end exclusive. Default: the first
+                ``baseline_window`` windows.
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, source_uuid, enpi, baseline_enpi,
@@ -130,6 +163,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             energy_column=energy_column,
             counter_column=counter_column,
             window=window,
+            handle_resets=handle_resets,
         )
         empty_cols = [
             "start",
@@ -141,17 +175,38 @@ class EnergyPerformanceIndicatorEvents(Base):
             "is_anomaly",
             "trend",
         ]
+        if baseline not in ("rolling", "regression"):
+            raise ValueError(
+                f"baseline must be 'rolling' or 'regression', got {baseline!r}"
+            )
+        if baseline == "regression":
+            empty_cols = empty_cols + ["expected_energy_kwh", "energy_savings_kwh"]
         if base.empty or len(base) < 2:
             return pd.DataFrame(columns=empty_cols)
 
-        base["baseline_enpi"] = (
-            base["enpi"].rolling(window=baseline_window, min_periods=1).mean()
-        )
-        base["deviation_pct"] = np.where(
-            base["baseline_enpi"] > 0,
-            (base["enpi"] - base["baseline_enpi"]) / base["baseline_enpi"],
-            0.0,
-        )
+        if baseline == "regression":
+            expected = self._regression_baseline(base, baseline_window, baseline_period)
+            base["expected_energy_kwh"] = expected
+            base["energy_savings_kwh"] = expected - base["energy_kwh"]
+            base["baseline_enpi"] = np.where(
+                base["units_produced"] > 0,
+                expected / base["units_produced"].where(base["units_produced"] > 0),
+                np.nan,
+            )
+            base["deviation_pct"] = np.where(
+                expected > 0,
+                (base["energy_kwh"] - expected) / np.where(expected > 0, expected, 1),
+                0.0,
+            )
+        else:
+            base["baseline_enpi"] = (
+                base["enpi"].rolling(window=baseline_window, min_periods=1).mean()
+            )
+            base["deviation_pct"] = np.where(
+                base["baseline_enpi"] > 0,
+                (base["enpi"] - base["baseline_enpi"]) / base["baseline_enpi"],
+                0.0,
+            )
         base["is_anomaly"] = base["deviation_pct"].abs() > deviation_threshold
 
         # Trend: sign of rolling average slope over last few periods
@@ -164,6 +219,35 @@ class EnergyPerformanceIndicatorEvents(Base):
         )
         return base[empty_cols]
 
+    @staticmethod
+    def _regression_baseline(
+        base: pd.DataFrame,
+        baseline_window: int,
+        baseline_period: tuple[str | pd.Timestamp, str | pd.Timestamp] | None,
+    ) -> np.ndarray:
+        """Expected energy per window from ``energy = a + b * units``."""
+        if baseline_period is None:
+            ref = base.iloc[:baseline_window]
+        else:
+            start = pd.Timestamp(baseline_period[0])
+            end = pd.Timestamp(baseline_period[1])
+            tz = getattr(base["start"].dt, "tz", None)
+            if tz is not None:
+                start = start.tz_localize(tz) if start.tzinfo is None else start
+                end = end.tz_localize(tz) if end.tzinfo is None else end
+            ref = base[(base["start"] >= start) & (base["start"] < end)]
+        x = ref["units_produced"].to_numpy(dtype=float)
+        y = ref["energy_kwh"].to_numpy(dtype=float)
+        ok = np.isfinite(x) & np.isfinite(y)
+        x, y = x[ok], y[ok]
+        if len(x) < 2 or np.ptp(x) == 0:
+            raise ValueError(
+                "regression baseline needs at least two baseline windows with "
+                "different production volumes"
+            )
+        slope, intercept = np.polyfit(x, y, 1)
+        return intercept + slope * base["units_produced"].to_numpy(dtype=float)
+
     def enpi_by_hierarchy(
         self,
         meter_uuids: list[str],
@@ -172,6 +256,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Calculate EnPI per meter for cross-area comparison.
 
@@ -185,6 +270,10 @@ class EnergyPerformanceIndicatorEvents(Base):
             energy_column: Column containing energy readings.
             counter_column: Column containing counter readings.
             window: Aggregation window.
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, meter_uuid, energy_kwh, units_produced, enpi
@@ -197,6 +286,7 @@ class EnergyPerformanceIndicatorEvents(Base):
                 energy_column=energy_column,
                 counter_column=counter_column,
                 window=window,
+                handle_resets=handle_resets,
             )
             if not df.empty:
                 df = df.rename(columns={"source_uuid": "meter_uuid"})
@@ -239,6 +329,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_column: str,
         counter_column: str,
         window: str,
+        handle_resets: bool = False,
     ) -> "tuple[pd.DataFrame, pd.DataFrame]":
         """Resample energy and counter to window, return as two indexed DataFrames."""
         energy_raw = (
@@ -264,11 +355,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy_agg = (
             energy_idx[energy_column].resample(window).sum().to_frame("energy_kwh")
         )
-        counter_agg = (
-            counter_idx[counter_column]
-            .resample(window)
-            .agg(lambda x: max(x.max() - x.min(), 0) if len(x) > 1 else 0)
-            .to_frame("units_produced")
-        )
+        counter_agg = counter_per_window(
+            counter_idx[counter_column], window, handle_resets=handle_resets
+        ).to_frame("units_produced")
 
         return energy_agg, counter_agg

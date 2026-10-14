@@ -33,7 +33,7 @@ class LineThroughputEvents(Base):
         counter_uuid: str,
         *,
         value_column: str = "value_integer",
-        window: str = "1m",
+        window: str = "1min",
         handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Compute parts per window for a counter uuid.

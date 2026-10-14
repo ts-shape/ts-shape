@@ -12,6 +12,7 @@ for the few detectors whose legacy schema does not fit any standard shape.
 from __future__ import annotations
 
 import uuid as _uuid
+import warnings
 from collections.abc import Callable, Mapping
 
 import pandas as pd
@@ -49,11 +50,45 @@ def get_override(class_name: str, method_name: str) -> AdapterFn | None:
     return _OVERRIDES.get((class_name, method_name))
 
 
+def has_override(class_name: str, method_name: str) -> bool:
+    """Return True iff a custom adapter is registered for ``(class, method)``."""
+    return (class_name, method_name) in _OVERRIDES
+
+
+def clear_overrides(
+    class_name: str | None = None,
+    method_name: str | None = None,
+) -> None:
+    """Remove registered override(s).
+
+    * No arguments: clear every registration (typical test teardown).
+    * Both arguments: clear that specific ``(class, method)`` only.
+    * Class name only: clear every override on that class.
+
+    Has no effect if the targeted entries are already absent.
+    """
+    if class_name is None and method_name is None:
+        _OVERRIDES.clear()
+        return
+    if class_name is not None and method_name is not None:
+        _OVERRIDES.pop((class_name, method_name), None)
+        return
+    if class_name is not None:
+        for key in [k for k in _OVERRIDES if k[0] == class_name]:
+            _OVERRIDES.pop(key, None)
+        return
+    raise ValueError("pass class_name when method_name is given")
+
+
 # ----------------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------------
 
 _NAMESPACE = _uuid.UUID("8a4d3f1c-9b2e-4d3a-8f1e-c0ffee123456")
+
+
+# Hash input for the eid of ``static`` shape rows (see ``adapt``).
+_STATIC_EID_SENTINEL = pd.Timestamp("1970-01-01T00:00:00", tz="UTC")
 
 
 def _eid(detector: str, ts: pd.Timestamp, key: str) -> str:
@@ -227,13 +262,40 @@ def _value_series(legacy: pd.DataFrame, rule: LabelRule) -> pd.Series:
     return pd.Series([float("nan")] * len(legacy), dtype="float64")
 
 
+_SEVERITY_VOCABULARY = ("info", "warn", "critical")
+# Detector vocabularies mapped onto the canonical three levels.
+_SEVERITY_ALIASES = {
+    "warning": "warn",
+    "low": "info",
+    "minor": "info",
+    "medium": "warn",
+    "major": "warn",
+    "high": "critical",
+    "alarm": "critical",
+    "error": "critical",
+}
+
+
 def _severity_series(legacy: pd.DataFrame, rule: LabelRule) -> pd.Series:
     if rule.severity_field and rule.severity_field in legacy.columns:
         col = legacy[rule.severity_field]
-        return col.map(_classify_severity).astype("string")
-    if "severity" in legacy.columns:
-        return legacy["severity"].map(_classify_severity).astype("string")
-    return pd.Series([pd.NA] * len(legacy), dtype="string")
+    elif "severity" in legacy.columns:
+        col = legacy["severity"]
+    else:
+        return pd.Series([pd.NA] * len(legacy), dtype="string")
+    out = col.map(_classify_severity).astype("string").str.lower()
+    out = out.replace(_SEVERITY_ALIASES)
+    unknown = out.notna() & ~out.isin(_SEVERITY_VOCABULARY)
+    if unknown.any():
+        bad = sorted(set(out[unknown].astype(str)))[:5]
+        warnings.warn(
+            "severity column contains values outside "
+            f"{_SEVERITY_VOCABULARY}: {bad}; they are set to <NA>",
+            UserWarning,
+            stacklevel=3,
+        )
+        out = out.mask(unknown)
+    return out
 
 
 def _apply_standard_attrs(
@@ -334,9 +396,12 @@ def adapt(
         "string"
     )
 
-    # Build canonical event ids.
+    # Build canonical event ids. Static rows carry "now" as their visible
+    # timestamp; hashing that made every re-export produce new eids, so they
+    # hash a fixed sentinel instead (same input -> same eids).
+    eid_ts = pd.Series([_STATIC_EID_SENTINEL] * n) if rule.shape == "static" else ts_end
     eids = pd.Series(
-        [_eid(detector, ts_end.iloc[i], f"{i}|{activities.iloc[i]}") for i in range(n)],
+        [_eid(detector, eid_ts.iloc[i], f"{i}|{activities.iloc[i]}") for i in range(n)],
         dtype="string",
     )
 

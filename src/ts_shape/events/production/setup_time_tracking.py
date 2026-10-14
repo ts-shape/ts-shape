@@ -278,7 +278,7 @@ class SetupTimeTracking(Base):
         Returns:
             DataFrame (single row) with columns:
             - total_setups, total_minutes, avg_minutes, median_minutes,
-              std_minutes, pct_of_available_time
+                std_minutes, pct_of_available_time
         """
         intervals = self._extract_setup_intervals(state_uuid, setup_value, value_column)
         if intervals.empty:

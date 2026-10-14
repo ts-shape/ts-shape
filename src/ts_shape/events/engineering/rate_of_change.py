@@ -57,7 +57,9 @@ class RateOfChangeEvents(Base):
         sig["rate"] = value_diff / time_diff.replace(0, np.nan)
         return sig.dropna(subset=["rate"])
 
-    def detect_rapid_change(self, threshold: float, window: str = "1m") -> pd.DataFrame:
+    def detect_rapid_change(
+        self, threshold: float, window: str = "1min"
+    ) -> pd.DataFrame:
         """Flag intervals where rate of change exceeds threshold.
 
         Args:
@@ -161,7 +163,7 @@ class RateOfChangeEvents(Base):
 
         events: list[dict[str, Any]] = []
         values = sig[self.value_column].values
-        times = sig[self.time_column].values
+        times = sig[self.time_column].array
 
         for i in range(1, len(values)):
             delta = values[i] - values[i - 1]

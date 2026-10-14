@@ -17,6 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering",
     "Typing :: Typed",
@@ -24,11 +25,7 @@ classifiers = [
 dependencies = [
     "pandas>=2.1.0",
     "scipy>=1.13.1",
-    "s3fs>=2024.10.0",
     "numpy>=1.26.4",
-    "requests>=2.32.3",
-    "sqlalchemy>=2.0.32",
-    "azure-storage-blob>=12.19.1",
 ]
 
 [project.urls]
@@ -37,11 +34,32 @@ Repository = "https://github.com/ts-shape/ts-shape"
 "Bug Tracker" = "https://github.com/ts-shape/ts-shape/issues"
 
 [project.optional-dependencies]
+# Loader backends. The analytics core needs only pandas, numpy and scipy.
+s3 = [
+    "s3fs>=2024.10.0",
+]
 azure = [
     "azure-storage-blob>=12.19.1",
 ]
+api = [
+    "requests>=2.32.3",
+]
+sql = [
+    "sqlalchemy>=2.0.32",
+]
 postgres = [
+    "sqlalchemy>=2.0.32",
     "psycopg2-binary>=2.9.9",
+]
+yaml = [
+    "pyyaml>=6.0",
+]
+all = [
+    "s3fs>=2024.10.0",
+    "azure-storage-blob>=12.19.1",
+    "requests>=2.32.3",
+    "sqlalchemy>=2.0.32",
+    "pyyaml>=6.0",
 ]
 docs = [
     "mkdocs>=1.5",
@@ -53,8 +71,10 @@ docs = [
     "black==26.3.1",
 ]
 dev = [
+    "ts_shape[all]",
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "hypothesis>=6.100",
     "black==26.3.1",
     "ruff==0.15.8",
     "pre-commit>=3.0",

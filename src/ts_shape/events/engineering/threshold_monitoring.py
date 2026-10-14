@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,11 @@ class ThresholdMonitoringEvents(Base):
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
     def multi_level_threshold(
-        self, levels: dict[str, float], direction: str = "above"
+        self,
+        levels: dict[str, float],
+        direction: str = "above",
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """Detect intervals where signal exceeds configurable threshold levels.
 
@@ -52,6 +57,11 @@ class ThresholdMonitoringEvents(Base):
             levels: Dict mapping level names to threshold values.
                     e.g. {'warning': 80, 'alarm': 90, 'critical': 95}
             direction: 'above' or 'below'.
+            interval_end: ``"last_sample"`` (default) ends an interval at its
+                last flagged sample. ``"next_change"`` ends it at the next sample
+                (the transition), so change-encoded signals -- one row per change --
+                no longer collapse to zero-length intervals. See
+                :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start_time, end_time, duration, level, peak_value.
@@ -72,6 +82,7 @@ class ThresholdMonitoringEvents(Base):
         )
 
         all_events: list[dict[str, Any]] = []
+        ends = interval_end_times(sig[self.time_column], interval_end)
 
         for level_name, threshold in sorted_levels:
             if direction == "above":
@@ -88,7 +99,7 @@ class ThresholdMonitoringEvents(Base):
                 if not seg_exc.iloc[0]:
                     continue
                 start = seg[self.time_column].iloc[0]
-                end = seg[self.time_column].iloc[-1]
+                end = ends.loc[seg.index[-1]]
                 peak = float(
                     seg[self.value_column].max()
                     if direction == "above"
@@ -133,7 +144,7 @@ class ThresholdMonitoringEvents(Base):
             .reset_index(drop=True)
         )
         values = sig[self.value_column].values
-        times = sig[self.time_column].values
+        times = sig[self.time_column].array
 
         events: list[dict[str, Any]] = []
         in_alarm = False
@@ -178,13 +189,23 @@ class ThresholdMonitoringEvents(Base):
         )
 
     def time_above_threshold(
-        self, threshold: float, window: str = "1h"
+        self,
+        threshold: float,
+        window: str = "1h",
+        *,
+        interval_end: str = "last_sample",
     ) -> pd.DataFrame:
         """Per window: total time and percentage above threshold.
 
         Args:
             threshold: Value threshold.
             window: Resample window.
+            interval_end: ``"last_sample"`` (default) estimates the time as the
+                fraction of *samples* above the threshold times the window
+                length, which is only right for uniform sampling.
+                ``"next_change"`` holds each value until the next sample and
+                measures the real time above the threshold inside each window
+                (``pct_above`` is relative to the window length).
 
         Returns:
             DataFrame with columns: start, time_above, pct_above, exceedance_count.
@@ -206,6 +227,14 @@ class ThresholdMonitoringEvents(Base):
             exceedance_count=("enter_above", "sum"),
             sample_count=("above", "count"),
         )
+        if interval_end not in INTERVAL_END_MODES:
+            raise ValueError(
+                f"interval_end must be one of {INTERVAL_END_MODES}, got {interval_end!r}"
+            )
+        if interval_end == "next_change":
+            resampled["above_frac"] = self._time_weighted_above_fraction(
+                sig["above"], resampled.index, window_td
+            )
 
         events: list[dict[str, Any]] = []
         for ts, row in resampled.iterrows():
@@ -225,6 +254,26 @@ class ThresholdMonitoringEvents(Base):
         return (
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
+
+    @staticmethod
+    def _time_weighted_above_fraction(
+        above: pd.Series, window_starts: pd.Index, window_td: pd.Timedelta
+    ) -> list[float]:
+        """Fraction of each window spent above, holding values to the next sample."""
+        times = above.index.to_series().reset_index(drop=True)
+        seg_end = times.shift(-1).fillna(times)
+        flags = above.reset_index(drop=True).astype(bool)
+        starts, stops = times[flags], seg_end[flags]
+        fractions: list[float] = []
+        for w_start in window_starts:
+            w_end = w_start + window_td
+            overlap = (
+                stops.clip(upper=w_end) - starts.clip(lower=w_start)
+            ).dt.total_seconds()
+            fractions.append(
+                float(overlap.clip(lower=0).sum()) / window_td.total_seconds()
+            )
+        return fractions
 
     def threshold_exceedance_trend(
         self, threshold: float, window: str = "1D"

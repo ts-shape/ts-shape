@@ -210,7 +210,7 @@ class MultiProcessTraceabilityEvents(Base):
             - sample_count: Number of data points.
             - step_sequence: Visit order per item (1-based, by start time).
             - is_parallel: True if this interval overlaps with another
-              station for the same item.
+                station for the same item.
             - uuid: Event UUID.
         """
         all_intervals: list[pd.DataFrame] = []

@@ -7,6 +7,9 @@ site_dir: "site"
 copyright: Copyright &copy; 2024 Jakob Gabriel
 edit_uri: edit/main/docs/
 
+not_in_nav: |
+  /reference/index.md
+
 validation:
   omitted_files: warn
   absolute_links: warn
@@ -18,6 +21,10 @@ nav:
   - Concept: concept.md
   - Migration & Deprecations: migration.md
   - Changelog: changelog.md
+  - Roadmap: roadmap.md
+  - Gap screening (production): production_gap_screening.md
+  - Gap screening (other packs): gap_screening_other_packs.md
+  - Manufacturing operations research: research/manufacturing-operations-research.md
   - License: license.md
 - Getting Started:
   - Installation: user_guide/installation.md
@@ -26,6 +33,7 @@ nav:
   - Overview: guides/index.md
   - Architecture: guides/architecture.md
   - Architecture Map: guides/architecture-map.md
+  - Signal Semantics & Profiling: guides/signals.md
   - Data Acquisition: guides/loading.md
   - Signal Conditioning: guides/transforms.md
   - Feature Extraction: guides/feature-extraction.md
@@ -64,6 +72,8 @@ nav:
     - Multi-Sensor Validation: modules/quality/multi-sensor-validation.md
     - Gauge R&R: modules/quality/gauge-rr.md
     - Capability Trending: modules/quality/capability-trending.md
+    - Change-Point Detection: modules/quality/change-point.md
+    - Multivariate SPC (Hotelling T²): modules/quality/multivariate-spc.md
   - Production:
     - Event Detection:
       - Machine State: modules/production/machine-state.md
@@ -116,6 +126,7 @@ nav:
     - Failure Prediction: modules/maintenance/failure-prediction.md
     - Vibration Analysis: modules/maintenance/vibration-analysis.md
   - Energy:
+    - Power Integration: modules/energy/power-integration.md
     - Consumption Analysis: modules/energy/consumption-analysis.md
     - Efficiency Tracking: modules/energy/efficiency-tracking.md
   - Correlation:

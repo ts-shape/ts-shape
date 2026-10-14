@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 class LeadTimeAnalysisEvents(Base):
     """Analyze lead times between order placement and delivery in timeseries data.
 
-    Order and delivery events are identified by separate UUIDs. They are
+    Order and delivery events are identified by separate UUIDs. When the
+    delivery rows carry the order identifier, each order is matched to the
+    first delivery of the same identifier at or after it; otherwise they are
     paired sequentially (first order to first delivery, etc.).
 
     Example usage:
@@ -51,10 +53,13 @@ class LeadTimeAnalysisEvents(Base):
         delivery_uuid: str,
         value_column: str = "value_string",
     ) -> pd.DataFrame:
-        """Match order events to delivery events by sequential pairing.
+        """Match order events to delivery events.
 
-        The first order is paired with the first delivery, and so on.
         The *value_column* is used as an order identifier (e.g. PO number).
+        When deliveries carry identifiers that occur among the orders, each
+        order is matched to the first delivery with the same identifier at or
+        after the order time (unmatched orders are left out). Otherwise the
+        first order is paired with the first delivery, and so on.
 
         Args:
             order_uuid: UUID of the order placement signal.
@@ -94,27 +99,57 @@ class LeadTimeAnalysisEvents(Base):
         orders[self.time_column] = pd.to_datetime(orders[self.time_column])
         deliveries[self.time_column] = pd.to_datetime(deliveries[self.time_column])
 
-        n_pairs = min(len(orders), len(deliveries))
-
-        order_times = orders[self.time_column].iloc[:n_pairs].values
-        delivery_times = deliveries[self.time_column].iloc[:n_pairs].values
-        order_ids = (
-            orders[value_column].iloc[:n_pairs].values
-            if value_column in orders.columns
-            else [None] * n_pairs
+        has_ids = (
+            value_column in orders.columns
+            and value_column in deliveries.columns
+            and deliveries[value_column].isin(orders[value_column].dropna()).any()
         )
+        if has_ids:
+            # Match by identifier: positional pairing mismatched every order
+            # after an out-of-order or missing delivery.
+            left = orders[[self.time_column, value_column]].rename(
+                columns={self.time_column: "order_time", value_column: "order_id"}
+            )
+            right = deliveries[[self.time_column, value_column]].rename(
+                columns={self.time_column: "delivery_time", value_column: "order_id"}
+            )
+            right = right.dropna(subset=["order_id"])
+            right["_key"] = right["delivery_time"]
+            left["_key"] = left["order_time"]
+            matched = pd.merge_asof(
+                left.sort_values("_key"),
+                right.sort_values("_key"),
+                on="_key",
+                by="order_id",
+                direction="forward",
+            ).dropna(subset=["delivery_time"])
+            order_times = matched["order_time"].reset_index(drop=True)
+            delivery_times = matched["delivery_time"].reset_index(drop=True)
+            order_ids = matched["order_id"].reset_index(drop=True)
+        else:
+            n_pairs = min(len(orders), len(deliveries))
+            # Keep Series (not .values) so a tz-aware systime keeps its tz.
+            order_times = orders[self.time_column].iloc[:n_pairs]
+            delivery_times = deliveries[self.time_column].iloc[:n_pairs]
+            order_ids = (
+                orders[value_column].iloc[:n_pairs]
+                if value_column in orders.columns
+                else pd.Series([None] * n_pairs)
+            )
 
-        lead_seconds = pd.to_timedelta(delivery_times - order_times).total_seconds()
+        lead_seconds = (
+            delivery_times.reset_index(drop=True) - order_times.reset_index(drop=True)
+        ).dt.total_seconds()
 
         result = pd.DataFrame(
             {
-                "order_time": order_times,
-                "delivery_time": delivery_times,
+                "order_time": order_times.reset_index(drop=True),
+                "delivery_time": delivery_times.reset_index(drop=True),
                 "uuid": self.event_uuid,
                 "is_delta": True,
                 "lead_time_seconds": lead_seconds,
                 "lead_time_hours": lead_seconds / 3600.0,
-                "order_id": order_ids,
+                "order_id": pd.Series(order_ids).reset_index(drop=True),
             }
         )
 

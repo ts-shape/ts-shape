@@ -20,6 +20,8 @@ class TimezoneShift(Base):
         time_column: str,
         input_timezone: str,
         target_timezone: str,
+        ambiguous: str = "raise",
+        nonexistent: str = "raise",
     ) -> pd.DataFrame:
         """
         Shifts timestamps in the specified column of a DataFrame from a given timezone to a target timezone.
@@ -29,9 +31,16 @@ class TimezoneShift(Base):
             time_column (str): The name of the time column to convert.
             input_timezone (str): The timezone of the input timestamps (e.g., 'UTC' or 'America/New_York').
             target_timezone (str): The target timezone to shift to (e.g., 'America/New_York').
+            ambiguous (str): How to localize naive wall-clock times that occur
+                twice (DST fall-back, e.g. 2024-10-27 02:30 in Europe/Berlin).
+                Passed to ``tz_localize``: 'raise' (default), 'infer', 'NaT'.
+            nonexistent (str): How to localize naive times that do not exist
+                (DST spring-forward, e.g. 2024-03-31 02:30 in Europe/Berlin):
+                'raise' (default), 'shift_forward', 'shift_backward', 'NaT'.
 
         Returns:
-            pd.DataFrame: A DataFrame with timestamps converted to the target timezone.
+            pd.DataFrame: A copy of the DataFrame with timestamps converted to
+            the target timezone (the input frame is not modified).
         """
         # Validate timezones
         if input_timezone not in available_timezones():
@@ -43,11 +52,14 @@ class TimezoneShift(Base):
         if not pd.api.types.is_datetime64_any_dtype(dataframe[time_column]):
             raise ValueError(f"Column '{time_column}' must contain datetime values.")
 
+        # Work on a copy: the caller's frame must not be mutated.
+        dataframe = dataframe.copy()
+
         # Localize to the specified input timezone if timestamps are naive
         dataframe[time_column] = pd.to_datetime(dataframe[time_column])
         if dataframe[time_column].dt.tz is None:
             dataframe[time_column] = dataframe[time_column].dt.tz_localize(
-                input_timezone
+                input_timezone, ambiguous=ambiguous, nonexistent=nonexistent
             )
         else:
             # Convert from the existing timezone to the specified input timezone, if they differ

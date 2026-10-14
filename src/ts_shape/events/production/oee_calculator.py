@@ -24,21 +24,27 @@ from ts_shape.utils.counters import count_resets, counter_quantity
 logger = logging.getLogger(__name__)
 
 
-_DAY_SECONDS = 86400.0
-
-
-def _daily_summary(rows: list[dict], extra_cols: list[str]) -> pd.DataFrame:
+def _daily_summary(
+    rows: list[dict], extra_cols: list[str], tz: object | None = None
+) -> pd.DataFrame:
     """Convert a list of {date, ...} rows into the canonical summary schema.
 
-    Each ``date`` becomes ``start`` (midnight) + ``end`` (next midnight) +
-    ``duration_seconds = 86400``. The ``date`` key is dropped.
+    Each ``date`` becomes ``start`` (local midnight) + ``end`` (next local
+    midnight) + ``duration_seconds`` (the real day length: 23 h / 25 h on DST
+    days). With ``tz`` the bounds are tz-aware in the data's timezone. The
+    ``date`` key is dropped.
     """
     if not rows:
         return empty_event_df("summary", extra_cols=extra_cols)
     df = pd.DataFrame(rows)
-    df[COL_START] = pd.to_datetime(df["date"])
-    df[COL_END] = df[COL_START] + pd.Timedelta(days=1)
-    df[COL_DURATION_S] = _DAY_SECONDS
+    start = pd.to_datetime(df["date"])
+    end = start + pd.Timedelta(days=1)
+    if tz is not None:
+        start = start.dt.tz_localize(tz, nonexistent="shift_forward", ambiguous=True)
+        end = end.dt.tz_localize(tz, nonexistent="shift_forward", ambiguous=True)
+    df[COL_START] = start
+    df[COL_END] = end
+    df[COL_DURATION_S] = (end - start).dt.total_seconds()
     df = df.drop(columns=["date"])
     leading = [COL_START, COL_END, COL_DURATION_S]
     return df[leading + [c for c in df.columns if c not in leading]]
@@ -50,7 +56,8 @@ class OEECalculator(Base):
     Combines availability (from run/idle state), performance (from part counters
     and ideal cycle time), and quality (from total/reject counters) into a single
     OEE metric per day. Each daily row uses the canonical summary schema:
-    ``start`` (midnight) / ``end`` (next midnight) / ``duration_seconds`` = 86400.
+    ``start`` (midnight) / ``end`` (next midnight) / ``duration_seconds`` (the
+    real day length: 86400, or 23 h / 25 h on DST days with tz-aware data).
 
     Example usage:
         oee = OEECalculator(df)
@@ -84,6 +91,12 @@ class OEECalculator(Base):
         """
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
+        times = self.dataframe.get(time_column)
+        self._tz = (
+            getattr(times.dt, "tz", None)
+            if times is not None and pd.api.types.is_datetime64_any_dtype(times)
+            else None
+        )
 
     # ------------------------------------------------------------------
     # Availability
@@ -118,7 +131,7 @@ class OEECalculator(Base):
 
         Returns:
             Summary-shape DataFrame with columns:
-            - start, end, duration_seconds (canonical day boundaries; 86400)
+            - start, end, duration_seconds (canonical day boundaries; real day length)
             - run_seconds
             - planned_seconds
             - availability_pct
@@ -131,7 +144,7 @@ class OEECalculator(Base):
         )
 
         if state_data.empty:
-            return _daily_summary([], avail_extra)
+            return _daily_summary([], avail_extra, tz=self._tz)
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
         state_data["state"] = state_data[value_column].fillna(False).astype(bool)
@@ -154,7 +167,7 @@ class OEECalculator(Base):
         state_data = state_data[state_data["duration"].notna()]
 
         if state_data.empty:
-            return _daily_summary([], avail_extra)
+            return _daily_summary([], avail_extra, tz=self._tz)
 
         results = []
         for date, grp in state_data.groupby("date"):
@@ -177,7 +190,7 @@ class OEECalculator(Base):
                 }
             )
 
-        return _daily_summary(results, avail_extra)
+        return _daily_summary(results, avail_extra, tz=self._tz)
 
     # ------------------------------------------------------------------
     # Performance
@@ -236,7 +249,7 @@ class OEECalculator(Base):
         )
 
         if counter_data.empty:
-            return _daily_summary([], perf_extra)
+            return _daily_summary([], perf_extra, tz=self._tz)
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
         counter_data["date"] = counter_data[self.time_column].dt.date
@@ -286,7 +299,7 @@ class OEECalculator(Base):
                 row["resets"] = count_resets(grp[value_column])
             results.append(row)
 
-        return _daily_summary(results, perf_extra)
+        return _daily_summary(results, perf_extra, tz=self._tz)
 
     # ------------------------------------------------------------------
     # Quality
@@ -337,7 +350,7 @@ class OEECalculator(Base):
         )
 
         if total_data.empty:
-            return _daily_summary([], qual_extra)
+            return _daily_summary([], qual_extra, tz=self._tz)
 
         total_data[self.time_column] = pd.to_datetime(total_data[self.time_column])
         total_data["date"] = total_data[self.time_column].dt.date
@@ -387,7 +400,7 @@ class OEECalculator(Base):
                 )
             results.append(row)
 
-        return _daily_summary(results, qual_extra)
+        return _daily_summary(results, qual_extra, tz=self._tz)
 
     # ------------------------------------------------------------------
     # Combined OEE

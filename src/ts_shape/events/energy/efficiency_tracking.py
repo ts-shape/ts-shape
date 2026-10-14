@@ -4,6 +4,8 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_increments, counter_per_window
+from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,7 @@ class EnergyEfficiencyEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1h",
+        handle_resets: bool = False,
         trend_window: int = 24,
     ) -> pd.DataFrame:
         """Rolling energy efficiency trend (units produced per kWh).
@@ -96,6 +99,10 @@ class EnergyEfficiencyEvents(Base):
             counter_column: Column with counter readings.
             window: Time window for aggregation.
             trend_window: Number of windows for rolling average.
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, source_uuid, is_delta,
@@ -138,13 +145,9 @@ class EnergyEfficiencyEvents(Base):
         energy_agg = (
             energy_data[energy_column].resample(window).sum().to_frame("energy")
         )
-        counter_agg = (
-            counter_data[counter_column]
-            .resample(window)
-            .agg(lambda x: x.max() - x.min() if len(x) > 1 else 0)
-            .clip(lower=0)
-            .to_frame("units")
-        )
+        counter_agg = counter_per_window(
+            counter_data[counter_column], window, handle_resets=handle_resets
+        ).to_frame("units")
 
         merged = energy_agg.join(counter_agg, how="inner").reset_index()
         merged = merged.rename(columns={self.time_column: "start"})
@@ -208,6 +211,7 @@ class EnergyEfficiencyEvents(Base):
         state_column: str = "value_bool",
         window: str = "15min",
         idle_threshold: float = 0.0,
+        time_weighted: bool = False,
     ) -> pd.DataFrame:
         """Detect energy consumed during idle periods (waste).
 
@@ -221,6 +225,11 @@ class EnergyEfficiencyEvents(Base):
             state_column: Column with boolean state.
             window: Time window for analysis.
             idle_threshold: Energy above this during idle is waste.
+            time_weighted: Weight the machine state by how long it was held
+                (until the next state change) and keep every energy window.
+                Default ``False`` averages state *samples* and inner-joins, so
+                a change-encoded state signal reads as a sample count and
+                windows without a state row drop their energy.
 
         Returns:
             DataFrame: start, uuid, source_uuid, is_delta,
@@ -261,16 +270,27 @@ class EnergyEfficiencyEvents(Base):
         energy_agg = (
             energy[energy_column].resample(window).sum().to_frame("energy_consumed")
         )
-        state_agg = (
-            state[state_column]
-            .fillna(False)
-            .astype(float)
-            .resample(window)
-            .mean()
-            .to_frame("machine_running_pct")
-        )
-
-        merged = energy_agg.join(state_agg, how="inner").reset_index()
+        if time_weighted:
+            state_agg = (
+                time_weighted_resample(
+                    state[state_column].astype("boolean").astype(float),
+                    window,
+                    data_end=energy.index.max(),
+                )
+                .reindex(energy_agg.index)
+                .to_frame("machine_running_pct")
+            )
+            merged = energy_agg.join(state_agg, how="left").reset_index()
+        else:
+            state_agg = (
+                state[state_column]
+                .fillna(False)
+                .astype(float)
+                .resample(window)
+                .mean()
+                .to_frame("machine_running_pct")
+            )
+            merged = energy_agg.join(state_agg, how="inner").reset_index()
         merged = merged.rename(columns={self.time_column: "start"})
 
         # Idle waste: machine mostly idle but still consuming energy
@@ -306,6 +326,7 @@ class EnergyEfficiencyEvents(Base):
         energy_column: str = "value_double",
         counter_column: str = "value_integer",
         window: str = "1D",
+        handle_resets: bool = False,
     ) -> pd.DataFrame:
         """Daily/periodic specific energy consumption (SEC = energy / output).
 
@@ -317,6 +338,10 @@ class EnergyEfficiencyEvents(Base):
             energy_column: Column with energy readings.
             counter_column: Column with counter readings.
             window: Time window (default daily).
+            handle_resets: Treat a decreasing production counter as a reset
+                and sum reset-aware increments per window (see
+                :func:`ts_shape.utils.counters.counter_per_window`). Default
+                ``False`` keeps the per-window ``max - min``.
 
         Returns:
             DataFrame: start, uuid, source_uuid, is_delta,
@@ -356,13 +381,9 @@ class EnergyEfficiencyEvents(Base):
         energy_agg = (
             energy[energy_column].resample(window).sum().to_frame("total_energy")
         )
-        counter_agg = (
-            counter[counter_column]
-            .resample(window)
-            .agg(lambda x: x.max() - x.min() if len(x) > 1 else 0)
-            .clip(lower=0)
-            .to_frame("total_output")
-        )
+        counter_agg = counter_per_window(
+            counter[counter_column], window, handle_resets=handle_resets
+        ).to_frame("total_output")
 
         merged = energy_agg.join(counter_agg, how="inner").reset_index()
         merged = merged.rename(columns={self.time_column: "start"})
@@ -419,7 +440,9 @@ class EnergyEfficiencyEvents(Base):
 
         Returns:
             DataFrame: shift, avg_energy, avg_output, avg_efficiency,
-                       total_energy, total_output
+                       total_energy, total_output. ``total_output`` is the
+                       counter increase within the shift (reset-aware) and
+                       ``avg_output`` the mean increase per counter reading.
         """
         if shift_definitions is None:
             shift_definitions = {
@@ -477,8 +500,12 @@ class EnergyEfficiencyEvents(Base):
             .reset_index()
         )
 
+        # The counter is cumulative: output is the sum of reset-aware
+        # per-reading increments, not the sum of raw readings (which made
+        # 100, 101, 102 count as 303 parts instead of 2).
+        counter["_increment"] = counter_increments(counter[counter_column])
         counter_by_shift = (
-            counter.groupby("shift")[counter_column]
+            counter.groupby("shift")["_increment"]
             .agg(total_output="sum", avg_output="mean")
             .reset_index()
         )
