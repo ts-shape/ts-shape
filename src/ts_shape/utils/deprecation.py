@@ -33,7 +33,7 @@ __all__ = [
 F = TypeVar("F", bound=Callable[..., Any])
 C = TypeVar("C", bound=type)
 
-REMOVAL = "1.0"
+REMOVAL = "2.0"
 
 
 def _warn(message: str, stacklevel: int = 3) -> None:
