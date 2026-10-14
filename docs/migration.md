@@ -66,7 +66,7 @@ To compare old and new numbers, pass the old default explicitly, for example `oe
 - `OutlierDetectionEvents(signal_uuids=[...])` restricts the analysis to some signals.
 - `pip install ts-shape[parquet]` installs pyarrow (also pulled in by `[s3]` and `[azure]`); `[all]` now installs every optional feature.
 
-### Consistent outputs (round 7)
+### Consistent outputs (round 6)
 
 **Summary methods return a DataFrame.** Following `best_and_worst_shifts`, these methods take `as_frame: bool = True`. The default returns a DataFrame whose columns are the old keys, plus `start` / `end` / `duration_seconds` for the data the summary covers. `as_frame=False` returns the old dict or list and emits a `DeprecationWarning`; that form will be removed in the next major release. To keep old code working unchanged, pass `as_frame=False`. Alternatively, read a one-row result with `.iloc[0]`, which supports the same `["key"]` access.
 
@@ -95,6 +95,38 @@ To compare old and new numbers, pass the old default explicitly, for example `oe
 **Run state as string or boolean.** `DowntimeEvents` and `ShiftHandoverEvents` read either a string state signal (`running_value="Running"` in `value_string`) or a boolean run signal (`value_bool`, True = running). The boolean signal is used when the state rows carry no `value_string`, or when `running_value` / `stopped_value` is a bool. Both forms give the same downtime. Before this change, a boolean run signal was compared with `"Running"` and therefore reported 100 % downtime.
 
 **Fix:** `FlowConstraintEvents.flow_constraint_analytics` applies its `warning_threshold` / `critical_threshold` to the severity counts and to the event lists. Before, it accepted them but classified with the 5 s / 30 s defaults.
+
+### Same numbers for any data source, totals that add up (round 6)
+
+- **Dtypes no longer change results.** Value columns with pandas nullable,
+  pyarrow or text-number dtypes are converted once when a detector is built.
+  Text that is not a number is reported with a `DataQualityWarning` at
+  construction, not when a method runs. Counter totals on nullable or pyarrow
+  data were too high (the first reading counted as production): they now
+  match NumPy data.
+- **Group totals add up to the counter total.** Per shift, day, operator,
+  part, reason, batch and schedule period, the part made between the last
+  reading of one group and the first reading of the next now counts in the
+  later group (`utils.counters.counter_by_group`). Quantities can grow by one
+  increment per group boundary; `resets` can grow by one when a reset falls on
+  a group boundary. Per-operator/part/reason totals no longer double count
+  when those groups alternate. `shift_production(date=...)` includes the
+  increment into the day's first reading. `batch_yield` books production
+  between two batches to the earlier batch. `handle_resets=False` is
+  unchanged.
+- **`FlowConstraintEvents`** intervals end at the next change
+  (`interval_end="next_change"`); pass `interval_end="last_sample"` for the
+  previous, shorter durations.
+- **`MultiSensorValidationEvents.detect_outlier_sensor`** needs three sensors
+  to name an outlier; with two it skips the window and warns.
+- **`ToleranceDeviationEvents.capability_indices`** on empty data returns an
+  empty frame with the full schema; `CapabilityTrendingEvents` uses the spec
+  limits in force in each window.
+- **Energy methods with `window="W"` / `"ME"`** report the real week or month
+  (`end` was `start` + 1 day).
+- **Shift labels:** a row with a missing timestamp gets the shift `"unknown"`.
+- **Degenerate inputs:** duplicate timestamps give `NaN` rates (with a
+  warning) instead of `inf`; `detect_oscillation(window<=0)` raises.
 
 ## Renamed parameters (old keywords deprecated)
 

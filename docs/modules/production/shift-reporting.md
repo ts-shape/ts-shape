@@ -49,6 +49,8 @@ result = reporter.shift_targets(counter_uuid="line1:parts", targets=targets)
 | `shift_targets(counter_uuid, targets)` | Compare actual production against per-shift targets | `DataFrame` with `date`, `shift`, `actual`, `target`, `variance`, `achievement_pct` |
 | `best_and_worst_shifts(counter_uuid, days=30)` | Identify the five best and five worst shifts over a period | `DataFrame` with `start`, `end`, `duration_seconds`, `rank_type` (`"best"`/`"worst"`), `date`, `shift`, `quantity`. `as_frame=False` returns the deprecated `dict` form |
 
+Shift quantities add up to the counter's total: the reset-aware increments are computed once over the whole signal and each is booked to the shift of the reading that reports it, so the parts made between the last reading of one shift and the first reading of the next count in the next shift. A `date` filter only selects which shifts are reported. `handle_resets=False` keeps the per-shift `max(0, last - first)`, which loses that production.
+
 Without `shift_definitions`, the default shifts are `shift_1` (06:00-14:00), `shift_2` (14:00-22:00) and `shift_3` (22:00-06:00).
 
 ---

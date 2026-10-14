@@ -269,7 +269,11 @@ def test_flow_starved_is_downstream_running_upstream_stopped():
     starved = fce.starved_events(roles=roles, tolerance="1s")
     assert len(starved) == 1
     assert starved.iloc[0]["start"] == t[1]
-    assert starved.iloc[0]["end"] == t[2]
+    # Default interval_end="next_change": the interval ends when the
+    # condition stops holding (t[3]), not at its last sample (t[2]).
+    assert starved.iloc[0]["end"] == t[3]
+    last = fce.starved_events(roles=roles, tolerance="1s", interval_end="last_sample")
+    assert last.iloc[0]["end"] == t[2]
     directional = fce.starved_events(
         roles=roles, tolerance_before="1s", tolerance_after="1s"
     )

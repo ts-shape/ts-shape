@@ -18,8 +18,8 @@ import pandas as pd
 
 from ts_shape.events._compat import state_mask, warn_dict_return
 from ts_shape.events._windows import add_shift_window, data_tz
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class, keyword_only
 from ts_shape.utils.shifts import assign_shift, production_dates
 
@@ -125,7 +125,10 @@ class ShiftHandoverEvents(Base):
 
         When ``handle_resets`` is True a decreasing counter is treated as a
         reset and the post-reset production is counted, and a ``resets`` column
-        with the per-shift reset count is added. When ``production_day`` is True
+        with the per-shift reset count is added. Increments are computed once
+        over the whole signal and booked to the shift of the reading that
+        reports them, so the shifts add up to the signal total. When
+        ``production_day`` is True
         an overnight shift's post-midnight readings are attributed to the
         shift's start date.
         """
@@ -144,17 +147,16 @@ class ShiftHandoverEvents(Base):
         data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
         data["date"] = self._group_dates(data, production_day)
 
-        results = []
-        for (dt, shift), grp in data.groupby(["date", "shift"]):
-            grp = grp.sort_values(self.time_column)
-            counter_series = grp[value_column]
-            qty = int(counter_quantity(counter_series, handle_resets=handle_resets))
-            row = {"date": dt, "shift": shift, "quantity": qty}
-            if handle_resets:
-                row["resets"] = count_resets(counter_series)
-            results.append(row)
-
-        return pd.DataFrame(results)
+        # Increments over the whole signal, booked to the shift of the reading
+        # that reports them, so the shifts add up to the signal total.
+        totals = counter_totals(
+            data, value_column, ["date", "shift"], handle_resets=handle_resets
+        )
+        totals["quantity"] = totals["quantity"].astype(int)
+        cols = ["date", "shift", "quantity"]
+        if handle_resets:
+            cols.append("resets")
+        return totals[cols]
 
     def _group_dates(self, data: pd.DataFrame, production_day: bool) -> pd.Series:
         """Grouping date per row: calendar date, or production day when set."""
@@ -403,7 +405,12 @@ class ShiftHandoverEvents(Base):
                 count the production after the reset for production, ok_parts and
                 nok_parts. A shift boundary is exactly where counters commonly
                 reset, so ``max(0, last - first)`` (``handle_resets=False``) under-reports any
-                shift containing a reset. The result gains a ``resets`` column
+                shift containing a reset. The increments are computed once over
+                each whole signal (before ``report_date`` is selected) and
+                booked to the shift of the reading that reports them, so the
+                shifts add up to the signal totals; with
+                ``handle_resets=False`` the production between two shifts'
+                readings is lost. The result gains a ``resets`` column
                 with the number of production-counter resets in each shift.
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night

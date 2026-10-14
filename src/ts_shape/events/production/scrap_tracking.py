@@ -15,8 +15,12 @@ from ts_shape.events._windows import (
     add_shift_window,
     data_tz,
 )
+from ts_shape.events.production._counter_groups import (
+    counter_totals,
+    counter_totals_per_period,
+)
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.counters import counter_increments, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
 
@@ -108,10 +112,14 @@ class ScrapEvents(Base):
             value_column: Column containing scrap values.
             handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the scrap accumulated after the reset instead of
-                losing it. The result gains a ``resets`` column with the
-                number of resets observed in each shift. When False,
-                the quantity is simply ``max(0, last - first)`` and a shift
-                containing a reset reports too little (often 0).
+                losing it. The increments are computed once over the whole
+                signal and booked to the shift of the reading that reports
+                them, so the shifts add up to the signal total. The result
+                gains a ``resets`` column with the number of resets observed
+                in each shift. When False,
+                the quantity is ``max(0, last - first)`` of the shift's own
+                readings: a shift containing a reset reports too little (often
+                0) and the production between two shifts' readings is lost.
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night
                 shift is one contiguous ``(date, shift)`` group. Default True;
@@ -151,22 +159,14 @@ class ScrapEvents(Base):
         else:
             data["date"] = data[self.time_column].dt.date
 
-        results = []
-        for (date, shift), grp in data.groupby(["date", "shift"]):
-            qty = self._get_counter_quantity(
-                grp, value_column, handle_resets=handle_resets
-            )
-            row = {
-                "date": date,
-                "shift": shift,
-                "scrap_quantity": qty,
-            }
-            if handle_resets:
-                row["resets"] = count_resets(grp[value_column])
-            results.append(row)
+        # Increments over the whole signal, booked to the shift of the reading
+        # that reports them, so the shifts add up to the signal total.
+        totals = counter_totals(
+            data, value_column, ["date", "shift"], handle_resets=handle_resets
+        ).rename(columns={"quantity": "scrap_quantity"})
 
         return add_shift_window(
-            pd.DataFrame(results, columns=columns),
+            totals[columns],
             self.shift_definitions,
             data_tz(data[self.time_column]),
         )
@@ -292,7 +292,10 @@ class ScrapEvents(Base):
             value_column_scrap: Column containing scrap values.
             value_column_part: Column containing part numbers.
             handle_resets: When True (default), treat a decreasing counter as a reset
-                and count the scrap accumulated after the reset. The result
+                and count the scrap accumulated after the reset. The
+                increments are computed once over the whole signal and booked
+                to the part of the reading that reports them, so the parts add
+                up to the signal total (also when parts alternate). The result
                 gains a ``resets`` column with the number of resets observed
                 for each part. When False, the quantity is
                 ``max(0, last - first)`` per part and a reset is lost.
@@ -338,24 +341,18 @@ class ScrapEvents(Base):
         )
         merged = merged.dropna(subset=["part_number"])
 
-        results = []
-        for part_num, grp in merged.groupby("part_number"):
-            qty = self._get_counter_quantity(
-                grp, "scrap_val", handle_resets=handle_resets
-            )
-            cost_per_unit = material_costs.get(part_num, 0.0)
-            row = {
-                "part_number": part_num,
-                "scrap_quantity": qty,
-                "cost_per_unit": cost_per_unit,
-                "total_cost": qty * cost_per_unit,
-            }
-            if handle_resets:
-                row["resets"] = count_resets(grp["scrap_val"])
-            results.append(row)
+        # Increments over the whole signal, booked to the part of the reading
+        # that reports them (no boundary loss, no interleaving over-count).
+        totals = counter_totals(
+            merged, "scrap_val", ["part_number"], handle_resets=handle_resets
+        ).rename(columns={"quantity": "scrap_quantity"})
+        totals["cost_per_unit"] = [
+            material_costs.get(p, 0.0) for p in totals["part_number"]
+        ]
+        totals["total_cost"] = totals["scrap_quantity"] * totals["cost_per_unit"]
 
         return (
-            pd.DataFrame(results, columns=columns)
+            totals[columns]
             .sort_values("total_cost", ascending=False)
             .reset_index(drop=True)
         )
@@ -375,10 +372,14 @@ class ScrapEvents(Base):
             value_column: Column containing scrap values.
             window: Time window for aggregation (default '1D').
             handle_resets: When True (default), treat a decreasing counter as a reset
-                and count the scrap accumulated after the reset. The result
-                gains a ``resets`` column with the number of resets observed
-                in each period. When False, the quantity is
-                ``max(0, last - first)`` per period and a reset is lost.
+                and count the scrap accumulated after the reset. The
+                increments are computed once over the whole signal and booked
+                to the period of the reading that reports them, so the periods
+                add up to the signal total. The result gains a ``resets``
+                column with the number of resets observed in each period.
+                When False, the quantity is ``max(0, last - first)`` of the
+                period's own readings: a reset and the production between two
+                periods' readings are lost.
 
         Returns:
             DataFrame with columns:
@@ -400,25 +401,13 @@ class ScrapEvents(Base):
             return add_period_window(pd.DataFrame(columns=columns), window)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
-        data = data.set_index(self.time_column)
+        totals = counter_totals_per_period(
+            data.set_index(self.time_column)[value_column],
+            window,
+            handle_resets=handle_resets,
+        ).rename(columns={"quantity": "scrap_quantity"})
 
-        results = []
-        for period, grp in data.groupby(pd.Grouper(freq=window)):
-            if grp.empty:
-                continue
-            grp = grp.reset_index()
-            qty = self._get_counter_quantity(
-                grp, value_column, handle_resets=handle_resets
-            )
-            row = {
-                "period": period,
-                "scrap_quantity": qty,
-            }
-            if handle_resets:
-                row["resets"] = count_resets(grp[value_column])
-            results.append(row)
-
-        return add_period_window(pd.DataFrame(results, columns=columns), window)
+        return add_period_window(totals[columns], window)
 
 
 #: Deprecated name, removed in the next major release.

@@ -22,7 +22,9 @@ def _counter_frame():
 
 def test_target_tracking_overnight_split_without_production_day():
     tt = TargetEvents(_counter_frame())
-    naive = tt.compare_to_target("counter", {"shift_3": 800}, production_day=False)
+    naive = tt.compare_to_target(
+        "counter", {"shift_3": 800}, production_day=False, handle_resets=False
+    )
     # Jan 1 shift_3 group spans 00:00-06:00 AND 22:00-23:59 -> last-first sweeps
     # in the whole day, hugely overstating achievement.
     jan1_night = naive[
@@ -30,6 +32,16 @@ def test_target_tracking_overnight_split_without_production_day():
         & (naive["shift"] == "shift_3")
     ]
     assert (jan1_night["achievement_pct"] > 200).any()
+
+    # The reset-aware default books each hourly increment to the reading
+    # that reports it, so the same split group only counts its own hours:
+    # 01:00-05:00 (500) + 22:00, 23:00 (200) = 700, not the whole day.
+    split = tt.compare_to_target("counter", {"shift_3": 800}, production_day=False)
+    jan1_split = split[
+        (split["date"] == pd.Timestamp("2024-01-01").date())
+        & (split["shift"] == "shift_3")
+    ]
+    assert jan1_split["actual"].tolist() == [700]
 
 
 def test_target_tracking_production_day_contiguous_shift():

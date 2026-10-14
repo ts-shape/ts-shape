@@ -53,6 +53,8 @@ print(batches)
 | `batch_yield(counter_uuid, handle_resets=True)` | Calculate production quantity per batch from a monotonic counter signal | DataFrame with `batch_id`, `start`, `end`, `duration_seconds`, `quantity` (plus `resets` unless `handle_resets=False`) |
 | `batch_transition_matrix(layout='long')` | Count which batch follows which, useful for scheduling analysis | DataFrame with `from_state`, `to_state`, `transition_count`, one row per observed transition (the empty result keeps these columns). `layout='wide'` returns the from-batch by to-batch pivot table with a `total` column |
 
+With `handle_resets=True`, `batch_yield` books every reset-aware counter increment to the batch that was running when it was produced: a reading reports the production since the previous reading, so it belongs to the batch whose ID was last seen strictly before it. Production between the last sample of one batch and the first sample of the next counts for the earlier batch, and the batch quantities add up to the counter total. Readings before the first or after the last batch-ID sample, or while the batch ID is empty, belong to no batch. `handle_resets=False` keeps `max(0, last - first)` over each batch's `[start, end]`.
+
 ---
 
 ## Tips & Hints

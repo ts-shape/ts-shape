@@ -17,8 +17,9 @@ from ts_shape.events._windows import (
     add_shift_window,
     data_tz,
 )
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
 
@@ -112,11 +113,16 @@ class QualityEvents(Base):
             value_column: Column containing counter values
             handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the parts accumulated after the reset, for both the
-                OK and NOK counters. The result gains a ``resets`` column with
-                the number of resets observed in each shift (across both
-                counters). When False, each counter uses
-                ``max(0, last - first)`` and a shift containing a reset
-                reports too little (often 0).
+                OK and NOK counters. The increments are computed once over
+                each whole counter signal and booked to the shift of the
+                reading that reports them, so the shifts add up to the signal
+                totals (the parts made between the last reading of one shift
+                and the first of the next count in the next shift). The
+                result gains a ``resets`` column with the number of resets
+                observed in each shift (across both counters). When False,
+                each counter uses ``max(0, last - first)`` of the shift's own
+                readings; a shift containing a reset reports too little (often
+                0) and the production between two shifts' readings is lost.
             production_day: Attribute an overnight shift's post-midnight
                 readings to the shift's start date, so a night shift is one
                 ``(date, shift)`` row (default). False groups by raw calendar
@@ -204,44 +210,39 @@ class QualityEvents(Base):
                 nok_data["date"] = nok_data[self.time_column].dt.date
             nok_processed = nok_data
 
-        # Calculate quantities per shift
+        # Quantities per shift: increments over each whole counter signal,
+        # booked to the shift of the reading that reports them, so the shifts
+        # add up to the signal total (no production lost at shift boundaries).
+        keys = ["date", "shift"]
+        ok_totals = (
+            counter_totals(
+                ok_processed, value_column, keys, handle_resets=handle_resets
+            )
+            if ok_processed is not None
+            else None
+        )
+        nok_totals = (
+            counter_totals(
+                nok_processed, value_column, keys, handle_resets=handle_resets
+            )
+            if nok_processed is not None
+            else None
+        )
+        ok_by_shift: dict[tuple[Any, Any], tuple[float, int]] = {}
+        nok_by_shift: dict[tuple[Any, Any], tuple[float, int]] = {}
+        for totals, target in ((ok_totals, ok_by_shift), (nok_totals, nok_by_shift)):
+            if totals is None:
+                continue
+            for d, sh, qty, n_resets in totals[
+                ["date", "shift", "quantity", "resets"]
+            ].itertuples(index=False):
+                target[(d, sh)] = (float(qty), int(n_resets))
+
         results = []
-
-        # Get all unique date/shift combinations
-        date_shifts: set[tuple[Any, Any]] = set()
-        if ok_processed is not None:
-            date_shifts.update(zip(ok_processed["date"], ok_processed["shift"]))
-        if nok_processed is not None:
-            date_shifts.update(zip(nok_processed["date"], nok_processed["shift"]))
-
-        for date, shift in sorted(date_shifts):
-            ok_parts: float = 0
-            nok_parts: float = 0
-            resets = 0
-
-            # Calculate OK parts for this shift
-            if ok_processed is not None:
-                ok_shift = ok_processed[
-                    (ok_processed["date"] == date) & (ok_processed["shift"] == shift)
-                ]
-                if not ok_shift.empty:
-                    ok_parts = counter_quantity(
-                        ok_shift[value_column], handle_resets=handle_resets
-                    )
-                    if handle_resets:
-                        resets += count_resets(ok_shift[value_column])
-
-            # Calculate NOK parts for this shift
-            if nok_processed is not None:
-                nok_shift = nok_processed[
-                    (nok_processed["date"] == date) & (nok_processed["shift"] == shift)
-                ]
-                if not nok_shift.empty:
-                    nok_parts = counter_quantity(
-                        nok_shift[value_column], handle_resets=handle_resets
-                    )
-                    if handle_resets:
-                        resets += count_resets(nok_shift[value_column])
+        for date, shift in sorted(set(ok_by_shift) | set(nok_by_shift)):
+            ok_parts, ok_resets = ok_by_shift.get((date, shift), (0.0, 0))
+            nok_parts, nok_resets = nok_by_shift.get((date, shift), (0.0, 0))
+            resets = ok_resets + nok_resets
 
             total_parts = ok_parts + nok_parts
 
@@ -602,7 +603,8 @@ class QualityEvents(Base):
             value_column: Column containing counter values
             handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the parts accumulated after the reset (see
-                :meth:`nok_by_shift`). The result gains a ``resets`` column
+                :meth:`nok_by_shift`; the day totals add up to the signal
+                totals). The result gains a ``resets`` column
                 with the number of resets observed that day. When False, a shift containing a reset reports too little.
             production_day: Forwarded to :meth:`nok_by_shift`; attributes an
                 overnight shift's post-midnight readings to the shift's start

@@ -6,8 +6,16 @@ import pandas as pd
 from ts_shape.events._compat import warn_dict_return
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
 
 logger = logging.getLogger(__name__)
+
+
+def _check_interval_end(interval_end: str) -> None:
+    if interval_end not in INTERVAL_END_MODES:
+        raise ValueError(
+            f"interval_end must be one of {INTERVAL_END_MODES}, got {interval_end!r}"
+        )
 
 
 class FlowConstraintEvents(Base):
@@ -56,6 +64,7 @@ class FlowConstraintEvents(Base):
         tolerance_before: str | None = None,
         tolerance_after: str | None = None,
         min_duration: str = "0s",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Blocked: upstream_run=True while downstream_run=False.
 
@@ -69,14 +78,27 @@ class FlowConstraintEvents(Base):
             tolerance_before: Tolerance for looking backward in time during alignment
             tolerance_after: Tolerance for looking forward in time during alignment
             min_duration: Minimum duration for an event to be included
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                first aligned sample where the condition no longer holds (the
+                transition), so a condition seen at a single sample still
+                lasts until the next sample; a condition that holds until the
+                end of the data ends at the last sample. ``"last_sample"``
+                ends it at the last sample where the condition holds (the
+                behaviour before this option; a single-sample event then has
+                zero duration).
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta, type,
             time_alignment_quality, duration, severity
 
+        Raises:
+            ValueError: If ``interval_end`` is not ``"next_change"`` or
+                ``"last_sample"``.
+
         Example:
             roles = {'upstream_run': 'uuid1', 'downstream_run': 'uuid2'}
         """
+        _check_interval_end(interval_end)
         up = self._align_bool(roles["upstream_run"])  # time, state
         dn = self._align_bool(roles["downstream_run"])  # time, state
         if up.empty or dn.empty:
@@ -139,12 +161,13 @@ class FlowConstraintEvents(Base):
         gid = (cond.ne(cond.shift())).cumsum()
         min_td = pd.to_timedelta(min_duration)
         rows: list[dict[str, Any]] = []
+        ends = interval_end_times(merged[self.time_column], interval_end)
         for _, seg in merged.groupby(gid):
             m = cond.loc[seg.index]
             if not m.any():
                 continue
             start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
+            end = ends.loc[seg.index[-1]]
             duration = end - start
             if duration < min_td:
                 continue
@@ -175,6 +198,7 @@ class FlowConstraintEvents(Base):
         tolerance_before: str | None = None,
         tolerance_after: str | None = None,
         min_duration: str = "0s",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Starved: downstream_run=True while upstream_run=False.
 
@@ -192,14 +216,27 @@ class FlowConstraintEvents(Base):
             tolerance_before: Tolerance for looking backward in time during alignment
             tolerance_after: Tolerance for looking forward in time during alignment
             min_duration: Minimum duration for an event to be included
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                first aligned sample where the condition no longer holds (the
+                transition), so a condition seen at a single sample still
+                lasts until the next sample; a condition that holds until the
+                end of the data ends at the last sample. ``"last_sample"``
+                ends it at the last sample where the condition holds (the
+                behaviour before this option; a single-sample event then has
+                zero duration).
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta, type,
             time_alignment_quality, duration, severity
 
+        Raises:
+            ValueError: If ``interval_end`` is not ``"next_change"`` or
+                ``"last_sample"``.
+
         Example:
             roles = {'upstream_run': 'uuid1', 'downstream_run': 'uuid2'}
         """
+        _check_interval_end(interval_end)
         up = self._align_bool(roles["upstream_run"])  # time, state
         dn = self._align_bool(roles["downstream_run"])  # time, state
         if up.empty or dn.empty:
@@ -262,12 +299,13 @@ class FlowConstraintEvents(Base):
         gid = (cond.ne(cond.shift())).cumsum()
         min_td = pd.to_timedelta(min_duration)
         rows: list[dict[str, Any]] = []
+        ends = interval_end_times(merged[self.time_column], interval_end)
         for _, seg in merged.groupby(gid):
             m = cond.loc[seg.index]
             if not m.any():
                 continue
             start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
+            end = ends.loc[seg.index[-1]]
             duration = end - start
             if duration < min_td:
                 continue
@@ -303,6 +341,10 @@ class FlowConstraintEvents(Base):
             warning_threshold: Duration below which an event is 'minor'.
             critical_threshold: Duration below which an event is 'moderate'
                 (at or above it, 'severe').
+            interval_end: Forwarded to :meth:`blocked_events` and
+                :meth:`starved_events`: ``"next_change"`` (default) ends an
+                event at the transition, ``"last_sample"`` at the last sample
+                where the condition holds.
 
         Returns:
             Severity classification: 'minor', 'moderate', or 'severe'
@@ -344,6 +386,7 @@ class FlowConstraintEvents(Base):
         min_duration: str = ...,
         warning_threshold: str = ...,
         critical_threshold: str = ...,
+        interval_end: str = ...,
         as_frame: Literal[True] = ...,
     ) -> pd.DataFrame: ...
 
@@ -358,6 +401,7 @@ class FlowConstraintEvents(Base):
         min_duration: str = ...,
         warning_threshold: str = ...,
         critical_threshold: str = ...,
+        interval_end: str = ...,
         as_frame: Literal[False],
     ) -> dict[str, Any]: ...
 
@@ -374,6 +418,7 @@ class FlowConstraintEvents(Base):
         min_duration: str = "0s",
         warning_threshold: str = "5s",
         critical_threshold: str = "30s",
+        interval_end: str = "next_change",
         as_frame: bool = True,
     ) -> pd.DataFrame | dict[str, Any]:
         """Generate comprehensive analytics for flow constraints (blockages and starvations).
@@ -388,6 +433,10 @@ class FlowConstraintEvents(Base):
             warning_threshold: Duration below which an event is 'minor'.
             critical_threshold: Duration below which an event is 'moderate'
                 (at or above it, 'severe').
+            interval_end: Forwarded to :meth:`blocked_events` and
+                :meth:`starved_events`: ``"next_change"`` (default) ends an
+                event at the transition, ``"last_sample"`` at the last sample
+                where the condition holds.
             as_frame: When True (default), return a summary DataFrame (see
                 below). ``as_frame=False`` returns the dictionary form; it is
                 deprecated, emits a ``DeprecationWarning`` and will be removed
@@ -440,7 +489,7 @@ class FlowConstraintEvents(Base):
             >>> out = flow.flow_constraint_analytics(roles={"upstream_run": "up", "downstream_run": "down"})
             >>> out[["constraint_type", "event_count", "total_duration_seconds"]]
               constraint_type  event_count  total_duration_seconds
-            0         blocked            1                    10.0
+            0         blocked            1                    20.0
             1         starved            0                     0.0
         """
         if not as_frame:
@@ -452,6 +501,7 @@ class FlowConstraintEvents(Base):
             tolerance_before=tolerance_before,
             tolerance_after=tolerance_after,
             min_duration=min_duration,
+            interval_end=interval_end,
         )
 
         starved_df = self.starved_events(
@@ -460,6 +510,7 @@ class FlowConstraintEvents(Base):
             tolerance_before=tolerance_before,
             tolerance_after=tolerance_after,
             min_duration=min_duration,
+            interval_end=interval_end,
         )
 
         # The detectors classify severity with the default thresholds; apply

@@ -57,7 +57,11 @@ def test_weekly_summary_handles_resets():
     assert "resets" in result.columns
     # Reset-aware: 350 + 400 = 750.
     assert result["total_production"].sum() == 750
-    assert result["resets"].sum() == 1
+    # Two resets: the mid-day one on day 1 and the overnight drop 150 -> 0
+    # into day 2, which is now seen because days are no longer computed in
+    # isolation (the first reading of a day is compared with the last one of
+    # the day before).
+    assert result["resets"].sum() == 2
 
 
 def test_monthly_summary_handles_resets():
@@ -66,7 +70,8 @@ def test_monthly_summary_handles_resets():
 
     assert "resets" in result.columns
     assert result["total_production"].sum() == 750
-    assert result["resets"].sum() == 1
+    # Mid-day reset on day 1 plus the overnight drop into day 2.
+    assert result["resets"].sum() == 2
 
     default = summary.monthly_summary(counter_uuid="prod_counter", handle_resets=False)
     assert "resets" not in default.columns

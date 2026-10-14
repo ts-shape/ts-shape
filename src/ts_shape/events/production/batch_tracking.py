@@ -9,8 +9,8 @@ from typing import Any, Literal
 
 import pandas as pd
 
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,13 @@ class BatchTrackingEvents(Base):
     # Batch detection
     # ------------------------------------------------------------------
 
+    def _segments(self) -> pd.DataFrame:
+        """Batch-ID samples with a ``group`` number per contiguous segment."""
+        s = self.series[[self.time_column, self.value_column]].copy()
+        s["batch_id"] = s[self.value_column].fillna("")
+        s["group"] = (s["batch_id"] != s["batch_id"].shift()).cumsum()
+        return s
+
     def detect_batches(self) -> pd.DataFrame:
         """Detect batch start/end from value changes in the batch-ID signal.
 
@@ -93,9 +100,7 @@ class BatchTrackingEvents(Base):
                 ]
             )
 
-        s = self.series[[self.time_column, self.value_column]].copy()
-        s["batch_id"] = s[self.value_column].fillna("")
-        s["group"] = (s["batch_id"] != s["batch_id"].shift()).cumsum()
+        s = self._segments()
 
         rows: list[dict[str, Any]] = []
         for _, seg in s.groupby("group"):
@@ -177,8 +182,17 @@ class BatchTrackingEvents(Base):
     ) -> pd.DataFrame:
         """Compute production quantity for each detected batch.
 
-        Uses a monotonic counter signal.  The yield per batch is the
-        counter increase during the batch interval.
+        Uses a monotonic counter signal. With ``handle_resets=True`` the
+        reset-aware increments are computed once over the whole counter and
+        each is booked to the batch that was running when it was produced: a
+        reading reports the production since the previous reading, so it
+        belongs to the batch whose ID was last seen strictly before it. A batch
+        therefore owns the counter readings after its first sample up to and
+        including the next batch-ID change, the production between the last
+        sample of one batch and the first sample of the next counts for the
+        earlier batch, and the batch quantities add up to the counter total
+        (readings before the first batch-ID sample, after the last one, or
+        while the batch ID is empty belong to no batch).
 
         Args:
             counter_uuid: UUID of the monotonic part counter.
@@ -188,8 +202,10 @@ class BatchTrackingEvents(Base):
                 ``quantity`` is the reset-aware total for the batch. The result
                 gains a ``resets`` column with the number of resets observed in
                 each batch. When False, ``quantity`` is simply
-                ``max(0, last - first)`` and a batch containing a reset reports
-                too little.
+                ``max(0, last - first)`` of the readings between the batch's
+                first and last sample (0 for fewer than two readings): a batch
+                containing a reset reports too little and production between
+                batches is lost.
 
         Returns:
             DataFrame with columns:
@@ -197,7 +213,7 @@ class BatchTrackingEvents(Base):
             - start
             - end
             - duration_seconds
-            - quantity: Parts produced during the batch.
+            - quantity: Parts produced during the batch (see above).
             - uuid
             - source_uuid
             - resets (only when ``handle_resets=True``)
@@ -236,22 +252,49 @@ class BatchTrackingEvents(Base):
 
         quantities: list[int] = []
         resets: list[int] = []
-        for _, batch_row in batches.iterrows():
-            mask = (counter_data[self.time_column] >= batch_row["start"]) & (
-                counter_data[self.time_column] <= batch_row["end"]
+        if handle_resets:
+            # Book every reset-aware increment of the whole counter signal to
+            # the batch that was running when it was produced: a reading
+            # reports the production since the previous reading, so it belongs
+            # to the batch whose ID was last seen strictly before it. Batch k
+            # thus owns the readings in (its first sample, the next batch-ID
+            # change], and the production between the last sample of one batch
+            # and the first sample of the next is no longer lost.
+            segs = self._segments()
+            labels = segs.groupby("group")["batch_id"].first()
+            batch_groups = labels[labels != ""].index
+            readings = counter_data[[self.time_column, value_column_counter]]
+            readings = pd.merge_asof(
+                readings.reset_index(drop=True),
+                segs[[self.time_column, "group"]],
+                on=self.time_column,
+                direction="backward",
+                allow_exact_matches=False,
             )
-            batch_counter = counter_data.loc[mask, value_column_counter]
-            if batch_counter.empty or len(batch_counter) < 2:
-                quantities.append(0)
-                resets.append(0)
-            elif handle_resets:
-                quantities.append(
-                    int(counter_quantity(batch_counter, handle_resets=True))
+            # After the last batch-ID sample nothing is known about the batch.
+            after_end = readings[self.time_column] > segs[self.time_column].iloc[-1]
+            readings["group"] = readings["group"].where(~after_end)
+            totals = counter_totals(
+                readings, value_column_counter, ["group"], handle_resets=True
+            ).set_index("group")
+            for group in batch_groups:
+                if group in totals.index:
+                    quantities.append(int(totals.at[group, "quantity"]))
+                    resets.append(int(totals.at[group, "resets"]))
+                else:
+                    quantities.append(0)
+                    resets.append(0)
+        else:
+            for _, batch_row in batches.iterrows():
+                mask = (counter_data[self.time_column] >= batch_row["start"]) & (
+                    counter_data[self.time_column] <= batch_row["end"]
                 )
-                resets.append(count_resets(batch_counter))
-            else:
-                qty = int(batch_counter.iloc[-1] - batch_counter.iloc[0])
-                quantities.append(max(0, qty))
+                batch_counter = counter_data.loc[mask, value_column_counter]
+                if len(batch_counter) < 2:
+                    quantities.append(0)
+                else:
+                    qty = int(batch_counter.iloc[-1] - batch_counter.iloc[0])
+                    quantities.append(max(0, qty))
                 resets.append(0)
 
         batches = batches.copy()

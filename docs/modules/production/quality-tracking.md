@@ -59,7 +59,7 @@ print(by_shift)
 | `nok_by_reason(nok_counter_uuid, defect_reason_uuid)` | Pareto of defect reasons by count | DataFrame with `reason`, `nok_parts`, `pct_of_total` |
 | `daily_quality_summary(ok_counter_uuid, nok_counter_uuid)` | Daily summary with total parts, rejects, and quality rates | DataFrame with `date`, `ok_parts`, `nok_parts`, `total_parts`, `nok_rate_pct`, `first_pass_yield_pct`, `quality_pct` |
 
-All methods count production across counter resets by default (`handle_resets=True`) and add a `resets` column; pass `handle_resets=False` for the plain `max(0, last - first)` quantity.
+All methods count production across counter resets by default (`handle_resets=True`) and add a `resets` column; pass `handle_resets=False` for the plain `max(0, last - first)` quantity. The reset-aware increments are computed once over each whole counter and booked to the shift, day, part or reason of the reading that reports them, so the groups add up to the counter's total.
 
 ---
 

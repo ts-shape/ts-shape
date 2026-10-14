@@ -20,6 +20,11 @@ fix: capability trending uses the spec in force in each window; energy
   downtime); flow_constraint_analytics applies its thresholds;
   from_shift_data matches string dates; detect_outlier_sensor needs
   three sensors to name an outlier.
+fix: group counter totals add up to the signal total (counter_by_group):
+  every shift/day/operator/part/batch boundary lost one increment, and
+  alternating operators or parts were double counted (609 parts reported
+  on a 360-part counter). FlowConstraintEvents intervals end at the next
+  change.
 change: KPIs carry their basis (run/planned/excluded seconds, parts,
   resets); every duration has a *_seconds column; seven summary methods
   return a DataFrame (as_frame=False deprecated). See docs/migration.md.

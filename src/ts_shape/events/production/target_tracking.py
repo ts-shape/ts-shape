@@ -13,8 +13,8 @@ import pandas as pd
 
 from ts_shape.events._compat import warn_dict_return
 from ts_shape.events._windows import data_tz
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
 
@@ -89,7 +89,10 @@ class TargetEvents(Base):
             value_column: Column containing metric values.
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
-                ``actual`` is the reset-aware total. The result gains a
+                ``actual`` is the reset-aware total. The increments are
+                computed once over the whole signal and booked to the shift of
+                the reading that reports them, so the shifts add up to the
+                signal total. The result gains a
                 ``resets`` column with the number of resets observed in each
                 shift. When False, ``actual`` is simply
                 ``max(0, last - first)`` and a shift containing a reset reports
@@ -99,9 +102,9 @@ class TargetEvents(Base):
                 start date, so each ``(date, shift)`` group is one contiguous
                 interval (the default). When False, readings are grouped by their
                 raw calendar date; a night shift is then split across two dates
-                and, within a date, its group spans the whole day so
-                ``last - first`` sweeps in other shifts' production. Only
-                affects schedules with an overnight shift.
+                and, with ``handle_resets=False``, its group spans the whole
+                day so ``last - first`` sweeps in other shifts' production.
+                Only affects schedules with an overnight shift.
 
         Returns:
             DataFrame with columns:
@@ -136,13 +139,13 @@ class TargetEvents(Base):
         else:
             data["date"] = data[self.time_column].dt.date
 
+        # Increments over the whole signal, booked to the shift of the reading
+        # that reports them, so the shifts add up to the signal total.
+        totals = counter_totals(
+            data, value_column, ["date", "shift"], handle_resets=handle_resets
+        )
         results = []
-        for (date, shift), grp in data.groupby(["date", "shift"]):
-            grp = grp.sort_values(self.time_column)
-            if handle_resets:
-                actual = counter_quantity(grp[value_column], handle_resets=True)
-            else:
-                actual = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
+        for date, shift, actual, n_resets in totals.itertuples(index=False):
             target = targets.get(shift, 0.0)
 
             variance = actual - target
@@ -165,7 +168,7 @@ class TargetEvents(Base):
                 "status": status,
             }
             if handle_resets:
-                row["resets"] = count_resets(grp[value_column])
+                row["resets"] = int(n_resets)
             results.append(row)
 
         return pd.DataFrame(results, columns=base_columns)
@@ -186,7 +189,9 @@ class TargetEvents(Base):
             value_column: Column containing metric values.
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
-                ``actual`` is the reset-aware daily total. The result gains a
+                ``actual`` is the reset-aware daily total, with increments
+                booked to the day of the reading that reports them so the days
+                add up to the signal total. The result gains a
                 ``resets`` column with the number of resets observed each day.
                 When False, ``actual`` is simply
                 ``max(0, last - first)`` and a day containing a reset reports
@@ -218,13 +223,13 @@ class TargetEvents(Base):
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["date"] = data[self.time_column].dt.date
 
+        # Increments over the whole signal, booked to the day of the reading
+        # that reports them, so the days add up to the signal total.
+        totals = counter_totals(
+            data, value_column, ["date"], handle_resets=handle_resets
+        )
         results = []
-        for date, grp in data.groupby("date"):
-            grp = grp.sort_values(self.time_column)
-            if handle_resets:
-                actual = counter_quantity(grp[value_column], handle_resets=True)
-            else:
-                actual = max(0, grp[value_column].iloc[-1] - grp[value_column].iloc[0])
+        for date, actual, n_resets in totals.itertuples(index=False):
 
             variance = actual - daily_target
             achievement = (actual / daily_target * 100) if daily_target > 0 else 0.0
@@ -245,7 +250,7 @@ class TargetEvents(Base):
                 "status": status,
             }
             if handle_resets:
-                row["resets"] = count_resets(grp[value_column])
+                row["resets"] = int(n_resets)
             results.append(row)
 
         return pd.DataFrame(results, columns=base_columns)

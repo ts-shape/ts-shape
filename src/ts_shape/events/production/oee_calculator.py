@@ -18,8 +18,8 @@ from ts_shape.events._output import (
     COL_START,
     empty_event_df,
 )
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class, deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
@@ -237,7 +237,10 @@ class OEEEvents(Base):
             run_value_column: Column holding boolean run state.
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
-                ``actual_parts`` is the reset-aware total. The result gains a
+                ``actual_parts`` is the reset-aware total. The increments are
+                computed once over the whole signal and booked to the day of
+                the reading that reports them, so the days add up to the
+                signal total. The result gains a
                 ``resets`` column with the number of resets observed each day.
                 When False, ``actual_parts`` is simply
                 ``max(0, last - first)`` and a day containing a reset reports
@@ -280,15 +283,16 @@ class OEEEvents(Base):
             for _, row in avail_df.iterrows():
                 run_per_day[row[COL_START].date()] = row["run_seconds"]
 
+        # Parts per day: increments over the whole signal, booked to the day of
+        # the reading that reports them, so the days add up to the total.
+        parts = counter_totals(
+            counter_data, value_column, ["date"], handle_resets=handle_resets
+        ).set_index("date")
+
         results = []
         for date, grp in counter_data.groupby("date"):
             grp = grp.sort_values(self.time_column)
-            if handle_resets:
-                actual_parts = counter_quantity(grp[value_column], handle_resets=True)
-            else:
-                actual_parts = max(
-                    0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
-                )
+            actual_parts = float(parts.at[date, "quantity"])
 
             if date in run_per_day:
                 run_seconds = run_per_day[date]
@@ -313,7 +317,7 @@ class OEEEvents(Base):
                 "performance_pct": min(performance, 100.0),
             }
             if handle_resets:
-                row["resets"] = count_resets(grp[value_column])
+                row["resets"] = int(parts.at[date, "resets"])
             results.append(row)
 
         return _daily_summary(results, perf_extra, tz=self._tz)
@@ -341,7 +345,9 @@ class OEEEvents(Base):
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset for both the total and the
                 reject counters, so a day containing a reset is not
-                under-reported. The result gains a ``resets`` column with the
+                under-reported. Increments are booked to the day of the
+                reading that reports them, so the days add up to the signal
+                totals. The result gains a ``resets`` column with the
                 combined number of resets (total + reject) observed each day.
                 When False, both quantities are ``max(0, last - first)``.
 
@@ -381,27 +387,21 @@ class OEEEvents(Base):
                 reject_data[self.time_column]
             )
             reject_data["date"] = reject_data[self.time_column].dt.date
-            for date, grp in reject_data.groupby("date"):
-                grp = grp.sort_values(self.time_column)
+            rejects = counter_totals(
+                reject_data, value_column, ["date"], handle_resets=handle_resets
+            )
+            for date, qty, n_resets in rejects.itertuples(index=False):
+                reject_by_day[date] = float(qty)
                 if handle_resets:
-                    reject_by_day[date] = counter_quantity(
-                        grp[value_column], handle_resets=True
-                    )
-                    reject_resets_by_day[date] = count_resets(grp[value_column])
-                else:
-                    reject_by_day[date] = max(
-                        0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
-                    )
+                    reject_resets_by_day[date] = int(n_resets)
 
+        # Increments over each whole signal, booked to the day of the reading
+        # that reports them, so the days add up to the signal totals.
+        totals = counter_totals(
+            total_data, value_column, ["date"], handle_resets=handle_resets
+        )
         results = []
-        for date, grp in total_data.groupby("date"):
-            grp = grp.sort_values(self.time_column)
-            if handle_resets:
-                total_parts = counter_quantity(grp[value_column], handle_resets=True)
-            else:
-                total_parts = max(
-                    0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
-                )
+        for date, total_parts, n_resets in totals.itertuples(index=False):
             reject_parts = reject_by_day.get(date, 0)
             good_parts = max(0, total_parts - reject_parts)
             quality = (good_parts / total_parts * 100.0) if total_parts > 0 else 0.0
@@ -414,9 +414,7 @@ class OEEEvents(Base):
                 "quality_pct": min(quality, 100.0),
             }
             if handle_resets:
-                row["resets"] = count_resets(grp[value_column]) + int(
-                    reject_resets_by_day.get(date, 0)
-                )
+                row["resets"] = int(n_resets) + int(reject_resets_by_day.get(date, 0))
             results.append(row)
 
         return _daily_summary(results, qual_extra, tz=self._tz)
