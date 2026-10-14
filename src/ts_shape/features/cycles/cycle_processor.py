@@ -1,8 +1,21 @@
+"""Assign sample data to cycles and compute per-cycle results.
+
+Boundary rule (used by every method): a sample belongs to a cycle when
+``cycle_start <= systime < cycle_end``. The interval is half-open, so with
+back-to-back cycles a sample at the shared timestamp belongs to the later
+cycle only, and every sample is counted once. A cycle without an end
+(``cycle_end`` NaT) gets no samples. Samples with a missing timestamp belong
+to no cycle. Samples are matched on time only: pass the values of the machine
+the cycles belong to.
+"""
+
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -11,7 +24,7 @@ logger = logging.getLogger(__name__)
 class CycleDataProcessor(Base):
     """
     A class to process cycle-based data and values with optimized performance.
-    Uses pandas IntervalIndex for efficient cycle assignment instead of nested loops.
+    Samples are matched to cycles with a sorted search (no per-cycle scans).
     """
 
     def __init__(
@@ -29,8 +42,23 @@ class CycleDataProcessor(Base):
             values_df: DataFrame containing the values and timestamps in the 'systime' column.
             cycle_uuid_col: Name of the column representing cycle UUIDs.
             systime_col: Name of the column representing the timestamps for the values.
+
+        Raises:
+            ColumnNotFoundError: If a cycle column or the time column is missing.
+            TypeError: If one of cycles and values is tz-aware and the other naive.
         """
         super().__init__(values_df)  # Call the parent constructor
+        for column in ("cycle_start", "cycle_end", cycle_uuid_col):
+            if column not in cycles_df.columns:
+                raise ColumnNotFoundError(
+                    f"cycles_df: column {column!r} not found. "
+                    f"Columns: {list(cycles_df.columns)}"
+                )
+        if systime_col not in values_df.columns:
+            raise ColumnNotFoundError(
+                f"values_df: column {systime_col!r} not found. "
+                f"Columns: {list(values_df.columns)}"
+            )
         self.values_df = values_df.copy()  # Initialize self.values_df explicitly
         self.cycles_df = cycles_df.copy()
         self.cycle_uuid_col = cycle_uuid_col
@@ -41,85 +69,128 @@ class CycleDataProcessor(Base):
         self.cycles_df["cycle_end"] = pd.to_datetime(self.cycles_df["cycle_end"])
         self.values_df[systime_col] = pd.to_datetime(self.values_df[systime_col])
 
-        # Pre-build interval index for efficient lookups
-        self._cycle_intervals = None
-        self._build_interval_index()
+        aware = [
+            s.dt.tz is not None
+            for s in (
+                self.cycles_df["cycle_start"],
+                self.cycles_df["cycle_end"],
+                self.values_df[systime_col],
+            )
+        ]
+        if len(set(aware)) > 1:
+            raise TypeError(
+                "CycleDataProcessor: cycle times and value times must both be "
+                "tz-aware or both naive; localize or convert one of them."
+            )
 
+        self._pairs_cache: tuple[np.ndarray, np.ndarray] | None = None
         logger.info("CycleDataProcessor initialized with cycles and values DataFrames.")
 
-    def _build_interval_index(self) -> None:
-        """Build IntervalIndex for efficient cycle lookups."""
-        if self.cycles_df.empty:
-            self._cycle_intervals = None
-            return
+    # ------------------------------------------------------------------
+    # Core assignment
+    # ------------------------------------------------------------------
 
-        # Create interval index from cycle start/end times
-        intervals = pd.IntervalIndex.from_arrays(
-            self.cycles_df["cycle_start"], self.cycles_df["cycle_end"], closed="both"
+    @staticmethod
+    def _as_ns(times: pd.Series) -> np.ndarray:
+        """Datetimes as int64 nanoseconds (UTC for tz-aware input); NaT -> min."""
+        if times.dt.tz is not None:
+            times = times.dt.tz_convert("UTC").dt.tz_localize(None)
+        return np.asarray(times.dt.as_unit("ns").to_numpy(dtype="datetime64[ns]")).view(
+            "int64"
         )
-        self._cycle_intervals = pd.Series(
-            self.cycles_df[self.cycle_uuid_col].values, index=intervals
-        )
-        logger.debug(f"Built interval index with {len(intervals)} cycles.")
+
+    def _pairs(self) -> tuple[np.ndarray, np.ndarray]:
+        """(value positions, cycle positions) of every sample-in-cycle match.
+
+        Sorted by sample time, then by cycle start; positions index
+        ``values_df`` and ``cycles_df`` (``iloc``).
+        """
+        if self._pairs_cache is not None:
+            return self._pairs_cache
+        times = self.values_df[self.systime_col]
+        valid_t = np.flatnonzero(times.notna().to_numpy())
+        t_ns = self._as_ns(times)[valid_t]
+        t_order = np.argsort(t_ns, kind="stable")
+        sorted_t = t_ns[t_order]
+        sorted_pos = valid_t[t_order]
+
+        starts = self.cycles_df["cycle_start"]
+        ends = self.cycles_df["cycle_end"]
+        valid_c = np.flatnonzero((starts.notna() & ends.notna()).to_numpy())
+        c_start = self._as_ns(starts)[valid_c]
+        c_end = self._as_ns(ends)[valid_c]
+        lo = np.searchsorted(sorted_t, c_start, side="left")
+        hi = np.searchsorted(sorted_t, c_end, side="left")
+        counts = np.clip(hi - lo, 0, None)
+        total = int(counts.sum())
+        if total == 0:
+            empty = np.empty(0, dtype=np.int64)
+            self._pairs_cache = (empty, empty)
+            return self._pairs_cache
+        cycle_idx = np.repeat(np.arange(len(valid_c)), counts)
+        offsets = np.arange(total) - np.repeat(np.cumsum(counts) - counts, counts)
+        sorted_idx = np.repeat(lo, counts) + offsets
+        order = np.lexsort((c_start[cycle_idx], sorted_idx))
+        value_pos = sorted_pos[sorted_idx[order]]
+        cycle_pos = valid_c[cycle_idx[order]]
+        self._pairs_cache = (value_pos, cycle_pos)
+        return self._pairs_cache
+
+    def _cycle_order(self) -> np.ndarray:
+        """Cycle positions in chronological order (by start, then input order)."""
+        return np.argsort(self.cycles_df["cycle_start"].to_numpy(), kind="stable")
+
+    # ------------------------------------------------------------------
+    # Split / merge / group
+    # ------------------------------------------------------------------
 
     def split_by_cycle(self) -> dict[str, pd.DataFrame]:
         """
         Splits the values DataFrame by cycles defined in the cycles DataFrame.
-        Uses optimized interval-based assignment.
 
         Returns:
             Dictionary where keys are cycle_uuids and values are DataFrames with the corresponding cycle data.
+                Keys are in chronological cycle order; cycles without samples are
+                left out. Rows keep their ``values_df`` index and are sorted by time.
         """
-        if self._cycle_intervals is None or self.values_df.empty:
+        merged = self.merge_dataframes_by_cycle()
+        if merged.empty:
             logger.warning("No cycles or values available for splitting.")
             return {}
-
-        # Use merge_dataframes_by_cycle to assign cycle_uuids efficiently
-        merged = self.merge_dataframes_by_cycle()
-
-        # Split into dictionary
         result = {
             cycle_uuid: group.drop(columns=[self.cycle_uuid_col])
-            for cycle_uuid, group in merged.groupby(self.cycle_uuid_col)
+            for cycle_uuid, group in merged.groupby(
+                self.cycle_uuid_col, sort=False, dropna=True
+            )
         }
-
         logger.info(f"Split {len(result)} cycles.")
         return result
 
     def merge_dataframes_by_cycle(self) -> pd.DataFrame:
         """
         Merges the values DataFrame with the cycles DataFrame based on the cycle time intervals.
-        Uses optimized interval-based assignment instead of nested loops.
 
         Returns:
-            DataFrame with an added 'cycle_uuid' column.
+            The samples that fall in a cycle, with an added ``cycle_uuid`` column,
+                sorted by time (original index kept). Samples in no cycle are
+                dropped. A sample inside two overlapping cycles appears once per
+                cycle. No match: an empty frame with the same columns.
         """
-        if self._cycle_intervals is None or self.values_df.empty:
-            logger.warning("No cycles available for merging.")
-            result = self.values_df.copy()
-            result[self.cycle_uuid_col] = None
-            return result
-
-        # Create a copy to avoid modifying the original
-        merged_df = self.values_df.copy()
-
-        # Assign each sample to the cycle whose [start, end] contains it. A
-        # comparison that cannot be made (e.g. tz-aware cycles against naive
-        # sample times) raises instead of being papered over.
-        time_values = merged_df[self.systime_col]
-        cycle_assignment = pd.Series(index=merged_df.index, dtype="object")
-        for interval, cycle_uuid in self._cycle_intervals.items():
-            mask = (time_values >= interval.left) & (time_values <= interval.right)
-            cycle_assignment.loc[mask] = cycle_uuid
-        merged_df[self.cycle_uuid_col] = cycle_assignment
-
-        # Drop rows not assigned to any cycle
-        unassigned_count = merged_df[self.cycle_uuid_col].isna().sum()
-        if unassigned_count > 0:
-            logger.info(f"Dropping {unassigned_count} rows not assigned to any cycle.")
-        result = merged_df.dropna(subset=[self.cycle_uuid_col])
+        value_pos, cycle_pos = self._pairs()
+        result = self.values_df.iloc[value_pos].copy()
+        result[self.cycle_uuid_col] = (
+            self.cycles_df[self.cycle_uuid_col].to_numpy()[cycle_pos]
+            if len(cycle_pos)
+            else pd.Series(dtype=object)
+        )
+        dropped = int(self.values_df[self.systime_col].notna().sum()) - len(
+            np.unique(value_pos)
+        )
+        if dropped > 0:
+            logger.info(f"Dropping {dropped} rows not assigned to any cycle.")
         logger.info(
-            f"Merged DataFrame contains {len(result)} records across {result[self.cycle_uuid_col].nunique()} cycles."
+            f"Merged DataFrame contains {len(result)} records across "
+            f"{result[self.cycle_uuid_col].nunique()} cycles."
         )
         return result
 
@@ -130,13 +201,14 @@ class CycleDataProcessor(Base):
         Group the DataFrame by the cycle_uuid column, resulting in a list of DataFrames, each containing data for one cycle.
 
         Args:
-            data: DataFrame containing the data to be grouped by cycle_uuid. If None, uses the internal values_df.
+            data: DataFrame containing the data to be grouped by cycle_uuid. If None,
+                uses ``merge_dataframes_by_cycle()``.
 
         Returns:
-            List of DataFrames, each containing data for a unique cycle_uuid.
+            List of DataFrames, one per cycle uuid, in order of first appearance.
         """
         if data is None:
-            data = self.values_df
+            data = self.merge_dataframes_by_cycle()
 
         if self.cycle_uuid_col not in data.columns:
             logger.warning(
@@ -144,7 +216,9 @@ class CycleDataProcessor(Base):
             )
             return []
 
-        grouped_dataframes = [group for _, group in data.groupby(self.cycle_uuid_col)]
+        grouped_dataframes = [
+            group for _, group in data.groupby(self.cycle_uuid_col, sort=False)
+        ]
         logger.info(f"Grouped data into {len(grouped_dataframes)} cycle UUID groups.")
         return grouped_dataframes
 
@@ -161,6 +235,7 @@ class CycleDataProcessor(Base):
 
         Returns:
             List of DataFrames, each corresponding to a group in the original DataFrames.
+                Rows whose ``column`` is missing are left out.
         """
         split_dfs = []
         for df in dfs:
@@ -179,67 +254,96 @@ class CycleDataProcessor(Base):
     def _filter_by_time_range(
         self, start_time: pd.Timestamp, end_time: pd.Timestamp
     ) -> pd.DataFrame:
-        """
-        Filters the values DataFrame by the given time range.
-
-        Args:
-            start_time: Start of the time range.
-            end_time: End of the time range.
-
-        Returns:
-            Filtered DataFrame containing rows within the time range.
-        """
+        """Rows with ``start_time <= systime < end_time`` (the cycle rule)."""
         mask = (self.values_df[self.systime_col] >= start_time) & (
-            self.values_df[self.systime_col] <= end_time
+            self.values_df[self.systime_col] < end_time
         )
         return self.values_df[mask]
+
+    # ------------------------------------------------------------------
+    # Per-cycle results
+    # ------------------------------------------------------------------
+
+    def _per_cycle_metric(self, metric: str) -> pd.DataFrame:
+        """count/mean/std of ``metric`` per cycle position (non-missing values)."""
+        if metric not in self.values_df.columns:
+            raise ColumnNotFoundError(
+                f"values_df: column {metric!r} not found. "
+                f"Columns: {list(self.values_df.columns)}"
+            )
+        value_pos, cycle_pos = self._pairs()
+        values = pd.to_numeric(
+            self.values_df[metric].iloc[value_pos], errors="coerce"
+        ).astype("float64")
+        frame = pd.DataFrame({"cycle": cycle_pos, "v": values.to_numpy()}).dropna()
+        return frame.groupby("cycle")["v"].agg(["count", "mean", "std"])
 
     def compute_cycle_statistics(self) -> pd.DataFrame:
         """
         Compute statistics for each cycle.
 
         Returns:
-            DataFrame with cycle-level statistics including duration, value counts, etc.
+            One row per cycle in ``cycles_df`` order: ``cycle_uuid``,
+                ``cycle_start``, ``cycle_end``, ``duration_seconds``,
+                ``value_count`` (samples in the cycle), ``unique_uuids``,
+                ``mean_value_double`` / ``std_value_double`` (when ``values_df``
+                has ``value_double``), and the canonical ``start``, ``end``,
+                ``sample_count``. An open cycle has NaN duration and 0 samples.
         """
-        if self.cycles_df.empty:
-            return pd.DataFrame()
-
-        stats = []
-        for _, cycle in self.cycles_df.iterrows():
-            cycle_uuid = cycle[self.cycle_uuid_col]
-            cycle_start = cycle["cycle_start"]
-            cycle_end = cycle["cycle_end"]
-
-            # Get values for this cycle
-            mask = (self.values_df[self.systime_col] >= cycle_start) & (
-                self.values_df[self.systime_col] <= cycle_end
+        has_double = "value_double" in self.values_df.columns
+        n = len(self.cycles_df)
+        value_pos, cycle_pos = self._pairs()
+        counts = np.bincount(cycle_pos, minlength=n) if n else np.zeros(0, int)
+        if "uuid" in self.values_df.columns and len(value_pos):
+            uuids = (
+                pd.DataFrame(
+                    {
+                        "cycle": cycle_pos,
+                        "uuid": self.values_df["uuid"].iloc[value_pos].to_numpy(),
+                    }
+                )
+                .groupby("cycle")["uuid"]
+                .nunique()
+                .reindex(range(n), fill_value=0)
+                .to_numpy()
             )
-            cycle_values = self.values_df[mask]
+        else:
+            uuids = np.zeros(n, dtype=int)
 
-            # Compute stats
-            stat = {
-                self.cycle_uuid_col: cycle_uuid,
-                "cycle_start": cycle_start,
-                "cycle_end": cycle_end,
-                "duration_seconds": (cycle_end - cycle_start).total_seconds(),
-                "value_count": len(cycle_values),
-                "unique_uuids": (
-                    cycle_values["uuid"].nunique()
-                    if "uuid" in cycle_values.columns
-                    else 0
-                ),
+        start = self.cycles_df["cycle_start"].reset_index(drop=True)
+        end = self.cycles_df["cycle_end"].reset_index(drop=True)
+        result = pd.DataFrame(
+            {
+                self.cycle_uuid_col: self.cycles_df[self.cycle_uuid_col].to_numpy(),
+                "cycle_start": start,
+                "cycle_end": end,
+                "duration_seconds": (end - start).dt.total_seconds(),
+                "value_count": counts.astype("int64"),
+                "unique_uuids": np.asarray(uuids, dtype="int64"),
             }
-
-            # Add value-type specific stats if columns exist
-            if "value_double" in cycle_values.columns:
-                stat["mean_value_double"] = cycle_values["value_double"].mean()
-                stat["std_value_double"] = cycle_values["value_double"].std()
-
-            stats.append(stat)
-
-        result = pd.DataFrame(stats)
+        )
+        if has_double:
+            agg = self._per_cycle_metric("value_double").reindex(range(n))
+            result["mean_value_double"] = agg["mean"].to_numpy()
+            result["std_value_double"] = agg["std"].to_numpy()
+        result["start"] = result["cycle_start"]
+        result["end"] = result["cycle_end"]
+        result["sample_count"] = result["value_count"]
         logger.info(f"Computed statistics for {len(result)} cycles.")
         return result
+
+    def _comparison_schema(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                self.cycle_uuid_col: pd.Series(dtype=object),
+                "is_reference": pd.Series(dtype=bool),
+                "mean_value": pd.Series(dtype="float64"),
+                "std_value": pd.Series(dtype="float64"),
+                "deviation_from_ref": pd.Series(dtype="float64"),
+                "deviation_pct": pd.Series(dtype="float64"),
+                "variability_ratio": pd.Series(dtype="float64"),
+            }
+        )
 
     def compare_cycles(
         self, reference_cycle_uuid: str, metric: str = "value_double"
@@ -252,58 +356,68 @@ class CycleDataProcessor(Base):
             metric: Column name to use for comparison
 
         Returns:
-            DataFrame with comparison metrics for each cycle
+            One row per cycle with data for ``metric`` (chronological order):
+                ``cycle_uuid``, ``is_reference``, ``mean_value``, ``std_value``,
+                ``deviation_from_ref`` (mean minus reference mean),
+                ``deviation_pct`` (relative to the reference mean, NaN when it
+                is 0) and ``variability_ratio`` (std over reference std, NaN
+                when that is 0 or undefined). Empty (full columns) with a
+                ``DataQualityWarning`` when the reference cycle is unknown or
+                has no data.
+
+        Raises:
+            ColumnNotFoundError: If ``metric`` is not a column of ``values_df``.
         """
-        if reference_cycle_uuid not in self.cycles_df[self.cycle_uuid_col].values:
-            logger.error(f"Reference cycle '{reference_cycle_uuid}' not found.")
-            return pd.DataFrame()
-
-        # Get reference cycle data
-        ref_cycle = self.cycles_df[
-            self.cycles_df[self.cycle_uuid_col] == reference_cycle_uuid
-        ].iloc[0]
-        ref_mask = (self.values_df[self.systime_col] >= ref_cycle["cycle_start"]) & (
-            self.values_df[self.systime_col] <= ref_cycle["cycle_end"]
-        )
-        ref_values = self.values_df[ref_mask][metric].dropna()
-
-        if ref_values.empty:
-            logger.warning("Reference cycle has no data for the specified metric.")
-            return pd.DataFrame()
-
-        ref_mean = ref_values.mean()
-        ref_std = ref_values.std()
-
-        # Compare each cycle
-        comparisons = []
-        for _, cycle in self.cycles_df.iterrows():
-            cycle_uuid = cycle[self.cycle_uuid_col]
-            mask = (self.values_df[self.systime_col] >= cycle["cycle_start"]) & (
-                self.values_df[self.systime_col] <= cycle["cycle_end"]
+        uuids = self.cycles_df[self.cycle_uuid_col].astype(str).to_numpy()
+        stats = self._per_cycle_metric(metric)
+        ref_positions = np.flatnonzero(uuids == str(reference_cycle_uuid))
+        if len(ref_positions) == 0:
+            warnings.warn(
+                f"compare_cycles: reference cycle {reference_cycle_uuid!r} not found.",
+                DataQualityWarning,
+                stacklevel=2,
             )
-            cycle_values = self.values_df[mask][metric].dropna()
+            return self._comparison_schema()
+        ref_pos = int(ref_positions[0])
+        if ref_pos not in stats.index:
+            warnings.warn(
+                f"compare_cycles: reference cycle {reference_cycle_uuid!r} has "
+                f"no {metric!r} data.",
+                DataQualityWarning,
+                stacklevel=2,
+            )
+            return self._comparison_schema()
+        ref_mean = float(stats.loc[ref_pos, "mean"])
+        ref_std = float(stats.loc[ref_pos, "std"])
 
-            if cycle_values.empty:
-                continue
-
-            comparison = {
-                self.cycle_uuid_col: cycle_uuid,
-                "is_reference": cycle_uuid == reference_cycle_uuid,
-                "mean_value": cycle_values.mean(),
-                "std_value": cycle_values.std(),
-                "deviation_from_ref": cycle_values.mean() - ref_mean,
-                "deviation_pct": (
-                    ((cycle_values.mean() - ref_mean) / ref_mean * 100)
-                    if ref_mean != 0
-                    else np.nan
-                ),
-                "variability_ratio": (
-                    (cycle_values.std() / ref_std) if ref_std != 0 else np.nan
-                ),
+        order = [int(p) for p in self._cycle_order() if int(p) in stats.index]
+        sub = stats.loc[order]
+        mean = sub["mean"].to_numpy(dtype=float)
+        std = sub["std"].to_numpy(dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            pct = (
+                (mean - ref_mean) / ref_mean * 100
+                if ref_mean != 0
+                else np.full(len(mean), np.nan)
+            )
+            ratio = (
+                std / ref_std
+                if ref_std != 0 and not np.isnan(ref_std)
+                else np.full(len(std), np.nan)
+            )
+        result = pd.DataFrame(
+            {
+                self.cycle_uuid_col: self.cycles_df[self.cycle_uuid_col]
+                .to_numpy()[order]
+                .astype(object),
+                "is_reference": uuids[order] == str(reference_cycle_uuid),
+                "mean_value": mean,
+                "std_value": std,
+                "deviation_from_ref": mean - ref_mean,
+                "deviation_pct": pct,
+                "variability_ratio": ratio,
             }
-            comparisons.append(comparison)
-
-        result = pd.DataFrame(comparisons)
+        )
         logger.info(
             f"Compared {len(result)} cycles against reference cycle '{reference_cycle_uuid}'."
         )
@@ -314,54 +428,61 @@ class CycleDataProcessor(Base):
         metric: str = "value_double",
         method: str = "low_variability",
         top_n: int = 5,
+        target: float | None = None,
     ) -> list[str]:
         """
         Identify the best performing cycles (golden cycles).
 
         Args:
             metric: Column name to evaluate
-            method: Method for identification ('low_variability', 'high_mean', 'target_value')
+            method: ``'low_variability'`` (smallest std / |mean|),
+                ``'high_mean'`` (largest mean) or ``'target_value'`` (mean
+                closest to ``target``).
             top_n: Number of golden cycles to identify
+            target: Target value, required for ``'target_value'``.
 
         Returns:
-            List of cycle UUIDs identified as golden cycles
+            Up to ``top_n`` cycle UUIDs, best first; ties keep chronological
+                order. Cycles without ``metric`` data, or whose score is
+                undefined (a single sample has no std), are not ranked.
+
+        Raises:
+            ValueError: For an unknown ``method``, or ``'target_value'`` without
+                ``target``.
+            ColumnNotFoundError: If ``metric`` is not a column of ``values_df``.
         """
-        stats = self.compute_cycle_statistics()
-
-        if stats.empty:
-            logger.warning("No cycle statistics available.")
-            return []
-
-        # Calculate metric-specific scores for each cycle
-        scores = []
-        for _, cycle in self.cycles_df.iterrows():
-            cycle_uuid = cycle[self.cycle_uuid_col]
-            mask = (self.values_df[self.systime_col] >= cycle["cycle_start"]) & (
-                self.values_df[self.systime_col] <= cycle["cycle_end"]
+        if method not in ("low_variability", "high_mean", "target_value"):
+            raise ValueError(
+                f"Unknown method {method!r}; use 'low_variability', 'high_mean' "
+                "or 'target_value'."
             )
-            cycle_values = self.values_df[mask][metric].dropna()
+        if method == "target_value" and target is None:
+            raise ValueError("method='target_value' needs target=<value>.")
 
-            if cycle_values.empty:
-                continue
-
-            if method == "low_variability":
-                # Lower coefficient of variation is better
-                mean_val = cycle_values.mean()
-                std_val = cycle_values.std()
-                score = -(std_val / mean_val) if mean_val != 0 else -np.inf
-            elif method == "high_mean":
-                score = cycle_values.mean()
-            else:  # target_value - would need target parameter
-                score = -cycle_values.std()  # fallback to low variability
-
-            scores.append({"cycle_uuid": cycle_uuid, "score": score})
-
-        if not scores:
+        stats = self._per_cycle_metric(metric)
+        if stats.empty:
             logger.warning("Could not compute scores for any cycles.")
             return []
+        if method == "low_variability":
+            with np.errstate(divide="ignore", invalid="ignore"):
+                score = -(stats["std"] / stats["mean"].abs())
+            score = score.where(stats["mean"] != 0, -np.inf)
+            score = score.where(stats["std"].notna())
+        elif method == "high_mean":
+            score = stats["mean"]
+        else:
+            score = -(stats["mean"] - float(target)).abs()  # type: ignore[arg-type]
 
-        scores_df = pd.DataFrame(scores).sort_values("score", ascending=False)
-        golden_cycles: list[str] = scores_df.head(top_n)["cycle_uuid"].tolist()
+        chrono = {int(p): rank for rank, p in enumerate(self._cycle_order())}
+        ranked = pd.DataFrame(
+            {"score": score, "chrono": [chrono[int(p)] for p in stats.index]},
+            index=stats.index,
+        ).dropna(subset=["score"])
+        ranked = ranked.sort_values(
+            ["score", "chrono"], ascending=[False, True], kind="stable"
+        )
+        uuids = self.cycles_df[self.cycle_uuid_col].to_numpy()
+        golden_cycles: list[str] = [uuids[int(p)] for p in ranked.index[:top_n]]
 
         logger.info(
             f"Identified {len(golden_cycles)} golden cycles using method '{method}'."

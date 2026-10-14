@@ -1,12 +1,73 @@
+"""Cut a signal into production cycles.
+
+Every ``process_*`` method returns one row per cycle with the columns
+``cycle_start``, ``cycle_end``, ``cycle_uuid``, ``is_complete`` and the
+canonical interval columns ``start``, ``end``, ``duration_seconds``, ``uuid``
+(``"cycles:<method>"``) and ``source_uuid`` (the start signal). Rules shared by
+all methods:
+
+- Only the rows of ``start_uuid`` (and ``end_uuid``) are read; other signals in
+  the frame are ignored. A frame without a ``uuid`` column is taken as one
+  pre-filtered signal.
+- Time columns keep the input's dtype (a tz-aware ``systime`` stays tz-aware).
+- An end closes the cycle that is open at that moment. At one timestamp, an
+  end is applied before a start, so back-to-back cycles may share a timestamp
+  (the end of one is the start of the next).
+- A second start while a cycle is open aborts the open cycle: it stays in the
+  output with ``cycle_end = NaT`` and ``is_complete = False``, and the end goes
+  to the newer start. Cycles never overlap.
+- An end with no open cycle (for example before the first start) is ignored
+  and counted in ``get_extraction_stats()["unmatched_ends"]``.
+- ``is_complete`` is True only when both boundaries were seen. A cycle with no
+  end (the last one, or an aborted one) has ``cycle_end = NaT``. A cycle that
+  was already running at the first sample (its real start lies before the
+  data) keeps its observed end but has ``is_complete = False``.
+- Several start rows at the same timestamp are one start.
+- ``cycle_uuid`` is deterministic: the same signal, method and start time
+  always give the same id, so ids are stable across runs and unique within a
+  result.
+- No cycles: an empty frame with the full column set.
+"""
+
 import logging
 import uuid
+import warnings
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
+
+_CYCLE_NAMESPACE = uuid.UUID("6f1f2a4e-6d8c-5b7e-9a51-3c0c1e2f7a10")
+
+_OUTPUT_COLUMNS = [
+    "cycle_start",
+    "cycle_end",
+    "cycle_uuid",
+    "is_complete",
+    "start",
+    "end",
+    "duration_seconds",
+    "uuid",
+    "source_uuid",
+]
+
+
+def _empty_stats() -> dict[str, Any]:
+    return {
+        "total_cycles": 0,
+        "complete_cycles": 0,
+        "incomplete_cycles": 0,
+        "unmatched_starts": 0,
+        "unmatched_ends": 0,
+        "partial_first_cycles": 0,
+        "overlapping_cycles": 0,
+        "warnings": [],
+    }
 
 
 class CycleExtractor(Base):
@@ -41,76 +102,150 @@ class CycleExtractor(Base):
         self.value_change_threshold = abs(value_change_threshold)
 
         # Statistics tracking
-        self._stats: dict[str, Any] = {
-            "total_cycles": 0,
-            "complete_cycles": 0,
-            "incomplete_cycles": 0,
-            "unmatched_starts": 0,
-            "unmatched_ends": 0,
-            "overlapping_cycles": 0,
-            "warnings": [],
-        }
+        self._stats: dict[str, Any] = _empty_stats()
 
         logger.info(
             f"CycleExtractor initialized with start_uuid: {self.start_uuid} and end_uuid: {self.end_uuid}"
         )
 
-    def _signal_frame(self) -> pd.DataFrame:
-        """Rows of the start signal (all rows when the frame is pre-filtered)."""
-        if "uuid" in self.df.columns and (self.df["uuid"] == self.start_uuid).any():
-            return self.df[self.df["uuid"] == self.start_uuid]
-        return self.df
+    # ------------------------------------------------------------------
+    # Signal selection and boundary events
+    # ------------------------------------------------------------------
+
+    def _signal_frame(self, signal_uuid: str | None = None) -> pd.DataFrame:
+        """Time-ordered rows of one signal, NaT timestamps dropped.
+
+        A frame without a ``uuid`` column is one pre-filtered signal. A frame
+        whose ``uuid`` column holds a single other uuid is used as well (with a
+        warning). With several signals and none matching, the result is empty.
+        """
+        signal_uuid = self.start_uuid if signal_uuid is None else signal_uuid
+        df = self.df
+        if "systime" not in df.columns:
+            return df.iloc[0:0]
+        if "uuid" in df.columns and not df.empty:
+            match = df["uuid"] == signal_uuid
+            if match.any():
+                df = df[match]
+            else:
+                present = sorted(str(u) for u in df["uuid"].dropna().unique())
+                if len(present) == 1:
+                    warnings.warn(
+                        f"CycleExtractor: uuid {signal_uuid!r} not found; the frame "
+                        f"holds one signal {present[0]!r}, which is used.",
+                        DataQualityWarning,
+                        stacklevel=4,
+                    )
+                else:
+                    warnings.warn(
+                        f"CycleExtractor: uuid {signal_uuid!r} not found. "
+                        f"Available uuids: {present}",
+                        DataQualityWarning,
+                        stacklevel=4,
+                    )
+                    return df.iloc[0:0]
+        return df[df["systime"].notna()]
 
     @staticmethod
-    def _bool_edges(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Rising (False->True) and falling (True->False) edge rows of value_bool."""
-        state = frame["value_bool"].astype("boolean").fillna(False).astype(bool)
+    def _bool_state(frame: pd.DataFrame) -> pd.Series:
+        """``value_bool`` as a nullable boolean Series (NA where missing)."""
+        if "value_bool" not in frame.columns:
+            return pd.Series(pd.NA, index=frame.index, dtype="boolean")
+        return frame["value_bool"].astype("boolean")
+
+    @classmethod
+    def _bool_edges(cls, frame: pd.DataFrame) -> tuple[pd.Series, pd.Series, bool]:
+        """Rising and falling edge times of ``value_bool``.
+
+        A missing sample holds the previous state. Returns the rising-edge
+        times, the falling-edge times, and whether the signal was already True
+        at its first known sample (the first rising edge is then not seen).
+        """
+        raw = cls._bool_state(frame)
+        known = raw.dropna()
+        initially_true = bool(len(known)) and bool(known.iloc[0])
+        state = raw.ffill().fillna(False).astype(bool)
         prev = state.shift(fill_value=False)
-        return frame[state & ~prev], frame[~state & prev]
+        times = frame["systime"]
+        return times[state & ~prev], times[~state & prev], initially_true
+
+    @classmethod
+    def _bool_events(cls, frame: pd.DataFrame) -> tuple[pd.Series, bool]:
+        """Times of the True events of a pulse signal.
+
+        A signal that is never False is an event log: every True row is an
+        event. Otherwise a held True counts once, at its rising edge.
+        """
+        raw = cls._bool_state(frame)
+        if not raw.eq(False).fillna(False).any():
+            return frame["systime"][raw.eq(True).fillna(False)], False
+        rising, _, initially_true = cls._bool_edges(frame)
+        return rising, initially_true
+
+    # ------------------------------------------------------------------
+    # Extraction methods
+    # ------------------------------------------------------------------
 
     def process_persistent_cycle(self) -> pd.DataFrame:
         """Processes cycles where the value of the variable stays true during the cycle.
 
         A cycle starts at a rising edge (False -> True) and ends at the next
-        falling edge (True -> False). Consecutive True samples belong to the
-        same cycle.
+        falling edge (True -> False), i.e. at the first False sample. A missing
+        sample holds the previous state. A signal already True at its first
+        sample gives a first cycle with ``is_complete = False``.
         """
-        cycle_starts, cycle_ends = self._bool_edges(self._signal_frame())
-        return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
+        frame = self._signal_frame()
+        starts, ends, initially_true = self._bool_edges(frame)
+        return self._generate_cycle_dataframe(
+            starts,
+            ends,
+            method="persistent",
+            partial_start=frame["systime"].iloc[0] if initially_true else None,
+        )
 
     def process_trigger_cycle(self) -> pd.DataFrame:
         """Processes cycles triggered by a true pulse (true, then back to false).
 
-        Each rising edge (False -> True) starts a cycle that ends at the next
-        rising edge, i.e. the next trigger. The last trigger is incomplete.
+        Each trigger starts a cycle that ends at the next trigger. A trigger is
+        a rising edge (False -> True); for a signal that is never False (an
+        event log of True rows) every row is a trigger. The last trigger gives
+        an incomplete cycle.
         """
-        cycle_starts, _ = self._bool_edges(self._signal_frame())
+        frame = self._signal_frame()
+        starts, initially_true = self._bool_events(frame)
         return self._generate_cycle_dataframe(
-            cycle_starts, cycle_starts, allow_exact_matches=False
+            starts,
+            starts,
+            method="trigger",
+            same_rows=True,
+            partial_start=frame["systime"].iloc[0] if initially_true else None,
         )
 
     def process_separate_start_end_cycle(self) -> pd.DataFrame:
         """Processes cycles where different variables indicate cycle start and end.
 
-        When the DataFrame contains a 'uuid' column and start_uuid != end_uuid,
-        filters starts by start_uuid and ends by end_uuid. Otherwise falls back
-        to treating all True values as both start and end candidates.
+        Start events are the True events of ``start_uuid``, end events the True
+        events of ``end_uuid`` (a held True counts once, at its rising edge; a
+        signal that is never False is an event log where every True row
+        counts). An end closes the open cycle; a second start aborts it. When
+        ``end_uuid`` equals ``start_uuid`` (or the frame has no ``uuid``
+        column), each event closes the previous cycle and opens the next.
         """
-        # ``eq(True)`` keeps missing values out of both candidate sets.
-        is_true = self.df["value_bool"].eq(True)
-        if "uuid" in self.df.columns and self.start_uuid != self.end_uuid:
-            cycle_starts = self.df[(self.df["uuid"] == self.start_uuid) & is_true]
-            cycle_ends = self.df[(self.df["uuid"] == self.end_uuid) & is_true]
-        else:
-            cycle_starts = self.df[is_true]
-            cycle_ends = cycle_starts
-            # Starts and ends are the same rows: a start must close at the
-            # *next* True, not at itself (which gave zero-length cycles).
+        start_frame = self._signal_frame(self.start_uuid)
+        starts, start_initially = self._bool_events(start_frame)
+        partial = start_frame["systime"].iloc[0] if start_initially else None
+        if "uuid" not in self.df.columns or self.start_uuid == self.end_uuid:
             return self._generate_cycle_dataframe(
-                cycle_starts, cycle_ends, allow_exact_matches=False
+                starts,
+                starts,
+                method="separate_start_end",
+                same_rows=True,
+                partial_start=partial,
             )
-
-        return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
+        ends, _ = self._bool_events(self._signal_frame(self.end_uuid))
+        return self._generate_cycle_dataframe(
+            starts, ends, method="separate_start_end", partial_start=partial
+        )
 
     def process_step_sequence(self, start_step: int, end_step: int) -> pd.DataFrame:
         """Processes cycles based on a step sequence, where specific integer values denote cycle start and end.
@@ -122,154 +257,223 @@ class CycleExtractor(Base):
                 enters it.
 
         Returns:
-            DataFrame with columns ``cycle_start``, ``cycle_end``, ``cycle_uuid`` and
-                ``is_complete``; ``cycle_end`` is NaT for a cycle that never closes.
+            One row per cycle (see the module docstring); ``cycle_end`` is NaT
+                for a cycle that never closes. A step held over several samples is
+                entered once; a missing sample holds the previous step. With
+                ``start_step == end_step`` each entry closes the previous cycle and
+                opens the next.
         """
-        # A step held over several samples is entered once: only the first
-        # sample of each run opens (or closes) a cycle.
         frame = self._signal_frame()
-        step = frame["value_integer"]
-        entered = step.ne(step.shift())
-        cycle_starts = frame[(step == start_step) & entered]
-        cycle_ends = frame[(step == end_step) & entered]
-
-        return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
+        if "value_integer" in frame.columns:
+            raw = pd.to_numeric(frame["value_integer"], errors="coerce").astype(
+                "float64"
+            )
+        else:
+            raw = pd.Series(np.nan, index=frame.index, dtype="float64")
+        step = raw.ffill()
+        entered = step.notna() & step.ne(step.shift())
+        times = frame["systime"]
+        starts = times[entered & (step == start_step)]
+        ends = times[entered & (step == end_step)]
+        known = raw.dropna()
+        partial = (
+            frame["systime"].iloc[0]
+            if len(known) and known.iloc[0] == start_step
+            else None
+        )
+        return self._generate_cycle_dataframe(
+            starts,
+            ends,
+            method="step_sequence",
+            same_rows=start_step == end_step,
+            partial_start=partial,
+        )
 
     def process_state_change_cycle(self) -> pd.DataFrame:
-        """Processes cycles where the start of a new cycle is the end of the previous cycle."""
-        # Assuming dataframe is pre-filtered
-        cycle_starts = self.df.copy()
+        """Processes cycles where the start of a new cycle is the end of the previous cycle.
 
-        # Each row closes at the next row (strictly later), never at itself.
+        Every sample of the signal is a boundary: a cycle runs from one sample
+        to the next later one. The first cycle starts at the first sample,
+        whose state began before the data, so it is marked incomplete.
+        """
+        frame = self._signal_frame()
+        times = frame["systime"]
         return self._generate_cycle_dataframe(
-            cycle_starts, cycle_starts, allow_exact_matches=False
+            times,
+            times,
+            method="state_change",
+            same_rows=True,
+            partial_start=times.iloc[0] if len(times) else None,
         )
 
     def process_value_change_cycle(self) -> pd.DataFrame:
         """Processes cycles where a change in the value indicates a new cycle.
 
-        Uses the value_change_threshold to determine if a numeric change is significant.
+        A sample is a boundary when one of its value columns differs from the
+        previous sample: numbers by more than ``value_change_threshold``
+        (compared sample to sample), bools and strings by any change. A missing
+        value holds the previous one. The first sample is a boundary too; its
+        cycle began before the data and is marked incomplete.
         """
-        # Assuming dataframe is pre-filtered. Work on a copy so the NaN
-        # defaults filled in below never leak into the stored frame.
-        df = self.df.copy()
-
-        # Fill NaN or None values with appropriate defaults for diff() to work
-        df["value_double"] = df["value_double"].fillna(0)
-        df["value_bool"] = df["value_bool"].fillna(False)
-        df["value_string"] = df["value_string"].fillna("")
-        df["value_integer"] = df["value_integer"].fillna(0)
-
-        # Detect changes across the relevant columns using diff() with threshold
-        value_change = (
-            (df["value_double"].diff().abs() > self.value_change_threshold)
-            | (df["value_bool"].diff().ne(0))
-            | (df["value_string"].shift().ne(df["value_string"]))
-            | (df["value_integer"].diff().abs() > self.value_change_threshold)
-        )
-
-        # Define cycle starts and ends based on changes
-        cycle_starts = df[value_change]
-
-        # Each change closes at the next change (strictly later), never at itself.
+        frame = self._signal_frame()
+        change = pd.Series(False, index=frame.index)
+        for column in ("value_double", "value_integer"):
+            if column in frame.columns:
+                values = pd.to_numeric(frame[column], errors="coerce").astype("float64")
+                values = values.ffill()
+                change |= (
+                    values.diff().abs().gt(self.value_change_threshold).fillna(False)
+                )
+        for column in ("value_bool", "value_string"):
+            if column in frame.columns:
+                held = frame[column].astype(object).ffill()
+                prev = held.shift()
+                change |= (held.ne(prev) & held.notna() & prev.notna()).astype(bool)
+        if len(change):
+            change.iloc[0] = True
+        times = frame["systime"][change.to_numpy(dtype=bool)]
         return self._generate_cycle_dataframe(
-            cycle_starts, cycle_starts, allow_exact_matches=False
+            times,
+            times,
+            method="value_change",
+            same_rows=True,
+            partial_start=times.iloc[0] if len(times) else None,
         )
 
-    def _generate_cycle_dataframe(
-        self,
-        cycle_starts: pd.DataFrame,
-        cycle_ends: pd.DataFrame,
-        allow_exact_matches: bool = True,
-    ) -> pd.DataFrame:
-        """Generates a DataFrame with cycle start and end times.
+    # ------------------------------------------------------------------
+    # Pairing
+    # ------------------------------------------------------------------
 
-        Uses a vectorized merge_asof approach (O(n log n)) instead of a Python
-        iterator loop, significantly faster on large datasets.  Tracks incomplete
-        cycles and adds an 'is_complete' flag.
+    def _time_dtype(self) -> Any:
+        if "systime" in self.df.columns:
+            return self.df["systime"].dtype
+        return pd.Series(dtype="datetime64[ns]").dtype
 
-        Args:
-            cycle_starts: Rows whose ``systime`` opens a cycle.
-            cycle_ends: Rows whose ``systime`` can close a cycle.
-            allow_exact_matches: If False, a start never closes at an end with
-                the same timestamp (used when starts and ends are the same rows).
-        """
-        time_dtype = (
-            self.df["systime"].dtype
-            if "systime" in self.df.columns
-            else pd.Series(dtype="datetime64[ns]").dtype
-        )
-        empty = pd.DataFrame(
+    def _empty_cycles(self) -> pd.DataFrame:
+        time_dtype = self._time_dtype()
+        return pd.DataFrame(
             {
                 "cycle_start": pd.Series(dtype=time_dtype),
                 "cycle_end": pd.Series(dtype=time_dtype),
-                "cycle_uuid": pd.Series(dtype="string"),
-                "is_complete": pd.Series(dtype="bool"),
+                "cycle_uuid": pd.Series(dtype=object),
+                "is_complete": pd.Series(dtype=bool),
+                "start": pd.Series(dtype=time_dtype),
+                "end": pd.Series(dtype=time_dtype),
+                "duration_seconds": pd.Series(dtype="float64"),
+                "uuid": pd.Series(dtype=object),
+                "source_uuid": pd.Series(dtype=object),
             }
         )
 
-        if cycle_starts.empty or "systime" not in cycle_starts.columns:
-            self._stats.update(
-                {
-                    "total_cycles": 0,
-                    "complete_cycles": 0,
-                    "incomplete_cycles": 0,
-                    "unmatched_starts": 0,
-                }
-            )
-            return empty
+    @staticmethod
+    def _pair_events(
+        starts: pd.Series, ends: pd.Series, same_rows: bool
+    ) -> tuple[pd.Series, pd.Series, int]:
+        """Pair start and end times; returns (cycle_start, cycle_end, unmatched_ends).
 
-        starts = (
-            cycle_starts[["systime"]]
-            .dropna(subset=["systime"])
-            .rename(columns={"systime": "cycle_start"})
-            .sort_values("cycle_start")
+        Ends are applied before starts at the same timestamp. An end closes
+        the cycle opened by the immediately preceding start event; a start
+        followed by another start (or nothing) has no end.
+        """
+        start_times = (
+            pd.Series(starts.dropna().unique(), dtype=starts.dtype)
+            .sort_values(kind="stable")
             .reset_index(drop=True)
         )
+        if same_rows:
+            end_times = start_times.shift(-1)
+            return start_times, end_times, 0
 
-        ends_raw = (
-            cycle_ends["systime"].dropna()
-            if "systime" in cycle_ends.columns
-            else pd.Series(dtype=time_dtype)
-        )
-        ends = (
-            pd.DataFrame({"cycle_end": ends_raw})
-            .sort_values("cycle_end")
+        end_times = (
+            pd.Series(ends.dropna().unique(), dtype=starts.dtype)
+            .sort_values(kind="stable")
             .reset_index(drop=True)
         )
+        events = pd.DataFrame(
+            {
+                "time": pd.concat([end_times, start_times], ignore_index=True),
+                "is_start": np.r_[
+                    np.zeros(len(end_times), dtype=bool),
+                    np.ones(len(start_times), dtype=bool),
+                ],
+            }
+        ).sort_values(["time", "is_start"], kind="stable", ignore_index=True)
+        is_start = events["is_start"].to_numpy()
+        prev_is_start = np.r_[False, is_start[:-1]]
+        closes = ~is_start & prev_is_start
+        # Start i is closed by event i + 1 when that event is a closing end.
+        next_closes = np.r_[closes[1:], False]
+        end_of_start = events["time"].shift(-1).where(next_closes)
+        cycle_start = events["time"][is_start].reset_index(drop=True)
+        cycle_end = end_of_start[is_start].reset_index(drop=True)
+        unmatched_ends = int((~is_start & ~closes).sum())
+        return cycle_start, cycle_end, unmatched_ends
 
-        if ends.empty:
-            starts["cycle_end"] = pd.NaT
-            starts["is_complete"] = False
-        else:
-            # For each start, find the nearest end that is >= start (forward
-            # match; strictly > start when allow_exact_matches is False).
-            # merge_asof joins on a shared key name, so the end time is carried
-            # in its own column; otherwise it is lost in the join key.
-            starts_keyed = starts.rename(columns={"cycle_start": "_key"})
-            ends_keyed = ends.assign(_key=ends["cycle_end"])
-            merged = pd.merge_asof(
-                starts_keyed,
-                ends_keyed,
-                on="_key",
-                direction="forward",
-                allow_exact_matches=allow_exact_matches,
-            )
-            # Assign Series (not .values) so a tz-aware systime keeps its tz.
-            starts["cycle_end"] = merged["cycle_end"]
-            # merge_asof forward: unmatched rows have NaT in the end column
-            starts["is_complete"] = starts["cycle_end"].notna()
+    def _cycle_ids(self, method: str, starts: pd.Series) -> list[str]:
+        key = f"{self.start_uuid}|{self.end_uuid}|{method}"
+        if starts.empty:
+            return []
+        ns = starts.astype("datetime64[ns, UTC]") if starts.dt.tz else starts
+        stamps = ns.dt.as_unit("ns").astype("int64").tolist()
+        return [str(uuid.uuid5(_CYCLE_NAMESPACE, f"{key}|{t}")) for t in stamps]
 
-        starts["cycle_uuid"] = [str(uuid.uuid4()) for _ in range(len(starts))]
-        cycle_df = starts[
-            ["cycle_start", "cycle_end", "cycle_uuid", "is_complete"]
-        ].reset_index(drop=True)
+    def _generate_cycle_dataframe(
+        self,
+        cycle_starts: pd.Series,
+        cycle_ends: pd.Series,
+        method: str = "cycle",
+        same_rows: bool = False,
+        partial_start: pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
+        """Pair boundary times into the cycle table.
+
+        Args:
+            cycle_starts: Times that open a cycle.
+            cycle_ends: Times that close the open cycle.
+            method: Short method name, used in ``uuid`` and ``cycle_uuid``.
+            same_rows: Starts and ends are the same events: each one closes
+                the previous cycle and opens the next.
+            partial_start: Start time of a cycle that was already running at
+                the first sample; that cycle is marked incomplete.
+        """
+        self._stats.update({k: v for k, v in _empty_stats().items() if k != "warnings"})
+        if cycle_starts.empty:
+            return self._empty_cycles()
+
+        start, end, unmatched_ends = self._pair_events(
+            cycle_starts, cycle_ends, same_rows
+        )
+        has_end = end.notna()
+        is_complete = has_end.copy()
+        partial_count = 0
+        if partial_start is not None and not pd.isna(partial_start):
+            partial = start == partial_start
+            partial_count = int(partial.sum())
+            is_complete &= ~partial
+
+        cycle_df = pd.DataFrame(
+            {
+                "cycle_start": start,
+                "cycle_end": end,
+                "cycle_uuid": pd.Series(self._cycle_ids(method, start), dtype=object),
+                "is_complete": is_complete.astype(bool),
+            }
+        )
+        cycle_df["start"] = cycle_df["cycle_start"]
+        cycle_df["end"] = cycle_df["cycle_end"]
+        cycle_df["duration_seconds"] = (
+            cycle_df["cycle_end"] - cycle_df["cycle_start"]
+        ).dt.total_seconds()
+        cycle_df["uuid"] = f"cycles:{method}"
+        cycle_df["source_uuid"] = self.start_uuid
+        cycle_df = cycle_df[_OUTPUT_COLUMNS]
 
         complete_cycles = int(cycle_df["is_complete"].sum())
-        incomplete_cycles = int((~cycle_df["is_complete"]).sum())
+        incomplete_cycles = len(cycle_df) - complete_cycles
+        unmatched_starts = int((~has_end).sum())
 
-        if incomplete_cycles:
-            warning_msg = f"{incomplete_cycles} cycle(s) have no matching end and are marked incomplete."
+        if unmatched_starts:
+            warning_msg = f"{unmatched_starts} cycle(s) have no matching end and are marked incomplete."
             logger.warning(warning_msg)
             self._stats["warnings"].append(warning_msg)
 
@@ -278,7 +482,9 @@ class CycleExtractor(Base):
                 "total_cycles": len(cycle_df),
                 "complete_cycles": complete_cycles,
                 "incomplete_cycles": incomplete_cycles,
-                "unmatched_starts": incomplete_cycles,
+                "unmatched_starts": unmatched_starts,
+                "unmatched_ends": unmatched_ends,
+                "partial_first_cycles": partial_count,
             }
         )
 
@@ -286,6 +492,10 @@ class CycleExtractor(Base):
             f"Generated {len(cycle_df)} cycles ({complete_cycles} complete, {incomplete_cycles} incomplete)."
         )
         return cycle_df
+
+    # ------------------------------------------------------------------
+    # Validation and diagnostics
+    # ------------------------------------------------------------------
 
     def _parse_duration(self, duration_str: str) -> pd.Timedelta:
         """Parse a duration string like '1s', '5m', '1h' to a pandas Timedelta.
@@ -334,12 +544,13 @@ class CycleExtractor(Base):
             warn: Whether to log warnings for invalid cycles (default: True)
 
         Returns:
-            DataFrame with additional 'is_valid' column and 'validation_issue' column
+            A copy of ``cycle_df`` with ``cycle_duration`` (Timedelta),
+                ``duration_seconds``, ``is_valid`` and ``validation_issue``
+                (``""``, ``"incomplete_cycle"``, ``"too_short;"`` or
+                ``"too_long;"``). Incomplete cycles are invalid; the duration
+                bounds are inclusive. An empty input gives an empty frame with
+                these columns.
         """
-        if cycle_df.empty:
-            logger.warning("Empty cycle DataFrame provided for validation.")
-            return cycle_df
-
         # Parse duration constraints
         min_td = self._parse_duration(min_duration)
         max_td = self._parse_duration(max_duration)
@@ -348,16 +559,30 @@ class CycleExtractor(Base):
         validated_df = cycle_df.copy()
 
         # Calculate cycle durations
-        validated_df["cycle_duration"] = (
+        validated_df["cycle_duration"] = pd.to_timedelta(
             validated_df["cycle_end"] - validated_df["cycle_start"]
         )
+        if "duration_seconds" not in validated_df.columns:
+            validated_df["duration_seconds"] = validated_df[
+                "cycle_duration"
+            ].dt.total_seconds()
 
         # Initialize validation columns
-        validated_df["is_valid"] = True
-        validated_df["validation_issue"] = ""
+        validated_df["is_valid"] = pd.Series(True, index=validated_df.index, dtype=bool)
+        validated_df["validation_issue"] = pd.Series(
+            "", index=validated_df.index, dtype=object
+        )
+        if validated_df.empty:
+            logger.warning("Empty cycle DataFrame provided for validation.")
+            return validated_df
+
+        if "is_complete" in validated_df.columns:
+            complete_mask = validated_df["is_complete"].astype(bool)
+        else:
+            complete_mask = validated_df["cycle_end"].notna()
 
         # Check for incomplete cycles
-        incomplete_mask = ~validated_df["is_complete"]
+        incomplete_mask = ~complete_mask
         if incomplete_mask.any():
             validated_df.loc[incomplete_mask, "is_valid"] = False
             validated_df.loc[incomplete_mask, "validation_issue"] = "incomplete_cycle"
@@ -365,7 +590,6 @@ class CycleExtractor(Base):
                 logger.warning(f"Found {incomplete_mask.sum()} incomplete cycles.")
 
         # Check duration constraints (only for complete cycles)
-        complete_mask = validated_df["is_complete"]
         too_short_mask = complete_mask & (validated_df["cycle_duration"] < min_td)
         too_long_mask = complete_mask & (validated_df["cycle_duration"] > max_td)
 
@@ -398,91 +622,122 @@ class CycleExtractor(Base):
 
         return validated_df
 
+    @staticmethod
+    def _as_ns(times: pd.Series) -> np.ndarray:
+        """Datetimes as int64 nanoseconds (UTC for tz-aware input)."""
+        times = pd.to_datetime(times)
+        if times.dt.tz is not None:
+            times = times.dt.tz_convert("UTC").dt.tz_localize(None)
+        return np.asarray(times.dt.as_unit("ns").astype("int64"), dtype=np.int64)
+
     def detect_overlapping_cycles(
         self, cycle_df: pd.DataFrame, resolve: str = "flag"
     ) -> pd.DataFrame:
         """Detect and optionally resolve overlapping cycles.
 
+        Two cycles overlap when one starts strictly before the other ends, so
+        back-to-back cycles sharing a timestamp do not overlap. Only cycles
+        with a known end are compared.
+
         Args:
             cycle_df: DataFrame with cycle data
-            resolve: How to handle overlaps - 'flag' (mark only), 'keep_first', 'keep_last', 'keep_longest'
+            resolve: How to handle overlaps - 'flag' (mark only), 'keep_first'
+                (earliest start wins), 'keep_last' (latest start wins),
+                'keep_longest' (longest wins). Resolution is greedy, so the
+                kept cycles never overlap and a cycle is dropped only when it
+                overlaps a kept one.
 
         Returns:
-            DataFrame with 'has_overlap' column and potentially filtered rows
+            ``cycle_df`` sorted by ``cycle_start`` with a ``has_overlap`` column;
+                for a ``keep_*`` strategy the dropped cycles are removed.
+
+        Raises:
+            ValueError: For an unknown ``resolve``.
         """
-        if cycle_df.empty:
+        if resolve not in ("flag", "keep_first", "keep_last", "keep_longest"):
+            raise ValueError(
+                f"Unknown resolve {resolve!r}; use 'flag', 'keep_first', "
+                "'keep_last' or 'keep_longest'."
+            )
+        result_df = cycle_df.sort_values("cycle_start", kind="stable").reset_index(
+            drop=True
+        )
+        result_df["has_overlap"] = pd.Series(False, index=result_df.index, dtype=bool)
+        if result_df.empty:
             logger.warning("Empty cycle DataFrame provided for overlap detection.")
-            return cycle_df
+            return result_df
 
-        # Create a copy to avoid modifying the original
-        result_df = cycle_df.copy()
+        # A partial first cycle still has a known extent and takes part; only
+        # a missing end (or start) excludes a cycle.
+        known = result_df["cycle_end"].notna() & result_df["cycle_start"].notna()
+        positions = np.flatnonzero(known.to_numpy())
+        starts = self._as_ns(result_df["cycle_start"][known])
+        ends = self._as_ns(result_df["cycle_end"][known])
+        n = len(positions)
+        if n == 0:
+            self._stats["overlapping_cycles"] = 0
+            return result_df
 
-        # Sort by start time
-        result_df = result_df.sort_values("cycle_start").reset_index(drop=True)
+        prev_max_end = np.r_[np.iinfo(np.int64).min, np.maximum.accumulate(ends)[:-1]]
+        next_start = np.r_[starts[1:], np.iinfo(np.int64).max]
+        overlap = (starts < prev_max_end) | (ends > next_start)
+        result_df.loc[positions[overlap], "has_overlap"] = True
 
-        # Initialize overlap column
-        result_df["has_overlap"] = False
-
-        # Check for overlaps (only for complete cycles)
-        overlaps = []
-        for i in range(len(result_df) - 1):
-            if not result_df.loc[i, "is_complete"]:
-                continue
-
-            current_end = result_df.loc[i, "cycle_end"]
-
-            for j in range(i + 1, len(result_df)):
-                if not result_df.loc[j, "is_complete"]:
-                    continue
-
-                next_start = result_df.loc[j, "cycle_start"]
-
-                if current_end > next_start:
-                    # Overlap detected
-                    result_df.loc[i, "has_overlap"] = True
-                    result_df.loc[j, "has_overlap"] = True
-                    overlaps.append((i, j))
-                else:
-                    break  # No more overlaps for current cycle
-
-        overlap_count = len(overlaps)
+        later_overlaps = np.searchsorted(starts, ends, side="left") - (np.arange(n) + 1)
+        overlap_count = int(np.clip(later_overlaps, 0, None).sum())
+        self._stats["overlapping_cycles"] = overlap_count
         if overlap_count > 0:
             logger.warning(f"Detected {overlap_count} overlapping cycle pairs.")
-            self._stats["overlapping_cycles"] = overlap_count
 
-        # Resolve overlaps based on strategy
-        if resolve != "flag" and overlap_count > 0:
-            indices_to_drop = set()
+        if resolve == "flag" or overlap_count == 0:
+            return result_df
 
-            for i, j in overlaps:
-                if resolve == "keep_first":
-                    indices_to_drop.add(j)
-                elif resolve == "keep_last":
-                    indices_to_drop.add(i)
-                elif resolve == "keep_longest":
-                    duration_i = (
-                        result_df.loc[i, "cycle_end"] - result_df.loc[i, "cycle_start"]
-                    )
-                    duration_j = (
-                        result_df.loc[j, "cycle_end"] - result_df.loc[j, "cycle_start"]
-                    )
-                    if duration_i >= duration_j:
-                        indices_to_drop.add(j)
-                    else:
-                        indices_to_drop.add(i)
+        keep = np.ones(n, dtype=bool)
+        s_list, e_list = starts.tolist(), ends.tolist()
+        if resolve == "keep_first":
+            last_end = None
+            for i in range(n):
+                if last_end is not None and s_list[i] < last_end:
+                    keep[i] = False
+                else:
+                    last_end = e_list[i]
+        elif resolve == "keep_last":
+            first_start = None
+            for i in range(n - 1, -1, -1):
+                if first_start is not None and e_list[i] > first_start:
+                    keep[i] = False
+                else:
+                    first_start = s_list[i]
+        else:  # keep_longest
+            import bisect
 
-            if indices_to_drop:
-                result_df = result_df.drop(list(indices_to_drop)).reset_index(drop=True)
-                logger.info(
-                    f"Resolved overlaps: removed {len(indices_to_drop)} cycles using '{resolve}' strategy."
+            order = sorted(range(n), key=lambda i: (s_list[i] - e_list[i], i))
+            kept_s: list[int] = []
+            kept_e: list[int] = []
+            for i in order:
+                s, e = s_list[i], e_list[i]
+                pos = bisect.bisect_left(kept_s, s)
+                clash = (pos > 0 and kept_e[pos - 1] > s) or (
+                    pos < len(kept_s) and kept_s[pos] < e
                 )
+                if clash:
+                    keep[i] = False
+                else:
+                    kept_s.insert(pos, s)
+                    kept_e.insert(pos, e)
 
+        drop = positions[~keep]
+        if len(drop):
+            result_df = result_df.drop(index=drop).reset_index(drop=True)
+            logger.info(
+                f"Resolved overlaps: removed {len(drop)} cycles using '{resolve}' strategy."
+            )
         return result_df
 
     def suggest_method(self) -> dict[str, Any]:
         """Suggest the best cycle extraction method based on data characteristics.
 
-        Analyzes the input DataFrame to recommend appropriate extraction method(s).
+        Analyzes the start signal's rows to recommend extraction method(s).
 
         Returns:
             Dictionary with method suggestions and reasoning
@@ -492,28 +747,22 @@ class CycleExtractor(Base):
             "reasoning": [],
             "data_characteristics": {},
         }
+        frame = self._signal_frame()
 
-        # Analyze data characteristics
-        has_bool = (
-            "value_bool" in self.df.columns and self.df["value_bool"].notna().any()
-        )
-        has_integer = (
-            "value_integer" in self.df.columns
-            and self.df["value_integer"].notna().any()
-        )
-        has_double = (
-            "value_double" in self.df.columns and self.df["value_double"].notna().any()
-        )
-        has_string = (
-            "value_string" in self.df.columns and self.df["value_string"].notna().any()
-        )
+        def has(column: str) -> bool:
+            return column in frame.columns and bool(frame[column].notna().any())
+
+        has_bool = has("value_bool")
+        has_integer = has("value_integer")
+        has_double = has("value_double")
+        has_string = has("value_string")
 
         suggestions["data_characteristics"] = {
             "has_boolean_values": has_bool,
             "has_integer_values": has_integer,
             "has_double_values": has_double,
             "has_string_values": has_string,
-            "row_count": len(self.df),
+            "row_count": len(frame),
             "separate_start_end": self.start_uuid != self.end_uuid,
         }
 
@@ -526,27 +775,23 @@ class CycleExtractor(Base):
 
         if has_bool:
             # Analyze boolean patterns
-            bool_data = self.df["value_bool"].dropna()
-            if len(bool_data) > 1:
-                # Check for transitions
-                transitions = bool_data.diff().abs().sum()
-                if transitions > 0:
-                    suggestions["recommended_methods"].append(
-                        "process_persistent_cycle"
-                    )
-                    suggestions["reasoning"].append(
-                        "Boolean transitions detected, suitable for persistent cycles"
-                    )
+            bool_data = frame["value_bool"].astype("boolean").dropna()
+            if len(bool_data) > 1 and bool(
+                bool_data.ne(bool_data.shift()).iloc[1:].any()
+            ):
+                suggestions["recommended_methods"].append("process_persistent_cycle")
+                suggestions["reasoning"].append(
+                    "Boolean transitions detected, suitable for persistent cycles"
+                )
 
-                    suggestions["recommended_methods"].append("process_trigger_cycle")
-                    suggestions["reasoning"].append(
-                        "Boolean data present, can use trigger-based extraction"
-                    )
+                suggestions["recommended_methods"].append("process_trigger_cycle")
+                suggestions["reasoning"].append(
+                    "Boolean data present, can use trigger-based extraction"
+                )
 
         if has_integer:
             # Check if integers represent steps
-            int_data = self.df["value_integer"].dropna()
-            unique_values = int_data.nunique()
+            unique_values = frame["value_integer"].dropna().nunique()
             if 2 <= unique_values <= 20:  # Reasonable step count
                 suggestions["recommended_methods"].append("process_step_sequence")
                 suggestions["reasoning"].append(
@@ -581,9 +826,15 @@ class CycleExtractor(Base):
         """Get statistics about the last cycle extraction.
 
         Returns:
-            Dictionary with extraction statistics including counts, success rate, and warnings
+            Dictionary with ``total_cycles``, ``complete_cycles``,
+                ``incomplete_cycles``, ``unmatched_starts`` (cycles without an
+                end), ``unmatched_ends`` (ends with no open cycle),
+                ``partial_first_cycles``, ``overlapping_cycles`` (from the last
+                ``detect_overlapping_cycles``), ``warnings``, ``success_rate``
+                and ``configuration``.
         """
         stats = self._stats.copy()
+        stats["warnings"] = list(self._stats["warnings"])
 
         # Calculate success rate
         if stats["total_cycles"] > 0:
@@ -602,13 +853,5 @@ class CycleExtractor(Base):
 
     def reset_stats(self) -> None:
         """Reset extraction statistics."""
-        self._stats = {
-            "total_cycles": 0,
-            "complete_cycles": 0,
-            "incomplete_cycles": 0,
-            "unmatched_starts": 0,
-            "unmatched_ends": 0,
-            "overlapping_cycles": 0,
-            "warnings": [],
-        }
+        self._stats = _empty_stats()
         logger.info("Statistics reset.")
