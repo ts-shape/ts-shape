@@ -8,13 +8,17 @@ change-encoded signal) should be set with :meth:`SignalSpecs.override`.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.signals.spec import Encoding, Kind, SignalSpec, SignalSpecs
+from ts_shape.utils.frames import require_columns
+from ts_shape.utils.normalize import _is_extension, _plain
 
 __all__ = ["infer_specs", "infer_spec"]
 
@@ -65,10 +69,112 @@ def _is_counter(values: pd.Series) -> tuple[bool, str]:
     return True, reason
 
 
+def parse_times(values: pd.Series) -> pd.Series:
+    """A time column as ``datetime64``; unparseable values become ``NaT``.
+
+    Text with different UTC offsets (``+01:00`` next to ``+02:00``) is
+    converted to UTC with a :class:`~ts_shape.errors.DataQualityWarning`.
+
+    Args:
+        values: The time column.
+
+    Returns:
+        The parsed column.
+    """
+    if pd.api.types.is_datetime64_any_dtype(values.dtype) and not isinstance(
+        values.dtype, pd.ArrowDtype
+    ):
+        return values
+    if isinstance(values.dtype, pd.ArrowDtype) and pd.api.types.is_datetime64_any_dtype(
+        values.dtype
+    ):
+        return pd.to_datetime(values.astype(object))
+    try:
+        return pd.to_datetime(values, errors="coerce")
+    except (TypeError, ValueError):
+        warnings.warn(
+            f"time column {values.name!r} mixes UTC offsets; times are "
+            "converted to UTC",
+            DataQualityWarning,
+            stacklevel=4,
+        )
+        return pd.to_datetime(values, errors="coerce", utc=True, format="mixed")
+
+
+def signal_groups(
+    dataframe: pd.DataFrame, uuid_column: str, time_column: str
+) -> list[tuple[str, pd.DataFrame]]:
+    """Rows per signal, keyed by the uuid as text, sorted by key.
+
+    Nullable, pyarrow and string columns are converted to NumPy dtypes
+    first (the input is not changed). Rows without a uuid are
+    dropped and uuids that differ only in type (``1`` and ``"1"``) are one
+    signal; both cases emit a :class:`~ts_shape.errors.DataQualityWarning`.
+
+    Args:
+        dataframe: Long-format frame.
+        uuid_column: Signal identifier column.
+        time_column: Timestamp column.
+
+    Returns:
+        ``(uuid, rows)`` pairs.
+
+    Raises:
+        ColumnNotFoundError: When ``uuid_column`` or ``time_column`` is missing.
+    """
+    require_columns(dataframe, (uuid_column, time_column), where="signal profile")
+    frame = dataframe.reset_index(drop=True).copy()
+    for column in frame.columns:
+        is_signal_column = column == uuid_column or (
+            isinstance(column, str) and column.startswith("value_")
+        )
+        if is_signal_column and _is_extension(frame[column]):
+            # NumPy dtypes; text in a numeric column stays text, so the
+            # profile can report it as non-numeric.
+            frame[column] = _plain(frame[column])
+    frame[time_column] = parse_times(frame[time_column])
+    missing = frame[uuid_column].isna()
+    if missing.any():
+        warnings.warn(
+            f"{int(missing.sum())} row(s) have no {uuid_column}; they are dropped",
+            DataQualityWarning,
+            stacklevel=3,
+        )
+        frame = frame[~missing.to_numpy()]
+    raw = frame[uuid_column]
+    keys = raw.astype(str)
+    clashes = sorted(
+        k for k, n in raw.groupby(keys.to_numpy()).nunique().items() if n > 1
+    )
+    if clashes:
+        warnings.warn(
+            f"{uuid_column} values {clashes[:5]} occur with different types "
+            "(e.g. 1 and '1'); they are treated as one signal",
+            DataQualityWarning,
+            stacklevel=3,
+        )
+    return [
+        (str(key), group) for key, group in frame.groupby(keys.to_numpy(), sort=True)
+    ]
+
+
 def infer_spec(
     group: pd.DataFrame, uuid: str, time_column: str = "systime"
 ) -> SignalSpec:
-    """Infer the spec of one signal from its rows."""
+    """Infer the spec of one signal from its rows.
+
+    Args:
+        group: The rows of one signal.
+        uuid: The signal's uuid, written to the spec.
+        time_column: Timestamp column.
+
+    Returns:
+        The inferred :class:`SignalSpec`; ``notes`` explain each field.
+
+    Raises:
+        ColumnNotFoundError: When ``time_column`` is missing.
+    """
+    require_columns(group, (time_column,), where="infer_spec")
     notes: dict[str, str] = {}
     g = group.sort_values(time_column)
     times = pd.to_datetime(g[time_column]).dropna()
@@ -148,12 +254,15 @@ def infer_specs(
         time_column: Timestamp column.
 
     Returns:
-        :class:`SignalSpecs` keyed by uuid; each spec's ``notes`` explain the
-        inferred fields.
+        :class:`SignalSpecs` keyed by uuid (as text); each spec's ``notes``
+        explain the inferred fields.
+
+    Raises:
+        ColumnNotFoundError: When ``uuid_column`` or ``time_column`` is missing.
     """
     specs = {
-        str(uuid): infer_spec(group, str(uuid), time_column)
-        for uuid, group in dataframe.groupby(uuid_column, sort=True)
+        key: infer_spec(group, key, time_column)
+        for key, group in signal_groups(dataframe, uuid_column, time_column)
     }
     result = SignalSpecs(specs)
     return result.override(overrides) if overrides else result

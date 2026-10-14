@@ -24,7 +24,7 @@ from typing import Any
 
 import pandas as pd
 
-from ts_shape.signals.infer import infer_spec
+from ts_shape.signals.infer import infer_spec, signal_groups
 from ts_shape.signals.spec import SignalSpec, SignalSpecs
 from ts_shape.utils.counters import count_resets
 
@@ -304,6 +304,10 @@ def profile(
 ) -> ProfileReport:
     """Profile every signal in a long-format frame.
 
+    Nullable, pyarrow and string dtypes are converted to NumPy dtypes first;
+    a time column that mixes UTC offsets is converted to UTC with a
+    :class:`~ts_shape.errors.DataQualityWarning`. The input is not changed.
+
     Args:
         dataframe: Long-format data (``systime``, ``uuid``, ``value_*``).
         specs: Known semantics. Either complete :class:`SignalSpecs`, or
@@ -314,9 +318,18 @@ def profile(
     Returns:
         :class:`ProfileReport` with ``specs``, a per-signal ``table`` and the
         ``issues()`` list.
+
+    Raises:
+        ColumnNotFoundError: When ``uuid_column`` or ``time_column`` is
+            missing (also for ``pd.DataFrame()``).
+        ValueError: When ``specs`` overrides name unknown fields or invalid
+            values.
     """
     if not isinstance(specs, SignalSpecs):
-        overrides = dict(specs or {})
+        overrides = {str(k): dict(v) for k, v in dict(specs or {}).items()}
+        for key, fields in overrides.items():
+            # Same validation as SignalSpec.from_dict: unknown fields raise.
+            SignalSpec.from_dict({**fields, "uuid": key})
         specs = None
     else:
         overrides = {}
@@ -324,17 +337,14 @@ def profile(
     inferred: dict[str, SignalSpec] = {}
     rows: list[dict[str, Any]] = []
     issues: list[dict[str, str]] = []
-    for uuid, raw in dataframe.groupby(uuid_column, sort=True):
-        key = str(uuid)
+    for key, raw in signal_groups(dataframe, uuid_column, time_column):
         if specs is not None and key in specs:
             spec = specs[key]
         else:
-            parsed = raw.assign(
-                **{time_column: pd.to_datetime(raw[time_column], errors="coerce")}
-            ).dropna(subset=[time_column])
+            parsed = raw.dropna(subset=[time_column])
             spec = infer_spec(parsed, key, time_column)
             if key in overrides:
-                spec = spec.with_(**dict(overrides[key]))
+                spec = spec.with_(**overrides[key])
         inferred[key] = spec
         row, found = _profile_signal(raw, spec, time_column)
         rows.append(row)

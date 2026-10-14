@@ -103,9 +103,17 @@ windows("2024-03-30", "2024-04-02", "1D", tz="Europe/Berlin")   # days of 24 h, 
 shift_windows("2024-03-30", "2024-03-31", tz="Europe/Berlin")   # the DST night shift is 7 h
 ```
 
+`per_window` returns a float Series indexed by window start and named after
+the signal's uuid. For a boolean state it is the share of the *known* time
+that was True: a missing reading counts as unknown until the next reading.
+
 `align(left, left_spec, right, right_spec)` attaches to each sample of one
 signal the value of another signal that was in force at that time, for
-example the setpoint at each process-value sample.
+example the setpoint at each process-value sample. The output time column is
+named by `time_column`; time columns in different units (or pyarrow
+timestamps) are aligned, while a tz-aware side next to a naive side raises
+`ValueError`. Aligning a signal with itself gives `<uuid>_left` and
+`<uuid>_right`.
 
 ## Detectors that accept specs
 
