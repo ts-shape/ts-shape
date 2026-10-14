@@ -253,7 +253,7 @@ class SamplingResolutionEvents(Base):
 
             # Skip DC component (index 0)
             if len(fft_vals) > 1:
-                dominant_idx = np.argmax(fft_vals[1:]) + 1
+                dominant_idx = int(np.argmax(fft_vals[1:])) + 1
                 dominant_freq = float(freqs[dominant_idx])
             else:
                 dominant_freq = 0.0

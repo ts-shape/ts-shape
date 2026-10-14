@@ -26,10 +26,11 @@ Typical use::
     tables = to_event_log_ocel(log)  # OCEL2Tables(events, objects, relations, ...)
 """
 
-from .adapters import register_adapter
+from .adapters import clear_overrides, has_override, register_adapter
 from .align import align_columns
 from .concat import concat
 from .flat import to_event_log_xes
+from .introspect import describe
 from .lambda_rules import (
     BacktestResult,
     LambdaDetector,
@@ -85,6 +86,9 @@ from .schema import (
 from .taxonomy import REGISTRY, LabelRule
 
 __all__ = [
+    "clear_overrides",
+    "describe",
+    "has_override",
     "BacktestResult",
     "EventLog",
     "OCEL2Tables",

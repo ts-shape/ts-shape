@@ -1,4 +1,11 @@
 # October 14, 2026
+fix: eventlog static-shape event ids hashed the export time, so re-exporting
+  the same detector output gave different ocel:eid values; they are now
+  stable (ported from the open PR #60).
+add: ts_shape.eventlog.describe("Class.method"), has_override() and
+  clear_overrides(); severity is coerced to the info/warn/critical
+  vocabulary (low/minor -> info, medium/major/warning -> warn,
+  high/alarm/error -> critical; anything else warns and becomes <NA>).
 add: ts_shape.signals -- SignalSpec / SignalSpecs (dict/YAML round trip),
   infer_specs() with per-field reasons, and spec-driven primitives:
   intervals, increments, per_window, align, windows, shift_windows.
