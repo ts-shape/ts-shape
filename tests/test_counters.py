@@ -68,3 +68,20 @@ def test_counter_quantity_handles_non_numeric_gaps():
     values = pd.Series([100, None, 300])
     # NaN is dropped; 100 -> 300 = 200
     assert counter_quantity(values) == 200.0
+
+
+def test_counter_by_group_books_boundary_increments_once():
+    import pandas as pd
+
+    from ts_shape.utils.counters import counter_by_group, counter_quantity
+
+    t = pd.date_range("2024-01-01 06:00", periods=32, freq="30min")
+    values = pd.Series([float(10 * i) for i in range(32)], index=t)
+    values.iloc[20:] -= 200  # a reset at 16:00
+    shift = pd.Series(["A" if h < 14 else "B" for h in t.hour], index=t)
+    out = counter_by_group(values, shift)
+    assert out["quantity"].sum() == counter_quantity(values)
+    assert out.loc["A", "quantity"] == 150  # 06:00 is the baseline reading
+    assert out.loc["B", "resets"] == 1
+    naive = counter_by_group(values, shift, handle_resets=False)
+    assert naive["quantity"].sum() < out["quantity"].sum()

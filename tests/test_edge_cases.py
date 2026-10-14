@@ -213,3 +213,25 @@ def test_cycle_extractor_stats_populated():
     stats = ce.get_extraction_stats()
     assert stats["total_cycles"] >= 1
     assert "success_rate" in stats
+
+
+def test_unused_value_columns_of_long_format_data_do_not_warn():
+    import warnings
+
+    import pandas as pd
+
+    from ts_shape.errors import DataQualityWarning
+    from ts_shape.utils.base import Base
+
+    df = pd.DataFrame(
+        {
+            "systime": pd.date_range("2024-01-01", periods=3, freq="1min"),
+            "uuid": "temp",
+            "value_double": [1.0, 2.0, 3.0],
+            "value_bool": [None] * 3,
+            "value_string": [None] * 3,
+        }
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DataQualityWarning)
+        Base(df)

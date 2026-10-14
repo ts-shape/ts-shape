@@ -203,10 +203,15 @@ class Base:
                     stacklevel=3,
                 )
 
-        # Warn on columns that are entirely NaN
+        # Warn on columns that are entirely NaN. In long format each signal
+        # fills one value_* column, so unused value columns are normal; they
+        # are reported only when no value column holds any data.
         all_nan_cols = [
             col for col in self.dataframe.columns if self.dataframe[col].isna().all()
         ]
+        value_cols = [c for c in self.dataframe.columns if str(c).startswith("value_")]
+        if any(c not in all_nan_cols for c in value_cols):
+            all_nan_cols = [c for c in all_nan_cols if c not in value_cols]
         if all_nan_cols:
             warnings.warn(
                 f"Column(s) {all_nan_cols} contain only NaN values.",
