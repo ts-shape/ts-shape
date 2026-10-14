@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.signals.spec import SignalSpec, SignalSpecs
 

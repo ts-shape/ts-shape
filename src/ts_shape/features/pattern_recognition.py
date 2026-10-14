@@ -1,8 +1,8 @@
 import logging
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy.fft import fft, ifft  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy.fft import fft, ifft
 
 from ts_shape.utils.base import Base
 

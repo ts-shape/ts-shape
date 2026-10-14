@@ -18,7 +18,7 @@ which is correct for both dense and change-encoded data. The behavior is
 opt-in via ``interval_end`` so existing callers are unaffected by default.
 """
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 __all__ = ["state_intervals", "interval_end_times", "INTERVAL_END_MODES"]
 

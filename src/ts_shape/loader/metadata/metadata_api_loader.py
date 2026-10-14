@@ -1,7 +1,7 @@
 import json
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 try:
     import requests

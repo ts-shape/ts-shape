@@ -25,7 +25,7 @@ from __future__ import annotations
 import datetime as _dt
 from collections.abc import Mapping
 
-import pandas as pd  # type: ignore
+import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
 from ts_shape.signals.spec import SignalSpec

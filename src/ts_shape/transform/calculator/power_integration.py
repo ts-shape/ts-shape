@@ -42,10 +42,10 @@ from __future__ import annotations
 
 import logging
 
-import numpy as np  # type: ignore
+import numpy as np
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
-from pandas.tseries.offsets import Tick  # type: ignore
+from pandas.tseries.offsets import Tick
 
 from ts_shape.utils.base import Base
 

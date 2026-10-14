@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._windows import finish_events

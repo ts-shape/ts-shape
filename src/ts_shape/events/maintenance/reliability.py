@@ -32,9 +32,9 @@ import logging
 import math
 from collections.abc import Sequence
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import stats  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy import stats
 
 from ts_shape.events._output import (
     empty_event_df,

@@ -16,7 +16,7 @@ at the call sites so day-only schedules are unaffected.
 
 import datetime as _dt
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 __all__ = ["DEFAULT_SHIFTS", "assign_shift", "production_dates"]
 

@@ -10,7 +10,7 @@ Essential module for daily downtime analysis:
 import logging
 from collections.abc import Mapping
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import (
     add_period_window,

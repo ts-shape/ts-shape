@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 _VALUE_COLUMNS = ("value_double", "value_integer", "value_bool")
 

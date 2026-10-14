@@ -13,7 +13,7 @@ Two modes of operation:
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.utils.base import Base

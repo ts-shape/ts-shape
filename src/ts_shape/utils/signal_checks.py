@@ -22,7 +22,7 @@ import warnings
 from collections.abc import Callable, Mapping
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 

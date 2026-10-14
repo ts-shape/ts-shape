@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 from scipy.stats import zscore
 
 from ts_shape.events._output import empty_event_df, finalize_point_df

@@ -1,7 +1,7 @@
 import logging
 from zoneinfo import available_timezones
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 

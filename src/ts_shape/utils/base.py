@@ -36,7 +36,7 @@ the right one based on the complexity of the operation:
 import logging
 import warnings
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.deprecation import renamed_kwargs

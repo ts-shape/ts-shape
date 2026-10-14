@@ -23,7 +23,7 @@ Example::
     counter_quantity(values, handle_resets=True)   # 550  (400 + 150)
 """
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 __all__ = [
     "counter_increments",

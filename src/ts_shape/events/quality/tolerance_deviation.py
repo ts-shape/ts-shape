@@ -3,7 +3,7 @@ import operator
 from collections.abc import Callable
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only

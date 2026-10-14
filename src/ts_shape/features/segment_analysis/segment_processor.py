@@ -1,6 +1,6 @@
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.features.stats.numeric_stats import NumericStatistics
 from ts_shape.utils.base import Base

@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 __all__ = ["SignalSpec", "SignalSpecs", "KINDS", "ENCODINGS"]
 

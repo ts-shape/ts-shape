@@ -5,7 +5,7 @@ from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Any, Union
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class AzureBlobEnergyLoader:
             decimal: Decimal separator for pd.read_csv (default ".").
         """
         try:
-            from azure.storage.blob import ContainerClient  # type: ignore
+            from azure.storage.blob import ContainerClient
         except Exception as exc:  # pragma: no cover
             raise ImportError(
                 "azure-storage-blob is required for AzureBlobEnergyLoader. "

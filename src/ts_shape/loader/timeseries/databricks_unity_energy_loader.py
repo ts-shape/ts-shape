@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Union
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.errors import LoaderConfigWarning
 

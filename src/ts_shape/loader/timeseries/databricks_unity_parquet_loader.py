@@ -5,7 +5,7 @@ import warnings
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.errors import LoaderConfigWarning
 from ts_shape.loader._utils import hourly_slots, trim_to_time_range

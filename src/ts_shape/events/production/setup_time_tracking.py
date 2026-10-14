@@ -9,7 +9,7 @@ Track setup durations to support Single-Minute Exchange of Die improvement:
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import add_period_window
 from ts_shape.utils.base import Base

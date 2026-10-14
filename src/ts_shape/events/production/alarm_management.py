@@ -7,7 +7,7 @@ and standing alarm identification from boolean alarm signals.
 import logging
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._output import finalize_interval_df
 from ts_shape.events._windows import window_bounds

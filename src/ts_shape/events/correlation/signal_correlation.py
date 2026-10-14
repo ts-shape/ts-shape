@@ -4,8 +4,8 @@ import numbers
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import renamed_kwargs

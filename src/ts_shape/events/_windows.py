@@ -19,7 +19,7 @@ import datetime as _dt
 from collections.abc import Sequence
 from typing import Any, Literal, TypeAlias
 
-import pandas as pd  # type: ignore
+import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._output import (

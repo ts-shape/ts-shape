@@ -22,7 +22,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.signals.infer import infer_spec
 from ts_shape.signals.spec import SignalSpec, SignalSpecs

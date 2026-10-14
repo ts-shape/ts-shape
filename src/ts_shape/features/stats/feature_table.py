@@ -1,6 +1,6 @@
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 from pandas.api.types import is_bool_dtype, is_numeric_dtype, is_object_dtype
 
 from .boolean_stats import BooleanStatistics

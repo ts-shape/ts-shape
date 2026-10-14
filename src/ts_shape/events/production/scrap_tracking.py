@@ -8,7 +8,7 @@ Track material waste and scrap (different from NOK parts):
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import (
     add_period_window,

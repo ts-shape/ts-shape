@@ -1,6 +1,6 @@
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.features.segment_analysis.segment_processor import ALL_METRICS
 from ts_shape.features.stats.numeric_stats import NumericStatistics

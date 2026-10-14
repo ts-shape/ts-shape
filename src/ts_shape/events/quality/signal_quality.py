@@ -8,7 +8,7 @@ completeness per calendar window (real window lengths on DST days).
 import logging
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._windows import finish_events

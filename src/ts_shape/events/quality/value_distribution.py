@@ -9,9 +9,9 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import stats as sp_stats  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy import stats as sp_stats
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base

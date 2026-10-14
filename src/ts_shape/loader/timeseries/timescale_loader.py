@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 try:
     from sqlalchemy import create_engine, text

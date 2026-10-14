@@ -73,7 +73,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 

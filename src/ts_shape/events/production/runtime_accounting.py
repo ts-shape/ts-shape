@@ -16,7 +16,7 @@ counts): here the focus is *absolute* run time and an hour-meter reading.
 import logging
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.utils.base import Base

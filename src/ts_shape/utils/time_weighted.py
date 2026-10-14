@@ -12,7 +12,7 @@ new sample has no mean at all.
 """
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
 __all__ = ["time_weighted_resample"]
 

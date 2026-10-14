@@ -9,7 +9,7 @@ Essential module for daily quality analysis:
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import (
     add_day_window,

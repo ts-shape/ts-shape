@@ -2,8 +2,8 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.signals.primitives import intervals as spec_intervals
 from ts_shape.signals.spec import SignalSpec

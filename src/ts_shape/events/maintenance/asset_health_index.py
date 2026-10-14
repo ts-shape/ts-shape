@@ -21,8 +21,8 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import renamed_kwargs

@@ -1,10 +1,10 @@
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import signal as scipy_signal  # type: ignore
-from scipy import stats as scipy_stats  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy import signal as scipy_signal
+from scipy import stats as scipy_stats
 
 logger = logging.getLogger(__name__)
 

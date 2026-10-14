@@ -13,7 +13,7 @@ pint is an optional dependency; install it with::
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Optional dependency: mirror the scikit-learn handling in
 # events/quality/outlier_detection.py -- import once, expose a flag.
 try:
-    import pint  # type: ignore
+    import pint
 
     PINT_AVAILABLE = True
     _UREG = pint.UnitRegistry()

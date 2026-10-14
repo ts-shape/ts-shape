@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.errors import LoaderConfigWarning
 from ts_shape.loader._utils import hourly_slots, trim_to_time_range
@@ -74,7 +74,7 @@ class AzureBlobParquetLoader:
             hour_pattern: Pattern for hour-level subpath; tokens: {Y} {m} {d} {H}.
         """
         try:
-            from azure.storage.blob import ContainerClient  # type: ignore
+            from azure.storage.blob import ContainerClient
         except Exception as exc:  # pragma: no cover - import guard
             raise ImportError(
                 "azure-storage-blob is required for AzureBlobParquetLoader. "
@@ -836,7 +836,7 @@ class AzureBlobFlexibleFileLoader:
                 ``{m}`` ``{d}`` ``{H}``. Default ``"{Y}/{m}/{d}/{H}/"``.
         """
         try:
-            from azure.storage.blob import ContainerClient  # type: ignore
+            from azure.storage.blob import ContainerClient
         except Exception as exc:  # pragma: no cover - import guard
             raise ImportError(
                 "azure-storage-blob is required for AzureBlobFlexibleFileLoader. "
@@ -997,7 +997,7 @@ class AzureBlobFlexibleFileLoader:
 
         # Optional: NumPy npy/npz
         try:
-            import numpy as _np  # type: ignore
+            import numpy as _np
 
             def parse_npy(content: bytes, name: str) -> Any:
                 from io import BytesIO as _BytesIO
@@ -1016,7 +1016,7 @@ class AzureBlobFlexibleFileLoader:
 
         # Optional: images via Pillow
         try:
-            from PIL import Image as _Image  # type: ignore
+            from PIL import Image as _Image
 
             def parse_image(content: bytes, name: str) -> Any:
                 from io import BytesIO as _BytesIO

@@ -1,8 +1,8 @@
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import stats  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy import stats
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only

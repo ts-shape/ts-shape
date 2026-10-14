@@ -14,7 +14,7 @@ Entry and exit are boolean signals; each rising edge is one unit.
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._output import (
     empty_event_df,

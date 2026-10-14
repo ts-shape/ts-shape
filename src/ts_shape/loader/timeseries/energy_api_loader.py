@@ -10,7 +10,7 @@ Classes:
 import logging
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 try:
     import requests

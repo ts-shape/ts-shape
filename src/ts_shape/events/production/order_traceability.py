@@ -13,7 +13,7 @@ identifier to its own UUID.  This module joins those signals to answer
 import logging
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 

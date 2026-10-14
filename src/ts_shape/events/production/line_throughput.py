@@ -1,7 +1,7 @@
 import logging
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base

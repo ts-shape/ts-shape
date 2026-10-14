@@ -1,7 +1,7 @@
 import json
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 try:
     from sqlalchemy import create_engine, text

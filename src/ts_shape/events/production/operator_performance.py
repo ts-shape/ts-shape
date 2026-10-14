@@ -9,7 +9,7 @@ Compare production output and quality across operators:
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
