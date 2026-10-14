@@ -435,7 +435,7 @@ def test_windowed_features_split_at_segment_change_and_window_columns():
     df = _dst_line()
     r = SegmentExtractor.extract_time_ranges(df, "order")
     cut = SegmentProcessor.apply_ranges(df, r, target_uuids=["temp"])
-    long_df = TimeWindowedFeatureTable.compute_long(cut, freq="1h", metrics=["mean"])
+    long_df = TimeWindowedFeatureTable.compute_long(cut, window="1h", metrics=["mean"])
     # 00:00-01:00 window: A 00:00..00:50 (values 1..6).
     w0 = long_df[(long_df.time_window == _t("2024-03-31 00:00"))]
     assert w0["segment_value"].tolist() == ["A"]
@@ -448,7 +448,7 @@ def test_windowed_features_split_at_segment_change_and_window_columns():
     assert (long_df["start"] == long_df["time_window"]).all()
     assert (long_df["duration_seconds"] == 3600.0).all()
     assert list(long_df.columns[-3:]) == ["start", "end", "duration_seconds"]
-    wide = TimeWindowedFeatureTable.compute(cut, freq="1h", metrics=["mean"])
+    wide = TimeWindowedFeatureTable.compute(cut, window="1h", metrics=["mean"])
     assert "temp__duration_seconds" not in wide.columns
     assert "temp__mean" in wide.columns
 
@@ -457,7 +457,7 @@ def test_windowed_features_daily_window_on_dst_day():
     t = pd.date_range(_t("2024-03-30 12:00"), _t("2024-04-01 12:00"), freq="1h")
     df = pd.DataFrame({"systime": t, "uuid": "x", "value_double": 1.0})
     out = TimeWindowedFeatureTable.compute_long(
-        df, freq="1D", segment_column=None, metrics=["sum"]
+        df, window="1D", segment_column=None, metrics=["sum"]
     )
     day = out[out.time_window == _t("2024-03-31 00:00")].iloc[0]
     assert day["sample_count"] == 23
@@ -511,7 +511,7 @@ def test_cutting_100k_rows_is_fast():
     r = SegmentExtractor.extract_time_ranges(df, "order")
     cut = SegmentProcessor.apply_ranges(df, r, target_uuids=["a", "b", "c", "d"])
     SegmentProcessor.compute_metric_profiles(cut, group_column="segment_index")
-    TimeWindowedFeatureTable.compute(cut, freq="10min")
+    TimeWindowedFeatureTable.compute(cut, window="10min")
     assert time.perf_counter() - start < 5.0
     assert len(r) == 500
     in_range = (df.uuid != "order") & (df.systime >= r.segment_start.min())
@@ -676,3 +676,17 @@ def test_production_date_day_after_dst_change():
         "2024-10-27",
         "2024-10-27",
     ]
+
+
+def test_time_windowed_features_take_window_and_accept_freq_with_a_warning():
+    import ts_shape
+
+    df = ts_shape.make_timeseries(["a"], n_points=200)
+    new = TimeWindowedFeatureTable.compute_long(
+        df, window="10min", segment_column=None, metrics=["mean"]
+    )
+    with pytest.warns(DeprecationWarning, match="'freq' is deprecated"):
+        old = TimeWindowedFeatureTable.compute_long(
+            df, freq="10min", segment_column=None, metrics=["mean"]
+        )
+    assert new.equals(old)

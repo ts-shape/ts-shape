@@ -102,7 +102,7 @@ features = (
     .transform(SegmentExtractor, "extract_time_ranges", segment_uuid="order_number")
     .transform(SegmentProcessor, "apply_ranges",
                dataframe="$input", time_ranges="$prev", target_uuids=["temperature", "pressure"])
-    .transform(TimeWindowedFeatureTable, "compute", freq="15min", metrics=["mean", "std", "max"])
+    .transform(TimeWindowedFeatureTable, "compute", window="15min", metrics=["mean", "std", "max"])
 )
 table = features.run(data).data   # time_window, segment_value, temperature__mean, ...
 ```

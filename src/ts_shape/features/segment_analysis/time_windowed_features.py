@@ -6,6 +6,7 @@ import pandas as pd
 from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
 from ts_shape.features.segment_analysis.segment_processor import ALL_METRICS
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +26,11 @@ class TimeWindowedFeatureTable(Base):
     """
 
     @classmethod
+    @renamed_kwargs(freq="window")
     def compute_long(
         cls,
         dataframe: pd.DataFrame,
-        freq: str = "1min",
+        window: str = "1min",
         time_column: str = "systime",
         uuid_column: str = "uuid",
         value_column: str = "value_double",
@@ -37,12 +39,13 @@ class TimeWindowedFeatureTable(Base):
     ) -> pd.DataFrame:
         """Compute statistical metrics per UUID per time window (long format).
 
-        Groups the input data into fixed-size time windows using ``freq`` and
+        Groups the input data into fixed-size time windows of ``window`` and
         computes numeric statistics for each (time_window, uuid, segment) group.
 
         Args:
             dataframe: Input DataFrame (typically output of SegmentProcessor.apply_ranges).
-            freq: Pandas frequency string for the time window size (e.g. '1min', '30s', '5min').
+            window: Pandas frequency string for the time window size (e.g.
+                '1min', '30s', '5min'). ``freq`` is the deprecated name.
             time_column: Column containing timestamps.
             uuid_column: Column identifying each timeseries signal.
             value_column: Column containing numeric values.
@@ -50,7 +53,7 @@ class TimeWindowedFeatureTable(Base):
                 Set to None to ignore segments entirely.
             metrics: Subset of metric names to compute. None uses all 19.
 
-        Windows are the bins of ``pd.Grouper(freq=freq)`` (for sub-daily
+        Windows are the bins of ``pd.Grouper(freq=window)`` (for sub-daily
         frequencies they start at midnight of the first day; on tz-aware data
         they are wall-clock windows in the data's zone). A window that spans a
         segment change gives one row per segment. Groups with fewer than 2
@@ -92,7 +95,7 @@ class TimeWindowedFeatureTable(Base):
         # Stable time order: the window grouper then labels rows reliably.
         df = df.iloc[np.argsort(df[time_column].to_numpy(), kind="stable")]
 
-        grouper: list[object] = [pd.Grouper(key=time_column, freq=freq), uuid_column]
+        grouper: list[object] = [pd.Grouper(key=time_column, freq=window), uuid_column]
         if segment_column is not None:
             grouper.append(segment_column)
 
@@ -102,7 +105,7 @@ class TimeWindowedFeatureTable(Base):
             return pd.DataFrame(columns=columns)
         result.columns = [*leading, *result.columns[len(leading) :]]
         result["start"] = result["time_window"]
-        result["end"] = result["time_window"] + pd.tseries.frequencies.to_offset(freq)
+        result["end"] = result["time_window"] + pd.tseries.frequencies.to_offset(window)
         result["duration_seconds"] = (
             (result["end"] - result["start"]).dt.total_seconds().astype("float64")
         )
@@ -117,10 +120,11 @@ class TimeWindowedFeatureTable(Base):
         return result
 
     @classmethod
+    @renamed_kwargs(freq="window")
     def compute(
         cls,
         dataframe: pd.DataFrame,
-        freq: str = "1min",
+        window: str = "1min",
         time_column: str = "systime",
         uuid_column: str = "uuid",
         value_column: str = "value_double",
@@ -136,7 +140,8 @@ class TimeWindowedFeatureTable(Base):
 
         Args:
             dataframe: Input DataFrame (typically output of SegmentProcessor.apply_ranges).
-            freq: Pandas frequency string for the time window size.
+            window: Pandas frequency string for the time window size.
+                ``freq`` is the deprecated name.
             time_column: Column containing timestamps.
             uuid_column: Column identifying each timeseries signal.
             value_column: Column containing numeric values.
@@ -149,7 +154,7 @@ class TimeWindowedFeatureTable(Base):
         """
         long_df = cls.compute_long(
             dataframe,
-            freq=freq,
+            window=window,
             time_column=time_column,
             uuid_column=uuid_column,
             value_column=value_column,
