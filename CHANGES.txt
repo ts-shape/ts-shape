@@ -1,4 +1,13 @@
 # October 14, 2026
+fix: Gauge R&R follows the AIAG average-and-range method: AV subtracts the
+  repeatability share EV^2/(n*r) (a negative radicand gives AV = 0), and AV
+  and PV use K2/K3 = 1/d2* (g = 1) instead of the large-sample d2. Before,
+  AV and PV were overstated (2 appraisers: by 25 %), and so were GRR and
+  %GRR. Checked against the AIAG worksheet constants.
+add: EnergyPerformanceIndicatorEvents.enpi_vs_baseline(baseline="regression")
+  -- ISO 50006 energy baseline energy = a + b*units fitted on a fixed
+  baseline period (baseline_period= or the first baseline_window windows);
+  adds expected_energy_kwh and energy_savings_kwh. Default unchanged.
 docs: every page now shows only names that exist (NumericFilter,
   OutlierDetection, MetadataLoader, S3ProxyParquetLoader, NumericCalc and
   wrong module paths replaced with the real API); tests/docs checks every

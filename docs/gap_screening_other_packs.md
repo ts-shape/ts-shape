@@ -139,5 +139,7 @@ The coverage tests found three more bugs, all ✅:
 | `engineering/setpoint_events.py` | `overshoot_metrics` | medium | undershoot was the minimum error over the whole window, i.e. the initial step (100 % on every step). Now it is the swing back past the setpoint after the setpoint is first reached. |
 | `energy/*` | cumulative kWh register | 📝 | no new parameter. Convert the register with `utils.counters.counter_increments` before passing it as interval energy (reset-aware; pinned by a test). |
 
-No lined-out items remain from this screen. Remaining simplifications: AV
-uses the range of operator means without the AIAG `EV²/(n·r)` correction.
+| `quality/gauge_repeatability.py` | `reproducibility`, `gauge_rr_summary` | medium | ✅ AV now subtracts the AIAG `EV²/(n·r)` term, and AV/PV use `K2`/`K3 = 1/d2*` (g = 1) instead of the large-sample `d2`. Before, both were overstated (by 25 % with 2 appraisers). |
+| `energy/energy_performance_indicator.py` | `enpi_vs_baseline` | medium | ✅ opt-in `baseline="regression"`: the ISO 50006 baseline `energy = a + b·units`. The rolling-mean baseline flagged low-output days (base load per unit) and absorbed lasting improvements. |
+
+No lined-out items remain from this screen.

@@ -21,6 +21,30 @@ _D2 = {
     10: 3.078,
 }
 
+# d2* for a single range (g = 1) of m values: AIAG MSA K2 = 1/d2* (appraisers)
+# and K3 = 1/d2* (parts). The large-g d2 above would overstate AV and PV.
+_D2_STAR_G1 = {
+    2: 1.41421,
+    3: 1.91155,
+    4: 2.23887,
+    5: 2.48124,
+    6: 2.67253,
+    7: 2.82981,
+    8: 2.96288,
+    9: 3.07794,
+    10: 3.17905,
+    11: 3.26909,
+    12: 3.35016,
+    13: 3.42378,
+    14: 3.49116,
+    15: 3.55333,
+}
+
+
+def _d2_star(m: int) -> float:
+    """d2* (g = 1) for a range of ``m`` values; ``m > 15`` uses ``m = 15``."""
+    return _D2_STAR_G1[min(max(m, 2), 15)]
+
 
 class GaugeRepeatabilityEvents(Base):
     """Quality: Gauge Repeatability & Reproducibility (Gauge R&R)
@@ -141,6 +165,13 @@ class GaugeRepeatabilityEvents(Base):
         Groups by operator_column, computes variation of part means
         across operators. Requires operator_column to be set.
 
+        AIAG average-and-range method: ``AV = sqrt((X_diff * K2)^2 -
+        EV^2 / (n * r))`` with ``X_diff`` the range of operator means,
+        ``K2 = 1/d2*`` for the number of operators, ``n`` parts and ``r``
+        trials. The ``EV^2 / (n * r)`` term removes the repeatability noise
+        already contained in the operator means; a negative radicand gives
+        ``AV = 0``.
+
         Returns:
             DataFrame with columns: operator, mean, reproducibility_std, AV.
         """
@@ -176,10 +207,19 @@ class GaugeRepeatabilityEvents(Base):
                 else pd.DataFrame(columns=cols)
             )
 
-        # AV = range of operator means / d2
         op_range = max(op_means) - min(op_means)
-        d2 = _D2.get(min(len(op_means), 10), _D2[10])
-        av = op_range / d2
+        av_raw_sq = (op_range / _d2_star(len(op_means))) ** 2
+        rep = self.repeatability()
+        if rep.empty:
+            ev_noise = 0.0
+        else:
+            n_parts = len(rep)
+            cells = self.signal.groupby([self.part_column, self.operator_column])[
+                self.value_column
+            ].count()
+            trials = float(cells[cells > 0].mean())
+            ev_noise = float(rep["EV"].mean()) ** 2 / (n_parts * trials)
+        av = float(np.sqrt(max(av_raw_sq - ev_noise, 0.0)))
         repro_std = float(np.std(op_means, ddof=1))
 
         for e in events:
@@ -227,12 +267,11 @@ class GaugeRepeatabilityEvents(Base):
         # GRR
         grr = np.sqrt(ev**2 + av**2)
 
-        # PV (Part Variation) — std of part means × correction
+        # PV (Part Variation): range of part means x K3 (= 1/d2*, AIAG)
         part_means = rep["mean"].values
         if len(part_means) >= 2:
             pv_range = float(part_means.max() - part_means.min())
-            d2 = _D2.get(min(len(part_means), 10), _D2[10])
-            pv = pv_range / d2
+            pv = pv_range / _d2_star(len(part_means))
         else:
             pv = 0.0
 
