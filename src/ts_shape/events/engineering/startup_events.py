@@ -10,6 +10,7 @@ from ts_shape.events._output import (
     finalize_point_df,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +30,11 @@ class StartupDetectionEvents(Base):
         dataframe: pd.DataFrame,
         target_uuid: str,
         *,
-        event_uuid: str = "startup_event",
+        event_uuid: str = "eng:startup",
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.target_uuid = target_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -168,6 +169,7 @@ class StartupDetectionEvents(Base):
 
         return self._intervals(events, cols)
 
+    @keyword_only(2)
     def detect_startup_multi_signal(
         self,
         signals: dict[str, dict[str, Any]],

@@ -46,7 +46,7 @@ class DesignOfExperimentsEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         if not factor_uuids:
             raise ValueError("factor_uuids must contain at least one signal UUID")
         self.factor_uuids = list(factor_uuids)

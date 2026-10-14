@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method
+from ts_shape.utils.deprecation import deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ class ToleranceDeviationEvents(Base):
     - Time-lagged tolerance application
     """
 
+    @keyword_only(4)
     def __init__(
         self,
         dataframe: pd.DataFrame,
@@ -432,6 +433,7 @@ class ToleranceDeviationEvents(Base):
 
     compute_capability_indices = deprecated_method("capability_indices")
 
+    @keyword_only(1)
     def capability_indices(self, target_value: float | None = None) -> dict[str, float]:
         """
         Calculate process capability indices (Cp, Cpk, Pp, Ppk).

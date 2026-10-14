@@ -117,7 +117,7 @@ class TestRankCauses:
         ranked = _detector().rank_causes(
             _trigger_events(),
             ["press:hydraulic", "flow:coolant"],
-            significant_only=True,
+            only_significant=True,
         )
         assert ranked["candidate_uuid"].tolist() == ["press:hydraulic"]
 

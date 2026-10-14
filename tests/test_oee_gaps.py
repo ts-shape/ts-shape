@@ -72,7 +72,7 @@ def test_runtime_summary_max_gap():
     df = pd.DataFrame(
         {"uuid": "run", "systime": times, "value_bool": [True, True, True, True]}
     )
-    rt = RuntimeAccountingEvents(df, run_uuid="run")
+    rt = RuntimeAccountingEvents(df, run_state_uuid="run")
     naive = rt.runtime_summary()
     capped = rt.runtime_summary(max_gap="15min")
     assert naive["run_seconds"].iloc[0] > capped["run_seconds"].iloc[0]

@@ -21,7 +21,7 @@ from ts_shape.events.quality.anomaly_classification import AnomalyClassification
 classifier = AnomalyClassificationEvents(df, signal_uuid="temperature_sensor")
 
 # Full multi-type classification in one pass
-classified = classifier.classify_anomalies(window="10min", z_threshold=3.0)
+classified = classifier.classify_anomalies(window="10min", n_sigma=3.0)
 
 # Or detect specific anomaly types individually
 flatlines = classifier.detect_flatline(min_duration="1min", tolerance=1e-6)
@@ -38,7 +38,7 @@ drifts = classifier.detect_drift(window="1h", min_slope=0.01)
 | `detect_flatline(min_duration='1min', tolerance=1e-6)` | Detect stuck/frozen signal segments | DataFrame with `start`, `end`, `duration`, `stuck_value` |
 | `detect_oscillation(window='1min', min_crossings=6)` | Detect excessive oscillation (e.g., control valve hunting) | DataFrame with `start`, `end`, `crossing_count`, `amplitude` |
 | `detect_drift(window='1h', min_slope=0.01)` | Detect gradual drift in signal mean | DataFrame with `start`, `end`, `slope`, `direction` |
-| `classify_anomalies(window='10min', z_threshold=3.0)` | Multi-type classification: spike, drift, oscillation, flatline, level shift | DataFrame with `start`, `end`, `anomaly_type`, `severity`, `details` |
+| `classify_anomalies(window='10min', n_sigma=3.0)` | Multi-type classification: spike, drift, oscillation, flatline, level shift | DataFrame with `start`, `end`, `anomaly_type`, `severity`, `details` |
 
 ---
 

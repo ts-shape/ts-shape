@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_per_window
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ class CarbonIntensityEvents(Base):
             time_column: Name of the timestamp column.
             uuid_column: Name of the signal identifier column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.emission_factors = emission_factors
         self.scope_map = scope_map or {}
         self.event_uuid = event_uuid
@@ -211,12 +212,13 @@ class CarbonIntensityEvents(Base):
             out[empty_cols].sort_values("start").reset_index(drop=True), window
         )
 
+    @renamed_kwargs(counter_column="value_column_counter")
     def carbon_intensity_per_unit(
         self,
         counter_uuid: str,
         *,
         value_column: str = "value_double",
-        counter_column: str = "value_integer",
+        value_column_counter: str = "value_integer",
         window: str = "1D",
         handle_resets: bool = False,
     ) -> pd.DataFrame:
@@ -225,7 +227,7 @@ class CarbonIntensityEvents(Base):
         Args:
             counter_uuid: Identifier of the production counter signal.
             value_column: Column containing energy/fuel readings.
-            counter_column: Column containing counter readings.
+            value_column_counter: Column containing counter readings.
             window: Aggregation window.
             handle_resets: Treat a decreasing production counter as a reset
                 and sum reset-aware increments per window (see
@@ -262,7 +264,7 @@ class CarbonIntensityEvents(Base):
         counter_raw = counter_raw.set_index(self.time_column)
         counter_agg = (
             counter_per_window(
-                counter_raw[counter_column], window, handle_resets=handle_resets
+                counter_raw[value_column_counter], window, handle_resets=handle_resets
             )
             .to_frame("units_produced")
             .reset_index()

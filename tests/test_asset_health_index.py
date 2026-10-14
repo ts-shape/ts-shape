@@ -192,7 +192,7 @@ class TestHealthEvents:
             baseline_window="8h",
             warning_threshold=95.0,
             critical_threshold=80.0,
-            on_crossing_only=False,
+            only_crossings=False,
         )
         assert len(every) > len(crossings)
 

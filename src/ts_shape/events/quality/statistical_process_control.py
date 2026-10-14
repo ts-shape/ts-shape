@@ -4,7 +4,12 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_class, deprecated_method
+from ts_shape.utils.deprecation import (
+    deprecated_class,
+    deprecated_method,
+    keyword_only,
+    renamed_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +87,10 @@ class StatisticalProcessControlEvents(Base):
 
     calculate_dynamic_control_limits = deprecated_method("dynamic_control_limits")
 
+    @keyword_only(1)
+    @renamed_kwargs(window="window_size")
     def dynamic_control_limits(
-        self, method: str = "moving_range", window: int = 20
+        self, method: str = "moving_range", window_size: int = 20
     ) -> pd.DataFrame:
         """
         Calculate dynamic control limits that adapt over time.
@@ -92,7 +99,8 @@ class StatisticalProcessControlEvents(Base):
             method (str): Method for calculating dynamic limits. Options:
                 - 'moving_range': Uses moving window statistics
                 - 'ewma': Uses Exponentially Weighted Moving Average
-            window (int): Window size for moving calculations (default: 20)
+            window_size (int): Number of rows in the moving window (the EWMA
+                span for ``'ewma'``; default: 20)
 
         Returns:
             pd.DataFrame: DataFrame with dynamic control limits indexed by time.
@@ -106,10 +114,10 @@ class StatisticalProcessControlEvents(Base):
         if method == "moving_range":
             # Calculate rolling mean and std
             rolling_mean = (
-                df[self.value_column].rolling(window=window, min_periods=1).mean()
+                df[self.value_column].rolling(window=window_size, min_periods=1).mean()
             )
             rolling_std = (
-                df[self.value_column].rolling(window=window, min_periods=1).std()
+                df[self.value_column].rolling(window=window_size, min_periods=1).std()
             )
 
             control_limits = pd.DataFrame(
@@ -127,8 +135,8 @@ class StatisticalProcessControlEvents(Base):
 
         elif method == "ewma":
             # Calculate EWMA-based control limits
-            # Convert window to span for EWMA
-            span = window
+            # Convert window size to span for EWMA
+            span = window_size
             ewma_mean = df[self.value_column].ewm(span=span, adjust=False).mean()
 
             # Calculate EWMA variance
@@ -322,6 +330,7 @@ class StatisticalProcessControlEvents(Base):
 
     apply_rules_vectorized = deprecated_method("detect_rule_violations")
 
+    @keyword_only(1)
     def detect_rule_violations(
         self, selected_rules: list[str] | None = None
     ) -> pd.DataFrame:
@@ -509,6 +518,7 @@ class StatisticalProcessControlEvents(Base):
                 columns=["systime", "value", "rule", "severity", "uuid", "source_uuid"]
             )
 
+    @keyword_only(1)
     def detect_cusum_shifts(
         self, target: float | None = None, k: float = 0.5, h: float = 5.0
     ) -> pd.DataFrame:
@@ -709,6 +719,7 @@ class StatisticalProcessControlEvents(Base):
 
     process = deprecated_method("detect_violations")
 
+    @keyword_only(1)
     def detect_violations(
         self, selected_rules: list[str] | None = None, include_severity: bool = False
     ) -> pd.DataFrame:

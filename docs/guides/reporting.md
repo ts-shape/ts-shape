@@ -340,7 +340,7 @@ comparison = summary.compare_periods(
 
 ```python
 monthly = PeriodSummaryEvents.from_daily_data(
-    daily_df=daily_production, freq='M', date_column='date'
+    daily_df=daily_production, window='M', date_column='date'
 )
 ```
 

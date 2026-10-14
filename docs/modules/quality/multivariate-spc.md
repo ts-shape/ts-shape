@@ -28,12 +28,12 @@ mspc = MultivariateSPCEvents(
 )
 reference = ("2024-01-01", "2024-01-08")  # a known in-control week
 
-t2 = mspc.hotelling_t2(reference)               # every aligned observation
-runs = mspc.detect_out_of_control(reference, min_samples=3)
+t2 = mspc.hotelling_t2(reference_period=reference)  # every aligned observation
+runs = mspc.detect_out_of_control(reference_period=reference, min_samples=3)
 print(runs[["start", "end", "max_t2", "top_contributor"]])
 
 # Which variable drives each alarm?
-contrib = mspc.contributions(reference)
+contrib = mspc.contributions(reference_period=reference)
 ```
 
 ---

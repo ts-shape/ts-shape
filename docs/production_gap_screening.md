@@ -147,7 +147,7 @@ time. Default (`False`, sample-mean) is unchanged.
 | `shift_reporting.py`, `shift_handover.py` | `_assign_shift` + calendar-date grouping | medium | an overnight shift is split across two calendar dates into two rows, dropping the midnight-crossing delta and double-comparing against the target | ✅ (opt-in `production_day`) |
 | `changeover.py` | `detect_changeover` | medium | `series.ne(series.shift())` flags the first reading (vs `NaN`) as a changeover, over-counting the initial product | ✅ (opt-in `include_initial`, default preserves behaviour) |
 | `line_balancing.py` | `balance_metrics` | medium | a fully stopped station has no cycle in the window and vanishes from the denominator, so a dead station reads as a perfectly balanced line (`efficiency 100 %`) | ✅ (opt-in `require_all_stations`) |
-| `alarm_management.py` | `alarm_frequency` | low | an alarm already active at the window start is counted as an activation | ✅ (opt-in `count_initial_active`) |
+| `alarm_management.py` | `alarm_frequency` | low | an alarm already active at the window start is counted as an activation | ✅ (opt-in `include_initial`) |
 
 **Overnight-shift fix:** a shared helper `ts_shape.utils.shifts` attributes an
 overnight shift's post-midnight readings to the shift's *start* date (a

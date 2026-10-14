@@ -261,7 +261,7 @@ def test_runtime_detector_in_pipeline():
             RuntimeAccountingEvents,
             "runtime_summary",
             name="runtime",
-            run_uuid="machine:run",
+            run_state_uuid="machine:run",
         )
         .run(_run_signal())
     )

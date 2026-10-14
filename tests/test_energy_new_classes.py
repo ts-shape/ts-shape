@@ -146,8 +146,8 @@ class TestUuidColumnAgnosticism:
         result = events.specific_energy_consumption(
             "meter:main",
             "counter:line1",
-            energy_column="value",
-            counter_column="value",
+            value_column_energy="value",
+            value_column_counter="value",
             window="1h",
         )
         assert not result.empty
@@ -236,8 +236,8 @@ class TestIdleEnergyDetectionEvents:
         result = events.idle_energy_by_window(
             "meter:main",
             "state:machine1",
-            energy_column="value",
-            state_column="value",
+            value_column_energy="value",
+            value_column_state="value",
         )
         assert not result.empty
 
@@ -339,8 +339,8 @@ class TestEnergyPerformanceIndicatorEvents:
         result = events.enpi_by_window(
             "meter:main",
             "counter:line1",
-            energy_column="value",
-            counter_column="value",
+            value_column_energy="value",
+            value_column_counter="value",
             window="1h",
         )
         assert not result.empty

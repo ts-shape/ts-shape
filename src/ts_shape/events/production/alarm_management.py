@@ -12,7 +12,11 @@ import pandas as pd  # type: ignore
 from ts_shape.events._output import finalize_interval_df
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method
+from ts_shape.utils.deprecation import (
+    deprecated_method,
+    keyword_only,
+    renamed_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +55,7 @@ class AlarmManagementEvents(Base):
             value_column: Column holding the boolean alarm state.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.alarm_uuid = alarm_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -116,8 +120,10 @@ class AlarmManagementEvents(Base):
     # public methods
     # ------------------------------------------------------------------
 
+    @keyword_only(1)
+    @renamed_kwargs(count_initial_active="include_initial")
     def alarm_frequency(
-        self, window: str = "1h", *, count_initial_active: bool = True
+        self, window: str = "1h", *, include_initial: bool = True
     ) -> pd.DataFrame:
         """Count alarm activations per time window.
 
@@ -125,7 +131,7 @@ class AlarmManagementEvents(Base):
 
         Args:
             window: Pandas offset alias for the aggregation window.
-            count_initial_active: When True (default) an alarm that is already
+            include_initial: When True (default) an alarm that is already
                 active in the first sample is counted as an activation, because
                 ``shift(fill_value=False)`` treats the leading True as a rising
                 edge. Pass ``False`` to ignore an alarm that was raised before
@@ -157,7 +163,7 @@ class AlarmManagementEvents(Base):
         s["prev"] = s["state"].shift(fill_value=False)
         # Rising edges = alarm activations
         s["activation"] = s["state"] & ~s["prev"]
-        if not count_initial_active and len(s) > 0 and bool(s["state"].iloc[0]):
+        if not include_initial and len(s) > 0 and bool(s["state"].iloc[0]):
             # The alarm was already active at the window start -> not a new
             # activation.
             s.iloc[0, s.columns.get_loc("activation")] = False
@@ -219,6 +225,7 @@ class AlarmManagementEvents(Base):
             ]
         )
 
+    @keyword_only(1)
     def chattering_detection(
         self,
         min_transitions: int = 5,
@@ -324,6 +331,7 @@ class AlarmManagementEvents(Base):
         cols = ["start", "end", "duration_seconds", "transition_count"]
         return out[cols + ["uuid", "source_uuid"]]
 
+    @keyword_only(1)
     def standing_alarms(self, min_duration: str = "1h") -> pd.DataFrame:
         """Identify alarms that stay active longer than *min_duration*.
 

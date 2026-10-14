@@ -7,6 +7,7 @@ import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
+from ts_shape.utils.deprecation import keyword_only
 
 _SPEED_FACTORS: dict[str, float] = {
     "m/min": 1.0 / 60.0,
@@ -155,6 +156,7 @@ class ContinuousProcessAlignmentEvents(Base):
     # Public methods
     # ------------------------------------------------------------------
 
+    @keyword_only(1)
     def align_to_reference(
         self,
         station_uuids: list[str] | None = None,
@@ -460,6 +462,7 @@ class ContinuousProcessAlignmentEvents(Base):
         )
         return result
 
+    @keyword_only(1)
     def lag_profile(
         self,
         station_uuids: list[str] | None = None,
@@ -516,6 +519,7 @@ class ContinuousProcessAlignmentEvents(Base):
             ["start", "position_offset_m"]
         )
 
+    @keyword_only(1)
     def alignment_quality(
         self,
         station_uuids: list[str] | None = None,

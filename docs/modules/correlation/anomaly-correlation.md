@@ -9,7 +9,7 @@
 
 ## When to Use
 
-Use to understand how anomalies on individual signals relate to each other. The class flags anomalies itself (absolute Z-score at or above `z_threshold`, default 3.0, per signal on `value_double`), so pass raw long-format signals, not pre-computed anomaly flags. Finds root cause candidates by identifying which signals' anomalies consistently precede others. Essential for complex systems where a fault in one subsystem cascades through multiple sensors.
+Use to understand how anomalies on individual signals relate to each other. The class flags anomalies itself (absolute Z-score at or above `n_sigma`, default 3.0, per signal on `value_double`), so pass raw long-format signals, not pre-computed anomaly flags. Finds root cause candidates by identifying which signals' anomalies consistently precede others. Essential for complex systems where a fault in one subsystem cascades through multiple sensors.
 
 ---
 

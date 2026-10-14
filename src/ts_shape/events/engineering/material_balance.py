@@ -11,6 +11,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ class MaterialBalanceEvents(Base):
                 the window's totals NaN and marks it not balanced, so a sensor
                 outage is not read as a real imbalance.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_weighted = time_weighted
         self.missing_as_zero = missing_as_zero
         self.input_uuids = input_uuids
@@ -93,6 +94,7 @@ class MaterialBalanceEvents(Base):
         combined = pd.concat(frames, axis=1)
         return combined.fillna(0.0) if self.missing_as_zero else combined
 
+    @keyword_only(1)
     def balance_check(
         self,
         window: str = "1h",
@@ -171,6 +173,7 @@ class MaterialBalanceEvents(Base):
             add_window_bounds(result[cols].reset_index(drop=True), window)
         )
 
+    @keyword_only(1)
     def imbalance_trend(self, window: str = "1h") -> pd.DataFrame:
         """Track whether imbalance is growing, shrinking, or stable.
 
@@ -187,7 +190,7 @@ class MaterialBalanceEvents(Base):
             "rolling_avg_imbalance",
             "trend_direction",
         ]
-        bc = self.balance_check(window)
+        bc = self.balance_check(window=window)
         if bc.empty or len(bc) < 2:
             return empty_event_df("summary", cols)
 
@@ -203,6 +206,7 @@ class MaterialBalanceEvents(Base):
 
         return result[cols].reset_index(drop=True)
 
+    @keyword_only(1)
     def detect_balance_exceedance(
         self,
         window: str = "1h",
@@ -226,7 +230,7 @@ class MaterialBalanceEvents(Base):
             "duration_seconds",
             "likely_cause",
         ]
-        bc = self.balance_check(window, tolerance_pct)
+        bc = self.balance_check(window=window, tolerance_pct=tolerance_pct)
         if bc.empty:
             return empty_event_df("interval", cols)
 
@@ -283,6 +287,7 @@ class MaterialBalanceEvents(Base):
             source_uuid=",".join([*self.input_uuids, *self.output_uuids]),
         )
 
+    @keyword_only(1)
     def contribution_breakdown(self, window: str = "1h") -> pd.DataFrame:
         """Each signal's contribution to total input/output per window.
 

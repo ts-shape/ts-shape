@@ -7,6 +7,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._output import empty_event_df, finalize_interval_df
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class SignalComparisonEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.reference_uuid = reference_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -77,6 +78,7 @@ class SignalComparisonEvents(Base):
         merged["abs_deviation"] = merged["deviation"].abs()
         return merged.dropna(subset=["ref", "act"])
 
+    @keyword_only(3)
     def detect_divergence(
         self,
         actual_uuid: str,
@@ -145,6 +147,7 @@ class SignalComparisonEvents(Base):
             source_uuid=f"{self.reference_uuid},{actual_uuid}",
         )
 
+    @keyword_only(2)
     def deviation_statistics(
         self,
         actual_uuid: str,
@@ -181,6 +184,7 @@ class SignalComparisonEvents(Base):
 
         return window_summary(events, cols, window)
 
+    @keyword_only(2)
     def tracking_error_trend(
         self,
         actual_uuid: str,
@@ -193,7 +197,7 @@ class SignalComparisonEvents(Base):
             trend_slope, trend_direction. ``end`` is ``start`` + ``window``.
         """
         cols = ["start", "mae", "trend_slope", "trend_direction"]
-        stats = self.deviation_statistics(actual_uuid, window)
+        stats = self.deviation_statistics(actual_uuid, window=window)
         if stats.empty or len(stats) < 2:
             return window_summary([], cols, window)
 
@@ -210,6 +214,7 @@ class SignalComparisonEvents(Base):
             result[cols].dropna().reset_index(drop=True), cols, window
         )
 
+    @keyword_only(2)
     def correlation_windows(
         self,
         actual_uuid: str,

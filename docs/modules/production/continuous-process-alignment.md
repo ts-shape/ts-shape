@@ -38,7 +38,7 @@ cpa = ContinuousProcessAlignmentEvents(
     speed_unit="m/min",
 )
 
-aligned = cpa.align_to_reference(["ext1:melt_temp", "ext1:wall_thickness"])
+aligned = cpa.align_to_reference(station_uuids=["ext1:melt_temp", "ext1:wall_thickness"])
 pieces = cpa.segment_by_cut(aligned, cut_length_uuid="ext1:cut_length")
 
 cpa.lag_profile(window="1min")

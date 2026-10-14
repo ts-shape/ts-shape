@@ -13,6 +13,7 @@ from scipy import stats  # type: ignore
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class SensorDriftEvents(Base):
         event_uuid: str = "quality:sensor_drift",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.reference_uuid = reference_uuid
         self.reference_value = reference_value
@@ -84,6 +85,7 @@ class SensorDriftEvents(Base):
                 return float(ref_vals.mean())
         return None
 
+    @keyword_only(1)
     def detect_zero_drift(
         self, window: str = "8h", threshold: float | None = None
     ) -> pd.DataFrame:
@@ -184,6 +186,7 @@ class SensorDriftEvents(Base):
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def detect_span_drift(self, window: str = "8h") -> pd.DataFrame:
         """Track measurement sensitivity changes over time.
 
@@ -260,6 +263,7 @@ class SensorDriftEvents(Base):
             window=window,
         )
 
+    @keyword_only(1)
     def drift_trend(self, window: str = "1D", metric: str = "mean") -> pd.DataFrame:
         """Rolling trend analysis on signal statistics.
 
@@ -346,6 +350,7 @@ class SensorDriftEvents(Base):
             window=window,
         )
 
+    @keyword_only(1)
     def calibration_health(
         self, window: str = "8h", tolerance: float | None = None
     ) -> pd.DataFrame:

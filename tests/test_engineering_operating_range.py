@@ -66,7 +66,7 @@ def test_time_in_range():
     df = _make_df("sensor", t, vals)
 
     det = OperatingRangeEvents(df, "sensor")
-    result = det.time_in_range(lower=40.0, upper=60.0, window="10min")
+    result = det.time_in_range(lower_limit=40.0, upper_limit=60.0, window="10min")
     assert not result.empty
     assert all(abs(r - 100.0) < 0.01 for r in result["time_in_range_pct"])
 
@@ -78,7 +78,7 @@ def test_time_in_range_partial():
     df = _make_df("sensor", t, vals)
 
     det = OperatingRangeEvents(df, "sensor")
-    result = det.time_in_range(lower=40.0, upper=60.0, window="20min")
+    result = det.time_in_range(lower_limit=40.0, upper_limit=60.0, window="20min")
     assert not result.empty
     # At least one window should have < 100% in range
     assert any(r < 100.0 for r in result["time_in_range_pct"])

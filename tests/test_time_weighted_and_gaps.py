@@ -63,10 +63,10 @@ def test_error_integrals_max_gap():
         pd.concat([sp, pv]), setpoint_uuid="sp", actual_uuid="pv"
     )
     # Default: the 30-minute comms gap is integrated as error.
-    assert ev.error_integrals("1h")["iae"].iloc[0] == pytest.approx(1860.0)
-    assert ev.error_integrals("1h", max_gap="5min")["iae"].iloc[0] == pytest.approx(
-        60.0
-    )
+    assert ev.error_integrals(window="1h")["iae"].iloc[0] == pytest.approx(1860.0)
+    assert ev.error_integrals(window="1h", max_gap="5min")["iae"].iloc[
+        0
+    ] == pytest.approx(60.0)
 
 
 def _balance_frame(include_input=True):

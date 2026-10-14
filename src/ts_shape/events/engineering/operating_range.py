@@ -7,6 +7,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._output import empty_event_df, finalize_interval_df
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class OperatingRangeEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -46,6 +47,7 @@ class OperatingRangeEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(1)
     def operating_envelope(self, window: str = "1h") -> pd.DataFrame:
         """Per-window operating envelope statistics.
 
@@ -103,6 +105,7 @@ class OperatingRangeEvents(Base):
             source_uuid=self.signal_uuid,
         )
 
+    @keyword_only(1)
     def detect_regime_change(
         self,
         window: str = "1h",
@@ -179,10 +182,12 @@ class OperatingRangeEvents(Base):
             source_uuid=self.signal_uuid,
         )
 
+    @keyword_only(3)
+    @renamed_kwargs(lower="lower_limit", upper="upper_limit")
     def time_in_range(
         self,
-        lower: float,
-        upper: float,
+        lower_limit: float,
+        upper_limit: float,
         window: str = "1h",
     ) -> pd.DataFrame:
         """Percentage of time within a defined range per window.
@@ -205,9 +210,9 @@ class OperatingRangeEvents(Base):
             if vals.empty:
                 continue
             n = len(vals)
-            in_range = ((vals >= lower) & (vals <= upper)).sum()
-            below = (vals < lower).sum()
-            above = (vals > upper).sum()
+            in_range = ((vals >= lower_limit) & (vals <= upper_limit)).sum()
+            below = (vals < lower_limit).sum()
+            above = (vals > upper_limit).sum()
             events.append(
                 {
                     "start": start,
@@ -219,6 +224,7 @@ class OperatingRangeEvents(Base):
 
         return self._summary(events, cols, window)
 
+    @keyword_only(1)
     def value_distribution(self, n_bins: int = 10) -> pd.DataFrame:
         """Histogram of signal values.
 

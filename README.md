@@ -248,7 +248,7 @@ from ts_shape.events.production.runtime_accounting import RuntimeAccountingEvent
 from ts_shape.transform.calculator.unit_conversion import UnitConverter
 
 # Operating-hours accounting -- run time, starts, longest run, hour-meter
-rt = RuntimeAccountingEvents(df, run_uuid="machine:running")
+rt = RuntimeAccountingEvents(df, run_state_uuid="machine:running")
 summary = rt.runtime_summary()
 meter = rt.operating_hours_meter(window="1h")
 
@@ -327,7 +327,7 @@ from ts_shape.events.correlation import (
 
 # Rolling correlation between two process variables
 corr = SignalCorrelationEvents(df)
-rolling = corr.rolling_correlation("temp:inlet", "temp:outlet", window=60)
+rolling = corr.rolling_correlation("temp:inlet", "temp:outlet", window_size=60)
 
 # Which signal moved before the stoppages we detected?
 rc = RootCauseCorrelationEvents(df)
@@ -399,7 +399,7 @@ anomalies = lt.detect_lead_time_anomalies(order_uuid="order:placed", delivery_uu
 # Demand patterns and seasonality
 demand = DemandPatternEvents(df, demand_uuid="demand:daily")
 spikes = demand.detect_demand_spikes(threshold_factor=2.0)
-seasonal = demand.seasonality_summary(period="1D")
+seasonal = demand.seasonality_summary(window="1D")
 ```
 
 ### Loaders

@@ -19,7 +19,7 @@ def test_change_encoded_setpoint_keeps_every_pv_sample():
     ev = ControlLoopHealthEvents(
         _change_encoded_sp_dense_pv(), setpoint_uuid="sp", actual_uuid="pv"
     )
-    out = ev.error_integrals("2h")
+    out = ev.error_integrals(window="2h")
     assert len(out) == 1
     assert out["sample_count"].iloc[0] == 61
     # |error| = 10 for 3600 s

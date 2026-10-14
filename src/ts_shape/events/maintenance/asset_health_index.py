@@ -25,6 +25,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ class AssetHealthIndexEvents(Base):
         Raises:
             ValueError: If ``signals`` is empty or a weight is not positive.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         if not signals:
             raise ValueError("signals must contain at least one signal UUID")
 
@@ -355,6 +356,7 @@ class AssetHealthIndexEvents(Base):
 
         return pd.DataFrame(rows, columns=cols)
 
+    @renamed_kwargs(on_crossing_only="only_crossings")
     def health_events(
         self,
         *,
@@ -362,7 +364,7 @@ class AssetHealthIndexEvents(Base):
         baseline_window: str = "24h",
         warning_threshold: float = 70.0,
         critical_threshold: float = 50.0,
-        on_crossing_only: bool = True,
+        only_crossings: bool = True,
     ) -> pd.DataFrame:
         """Emit an event when the fused index falls to warning or critical.
 
@@ -371,7 +373,7 @@ class AssetHealthIndexEvents(Base):
             baseline_window: Baseline period passed to :meth:`health_index`.
             warning_threshold: Score at or below which a ``warning`` fires.
             critical_threshold: Score at or below which a ``critical`` fires.
-            on_crossing_only: When ``True`` (default) only the window that
+            only_crossings: When ``True`` (default) only the window that
                 *enters* a severity band emits a row, so a machine sitting at
                 40 for a week reports one critical, not 168. Set ``False`` to
                 emit every window that sits below a threshold.
@@ -420,7 +422,7 @@ class AssetHealthIndexEvents(Base):
             band = bands.iloc[pos]
             if band == "ok":
                 continue
-            if on_crossing_only and previous.iloc[pos] == band:
+            if only_crossings and previous.iloc[pos] == band:
                 continue
             rows.append(
                 {

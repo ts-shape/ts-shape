@@ -124,7 +124,7 @@ pipe = (
             "dynamic_control_limits", name="dynamic_limits",
             value_column="value_double", tolerance_uuid="temperature_usl",
             actual_uuid="temperature_actual", event_uuid="quality:spc",
-            window=20)
+            window_size=20)
     .detect(StatisticalProcessControlEvents, "process", name="violations",
             value_column="value_double", tolerance_uuid="temperature_usl",
             actual_uuid="temperature_actual", event_uuid="quality:spc",
@@ -184,7 +184,7 @@ Pipeline 'quality-spc' (16 steps):
   7. [detect   ] outliers_zscore  value_column='value_double', threshold=3.0
   8. [detect   ] outliers_iqr  value_column='value_double', threshold=(1.5, 1.5)
   9. [detect   ] control_limits  value_column='value_double', tolerance_uuid='temperature_usl', actual_uuid='temperature_actual', event_uuid='quality:spc'
-  10. [detect   ] dynamic_limits  value_column='value_double', tolerance_uuid='temperature_usl', actual_uuid='temperature_actual', event_uuid='quality:spc', window=20
+  10. [detect   ] dynamic_limits  value_column='value_double', tolerance_uuid='temperature_usl', actual_uuid='temperature_actual', event_uuid='quality:spc', window_size=20
   11. [detect   ] violations  value_column='value_double', tolerance_uuid='temperature_usl', actual_uuid='temperature_actual', event_uuid='quality:spc', include_severity=True
   12. [detect   ] tolerance_deviations  tolerance_column='value_double', actual_column='value_double', actual_uuid='temperature_actual', event_uuid='quality:tolerance', upper_tolerance_uuid='temperature_usl', lower_tolerance_uuid='temperature_lsl', warning_threshold=0.8
   13. [detect   ] capability_over_time  signal_uuid='temperature_actual', upper_spec=105.0, lower_spec=95.0, window='4h'

@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class SteadyStateDetectionEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -81,6 +82,7 @@ class SteadyStateDetectionEvents(Base):
                 intervals.append({"start": start, "end": end})
         return intervals
 
+    @keyword_only(1)
     def detect_steady_state(
         self,
         window: str = "5min",
@@ -146,6 +148,7 @@ class SteadyStateDetectionEvents(Base):
 
         return pd.DataFrame(events, columns=cols)
 
+    @keyword_only(1)
     def detect_transient_periods(
         self,
         window: str = "5min",
@@ -204,6 +207,7 @@ class SteadyStateDetectionEvents(Base):
 
         return pd.DataFrame(events, columns=cols)
 
+    @keyword_only(1)
     def steady_state_statistics(
         self,
         window: str = "5min",
@@ -225,7 +229,9 @@ class SteadyStateDetectionEvents(Base):
                 "avg_steady_duration_seconds": 0.0,
             }
 
-        steady = self.detect_steady_state(window, std_threshold, min_duration)
+        steady = self.detect_steady_state(
+            window=window, std_threshold=std_threshold, min_duration=min_duration
+        )
         total_span = (
             self.signal[self.time_column].max() - self.signal[self.time_column].min()
         ).total_seconds()
@@ -244,6 +250,7 @@ class SteadyStateDetectionEvents(Base):
             "avg_steady_duration_seconds": (total_steady / n) if n > 0 else 0.0,
         }
 
+    @keyword_only(1)
     def steady_state_value_bands(
         self,
         window: str = "5min",
@@ -264,7 +271,9 @@ class SteadyStateDetectionEvents(Base):
             "upper_band",
             "duration_seconds",
         ]
-        steady = self.detect_steady_state(window, std_threshold, min_duration)
+        steady = self.detect_steady_state(
+            window=window, std_threshold=std_threshold, min_duration=min_duration
+        )
         if steady.empty:
             return pd.DataFrame(columns=cols)
 

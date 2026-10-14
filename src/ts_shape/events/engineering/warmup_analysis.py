@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class WarmUpCoolDownEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -151,6 +152,7 @@ class WarmUpCoolDownEvents(Base):
 
         return intervals
 
+    @keyword_only(2)
     def detect_warmup(
         self,
         min_rise: float,
@@ -205,6 +207,7 @@ class WarmUpCoolDownEvents(Base):
 
         return pd.DataFrame(events, columns=cols)
 
+    @keyword_only(2)
     def detect_cooldown(
         self,
         min_fall: float,
@@ -259,6 +262,7 @@ class WarmUpCoolDownEvents(Base):
 
         return pd.DataFrame(events, columns=cols)
 
+    @keyword_only(2)
     def warmup_consistency(
         self,
         min_rise: float,
@@ -279,7 +283,7 @@ class WarmUpCoolDownEvents(Base):
             "avg_rate",
             "deviation_from_median_duration",
         ]
-        warmups = self.detect_warmup(min_rise, min_duration)
+        warmups = self.detect_warmup(min_rise, min_duration=min_duration)
         if warmups.empty:
             return empty_event_df("summary", extra)
 
@@ -300,6 +304,7 @@ class WarmUpCoolDownEvents(Base):
             result, uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(2)
     def time_to_target(
         self,
         target_value: float,

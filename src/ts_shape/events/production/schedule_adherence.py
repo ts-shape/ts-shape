@@ -88,7 +88,7 @@ class ProductionScheduleAdherenceEvents(Base):
             ValueError: If ``schedule`` lacks a required column, or a period
                 ends before it starts.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         if not isinstance(schedule, pd.DataFrame):
             raise TypeError(
                 f"schedule must be a pandas DataFrame, got {type(schedule).__name__}"

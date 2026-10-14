@@ -61,6 +61,7 @@ Classes:
   - pairwise_bias: Mean difference between each sensor pair per window.
   - consensus_score: Per-window measurement consensus across sensors.
   - detect_outlier_sensor: Find the sensor furthest from the group.
+  - sensor_uuids: Deprecated read-only alias of ``signal_uuids``.
 
 - GaugeRepeatabilityEvents: Measurement System Analysis (Gauge R&R).
   - repeatability: Equipment Variation (EV) per part.

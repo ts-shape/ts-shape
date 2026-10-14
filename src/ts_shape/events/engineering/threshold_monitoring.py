@@ -11,6 +11,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class ThresholdMonitoringEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -50,6 +51,7 @@ class ThresholdMonitoringEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(2)
     def multi_level_threshold(
         self,
         levels: dict[str, float],
@@ -131,14 +133,18 @@ class ThresholdMonitoringEvents(Base):
             source_uuid=self.signal_uuid,
         )
 
-    def threshold_with_hysteresis(self, high: float, low: float) -> pd.DataFrame:
+    @renamed_kwargs(high="upper_limit", low="lower_limit")
+    def threshold_with_hysteresis(
+        self, upper_limit: float, lower_limit: float
+    ) -> pd.DataFrame:
         """Alarm intervals with hysteresis to prevent chattering.
 
-        Enter alarm when signal crosses `high`, exit when it drops below `low`.
+        Enter alarm when signal crosses `upper_limit`, exit when it drops
+        below `lower_limit`.
 
         Args:
-            high: Upper threshold to enter alarm state.
-            low: Lower threshold to exit alarm state.
+            upper_limit: Upper threshold to enter alarm state.
+            lower_limit: Lower threshold to exit alarm state.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -164,13 +170,13 @@ class ThresholdMonitoringEvents(Base):
         for i in range(len(values)):
             v = values[i]
             if not in_alarm:
-                if v >= high:
+                if v >= upper_limit:
                     in_alarm = True
                     alarm_start = times[i]
                     peak = v
             else:
                 peak = max(peak, v)
-                if v < low:
+                if v < lower_limit:
                     events.append(
                         {
                             "start": pd.Timestamp(alarm_start),
@@ -202,6 +208,7 @@ class ThresholdMonitoringEvents(Base):
             source_uuid=self.signal_uuid,
         )
 
+    @keyword_only(2)
     def time_above_threshold(
         self,
         threshold: float,
@@ -292,6 +299,7 @@ class ThresholdMonitoringEvents(Base):
             )
         return fractions
 
+    @keyword_only(2)
     def threshold_exceedance_trend(
         self, threshold: float, window: str = "1D"
     ) -> pd.DataFrame:
@@ -314,7 +322,7 @@ class ThresholdMonitoringEvents(Base):
             "total_duration",
             "trend_direction",
         ]
-        time_above = self.time_above_threshold(threshold, window)
+        time_above = self.time_above_threshold(threshold, window=window)
         if time_above.empty or len(time_above) < 2:
             return empty_event_df("summary", cols)
 

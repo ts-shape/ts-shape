@@ -53,7 +53,7 @@ class CriticalParameterRankingEvents(Base):
         event_uuid: str = "dev:cpp_ranking",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
 

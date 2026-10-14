@@ -747,3 +747,33 @@ def test_module_imports():
     assert PartProductionEvents is not None
     assert CycleTimeEvents is not None
     assert ShiftReportEvents is not None
+
+
+def test_cycle_time_rising_edges_on_object_bool_column():
+    """Regression: ~ on an object column of Python bools is -2/-1 (truthy),
+    so every True sample counted as a cycle end."""
+    from ts_shape.events.production.cycle_time_tracking import CycleTimeEvents
+
+    t = pd.date_range("2024-01-01", periods=8, freq="10s")
+    trig = pd.Series([False, True, True, False, True, True, True, False], dtype=object)
+    df = pd.concat(
+        [
+            pd.DataFrame({"systime": t, "uuid": "trig", "value_bool": trig}),
+            pd.DataFrame({"systime": t, "uuid": "part", "value_string": "P1"}),
+        ],
+        ignore_index=True,
+    )
+    out = CycleTimeEvents(df).cycle_time_by_part("part", "trig")
+    # rising edges at 10 s and 40 s -> one cycle of 30 s
+    assert list(out["cycle_time_seconds"]) == [30.0]
+
+
+def test_takt_adherence_rising_edges_on_object_bool_column():
+    from ts_shape.events.production.line_throughput import LineThroughputEvents
+
+    t = pd.date_range("2024-01-01", periods=8, freq="10s")
+    trig = pd.Series([False, True, True, False, True, True, True, False], dtype=object)
+    df = pd.DataFrame({"systime": t, "uuid": "trig", "value_bool": trig})
+    out = LineThroughputEvents(df).takt_adherence("trig", takt_time="20s")
+    # rising edges at 10 s and 40 s: one cycle of 30 s, which exceeds takt
+    assert list(out["cycle_time_seconds"].dropna()) == [30.0]

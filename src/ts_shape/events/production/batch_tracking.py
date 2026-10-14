@@ -49,7 +49,7 @@ class BatchTrackingEvents(Base):
             value_column: Column holding the batch ID string.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.batch_uuid = batch_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column

@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class LongDowntimeEvents(Base):
         time_column: str = "systime",
         value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.state_uuid = state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -71,6 +72,7 @@ class LongDowntimeEvents(Base):
             return mask
         return col.fillna(False).astype(bool)
 
+    @keyword_only(1)
     def detect_long_downtime(
         self,
         min_gap: str = "3h",
@@ -192,7 +194,7 @@ class LongDowntimeEvents(Base):
             ]
         )
 
-        gaps = self.detect_long_downtime(min_gap)
+        gaps = self.detect_long_downtime(min_gap=min_gap)
         if len(gaps) < 2:
             return empty
 

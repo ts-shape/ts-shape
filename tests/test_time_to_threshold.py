@@ -112,7 +112,7 @@ class TestRemainingUsefulRange:
     def test_rising_toward_upper(self, rising_df):
         det = TimeToThresholdEvents(rising_df, "sensor_1")
         result = det.remaining_useful_range(
-            lower_bound=0, upper_bound=150, lookback="1000s"
+            lower_limit=0, upper_limit=150, lookback="1000s"
         )
         assert len(result) == 1
         row = result.iloc[0]
@@ -122,7 +122,7 @@ class TestRemainingUsefulRange:
     def test_falling_toward_lower(self, falling_df):
         det = TimeToThresholdEvents(falling_df, "sensor_1")
         result = det.remaining_useful_range(
-            lower_bound=-50, upper_bound=200, lookback="1000s"
+            lower_limit=-50, upper_limit=200, lookback="1000s"
         )
         assert len(result) == 1
         row = result.iloc[0]
@@ -132,7 +132,7 @@ class TestRemainingUsefulRange:
     def test_flat_signal(self, flat_df):
         det = TimeToThresholdEvents(flat_df, "sensor_1")
         result = det.remaining_useful_range(
-            lower_bound=0, upper_bound=100, lookback="500s"
+            lower_limit=0, upper_limit=100, lookback="500s"
         )
         assert len(result) == 1
         assert result.iloc[0]["nearest_bound"] == "none"

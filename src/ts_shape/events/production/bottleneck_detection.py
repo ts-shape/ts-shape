@@ -5,6 +5,7 @@ import pandas as pd  # type: ignore
 from pandas.tseries.frequencies import to_offset
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +31,12 @@ class BottleneckDetectionEvents(Base):
         event_uuid: str = "prod:bottleneck",
         value_column: str = "value_bool",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid
         self.value_column = value_column
 
+    @keyword_only(2)
     def station_utilization(
         self,
         station_uuids: list[str],
@@ -123,6 +125,7 @@ class BottleneckDetectionEvents(Base):
             )
         )
 
+    @keyword_only(2)
     def detect_bottleneck(
         self,
         station_uuids: list[str],
@@ -147,7 +150,7 @@ class BottleneckDetectionEvents(Base):
             bottleneck_uuid, utilization_pct.
         """
         util = self.station_utilization(
-            station_uuids, window, time_weighted=time_weighted
+            station_uuids, window=window, time_weighted=time_weighted
         )
         if util.empty:
             return pd.DataFrame(
@@ -181,6 +184,7 @@ class BottleneckDetectionEvents(Base):
         out.insert(4, "source_uuid", out["bottleneck_uuid"])
         return out
 
+    @keyword_only(2)
     def shifting_bottleneck(
         self,
         station_uuids: list[str],
@@ -201,7 +205,7 @@ class BottleneckDetectionEvents(Base):
             previous_utilization, new_utilization.
         """
         bottlenecks = self.detect_bottleneck(
-            station_uuids, window, time_weighted=time_weighted
+            station_uuids, window=window, time_weighted=time_weighted
         )
         if bottlenecks.empty or len(bottlenecks) < 2:
             return pd.DataFrame(
@@ -254,6 +258,7 @@ class BottleneckDetectionEvents(Base):
             )
         )
 
+    @keyword_only(2)
     def throughput_constraint_summary(
         self,
         station_uuids: list[str],
@@ -273,10 +278,10 @@ class BottleneckDetectionEvents(Base):
             most_frequent_bottleneck, avg_utilization_per_station.
         """
         bottlenecks = self.detect_bottleneck(
-            station_uuids, window, time_weighted=time_weighted
+            station_uuids, window=window, time_weighted=time_weighted
         )
         util = self.station_utilization(
-            station_uuids, window, time_weighted=time_weighted
+            station_uuids, window=window, time_weighted=time_weighted
         )
 
         if bottlenecks.empty:

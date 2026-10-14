@@ -56,7 +56,7 @@ from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 detector = OutlierDetectionEvents(
     dataframe=df,
     value_column="value_double",
-    event_uuid="outlier_event",
+    event_uuid="quality:outlier",
     time_threshold="5min"
 )
 
@@ -96,7 +96,7 @@ print(f"UCL (3s): {limits['3sigma_upper'][0]:.2f}")
 print(f"LCL (3s): {limits['3sigma_lower'][0]:.2f}")
 
 # Dynamic control limits (adapts over time)
-dynamic_limits = spc.dynamic_control_limits(method='ewma', window=20)
+dynamic_limits = spc.dynamic_control_limits(method='ewma', window_size=20)
 ```
 
 ### Western Electric Rules

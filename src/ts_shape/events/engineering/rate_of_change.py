@@ -12,6 +12,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class RateOfChangeEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -64,6 +65,7 @@ class RateOfChangeEvents(Base):
         sig["rate"] = value_diff / time_diff.replace(0, np.nan)
         return sig.dropna(subset=["rate"])
 
+    @keyword_only(2)
     def detect_rapid_change(
         self, threshold: float, window: str = "1min"
     ) -> pd.DataFrame:
@@ -116,6 +118,7 @@ class RateOfChangeEvents(Base):
             source_uuid=self.signal_uuid,
         )
 
+    @keyword_only(1)
     def rate_statistics(self, window: str = "1h") -> pd.DataFrame:
         """Per-window rate of change statistics.
 
@@ -151,6 +154,7 @@ class RateOfChangeEvents(Base):
 
         return finalize_summary_df(add_window_bounds(result[cols], window))
 
+    @keyword_only(2)
     def detect_step_changes(
         self, min_delta: float, max_duration: str = "5s"
     ) -> pd.DataFrame:

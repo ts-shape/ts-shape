@@ -23,7 +23,7 @@ from ts_shape.events.production.long_downtime_events import LongDowntimeEvents
 ld = LongDowntimeEvents(df, "press7:running")
 
 stops = ld.detect_long_downtime(
-    "3h",
+    min_gap="3h",
     interval_end="next_change",                 # the state is logged on change only
     data_end=pd.Timestamp("2026-10-14 06:00"),
 )

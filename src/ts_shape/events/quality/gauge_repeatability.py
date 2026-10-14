@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class GaugeRepeatabilityEvents(Base):
         event_uuid: str = "quality:gauge_rr",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.part_column = part_column
         self.value_column = value_column
@@ -87,6 +88,7 @@ class GaugeRepeatabilityEvents(Base):
             .sort_values(self.time_column)
         )
 
+    @keyword_only(1)
     def repeatability(self, n_trials: int | None = None) -> pd.DataFrame:
         """Equipment Variation (EV) — within-part variation.
 
@@ -230,6 +232,7 @@ class GaugeRepeatabilityEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def gauge_rr_summary(self, tolerance_range: float | None = None) -> pd.DataFrame:
         """Full Gauge R&R summary table.
 

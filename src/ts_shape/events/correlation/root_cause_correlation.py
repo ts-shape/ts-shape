@@ -29,6 +29,7 @@ import pandas as pd  # type: ignore
 from scipy import stats  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ class RootCauseCorrelationEvents(Base):
             time_column: Timestamp column.
             uuid_column: Column identifying the signal.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
@@ -104,7 +105,7 @@ class RootCauseCorrelationEvents(Base):
             f"{list(_ONSET_COLUMNS)}, got {list(trigger_events.columns)}"
         )
 
-    def _candidate_series(self, uuid: str, resample: str) -> pd.Series:
+    def _candidate_series(self, uuid: str, window: str) -> pd.Series:
         """Resample one candidate signal onto the analysis grid."""
         sel = self.dataframe[self.dataframe[self.uuid_column] == uuid]
         if sel.empty:
@@ -118,9 +119,7 @@ class RootCauseCorrelationEvents(Base):
         if frame.empty:
             return pd.Series(dtype="float64")
         return (
-            frame.set_index(self.time_column)[self.value_column]
-            .resample(resample)
-            .mean()
+            frame.set_index(self.time_column)[self.value_column].resample(window).mean()
         )
 
     @staticmethod
@@ -181,12 +180,12 @@ class RootCauseCorrelationEvents(Base):
         trigger_events: pd.DataFrame,
         candidate_uuids: list[str],
         *,
-        resample: str,
+        window: str,
     ) -> tuple[pd.Series, dict[str, pd.Series]]:
         """Align every candidate and the event onsets on one common grid."""
         onsets = self._onset_times(trigger_events)
         series = {
-            uuid: self._candidate_series(uuid, resample) for uuid in candidate_uuids
+            uuid: self._candidate_series(uuid, window) for uuid in candidate_uuids
         }
         series = {u: s for u, s in series.items() if not s.empty}
         if onsets.empty or not series:
@@ -202,25 +201,26 @@ class RootCauseCorrelationEvents(Base):
     # Public API
     # ------------------------------------------------------------------
 
+    @renamed_kwargs(resample="window", significant_only="only_significant")
     def rank_causes(
         self,
         trigger_events: pd.DataFrame,
         candidate_uuids: list[str],
         *,
-        resample: str = "1min",
+        window: str = "1min",
         max_lag: int = 30,
         p_threshold: float = 0.05,
         trigger_uuid: str | None = None,
         trigger_event_type: str | None = None,
-        significant_only: bool = False,
+        only_significant: bool = False,
     ) -> pd.DataFrame:
         """Rank candidate signals by how strongly they lead the trigger events.
 
         Args:
             trigger_events: Event frame whose onsets are being explained.
             candidate_uuids: Signals to test as possible causes.
-            resample: Grid resolution; also the unit of ``max_lag``.
-            max_lag: Largest lead tested, in ``resample`` periods.
+            window: Grid resolution (offset string); also the unit of ``max_lag``.
+            max_lag: Largest lead tested, in ``window`` periods.
             p_threshold: Bonferroni-corrected p-value at or below which a
                 candidate is marked ``significant``.
             trigger_uuid: Identifier of the triggering signal, for the audit
@@ -228,7 +228,7 @@ class RootCauseCorrelationEvents(Base):
                 ``trigger_events`` when it has one.
             trigger_event_type: Label of the triggering event. Defaults to the
                 ``uuid`` carried by ``trigger_events`` when it has one.
-            significant_only: Drop candidates above ``p_threshold``.
+            only_significant: Drop candidates above ``p_threshold``.
 
         Returns:
             Static-shape DataFrame, ranked by absolute correlation:
@@ -256,11 +256,11 @@ class RootCauseCorrelationEvents(Base):
         if max_lag < 0:
             raise ValueError(f"max_lag must be non-negative, got {max_lag}")
 
-        onsets, aligned = self._grid(trigger_events, candidate_uuids, resample=resample)
+        onsets, aligned = self._grid(trigger_events, candidate_uuids, window=window)
         if not aligned:
             return pd.DataFrame(columns=cols)
 
-        bin_seconds = pd.to_timedelta(resample).total_seconds()
+        bin_seconds = pd.to_timedelta(window).total_seconds()
         event_type = trigger_event_type or self._frame_scalar(trigger_events, "uuid")
         source = trigger_uuid or self._frame_scalar(trigger_events, "source_uuid")
         trigger_count = int(onsets.sum())
@@ -296,7 +296,7 @@ class RootCauseCorrelationEvents(Base):
             return pd.DataFrame(columns=cols)
 
         out = pd.DataFrame(rows)
-        if significant_only:
+        if only_significant:
             out = out[out["significant"]]
             if out.empty:
                 return pd.DataFrame(columns=cols)
@@ -308,12 +308,13 @@ class RootCauseCorrelationEvents(Base):
         out["rank"] = range(1, len(out) + 1)
         return out[cols]
 
+    @renamed_kwargs(resample="window")
     def top_cause(
         self,
         trigger_events: pd.DataFrame,
         candidate_uuids: list[str],
         *,
-        resample: str = "1min",
+        window: str = "1min",
         max_lag: int = 30,
         p_threshold: float = 0.05,
         trigger_uuid: str | None = None,
@@ -329,8 +330,8 @@ class RootCauseCorrelationEvents(Base):
         Args:
             trigger_events: Event frame whose onsets are being explained.
             candidate_uuids: Signals to test as possible causes.
-            resample: Grid resolution; also the unit of ``max_lag``.
-            max_lag: Largest lead tested, in ``resample`` periods.
+            window: Grid resolution (offset string); also the unit of ``max_lag``.
+            max_lag: Largest lead tested, in ``window`` periods.
             p_threshold: Significance level for eligibility.
             trigger_uuid: See :meth:`rank_causes`.
             trigger_event_type: See :meth:`rank_causes`.
@@ -360,7 +361,7 @@ class RootCauseCorrelationEvents(Base):
         ranked = self.rank_causes(
             trigger_events,
             candidate_uuids,
-            resample=resample,
+            window=window,
             max_lag=max_lag,
             p_threshold=p_threshold,
             trigger_uuid=trigger_uuid,
@@ -402,12 +403,13 @@ class RootCauseCorrelationEvents(Base):
             columns=cols,
         )
 
+    @renamed_kwargs(resample="window")
     def lag_profile(
         self,
         trigger_events: pd.DataFrame,
         candidate_uuid: str,
         *,
-        resample: str = "1min",
+        window: str = "1min",
         max_lag: int = 30,
     ) -> pd.DataFrame:
         """Correlation against the trigger onsets at every tested lag.
@@ -422,8 +424,8 @@ class RootCauseCorrelationEvents(Base):
         Args:
             trigger_events: Event frame whose onsets are being explained.
             candidate_uuid: The signal to profile.
-            resample: Grid resolution; also the unit of ``max_lag``.
-            max_lag: Largest lead tested, in ``resample`` periods.
+            window: Grid resolution (offset string); also the unit of ``max_lag``.
+            max_lag: Largest lead tested, in ``window`` periods.
 
         Returns:
             Static-shape DataFrame, one row per lag: ``uuid``,
@@ -443,13 +445,11 @@ class RootCauseCorrelationEvents(Base):
         if max_lag < 0:
             raise ValueError(f"max_lag must be non-negative, got {max_lag}")
 
-        onsets, aligned = self._grid(
-            trigger_events, [candidate_uuid], resample=resample
-        )
+        onsets, aligned = self._grid(trigger_events, [candidate_uuid], window=window)
         if not aligned:
             return pd.DataFrame(columns=cols)
 
-        bin_seconds = pd.to_timedelta(resample).total_seconds()
+        bin_seconds = pd.to_timedelta(window).total_seconds()
         candidate = aligned[candidate_uuid].to_numpy(dtype=float)
         marks = onsets.to_numpy(dtype=float)
 

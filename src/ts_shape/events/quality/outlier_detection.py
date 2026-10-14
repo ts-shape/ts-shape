@@ -7,6 +7,7 @@ from scipy.stats import zscore
 
 from ts_shape.events._output import empty_event_df, finalize_point_df
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +25,12 @@ class OutlierDetectionEvents(Base):
     Processes time series data to detect outliers based on specified statistical methods.
     """
 
+    @keyword_only(3)
     def __init__(
         self,
         dataframe: pd.DataFrame,
         value_column: str,
-        event_uuid: str = "outlier_event",
+        event_uuid: str = "quality:outlier",
         time_threshold: str = "5min",
         group_by_uuid: bool = False,
     ) -> None:
@@ -156,6 +158,7 @@ class OutlierDetectionEvents(Base):
             return self._group_outliers(df.iloc[0:0], include_singles=include_singles)
         return pd.concat(parts, ignore_index=True).sort_values("systime")
 
+    @keyword_only(1)
     def detect_outliers_zscore(
         self, threshold: float = 3.0, include_singles: bool = True
     ) -> pd.DataFrame:
@@ -182,6 +185,7 @@ class OutlierDetectionEvents(Base):
 
         return self._detect(scorer, include_singles)
 
+    @keyword_only(1)
     def detect_outliers_iqr(
         self, threshold: tuple = (1.5, 1.5), include_singles: bool = True
     ) -> pd.DataFrame:
@@ -214,6 +218,7 @@ class OutlierDetectionEvents(Base):
 
         return self._detect(scorer, include_singles)
 
+    @keyword_only(1)
     def detect_outliers_mad(
         self, threshold: float = 3.5, include_singles: bool = True
     ) -> pd.DataFrame:
@@ -253,6 +258,7 @@ class OutlierDetectionEvents(Base):
 
         return self._detect(scorer, include_singles)
 
+    @keyword_only(1)
     def detect_outliers_isolation_forest(
         self,
         contamination: float = 0.1,

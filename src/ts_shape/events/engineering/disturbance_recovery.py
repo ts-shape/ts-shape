@@ -11,6 +11,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class DisturbanceRecoveryEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.setpoint_uuid = setpoint_uuid
         self.event_uuid = event_uuid
@@ -112,17 +113,19 @@ class DisturbanceRecoveryEvents(Base):
             )
             return sig.dropna(subset=["value", "baseline"])
 
+    @keyword_only(1)
+    @renamed_kwargs(threshold_sigma="n_sigma")
     def detect_disturbances(
         self,
         baseline_window: str = "10min",
-        threshold_sigma: float = 3.0,
+        n_sigma: float = 3.0,
         min_duration: str = "30s",
     ) -> pd.DataFrame:
         """Detect intervals where signal deviates significantly from baseline.
 
         Args:
             baseline_window: Window for rolling baseline computation.
-            threshold_sigma: Deviation threshold in multiples of rolling std.
+            n_sigma: Deviation threshold in multiples of rolling std.
             min_duration: Minimum disturbance duration.
 
         Returns:
@@ -145,7 +148,7 @@ class DisturbanceRecoveryEvents(Base):
         if bd.empty:
             return empty_event_df("interval", cols)
 
-        exceeded = bd["deviation"].abs() > (threshold_sigma * bd["rolling_std"])
+        exceeded = bd["deviation"].abs() > (n_sigma * bd["rolling_std"])
         if not exceeded.any():
             return empty_event_df("interval", cols)
 
@@ -178,7 +181,7 @@ class DisturbanceRecoveryEvents(Base):
                 post = bd.loc[end:]
                 if len(post) > 5:
                     post_dev = post["deviation"].iloc[:10].abs().mean()
-                    if post_dev < threshold_sigma * bd["rolling_std"].mean() * 0.5:
+                    if post_dev < n_sigma * bd["rolling_std"].mean() * 0.5:
                         dtype = "transient"
                     else:
                         dtype = "step"
@@ -207,10 +210,12 @@ class DisturbanceRecoveryEvents(Base):
             source_uuid=self.signal_uuid,
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(threshold_sigma="n_sigma")
     def recovery_time(
         self,
         baseline_window: str = "10min",
-        threshold_sigma: float = 3.0,
+        n_sigma: float = 3.0,
         recovery_pct: float = 0.95,
         max_recovery: str = "1h",
     ) -> pd.DataFrame:
@@ -235,7 +240,9 @@ class DisturbanceRecoveryEvents(Base):
             "post_recovery_mean",
             "residual_offset",
         ]
-        disturbances = self.detect_disturbances(baseline_window, threshold_sigma)
+        disturbances = self.detect_disturbances(
+            baseline_window=baseline_window, n_sigma=n_sigma
+        )
         if disturbances.empty:
             return empty_event_df("interval", cols)
 
@@ -300,11 +307,13 @@ class DisturbanceRecoveryEvents(Base):
             source_uuid=self.signal_uuid,
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(threshold_sigma="n_sigma")
     def disturbance_frequency(
         self,
         window: str = "8h",
         baseline_window: str = "10min",
-        threshold_sigma: float = 3.0,
+        n_sigma: float = 3.0,
     ) -> pd.DataFrame:
         """Count disturbances per time window.
 
@@ -320,8 +329,10 @@ class DisturbanceRecoveryEvents(Base):
             "pct_time_disturbed",
             "avg_recovery_seconds",
         ]
-        disturbances = self.detect_disturbances(baseline_window, threshold_sigma)
-        recovery = self.recovery_time(baseline_window, threshold_sigma)
+        disturbances = self.detect_disturbances(
+            baseline_window=baseline_window, n_sigma=n_sigma
+        )
+        recovery = self.recovery_time(baseline_window=baseline_window, n_sigma=n_sigma)
 
         if self.signal.empty:
             return empty_event_df("summary", cols[1:])
@@ -377,10 +388,12 @@ class DisturbanceRecoveryEvents(Base):
             add_window_bounds(pd.DataFrame(events, columns=cols), window)
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(threshold_sigma="n_sigma")
     def before_after_comparison(
         self,
         baseline_window: str = "10min",
-        threshold_sigma: float = 3.0,
+        n_sigma: float = 3.0,
         comparison_window: str = "5min",
     ) -> pd.DataFrame:
         """Compare process statistics before vs after each disturbance.
@@ -400,7 +413,9 @@ class DisturbanceRecoveryEvents(Base):
             "mean_shift",
             "variance_ratio",
         ]
-        disturbances = self.detect_disturbances(baseline_window, threshold_sigma)
+        disturbances = self.detect_disturbances(
+            baseline_window=baseline_window, n_sigma=n_sigma
+        )
         if disturbances.empty or self.signal.empty:
             return empty_event_df("summary", ["uuid", "source_uuid"] + cols[2:])
 

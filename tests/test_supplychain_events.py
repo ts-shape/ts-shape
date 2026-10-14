@@ -315,7 +315,7 @@ class TestDemandPatternEvents:
 
     def test_demand_by_period_daily(self, daily_demand_df):
         analyzer = DemandPatternEvents(daily_demand_df, demand_uuid="customer_orders")
-        result = analyzer.demand_by_period(period="1D")
+        result = analyzer.demand_by_period(window="1D")
         assert not result.empty
         assert "total_demand" in result.columns
         assert "start" in result.columns
@@ -324,7 +324,7 @@ class TestDemandPatternEvents:
 
     def test_demand_by_period_hourly(self, daily_demand_df):
         analyzer = DemandPatternEvents(daily_demand_df, demand_uuid="customer_orders")
-        result = analyzer.demand_by_period(period="1h")
+        result = analyzer.demand_by_period(window="1h")
         assert not result.empty
         # 21 days * 24 hours = 504 periods
         assert len(result) == 21 * 24
@@ -346,7 +346,7 @@ class TestDemandPatternEvents:
 
     def test_seasonality_summary_daily(self, daily_demand_df):
         analyzer = DemandPatternEvents(daily_demand_df, demand_uuid="customer_orders")
-        result = analyzer.seasonality_summary(period="1D")
+        result = analyzer.seasonality_summary(window="1D")
         assert not result.empty
         assert "period_label" in result.columns
         # Should have entries for each day of the week
@@ -362,7 +362,7 @@ class TestDemandPatternEvents:
 
     def test_seasonality_summary_hourly(self, daily_demand_df):
         analyzer = DemandPatternEvents(daily_demand_df, demand_uuid="customer_orders")
-        result = analyzer.seasonality_summary(period="1h")
+        result = analyzer.seasonality_summary(window="1h")
         assert not result.empty
         assert "period_label" in result.columns
         # Should have 24 hour labels

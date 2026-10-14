@@ -32,7 +32,7 @@ class DataHarmonizer(Base):
         uuid_column: str = "uuid",
         value_column: str = "value_double",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.uuid_column = uuid_column
         self.value_column = value_column

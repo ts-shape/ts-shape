@@ -22,6 +22,7 @@ from ts_shape.events._output import (
     finalize_summary_df,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ class FlowMetricsEvents(Base):
         entry_uuid: str,
         exit_uuid: str,
         *,
-        event_uuid: str = "prod:flow",
+        event_uuid: str = "prod:flow_metrics",
         value_column: str = "value_bool",
         time_column: str = "systime",
     ) -> None:
@@ -69,7 +70,7 @@ class FlowMetricsEvents(Base):
             value_column: Column holding the boolean trigger.
             time_column: Name of the timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.entry_uuid = entry_uuid
         self.exit_uuid = exit_uuid
         self.event_uuid = event_uuid
@@ -148,6 +149,7 @@ class FlowMetricsEvents(Base):
     # Public API
     # ------------------------------------------------------------------
 
+    @keyword_only(1)
     def wip_over_time(self, window: str = "1h") -> pd.DataFrame:
         """Time-weighted work-in-process per window.
 
@@ -165,6 +167,7 @@ class FlowMetricsEvents(Base):
         wip["end"] = wip["start"] + pd.Timedelta(window)
         return finalize_summary_df(wip)
 
+    @keyword_only(1)
     def throughput(self, window: str = "1h") -> pd.DataFrame:
         """Units completed (exit rising edges) per window.
 
@@ -250,7 +253,7 @@ class FlowMetricsEvents(Base):
             extra.append("process_cycle_efficiency_pct")
 
         wip = self._wip_per_window(window)
-        thru = self.throughput(window)
+        thru = self.throughput(window=window)
         if wip.empty or thru.empty:
             return empty_event_df("summary", extra_cols=extra)
 

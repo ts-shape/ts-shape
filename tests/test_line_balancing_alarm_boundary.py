@@ -82,5 +82,5 @@ def test_alarm_frequency_initial_active_flag():
     default = am.alarm_frequency(window="1h")
     assert default["alarm_count"].sum() == 1  # leading active counted
 
-    fixed = am.alarm_frequency(window="1h", count_initial_active=False)
+    fixed = am.alarm_frequency(window="1h", include_initial=False)
     assert fixed["alarm_count"].sum() == 0  # pre-existing alarm not counted

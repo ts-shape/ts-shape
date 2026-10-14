@@ -1,4 +1,16 @@
 # October 14, 2026 (round 4)
+change: parameters follow docs/naming.md: time_column (was column_name),
+  window (freq/period/resample), window_size (integer row counts), n_sigma,
+  lower_limit/upper_limit, warning/critical_threshold, include_initial,
+  only_*, signal_uuids, run_state_uuid, value_column_<role> in energy. Old
+  keywords work with a DeprecationWarning. Optional arguments are
+  keyword-only (positional use warns). event_uuid defaults are
+  "<pack>:<name>" and unique (outlier_event -> quality:outlier, ...).
+  tests/test_naming.py lints every detector signature.
+fix: rising-edge detection on an object column of Python bools (~True is
+  -2, truthy) counted every True sample as a cycle end in
+  CycleTimeEvents.cycle_time_by_part and LineThroughputEvents.takt_adherence /
+  cycle_quality_check.
 change: one name per concept (docs/naming.md). Detector classes end in
   Events (DowntimeTracking -> DowntimeEvents, OEECalculator -> OEEEvents, 16
   classes); event classes drop calculate_/compute_/process_ verbs (14

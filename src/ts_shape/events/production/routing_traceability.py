@@ -106,7 +106,7 @@ class RoutingTraceabilityEvents(Base):
             routing_value_column: Column holding the state/routing value.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.id_uuid = id_uuid
         self.routing_uuid = routing_uuid
         # state_map takes priority; fall back to station_map for backwards compat

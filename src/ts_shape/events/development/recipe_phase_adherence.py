@@ -54,7 +54,7 @@ class RecipePhaseAdherenceEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.phase_uuid = phase_uuid
         self.value_uuid = value_uuid
         self.event_uuid = event_uuid

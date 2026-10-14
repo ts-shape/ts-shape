@@ -30,7 +30,7 @@ rel = ReliabilityEvents(
 
 rel.failure_events()            # one interval per failure
 rel.mtbf_mttr()                 # one row over the whole history
-rel.mtbf_mttr("MS", tz="Europe/Berlin")   # per calendar month
+rel.mtbf_mttr(window="MS", tz="Europe/Berlin")   # per calendar month
 
 fit = rel.weibull_fit()
 print(fit[["beta", "eta_hours", "b10_hours", "failure_pattern"]])
@@ -47,7 +47,7 @@ rel.reliability_at([100], age_hours=200)
 |---|---|---|
 | `failure_events()` | interval | `repair_hours`, `operating_hours_before`, `first_observed` |
 | `mtbf_mttr(window, tz)` | summary | `operating_hours`, `repair_hours`, `no_data_hours`, `failures`, `mtbf_hours`, `mtbf_iso22400_hours`, `mttr_hours`, `availability_pct`, `failure_rate_per_hour` |
-| `weibull_fit(include_first)` | static | `beta`, `eta_hours`, `mttf_hours`, `b10_hours`, `n_failures`, `n_censored`, `failure_pattern` |
+| `weibull_fit(include_initial)` | static | `beta`, `eta_hours`, `mttf_hours`, `b10_hours`, `n_failures`, `n_censored`, `failure_pattern` |
 | `reliability_at(hours, age_hours)` | static | `reliability`, `failure_probability`, `hazard_per_hour` |
 
 ## Definitions

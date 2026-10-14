@@ -7,6 +7,7 @@ from scipy import stats  # type: ignore
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class CapabilityTrendingEvents(Base):
         event_uuid: str = "quality:capability_trend",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -98,6 +99,7 @@ class CapabilityTrendingEvents(Base):
 
         return float(usl), float(lsl)
 
+    @keyword_only(1)
     def capability_over_time(self, window: str = "8h") -> pd.DataFrame:
         """Compute Cp, Cpk, Pp, Ppk per time window.
 
@@ -182,6 +184,7 @@ class CapabilityTrendingEvents(Base):
             window=window,
         )
 
+    @keyword_only(1)
     def detect_capability_drop(
         self,
         window: str = "8h",
@@ -201,7 +204,7 @@ class CapabilityTrendingEvents(Base):
             ``end`` is ``start`` plus one ``window``.
         """
         cols = ["start", "cpk", "prev_avg_cpk", "drop_pct", "alert"]
-        cap = self.capability_over_time(window)
+        cap = self.capability_over_time(window=window)
         if cap.empty:
             return finish_events(
                 [],
@@ -254,6 +257,7 @@ class CapabilityTrendingEvents(Base):
             window=window,
         )
 
+    @keyword_only(1)
     def capability_forecast(
         self,
         window: str = "8h",
@@ -279,7 +283,7 @@ class CapabilityTrendingEvents(Base):
             "forecast_cpk",
             "windows_to_threshold",
         ]
-        cap = self.capability_over_time(window)
+        cap = self.capability_over_time(window=window)
         if cap.empty or len(cap) < 2:
             return finish_events(
                 [],
@@ -342,6 +346,7 @@ class CapabilityTrendingEvents(Base):
             window=window,
         )
 
+    @keyword_only(1)
     def yield_estimate(self, window: str = "8h") -> pd.DataFrame:
         """Estimate yield, DPMO, and sigma level per window.
 

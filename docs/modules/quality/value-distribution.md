@@ -29,8 +29,8 @@ modes = vd.detect_mode_changes(window="1h", n_modes=2, min_separation=1.0)
 print(modes[modes["mode_changed"]])
 
 vd.detect_bimodal(min_samples=30)
-vd.normality_windows(freq="1h", alpha=0.05)
-vd.percentile_tracking(percentiles=(5, 50, 95), freq="1h")
+vd.normality_windows(window="1h", alpha=0.05)
+vd.percentile_tracking(percentiles=(5, 50, 95), window="1h")
 ```
 
 ---
@@ -41,8 +41,8 @@ vd.percentile_tracking(percentiles=(5, 50, 95), freq="1h")
 |---|---|---|
 | `detect_mode_changes(window, n_modes, min_separation)` | summary | per window: `start`, `dominant_mode`, `n_modes_detected`, `mode_values` (list), `mode_changed` |
 | `detect_bimodal(min_samples)` | static | one row: `is_bimodal`, `dip_score`, `n_samples`, `mode_1`, `mode_2`, `valley` |
-| `normality_windows(freq, alpha, min_samples)` | summary | per window: `start`, `n_samples`, `is_normal`, `p_value`, `skewness`, `kurtosis` |
-| `percentile_tracking(percentiles, freq)` | summary | per window: `start`, `n_samples`, one column per percentile (`p5`, `p50`, `p95`, ...) |
+| `normality_windows(window, alpha, min_samples)` | summary | per window: `start`, `n_samples`, `is_normal`, `p_value`, `skewness`, `kurtosis` |
+| `percentile_tracking(percentiles, window)` | summary | per window: `start`, `n_samples`, one column per percentile (`p5`, `p50`, `p95`, ...) |
 
 ## Notes
 

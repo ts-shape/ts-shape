@@ -83,8 +83,8 @@ class TestSignalCorrelationEvents:
         result = sc.rolling_correlation(
             "signal:temperature",
             "signal:pressure",
-            resample="1min",
-            window=30,
+            window="1min",
+            window_size=30,
         )
         assert not result.empty
         assert "correlation" in result.columns
@@ -94,7 +94,7 @@ class TestSignalCorrelationEvents:
     def test_rolling_correlation_empty(self, correlated_df):
         sc = SignalCorrelationEvents(correlated_df)
         result = sc.rolling_correlation(
-            "nonexistent:a", "signal:pressure", resample="1min", window=30
+            "nonexistent:a", "signal:pressure", window="1min", window_size=30
         )
         assert result.empty
 
@@ -103,8 +103,8 @@ class TestSignalCorrelationEvents:
         result = sc.correlation_breakdown(
             "signal:temperature",
             "signal:pressure",
-            resample="1min",
-            window=30,
+            window="1min",
+            window_size=30,
             threshold=0.5,
         )
         # There should be at least one breakdown in the divergence zone
@@ -119,8 +119,8 @@ class TestSignalCorrelationEvents:
         result = sc.correlation_breakdown(
             "signal:temperature",
             "signal:pressure",
-            resample="1min",
-            window=30,
+            window="1min",
+            window_size=30,
             threshold=-1.0,
         )
         assert result.empty
@@ -130,7 +130,7 @@ class TestSignalCorrelationEvents:
         result = sc.lag_correlation(
             "signal:temperature",
             "signal:pressure",
-            resample="1min",
+            window="1min",
             max_lag=10,
         )
         assert not result.empty
@@ -156,7 +156,7 @@ class TestAnomalyCorrelationEvents:
         ac = AnomalyCorrelationEvents(correlated_df)
         result = ac.coincident_anomalies(
             ["signal:temperature", "signal:pressure", "signal:vibration"],
-            z_threshold=2.5,
+            n_sigma=2.5,
             coincidence_window="10min",
             min_signals=2,
         )
@@ -167,7 +167,7 @@ class TestAnomalyCorrelationEvents:
         ac = AnomalyCorrelationEvents(correlated_df)
         result = ac.coincident_anomalies(
             ["nonexistent:a", "nonexistent:b"],
-            z_threshold=3.0,
+            n_sigma=3.0,
         )
         assert result.empty
 
@@ -176,7 +176,7 @@ class TestAnomalyCorrelationEvents:
         result = ac.cascade_detection(
             "signal:temperature",
             "signal:vibration",
-            z_threshold=2.5,
+            n_sigma=2.5,
             max_delay="10min",
         )
         assert "leader_time" in result.columns or result.empty
@@ -193,7 +193,7 @@ class TestAnomalyCorrelationEvents:
         ac = AnomalyCorrelationEvents(correlated_df)
         result = ac.root_cause_ranking(
             ["signal:temperature", "signal:pressure", "signal:vibration"],
-            z_threshold=2.5,
+            n_sigma=2.5,
             max_delay="10min",
         )
         assert not result.empty
@@ -206,3 +206,20 @@ class TestAnomalyCorrelationEvents:
         ac = AnomalyCorrelationEvents(correlated_df)
         result = ac.root_cause_ranking(["signal:temperature"])
         assert result.empty
+
+
+def test_rolling_correlation_old_resample_and_int_window_still_work(correlated_df):
+    sc = SignalCorrelationEvents(correlated_df)
+    new = sc.rolling_correlation(
+        "signal:temperature", "signal:pressure", window="1min", window_size=30
+    )
+    with pytest.warns(DeprecationWarning, match="is deprecated"):
+        old = sc.rolling_correlation(
+            "signal:temperature", "signal:pressure", resample="1min", window=30
+        )
+    pd.testing.assert_frame_equal(new, old)
+    with pytest.warns(DeprecationWarning, match="window_size"):
+        only_int = sc.rolling_correlation(
+            "signal:temperature", "signal:pressure", window=30
+        )
+    pd.testing.assert_frame_equal(new, only_int)

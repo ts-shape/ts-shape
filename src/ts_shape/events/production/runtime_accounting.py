@@ -20,7 +20,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method
+from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +30,17 @@ class RuntimeAccountingEvents(Base):
 
     Example usage::
 
-        rt = RuntimeAccountingEvents(df, run_uuid="machine:running")
+        rt = RuntimeAccountingEvents(df, run_state_uuid="machine:running")
         rt.runtime_summary()
         rt.runtime_by_window(window="1D")
         rt.operating_hours_meter(window="1h")
     """
 
+    @renamed_kwargs(run_uuid="run_state_uuid")
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        run_uuid: str,
+        run_state_uuid: str,
         *,
         event_uuid: str = "prod:runtime",
         value_column: str = "value_bool",
@@ -49,17 +50,22 @@ class RuntimeAccountingEvents(Base):
 
         Args:
             dataframe: Input DataFrame with timeseries data.
-            run_uuid: UUID of the boolean run-state signal (True = running).
+            run_state_uuid: UUID of the boolean run-state signal (True = running).
             event_uuid: UUID to tag derived events with.
             value_column: Column holding the boolean run state.
             time_column: Name of the timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
-        self.run_uuid = run_uuid
+        super().__init__(dataframe, time_column=time_column)
+        self.run_state_uuid = run_state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
-        self._validate_uuid(self.dataframe, run_uuid)
+        self._validate_uuid(self.dataframe, run_state_uuid)
+
+    @property
+    def run_uuid(self) -> str:
+        """Deprecated read-only alias of :attr:`run_state_uuid`."""
+        return self.run_state_uuid
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -76,7 +82,7 @@ class RuntimeAccountingEvents(Base):
         neither run nor idle totals.
         """
         sig = (
-            self.dataframe[self.dataframe["uuid"] == self.run_uuid]
+            self.dataframe[self.dataframe["uuid"] == self.run_state_uuid]
             .copy()
             .sort_values(self.time_column)
         )
@@ -173,6 +179,7 @@ class RuntimeAccountingEvents(Base):
 
     runtime_per_window = deprecated_method("runtime_by_window")
 
+    @keyword_only(1)
     def runtime_by_window(
         self, window: str = "1D", *, max_gap: str | None = None
     ) -> pd.DataFrame:
@@ -212,6 +219,7 @@ class RuntimeAccountingEvents(Base):
             )
         return finalize_summary_df(pd.DataFrame(rows))
 
+    @keyword_only(1)
     def operating_hours_meter(
         self, window: str = "1h", *, max_gap: str | None = None
     ) -> pd.DataFrame:

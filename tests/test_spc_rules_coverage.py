@@ -92,7 +92,7 @@ def test_apply_rules_vectorized_and_interpret():
 @pytest.mark.parametrize("method", ["moving_range", "ewma"])
 def test_dynamic_control_limits(method):
     vals = list(10 + np.sin(np.arange(30)))
-    out = _spc(vals).dynamic_control_limits(method=method, window=5)
+    out = _spc(vals).dynamic_control_limits(method=method, window_size=5)
     assert len(out) == 30
     finite = out.dropna().iloc[1:]  # the first row has no spread yet
     assert (finite["3sigma_upper"] > finite["mean"]).all()

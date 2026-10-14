@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class FlowConstraintEvents(Base):
         time_column: str = "systime",
         event_uuid: str = "prod:flow",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid
 
@@ -269,21 +270,22 @@ class FlowConstraintEvents(Base):
     def _calculate_severity(
         self,
         duration: pd.Timedelta,
-        minor_threshold: str = "5s",
-        moderate_threshold: str = "30s",
+        warning_threshold: str = "5s",
+        critical_threshold: str = "30s",
     ) -> str:
         """Calculate severity level based on duration thresholds.
 
         Args:
             duration: Event duration as a Timedelta
-            minor_threshold: Threshold below which events are classified as minor
-            moderate_threshold: Threshold below which events are classified as moderate
+            warning_threshold: Duration below which an event is 'minor'.
+            critical_threshold: Duration below which an event is 'moderate'
+                (at or above it, 'severe').
 
         Returns:
             Severity classification: 'minor', 'moderate', or 'severe'
         """
-        minor_td = pd.to_timedelta(minor_threshold)
-        moderate_td = pd.to_timedelta(moderate_threshold)
+        minor_td = pd.to_timedelta(warning_threshold)
+        moderate_td = pd.to_timedelta(critical_threshold)
 
         if duration < minor_td:
             return "minor"
@@ -292,6 +294,9 @@ class FlowConstraintEvents(Base):
         else:
             return "severe"
 
+    @renamed_kwargs(
+        minor_threshold="warning_threshold", moderate_threshold="critical_threshold"
+    )
     def flow_constraint_analytics(
         self,
         *,
@@ -300,8 +305,8 @@ class FlowConstraintEvents(Base):
         tolerance_before: str | None = None,
         tolerance_after: str | None = None,
         min_duration: str = "0s",
-        minor_threshold: str = "5s",
-        moderate_threshold: str = "30s",
+        warning_threshold: str = "5s",
+        critical_threshold: str = "30s",
     ) -> dict[str, Any]:
         """Generate comprehensive analytics for flow constraints (blockages and starvations).
 
@@ -312,8 +317,9 @@ class FlowConstraintEvents(Base):
             tolerance_before: Tolerance for looking backward in time during alignment
             tolerance_after: Tolerance for looking forward in time during alignment
             min_duration: Minimum duration for an event to be included
-            minor_threshold: Duration threshold for minor severity classification
-            moderate_threshold: Duration threshold for moderate severity classification
+            warning_threshold: Duration below which an event is 'minor'.
+            critical_threshold: Duration below which an event is 'moderate'
+                (at or above it, 'severe').
 
         Returns:
             Dictionary containing analytics for both blocked and starved events:

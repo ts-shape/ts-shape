@@ -13,6 +13,7 @@ from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class SignalQualityEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -53,6 +54,7 @@ class SignalQualityEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(1)
     def detect_missing_data(
         self, expected_freq: str = "1s", tolerance_factor: float = 2.0
     ) -> pd.DataFrame:
@@ -97,6 +99,7 @@ class SignalQualityEvents(Base):
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def sampling_regularity(self, window: str = "1h") -> pd.DataFrame:
         """Inter-sample interval statistics per window.
 
@@ -258,6 +261,7 @@ class SignalQualityEvents(Base):
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def data_completeness(
         self, window: str = "1h", expected_freq: str = "1s"
     ) -> pd.DataFrame:

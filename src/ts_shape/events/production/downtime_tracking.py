@@ -87,7 +87,7 @@ class DowntimeEvents(Base):
             specs: Optional signal semantics (see :mod:`ts_shape.signals`). A
                 state signal's ``max_gap`` then caps durations by default.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.specs: Mapping[str, SignalSpec] = specs or {}
 

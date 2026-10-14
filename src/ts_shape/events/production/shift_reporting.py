@@ -15,7 +15,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
-from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.deprecation import deprecated_class, keyword_only
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class ShiftReportEvents(Base):
                 "shift_3": ("22:00", "06:00"),
             }
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
 
         # Default 3-shift operation
@@ -113,6 +113,7 @@ class ShiftReportEvents(Base):
 
         return "unknown"
 
+    @keyword_only(2)
     def shift_production(
         self,
         counter_uuid: str,

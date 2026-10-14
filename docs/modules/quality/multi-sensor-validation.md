@@ -20,7 +20,7 @@ from ts_shape.events.quality.multi_sensor_validation import MultiSensorValidatio
 
 validator = MultiSensorValidationEvents(
     df,
-    sensor_uuids=["temp_sensor_1", "temp_sensor_2", "temp_sensor_3"],
+    signal_uuids=["temp_sensor_1", "temp_sensor_2", "temp_sensor_3"],
 )
 
 # Flag windows where sensor spread exceeds 0.5 degrees

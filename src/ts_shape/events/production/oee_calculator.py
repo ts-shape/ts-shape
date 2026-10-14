@@ -20,7 +20,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
-from ts_shape.utils.deprecation import deprecated_class, deprecated_method
+from ts_shape.utils.deprecation import deprecated_class, deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ class OEEEvents(Base):
             dataframe: Input DataFrame with timeseries data.
             time_column: Name of timestamp column (default: 'systime').
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         times = self.dataframe.get(time_column)
         self._tz = (
@@ -105,6 +105,7 @@ class OEEEvents(Base):
 
     calculate_availability = deprecated_method("availability")
 
+    @keyword_only(2)
     def availability(
         self,
         run_state_uuid: str,
@@ -201,6 +202,7 @@ class OEEEvents(Base):
 
     calculate_performance = deprecated_method("performance")
 
+    @keyword_only(3)
     def performance(
         self,
         counter_uuid: str,
@@ -415,6 +417,7 @@ class OEEEvents(Base):
 
     calculate_oee = deprecated_method("oee")
 
+    @keyword_only(4)
     def oee(
         self,
         run_state_uuid: str,

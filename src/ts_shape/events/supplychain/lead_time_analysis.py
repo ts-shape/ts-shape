@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method
+from ts_shape.utils.deprecation import deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -44,12 +44,13 @@ class LeadTimeAnalysisEvents(Base):
             event_uuid: UUID assigned to generated events.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
 
     calculate_lead_times = deprecated_method("lead_times")
 
+    @keyword_only(3)
     def lead_times(
         self,
         order_uuid: str,
@@ -168,6 +169,7 @@ class LeadTimeAnalysisEvents(Base):
 
         return result
 
+    @keyword_only(3)
     def lead_time_statistics(
         self,
         order_uuid: str,
@@ -194,7 +196,7 @@ class LeadTimeAnalysisEvents(Base):
             "count",
         ]
 
-        lt = self.lead_times(order_uuid, delivery_uuid, value_column)
+        lt = self.lead_times(order_uuid, delivery_uuid, value_column=value_column)
 
         if lt.empty:
             return pd.DataFrame(columns=empty_cols)
@@ -215,6 +217,7 @@ class LeadTimeAnalysisEvents(Base):
 
         return result
 
+    @keyword_only(3)
     def detect_lead_time_anomalies(
         self,
         order_uuid: str,
@@ -247,7 +250,7 @@ class LeadTimeAnalysisEvents(Base):
             "z_score",
         ]
 
-        lt = self.lead_times(order_uuid, delivery_uuid, value_column)
+        lt = self.lead_times(order_uuid, delivery_uuid, value_column=value_column)
 
         if lt.empty or len(lt) < 2:
             return pd.DataFrame(columns=empty_cols)

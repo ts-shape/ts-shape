@@ -107,7 +107,7 @@ class TestDetectDrift:
 class TestClassifyAnomalies:
     def test_classifies_spikes(self, spike_df):
         detector = AnomalyClassificationEvents(spike_df, "sensor_1")
-        result = detector.classify_anomalies(window="60s", z_threshold=3.0)
+        result = detector.classify_anomalies(window="60s", n_sigma=3.0)
         assert len(result) > 0
         types = result["anomaly_type"].tolist()
         assert "spike" in types

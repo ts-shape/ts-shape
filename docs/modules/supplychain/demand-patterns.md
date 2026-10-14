@@ -24,18 +24,18 @@ analyzer = DemandPatternEvents(
 )
 
 # Aggregate demand per day (total, average, and peak)
-daily_demand = analyzer.demand_by_period(period="1D")
+daily_demand = analyzer.demand_by_period(window="1D")
 
 # Flag days whose demand exceeds mean + 2.5 * std
 spikes = analyzer.detect_demand_spikes(threshold_factor=2.5, window="1D")
 print(f"Detected {len(spikes)} demand spikes")
 
 # Day-of-week pattern (use a sub-daily period such as "1h" for hour-of-day)
-by_weekday = analyzer.seasonality_summary(period="1D")
+by_weekday = analyzer.seasonality_summary(window="1D")
 busiest = by_weekday.loc[by_weekday["avg_demand"].idxmax(), "period_label"]
 print("Busiest day:", busiest)
 
-by_hour = analyzer.seasonality_summary(period="1h")
+by_hour = analyzer.seasonality_summary(window="1h")
 print("Peak hour:", by_hour.loc[by_hour["avg_demand"].idxmax(), "period_label"])
 ```
 
@@ -47,7 +47,7 @@ print("Peak hour:", by_hour.loc[by_hour["avg_demand"].idxmax(), "period_label"])
 |--------|---------|---------|
 | `demand_by_period()` | Aggregate demand per time period | DataFrame with `start`, `total_demand`, `avg_demand`, `peak_demand` |
 | `detect_demand_spikes()` | Flag periods above mean + `threshold_factor` * std | DataFrame with `start`, `demand`, `baseline_mean`, `spike_magnitude` |
-| `seasonality_summary()` | Day-of-week (`period="1D"`) or hour-of-day (sub-daily period) patterns | DataFrame with `period_label`, `avg_demand`, `std_demand`, `min_demand`, `max_demand` |
+| `seasonality_summary()` | Day-of-week (`window="1D"`) or hour-of-day (sub-daily window) patterns | DataFrame with `period_label`, `avg_demand`, `std_demand`, `min_demand`, `max_demand` |
 
 ---
 

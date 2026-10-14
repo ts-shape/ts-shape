@@ -44,7 +44,7 @@ summary = spc.interpret_violations(violations)
 | Method | Purpose | Returns |
 |--------|---------|---------|
 | `control_limits()` | Calculate mean and 1/2/3 sigma limits | DataFrame with control limits |
-| `dynamic_control_limits(method='moving_range', window=20)` | Adaptive control limits for non-stationary processes | DataFrame with dynamic limits |
+| `dynamic_control_limits(method='moving_range', window_size=20)` | Adaptive control limits for non-stationary processes | DataFrame with dynamic limits |
 | `detect_rule_violations(selected_rules=None)` | Apply selected Western Electric rules (e.g. `["rule_1", "rule_3"]`) efficiently | DataFrame of violations with `rule` and `severity` |
 | `detect_cusum_shifts(target=None, k=0.5, h=5.0)` | CUSUM shift detection for small sustained shifts | DataFrame with `systime`, `value`, `cusum_high`, `cusum_low`, `shift_detected`, `shift_direction` |
 | `interpret_violations(violations_df)` | Add human-readable interpretations to violations | DataFrame with added `interpretation`, `meaning`, `recommendation` |

@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ class MicroStopEvents(Base):
             data_end: Optional bound for the final, still-open interval when
                 ``interval_end="next_change"``.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.run_state_uuid = run_state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -94,6 +95,7 @@ class MicroStopEvents(Base):
             }
         )
 
+    @keyword_only(1)
     def detect_micro_stops(
         self,
         max_duration: str = "30s",
@@ -157,6 +159,7 @@ class MicroStopEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def micro_stop_frequency(
         self, window: str = "1h", max_duration: str = "30s"
     ) -> pd.DataFrame:
@@ -201,6 +204,7 @@ class MicroStopEvents(Base):
 
         return self._with_window(result[cols], window)
 
+    @keyword_only(1)
     def micro_stop_impact(
         self, window: str = "1h", max_duration: str = "30s"
     ) -> pd.DataFrame:
@@ -281,6 +285,7 @@ class MicroStopEvents(Base):
         out.insert(4, "source_uuid", self.run_state_uuid)
         return out
 
+    @keyword_only(1)
     def micro_stop_patterns(
         self, hour_grouping: bool = True, max_duration: str = "30s"
     ) -> pd.DataFrame:

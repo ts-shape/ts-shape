@@ -23,7 +23,7 @@ ttt = TimeToThresholdEvents(df, "filter4:diff_pressure")
 ttt.time_to_threshold(threshold=2.5, lookback="6h")
 ttt.time_to_threshold_windows(threshold=2.5, window="1h", lookback="6h")
 
-ttt.remaining_useful_range(lower_bound=0.2, upper_bound=2.5, lookback="6h")
+ttt.remaining_useful_range(lower_limit=0.2, upper_limit=2.5, lookback="6h")
 ttt.crossing_forecast({"warning": 2.0, "change filter": 2.5}, lookback="6h")
 ```
 
@@ -35,7 +35,7 @@ ttt.crossing_forecast({"warning": 2.0, "change filter": 2.5}, lookback="6h")
 |---|---|---|
 | `time_to_threshold(threshold, lookback, direction)` | static | one row: `current_value`, `slope_per_second`, `threshold`, `estimated_seconds`, `estimated_time`, `confidence`, `direction` |
 | `time_to_threshold_windows(threshold, window, lookback)` | summary | per window: `window_start`, `current_value`, `slope_per_second`, `estimated_seconds`, `confidence`, `direction` |
-| `remaining_useful_range(lower_bound, upper_bound, lookback)` | static | one row: `current_value`, `slope_per_second`, `nearest_bound` (`upper`/`lower`/`none`), `nearest_bound_value`, `estimated_seconds`, `estimated_time`, `confidence` |
+| `remaining_useful_range(lower_limit, upper_limit, lookback)` | static | one row: `current_value`, `slope_per_second`, `nearest_bound` (`upper`/`lower`/`none`), `nearest_bound_value`, `estimated_seconds`, `estimated_time`, `confidence` |
 | `crossing_forecast(thresholds, lookback)` | static | per named threshold: `threshold_name`, `threshold_value`, `estimated_seconds`, `estimated_time`, `reachable` |
 
 ## Notes

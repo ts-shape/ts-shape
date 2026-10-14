@@ -147,7 +147,7 @@ starved = flow.starved_events(roles=roles, tolerance='200ms', min_duration='5s')
 
 # Full analytics with severity classification
 analytics = flow.flow_constraint_analytics(
-    roles=roles, minor_threshold='5s', moderate_threshold='30s'
+    roles=roles, warning_threshold='5s', critical_threshold='30s'
 )
 ```
 

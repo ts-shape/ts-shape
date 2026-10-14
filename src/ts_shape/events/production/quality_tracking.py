@@ -88,7 +88,7 @@ class QualityEvents(Base):
             shift_definitions: Dictionary mapping shift names to (start, end) times
                               Default: 3-shift operation (06:00-14:00, 14:00-22:00, 22:00-06:00)
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
 
         # Default 3-shift operation

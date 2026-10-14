@@ -6,7 +6,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.deprecation import deprecated_class, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class ProcessStabilityIndexEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.target = target
         self.lower_spec = lower_spec
@@ -68,6 +68,7 @@ class ProcessStabilityIndexEvents(Base):
         if self.upper_spec is None:
             self.upper_spec = self._global_mean + 3 * self._global_std
 
+    @keyword_only(1)
     def stability_score(self, window: str = "8h") -> pd.DataFrame:
         """Composite 0-100 stability score per window.
 
@@ -165,6 +166,7 @@ class ProcessStabilityIndexEvents(Base):
             rows, cols, window, uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def score_trend(
         self,
         window: str = "8h",
@@ -184,7 +186,7 @@ class ProcessStabilityIndexEvents(Base):
             "trend_direction",
             "score_change",
         ]
-        scores = self.stability_score(window)
+        scores = self.stability_score(window=window)
         if scores.empty or len(scores) < 2:
             return self._summary([], cols, window)
 
@@ -205,6 +207,7 @@ class ProcessStabilityIndexEvents(Base):
             window,
         )
 
+    @keyword_only(1)
     def worst_periods(
         self,
         window: str = "1h",
@@ -227,7 +230,7 @@ class ProcessStabilityIndexEvents(Base):
             "smoothness_score",
             "primary_issue",
         ]
-        scores = self.stability_score(window)
+        scores = self.stability_score(window=window)
         if scores.empty:
             return self._summary([], cols, window)
 
@@ -252,6 +255,7 @@ class ProcessStabilityIndexEvents(Base):
 
         return self._summary(sorted_scores[cols].reset_index(drop=True), cols, window)
 
+    @keyword_only(1)
     def stability_comparison(self, window: str = "8h") -> pd.DataFrame:
         """Compare each window to the best-observed window.
 
@@ -267,7 +271,7 @@ class ProcessStabilityIndexEvents(Base):
             "gap_to_best",
             "pct_of_best",
         ]
-        scores = self.stability_score(window)
+        scores = self.stability_score(window=window)
         if scores.empty:
             return self._summary([], cols, window)
 

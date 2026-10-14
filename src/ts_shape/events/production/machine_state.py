@@ -8,6 +8,7 @@ import pandas as pd  # type: ignore
 from ts_shape.signals.primitives import intervals as spec_intervals
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class MachineStateEvents(Base):
         value_range: tuple[float | None, float | None] | None = None,
         specs: Mapping[str, SignalSpec] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.run_state_uuid = run_state_uuid
         # Optional signal semantics (see ts_shape.signals). When the run-state
         # signal has a spec, interval closing and gap handling follow it.
@@ -79,6 +80,7 @@ class MachineStateEvents(Base):
             return mask
         return col.fillna(False).astype(bool)
 
+    @keyword_only(1)
     def detect_run_idle(
         self,
         min_duration: str = "0s",
@@ -214,6 +216,7 @@ class MachineStateEvents(Base):
         s["state"] = self._as_state(s[self.value_column])
         self._state_groups = (s["state"] != s["state"].shift()).cumsum()
 
+    @keyword_only(1)
     def detect_rapid_transitions(
         self, threshold: str = "5s", min_count: int = 3
     ) -> pd.DataFrame:

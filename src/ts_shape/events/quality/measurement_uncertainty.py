@@ -4,6 +4,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 # Divisors for Type B uncertainty distributions (GUM standard)
 _DIVISORS = {
@@ -38,7 +39,7 @@ class MeasurementUncertaintyEvents(Base):
         event_uuid: str = "quality:uncertainty",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.value_column = value_column
         self.part_uuid = part_uuid
@@ -65,6 +66,7 @@ class MeasurementUncertaintyEvents(Base):
         else:
             self._parts = None
 
+    @keyword_only(1)
     def type_a_uncertainty(self, window: str = "8h") -> pd.DataFrame:
         """Statistical (Type A) uncertainty from repeated measurements.
 
@@ -147,6 +149,7 @@ class MeasurementUncertaintyEvents(Base):
 
         return pd.DataFrame(events, columns=cols)
 
+    @keyword_only(1)
     def combined_uncertainty(
         self,
         window: str = "8h",
@@ -177,7 +180,7 @@ class MeasurementUncertaintyEvents(Base):
             "coverage_factor",
         ]
 
-        type_a_df = self.type_a_uncertainty(window)
+        type_a_df = self.type_a_uncertainty(window=window)
         if type_a_df.empty:
             return pd.DataFrame(columns=cols)
 
@@ -210,6 +213,7 @@ class MeasurementUncertaintyEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def uncertainty_budget(
         self,
         window: str = "8h",
@@ -229,7 +233,7 @@ class MeasurementUncertaintyEvents(Base):
         """
         cols = ["source", "uncertainty", "pct_contribution"]
 
-        type_a_df = self.type_a_uncertainty(window)
+        type_a_df = self.type_a_uncertainty(window=window)
         if type_a_df.empty:
             return pd.DataFrame(columns=cols)
 

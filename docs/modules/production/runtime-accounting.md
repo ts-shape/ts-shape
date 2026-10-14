@@ -21,9 +21,9 @@ from ts_shape.events.production.runtime_accounting import RuntimeAccountingEvent
 rt = RuntimeAccountingEvents(df, "comp2:motor_running")
 
 rt.runtime_summary(max_gap="15min")
-rt.runtime_by_window("1D", max_gap="15min")
+rt.runtime_by_window(window="1D", max_gap="15min")
 
-meter = rt.operating_hours_meter("1h", max_gap="15min")
+meter = rt.operating_hours_meter(window="1h", max_gap="15min")
 print(meter[["start", "cumulative_run_hours"]].tail())
 ```
 

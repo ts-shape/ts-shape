@@ -39,6 +39,7 @@ import warnings
 import pandas as pd  # type: ignore
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -80,18 +81,20 @@ class Base:
                 f"Available UUIDs: {available}"
             )
 
-    def __init__(self, dataframe: pd.DataFrame, column_name: str = "systime") -> None:
-        """
-        Initializes the Base with a DataFrame, detects time columns, converts them to datetime,
-        and sorts the DataFrame by the specified column (or the detected time column if applicable).
+    @renamed_kwargs(column_name="time_column")
+    def __init__(self, dataframe: pd.DataFrame, time_column: str = "systime") -> None:
+        """Keep a sorted copy of ``dataframe`` with a datetime time column.
 
         Args:
-            dataframe (pd.DataFrame): The DataFrame to be processed.
-            column_name (str): The column to sort by. Default is 'systime'. If the column is not found or is not a time column, the class will attempt to detect other time columns.
+            dataframe: Long-format input (``systime``, ``uuid``, ``value_*``).
+            time_column: Timestamp column to convert and sort by. When it is
+                missing, every column whose name contains "time" or "date"
+                is converted instead.
 
         Raises:
-            TypeError: If dataframe is not a pandas DataFrame.
+            TypeError: If ``dataframe`` is not a pandas DataFrame.
         """
+        column_name = time_column
         if not isinstance(dataframe, pd.DataFrame):
             raise TypeError(
                 f"Expected pandas DataFrame, got {type(dataframe).__name__}"

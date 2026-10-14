@@ -44,6 +44,7 @@ from ts_shape.events._output import (
 from ts_shape.signals.primitives import intervals, windows
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,7 @@ class ReliabilityEvents(Base):
             event_uuid: ``uuid`` of the emitted events.
             time_column: Timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.state_uuid = state_uuid
         self.failure_states = list(failure_states)
         self.event_uuid = event_uuid
@@ -216,6 +217,7 @@ class ReliabilityEvents(Base):
             out, uuid=self.event_uuid, source_uuid=self.state_uuid
         )
 
+    @keyword_only(1)
     def mtbf_mttr(
         self, window: str | None = None, tz: str | None = None
     ) -> pd.DataFrame:
@@ -293,7 +295,9 @@ class ReliabilityEvents(Base):
             out, uuid=self.event_uuid, source_uuid=self.state_uuid
         )
 
-    def weibull_fit(self, include_first: bool = False) -> pd.DataFrame:
+    @keyword_only(1)
+    @renamed_kwargs(include_first="include_initial")
+    def weibull_fit(self, include_initial: bool = False) -> pd.DataFrame:
         """Two-parameter Weibull model of the times between failures.
 
         Fitted by maximum likelihood (``scipy.stats.weibull_min``, location
@@ -301,7 +305,7 @@ class ReliabilityEvents(Base):
         data is right-censored.
 
         Args:
-            include_first: Also use the operating time before the first
+            include_initial: Also use the operating time before the first
                 failure as a complete observation. Off by default: that
                 period started before the data did, so the asset's age at
                 the first failure is unknown.
@@ -315,7 +319,7 @@ class ReliabilityEvents(Base):
             Empty when fewer than two failure intervals are available.
         """
         ep = self._episodes
-        keep = ep if include_first else ep[~ep["first_observed"].astype(bool)]
+        keep = ep if include_initial else ep[~ep["first_observed"].astype(bool)]
         tbf = keep["operating_before_s"].astype(float).to_numpy() / 3600
         tbf = tbf[tbf > 0]
         censored = self._trailing_operating_s / 3600
@@ -347,11 +351,13 @@ class ReliabilityEvents(Base):
             columns=_WEIBULL_COLS,
         )
 
+    @keyword_only(2)
+    @renamed_kwargs(include_first="include_initial")
     def reliability_at(
         self,
         hours: Sequence[float],
         age_hours: float = 0.0,
-        include_first: bool = False,
+        include_initial: bool = False,
     ) -> pd.DataFrame:
         """Reliability and hazard from the fitted Weibull model.
 
@@ -361,7 +367,7 @@ class ReliabilityEvents(Base):
                 repair. Reliability is then conditional:
                 ``R(age + t) / R(age)`` -- "given it has run 200 h, how
                 likely is it to run another 100 h?".
-            include_first: Passed to :meth:`weibull_fit`.
+            include_initial: Passed to :meth:`weibull_fit`.
 
         Returns:
             One row per value of ``hours``: ``hours``, ``age_hours``,
@@ -369,7 +375,7 @@ class ReliabilityEvents(Base):
             ``hazard_per_hour`` (instantaneous failure rate at age + t).
             Empty when the model cannot be fitted.
         """
-        fit = self.weibull_fit(include_first=include_first)
+        fit = self.weibull_fit(include_initial=include_initial)
         if fit.empty or not np.isfinite(fit["beta"].iloc[0]):
             return pd.DataFrame(columns=_CURVE_COLS)
         beta, eta = float(fit["beta"].iloc[0]), float(fit["eta_hours"].iloc[0])

@@ -11,6 +11,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class ControlLoopHealthEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.setpoint_uuid = setpoint_uuid
         self.actual_uuid = actual_uuid
         self.output_uuid = output_uuid
@@ -88,6 +89,7 @@ class ControlLoopHealthEvents(Base):
         merged["error"] = merged["pv"] - merged["sp"]
         return merged.dropna(subset=["sp", "pv"])
 
+    @keyword_only(1)
     def error_integrals(
         self, window: str = "1h", *, max_gap: str | None = None
     ) -> pd.DataFrame:
@@ -148,6 +150,7 @@ class ControlLoopHealthEvents(Base):
             add_window_bounds(pd.DataFrame(events, columns=cols), window)
         )
 
+    @keyword_only(1)
     def detect_oscillation(
         self,
         window: str = "5min",
@@ -260,10 +263,12 @@ class ControlLoopHealthEvents(Base):
             source_uuid=f"{self.setpoint_uuid},{self.actual_uuid}",
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(high_limit="upper_limit", low_limit="lower_limit")
     def output_saturation(
         self,
-        high_limit: float = 100.0,
-        low_limit: float = 0.0,
+        upper_limit: float = 100.0,
+        lower_limit: float = 0.0,
         window: str = "1h",
     ) -> pd.DataFrame:
         """Detect when controller output is pegged at limits.
@@ -288,18 +293,18 @@ class ControlLoopHealthEvents(Base):
 
         out = self._out.set_index(self.time_column)[self.value_column]
         groups = out.resample(window)
-        tol = (high_limit - low_limit) * 0.01  # 1% of range
+        tol = (upper_limit - lower_limit) * 0.01  # 1% of range
 
         events: list[dict[str, Any]] = []
         for start, group in groups:
             if group.empty:
                 continue
             n = len(group)
-            at_high = (group >= high_limit - tol).sum()
-            at_low = (group <= low_limit + tol).sum()
+            at_high = (group >= upper_limit - tol).sum()
+            at_low = (group <= lower_limit + tol).sum()
 
             # Longest saturation run
-            saturated = (group >= high_limit - tol) | (group <= low_limit + tol)
+            saturated = (group >= upper_limit - tol) | (group <= lower_limit + tol)
             if saturated.any():
                 runs = (saturated != saturated.shift()).cumsum()
                 sat_runs = saturated.groupby(runs).apply(
@@ -329,6 +334,7 @@ class ControlLoopHealthEvents(Base):
             source_uuid=self.output_uuid,
         )
 
+    @keyword_only(1)
     def loop_health_summary(self, window: str = "8h") -> pd.DataFrame:
         """Shift-level report card combining all loop health metrics.
 
@@ -345,7 +351,7 @@ class ControlLoopHealthEvents(Base):
             "pct_saturated",
             "health_grade",
         ]
-        integrals = self.error_integrals(window)
+        integrals = self.error_integrals(window=window)
         if integrals.empty:
             return empty_event_df("summary", cols[1:])
 

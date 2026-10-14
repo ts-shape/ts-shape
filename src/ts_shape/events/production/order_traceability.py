@@ -70,7 +70,7 @@ class ValueTraceabilityEvents(Base):
             value_column: Column holding the identifier string value.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.station_uuids = station_uuids
         self.event_uuid = event_uuid
         self.value_column = value_column

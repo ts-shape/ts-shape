@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class FailurePredictionEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -157,6 +158,7 @@ class FailurePredictionEvents(Base):
 
         return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
 
+    @keyword_only(3)
     def detect_exceedance_pattern(
         self,
         warning_threshold: float,
@@ -249,6 +251,7 @@ class FailurePredictionEvents(Base):
 
         return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
 
+    @keyword_only(2)
     def time_to_threshold(
         self,
         threshold: float,

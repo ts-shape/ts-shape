@@ -11,6 +11,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +31,11 @@ class SetpointChangeEvents(Base):
         dataframe: pd.DataFrame,
         setpoint_uuid: str,
         *,
-        event_uuid: str = "setpoint_change_event",
+        event_uuid: str = "eng:setpoint_change",
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.setpoint_uuid = setpoint_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -100,6 +101,7 @@ class SetpointChangeEvents(Base):
         return finalize_summary_df(df, uuid=self.event_uuid, source_uuid=source)
 
     # ---- Change detection ----
+    @keyword_only(2)
     def detect_setpoint_steps(
         self,
         min_delta: float,
@@ -182,6 +184,7 @@ class SetpointChangeEvents(Base):
 
         return self._change_intervals(rows, cols)
 
+    @keyword_only(2)
     def detect_setpoint_ramps(
         self, min_rate: float, min_duration: str = "0s"
     ) -> pd.DataFrame:

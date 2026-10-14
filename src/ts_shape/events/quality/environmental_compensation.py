@@ -5,7 +5,7 @@ import pandas as pd  # type: ignore
 from scipy import stats  # type: ignore
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method
+from ts_shape.utils.deprecation import deprecated_method, keyword_only
 
 
 class EnvironmentalCompensationEvents(Base):
@@ -34,7 +34,7 @@ class EnvironmentalCompensationEvents(Base):
         event_uuid: str = "quality:env_compensation",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.env_uuid = env_uuid
         self.env_value = env_value
@@ -88,6 +88,7 @@ class EnvironmentalCompensationEvents(Base):
         )
         return aligned.dropna()
 
+    @keyword_only(1)
     def detect_correlation(self, window: str = "4h") -> pd.DataFrame:
         """Pearson correlation between measurement and env signal per window.
 
@@ -126,6 +127,7 @@ class EnvironmentalCompensationEvents(Base):
 
     estimate_sensitivity = deprecated_method("sensitivity")
 
+    @keyword_only(1)
     def sensitivity(self, window: str = "8h") -> pd.DataFrame:
         """Estimate environmental sensitivity coefficient per window.
 
@@ -173,6 +175,7 @@ class EnvironmentalCompensationEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def compensated_signal(self, coefficient: float | None = None) -> pd.DataFrame:
         """Apply linear compensation to the measurement signal.
 
@@ -232,6 +235,7 @@ class EnvironmentalCompensationEvents(Base):
 
         return result
 
+    @keyword_only(2)
     def detect_env_exceedance(
         self, valid_range: tuple[float, float], window: str = "1h"
     ) -> pd.DataFrame:

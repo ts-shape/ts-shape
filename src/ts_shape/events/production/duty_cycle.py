@@ -6,7 +6,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._output import empty_event_df
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method
+from ts_shape.utils.deprecation import deprecated_method, keyword_only
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class DutyCycleEvents(Base):
             data_end: Optional bound for the final, still-open interval when
                 ``interval_end="next_change"``.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -108,6 +108,7 @@ class DutyCycleEvents(Base):
 
     duty_cycle_per_window = deprecated_method("duty_cycle_by_window")
 
+    @keyword_only(1)
     def duty_cycle_by_window(
         self, window: str = "1h", *, time_weighted: bool = False
     ) -> pd.DataFrame:
@@ -179,6 +180,7 @@ class DutyCycleEvents(Base):
 
         return self._with_window(pd.DataFrame(events, columns=cols), window)
 
+    @keyword_only(1)
     def cycle_count(self, window: str = "1h") -> pd.DataFrame:
         """Number of on/off transitions per window.
 
@@ -214,6 +216,7 @@ class DutyCycleEvents(Base):
 
         return self._with_window(result[cols], window)
 
+    @keyword_only(1)
     def excessive_cycling(
         self, max_transitions: int = 20, window: str = "1h"
     ) -> pd.DataFrame:
@@ -237,7 +240,7 @@ class DutyCycleEvents(Base):
             "avg_off_duration",
         ]
 
-        counts = self.cycle_count(window)
+        counts = self.cycle_count(window=window)
         if counts.empty:
             return self._with_window(pd.DataFrame(columns=cols), window)
 

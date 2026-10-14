@@ -7,6 +7,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._output import empty_event_df, finalize_interval_df
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class ProcessWindowEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -46,6 +47,7 @@ class ProcessWindowEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(1)
     def windowed_statistics(self, window: str = "1h") -> pd.DataFrame:
         """Per-window descriptive statistics.
 
@@ -110,6 +112,7 @@ class ProcessWindowEvents(Base):
             source_uuid=self.signal_uuid,
         )
 
+    @keyword_only(1)
     def detect_mean_shift(
         self,
         window: str = "1h",
@@ -134,7 +137,7 @@ class ProcessWindowEvents(Base):
             "current_mean",
             "shift_sigma",
         ]
-        stats = self.windowed_statistics(window)
+        stats = self.windowed_statistics(window=window)
         if len(stats) < 2:
             return empty_event_df("interval", cols)
 
@@ -159,6 +162,7 @@ class ProcessWindowEvents(Base):
 
         return self._intervals(events, cols)
 
+    @keyword_only(1)
     def detect_variance_change(
         self,
         window: str = "1h",
@@ -184,7 +188,7 @@ class ProcessWindowEvents(Base):
             "current_std",
             "variance_ratio",
         ]
-        stats = self.windowed_statistics(window)
+        stats = self.windowed_statistics(window=window)
         if len(stats) < 2:
             return empty_event_df("interval", cols)
 
@@ -215,6 +219,7 @@ class ProcessWindowEvents(Base):
 
         return self._intervals(events, cols)
 
+    @keyword_only(1)
     def window_comparison(self, window: str = "1h") -> pd.DataFrame:
         """Compare each window mean to the overall baseline.
 
@@ -223,7 +228,7 @@ class ProcessWindowEvents(Base):
             source_uuid, mean, z_score_vs_global, is_anomalous.
         """
         cols = ["start", "mean", "z_score_vs_global", "is_anomalous"]
-        stats = self.windowed_statistics(window)
+        stats = self.windowed_statistics(window=window)
         if stats.empty:
             return self._summary([], cols, window)
 

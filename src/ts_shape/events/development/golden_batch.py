@@ -43,7 +43,7 @@ class GoldenBatchDeviationEvents(Base):
         time_column: str = "systime",
         n_resample: int = 256,
     ) -> None:
-        super().__init__(reference_df, column_name=time_column)
+        super().__init__(reference_df, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column

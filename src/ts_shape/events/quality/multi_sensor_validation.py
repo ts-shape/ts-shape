@@ -6,7 +6,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method
+from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +23,23 @@ class MultiSensorValidationEvents(Base):
     - pairwise_bias: Mean difference between each sensor pair per window.
     - consensus_score: Per-window measurement consensus across sensors.
     - detect_outlier_sensor: Find the sensor furthest from the group.
+    - sensor_uuids: Deprecated read-only alias of ``signal_uuids``.
     """
 
+    @renamed_kwargs(sensor_uuids="signal_uuids")
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        sensor_uuids: list[str],
+        signal_uuids: list[str],
         *,
         value_column: str = "value_double",
         event_uuid: str = "quality:multi_sensor",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
-        if len(sensor_uuids) < 2:
+        super().__init__(dataframe, time_column=time_column)
+        if len(signal_uuids) < 2:
             raise ValueError("At least 2 sensor UUIDs are required")
-        self.sensor_uuids = sensor_uuids
+        self.signal_uuids = signal_uuids
         self.value_column = value_column
         self.event_uuid = event_uuid
         self.time_column = time_column
@@ -45,9 +47,14 @@ class MultiSensorValidationEvents(Base):
         # Build a pivoted DataFrame: time × sensor
         self._pivot = self._build_pivot()
 
+    @property
+    def sensor_uuids(self) -> list[str]:
+        """Deprecated alias of :attr:`signal_uuids` (read-only)."""
+        return self.signal_uuids
+
     def _build_pivot(self) -> pd.DataFrame:
         """Pivot sensor data so each sensor is a column aligned by time."""
-        mask = self.dataframe["uuid"].isin(self.sensor_uuids)
+        mask = self.dataframe["uuid"].isin(self.signal_uuids)
         df = self.dataframe.loc[
             mask, [self.time_column, "uuid", self.value_column]
         ].copy()
@@ -65,6 +72,7 @@ class MultiSensorValidationEvents(Base):
         pivot = pivot.sort_index().ffill(limit=5)
         return pivot
 
+    @keyword_only(2)
     def detect_disagreement(
         self, threshold: float, window: str = "5min"
     ) -> pd.DataFrame:
@@ -95,7 +103,7 @@ class MultiSensorValidationEvents(Base):
                 cols,
                 "interval",
                 uuid=self.event_uuid,
-                source_uuid=",".join(self.sensor_uuids),
+                source_uuid=",".join(self.signal_uuids),
             )
 
         events: list[dict[str, Any]] = []
@@ -128,9 +136,10 @@ class MultiSensorValidationEvents(Base):
             cols,
             "interval",
             uuid=self.event_uuid,
-            source_uuid=",".join(self.sensor_uuids),
+            source_uuid=",".join(self.signal_uuids),
         )
 
+    @keyword_only(1)
     def pairwise_bias(self, window: str = "1h") -> pd.DataFrame:
         """Mean difference between each sensor pair per window.
 
@@ -145,7 +154,7 @@ class MultiSensorValidationEvents(Base):
         if self._pivot.empty:
             return pd.DataFrame(columns=cols)
 
-        pairs = list(combinations(self.sensor_uuids, 2))
+        pairs = list(combinations(self.signal_uuids, 2))
         events: list[dict[str, Any]] = []
 
         for ts, group in self._pivot.resample(window):
@@ -174,6 +183,7 @@ class MultiSensorValidationEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def consensus_score(self, window: str = "1h") -> pd.DataFrame:
         """Per-window measurement consensus across sensors.
 
@@ -195,7 +205,7 @@ class MultiSensorValidationEvents(Base):
                 cols,
                 "summary",
                 uuid=self.event_uuid,
-                source_uuid=",".join(self.sensor_uuids),
+                source_uuid=",".join(self.signal_uuids),
                 window=window,
             )
 
@@ -232,12 +242,13 @@ class MultiSensorValidationEvents(Base):
             cols,
             "summary",
             uuid=self.event_uuid,
-            source_uuid=",".join(self.sensor_uuids),
+            source_uuid=",".join(self.signal_uuids),
             window=window,
         )
 
     identify_outlier_sensor = deprecated_method("detect_outlier_sensor")
 
+    @keyword_only(1)
     def detect_outlier_sensor(
         self, window: str = "1h", method: str = "median"
     ) -> pd.DataFrame:

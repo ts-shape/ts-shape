@@ -22,7 +22,7 @@ gaps = DataGapAnalysisEvents(df, "boiler2:steam_temp")
 
 gaps.detect_gaps(min_gap="1min")
 gaps.gap_summary(min_gap="1min")
-gaps.coverage_by_period(freq="1D")
+gaps.coverage_by_period(window="1D")
 
 fill = gaps.interpolation_candidates(max_gap="30s", min_gap="5s")
 print(fill[fill["safe_to_interpolate"]])
@@ -36,7 +36,7 @@ print(fill[fill["safe_to_interpolate"]])
 |---|---|---|
 | `detect_gaps(min_gap)` | interval | `start` (last sample before), `end` (first sample after), `gap_duration_seconds`, `samples_before_gap`, `samples_after_gap` |
 | `gap_summary(min_gap)` | summary | one row: `total_gaps`, `total_missing_seconds`, `longest_gap_seconds`, `shortest_gap_seconds`, `mean_gap_seconds`, `data_span_seconds`, `gap_fraction` |
-| `coverage_by_period(freq, min_gap)` | summary | per window: `start`, `sample_count`, `coverage_pct`, `gap_count`, `gap_seconds` |
+| `coverage_by_period(window, min_gap)` | summary | per window: `start`, `sample_count`, `coverage_pct`, `gap_count`, `gap_seconds` |
 | `interpolation_candidates(max_gap, min_gap)` | interval | `start`, `end`, `gap_duration_seconds`, `value_before`, `value_after`, `value_jump`, `safe_to_interpolate` |
 
 ## Notes

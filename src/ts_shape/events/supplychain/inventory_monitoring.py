@@ -12,6 +12,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ class InventoryMonitoringEvents(Base):
             value_column: Column containing numeric inventory levels.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.level_uuid = level_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -67,6 +68,7 @@ class InventoryMonitoringEvents(Base):
                 self.levels[self.time_column]
             )
 
+    @keyword_only(2)
     def detect_low_stock(
         self,
         min_level: float,
@@ -139,6 +141,7 @@ class InventoryMonitoringEvents(Base):
             return pd.DataFrame(columns=empty_cols)
         return pd.DataFrame(rows)
 
+    @keyword_only(1)
     def consumption_rate(
         self,
         window: str = "1h",
@@ -217,6 +220,7 @@ class InventoryMonitoringEvents(Base):
 
         return with_window_bounds(result[empty_cols].reset_index(drop=True), window)
 
+    @keyword_only(2)
     def reorder_point_breach(
         self,
         reorder_level: float,
@@ -299,6 +303,7 @@ class InventoryMonitoringEvents(Base):
             return pd.DataFrame(columns=empty_cols)
         return pd.DataFrame(rows)
 
+    @keyword_only(1)
     def stockout_prediction(
         self,
         consumption_rate_window: str = "4h",

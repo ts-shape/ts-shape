@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_per_window
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -42,18 +43,21 @@ class EnergyPerformanceIndicatorEvents(Base):
         time_column: str = "systime",
         uuid_column: str = "uuid",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
         self._uuid_column = uuid_column
 
+    @renamed_kwargs(
+        counter_column="value_column_counter", energy_column="value_column_energy"
+    )
     def enpi_by_window(
         self,
         meter_uuid: str,
         counter_uuid: str,
         *,
-        energy_column: str = "value_double",
-        counter_column: str = "value_integer",
+        value_column_energy: str = "value_double",
+        value_column_counter: str = "value_integer",
         window: str = "1D",
         handle_resets: bool = False,
     ) -> pd.DataFrame:
@@ -62,8 +66,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         Args:
             meter_uuid: Identifier of the energy meter signal.
             counter_uuid: Identifier of the production counter signal.
-            energy_column: Column containing energy readings.
-            counter_column: Column containing counter readings.
+            value_column_energy: Column containing energy readings.
+            value_column_counter: Column containing counter readings.
             window: Aggregation window (e.g. '1D', '1h', '1W').
             handle_resets: Treat a decreasing production counter as a reset
                 and sum reset-aware increments per window (see
@@ -78,8 +82,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         energy, counter = self._aggregate_pair(
             meter_uuid,
             counter_uuid,
-            energy_column=energy_column,
-            counter_column=counter_column,
+            value_column_energy=value_column_energy,
+            value_column_counter=value_column_counter,
             window=window,
             handle_resets=handle_resets,
         )
@@ -107,13 +111,16 @@ class EnergyPerformanceIndicatorEvents(Base):
         merged["is_delta"] = True
         return with_window_bounds(merged[empty_cols], window)
 
+    @renamed_kwargs(
+        counter_column="value_column_counter", energy_column="value_column_energy"
+    )
     def enpi_vs_baseline(
         self,
         meter_uuid: str,
         counter_uuid: str,
         *,
-        energy_column: str = "value_double",
-        counter_column: str = "value_integer",
+        value_column_energy: str = "value_double",
+        value_column_counter: str = "value_integer",
         window: str = "1D",
         handle_resets: bool = False,
         baseline_window: int = 30,
@@ -141,8 +148,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         Args:
             meter_uuid: Identifier of the energy meter signal.
             counter_uuid: Identifier of the production counter signal.
-            energy_column: Column containing energy readings.
-            counter_column: Column containing counter readings.
+            value_column_energy: Column containing energy readings.
+            value_column_counter: Column containing counter readings.
             window: Aggregation window.
             baseline_window: Number of windows for rolling baseline.
             deviation_threshold: Fractional deviation to flag as anomaly (0.1 = 10%).
@@ -163,8 +170,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         base = self.enpi_by_window(
             meter_uuid,
             counter_uuid,
-            energy_column=energy_column,
-            counter_column=counter_column,
+            value_column_energy=value_column_energy,
+            value_column_counter=value_column_counter,
             window=window,
             handle_resets=handle_resets,
         )
@@ -251,13 +258,16 @@ class EnergyPerformanceIndicatorEvents(Base):
         slope, intercept = np.polyfit(x, y, 1)
         return intercept + slope * base["units_produced"].to_numpy(dtype=float)
 
+    @renamed_kwargs(
+        counter_column="value_column_counter", energy_column="value_column_energy"
+    )
     def enpi_by_hierarchy(
         self,
         meter_uuids: list[str],
         counter_uuid: str,
         *,
-        energy_column: str = "value_double",
-        counter_column: str = "value_integer",
+        value_column_energy: str = "value_double",
+        value_column_counter: str = "value_integer",
         window: str = "1D",
         handle_resets: bool = False,
     ) -> pd.DataFrame:
@@ -270,8 +280,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         Args:
             meter_uuids: List of energy meter identifiers.
             counter_uuid: Shared production counter identifier.
-            energy_column: Column containing energy readings.
-            counter_column: Column containing counter readings.
+            value_column_energy: Column containing energy readings.
+            value_column_counter: Column containing counter readings.
             window: Aggregation window.
             handle_resets: Treat a decreasing production counter as a reset
                 and sum reset-aware increments per window (see
@@ -287,8 +297,8 @@ class EnergyPerformanceIndicatorEvents(Base):
             df = self.enpi_by_window(
                 meter_uuid,
                 counter_uuid,
-                energy_column=energy_column,
-                counter_column=counter_column,
+                value_column_energy=value_column_energy,
+                value_column_counter=value_column_counter,
                 window=window,
                 handle_resets=handle_resets,
             )
@@ -334,8 +344,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         meter_uuid: str,
         counter_uuid: str,
         *,
-        energy_column: str,
-        counter_column: str,
+        value_column_energy: str,
+        value_column_counter: str,
         window: str,
         handle_resets: bool = False,
     ) -> "tuple[pd.DataFrame, pd.DataFrame]":
@@ -361,10 +371,13 @@ class EnergyPerformanceIndicatorEvents(Base):
         counter_idx = counter_raw.set_index(self.time_column)
 
         energy_agg = (
-            energy_idx[energy_column].resample(window).sum().to_frame("energy_kwh")
+            energy_idx[value_column_energy]
+            .resample(window)
+            .sum()
+            .to_frame("energy_kwh")
         )
         counter_agg = counter_per_window(
-            counter_idx[counter_column], window, handle_resets=handle_resets
+            counter_idx[value_column_counter], window, handle_resets=handle_resets
         ).to_frame("units_produced")
 
         return energy_agg, counter_agg

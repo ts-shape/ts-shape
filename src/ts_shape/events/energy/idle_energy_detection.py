@@ -5,6 +5,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
@@ -47,18 +48,21 @@ class IdleEnergyDetectionEvents(Base):
         time_column: str = "systime",
         uuid_column: str = "uuid",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
         self._uuid_column = uuid_column
 
+    @renamed_kwargs(
+        energy_column="value_column_energy", state_column="value_column_state"
+    )
     def idle_energy_by_window(
         self,
         meter_uuid: str,
         state_uuid: str,
         *,
-        energy_column: str = "value_double",
-        state_column: str = "value_bool",
+        value_column_energy: str = "value_double",
+        value_column_state: str = "value_bool",
         window: str = "1h",
         idle_threshold: float = 0.1,
         time_weighted: bool = False,
@@ -71,8 +75,8 @@ class IdleEnergyDetectionEvents(Base):
         Args:
             meter_uuid: Identifier of the energy meter signal.
             state_uuid: Identifier of the boolean machine-state signal (True=running).
-            energy_column: Column containing energy readings.
-            state_column: Column containing boolean state values.
+            value_column_energy: Column containing energy readings.
+            value_column_state: Column containing boolean state values.
             window: Resample window (e.g. '1h', '15min').
             idle_threshold: machine_running_pct below this classifies the window as idle.
             time_weighted: Weight the machine state by how long it was held
@@ -105,12 +109,12 @@ class IdleEnergyDetectionEvents(Base):
         state = state.set_index(self.time_column)
 
         energy_agg = (
-            energy[energy_column].resample(window).sum().to_frame("total_energy")
+            energy[value_column_energy].resample(window).sum().to_frame("total_energy")
         )
         if time_weighted:
             state_agg = (
                 time_weighted_resample(
-                    state[state_column].astype("boolean").astype(float),
+                    state[value_column_state].astype("boolean").astype(float),
                     window,
                     data_end=energy.index.max(),
                 )
@@ -120,7 +124,7 @@ class IdleEnergyDetectionEvents(Base):
             out = energy_agg.join(state_agg, how="left").reset_index()
         else:
             state_agg = (
-                state[state_column]
+                state[value_column_state]
                 .fillna(False)
                 .astype(float)
                 .resample(window)
@@ -144,13 +148,16 @@ class IdleEnergyDetectionEvents(Base):
 
         return with_window_bounds(out[empty_cols], window)
 
+    @renamed_kwargs(
+        energy_column="value_column_energy", state_column="value_column_state"
+    )
     def idle_energy_by_shift(
         self,
         meter_uuid: str,
         state_uuid: str,
         *,
-        energy_column: str = "value_double",
-        state_column: str = "value_bool",
+        value_column_energy: str = "value_double",
+        value_column_state: str = "value_bool",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> pd.DataFrame:
         """Aggregate idle energy waste per shift across all dates.
@@ -158,8 +165,8 @@ class IdleEnergyDetectionEvents(Base):
         Args:
             meter_uuid: Identifier of the energy meter signal.
             state_uuid: Identifier of the boolean machine-state signal.
-            energy_column: Column containing energy readings.
-            state_column: Column containing boolean state values.
+            value_column_energy: Column containing energy readings.
+            value_column_state: Column containing boolean state values.
             shift_definitions: Dict mapping shift name → (start_time, end_time).
                 Default: three-shift operation (06-14, 14-22, 22-06).
 
@@ -190,10 +197,10 @@ class IdleEnergyDetectionEvents(Base):
         state["_shift"] = state[self.time_column].apply(_assign_shift)
 
         energy_by_shift = (
-            energy.groupby("_shift")[energy_column].sum().rename("total_energy")
+            energy.groupby("_shift")[value_column_energy].sum().rename("total_energy")
         )
         running_by_shift = (
-            state[state_column]
+            state[value_column_state]
             .fillna(False)
             .astype(float)
             .groupby(state["_shift"])
@@ -213,13 +220,16 @@ class IdleEnergyDetectionEvents(Base):
         )
         return out[empty_cols]
 
+    @renamed_kwargs(
+        energy_column="value_column_energy", state_column="value_column_state"
+    )
     def idle_energy_trend(
         self,
         meter_uuid: str,
         state_uuid: str,
         *,
-        energy_column: str = "value_double",
-        state_column: str = "value_bool",
+        value_column_energy: str = "value_double",
+        value_column_state: str = "value_bool",
         window: str = "1D",
         trend_window: int = 7,
         idle_threshold: float = 0.1,
@@ -229,8 +239,8 @@ class IdleEnergyDetectionEvents(Base):
         Args:
             meter_uuid: Identifier of the energy meter signal.
             state_uuid: Identifier of the boolean machine-state signal.
-            energy_column: Column containing energy readings.
-            state_column: Column containing boolean state values.
+            value_column_energy: Column containing energy readings.
+            value_column_state: Column containing boolean state values.
             window: Aggregation window (default daily).
             trend_window: Number of windows for rolling average.
             idle_threshold: machine_running_pct below this → idle.
@@ -242,8 +252,8 @@ class IdleEnergyDetectionEvents(Base):
         by_window = self.idle_energy_by_window(
             meter_uuid,
             state_uuid,
-            energy_column=energy_column,
-            state_column=state_column,
+            value_column_energy=value_column_energy,
+            value_column_state=value_column_state,
             window=window,
             idle_threshold=idle_threshold,
         )

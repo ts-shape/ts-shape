@@ -4,6 +4,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 
 class SamplingResolutionEvents(Base):
@@ -29,7 +30,7 @@ class SamplingResolutionEvents(Base):
         event_uuid: str = "quality:sampling_resolution",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.value_column = value_column
         self.event_uuid = event_uuid
@@ -42,6 +43,7 @@ class SamplingResolutionEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(1)
     def detect_quantization(
         self, window: str = "1h", threshold_ratio: float = 0.3
     ) -> pd.DataFrame:
@@ -126,6 +128,7 @@ class SamplingResolutionEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def effective_resolution(self, window: str = "1h") -> pd.DataFrame:
         """Estimate effective measurement resolution from data.
 
@@ -197,6 +200,7 @@ class SamplingResolutionEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def detect_aliasing(
         self,
         window: str = "1h",
@@ -285,6 +289,7 @@ class SamplingResolutionEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def sampling_jitter(self, window: str = "1h") -> pd.DataFrame:
         """Measure timing jitter (variation in sampling interval).
 

@@ -62,7 +62,7 @@ class TestThresholdWithHysteresis:
         detector = ThresholdMonitoringEvents(oscillating_df, "temp_sensor")
         # Without hysteresis, signal crosses 55 many times
         # With hysteresis (high=55, low=45), should have fewer events
-        result = detector.threshold_with_hysteresis(high=55.0, low=45.0)
+        result = detector.threshold_with_hysteresis(upper_limit=55.0, lower_limit=45.0)
         assert len(result) > 0
         # Each event should have a reasonable duration (not just 1 sample)
         for _, row in result.iterrows():
@@ -71,7 +71,7 @@ class TestThresholdWithHysteresis:
 
     def test_clear_exceedance(self, ramp_df):
         detector = ThresholdMonitoringEvents(ramp_df, "temp_sensor")
-        result = detector.threshold_with_hysteresis(high=80.0, low=70.0)
+        result = detector.threshold_with_hysteresis(upper_limit=80.0, lower_limit=70.0)
         assert len(result) >= 1
 
 

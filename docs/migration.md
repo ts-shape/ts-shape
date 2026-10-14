@@ -6,6 +6,34 @@ while you migrate. Deprecated names still function but emit a
 authoritative, dated record is the [Changelog](changelog.md) — this page is the
 quick old → new lookup.
 
+## Renamed parameters (old keywords deprecated, removed in 1.0)
+
+Parameter names follow [Naming & Output Conventions](naming.md). The old keyword still works, but emits a `DeprecationWarning`.
+
+| Old | New | Where |
+|---|---|---|
+| `column_name` (the time column) | `time_column` | every detector constructor (`Base`) |
+| `freq`, `period`, `resample` | `window` | data-gap coverage, value distribution, demand patterns, period summary, correlation and root-cause methods |
+| integer `window` (a row count) | `window_size` | `SignalCorrelationEvents.rolling_correlation` / `correlation_breakdown`, `StatisticalProcessControlEvents.dynamic_control_limits` |
+| `z_threshold`, `threshold_sigma` | `n_sigma` | anomaly classification, anomaly correlation, disturbance recovery |
+| `low`/`high`, `lower`/`upper`, `low_limit`/`high_limit`, `lower_bound`/`upper_bound` | `lower_limit` / `upper_limit` | threshold hysteresis, operating range, control-loop saturation, time-to-threshold |
+| `minor_threshold` / `moderate_threshold` | `warning_threshold` / `critical_threshold` | `FlowConstraintEvents.flow_constraint_analytics` |
+| `include_first`, `count_initial_active` | `include_initial` | reliability (Weibull), alarm frequency |
+| `significant_only`, `on_crossing_only` | `only_significant`, `only_crossings` | root-cause ranking, asset-health events |
+| `sensor_uuids` | `signal_uuids` | `MultiSensorValidationEvents` |
+| `run_uuid` | `run_state_uuid` | `RuntimeAccountingEvents` |
+| `counter_column`, `energy_column`, `state_column` | `value_column_counter`, `value_column_energy`, `value_column_state` | energy pack |
+
+Optional arguments are keyword-only. Passing them positionally still works, but warns, for example `detect_outliers_zscore(3.0)` instead of `detect_outliers_zscore(threshold=3.0)`.
+
+The default `event_uuid` values now all follow `"<pack>:<name>"`:
+- `outlier_event` → `quality:outlier`
+- `startup_event` → `eng:startup`
+- `setpoint_change_event` → `eng:setpoint_change`
+- `FlowMetricsEvents`: `prod:flow` → `prod:flow_metrics` (it used to collide with `FlowConstraintEvents`)
+
+If you filter results by these values, update the filters.
+
 ## Renamed classes and methods (old names deprecated, removed in 1.0)
 
 Detector classes all end in `Events`. Event classes no longer use `calculate_` / `compute_` / `process_`: methods that find events start with `detect_`, and metrics are nouns (see [Naming & Output Conventions](naming.md)).

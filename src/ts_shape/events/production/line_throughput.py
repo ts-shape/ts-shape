@@ -28,7 +28,7 @@ class LineThroughputEvents(Base):
         event_uuid: str = "prod:throughput",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
 
@@ -135,8 +135,9 @@ class LineThroughputEvents(Base):
             )
         s[self.time_column] = pd.to_datetime(s[self.time_column])
         if value_column == "value_bool":
-            s["prev"] = s[value_column].shift(fill_value=False)
-            edges = s[(~s["prev"]) & (s[value_column].fillna(False))]
+            # Cast first: ``~`` on an object column of Python bools is -2/-1.
+            state = s[value_column].astype("boolean").fillna(False).astype(bool)
+            edges = s[state & ~state.shift(fill_value=False)]
             times = edges[self.time_column].reset_index(drop=True)
         else:
             s["prev"] = s[value_column].shift(1)
@@ -390,8 +391,9 @@ class LineThroughputEvents(Base):
 
         # Detect cycle boundaries
         if value_column == "value_bool":
-            s["prev"] = s[value_column].shift(fill_value=False)
-            edges = s[(~s["prev"]) & (s[value_column].fillna(False))]
+            # Cast first: ``~`` on an object column of Python bools is -2/-1.
+            state = s[value_column].astype("boolean").fillna(False).astype(bool)
+            edges = s[state & ~state.shift(fill_value=False)]
             times = edges[self.time_column].reset_index(drop=True)
         else:
             s["prev"] = s[value_column].shift(1)

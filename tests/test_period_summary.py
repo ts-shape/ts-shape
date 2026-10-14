@@ -135,7 +135,7 @@ class TestPeriodSummary:
             ]
         )
 
-        result = PeriodSummaryEvents.from_daily_data(daily, freq="W")
+        result = PeriodSummaryEvents.from_daily_data(daily, window="W")
         assert not result.empty
         assert "start" in result.columns
         assert "end" in result.columns
@@ -158,7 +158,7 @@ class TestPeriodSummary:
                 for d in range(1, 15)
             ]
         )
-        result = PeriodSummaryEvents.from_daily_data(daily, freq="MS")
+        result = PeriodSummaryEvents.from_daily_data(daily, window="MS")
         assert not result.empty
         assert len(result) == 1  # All in January
         assert result["days"].iloc[0] == 14
@@ -176,7 +176,7 @@ class TestPeriodSummary:
                 {"date": date(2024, 1, 2), "quality_pct": 80.0, "count": 200},
             ]
         )
-        result = PeriodSummaryEvents.from_daily_data(daily, freq="W")
+        result = PeriodSummaryEvents.from_daily_data(daily, window="W")
         assert not result.empty
         # quality_pct should be averaged: (90+80)/2 = 85
         assert result["quality_pct"].iloc[0] == 85.0

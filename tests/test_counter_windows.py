@@ -109,6 +109,6 @@ def test_inventory_consumption_rate_handle_refills():
         {"systime": t, "uuid": "lvl", "value_double": [100.0, 40, 100, 40]}
     )
     ev = InventoryMonitoringEvents(df, "lvl")
-    assert ev.consumption_rate("1h")["consumption_rate"].iloc[0] == 0.0
-    fixed = ev.consumption_rate("1h", handle_refills=True)
+    assert ev.consumption_rate(window="1h")["consumption_rate"].iloc[0] == 0.0
+    fixed = ev.consumption_rate(window="1h", handle_refills=True)
     assert fixed["consumption_rate"].sum() == 120.0

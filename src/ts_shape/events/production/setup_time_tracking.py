@@ -69,7 +69,7 @@ class SetupTimeEvents(Base):
             event_uuid: UUID tagged on derived interval events (the ``uuid``
                 column of :meth:`setup_durations`; default: 'prod:setup_time').
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid
         self.shift_definitions = shift_definitions or {

@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class AnomalyClassificationEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -46,6 +47,7 @@ class AnomalyClassificationEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(1)
     def detect_flatline(
         self,
         min_duration: str = "1min",
@@ -117,6 +119,7 @@ class AnomalyClassificationEvents(Base):
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def detect_oscillation(
         self, window: str = "1min", min_crossings: int = 6
     ) -> pd.DataFrame:
@@ -176,6 +179,7 @@ class AnomalyClassificationEvents(Base):
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def detect_drift(self, window: str = "1h", min_slope: float = 0.01) -> pd.DataFrame:
         """Detect windows where the rolling slope exceeds a threshold.
 
@@ -231,8 +235,10 @@ class AnomalyClassificationEvents(Base):
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(z_threshold="n_sigma")
     def classify_anomalies(
-        self, window: str = "10min", z_threshold: float = 3.0
+        self, window: str = "10min", n_sigma: float = 3.0
     ) -> pd.DataFrame:
         """Detect anomalous windows and classify by type.
 
@@ -240,7 +246,7 @@ class AnomalyClassificationEvents(Base):
 
         Args:
             window: Window size for analysis.
-            z_threshold: Z-score threshold for spike detection.
+            n_sigma: Z-score threshold for spike detection.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -297,10 +303,10 @@ class AnomalyClassificationEvents(Base):
 
             # Check spikes
             z_scores = np.abs((values - global_mean) / global_std)
-            spike_count = int(np.sum(z_scores > z_threshold))
+            spike_count = int(np.sum(z_scores > n_sigma))
             if spike_count > 0 and spike_count <= max(3, len(values) * 0.1):
                 max_z = float(np.max(z_scores))
-                severity = "critical" if max_z > z_threshold * 2 else "warning"
+                severity = "critical" if max_z > n_sigma * 2 else "warning"
                 events.append(
                     {
                         "start": current,

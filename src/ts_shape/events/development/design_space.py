@@ -21,6 +21,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class DesignSpaceEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         if len(cpp_uuids) < 2:
             raise ValueError(
                 "cpp_uuids must contain at least two signals; "
@@ -91,6 +92,7 @@ class DesignSpaceEvents(Base):
     # Fitting
     # ------------------------------------------------------------------
 
+    @keyword_only(1)
     def fit_box(
         self, quantiles: tuple[float, float] = (0.05, 0.95)
     ) -> DesignSpaceEvents:
@@ -222,6 +224,7 @@ class DesignSpaceEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(2)
     def boundary_proximity(
         self,
         operation_df: pd.DataFrame,

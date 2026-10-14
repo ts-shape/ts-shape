@@ -18,7 +18,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
-from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.deprecation import deprecated_class, keyword_only
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ class ShiftHandoverEvents(Base):
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.shift_definitions = shift_definitions or {
             "shift_1": ("06:00", "14:00"),
@@ -202,6 +202,7 @@ class ShiftHandoverEvents(Base):
     # ------------------------------------------------------------------
 
     @staticmethod
+    @keyword_only(1)
     def from_shift_data(
         production_df: pd.DataFrame,
         quality_df: pd.DataFrame | None = None,
@@ -483,6 +484,7 @@ class ShiftHandoverEvents(Base):
             data_tz(self.dataframe[self.time_column]),
         )
 
+    @keyword_only(1)
     def highlight_issues(
         self,
         counter_uuid: str | None = None,

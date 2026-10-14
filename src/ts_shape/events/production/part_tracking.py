@@ -78,7 +78,7 @@ class PartProductionEvents(Base):
             event_uuid: UUID tagged on derived point events (the ``uuid``
                 column of :meth:`detect_resets`; default: 'prod:part_tracking')
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid
 

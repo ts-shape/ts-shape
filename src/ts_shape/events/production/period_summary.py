@@ -17,7 +17,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._windows import add_day_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
-from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.deprecation import deprecated_class, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,8 @@ class PeriodSummaryEvents(Base):
         daily = quality.merge(downtime.rename(columns={'period': 'date'}), on='date')
 
         # Roll up to weekly/monthly
-        weekly = PeriodSummaryEvents.from_daily_data(daily, freq='W')
-        monthly = PeriodSummaryEvents.from_daily_data(daily, freq='MS')
+        weekly = PeriodSummaryEvents.from_daily_data(daily, window='W')
+        monthly = PeriodSummaryEvents.from_daily_data(daily, window='MS')
     """
 
     def __init__(
@@ -54,7 +54,7 @@ class PeriodSummaryEvents(Base):
         *,
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
 
     def _daily_counter(
@@ -101,10 +101,11 @@ class PeriodSummaryEvents(Base):
     # ------------------------------------------------------------------
 
     @staticmethod
+    @renamed_kwargs(freq="window")
     def from_daily_data(
         daily_df: pd.DataFrame,
         *,
-        freq: str = "W",
+        window: str = "W",
         date_column: str = "date",
     ) -> pd.DataFrame:
         """Roll up a pre-computed daily DataFrame to weekly or monthly.
@@ -125,7 +126,7 @@ class PeriodSummaryEvents(Base):
         Args:
             daily_df: DataFrame with a date column and numeric metric columns.
                 Expected merge key: [date].
-            freq: Pandas frequency string.
+            window: Pandas frequency string.
                 'W' = weekly (Monday start), 'MS' = monthly.
             date_column: Name of the date column.
 
@@ -136,7 +137,7 @@ class PeriodSummaryEvents(Base):
         Example::
 
             quality = QualityEvents(df).daily_quality_summary('ok', 'nok')
-            weekly = PeriodSummaryEvents.from_daily_data(quality, freq='W')
+            weekly = PeriodSummaryEvents.from_daily_data(quality, window='W')
             # → [start, end, days, ok_parts, nok_parts,
             #    total_parts, quality_pct, ...]
         """
@@ -164,10 +165,10 @@ class PeriodSummaryEvents(Base):
         for c in sum_cols:
             agg_spec[c] = "sum"
 
-        if freq.startswith("W"):
+        if window.startswith("W"):
             grouper = pd.Grouper(freq="W-MON", label="left", closed="left")
         else:
-            grouper = pd.Grouper(freq=freq)
+            grouper = pd.Grouper(freq=window)
 
         results = []
         for start, grp in data.groupby(grouper):
@@ -176,9 +177,9 @@ class PeriodSummaryEvents(Base):
 
             row = {"start": start.date(), "days": len(grp)}
 
-            if freq.startswith("W"):
+            if window.startswith("W"):
                 row["end"] = (start + pd.Timedelta(days=6)).date()
-            elif freq == "MS":
+            elif window == "MS":
                 row["end"] = (start + pd.offsets.MonthEnd(0)).date()
             else:
                 row["end"] = grp.index.max().date()
@@ -203,6 +204,7 @@ class PeriodSummaryEvents(Base):
     # Raw-signal entry-points
     # ------------------------------------------------------------------
 
+    @keyword_only(2)
     def weekly_summary(
         self,
         counter_uuid: str,
@@ -328,6 +330,7 @@ class PeriodSummaryEvents(Base):
             offset=pd.DateOffset(days=7),
         )
 
+    @keyword_only(2)
     def monthly_summary(
         self,
         counter_uuid: str,

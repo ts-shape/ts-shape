@@ -7,7 +7,7 @@ from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method
+from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class DataGapAnalysisEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -56,6 +56,7 @@ class DataGapAnalysisEvents(Base):
 
     find_gaps = deprecated_method("detect_gaps")
 
+    @keyword_only(1)
     def detect_gaps(self, min_gap: str = "5s") -> pd.DataFrame:
         """Locate all gaps longer than *min_gap*.
 
@@ -103,6 +104,7 @@ class DataGapAnalysisEvents(Base):
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def gap_summary(self, min_gap: str = "5s") -> pd.DataFrame:
         """Aggregate statistics across all gaps.
 
@@ -155,8 +157,10 @@ class DataGapAnalysisEvents(Base):
             columns=cols,
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(freq="window")
     def coverage_by_period(
-        self, freq: str = "1h", min_gap: str | None = None
+        self, window: str = "1h", min_gap: str | None = None
     ) -> pd.DataFrame:
         """Data coverage percentage per time window.
 
@@ -165,7 +169,7 @@ class DataGapAnalysisEvents(Base):
         gaps).
 
         Args:
-            freq: Resample frequency (e.g. ``'1h'``, ``'1D'``, ``'15min'``).
+            window: Resample window (e.g. ``'1h'``, ``'1D'``, ``'15min'``).
             min_gap: Minimum inter-sample interval to count as a gap.
                 Defaults to 2x the median sampling interval (auto-detected).
 
@@ -188,7 +192,7 @@ class DataGapAnalysisEvents(Base):
                 "summary",
                 uuid=self.event_uuid,
                 source_uuid=self.signal_uuid,
-                window=freq,
+                window=window,
             )
 
         sig = (
@@ -196,7 +200,7 @@ class DataGapAnalysisEvents(Base):
             .copy()
             .set_index(self.time_column)
         )
-        offset = to_offset(freq)
+        offset = to_offset(window)
 
         # Auto-detect a sensible min_gap if not provided. Duplicate timestamps
         # (zero intervals) are ignored: a zero median made every interval a gap.
@@ -209,7 +213,7 @@ class DataGapAnalysisEvents(Base):
         # Get gaps for context
         all_gaps = self.detect_gaps(min_gap=min_gap)
 
-        counts = sig[self.value_column].resample(freq).count()
+        counts = sig[self.value_column].resample(window).count()
 
         events: list[dict[str, Any]] = []
         for ts, count in counts.items():
@@ -247,9 +251,10 @@ class DataGapAnalysisEvents(Base):
             "summary",
             uuid=self.event_uuid,
             source_uuid=self.signal_uuid,
-            window=freq,
+            window=window,
         )
 
+    @keyword_only(1)
     def interpolation_candidates(
         self, max_gap: str = "10s", min_gap: str = "0s"
     ) -> pd.DataFrame:

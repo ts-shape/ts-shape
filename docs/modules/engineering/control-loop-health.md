@@ -36,8 +36,8 @@ oscillations = monitor.detect_oscillation(
 
 # Check for valve saturation (empty result without output_uuid)
 saturation = monitor.output_saturation(
-    high_limit=100.0,
-    low_limit=0.0,
+    upper_limit=100.0,
+    lower_limit=0.0,
     window="1h"
 )
 
@@ -53,7 +53,7 @@ report = monitor.loop_health_summary(window="8h")
 |--------|---------|---------|
 | `error_integrals(window='1h', max_gap=None)` | IAE/ISE/ITAE/bias per window | DataFrame: `start`, `iae`, `ise`, `itae`, `bias`, `sample_count` |
 | `detect_oscillation(window='5min', min_crossings=4)` | Error oscillation detection | DataFrame of oscillation intervals (`start`, `end`, `crossing_count`, `estimated_period_seconds`, ...) |
-| `output_saturation(high_limit=100.0, low_limit=0.0, window='1h')` | Valve/output saturation | DataFrame: `start`, `pct_time_at_high`, `pct_time_at_low`, `pct_time_saturated`, `longest_saturation_seconds` (requires `output_uuid`) |
+| `output_saturation(upper_limit=100.0, lower_limit=0.0, window='1h')` | Valve/output saturation | DataFrame: `start`, `pct_time_at_high`, `pct_time_at_low`, `pct_time_saturated`, `longest_saturation_seconds` (requires `output_uuid`) |
 | `loop_health_summary(window='8h')` | Shift-level report card | DataFrame: `start`, `iae`, `bias`, `oscillation_count`, `pct_saturated`, `health_grade` |
 
 ---

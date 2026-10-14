@@ -50,7 +50,9 @@ def test_in_control_false_alarm_rate_matches_alpha():
     rng = np.random.default_rng(0)
     df, t = _correlated(20_000, rng)
     ref = (t[0], t[2_000])
-    out = MultivariateSPCEvents(df, ["temp", "press"]).hotelling_t2(ref, alpha=0.01)
+    out = MultivariateSPCEvents(df, ["temp", "press"]).hotelling_t2(
+        reference_period=ref, alpha=0.01
+    )
     phase2 = out[out["phase"] == "II"]
     assert len(phase2) == 18_000
     assert phase2["out_of_control"].mean() == pytest.approx(0.01, abs=0.004)
@@ -69,11 +71,11 @@ def test_t2_catches_correlation_break_that_univariate_3_sigma_misses():
     assert (z.abs() > 3).any(axis=1).mean() < 0.15  # univariate: mostly silent
 
     ev = MultivariateSPCEvents(df, ["temp", "press"])
-    out = ev.hotelling_t2(ref)
+    out = ev.hotelling_t2(reference_period=ref)
     assert out["out_of_control"].iloc[600:].mean() > 0.9
     assert out["out_of_control"].iloc[500:600].mean() < 0.02
 
-    runs = ev.detect_out_of_control(ref, min_samples=5)
+    runs = ev.detect_out_of_control(reference_period=ref, min_samples=5)
     assert len(runs) >= 1
     assert runs["sample_count"].sum() > 150
     assert set(runs.columns) >= {
@@ -94,15 +96,18 @@ def test_contributions_sum_to_t2_and_point_at_the_shifted_variable():
     df = _long(t, {"a": x[:, 0], "b": x[:, 1], "c": x[:, 2]})
     ev = MultivariateSPCEvents(df, ["a", "b", "c"])
     ref = (t[0], t[400])
-    c = ev.contributions(ref)
+    c = ev.contributions(reference_period=ref)
     sums = c.groupby("systime")["contribution"].sum()
     t2 = c.groupby("systime")["t2"].first()
     assert np.allclose(sums, t2)
     late = c[c["systime"] >= t[500]]
     top = late.loc[late.groupby("systime")["contribution"].idxmax(), "source_uuid"]
     assert (top == "c").mean() > 0.95
-    assert ev.detect_out_of_control(ref)["top_contributor"].mode()[0] == "c"
-    allrows = ev.contributions(ref, only_out_of_control=False)
+    assert (
+        ev.detect_out_of_control(reference_period=ref)["top_contributor"].mode()[0]
+        == "c"
+    )
+    allrows = ev.contributions(reference_period=ref, only_out_of_control=False)
     assert len(allrows) == 3 * n
 
 

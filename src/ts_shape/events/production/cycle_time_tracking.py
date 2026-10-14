@@ -56,7 +56,7 @@ class CycleTimeEvents(Base):
             event_uuid: UUID tagged on derived cycle events (the ``uuid``
                 column of point outputs; default: 'prod:cycle_time')
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid
 
@@ -120,10 +120,12 @@ class CycleTimeEvents(Base):
 
         # Detect rising edges (cycle completion)
         if value_column_trigger == "value_bool":
-            cycles["prev"] = cycles[value_column_trigger].shift(fill_value=False)
-            cycle_ends = cycles[
-                (~cycles["prev"]) & (cycles[value_column_trigger].fillna(False))
-            ]
+            # Cast first: on an object column of Python bools, ``~True`` is -2
+            # (truthy), which made every True sample a "rising edge".
+            trigger = cycles[value_column_trigger].astype("boolean").fillna(False)
+            trigger = trigger.astype(bool)
+            prev = trigger.shift(fill_value=False)
+            cycle_ends = cycles[trigger & ~prev]
             times = cycle_ends[self.time_column].reset_index(drop=True)
         else:
             # For integer/counter-based cycles, use value changes

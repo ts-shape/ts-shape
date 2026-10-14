@@ -46,7 +46,7 @@ def test_mtbf_mttr_hand_example():
 
 
 def test_windows_split_time_exactly_and_follow_dst():
-    out = ReliabilityEvents(_fault_frame(HAND), "fault").mtbf_mttr("1D")
+    out = ReliabilityEvents(_fault_frame(HAND), "fault").mtbf_mttr(window="1D")
     # 2024-03-31 is the 23 h spring-forward day in Berlin
     assert list(out["duration_seconds"]) == [86400, 82800, 86400]
     assert out["operating_hours"].sum() == pytest.approx(35)
@@ -184,7 +184,14 @@ def test_oee_iso22400_reference_example():
     df = pd.DataFrame(rows, columns=["systime", "uuid", "value_bool", "value_integer"])
     row = (
         OEEEvents(df)
-        .oee("run", "parts", 6.0, "total", "reject", planned_time_hours=8)
+        .oee(
+            "run",
+            "parts",
+            6.0,
+            total_uuid="total",
+            reject_uuid="reject",
+            planned_time_hours=8,
+        )
         .iloc[0]
     )
     assert row["availability_pct"] == pytest.approx(75.0, abs=0.01)

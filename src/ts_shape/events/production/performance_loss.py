@@ -107,7 +107,7 @@ class PerformanceLossEvents(Base):
                 column of :meth:`slow_periods`; default:
                 'prod:performance_loss').
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid
         self.shift_definitions = shift_definitions or {
