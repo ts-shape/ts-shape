@@ -7,7 +7,10 @@ from ``baseline.json`` fails in *either* direction:
 * ``fail`` -> ``ok``: an improvement -- regenerate the baseline so it can
   never regress again::
 
-      python -m tests.invariants.harness --update
+      PYTHONPATH=src python -m tests.invariants.harness --update
+
+The checks of all selected methods run once, in worker processes
+(``TS_SHAPE_HARNESS_JOBS`` sets their number; 1 runs them in this process).
 """
 
 import pytest
@@ -16,6 +19,18 @@ from . import harness
 
 _BASELINE = harness.load_baseline()
 _ENTRIES = harness.entries()
+_TEST = "test_invariants_match_baseline"
+
+
+@pytest.fixture(scope="module")
+def results(request):
+    """Statuses of every selected method, computed together."""
+    wanted = [
+        (item.callspec.params["cls_name"], item.callspec.params["method"])
+        for item in request.session.items
+        if getattr(item, "originalname", None) == _TEST and hasattr(item, "callspec")
+    ]
+    return harness.check_many(wanted)
 
 
 def test_baseline_covers_registry():
@@ -33,10 +48,10 @@ def _optional_dependency(status: str) -> bool:
 @pytest.mark.parametrize(
     ("cls_name", "method"), _ENTRIES, ids=[f"{c}.{m}" for c, m in _ENTRIES]
 )
-def test_invariants_match_baseline(cls_name, method):
+def test_invariants_match_baseline(cls_name, method, results):
     key = f"{cls_name}.{method}"
     expected = _BASELINE.get(key, {})
-    actual = harness.check(cls_name, method)
+    actual = results[key]
     for check in harness.CHECKS:
         want, got = expected.get(check), actual[check]
         if _optional_dependency(got) or (want and _optional_dependency(want)):
