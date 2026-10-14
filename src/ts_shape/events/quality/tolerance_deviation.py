@@ -168,6 +168,63 @@ class ToleranceDeviationEvents(Base):
 
         return "minor"
 
+    def _severity_array(
+        self,
+        deviation_abs: np.ndarray,
+        tolerance_range: np.ndarray,
+        upper_limit: np.ndarray,
+        lower_limit: np.ndarray,
+        actual_value: np.ndarray,
+    ) -> np.ndarray:
+        """:meth:`_calculate_severity` for whole arrays (same rules)."""
+        with np.errstate(invalid="ignore"):
+            outside = (actual_value > upper_limit) | (actual_value < lower_limit)
+            beyond = np.where(deviation_abs > tolerance_range * 2, "critical", "major")
+            sev = np.where(
+                deviation_abs <= tolerance_range * self.warning_threshold,
+                "minor",
+                np.where(outside, beyond, "minor"),
+            )
+        unknown = np.isnan(deviation_abs) | np.isnan(tolerance_range)
+        return np.where(unknown, "unknown", sev).astype(object)
+
+    @staticmethod
+    def _group_event_rows(filtered_df: pd.DataFrame) -> list[pd.DataFrame]:
+        """Event rows per ``group_id`` (ids are consecutive cumsum labels).
+
+        A single sample is its own event row; otherwise the first earliest
+        and the first latest sample (as ``nsmallest``/``nlargest`` pick
+        them). Selected positionally for all groups at once instead of one
+        full-frame filter per group.
+        """
+        if filtered_df.empty:
+            return []
+        order = pd.DataFrame(
+            {
+                "g": filtered_df["group_id"].to_numpy(),
+                "t": filtered_df["systime"].to_numpy(),
+                "p": np.arange(len(filtered_df)),
+            }
+        )
+        size = order.groupby("g", sort=False).size()
+        earliest = (
+            order.sort_values(["g", "t", "p"], kind="stable")
+            .groupby("g", sort=False)["p"]
+            .first()
+        )
+        latest = (
+            order.sort_values(["g", "t", "p"], ascending=[True, False, True])
+            .groupby("g", sort=False)["p"]
+            .first()
+        )
+        positions: list[int] = []
+        for g, n in size.items():
+            if n == 1:
+                positions.append(int(earliest[g]))
+            else:
+                positions += [int(earliest[g]), int(latest[g])]
+        return [filtered_df.iloc[positions]]
+
     process_and_group_data_with_events = deprecated_method("detect_deviations")
 
     def detect_deviations(self) -> pd.DataFrame:
@@ -284,17 +341,7 @@ class ToleranceDeviationEvents(Base):
         filtered_df["group_id"] = (
             filtered_df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
         ).cumsum()
-        events_data = []
-
-        for group_id in filtered_df["group_id"].unique():
-            group_data = filtered_df[filtered_df["group_id"] == group_id]
-            if group_data.shape[0] == 1:
-                # A single out-of-tolerance sample is an event too: one row.
-                events_data.append(group_data)
-                continue
-            first_row = group_data.nsmallest(1, "systime")
-            last_row = group_data.nlargest(1, "systime")
-            events_data.append(pd.concat([first_row, last_row]))
+        events_data = self._group_event_rows(filtered_df)
 
         # Convert list of DataFrame slices to a single DataFrame
         if events_data:
@@ -388,15 +435,12 @@ class ToleranceDeviationEvents(Base):
         )
 
         # Calculate severity levels (a missing side never counts as violated)
-        df.loc[actual_mask, "severity"] = df.loc[actual_mask].apply(
-            lambda row: self._calculate_severity(
-                row["deviation_abs"],
-                row["tolerance_range"],
-                row["upper_tolerance"] if pd.notna(row["upper_tolerance"]) else np.inf,
-                row["lower_tolerance"] if pd.notna(row["lower_tolerance"]) else -np.inf,
-                row[self.actual_column],
-            ),
-            axis=1,
+        df.loc[actual_mask, "severity"] = self._severity_array(
+            df.loc[actual_mask, "deviation_abs"].to_numpy(dtype=float),
+            df.loc[actual_mask, "tolerance_range"].to_numpy(dtype=float),
+            df.loc[actual_mask, "upper_tolerance"].fillna(np.inf).to_numpy(float),
+            df.loc[actual_mask, "lower_tolerance"].fillna(-np.inf).to_numpy(float),
+            df.loc[actual_mask, self.actual_column].to_numpy(dtype=float),
         )
 
         # Check if values are outside tolerance bounds (NaN compares False)
@@ -412,17 +456,7 @@ class ToleranceDeviationEvents(Base):
         filtered_df["group_id"] = (
             filtered_df["systime"].diff().abs() > pd.to_timedelta(self.time_threshold)
         ).cumsum()
-        events_data = []
-
-        for group_id in filtered_df["group_id"].unique():
-            group_data = filtered_df[filtered_df["group_id"] == group_id]
-            if group_data.shape[0] == 1:
-                # A single out-of-tolerance sample is an event too: one row.
-                events_data.append(group_data)
-                continue
-            first_row = group_data.nsmallest(1, "systime")
-            last_row = group_data.nlargest(1, "systime")
-            events_data.append(pd.concat([first_row, last_row]))
+        events_data = self._group_event_rows(filtered_df)
 
         # Convert list of DataFrame slices to a single DataFrame
         if events_data:

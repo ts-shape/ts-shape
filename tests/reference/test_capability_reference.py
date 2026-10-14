@@ -257,15 +257,6 @@ def test_spec_uuid_limits_hand_computed():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "CapabilityTrendingEvents._resolve_spec_limits ignores its window "
-        "argument and uses the *last* spec-uuid row of the whole frame for "
-        "every window (capability_trending.py:82-100, called at :140 and :382), so a "
-        "spec change rewrites the capability of earlier windows"
-    ),
-)
 def test_spec_uuid_limits_follow_the_spec_in_force():
     # Specs 9-11 during windows 0-1, tightened to 9.5-10.5 from window 2.
     spec = [
@@ -283,3 +274,8 @@ def test_spec_uuid_limits_follow_the_spec_in_force():
     out = cte.capability_over_time(window="1h")
     s0 = np.std(WINDOWS[0], ddof=1)
     assert out.iloc[0]["cp"] == pytest.approx(2.0 / (6 * s0))
+    # Window 2 starts when the tightened spec takes effect.
+    s2 = np.std(WINDOWS[2], ddof=1)
+    assert out.iloc[2]["cp"] == pytest.approx(1.0 / (6 * s2))
+    ys = cte.yield_estimate(window="1h")
+    assert ys.iloc[0]["estimated_yield_pct"] > ys.iloc[2]["estimated_yield_pct"]

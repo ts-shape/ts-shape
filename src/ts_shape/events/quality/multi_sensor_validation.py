@@ -109,27 +109,30 @@ class MultiSensorValidationEvents(Base):
                 source_uuid=",".join(self.signal_uuids),
             )
 
+        # Per-window sensor means for all windows at once; a window needs at
+        # least two sensors with data.
+        means = self._pivot.resample(window).mean()
+        means = means[means.notna().sum(axis=1) >= 2]
+        spread = means.max(axis=1) - means.min(axis=1)
+        hit = spread > threshold
+        means, spread = means[hit], spread[hit]
         events: list[dict[str, Any]] = []
-        for ts, group in self._pivot.resample(window):
-            group = group.dropna(how="all")
-            if group.empty or len(group) < 1:
-                continue
-
-            means = group.mean()
-            valid_means = means.dropna()
-            if len(valid_means) < 2:
-                continue
-
-            spread = float(valid_means.max() - valid_means.min())
-            if spread > threshold:
-                end = ts + pd.to_timedelta(window)
+        if not means.empty:
+            win_td = pd.to_timedelta(window)
+            for ts, sp, hi, lo in zip(
+                means.index,
+                spread,
+                means.idxmax(axis=1),
+                means.idxmin(axis=1),
+            ):
+                end = ts + win_td
                 events.append(
                     {
                         "start": ts,
                         "end": end,
-                        "max_spread": float(spread),
-                        "sensor_high": valid_means.idxmax(),
-                        "sensor_low": valid_means.idxmin(),
+                        "max_spread": float(sp),
+                        "sensor_high": hi,
+                        "sensor_low": lo,
                         "duration": end - ts,
                     }
                 )

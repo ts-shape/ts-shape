@@ -97,7 +97,6 @@ class AnomalyClassificationEvents(Base):
         # A new run starts wherever the step from the previous sample exceeds
         # the tolerance (or there is no comparable previous sample).
         new_run = ~(values.diff().abs() <= tolerance)
-        groups = new_run.cumsum()
 
         # A one-sample run is only a flatline when the silence after it is
         # longer than the signal's usual sampling interval (a deadband
@@ -106,27 +105,30 @@ class AnomalyClassificationEvents(Base):
         steps = sig[self.time_column].diff().dropna()
         typical_step = steps.median() if len(steps) >= 2 else pd.Timedelta(0)
 
-        events: list[dict[str, Any]] = []
-        for _, run in sig.groupby(groups):
-            stuck = run[self.value_column].iloc[0]
-            if pd.isna(stuck):
-                continue
-            if interval_end == "last_sample" and len(run) < 2:
-                continue
-            start = run[self.time_column].iloc[0]
-            end = ends.loc[run.index[-1]]
-            if len(run) < 2 and not end - start > typical_step:
-                continue
-            duration = end - start
-            if duration >= min_td:
-                events.append(
-                    {
-                        "start": start,
-                        "end": end,
-                        "duration": duration,
-                        "stuck_value": float(stuck),
-                    }
-                )
+        # Runs as index ranges [first, last] (vectorized; no per-run groupby).
+        first = np.flatnonzero(new_run.to_numpy())
+        last = np.append(first[1:], len(sig)) - 1
+        stuck = values.to_numpy(dtype=float)[first]
+        start = sig[self.time_column].iloc[first].reset_index(drop=True)
+        end = ends.iloc[last].reset_index(drop=True)
+        duration = end - start
+        single = (last - first + 1) < 2
+        keep = ~np.isnan(stuck)
+        if interval_end == "last_sample":
+            keep &= ~single
+        keep &= ~(single & ~(duration > typical_step).to_numpy())
+        keep &= (duration >= min_td).to_numpy()
+        events: list[dict[str, Any]] = [
+            {
+                "start": st,
+                "end": en,
+                "duration": du,
+                "stuck_value": float(v),
+            }
+            for st, en, du, v in zip(
+                start[keep], end[keep], duration[keep], stuck[keep]
+            )
+        ]
 
         return finish_events(
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
@@ -160,33 +162,58 @@ class AnomalyClassificationEvents(Base):
         sig = sig.set_index(self.time_column)
         window_td = pd.to_timedelta(window)
 
+        if window_td <= pd.Timedelta(0):
+            raise ValueError(f"window must be positive, got {window!r}")
+
+        # Consecutive windows [start + k*window, start + (k+1)*window] (both
+        # ends included, as label slicing does) as index ranges, evaluated
+        # together: crossings of the line joining each window's first and
+        # last value (computed as np.linspace does), and its peak-to-peak.
+        t_ns = pd.DatetimeIndex(sig.index).as_unit("ns").asi8  # UTC for tz-aware
+        w_ns = int(window_td.value)
+        n_win = int((t_ns[-1] - t_ns[0]) // w_ns)
         events: list[dict[str, Any]] = []
-        start_time = sig.index[0]
-        end_time = sig.index[-1]
-        current = start_time
-
-        while current + window_td <= end_time:
-            win_end = current + window_td
-            win = sig.loc[current:win_end, self.value_column]
-            if len(win) >= 3:
-                detrended = win.values - np.linspace(
-                    win.values[0], win.values[-1], len(win)
-                )
-                signs = np.sign(detrended)
+        if n_win > 0:
+            starts_ns = t_ns[0] + w_ns * np.arange(n_win, dtype=np.int64)
+            lo = np.searchsorted(t_ns, starts_ns, side="left")
+            hi = np.searchsorted(t_ns, starts_ns + w_ns, side="right")
+            lens = hi - lo
+            ok = np.flatnonzero(lens >= 3)
+            if len(ok):
+                lo_k, lens_k = lo[ok], lens[ok]
+                offs = np.concatenate(([0], np.cumsum(lens_k)[:-1]))
+                idx = np.arange(int(lens_k.sum())) + np.repeat(lo_k - offs, lens_k)
+                v = sig[self.value_column].to_numpy(dtype=float)
+                vals = v[idx]
+                pos = idx - np.repeat(lo_k, lens_k)  # position within window
+                first_v = v[lo_k]
+                last_v = v[lo_k + lens_k - 1]
+                step = (last_v - first_v) / (lens_k - 1)
+                line = pos * np.repeat(step, lens_k) + np.repeat(first_v, lens_k)
+                is_last = pos == np.repeat(lens_k - 1, lens_k)
+                line[is_last] = np.repeat(last_v, lens_k)[is_last]
+                signs = np.sign(vals - line)
                 signs[signs == 0] = 1
-                crossings = int(np.sum(np.abs(np.diff(signs)) > 0))
-
-                if crossings >= min_crossings:
-                    amplitude = float(np.max(win.values) - np.min(win.values))
+                change = np.abs(np.diff(signs)) > 0
+                # Only steps inside a window count (not across two windows).
+                change &= ~is_last[:-1]
+                crossings = np.add.reduceat(
+                    np.append(change, False).astype(np.int64), offs
+                )
+                amplitude = np.maximum.reduceat(vals, offs) - np.minimum.reduceat(
+                    vals, offs
+                )
+                hit = crossings >= min_crossings
+                for k, c, amp in zip(ok[hit], crossings[hit], amplitude[hit]):
+                    current = sig.index[0] + k * window_td
                     events.append(
                         {
                             "start": current,
-                            "end": win_end,
-                            "crossing_count": crossings,
-                            "amplitude": amplitude,
+                            "end": current + window_td,
+                            "crossing_count": int(c),
+                            "amplitude": float(amp),
                         }
                     )
-            current = win_end
 
         return finish_events(
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
@@ -203,8 +230,12 @@ class AnomalyClassificationEvents(Base):
     def _slope_x(index: pd.Index, slope_per: str) -> np.ndarray:
         """x-axis for a slope fit: sample index or elapsed seconds."""
         if slope_per == "second":
+            # (times - times[0]).total_seconds(), on the integer ticks directly
+            # (same division, without building a TimedeltaIndex per window).
             times = pd.DatetimeIndex(index)
-            return np.asarray((times - times[0]).total_seconds(), dtype=float)
+            ticks = times.asi8
+            per_second = {"s": 1, "ms": 10**3, "us": 10**6, "ns": 10**9}[times.unit]
+            return np.asarray((ticks - ticks[0]) / per_second, dtype=float)
         return np.arange(len(index), dtype=float)
 
     def _fit_slope(

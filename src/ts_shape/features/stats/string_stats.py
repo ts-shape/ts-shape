@@ -28,15 +28,20 @@ class StringStatistics(Base):
     @classmethod
     def most_frequent(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
-    ) -> str:
+    ) -> str | None:
         """Returns the most frequent string in the column.
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            The most frequent non-null string (the smallest on ties), or
+            ``None`` when the column holds no non-null value.
         """
-        return dataframe[column_name].mode().iloc[0]
+        modes = dataframe[column_name].mode()
+        return None if modes.empty else modes.iloc[0]
 
     @classmethod
     def count_most_frequent(
@@ -48,9 +53,14 @@ class StringStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            Occurrences of :meth:`most_frequent`; ``0`` when the column holds
+            no non-null value (it raised ``IndexError`` before).
         """
-        most_frequent_value = cls.most_frequent(dataframe, column_name)
-        return dataframe[column_name].value_counts().loc[most_frequent_value]
+        counts = dataframe[column_name].value_counts()
+        # The highest count; label lookup would fail for boolean labels.
+        return int(counts.iloc[0]) if len(counts) else 0
 
     @classmethod
     def count_null(
@@ -81,36 +91,42 @@ class StringStatistics(Base):
     @classmethod
     def longest_string(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
-    ) -> str:
+    ) -> str | None:
         """Returns the longest string in the column.
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            The longest non-null string, or ``None`` when the column holds no
+            non-null value.
         """
-        return (
-            dataframe[column_name]
-            .dropna()
-            .loc[dataframe[column_name].dropna().str.len().idxmax()]
-        )
+        values = dataframe[column_name].dropna()
+        if values.empty:
+            return None
+        return values.loc[values.str.len().idxmax()]
 
     @classmethod
     def shortest_string(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
-    ) -> str:
+    ) -> str | None:
         """Returns the shortest string in the column.
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            The shortest non-null string, or ``None`` when the column holds no
+            non-null value.
         """
-        return (
-            dataframe[column_name]
-            .dropna()
-            .loc[dataframe[column_name].dropna().str.len().idxmin()]
-        )
+        values = dataframe[column_name].dropna()
+        if values.empty:
+            return None
+        return values.loc[values.str.len().idxmin()]
 
     @classmethod
     def string_length_summary(

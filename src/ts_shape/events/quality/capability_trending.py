@@ -3,6 +3,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from pandas.tseries.frequencies import to_offset
 from scipy import stats
 
 from ts_shape.events._windows import finish_events
@@ -79,23 +80,50 @@ class CapabilityTrendingEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
-    def _resolve_spec_limits(self, window_df: pd.DataFrame) -> tuple:
-        """Resolve upper/lower spec limits for a given window."""
+    def _spec_in_force(
+        self, spec_uuid: str, start: pd.Timestamp, end: pd.Timestamp
+    ) -> float:
+        """Spec value in force for the window ``[start, end)``.
+
+        The rule: the last spec sample at or before the window start (the
+        spec the window began under). If the spec signal has no sample yet at
+        the window start, the first spec sample inside the window is used;
+        with none either, the limit is NaN and the window is skipped. NaN spec
+        samples are ignored.
+        """
+        cache = self.__dict__.setdefault("_spec_rows", {})
+        if spec_uuid not in cache:
+            rows = self.dataframe[self.dataframe["uuid"] == spec_uuid]
+            rows = rows[[self.time_column, self.value_column]].dropna()
+            cache[spec_uuid] = (rows, pd.to_datetime(rows[self.time_column]))
+        rows, times = cache[spec_uuid]
+        before = rows[times <= start]
+        if not before.empty:
+            return float(before[self.value_column].iloc[-1])
+        inside = rows[(times > start) & (times < end)]
+        if not inside.empty:
+            return float(inside[self.value_column].iloc[0])
+        return np.nan
+
+    def _resolve_spec_limits(self, start: pd.Timestamp, end: pd.Timestamp) -> tuple:
+        """Resolve upper/lower spec limits for the window ``[start, end)``.
+
+        Fixed limits apply to every window; spec-signal limits follow the
+        spec in force for the window (see :meth:`_spec_in_force`). Previously
+        the last spec sample of the whole frame was used for every window, so
+        a later spec change rewrote the capability of earlier windows.
+        """
         if self.upper_spec_fixed is not None:
             usl = self.upper_spec_fixed
         else:
-            spec_rows = self.dataframe[self.dataframe["uuid"] == self.upper_spec_uuid]
-            usl = (
-                spec_rows[self.value_column].iloc[-1] if not spec_rows.empty else np.nan
-            )
+            assert self.upper_spec_uuid is not None
+            usl = self._spec_in_force(self.upper_spec_uuid, start, end)
 
         if self.lower_spec_fixed is not None:
             lsl = self.lower_spec_fixed
         else:
-            spec_rows = self.dataframe[self.dataframe["uuid"] == self.lower_spec_uuid]
-            lsl = (
-                spec_rows[self.value_column].iloc[-1] if not spec_rows.empty else np.nan
-            )
+            assert self.lower_spec_uuid is not None
+            lsl = self._spec_in_force(self.lower_spec_uuid, start, end)
 
         return float(usl), float(lsl)
 
@@ -137,7 +165,7 @@ class CapabilityTrendingEvents(Base):
             if n < 2:
                 continue
 
-            usl, lsl = self._resolve_spec_limits(group)
+            usl, lsl = self._resolve_spec_limits(ts, ts + to_offset(window))
             if np.isnan(usl) or np.isnan(lsl):
                 continue
 
@@ -379,7 +407,7 @@ class CapabilityTrendingEvents(Base):
             if n < 2:
                 continue
 
-            usl, lsl = self._resolve_spec_limits(group)
+            usl, lsl = self._resolve_spec_limits(ts, ts + to_offset(window))
             if np.isnan(usl) or np.isnan(lsl):
                 continue
 

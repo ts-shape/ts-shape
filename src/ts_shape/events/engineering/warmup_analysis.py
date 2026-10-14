@@ -344,30 +344,41 @@ class WarmUpCoolDownEvents(Base):
         if not ramps:
             return empty
 
+        # Index arithmetic on the sorted series instead of a full-series mask
+        # per ramp: the first sample at/after each ramp start, the first sample
+        # from there that meets the target, and the extreme of every sample at
+        # or after the time the target was reached (pandas max/min skip NaN).
+        times = sig[self.time_column]
+        values = sig[self.value_column].to_numpy(dtype=float)
+        n = len(values)
+        with np.errstate(invalid="ignore"):
+            hit = (
+                values >= target_value
+                if direction == "rising"
+                else values <= target_value
+            )
+        next_hit = np.minimum.accumulate(np.where(hit, np.arange(n), n)[::-1])[::-1]
+        next_hit = np.append(next_hit, n)
+        if direction == "rising":
+            tail_extreme = np.fmax.accumulate(values[::-1])[::-1]
+        else:
+            tail_extreme = np.fmin.accumulate(values[::-1])[::-1]
+        firsts = times.searchsorted(pd.Series([r["start"] for r in ramps]), side="left")
+
         events: list[dict[str, Any]] = []
-        for r in ramps:
-            mask = sig[self.time_column] >= r["start"]
-            segment = sig[mask].reset_index(drop=True)
-
-            if direction == "rising":
-                reached = segment[segment[self.value_column] >= target_value]
-            else:
-                reached = segment[segment[self.value_column] <= target_value]
-
-            if reached.empty:
+        for r, first in zip(ramps, firsts):
+            j = next_hit[first]
+            if j >= n:
                 continue
-
-            reached_time = reached[self.time_column].iloc[0]
+            reached_time = times.iloc[j]
             time_to = (reached_time - r["start"]).total_seconds()
 
             # Overshoot: max beyond target after reaching it
-            after_reach = segment[segment[self.time_column] >= reached_time]
+            k = times.searchsorted(reached_time, side="left")
             if direction == "rising":
-                peak = float(after_reach[self.value_column].max())
-                overshoot = max(peak - target_value, 0.0)
+                overshoot = max(float(tail_extreme[k]) - target_value, 0.0)
             else:
-                trough = float(after_reach[self.value_column].min())
-                overshoot = max(target_value - trough, 0.0)
+                overshoot = max(target_value - float(tail_extreme[k]), 0.0)
 
             events.append(
                 {

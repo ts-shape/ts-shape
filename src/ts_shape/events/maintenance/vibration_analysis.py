@@ -3,8 +3,13 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy.stats import kurtosis
 
+from ts_shape.events.maintenance._rolling import (
+    gather,
+    interval_bounds,
+    time_window_bounds,
+    window_moments,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
@@ -90,19 +95,12 @@ class VibrationAnalysisEvents(Base):
         window_td = pd.to_timedelta(window)
         threshold = baseline_rms * threshold_factor
 
-        # Compute rolling RMS using time-based windows
-        rms_values = []
-        for i in range(len(sig)):
-            t_end = sig[self.time_column].iloc[i]
-            t_start = t_end - window_td
-            mask = (sig[self.time_column] > t_start) & (sig[self.time_column] <= t_end)
-            win = sig.loc[mask, self.value_column]
-            if len(win) == 0:
-                rms_values.append(np.nan)
-            else:
-                rms_values.append(float(np.sqrt(np.mean(win.values**2))))
-
-        sig["rms"] = rms_values
+        # Rolling RMS over the time window (t - window, t]; NaN if the window
+        # holds a NaN sample.
+        lo, hi = time_window_bounds(sig[self.time_column], window_td)
+        values = sig[self.value_column].to_numpy(dtype=float)
+        mom = window_moments(np.zeros(len(sig)), values**2, lo, hi)
+        sig["rms"] = np.sqrt(np.where(mom["n"] < mom["n_total"], np.nan, mom["mean"]))
         exceeded = (sig["rms"] >= threshold).fillna(False)
 
         if not exceeded.any():
@@ -182,15 +180,22 @@ class VibrationAnalysisEvents(Base):
         t_max = sig[self.time_column].iloc[-1]
         window_starts = pd.date_range(start=t_min, end=t_max, freq=window_td)
 
+        # Peak-to-peak amplitude per window [ws, ws + window) holding at least
+        # two samples (NaN samples skipped, as pandas max/min do).
+        lo, hi = interval_bounds(sig[self.time_column], window_starts, window_td)
+        keep = hi - lo >= 2
+        values = sig[self.value_column].to_numpy(dtype=float)
         amplitudes: list[dict[str, Any]] = []
-        for ws in window_starts:
-            we = ws + window_td
-            mask = (sig[self.time_column] >= ws) & (sig[self.time_column] < we)
-            win = sig.loc[mask, self.value_column]
-            if len(win) < 2:
-                continue
-            amp = float(win.max() - win.min())
-            amplitudes.append({"start": ws, "end": we, "amplitude": amp})
+        if keep.any():
+            idx, starts = gather(lo[keep], hi[keep])
+            with np.errstate(invalid="ignore"):
+                amps = np.fmax.reduceat(values[idx], starts) - np.fmin.reduceat(
+                    values[idx], starts
+                )
+            amplitudes = [
+                {"start": ws, "end": ws + window_td, "amplitude": float(amp)}
+                for ws, amp in zip(window_starts[keep], amps)
+            ]
 
         if not amplitudes:
             return pd.DataFrame(columns=cols)
@@ -263,35 +268,42 @@ class VibrationAnalysisEvents(Base):
         t_max = sig[self.time_column].iloc[-1]
         window_starts = pd.date_range(start=t_min, end=t_max, freq=window_td)
 
-        rows: list[dict[str, Any]] = []
-        for ws in window_starts:
-            we = ws + window_td
-            mask = (sig[self.time_column] >= ws) & (sig[self.time_column] < we)
-            win = sig.loc[mask, self.value_column]
-            if len(win) < 2:
-                continue
-
-            values = win.values
-            rms_val = float(np.sqrt(np.mean(values**2)))
-            peak_val = float(np.max(np.abs(values)))
-            crest_factor = peak_val / rms_val if rms_val > 0 else None
-            kurt_val = float(kurtosis(values, fisher=True))
-
-            rows.append(
-                {
-                    "start": ws,
-                    "end": we,
-                    "duration_seconds": (we - ws).total_seconds(),
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": True,
-                    "rms": float(rms_val),
-                    "peak": float(peak_val),
-                    "crest_factor": (
-                        float(crest_factor) if crest_factor is not None else None
-                    ),
-                    "kurtosis": float(kurt_val),
-                }
-            )
-
-        return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
+        # Indicators per window [ws, ws + window) holding at least two samples;
+        # a NaN sample makes the window's indicators NaN (crest factor None).
+        lo, hi = interval_bounds(sig[self.time_column], window_starts, window_td)
+        keep = hi - lo >= 2
+        if not keep.any():
+            return pd.DataFrame(columns=cols)
+        values = sig[self.value_column].to_numpy(dtype=float)
+        idx, starts = gather(lo[keep], hi[keep])
+        lens = (hi - lo)[keep]
+        v = values[idx]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            rms = np.sqrt(np.add.reduceat(v**2, starts) / lens)
+            peak = np.maximum.reduceat(np.abs(v), starts)
+            # Excess (Fisher) kurtosis, biased, as scipy.stats.kurtosis computes it.
+            mean = np.add.reduceat(v, starts) / lens
+            dev = v - np.repeat(mean, lens)
+            m2 = np.add.reduceat(dev**2, starts) / lens
+            m4 = np.add.reduceat(dev**4, starts) / lens
+            zero = m2 <= (np.finfo(float).eps * mean) ** 2
+            kurt = np.where(zero, np.nan, m4 / m2**2.0) - 3
+        ws = window_starts[keep]
+        we = ws + window_td
+        return pd.DataFrame(
+            {
+                "start": ws,
+                "end": we,
+                "duration_seconds": (we - ws).total_seconds(),
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": True,
+                "rms": rms,
+                "peak": peak,
+                "crest_factor": [
+                    float(p / r) if r > 0 else None for p, r in zip(peak, rms)
+                ],
+                "kurtosis": kurt,
+            },
+            columns=cols,
+        )
