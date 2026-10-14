@@ -1,6 +1,8 @@
 import pandas as pd  # type: ignore
+import pytest
 
 from ts_shape.context.value_mapping import ValueMapper
+from ts_shape.errors import DataQualityWarning
 
 
 def test_value_mapper_csv_and_json(tmp_path):
@@ -35,5 +37,6 @@ def test_value_mapper_csv_and_json(tmp_path):
         mapping_value_column="name",
         file_type="json",
     )
-    out_json = vm_json.map_values()
-    assert out_json["code"].tolist()[:2] == ["A1", "B1"]
+    with pytest.warns(DataQualityWarning, match="1 value"):
+        out_json = vm_json.map_values()
+    assert out_json["code"].tolist() == ["A1", "B1", "C"]

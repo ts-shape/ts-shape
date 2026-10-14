@@ -188,4 +188,10 @@ combined = DataIntegratorHybrid.combine_data(
 )
 ```
 
+The `uuids` filter applies with or without metadata. Several metadata sources
+may describe the same uuid with different columns; two different values for
+the same uuid and column raise `ValueError`. Timeseries sources whose time
+columns differ in timezone handling are converted to UTC (naive times read
+as UTC) with a `DataQualityWarning`.
+
 Next: [Transforms and statistics](transforms.md).

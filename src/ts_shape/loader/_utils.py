@@ -33,6 +33,44 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+#: Columns of a long-format signal frame, in their usual order.
+SIGNAL_COLUMNS: tuple[str, ...] = (
+    "systime",
+    "uuid",
+    "value_bool",
+    "value_integer",
+    "value_double",
+    "value_string",
+    "is_delta",
+)
+
+
+def empty_signal_frame(tz: str | None = None) -> pd.DataFrame:
+    """A zero-row long-format frame with the standard columns and dtypes.
+
+    Value columns use the nullable dtypes ``boolean`` / ``Int64`` /
+    ``float64`` / ``object``, as :func:`ts_shape.datasets.make_timeseries`.
+
+    Args:
+        tz: Timezone of ``systime``; None for naive.
+
+    Returns:
+        The empty frame.
+    """
+    time_dtype = f"datetime64[ns, {tz}]" if tz else "datetime64[ns]"
+    return pd.DataFrame(
+        {
+            "systime": pd.Series(dtype=time_dtype),
+            "uuid": pd.Series(dtype=object),
+            "value_bool": pd.Series(dtype="boolean"),
+            "value_integer": pd.Series(dtype="Int64"),
+            "value_double": pd.Series(dtype="float64"),
+            "value_string": pd.Series(dtype=object),
+            "is_delta": pd.Series(dtype="boolean"),
+        }
+    )
+
+
 def validate_local_path(path: str | Path, *, must_be_dir: bool = False) -> Path:
     """Validate that a local filesystem path exists.
 
