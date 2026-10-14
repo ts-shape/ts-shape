@@ -44,6 +44,9 @@ class IntegerFilter(Base):
             dataframe: Input DataFrame.
             value_column: Name of the column to filter on. Default ``"value_integer"``.
             integer_value: Value to keep. Default 0.
+
+        Returns:
+            The rows whose value equals ``integer_value``, in input order.
         """
         values = _numbers(dataframe, value_column)
         return _rows(dataframe, values == integer_value)
@@ -62,6 +65,10 @@ class IntegerFilter(Base):
             dataframe: Input DataFrame.
             value_column: Name of the column to filter on. Default ``"value_integer"``.
             integer_value: Value to drop. Default 0.
+
+        Returns:
+            The rows whose value differs from ``integer_value`` (missing
+                values included), in input order.
         """
         values = _numbers(dataframe, value_column)
         return _rows(dataframe, values != integer_value)
@@ -82,6 +89,10 @@ class IntegerFilter(Base):
             value_column: Name of the column to filter on. Default ``"value_integer"``.
             min_value: Lower bound, inclusive. Default 0.
             max_value: Upper bound, inclusive. Default 100.
+
+        Returns:
+            The rows whose value lies in ``[min_value, max_value]``, in
+                input order.
         """
         values = _numbers(dataframe, value_column)
         return _rows(dataframe, (values >= min_value) & (values <= max_value))
@@ -103,6 +114,10 @@ class DoubleFilter(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the column to filter on. Default ``"value_double"``.
+
+        Returns:
+            The rows that have a value (missing values dropped), in input
+                order.
         """
         Base._validate_column(dataframe, value_column)
         return dataframe[dataframe[value_column].notna()]
@@ -123,6 +138,10 @@ class DoubleFilter(Base):
             value_column: Name of the column to filter on. Default ``"value_double"``.
             min_value: Lower bound, inclusive. Default 0.0.
             max_value: Upper bound, inclusive. Default 100.0.
+
+        Returns:
+            The rows whose value lies in ``[min_value, max_value]``, in
+                input order.
         """
         values = _numbers(dataframe, value_column)
         return _rows(dataframe, (values >= min_value) & (values <= max_value))

@@ -30,6 +30,9 @@ class StringStatistics(Base):
             dataframe: Input DataFrame.
             value_column: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            Number of distinct non-null values.
         """
         return cast(
             int,
@@ -92,6 +95,9 @@ class StringStatistics(Base):
             dataframe: Input DataFrame.
             value_column: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            Number of missing values.
         """
         return cast(
             int,
@@ -111,6 +117,9 @@ class StringStatistics(Base):
             dataframe: Input DataFrame.
             value_column: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            Mean length of the non-null strings; NaN when there is none.
         """
         return cast(
             float,
@@ -244,6 +253,9 @@ class StringStatistics(Base):
                 ``"value_string"``.
             regex: If False (default), match ``substring`` literally; if True,
                 treat it as a regular expression.
+
+        Returns:
+            Number of non-null strings that contain ``substring``.
         """
         return int(
             text_values(
@@ -268,6 +280,9 @@ class StringStatistics(Base):
             prefix: Prefix to match.
             value_column: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            Number of non-null strings that start with ``prefix``.
         """
         return cast(
             int,
@@ -291,6 +306,9 @@ class StringStatistics(Base):
             suffix: Suffix to match.
             value_column: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            Number of non-null strings that end with ``suffix``.
         """
         return cast(
             int,
@@ -363,6 +381,9 @@ class StringStatistics(Base):
             dataframe: Input DataFrame.
             value_column: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+        Returns:
+            Number of non-null strings with at least one digit.
         """
         return cast(
             int,

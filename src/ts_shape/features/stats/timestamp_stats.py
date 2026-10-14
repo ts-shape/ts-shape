@@ -28,6 +28,9 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            Number of missing timestamps.
         """
         return cast(
             int,
@@ -46,6 +49,9 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            Number of valid timestamps.
         """
         return cast(
             int,
@@ -66,6 +72,9 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            The earliest timestamp; NaT when there is none.
         """
         return time_values(
             dataframe, time_column, where="TimestampStatistics.earliest_timestamp"
@@ -81,6 +90,9 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            The latest timestamp; NaT when there is none.
         """
         return time_values(
             dataframe, time_column, where="TimestampStatistics.latest_timestamp"
@@ -96,6 +108,9 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            Latest minus earliest timestamp; NaT when there is none.
         """
         return cls.latest_timestamp(dataframe, time_column) - cls.earliest_timestamp(
             dataframe, time_column
@@ -133,6 +148,10 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            Occurrences of the most frequent timestamp; 0 when there is
+                none.
         """
         counts = time_values(
             dataframe,
@@ -225,6 +244,10 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            The most frequent weekday (0=Monday; the smallest on a tie), or
+                ``None`` when there is no timestamp.
         """
         modes = (
             time_values(
@@ -247,6 +270,10 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            The most frequent hour (0-23; the smallest on a tie), or
+                ``None`` when there is no timestamp.
         """
         modes = (
             time_values(
@@ -269,6 +296,10 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            Mean gap between consecutive timestamps (in time order); NaT for
+                fewer than 2 timestamps.
         """
         sorted_times = (
             time_values(
@@ -290,6 +321,9 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            The median timestamp; NaT when there is none.
         """
         return time_values(
             dataframe, time_column, where="TimestampStatistics.median_timestamp"
@@ -305,6 +339,10 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            Standard deviation of the gaps between consecutive timestamps;
+                NaT for fewer than 3 timestamps.
         """
         sorted_times = (
             time_values(
@@ -328,6 +366,10 @@ class TimestampStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             time_column: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            Series of the 25th, 50th and 75th percentile timestamps, indexed
+                by quantile.
         """
         return time_values(
             dataframe, time_column, where="TimestampStatistics.timestamp_quartiles"

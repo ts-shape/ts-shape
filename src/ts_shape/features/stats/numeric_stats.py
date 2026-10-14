@@ -28,6 +28,9 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The mean of the non-missing values; NaN when there is none.
         """
         return cast(
             float,
@@ -44,6 +47,9 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The median of the non-missing values; NaN when there is none.
         """
         return cast(
             float,
@@ -60,6 +66,10 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The sample standard deviation (``ddof=1``); NaN for fewer than
+                2 values.
         """
         return cast(
             float,
@@ -76,6 +86,9 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The sample variance (``ddof=1``); NaN for fewer than 2 values.
         """
         return cast(
             float,
@@ -92,6 +105,9 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The smallest value; NaN when there is none.
         """
         return cast(
             float,
@@ -108,6 +124,9 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The largest value; NaN when there is none.
         """
         return cast(
             float,
@@ -124,6 +143,9 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The sum of the values; 0 when there is none.
         """
         return cast(
             float,
@@ -140,6 +162,10 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The bias-corrected excess kurtosis; NaN for fewer than 4
+                values.
         """
         return cast(
             float,
@@ -156,6 +182,9 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The bias-corrected skewness; NaN for fewer than 3 values.
         """
         return cast(
             float,
@@ -175,6 +204,10 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
             quantile: Quantile to compute, between 0 and 1 (0.5 is the median).
+
+        Returns:
+            The quantile (linear interpolation); NaN when there is no
+                value.
         """
         return cast(
             float,
@@ -191,6 +224,10 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            Third minus first quartile of the non-missing values; NaN when
+                there is none.
         """
         values = numeric_values(
             dataframe, value_column, where="NumericStatistics.column_iqr"
@@ -207,6 +244,9 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            Largest minus smallest value; NaN when there is none.
         """
         values = numeric_values(
             dataframe, value_column, where="NumericStatistics.column_range"
@@ -221,6 +261,10 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The mean absolute deviation from the mean; NaN when there is no
+                value.
         """
         series = numeric_values(
             dataframe, value_column, where="NumericStatistics.column_mad"
@@ -235,6 +279,10 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The most frequent value (the smallest on a tie), or ``None``
+                when there is no value.
         """
         modes = numeric_values(
             dataframe, value_column, where="NumericStatistics.column_mode"
@@ -269,6 +317,9 @@ class NumericStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the numeric column to analyze.
+
+        Returns:
+            The standard error of the mean; NaN for fewer than 2 values.
         """
         return cast(
             float,

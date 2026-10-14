@@ -25,6 +25,9 @@ class BooleanStatistics(Base):
             dataframe: Input DataFrame.
             value_column: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
+
+        Returns:
+            Number of True values.
         """
         values = bool_values(
             dataframe, value_column, where="BooleanStatistics.count_true"
@@ -42,6 +45,9 @@ class BooleanStatistics(Base):
             dataframe: Input DataFrame.
             value_column: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
+
+        Returns:
+            Number of False values.
         """
         values = bool_values(
             dataframe, value_column, where="BooleanStatistics.count_false"
@@ -59,6 +65,9 @@ class BooleanStatistics(Base):
             dataframe: Input DataFrame.
             value_column: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
+
+        Returns:
+            Number of missing values.
         """
         values = bool_values(
             dataframe, value_column, where="BooleanStatistics.count_null"
@@ -76,6 +85,9 @@ class BooleanStatistics(Base):
             dataframe: Input DataFrame.
             value_column: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
+
+        Returns:
+            Number of True or False values.
         """
         values = bool_values(
             dataframe, value_column, where="BooleanStatistics.count_not_null"
@@ -155,6 +167,9 @@ class BooleanStatistics(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the boolean column to analyze.
+
+        Returns:
+            True when exactly half of the non-null values are True.
         """
         n = cls.count_not_null(dataframe, value_column)
         return n > 0 and cls.count_true(dataframe, value_column) * 2 == n

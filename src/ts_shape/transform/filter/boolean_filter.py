@@ -25,6 +25,10 @@ class IsDeltaFilter(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the column to filter on. Default ``"is_delta"``.
+
+        Returns:
+            The rows whose flag is True (missing values excluded), in
+                input order.
         """
         Base._validate_column(dataframe, value_column)
         # ``eq`` keeps missing values out of both filters.
@@ -40,6 +44,10 @@ class IsDeltaFilter(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the column to filter on. Default ``"is_delta"``.
+
+        Returns:
+            The rows whose flag is False (missing values excluded), in
+                input order.
         """
         Base._validate_column(dataframe, value_column)
         return dataframe[dataframe[value_column].eq(False)]

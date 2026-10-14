@@ -205,6 +205,10 @@ class CycleExtractor(Base):
         falling edge (True -> False), i.e. at the first False sample. A missing
         sample holds the previous state. A signal already True at its first
         sample gives a first cycle with ``is_complete = False``.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         frame = self._signal_frame()
         starts, ends, initially_true = self._bool_edges(frame)
@@ -222,6 +226,10 @@ class CycleExtractor(Base):
         a rising edge (False -> True); for a signal that is never False (an
         event log of True rows) every row is a trigger. The last trigger gives
         an incomplete cycle.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         frame = self._signal_frame()
         starts, initially_true = self._bool_events(frame)
@@ -242,6 +250,10 @@ class CycleExtractor(Base):
         counts). An end closes the open cycle; a second start aborts it. When
         ``end_uuid`` equals ``start_uuid`` (or the frame has no ``uuid``
         column), each event closes the previous cycle and opens the next.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         start_frame = self._signal_frame(self.start_uuid)
         starts, start_initially = self._bool_events(start_frame)
@@ -307,6 +319,10 @@ class CycleExtractor(Base):
         Every sample of the signal is a boundary: a cycle runs from one sample
         to the next later one. The first cycle starts at the first sample,
         whose state began before the data, so it is marked incomplete.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         frame = self._signal_frame()
         times = frame[self.time_column]
@@ -326,6 +342,10 @@ class CycleExtractor(Base):
         (compared sample to sample), bools and strings by any change. A missing
         value holds the previous one. The first sample is a boundary too; its
         cycle began before the data and is marked incomplete.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         frame = self._signal_frame()
         change = pd.Series(False, index=frame.index)

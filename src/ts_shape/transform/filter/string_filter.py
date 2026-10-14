@@ -42,6 +42,10 @@ class StringFilter(Base):
         Args:
             dataframe: Input DataFrame.
             value_column: Name of the column to filter on. Default ``"value_string"``.
+
+        Returns:
+            The rows that have a value (missing values dropped), in input
+                order.
         """
         Base._validate_column(dataframe, value_column)
         return dataframe[dataframe[value_column].notna()]
@@ -60,6 +64,9 @@ class StringFilter(Base):
             dataframe: Input DataFrame.
             string_value: Exact value to keep.
             value_column: Name of the column to filter on. Default ``"value_string"``.
+
+        Returns:
+            The rows whose value equals ``string_value``, in input order.
         """
         Base._validate_column(dataframe, value_column)
         return dataframe[dataframe[value_column] == string_value]
@@ -78,6 +85,10 @@ class StringFilter(Base):
             dataframe: Input DataFrame.
             string_value: Exact value to drop.
             value_column: Name of the column to filter on. Default ``"value_string"``.
+
+        Returns:
+            The rows whose value differs from ``string_value`` (missing
+                values included), in input order.
         """
         Base._validate_column(dataframe, value_column)
         return dataframe[dataframe[value_column] != string_value]
@@ -102,6 +113,9 @@ class StringFilter(Base):
             value_column: Name of the column to filter on. Default ``"value_string"``.
             regex: If False (default), match ``substring`` literally; if True,
                 treat it as a regular expression.
+
+        Returns:
+            The rows whose value contains ``substring``, in input order.
         """
         Base._validate_column(dataframe, value_column)
         mask = _text(dataframe[value_column]).str.contains(

@@ -187,10 +187,17 @@ def summarize_groups(
 ) -> pd.DataFrame:
     """Statistics of ``value_column`` per group of ``keys``.
 
-    ``keys`` is anything ``DataFrame.groupby`` accepts as a list (column names,
-    a :class:`pandas.Grouper`). Groups with fewer than ``min_count`` non-NaN
-    values are dropped. Returns the group keys as columns (named after the
-    groupby levels), ``sample_count`` and the statistics, ordered by key.
+    Args:
+        dataframe: Input frame.
+        keys: Anything ``DataFrame.groupby`` accepts as a list (column names,
+            a :class:`pandas.Grouper`).
+        value_column: Column holding the values; text is read as NaN.
+        min_count: Groups with fewer non-NaN values are dropped.
+
+    Returns:
+        One row per group, ordered by key: the group keys as columns (named
+            after the groupby levels), ``sample_count`` and the statistics of
+            :data:`STAT_ORDER`.
     """
     gb = dataframe.groupby(keys, sort=True, observed=True, dropna=True)
     codes = gb.ngroup().to_numpy(dtype=np.int64, na_value=-1)
