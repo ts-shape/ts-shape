@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 
 import ts_shape
-from tests.invariants import harness as H
+from invariants import harness as H
 
 
 def _plant(n: int, start: str, tz: str | None = None) -> pd.DataFrame:

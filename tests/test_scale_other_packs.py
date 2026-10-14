@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 import ts_shape
-from tests.invariants import harness as H
+from invariants import harness as H
 
 ROWS_PER_SIGNAL = 10_000  # five dense signals + a setpoint -> ~50k rows
 TOTAL_BUDGET_S = 90.0
