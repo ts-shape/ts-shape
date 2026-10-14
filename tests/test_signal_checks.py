@@ -62,3 +62,24 @@ def test_empty_frame_is_silent():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert ChangePointEvents(empty, "anything").detect_change_points().empty
+
+
+def test_signals_in_a_frame_passed_to_the_method_do_not_warn():
+    import warnings
+
+    import pandas as pd
+
+    import ts_shape
+    from ts_shape.errors import DataQualityWarning
+
+    t = pd.date_range("2024-01-01", periods=12, freq="1h")
+    state = pd.DataFrame(
+        {"systime": t, "uuid": "state", "value_bool": [True] * 4 + [False] * 8}
+    )
+    production = pd.DataFrame({"systime": t, "uuid": "count", "value_integer": 1})
+    ev = ts_shape.LongDowntimeEvents(state, "state")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DataQualityWarning)
+        ev.count_events_between_gaps(production, "count")
+    with pytest.warns(DataQualityWarning, match="nope"):
+        ev.count_events_between_gaps(production, "nope")

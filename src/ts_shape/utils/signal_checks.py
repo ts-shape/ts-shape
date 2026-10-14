@@ -83,6 +83,12 @@ def check_signals(obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict) -
             f"signal {requested[0][1]!r} in. Columns: {list(frame.columns)}"
         )
     present = set(frame[column].dropna().astype(str).unique())
+    # A method that also takes its own frame (production_df, report_df ...)
+    # may name signals that live there.
+    for value in bound.arguments.values():
+        if value is not frame and isinstance(value, pd.DataFrame):
+            if column in value.columns:
+                present |= set(value[column].dropna().astype(str).unique())
     missing = [(n, u) for n, u in requested if u not in present]
     if missing:
         shown = sorted(present)[:10]
