@@ -9,6 +9,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._compat import summary_bounds, warn_dict_return
+from ts_shape.events._output import drop_duplicate_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
 from ts_shape.utils.normalize import _caller_stacklevel
@@ -309,7 +310,8 @@ class ToleranceDeviationEvents(Base):
 
         # Every event row is about the actual measurement signal.
         df["source_uuid"] = self.actual_uuid
-        return df
+        # Duplicated input samples would report the same row twice.
+        return drop_duplicate_events(df)
 
     def _process_single_tolerance(self, df: pd.DataFrame) -> pd.DataFrame:
         """

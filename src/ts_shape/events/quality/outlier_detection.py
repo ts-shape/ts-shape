@@ -5,7 +5,11 @@ import numpy as np
 import pandas as pd
 from scipy.stats import zscore
 
-from ts_shape.events._output import empty_event_df, finalize_point_df
+from ts_shape.events._output import (
+    drop_duplicate_events,
+    empty_event_df,
+    finalize_point_df,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
@@ -140,7 +144,10 @@ class OutlierDetectionEvents(Base):
             events_df = events_df.rename(columns={"uuid": "source_uuid"})
         events_df = events_df.drop(columns=["outlier", "group_id"], errors="ignore")
 
-        return finalize_point_df(events_df, uuid=self.event_uuid, source_uuid=None)
+        # Duplicated input samples would report the same outlier twice.
+        return drop_duplicate_events(
+            finalize_point_df(events_df, uuid=self.event_uuid, source_uuid=None)
+        )
 
     def _detect(
         self,

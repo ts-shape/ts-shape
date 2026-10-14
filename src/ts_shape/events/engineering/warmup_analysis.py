@@ -78,11 +78,14 @@ class WarmUpCoolDownEvents(Base):
             return []
 
         min_td = pd.Timedelta(min_duration)
+        # A repeated sample (same time and value) is not a pause in a ramp.
         sig = (
             self.signal[[self.time_column, self.value_column]]
-            .copy()
+            .drop_duplicates()
             .reset_index(drop=True)
         )
+        if len(sig) < 3:
+            return []
         vals = sig[self.value_column].values
         times = sig[self.time_column].array
 
