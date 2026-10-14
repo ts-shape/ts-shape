@@ -23,6 +23,9 @@ small synthetic plant dataset:
 ``empty_schema``
     On empty input the result has the same columns as on real data, so code
     written against the normal output also works when nothing was found.
+``dtypes``
+    The same data with pandas nullable dtypes, with pyarrow dtypes, and with
+    numbers stored as text gives the same result as with NumPy dtypes.
 
 Each check yields a status string: ``"ok"``, ``"fail: <reason>"``, or
 ``"n/a: <reason>"`` (the harness could not build a valid call -- e.g. a
@@ -51,7 +54,7 @@ from ts_shape.eventlog.taxonomy import REGISTRY
 
 BASELINE = Path(__file__).with_name("baseline.json")
 BERLIN = "Europe/Berlin"
-CHECKS = ("empty", "tz", "extra_uuid", "shape", "empty_schema")
+CHECKS = ("empty", "tz", "extra_uuid", "shape", "empty_schema", "dtypes")
 
 CONT, CONT2, STATE, COUNTER, SETPOINT, TEXT = (
     "sig:cont",
@@ -409,6 +412,14 @@ def _same(a: Any, b: Any) -> bool:
     for x, y in zip(fa, fb, strict=True):
         x = x.drop(columns=[c for c in x.columns if "uuid" in str(c)], errors="ignore")
         y = y.drop(columns=[c for c in y.columns if "uuid" in str(c)], errors="ignore")
+        x, y = x.reset_index(drop=True), y.reset_index(drop=True)
+        # Timestamps computed from floats may differ by float noise (ns).
+        for col in x.columns:
+            if col in y.columns and pd.api.types.is_datetime64_any_dtype(x[col]):
+                if pd.api.types.is_datetime64_any_dtype(y[col]) and len(x) == len(y):
+                    close = (x[col] - y[col]).abs() <= pd.Timedelta("1us")
+                    if bool((close | (x[col].isna() & y[col].isna())).all()):
+                        y[col] = x[col]
         try:
             pd.testing.assert_frame_equal(
                 x.reset_index(drop=True),
@@ -446,6 +457,18 @@ def _shape_problem(result: Any, shape: str) -> str | None:
         if not pd.api.types.is_numeric_dtype(result["duration_seconds"]):
             return "duration_seconds is not numeric"
     return None
+
+
+def dtype_variants(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """The same data in the dtype backends users load it with."""
+    text = df.copy()
+    for col in ("value_double", "value_integer"):
+        text[col] = [None if pd.isna(v) else repr(v) for v in df[col]]
+    return {
+        "nullable": df.convert_dtypes(dtype_backend="numpy_nullable"),
+        "pyarrow": df.convert_dtypes(dtype_backend="pyarrow"),
+        "text numbers": text,
+    }
 
 
 def check(cls_name: str, method: str) -> dict[str, str]:
@@ -492,6 +515,18 @@ def check(cls_name: str, method: str) -> dict[str, str]:
             status["extra_uuid"] = (
                 "ok" if _same(plain, noisy) else "fail: result changed"
             )
+    if plain_status != "ok":
+        status["dtypes"] = plain_status
+    else:
+        status["dtypes"] = "ok"
+        for name, variant in dtype_variants(base).items():
+            v_status, v_result = _run(cls, method, variant)
+            if v_status != "ok":
+                status["dtypes"] = f"{v_status} ({name})"
+                break
+            if not _same(plain, v_result):
+                status["dtypes"] = f"fail: result changed ({name})"
+                break
     return status
 
 

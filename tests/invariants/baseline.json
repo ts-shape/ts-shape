@@ -1,5 +1,6 @@
 {
  "AlarmManagementEvents.alarm_duration_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -7,6 +8,7 @@
   "tz": "ok"
  },
  "AlarmManagementEvents.alarm_frequency": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -14,6 +16,7 @@
   "tz": "ok"
  },
  "AlarmManagementEvents.chattering_detection": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -21,6 +24,7 @@
   "tz": "ok"
  },
  "AlarmManagementEvents.standing_alarms": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -28,6 +32,7 @@
   "tz": "ok"
  },
  "AnomalyClassificationEvents.classify_anomalies": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -35,6 +40,7 @@
   "tz": "ok"
  },
  "AnomalyClassificationEvents.detect_drift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -42,6 +48,7 @@
   "tz": "ok"
  },
  "AnomalyClassificationEvents.detect_flatline": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -49,6 +56,7 @@
   "tz": "ok"
  },
  "AnomalyClassificationEvents.detect_oscillation": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -56,6 +64,7 @@
   "tz": "ok"
  },
  "AnomalyCorrelationEvents.cascade_detection": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -63,6 +72,7 @@
   "tz": "ok"
  },
  "AnomalyCorrelationEvents.coincident_anomalies": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -70,6 +80,7 @@
   "tz": "ok"
  },
  "AnomalyCorrelationEvents.root_cause_ranking": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -77,6 +88,7 @@
   "tz": "ok"
  },
  "AssetHealthIndexEvents.health_events": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -84,6 +96,7 @@
   "tz": "ok"
  },
  "AssetHealthIndexEvents.health_index": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -91,6 +104,7 @@
   "tz": "ok"
  },
  "AssetHealthIndexEvents.maintenance_forecast": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -98,6 +112,7 @@
   "tz": "ok"
  },
  "AssetHealthIndexEvents.signal_contributions": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -105,6 +120,7 @@
   "tz": "ok"
  },
  "BatchTrackingEvents.batch_duration_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -112,6 +128,7 @@
   "tz": "ok"
  },
  "BatchTrackingEvents.batch_transition_matrix": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -119,6 +136,7 @@
   "tz": "ok"
  },
  "BatchTrackingEvents.batch_yield": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -126,6 +144,7 @@
   "tz": "ok"
  },
  "BatchTrackingEvents.detect_batches": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -133,6 +152,7 @@
   "tz": "ok"
  },
  "BottleneckDetectionEvents.detect_bottleneck": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -140,6 +160,7 @@
   "tz": "ok"
  },
  "BottleneckDetectionEvents.shifting_bottleneck": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -147,6 +168,7 @@
   "tz": "ok"
  },
  "BottleneckDetectionEvents.station_utilization": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -154,6 +176,7 @@
   "tz": "ok"
  },
  "CalibrationValidationEvents.calibration_curve": {
+  "dtypes": "n/a: classmethod without a dataframe first parameter",
   "empty": "n/a: classmethod without a dataframe first parameter",
   "empty_schema": "n/a: classmethod without a dataframe first parameter",
   "extra_uuid": "n/a: classmethod without a dataframe first parameter",
@@ -161,6 +184,7 @@
   "tz": "n/a: classmethod without a dataframe first parameter"
  },
  "CalibrationValidationEvents.calibration_stability": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -168,6 +192,7 @@
   "tz": "ok"
  },
  "CalibrationValidationEvents.detect_recalibration_need": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -175,6 +200,7 @@
   "tz": "ok"
  },
  "CalibrationValidationEvents.linearity_assessment": {
+  "dtypes": "n/a: classmethod without a dataframe first parameter",
   "empty": "n/a: classmethod without a dataframe first parameter",
   "empty_schema": "n/a: classmethod without a dataframe first parameter",
   "extra_uuid": "n/a: classmethod without a dataframe first parameter",
@@ -182,6 +208,7 @@
   "tz": "n/a: classmethod without a dataframe first parameter"
  },
  "CapabilityTrendingEvents.capability_forecast": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -189,6 +216,7 @@
   "tz": "ok"
  },
  "CapabilityTrendingEvents.capability_over_time": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -196,6 +224,7 @@
   "tz": "ok"
  },
  "CapabilityTrendingEvents.detect_capability_drop": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -203,6 +232,7 @@
   "tz": "ok"
  },
  "CapabilityTrendingEvents.yield_estimate": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -210,6 +240,7 @@
   "tz": "ok"
  },
  "CarbonIntensityEvents.carbon_intensity_per_unit": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -217,6 +248,7 @@
   "tz": "ok"
  },
  "CarbonIntensityEvents.emission_factor_audit": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -224,6 +256,7 @@
   "tz": "ok"
  },
  "CarbonIntensityEvents.emissions_by_window": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -231,6 +264,7 @@
   "tz": "ok"
  },
  "CarbonIntensityEvents.total_emissions_by_window": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -238,6 +272,7 @@
   "tz": "ok"
  },
  "ChangePointEvents.detect_change_points": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -245,6 +280,7 @@
   "tz": "ok"
  },
  "ChangePointEvents.segment_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -252,6 +288,7 @@
   "tz": "ok"
  },
  "ChangeoverEvents.changeover_quality_metrics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -259,6 +296,7 @@
   "tz": "ok"
  },
  "ChangeoverEvents.changeover_window": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -266,6 +304,7 @@
   "tz": "ok"
  },
  "ChangeoverEvents.detect_changeover": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -273,6 +312,7 @@
   "tz": "ok"
  },
  "ContinuousProcessAlignmentEvents.align_to_reference": {
+  "dtypes": "n/a: no rule for mapping parameter 'line_config'",
   "empty": "n/a: no rule for mapping parameter 'line_config'",
   "empty_schema": "n/a: no rule for mapping parameter 'line_config'",
   "extra_uuid": "n/a: no rule for mapping parameter 'line_config'",
@@ -280,6 +320,7 @@
   "tz": "n/a: no rule for mapping parameter 'line_config'"
  },
  "ContinuousProcessAlignmentEvents.alignment_quality": {
+  "dtypes": "n/a: no rule for mapping parameter 'line_config'",
   "empty": "n/a: no rule for mapping parameter 'line_config'",
   "empty_schema": "n/a: no rule for mapping parameter 'line_config'",
   "extra_uuid": "n/a: no rule for mapping parameter 'line_config'",
@@ -287,6 +328,7 @@
   "tz": "n/a: no rule for mapping parameter 'line_config'"
  },
  "ContinuousProcessAlignmentEvents.lag_profile": {
+  "dtypes": "n/a: no rule for mapping parameter 'line_config'",
   "empty": "n/a: no rule for mapping parameter 'line_config'",
   "empty_schema": "n/a: no rule for mapping parameter 'line_config'",
   "extra_uuid": "n/a: no rule for mapping parameter 'line_config'",
@@ -294,6 +336,7 @@
   "tz": "n/a: no rule for mapping parameter 'line_config'"
  },
  "ContinuousProcessAlignmentEvents.segment_by_cut": {
+  "dtypes": "n/a: no rule for required parameter 'aligned_df'",
   "empty": "n/a: no rule for required parameter 'aligned_df'",
   "empty_schema": "n/a: no rule for required parameter 'aligned_df'",
   "extra_uuid": "n/a: no rule for required parameter 'aligned_df'",
@@ -301,6 +344,7 @@
   "tz": "n/a: no rule for required parameter 'aligned_df'"
  },
  "ControlLoopHealthEvents.detect_oscillation": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -308,6 +352,7 @@
   "tz": "ok"
  },
  "ControlLoopHealthEvents.error_integrals": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -315,6 +360,7 @@
   "tz": "ok"
  },
  "ControlLoopHealthEvents.loop_health_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -322,6 +368,7 @@
   "tz": "ok"
  },
  "ControlLoopHealthEvents.output_saturation": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -329,6 +376,7 @@
   "tz": "ok"
  },
  "CriticalParameterRankingEvents.rank": {
+  "dtypes": "n/a: no rule for required parameter 'per_run_df'",
   "empty": "n/a: no rule for required parameter 'per_run_df'",
   "empty_schema": "n/a: no rule for required parameter 'per_run_df'",
   "extra_uuid": "n/a: no rule for required parameter 'per_run_df'",
@@ -336,6 +384,7 @@
   "tz": "n/a: no rule for required parameter 'per_run_df'"
  },
  "CriticalParameterRankingEvents.top_drivers": {
+  "dtypes": "n/a: no rule for required parameter 'per_run_df'",
   "empty": "n/a: no rule for required parameter 'per_run_df'",
   "empty_schema": "n/a: no rule for required parameter 'per_run_df'",
   "extra_uuid": "n/a: no rule for required parameter 'per_run_df'",
@@ -343,6 +392,7 @@
   "tz": "n/a: no rule for required parameter 'per_run_df'"
  },
  "CycleTimeEvents.cycle_time_by_part": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -350,6 +400,7 @@
   "tz": "ok"
  },
  "CycleTimeEvents.cycle_time_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -357,6 +408,7 @@
   "tz": "ok"
  },
  "CycleTimeEvents.cycle_time_trend": {
+  "dtypes": "n/a: no rule for required parameter 'part_number'",
   "empty": "n/a: no rule for required parameter 'part_number'",
   "empty_schema": "n/a: no rule for required parameter 'part_number'",
   "extra_uuid": "n/a: no rule for required parameter 'part_number'",
@@ -364,6 +416,7 @@
   "tz": "n/a: no rule for required parameter 'part_number'"
  },
  "CycleTimeEvents.detect_slow_cycles": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -371,6 +424,7 @@
   "tz": "ok"
  },
  "CycleTimeEvents.hourly_cycle_time_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -378,6 +432,7 @@
   "tz": "ok"
  },
  "DataGapAnalysisEvents.coverage_by_period": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -385,6 +440,7 @@
   "tz": "ok"
  },
  "DataGapAnalysisEvents.detect_gaps": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -392,6 +448,7 @@
   "tz": "ok"
  },
  "DataGapAnalysisEvents.gap_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -399,6 +456,7 @@
   "tz": "ok"
  },
  "DataGapAnalysisEvents.interpolation_candidates": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -406,6 +464,7 @@
   "tz": "ok"
  },
  "DegradationDetectionEvents.detect_level_shift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -413,6 +472,7 @@
   "tz": "ok"
  },
  "DegradationDetectionEvents.detect_trend_degradation": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -420,6 +480,7 @@
   "tz": "ok"
  },
  "DegradationDetectionEvents.detect_variance_increase": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -427,6 +488,7 @@
   "tz": "ok"
  },
  "DegradationDetectionEvents.health_score": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -434,6 +496,7 @@
   "tz": "ok"
  },
  "DemandPatternEvents.demand_by_period": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -441,6 +504,7 @@
   "tz": "ok"
  },
  "DemandPatternEvents.detect_demand_spikes": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -448,6 +512,7 @@
   "tz": "ok"
  },
  "DemandPatternEvents.seasonality_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -455,6 +520,7 @@
   "tz": "ok"
  },
  "DesignOfExperimentsEvents.detect_runs": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -462,6 +528,7 @@
   "tz": "ok"
  },
  "DesignOfExperimentsEvents.effects": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -469,6 +536,7 @@
   "tz": "ok"
  },
  "DesignSpaceEvents.boundary_proximity": {
+  "dtypes": "n/a: no rule for required parameter 'operation_df'",
   "empty": "n/a: no rule for required parameter 'operation_df'",
   "empty_schema": "n/a: no rule for required parameter 'operation_df'",
   "extra_uuid": "n/a: no rule for required parameter 'operation_df'",
@@ -476,6 +544,7 @@
   "tz": "n/a: no rule for required parameter 'operation_df'"
  },
  "DesignSpaceEvents.detect_excursions": {
+  "dtypes": "n/a: no rule for required parameter 'operation_df'",
   "empty": "n/a: no rule for required parameter 'operation_df'",
   "empty_schema": "n/a: no rule for required parameter 'operation_df'",
   "extra_uuid": "n/a: no rule for required parameter 'operation_df'",
@@ -483,6 +552,7 @@
   "tz": "n/a: no rule for required parameter 'operation_df'"
  },
  "DisturbanceRecoveryEvents.before_after_comparison": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -490,6 +560,7 @@
   "tz": "ok"
  },
  "DisturbanceRecoveryEvents.detect_disturbances": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -497,6 +568,7 @@
   "tz": "ok"
  },
  "DisturbanceRecoveryEvents.disturbance_frequency": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -504,6 +576,7 @@
   "tz": "ok"
  },
  "DisturbanceRecoveryEvents.recovery_time": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -511,6 +584,7 @@
   "tz": "ok"
  },
  "DowntimeEvents.availability_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -518,6 +592,7 @@
   "tz": "ok"
  },
  "DowntimeEvents.downtime_by_reason": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -525,6 +600,7 @@
   "tz": "ok"
  },
  "DowntimeEvents.downtime_by_shift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -532,6 +608,7 @@
   "tz": "ok"
  },
  "DowntimeEvents.top_downtime_reasons": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -539,6 +616,7 @@
   "tz": "ok"
  },
  "DutyCycleEvents.cycle_count": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -546,6 +624,7 @@
   "tz": "ok"
  },
  "DutyCycleEvents.duty_cycle_by_window": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -553,6 +632,7 @@
   "tz": "ok"
  },
  "DutyCycleEvents.excessive_cycling": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -560,6 +640,7 @@
   "tz": "ok"
  },
  "DutyCycleEvents.on_off_intervals": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -567,6 +648,7 @@
   "tz": "ok"
  },
  "EnergyConsumptionEvents.consumption_baseline_deviation": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -574,6 +656,7 @@
   "tz": "ok"
  },
  "EnergyConsumptionEvents.consumption_by_window": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -581,6 +664,7 @@
   "tz": "ok"
  },
  "EnergyConsumptionEvents.energy_per_unit": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -588,6 +672,7 @@
   "tz": "ok"
  },
  "EnergyConsumptionEvents.normalize": {
+  "dtypes": "n/a: no rule for required parameter 'series_id'",
   "empty": "n/a: no rule for required parameter 'series_id'",
   "empty_schema": "n/a: no rule for required parameter 'series_id'",
   "extra_uuid": "n/a: no rule for required parameter 'series_id'",
@@ -595,6 +680,7 @@
   "tz": "n/a: no rule for required parameter 'series_id'"
  },
  "EnergyConsumptionEvents.peak_demand_detection": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -602,6 +688,7 @@
   "tz": "ok"
  },
  "EnergyEfficiencyEvents.efficiency_comparison": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -609,6 +696,7 @@
   "tz": "ok"
  },
  "EnergyEfficiencyEvents.efficiency_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -616,6 +704,7 @@
   "tz": "ok"
  },
  "EnergyEfficiencyEvents.idle_energy_waste": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -623,6 +712,7 @@
   "tz": "ok"
  },
  "EnergyEfficiencyEvents.normalize": {
+  "dtypes": "n/a: no rule for required parameter 'series_id'",
   "empty": "n/a: no rule for required parameter 'series_id'",
   "empty_schema": "n/a: no rule for required parameter 'series_id'",
   "extra_uuid": "n/a: no rule for required parameter 'series_id'",
@@ -630,6 +720,7 @@
   "tz": "n/a: no rule for required parameter 'series_id'"
  },
  "EnergyEfficiencyEvents.specific_energy_consumption": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -637,6 +728,7 @@
   "tz": "ok"
  },
  "EnergyPerformanceIndicatorEvents.enpi_by_hierarchy": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -644,6 +736,7 @@
   "tz": "ok"
  },
  "EnergyPerformanceIndicatorEvents.enpi_by_window": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -651,6 +744,7 @@
   "tz": "ok"
  },
  "EnergyPerformanceIndicatorEvents.enpi_vs_baseline": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -658,6 +752,7 @@
   "tz": "ok"
  },
  "EnvironmentalCompensationEvents.compensated_signal": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -665,6 +760,7 @@
   "tz": "ok"
  },
  "EnvironmentalCompensationEvents.detect_correlation": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -672,6 +768,7 @@
   "tz": "ok"
  },
  "EnvironmentalCompensationEvents.detect_env_exceedance": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -679,6 +776,7 @@
   "tz": "ok"
  },
  "EnvironmentalCompensationEvents.sensitivity": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -686,6 +784,7 @@
   "tz": "ok"
  },
  "FailurePredictionEvents.detect_exceedance_pattern": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -693,6 +792,7 @@
   "tz": "ok"
  },
  "FailurePredictionEvents.remaining_useful_life": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -700,6 +800,7 @@
   "tz": "ok"
  },
  "FailurePredictionEvents.time_to_threshold": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -707,6 +808,7 @@
   "tz": "ok"
  },
  "FlowConstraintEvents.blocked_events": {
+  "dtypes": "n/a: no rule for mapping parameter 'roles'",
   "empty": "n/a: no rule for mapping parameter 'roles'",
   "empty_schema": "n/a: no rule for mapping parameter 'roles'",
   "extra_uuid": "n/a: no rule for mapping parameter 'roles'",
@@ -714,6 +816,7 @@
   "tz": "n/a: no rule for mapping parameter 'roles'"
  },
  "FlowConstraintEvents.starved_events": {
+  "dtypes": "n/a: no rule for mapping parameter 'roles'",
   "empty": "n/a: no rule for mapping parameter 'roles'",
   "empty_schema": "n/a: no rule for mapping parameter 'roles'",
   "extra_uuid": "n/a: no rule for mapping parameter 'roles'",
@@ -721,6 +824,7 @@
   "tz": "n/a: no rule for mapping parameter 'roles'"
  },
  "FlowMetricsEvents.flow_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -728,6 +832,7 @@
   "tz": "ok"
  },
  "FlowMetricsEvents.lead_time": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -735,6 +840,7 @@
   "tz": "ok"
  },
  "FlowMetricsEvents.throughput": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -742,6 +848,7 @@
   "tz": "ok"
  },
  "FlowMetricsEvents.wip_over_time": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -749,6 +856,7 @@
   "tz": "ok"
  },
  "GaugeRepeatabilityEvents.gauge_rr_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -756,6 +864,7 @@
   "tz": "ok"
  },
  "GaugeRepeatabilityEvents.measurement_bias": {
+  "dtypes": "n/a: no rule for mapping parameter 'reference_values'",
   "empty": "n/a: no rule for mapping parameter 'reference_values'",
   "empty_schema": "n/a: no rule for mapping parameter 'reference_values'",
   "extra_uuid": "n/a: no rule for mapping parameter 'reference_values'",
@@ -763,6 +872,7 @@
   "tz": "n/a: no rule for mapping parameter 'reference_values'"
  },
  "GaugeRepeatabilityEvents.repeatability": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -770,6 +880,7 @@
   "tz": "ok"
  },
  "GaugeRepeatabilityEvents.reproducibility": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -777,6 +888,7 @@
   "tz": "ok"
  },
  "GoldenBatchDeviationEvents.compare": {
+  "dtypes": "n/a: no rule for required parameter 'batch_df'",
   "empty": "n/a: no rule for required parameter 'batch_df'",
   "empty_schema": "n/a: no rule for required parameter 'batch_df'",
   "extra_uuid": "n/a: no rule for required parameter 'batch_df'",
@@ -784,6 +896,7 @@
   "tz": "n/a: no rule for required parameter 'batch_df'"
  },
  "GoldenBatchDeviationEvents.phase_breakdown": {
+  "dtypes": "n/a: no rule for required parameter 'batch_df'",
   "empty": "n/a: no rule for required parameter 'batch_df'",
   "empty_schema": "n/a: no rule for required parameter 'batch_df'",
   "extra_uuid": "n/a: no rule for required parameter 'batch_df'",
@@ -791,6 +904,7 @@
   "tz": "n/a: no rule for required parameter 'batch_df'"
  },
  "IdleEnergyDetectionEvents.idle_energy_by_shift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -798,6 +912,7 @@
   "tz": "ok"
  },
  "IdleEnergyDetectionEvents.idle_energy_by_window": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -805,6 +920,7 @@
   "tz": "ok"
  },
  "IdleEnergyDetectionEvents.idle_energy_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -812,6 +928,7 @@
   "tz": "ok"
  },
  "InventoryMonitoringEvents.consumption_rate": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -819,6 +936,7 @@
   "tz": "ok"
  },
  "InventoryMonitoringEvents.detect_low_stock": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -826,6 +944,7 @@
   "tz": "ok"
  },
  "InventoryMonitoringEvents.reorder_point_breach": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -833,6 +952,7 @@
   "tz": "ok"
  },
  "InventoryMonitoringEvents.stockout_prediction": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -840,6 +960,7 @@
   "tz": "ok"
  },
  "LeadTimeAnalysisEvents.detect_lead_time_anomalies": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -847,6 +968,7 @@
   "tz": "ok"
  },
  "LeadTimeAnalysisEvents.lead_time_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -854,6 +976,7 @@
   "tz": "ok"
  },
  "LeadTimeAnalysisEvents.lead_times": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -861,6 +984,7 @@
   "tz": "ok"
  },
  "LineBalancingEvents.balance_metrics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -868,6 +992,7 @@
   "tz": "ok"
  },
  "LineBalancingEvents.station_cycle_times": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -875,6 +1000,7 @@
   "tz": "ok"
  },
  "LineBalancingEvents.yamazumi": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -882,6 +1008,7 @@
   "tz": "ok"
  },
  "LineThroughputEvents.count_parts": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -889,6 +1016,7 @@
   "tz": "ok"
  },
  "LineThroughputEvents.cycle_quality_check": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -896,6 +1024,7 @@
   "tz": "ok"
  },
  "LineThroughputEvents.takt_adherence": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -903,6 +1032,7 @@
   "tz": "ok"
  },
  "LineThroughputEvents.throughput_oee": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -910,6 +1040,7 @@
   "tz": "ok"
  },
  "LineThroughputEvents.throughput_trends": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -917,6 +1048,7 @@
   "tz": "ok"
  },
  "LongDowntimeEvents.count_events_between_gaps": {
+  "dtypes": "n/a: no rule for required parameter 'production_df'",
   "empty": "n/a: no rule for required parameter 'production_df'",
   "empty_schema": "n/a: no rule for required parameter 'production_df'",
   "extra_uuid": "n/a: no rule for required parameter 'production_df'",
@@ -924,6 +1056,7 @@
   "tz": "n/a: no rule for required parameter 'production_df'"
  },
  "LongDowntimeEvents.detect_long_downtime": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -931,6 +1064,7 @@
   "tz": "ok"
  },
  "MachineStateEvents.detect_rapid_transitions": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -938,6 +1072,7 @@
   "tz": "ok"
  },
  "MachineStateEvents.detect_run_idle": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -945,6 +1080,7 @@
   "tz": "ok"
  },
  "MachineStateEvents.transition_events": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -952,6 +1088,7 @@
   "tz": "ok"
  },
  "MaterialBalanceEvents.balance_check": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -959,6 +1096,7 @@
   "tz": "ok"
  },
  "MaterialBalanceEvents.contribution_breakdown": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -966,6 +1104,7 @@
   "tz": "ok"
  },
  "MaterialBalanceEvents.detect_balance_exceedance": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -973,6 +1112,7 @@
   "tz": "ok"
  },
  "MaterialBalanceEvents.imbalance_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -980,6 +1120,7 @@
   "tz": "ok"
  },
  "MeasurementUncertaintyEvents.combined_uncertainty": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -987,6 +1128,7 @@
   "tz": "ok"
  },
  "MeasurementUncertaintyEvents.type_a_uncertainty": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -994,6 +1136,7 @@
   "tz": "ok"
  },
  "MeasurementUncertaintyEvents.type_b_uncertainty": {
+  "dtypes": "n/a: classmethod without a dataframe first parameter",
   "empty": "n/a: classmethod without a dataframe first parameter",
   "empty_schema": "n/a: classmethod without a dataframe first parameter",
   "extra_uuid": "n/a: classmethod without a dataframe first parameter",
@@ -1001,6 +1144,7 @@
   "tz": "n/a: classmethod without a dataframe first parameter"
  },
  "MeasurementUncertaintyEvents.uncertainty_budget": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1008,6 +1152,7 @@
   "tz": "ok"
  },
  "MicroStopEvents.detect_micro_stops": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1015,6 +1160,7 @@
   "tz": "ok"
  },
  "MicroStopEvents.micro_stop_frequency": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1022,6 +1168,7 @@
   "tz": "ok"
  },
  "MicroStopEvents.micro_stop_impact": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1029,6 +1176,7 @@
   "tz": "ok"
  },
  "MicroStopEvents.micro_stop_patterns": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1036,6 +1184,7 @@
   "tz": "ok"
  },
  "MultiProcessTraceabilityEvents.build_timeline": {
+  "dtypes": "n/a: no rule for mapping parameter 'processes'",
   "empty": "n/a: no rule for mapping parameter 'processes'",
   "empty_schema": "n/a: no rule for mapping parameter 'processes'",
   "extra_uuid": "n/a: no rule for mapping parameter 'processes'",
@@ -1043,6 +1192,7 @@
   "tz": "n/a: no rule for mapping parameter 'processes'"
  },
  "MultiProcessTraceabilityEvents.handover_log": {
+  "dtypes": "n/a: no rule for mapping parameter 'processes'",
   "empty": "n/a: no rule for mapping parameter 'processes'",
   "empty_schema": "n/a: no rule for mapping parameter 'processes'",
   "extra_uuid": "n/a: no rule for mapping parameter 'processes'",
@@ -1050,6 +1200,7 @@
   "tz": "n/a: no rule for mapping parameter 'processes'"
  },
  "MultiProcessTraceabilityEvents.lead_time": {
+  "dtypes": "n/a: no rule for mapping parameter 'processes'",
   "empty": "n/a: no rule for mapping parameter 'processes'",
   "empty_schema": "n/a: no rule for mapping parameter 'processes'",
   "extra_uuid": "n/a: no rule for mapping parameter 'processes'",
@@ -1057,6 +1208,7 @@
   "tz": "n/a: no rule for mapping parameter 'processes'"
  },
  "MultiProcessTraceabilityEvents.parallel_activity": {
+  "dtypes": "n/a: no rule for mapping parameter 'processes'",
   "empty": "n/a: no rule for mapping parameter 'processes'",
   "empty_schema": "n/a: no rule for mapping parameter 'processes'",
   "extra_uuid": "n/a: no rule for mapping parameter 'processes'",
@@ -1064,6 +1216,7 @@
   "tz": "n/a: no rule for mapping parameter 'processes'"
  },
  "MultiProcessTraceabilityEvents.routing_paths": {
+  "dtypes": "n/a: no rule for mapping parameter 'processes'",
   "empty": "n/a: no rule for mapping parameter 'processes'",
   "empty_schema": "n/a: no rule for mapping parameter 'processes'",
   "extra_uuid": "n/a: no rule for mapping parameter 'processes'",
@@ -1071,6 +1224,7 @@
   "tz": "n/a: no rule for mapping parameter 'processes'"
  },
  "MultiProcessTraceabilityEvents.station_statistics": {
+  "dtypes": "n/a: no rule for mapping parameter 'processes'",
   "empty": "n/a: no rule for mapping parameter 'processes'",
   "empty_schema": "n/a: no rule for mapping parameter 'processes'",
   "extra_uuid": "n/a: no rule for mapping parameter 'processes'",
@@ -1078,6 +1232,7 @@
   "tz": "n/a: no rule for mapping parameter 'processes'"
  },
  "MultiSensorValidationEvents.consensus_score": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1085,6 +1240,7 @@
   "tz": "ok"
  },
  "MultiSensorValidationEvents.detect_disagreement": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1092,6 +1248,7 @@
   "tz": "ok"
  },
  "MultiSensorValidationEvents.detect_outlier_sensor": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1099,6 +1256,7 @@
   "tz": "ok"
  },
  "MultiSensorValidationEvents.pairwise_bias": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1106,6 +1264,7 @@
   "tz": "ok"
  },
  "MultivariateSPCEvents.contributions": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1113,6 +1272,7 @@
   "tz": "ok"
  },
  "MultivariateSPCEvents.detect_out_of_control": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1120,6 +1280,7 @@
   "tz": "ok"
  },
  "MultivariateSPCEvents.hotelling_t2": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1127,6 +1288,7 @@
   "tz": "ok"
  },
  "OEEEvents.availability": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1134,6 +1296,7 @@
   "tz": "ok"
  },
  "OEEEvents.oee": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1141,6 +1304,7 @@
   "tz": "ok"
  },
  "OEEEvents.performance": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1148,6 +1312,7 @@
   "tz": "ok"
  },
  "OEEEvents.quality": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1155,6 +1320,7 @@
   "tz": "ok"
  },
  "OperatingRangeEvents.detect_regime_change": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1162,6 +1328,7 @@
   "tz": "ok"
  },
  "OperatingRangeEvents.operating_envelope": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1169,6 +1336,7 @@
   "tz": "ok"
  },
  "OperatingRangeEvents.time_in_range": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1176,6 +1344,7 @@
   "tz": "ok"
  },
  "OperatingRangeEvents.value_distribution": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1183,6 +1352,7 @@
   "tz": "ok"
  },
  "OperatingStateEvents.dwell_time_violation": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1190,6 +1360,7 @@
   "tz": "ok"
  },
  "OperatingStateEvents.infer_states": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1197,6 +1368,7 @@
   "tz": "ok"
  },
  "OperatingStateEvents.state_duration_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1204,6 +1376,7 @@
   "tz": "ok"
  },
  "OperatingStateEvents.unusual_state_sequence": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1211,6 +1384,7 @@
   "tz": "ok"
  },
  "OperatorPerformanceEvents.operator_comparison": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1218,6 +1392,7 @@
   "tz": "ok"
  },
  "OperatorPerformanceEvents.operator_efficiency": {
+  "dtypes": "n/a: no rule for required parameter 'target_per_shift'",
   "empty": "n/a: no rule for required parameter 'target_per_shift'",
   "empty_schema": "n/a: no rule for required parameter 'target_per_shift'",
   "extra_uuid": "n/a: no rule for required parameter 'target_per_shift'",
@@ -1225,6 +1400,7 @@
   "tz": "n/a: no rule for required parameter 'target_per_shift'"
  },
  "OperatorPerformanceEvents.production_by_operator": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1232,6 +1408,7 @@
   "tz": "ok"
  },
  "OperatorPerformanceEvents.quality_by_operator": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1239,6 +1416,7 @@
   "tz": "ok"
  },
  "OutlierDetectionEvents.detect_outliers_iqr": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1246,6 +1424,7 @@
   "tz": "ok"
  },
  "OutlierDetectionEvents.detect_outliers_isolation_forest": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1253,6 +1432,7 @@
   "tz": "ok"
  },
  "OutlierDetectionEvents.detect_outliers_mad": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1260,6 +1440,7 @@
   "tz": "ok"
  },
  "OutlierDetectionEvents.detect_outliers_zscore": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1267,6 +1448,7 @@
   "tz": "ok"
  },
  "PartProductionEvents.daily_production_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1274,6 +1456,7 @@
   "tz": "ok"
  },
  "PartProductionEvents.detect_resets": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1281,6 +1464,7 @@
   "tz": "ok"
  },
  "PartProductionEvents.production_by_part": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1288,6 +1472,7 @@
   "tz": "ok"
  },
  "PartProductionEvents.production_totals": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1295,6 +1480,7 @@
   "tz": "ok"
  },
  "PerformanceLossEvents.performance_by_shift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1302,6 +1488,7 @@
   "tz": "ok"
  },
  "PerformanceLossEvents.performance_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1309,6 +1496,7 @@
   "tz": "ok"
  },
  "PerformanceLossEvents.slow_periods": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1316,6 +1504,7 @@
   "tz": "ok"
  },
  "PeriodSummaryEvents.compare_periods": {
+  "dtypes": "n/a: no rule for required parameter 'period1'",
   "empty": "n/a: no rule for required parameter 'period1'",
   "empty_schema": "n/a: no rule for required parameter 'period1'",
   "extra_uuid": "n/a: no rule for required parameter 'period1'",
@@ -1323,6 +1512,7 @@
   "tz": "n/a: no rule for required parameter 'period1'"
  },
  "PeriodSummaryEvents.from_daily_data": {
+  "dtypes": "n/a: classmethod without a dataframe first parameter",
   "empty": "n/a: classmethod without a dataframe first parameter",
   "empty_schema": "n/a: classmethod without a dataframe first parameter",
   "extra_uuid": "n/a: classmethod without a dataframe first parameter",
@@ -1330,6 +1520,7 @@
   "tz": "n/a: classmethod without a dataframe first parameter"
  },
  "PeriodSummaryEvents.monthly_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1337,6 +1528,7 @@
   "tz": "ok"
  },
  "PeriodSummaryEvents.weekly_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1344,6 +1536,7 @@
   "tz": "ok"
  },
  "ProcessStabilityIndexEvents.score_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1351,6 +1544,7 @@
   "tz": "ok"
  },
  "ProcessStabilityIndexEvents.stability_comparison": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1358,6 +1552,7 @@
   "tz": "ok"
  },
  "ProcessStabilityIndexEvents.stability_score": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1365,6 +1560,7 @@
   "tz": "ok"
  },
  "ProcessStabilityIndexEvents.worst_periods": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1372,6 +1568,7 @@
   "tz": "ok"
  },
  "ProcessWindowEvents.detect_mean_shift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1379,6 +1576,7 @@
   "tz": "ok"
  },
  "ProcessWindowEvents.detect_variance_change": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1386,6 +1584,7 @@
   "tz": "ok"
  },
  "ProcessWindowEvents.window_comparison": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1393,6 +1592,7 @@
   "tz": "ok"
  },
  "ProcessWindowEvents.windowed_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1400,6 +1600,7 @@
   "tz": "ok"
  },
  "ProductionScheduleAdherenceEvents.adherence_by_period": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1407,6 +1608,7 @@
   "tz": "ok"
  },
  "ProductionScheduleAdherenceEvents.adherence_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1414,6 +1616,7 @@
   "tz": "ok"
  },
  "ProductionScheduleAdherenceEvents.deviation_events": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1421,6 +1624,7 @@
   "tz": "ok"
  },
  "QualityEvents.daily_quality_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1428,6 +1632,7 @@
   "tz": "ok"
  },
  "QualityEvents.nok_by_reason": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1435,6 +1640,7 @@
   "tz": "ok"
  },
  "QualityEvents.nok_by_shift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1442,6 +1648,7 @@
   "tz": "ok"
  },
  "QualityEvents.quality_by_part": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1449,6 +1656,7 @@
   "tz": "ok"
  },
  "RateOfChangeEvents.detect_rapid_change": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1456,6 +1664,7 @@
   "tz": "ok"
  },
  "RateOfChangeEvents.detect_step_changes": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1463,6 +1672,7 @@
   "tz": "ok"
  },
  "RateOfChangeEvents.rate_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1470,6 +1680,7 @@
   "tz": "ok"
  },
  "RecipePhaseAdherenceEvents.evaluate": {
+  "dtypes": "n/a: no rule for mapping parameter 'spec'",
   "empty": "n/a: no rule for mapping parameter 'spec'",
   "empty_schema": "n/a: no rule for mapping parameter 'spec'",
   "extra_uuid": "n/a: no rule for mapping parameter 'spec'",
@@ -1477,6 +1688,7 @@
   "tz": "n/a: no rule for mapping parameter 'spec'"
  },
  "ReliabilityEvents.failure_events": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1484,6 +1696,7 @@
   "tz": "ok"
  },
  "ReliabilityEvents.mtbf_mttr": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1491,6 +1704,7 @@
   "tz": "ok"
  },
  "ReliabilityEvents.reliability_at": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1498,6 +1712,7 @@
   "tz": "ok"
  },
  "ReliabilityEvents.weibull_fit": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1505,6 +1720,7 @@
   "tz": "ok"
  },
  "ReworkEvents.rework_by_reason": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1512,6 +1728,7 @@
   "tz": "ok"
  },
  "ReworkEvents.rework_by_shift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1519,6 +1736,7 @@
   "tz": "ok"
  },
  "ReworkEvents.rework_cost": {
+  "dtypes": "n/a: no rule for mapping parameter 'rework_costs'",
   "empty": "n/a: no rule for mapping parameter 'rework_costs'",
   "empty_schema": "n/a: no rule for mapping parameter 'rework_costs'",
   "extra_uuid": "n/a: no rule for mapping parameter 'rework_costs'",
@@ -1526,6 +1744,7 @@
   "tz": "n/a: no rule for mapping parameter 'rework_costs'"
  },
  "ReworkEvents.rework_rate": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1533,6 +1752,7 @@
   "tz": "ok"
  },
  "ReworkEvents.rework_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1540,6 +1760,7 @@
   "tz": "ok"
  },
  "RootCauseCorrelationEvents.lag_profile": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1547,6 +1768,7 @@
   "tz": "ok"
  },
  "RootCauseCorrelationEvents.rank_causes": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1554,6 +1776,7 @@
   "tz": "ok"
  },
  "RootCauseCorrelationEvents.top_cause": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1561,6 +1784,7 @@
   "tz": "ok"
  },
  "RoutingTraceabilityEvents.build_routing_timeline": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1568,6 +1792,7 @@
   "tz": "ok"
  },
  "RoutingTraceabilityEvents.lead_time": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1575,6 +1800,7 @@
   "tz": "ok"
  },
  "RoutingTraceabilityEvents.routing_paths": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1582,6 +1808,7 @@
   "tz": "ok"
  },
  "RoutingTraceabilityEvents.station_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1589,6 +1816,7 @@
   "tz": "ok"
  },
  "RuntimeAccountingEvents.operating_hours_meter": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1596,6 +1824,7 @@
   "tz": "ok"
  },
  "RuntimeAccountingEvents.runtime_by_window": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1603,6 +1832,7 @@
   "tz": "ok"
  },
  "RuntimeAccountingEvents.runtime_summary": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1610,6 +1840,7 @@
   "tz": "ok"
  },
  "SamplingResolutionEvents.detect_aliasing": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1617,6 +1848,7 @@
   "tz": "ok"
  },
  "SamplingResolutionEvents.detect_quantization": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1624,6 +1856,7 @@
   "tz": "ok"
  },
  "SamplingResolutionEvents.effective_resolution": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1631,6 +1864,7 @@
   "tz": "ok"
  },
  "SamplingResolutionEvents.sampling_jitter": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1638,6 +1872,7 @@
   "tz": "ok"
  },
  "ScrapEvents.scrap_by_reason": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1645,6 +1880,7 @@
   "tz": "ok"
  },
  "ScrapEvents.scrap_by_shift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1652,6 +1888,7 @@
   "tz": "ok"
  },
  "ScrapEvents.scrap_cost": {
+  "dtypes": "n/a: no rule for mapping parameter 'material_costs'",
   "empty": "n/a: no rule for mapping parameter 'material_costs'",
   "empty_schema": "n/a: no rule for mapping parameter 'material_costs'",
   "extra_uuid": "n/a: no rule for mapping parameter 'material_costs'",
@@ -1659,6 +1896,7 @@
   "tz": "n/a: no rule for mapping parameter 'material_costs'"
  },
  "ScrapEvents.scrap_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1666,6 +1904,7 @@
   "tz": "ok"
  },
  "SensorDriftEvents.calibration_health": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1673,6 +1912,7 @@
   "tz": "ok"
  },
  "SensorDriftEvents.detect_span_drift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1680,6 +1920,7 @@
   "tz": "ok"
  },
  "SensorDriftEvents.detect_zero_drift": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1687,6 +1928,7 @@
   "tz": "ok"
  },
  "SensorDriftEvents.drift_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1694,6 +1936,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.control_quality_metrics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1701,6 +1944,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.decay_rate": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1708,6 +1952,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.detect_setpoint_changes": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1715,6 +1960,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.detect_setpoint_ramps": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1722,6 +1968,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.detect_setpoint_steps": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1729,6 +1976,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.oscillation_frequency": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1736,6 +1984,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.overshoot_metrics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1743,6 +1992,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.rise_time": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1750,6 +2000,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.time_to_settle": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1757,6 +2008,7 @@
   "tz": "ok"
  },
  "SetpointChangeEvents.time_to_settle_derivative": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1764,6 +2016,7 @@
   "tz": "ok"
  },
  "SetupTimeEvents.setup_by_product": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1771,6 +2024,7 @@
   "tz": "ok"
  },
  "SetupTimeEvents.setup_durations": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1778,6 +2032,7 @@
   "tz": "ok"
  },
  "SetupTimeEvents.setup_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1785,6 +2040,7 @@
   "tz": "ok"
  },
  "SetupTimeEvents.setup_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1792,6 +2048,7 @@
   "tz": "ok"
  },
  "ShiftHandoverEvents.from_shift_data": {
+  "dtypes": "n/a: classmethod without a dataframe first parameter",
   "empty": "n/a: classmethod without a dataframe first parameter",
   "empty_schema": "n/a: classmethod without a dataframe first parameter",
   "extra_uuid": "n/a: classmethod without a dataframe first parameter",
@@ -1799,6 +2056,7 @@
   "tz": "n/a: classmethod without a dataframe first parameter"
  },
  "ShiftHandoverEvents.generate_report": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1806,6 +2064,7 @@
   "tz": "ok"
  },
  "ShiftReportEvents.best_and_worst_shifts": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1813,6 +2072,7 @@
   "tz": "ok"
  },
  "ShiftReportEvents.shift_comparison": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1820,6 +2080,7 @@
   "tz": "ok"
  },
  "ShiftReportEvents.shift_production": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1827,6 +2088,7 @@
   "tz": "ok"
  },
  "ShiftReportEvents.shift_targets": {
+  "dtypes": "n/a: no rule for mapping parameter 'targets'",
   "empty": "n/a: no rule for mapping parameter 'targets'",
   "empty_schema": "n/a: no rule for mapping parameter 'targets'",
   "extra_uuid": "n/a: no rule for mapping parameter 'targets'",
@@ -1834,6 +2096,7 @@
   "tz": "n/a: no rule for mapping parameter 'targets'"
  },
  "SignalComparisonEvents.correlation_windows": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1841,6 +2104,7 @@
   "tz": "ok"
  },
  "SignalComparisonEvents.detect_divergence": {
+  "dtypes": "n/a: no rule for required parameter 'tolerance'",
   "empty": "n/a: no rule for required parameter 'tolerance'",
   "empty_schema": "n/a: no rule for required parameter 'tolerance'",
   "extra_uuid": "n/a: no rule for required parameter 'tolerance'",
@@ -1848,6 +2112,7 @@
   "tz": "n/a: no rule for required parameter 'tolerance'"
  },
  "SignalComparisonEvents.deviation_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1855,6 +2120,7 @@
   "tz": "ok"
  },
  "SignalComparisonEvents.tracking_error_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1862,6 +2128,7 @@
   "tz": "ok"
  },
  "SignalCorrelationEvents.correlation_breakdown": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1869,6 +2136,7 @@
   "tz": "ok"
  },
  "SignalCorrelationEvents.lag_correlation": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1876,6 +2144,7 @@
   "tz": "ok"
  },
  "SignalCorrelationEvents.rolling_correlation": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1883,6 +2152,7 @@
   "tz": "ok"
  },
  "SignalQualityEvents.data_completeness": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1890,6 +2160,7 @@
   "tz": "ok"
  },
  "SignalQualityEvents.detect_missing_data": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1897,6 +2168,7 @@
   "tz": "ok"
  },
  "SignalQualityEvents.detect_out_of_range": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1904,6 +2176,7 @@
   "tz": "ok"
  },
  "SignalQualityEvents.sampling_regularity": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1911,6 +2184,7 @@
   "tz": "ok"
  },
  "StartupDetectionEvents.assess_startup_quality": {
+  "dtypes": "n/a: no rule for required parameter 'startup_events'",
   "empty": "n/a: no rule for required parameter 'startup_events'",
   "empty_schema": "n/a: no rule for required parameter 'startup_events'",
   "extra_uuid": "n/a: no rule for required parameter 'startup_events'",
@@ -1918,6 +2192,7 @@
   "tz": "n/a: no rule for required parameter 'startup_events'"
  },
  "StartupDetectionEvents.detect_failed_startups": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1925,6 +2200,7 @@
   "tz": "ok"
  },
  "StartupDetectionEvents.detect_startup_adaptive": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1932,6 +2208,7 @@
   "tz": "ok"
  },
  "StartupDetectionEvents.detect_startup_by_slope": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1939,6 +2216,7 @@
   "tz": "ok"
  },
  "StartupDetectionEvents.detect_startup_by_threshold": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1946,6 +2224,7 @@
   "tz": "ok"
  },
  "StartupDetectionEvents.detect_startup_multi_signal": {
+  "dtypes": "n/a: no rule for mapping parameter 'signals'",
   "empty": "n/a: no rule for mapping parameter 'signals'",
   "empty_schema": "n/a: no rule for mapping parameter 'signals'",
   "extra_uuid": "n/a: no rule for mapping parameter 'signals'",
@@ -1953,6 +2232,7 @@
   "tz": "n/a: no rule for mapping parameter 'signals'"
  },
  "StartupDetectionEvents.track_startup_phases": {
+  "dtypes": "n/a: no rule for mapping parameter 'phases'",
   "empty": "n/a: no rule for mapping parameter 'phases'",
   "empty_schema": "n/a: no rule for mapping parameter 'phases'",
   "extra_uuid": "n/a: no rule for mapping parameter 'phases'",
@@ -1960,6 +2240,7 @@
   "tz": "n/a: no rule for mapping parameter 'phases'"
  },
  "StatisticalProcessControlEvents.control_limits": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1967,6 +2248,7 @@
   "tz": "ok"
  },
  "StatisticalProcessControlEvents.detect_cusum_shifts": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1974,6 +2256,7 @@
   "tz": "ok"
  },
  "StatisticalProcessControlEvents.detect_rule_violations": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1981,6 +2264,7 @@
   "tz": "ok"
  },
  "StatisticalProcessControlEvents.detect_violations": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1988,6 +2272,7 @@
   "tz": "ok"
  },
  "StatisticalProcessControlEvents.dynamic_control_limits": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1995,6 +2280,7 @@
   "tz": "ok"
  },
  "StatisticalProcessControlEvents.interpret_violations": {
+  "dtypes": "n/a: no rule for required parameter 'violations_df'",
   "empty": "n/a: no rule for required parameter 'violations_df'",
   "empty_schema": "n/a: no rule for required parameter 'violations_df'",
   "extra_uuid": "n/a: no rule for required parameter 'violations_df'",
@@ -2002,6 +2288,7 @@
   "tz": "n/a: no rule for required parameter 'violations_df'"
  },
  "StatisticalProcessControlEvents.rule_1": {
+  "dtypes": "n/a: dataframe handled by caller",
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
@@ -2009,6 +2296,7 @@
   "tz": "n/a: dataframe handled by caller"
  },
  "StatisticalProcessControlEvents.rule_2": {
+  "dtypes": "n/a: dataframe handled by caller",
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
@@ -2016,6 +2304,7 @@
   "tz": "n/a: dataframe handled by caller"
  },
  "StatisticalProcessControlEvents.rule_3": {
+  "dtypes": "n/a: dataframe handled by caller",
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
@@ -2023,6 +2312,7 @@
   "tz": "n/a: dataframe handled by caller"
  },
  "StatisticalProcessControlEvents.rule_4": {
+  "dtypes": "n/a: dataframe handled by caller",
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
@@ -2030,6 +2320,7 @@
   "tz": "n/a: dataframe handled by caller"
  },
  "StatisticalProcessControlEvents.rule_5": {
+  "dtypes": "n/a: dataframe handled by caller",
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
@@ -2037,6 +2328,7 @@
   "tz": "n/a: dataframe handled by caller"
  },
  "StatisticalProcessControlEvents.rule_6": {
+  "dtypes": "n/a: dataframe handled by caller",
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
@@ -2044,6 +2336,7 @@
   "tz": "n/a: dataframe handled by caller"
  },
  "StatisticalProcessControlEvents.rule_7": {
+  "dtypes": "n/a: dataframe handled by caller",
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
@@ -2051,6 +2344,7 @@
   "tz": "n/a: dataframe handled by caller"
  },
  "StatisticalProcessControlEvents.rule_8": {
+  "dtypes": "n/a: dataframe handled by caller",
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
@@ -2058,6 +2352,7 @@
   "tz": "n/a: dataframe handled by caller"
  },
  "SteadyStateDetectionEvents.detect_steady_state": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2065,6 +2360,7 @@
   "tz": "ok"
  },
  "SteadyStateDetectionEvents.detect_transient_periods": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2072,6 +2368,7 @@
   "tz": "ok"
  },
  "SteadyStateDetectionEvents.steady_state_value_bands": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2079,6 +2376,7 @@
   "tz": "ok"
  },
  "TargetEvents.compare_to_target": {
+  "dtypes": "n/a: no rule for mapping parameter 'targets'",
   "empty": "n/a: no rule for mapping parameter 'targets'",
   "empty_schema": "n/a: no rule for mapping parameter 'targets'",
   "extra_uuid": "n/a: no rule for mapping parameter 'targets'",
@@ -2086,6 +2384,7 @@
   "tz": "n/a: no rule for mapping parameter 'targets'"
  },
  "TargetEvents.target_achievement_summary": {
+  "dtypes": "n/a: no rule for required parameter 'daily_target'",
   "empty": "n/a: no rule for required parameter 'daily_target'",
   "empty_schema": "n/a: no rule for required parameter 'daily_target'",
   "extra_uuid": "n/a: no rule for required parameter 'daily_target'",
@@ -2093,6 +2392,7 @@
   "tz": "n/a: no rule for required parameter 'daily_target'"
  },
  "ThresholdMonitoringEvents.multi_level_threshold": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2100,6 +2400,7 @@
   "tz": "ok"
  },
  "ThresholdMonitoringEvents.threshold_exceedance_trend": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2107,6 +2408,7 @@
   "tz": "ok"
  },
  "ThresholdMonitoringEvents.threshold_with_hysteresis": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2114,6 +2416,7 @@
   "tz": "ok"
  },
  "ThresholdMonitoringEvents.time_above_threshold": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2121,6 +2424,7 @@
   "tz": "ok"
  },
  "TimeToThresholdEvents.crossing_forecast": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2128,6 +2432,7 @@
   "tz": "ok"
  },
  "TimeToThresholdEvents.remaining_useful_range": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2135,6 +2440,7 @@
   "tz": "ok"
  },
  "TimeToThresholdEvents.time_to_threshold": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2142,6 +2448,7 @@
   "tz": "ok"
  },
  "TimeToThresholdEvents.time_to_threshold_windows": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2149,6 +2456,7 @@
   "tz": "ok"
  },
  "ToleranceDeviationEvents.detect_deviations": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2156,6 +2464,7 @@
   "tz": "ok"
  },
  "ValueDistributionEvents.detect_bimodal": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2163,6 +2472,7 @@
   "tz": "ok"
  },
  "ValueDistributionEvents.detect_mode_changes": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2170,6 +2480,7 @@
   "tz": "ok"
  },
  "ValueDistributionEvents.normality_windows": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2177,6 +2488,7 @@
   "tz": "ok"
  },
  "ValueDistributionEvents.percentile_tracking": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2184,6 +2496,7 @@
   "tz": "ok"
  },
  "ValueTraceabilityEvents.build_timeline": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2191,6 +2504,7 @@
   "tz": "ok"
  },
  "ValueTraceabilityEvents.current_status": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2198,6 +2512,7 @@
   "tz": "ok"
  },
  "ValueTraceabilityEvents.lead_time": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2205,6 +2520,7 @@
   "tz": "ok"
  },
  "ValueTraceabilityEvents.station_dwell_statistics": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2212,6 +2528,7 @@
   "tz": "ok"
  },
  "VibrationAnalysisEvents.bearing_health_indicators": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2219,6 +2536,7 @@
   "tz": "ok"
  },
  "VibrationAnalysisEvents.detect_amplitude_growth": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2226,6 +2544,7 @@
   "tz": "ok"
  },
  "VibrationAnalysisEvents.detect_rms_exceedance": {
+  "dtypes": "n/a: no rule for required parameter 'baseline_rms'",
   "empty": "n/a: no rule for required parameter 'baseline_rms'",
   "empty_schema": "n/a: no rule for required parameter 'baseline_rms'",
   "extra_uuid": "n/a: no rule for required parameter 'baseline_rms'",
@@ -2233,6 +2552,7 @@
   "tz": "n/a: no rule for required parameter 'baseline_rms'"
  },
  "WarmUpCoolDownEvents.detect_cooldown": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2240,6 +2560,7 @@
   "tz": "ok"
  },
  "WarmUpCoolDownEvents.detect_warmup": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2247,6 +2568,7 @@
   "tz": "ok"
  },
  "WarmUpCoolDownEvents.time_to_target": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2254,6 +2576,7 @@
   "tz": "ok"
  },
  "WarmUpCoolDownEvents.warmup_consistency": {
+  "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",

@@ -40,6 +40,7 @@ import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.normalize import normalize_signal_frame
 from ts_shape.utils.signal_checks import checked, checked_init
 
 logger = logging.getLogger(__name__)
@@ -160,9 +161,18 @@ class Base:
             if time_columns:
                 column_name = time_columns[0]
 
-        # Sort by the datetime column (either specified or detected)
+        # Detectors compute on NumPy-backed dtypes: nullable, pyarrow and
+        # text-number columns are converted once here (utils.normalize).
+        if type(self).__module__.startswith("ts_shape.events."):
+            normalize_signal_frame(self.dataframe, time_column=column_name)
+
+        # Sort by time; rows with the same timestamp keep a fixed order (by
+        # uuid), so a result never depends on the order rows arrived in.
         if column_name in self.dataframe.columns:
-            self.dataframe = self.dataframe.sort_values(by=column_name)
+            keys = [column_name]
+            if "uuid" in self.dataframe.columns:
+                keys.append("uuid")
+            self.dataframe = self.dataframe.sort_values(by=keys, kind="stable")
 
         # Warn on missing/unparseable timestamps. They are kept (sorted last),
         # but every duration or interval touching them comes out NaT/NaN.

@@ -56,7 +56,9 @@ def counter_increments(values: pd.Series) -> pd.Series:
         A float Series, index-aligned with ``values``, of the parts produced
         since the previous reading.
     """
-    numeric = to_numeric_checked(values, what="counter readings")
+    # float64: nullable/pyarrow comparisons with the first reading's missing
+    # predecessor give <NA>, which would count the first reading as output.
+    numeric = to_numeric_checked(values, what="counter readings").astype("float64")
     prev = numeric.shift(1)
     delta = numeric - prev
     is_reset = delta < 0

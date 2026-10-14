@@ -1,9 +1,12 @@
 import logging
+import warnings
 from itertools import combinations
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
@@ -254,6 +257,12 @@ class MultiSensorValidationEvents(Base):
     ) -> pd.DataFrame:
         """Identify the sensor furthest from the group per window.
 
+        Telling which sensor is off needs at least three: with two, each is
+        as far from the other as the other is from it. Windows with fewer
+        than three sensors reporting are skipped with one
+        :class:`~ts_shape.errors.DataQualityWarning`. When several sensors are
+        equally far from the center, the first one in ``signal_uuids`` wins.
+
         Args:
             window: Resample window size.
             method: 'median' or 'mean' — central tendency for comparison.
@@ -267,13 +276,15 @@ class MultiSensorValidationEvents(Base):
             return pd.DataFrame(columns=cols)
 
         events: list[dict[str, Any]] = []
+        undecidable = 0
         for ts, group in self._pivot.resample(window):
             group = group.dropna(how="all")
             if group.empty:
                 continue
 
             means = group.mean().dropna()
-            if len(means) < 2:
+            if len(means) < 3:
+                undecidable += 1
                 continue
 
             if method == "median":
@@ -282,7 +293,10 @@ class MultiSensorValidationEvents(Base):
                 center = float(means.mean())
 
             deviations = (means - center).abs()
-            outlier = deviations.idxmax()
+            largest = deviations.max()
+            tied = deviations.index[np.isclose(deviations, largest, rtol=1e-12)]
+            order = [u for u in self.signal_uuids if u in tied]
+            outlier = order[0] if order else tied[0]
             deviation = float(deviations[outlier])
 
             # Mean of all other sensors
@@ -298,6 +312,14 @@ class MultiSensorValidationEvents(Base):
                 }
             )
 
+        if undecidable:
+            warnings.warn(
+                f"{type(self).__name__}.detect_outlier_sensor: {undecidable} "
+                "window(s) had fewer than three sensors reporting; an outlier "
+                "sensor cannot be identified there and they were skipped.",
+                DataQualityWarning,
+                stacklevel=2,
+            )
         return (
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )

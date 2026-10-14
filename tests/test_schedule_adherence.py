@@ -282,6 +282,6 @@ class TestNonNumericValuesWarn:
         df = _two_shift_counter()
         df["value_double"] = df["value_double"].astype(object)
         df.loc[3, "value_double"] = "err"
-        tracker = ProductionScheduleAdherenceEvents(df, _shift_schedule())
         with pytest.warns(DataQualityWarning, match="1 non-null value"):
-            tracker.adherence_by_period(COUNTER)
+            tracker = ProductionScheduleAdherenceEvents(df, _shift_schedule())
+        tracker.adherence_by_period(COUNTER)

@@ -328,13 +328,15 @@ class TestHandoverLog:
             _row(base + timedelta(minutes=2), "h", val_int="fire"),
             _row(base + timedelta(minutes=3), "h", val_int=1),
         ]
-        tracer = MultiProcessTraceabilityEvents(
-            pd.DataFrame(rows),
-            processes=[{"id_uuid": "id1", "station": "X"}],
-            handovers=[{"uuid": "h", "from_station": "X", "to_station": "Y"}],
-        )
-        with pytest.warns(DataQualityWarning, match="1 non-null value"):
-            log = tracer.handover_log()
+        # Text in a numeric value column is reported when the data is read.
+        with pytest.warns(DataQualityWarning, match="1 non-null value") as rec:
+            tracer = MultiProcessTraceabilityEvents(
+                pd.DataFrame(rows),
+                processes=[{"id_uuid": "id1", "station": "X"}],
+                handovers=[{"uuid": "h", "from_station": "X", "to_station": "Y"}],
+            )
+        assert any(w.filename == __file__ for w in rec)  # points at the caller
+        log = tracer.handover_log()
         assert len(log) == 1
 
 
