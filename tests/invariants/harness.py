@@ -190,6 +190,7 @@ INIT_OVERRIDES: dict[str, dict[str, Any]] = {
 
 #: Method arguments that are themselves data (built from the input frame).
 METHOD_OVERRIDES: dict[str, dict[str, Any]] = {
+    "ReliabilityEvents": {"hours": [1.0, 10.0, 100.0]},
     "RootCauseCorrelationEvents": {
         "trigger_events": lambda df: _trigger_events(df),
         "candidate_uuids": [CONT, CONT2],

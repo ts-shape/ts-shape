@@ -100,6 +100,7 @@ _LAZY: dict[str, str] = {
     "WarmUpCoolDownEvents": "ts_shape.events.engineering.warmup_analysis",
     # -- events.maintenance ---------------------------------------------
     "AssetHealthIndexEvents": "ts_shape.events.maintenance.asset_health_index",
+    "ReliabilityEvents": "ts_shape.events.maintenance.reliability",
     "DegradationDetectionEvents": "ts_shape.events.maintenance.degradation_detection",
     "FailurePredictionEvents": "ts_shape.events.maintenance.failure_prediction",
     "VibrationAnalysisEvents": "ts_shape.events.maintenance.vibration_analysis",

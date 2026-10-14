@@ -39,7 +39,8 @@ semantics row by row. See [Signal semantics & profiling](guides/signals.md).
   - AIAG MSA Gauge R&R ✅ (average-and-range worksheet: K1/K2/K3 and the
     `EV²/(n·r)` AV correction);
   - ISO 50001 / 50006 EnPI ✅ (opt-in regression baseline);
-  - next: ISO 22400 OEE, MTBF/MTTR, AIAG SPC rules and Cp/Cpk.
+  - ISO 22400 OEE and MTBF / MTTR ✅ (reference examples);
+  - next: AIAG SPC rules and Cp/Cpk.
 - The docs are tested: every `ts_shape` name in a code block must import,
   and CI builds the docs with `mkdocs build --strict`.
 
@@ -64,15 +65,15 @@ semantics row by row. See [Signal semantics & profiling](guides/signals.md).
 - Semver with a deprecation policy from 1.0.
 
 ## Process analytics
-Added: change-point detection (`ChangePointEvents`: exact PELT and binary
-segmentation) and multivariate SPC (`MultivariateSPCEvents`: Hotelling T²
-with Phase I / II limits and contributions).
+Added:
+- change-point detection (`ChangePointEvents`: exact PELT and binary segmentation);
+- multivariate SPC (`MultivariateSPCEvents`: Hotelling T² with Phase I / II limits and contributions);
+- reliability (`ReliabilityEvents`: MTBF / MTTR per ISO 22400 and a censored Weibull life model).
 
 Candidates from past sessions, by value and effort:
 
 | Feature | Value | Effort |
 |---|---|---|
-| Reliability: Weibull fit, MTBF / MTTR | high | S–M |
 | Vibration: FFT spectral band energy | high | M |
 | Tool wear vs. measurement drift; first-article / setup verification; part disposition | high | M each |
 | MQTT / Kafka streaming loader | med-high | M |

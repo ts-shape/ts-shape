@@ -124,6 +124,7 @@ nav:
   - Maintenance:
     - Degradation Detection: modules/maintenance/degradation-detection.md
     - Failure Prediction: modules/maintenance/failure-prediction.md
+    - Reliability (MTBF / MTTR / Weibull): modules/maintenance/reliability.md
     - Vibration Analysis: modules/maintenance/vibration-analysis.md
   - Energy:
     - Power Integration: modules/energy/power-integration.md

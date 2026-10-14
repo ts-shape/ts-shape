@@ -1,3 +1,14 @@
+# October 14, 2026 (round 4)
+add: ReliabilityEvents (events/maintenance/reliability.py) -- reliability
+  KPIs from a failure-state signal (fault bit or status codes), built on
+  signals.primitives.intervals so states hold until the next change and
+  logging gaps (max_gap) are no data: failure_events (interval), mtbf_mttr
+  (MTBF, ISO 22400 MTBF, MTTR, availability, failure rate; overall or per
+  DST-correct calendar window), weibull_fit (censored MLE: beta, eta, MTTF,
+  B10, failure pattern) and reliability_at (conditional reliability and
+  hazard).
+test: ISO 22400 OEE reference example (A x P x Q = 59.375 %).
+
 # October 14, 2026
 add: ChangePointEvents (events/quality/change_point.py) -- offline
   change-point detection: exact PELT (Killick et al. 2012) and binary

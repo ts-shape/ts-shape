@@ -2104,6 +2104,40 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:threshold_high": "ucl",
         },
     ),
+    ("ReliabilityEvents", "failure_events"): _r(
+        "maintenance.reliability.failure",
+        _M,
+        I,
+        objs=("asset",),
+        standard_attrs={
+            "ts_shape:method": "failure_state",
+            "ts_shape:lifecycle_state": "complete",
+        },
+    ),
+    ("ReliabilityEvents", "mtbf_mttr"): _r(
+        "maintenance.reliability.mtbf_mttr",
+        _M,
+        S,
+        objs=("asset",),
+        standard_attrs={
+            "ts_shape:method": "mtbf_mttr",
+            "ts_shape:sample_count": "failures",
+        },
+    ),
+    ("ReliabilityEvents", "weibull_fit"): _r(
+        "maintenance.reliability.weibull",
+        _M,
+        ST,
+        objs=("asset",),
+        standard_attrs={"ts_shape:method": "weibull_mle"},
+    ),
+    ("ReliabilityEvents", "reliability_at"): _r(
+        "maintenance.reliability.curve",
+        _M,
+        ST,
+        objs=("asset",),
+        standard_attrs={"ts_shape:method": "weibull_reliability"},
+    ),
     ("GaugeRepeatabilityEvents", "gauge_rr_summary"): _r(
         "quality.gauge_rr.summary",
         _Q,

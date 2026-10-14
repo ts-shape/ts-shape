@@ -1074,6 +1074,26 @@
   "extra_uuid": "n/a: no rule for mapping parameter 'spec'",
   "tz": "n/a: no rule for mapping parameter 'spec'"
  },
+ "ReliabilityEvents.failure_events": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "ReliabilityEvents.mtbf_mttr": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "ReliabilityEvents.reliability_at": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "ReliabilityEvents.weibull_fit": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
  "ReworkTracking.rework_by_reason": {
   "empty": "ok",
   "extra_uuid": "ok",
