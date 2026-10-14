@@ -1,4 +1,5 @@
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
@@ -6,9 +7,11 @@ import pandas as pd
 from pandas.tseries.frequencies import to_offset
 from scipy import stats
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.normalize import _caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +149,9 @@ class CapabilityTrendingEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, cp, cpk, pp, ppk, mean, std, n_samples.
-            ``end`` is ``start`` plus one ``window``.
+            ``end`` is ``start`` plus one ``window``. Without spread
+            (constant values) the indices are NaN; a signal without any
+            spread also emits a :class:`~ts_shape.errors.DataQualityWarning`.
         """
         cols = ["start", "cp", "cpk", "pp", "ppk", "mean", "std", "n_samples"]
         if self.signal.empty:
@@ -165,6 +170,12 @@ class CapabilityTrendingEvents(Base):
         # Overall std for Pp/Ppk
         overall_std = sig[self.value_column].std()
         if overall_std == 0 or pd.isna(overall_std):
+            warnings.warn(
+                "capability_over_time: the signal has no spread (constant, "
+                "single or missing values); the capability indices are NaN",
+                DataQualityWarning,
+                stacklevel=_caller_stacklevel(),
+            )
             overall_std = np.nan
 
         events: list[dict[str, Any]] = []

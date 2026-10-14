@@ -131,8 +131,21 @@ def test_empty_short_and_validation():
         MultivariateSPCEvents(empty, ["a"])
     t = pd.date_range("2024-01-01", periods=3, freq="1min")
     tiny = _long(t, {"a": np.arange(3.0), "b": np.arange(3.0) ** 2})
-    with pytest.raises(ValueError, match="reference period"):
-        MultivariateSPCEvents(tiny, ["a", "b"]).hotelling_t2()
+    from ts_shape.errors import DataQualityWarning
+
+    # Too few reference observations: a typed empty result, not an error.
+    for n in (1, 2, 3):
+        ev = MultivariateSPCEvents(
+            tiny[tiny["systime"] < t[n - 1] + pd.Timedelta("1s")], ["a", "b"]
+        )
+        with pytest.warns(DataQualityWarning, match="reference period"):
+            out = ev.hotelling_t2()
+        assert out.empty and {"systime", "uuid", "t2", "ucl"} <= set(out.columns)
+        with pytest.warns(DataQualityWarning):
+            assert ev.contributions().empty
+        with pytest.warns(DataQualityWarning):
+            ooc = ev.detect_out_of_control()
+        assert ooc.empty and "start" in ooc.columns
 
 
 def test_non_numeric_values_warn():

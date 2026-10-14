@@ -23,12 +23,14 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import warnings
 from typing import TypeAlias
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
@@ -37,6 +39,7 @@ from ts_shape.events._output import (
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.normalize import _caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +171,23 @@ class MultivariateSPCEvents(Base):
         mask: np.ndarray = ((t >= start) & (t < end)).to_numpy()
         return mask
 
+    def _too_few_reference(
+        self, reference_period: tuple[TimeLike, TimeLike] | None
+    ) -> bool:
+        """Warn and return True when the reference cannot estimate T²."""
+        m = int(self._reference_mask(reference_period).sum())
+        p = len(self.signal_uuids)
+        if m > p + 1:
+            return False
+        warnings.warn(
+            f"multivariate SPC: the reference period has {m} aligned "
+            f"observation(s); at least {p + 2} are needed for {p} variables, "
+            "so no T² is computed",
+            DataQualityWarning,
+            stacklevel=_caller_stacklevel(),
+        )
+        return True
+
     def _fit(
         self, reference_period: tuple[TimeLike, TimeLike] | None
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -209,9 +229,12 @@ class MultivariateSPCEvents(Base):
             Point events: ``systime``, ``uuid``, ``source_uuid`` (the signal
             uuids, comma-joined), ``t2``, ``ucl``, ``phase`` (``"I"`` for
             reference observations, ``"II"`` otherwise) and
-            ``out_of_control``.
+            ``out_of_control``. Empty, with a
+            :class:`~ts_shape.errors.DataQualityWarning`, when the reference
+            period has too few aligned observations (``p + 2`` are needed
+            for ``p`` variables).
         """
-        if len(self.matrix) == 0:
+        if len(self.matrix) == 0 or self._too_few_reference(reference_period):
             return empty_event_df("point", _T2_COLS)
         x, ref, mean, inv = self._fit(reference_period)
         d = x - mean

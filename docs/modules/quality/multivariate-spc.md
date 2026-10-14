@@ -38,5 +38,5 @@ All arguments are keyword-only.
 
 - Alignment: the variables are aligned on the timestamps of the first signal. Every other signal contributes the value in force at that time (no look-ahead), held at most `max_gap`. Rows where a variable has no value are dropped.
 - Limits (Montgomery, Introduction to SQC, ch. 11), with `m` reference observations and `p` variables: Phase II (new observations) `p(m+1)(m−1) / (m(m−p)) · F(1−α; p, m−p)`; Phase I (the reference observations) `(m−1)²/m · Beta(1−α; p/2, (m−p−1)/2)`. `alpha=0.0027` matches 3σ.
-- `reference_period=None` uses all data (a retrospective Phase I study). For monitoring, pass a period known to be in control; it needs more than `p + 1` observations.
+- `reference_period=None` uses all data (a retrospective Phase I study). For monitoring, pass a period known to be in control; it needs more than `p + 1` observations. With fewer, every method returns an empty result and emits a `DataQualityWarning`.
 - A singular covariance (a constant or perfectly collinear variable) falls back to the pseudo-inverse, with a logged warning.

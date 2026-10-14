@@ -73,7 +73,8 @@ class OperatingStateEvents(Base):
         Returns:
             DataFrame with columns: start, end, state, state_label,
             mean_value, duration_seconds, uuid (event uuid), source_uuid
-            (signal uuid).
+            (signal uuid). Samples without a value are ignored; with fewer
+            valued samples than ``n_states`` the result is empty.
         """
         cols = [
             "start",
@@ -85,14 +86,15 @@ class OperatingStateEvents(Base):
             "uuid",
             "source_uuid",
         ]
-        if self.signal.empty or len(self.signal) < n_states:
-            return pd.DataFrame(columns=cols)
-
+        # Samples without a value carry no state; an all-NaN signal has none.
         sig = (
             self.signal[[self.time_column, self.value_column]]
-            .copy()
+            .dropna(subset=[self.value_column])
             .reset_index(drop=True)
         )
+        if sig.empty or len(sig) < n_states:
+            return pd.DataFrame(columns=cols)
+
         values = sig[self.value_column].values
 
         # Quantile-based binning
