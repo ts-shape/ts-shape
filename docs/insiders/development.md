@@ -96,16 +96,15 @@ version, put a trailer in the message of any commit since the last release
 
 ```text
 Release-Bump: minor      # patch | minor | major | none (no release)
-Release-As: 1.0.0        # an exact version, higher than the last release
+Release-As: 0.1.0        # an exact version, higher than the last release
 ```
 
 A manual run of the Release workflow (Actions → Release Pipeline → Run
 workflow) takes the same choice as inputs.
 
-Versioning follows [semver](https://semver.org/) from 1.0.0: a patch fixes
-bugs, a minor adds features, a major removes or changes behavior. Renamed
-names keep working with a `DeprecationWarning` for at least one minor release
-and are removed only in a major release.
+Merges normally need no trailer: each one publishes the next patch version.
+Renamed names keep working with a `DeprecationWarning` and are removed only in
+a major release.
 
 One-time repo settings: enable "Read and write permissions" for GitHub Actions
 under Settings → Actions → General → Workflow permissions, and set the

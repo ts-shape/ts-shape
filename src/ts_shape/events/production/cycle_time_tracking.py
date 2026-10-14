@@ -517,5 +517,5 @@ class CycleTimeEvents(Base):
         return hourly
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 CycleTimeTracking = deprecated_class(CycleTimeEvents, "CycleTimeTracking")

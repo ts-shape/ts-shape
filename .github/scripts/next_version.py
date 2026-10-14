@@ -4,7 +4,7 @@ The version is the latest ``X.Y.Z`` tag plus a bump. Commits since that tag
 choose the bump with git trailers (the most recent trailer wins)::
 
     Release-Bump: patch | minor | major | none
-    Release-As: 1.0.0
+    Release-As: 0.1.0
 
 Manual runs pass ``INPUT_BUMP`` (auto, patch, minor, major) and
 ``INPUT_VERSION`` instead; they take precedence over trailers. Prints

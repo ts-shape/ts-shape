@@ -121,7 +121,7 @@ class RoutingTraceabilityEvents(Base):
                        If not provided, raw signal values are used as labels.
             station_map: Deprecated alias for ``state_map``; passing it
                          emits a :class:`DeprecationWarning` and it will be
-                         removed in ts-shape 2.0. When both are passed,
+                         removed in the next major release. When both are passed,
                          ``state_map`` wins and a UserWarning is emitted.
             event_uuid: UUID to tag derived events with.
             id_value_column: Column holding the item ID string.
@@ -134,7 +134,7 @@ class RoutingTraceabilityEvents(Base):
         if station_map is not None:
             warnings.warn(
                 "RoutingTraceabilityEvents(): 'station_map' is deprecated, use "
-                "'state_map'; the old name will be removed in ts-shape 2.0",
+                "'state_map'; the old name will be removed in the next major release",
                 DeprecationWarning,
                 stacklevel=2,
             )

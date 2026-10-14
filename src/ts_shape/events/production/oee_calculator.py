@@ -521,5 +521,5 @@ class OEEEvents(Base):
         )
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 OEECalculator = deprecated_class(OEEEvents, "OEECalculator")

@@ -533,5 +533,5 @@ class DowntimeEvents(Base):
         return add_period_window(pd.DataFrame(results, columns=_TREND_COLS), window)
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 DowntimeTracking = deprecated_class(DowntimeEvents, "DowntimeTracking")

@@ -49,7 +49,7 @@ class ToleranceDeviationEvents(Base):
             dataframe: Input DataFrame with measurement data
             tolerance_column: Column name containing tolerance values
             actual_column: Column name containing actual measurement values
-            tolerance_uuid: Deprecated (removed in 2.0; passing it without
+            tolerance_uuid: Deprecated (removed in the next major release; passing it without
                 ``upper_tolerance_uuid``/``lower_tolerance_uuid`` emits a
                 ``DeprecationWarning``). UUID of a single tolerance signal
                 that is compared with the actual values through
@@ -98,7 +98,7 @@ class ToleranceDeviationEvents(Base):
                 )
             warnings.warn(
                 "ToleranceDeviationEvents(): tolerance_uuid is deprecated and will "
-                "be removed in ts-shape 2.0; use upper_tolerance_uuid and/or "
+                "be removed in the next major release; use upper_tolerance_uuid and/or "
                 "lower_tolerance_uuid (a single upper limit is "
                 "upper_tolerance_uuid alone)",
                 DeprecationWarning,

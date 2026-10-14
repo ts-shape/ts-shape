@@ -27,22 +27,24 @@ A full audit of wording, names, outputs and behavior. The rules are in [Naming &
 - **Every public parameter is documented.**
 - **Inputs are checked the same way** in every pack.
 
-Left for 1.0, because each changes results or API shape:
-- **Remove the deprecated aliases** (`DeprecationWarning` today).
-- **Return full precision.** Detectors round inconsistently today (0–8 decimals); rounding belongs in reports.
-- **Check value columns up front**, as the time and uuid columns already are.
+Resolved (October 2026): full precision, value columns checked, `best_and_worst_shifts` returns a DataFrame, and `batch_transition_matrix` returns a long table.
+
+Left, all additive (new accepted forms, nothing removed):
 - **Run state in one form.** `DowntimeEvents` expects string states (`"Running"`), while `MachineStateEvents` and `OEEEvents` expect booleans. Accept either through `SignalSpec`.
-- **One place for the signal uuid.** Some detectors take it in the constructor, others per method. Pick one.
+- **One place for the signal uuid.** Some detectors take it in the constructor, others per method.
 - **Durations in one form.** `OEEEvents` takes `ideal_cycle_time` as float seconds; `takt_time` takes an offset string. Accept both everywhere.
-- **`ShiftReportEvents.best_and_worst_shifts`** returns a DataFrame (`as_frame=True` today).
-- **`BatchTrackingEvents.batch_transition_matrix`** becomes a long from/to/count table, so an empty result can keep its schema.
+
+For a future major release: remove the deprecated aliases (they warn since 0.0.63).
 
 ## W2 — 1.0: correct by default, one API, one output
+- ✅ The correctness flags (`handle_resets`, `interval_end`, `time_weighted`,
+  `group_by_uuid`, `slope_per`, ...) default to the correct behavior (October 2026).
+  `max_gap` stays `None` (no cap), because no single value fits every
+  signal; set it per signal or through a `SignalSpec`.
+- ✅ No silent data loss: skipped inputs warn (`DataQualityWarning`), loaders
+  take `errors="warn" | "raise"`.
 - Migrate the detectors pack by pack onto the primitives. Defaults come from
   the spec.
-- The opt-in correctness flags (`handle_resets`, `interval_end`, `max_gap`,
-  `time_weighted`, `group_by_uuid`) become the default behavior.
-  Deprecation path: one minor release with `DeprecationWarning`, then 1.0.
 - One enforced output contract (point / interval / summary) for every
   detector, and one API style with standard keyword names.
 - KPIs carry their basis (run seconds, planned seconds, excluded gaps,
@@ -80,7 +82,8 @@ Left for 1.0, because each changes results or API shape:
 ## W6 — Ecosystem
 - Grafana / TimescaleDB recipes.
 - A CLI (`ts-shape profile data.parquet`).
-- Semver with a deprecation policy from 1.0.
+- ✅ Deprecation policy: renamed names keep working with a warning and are
+  removed only in a major release.
 
 ## Process analytics
 Added:

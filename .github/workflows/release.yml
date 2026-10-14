@@ -7,7 +7,7 @@ name: Release Pipeline
 # trailer in its message (the last trailer wins):
 #
 #   Release-Bump: minor        # or: major, patch, none (skip this release)
-#   Release-As: 1.0.0          # an exact version, higher than the last one
+#   Release-As: 0.1.0          # an exact version, higher than the last one
 #
 # A manual run (workflow_dispatch) takes the same choice as inputs. The tag is
 # created only after the package was published, so a failed run never burns
@@ -25,7 +25,7 @@ on:
         options: [auto, patch, minor, major]
         default: auto
       version:
-        description: "Exact version (overrides bump), e.g. 1.0.0"
+        description: "Exact version (overrides bump), e.g. 0.1.0"
         type: string
         required: false
 

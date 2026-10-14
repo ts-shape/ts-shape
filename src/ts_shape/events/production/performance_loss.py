@@ -383,7 +383,7 @@ class PerformanceLossEvents(Base):
         return add_period_window(pd.DataFrame(results, columns=_TREND_COLS), window)
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 PerformanceLossTracking = deprecated_class(
     PerformanceLossEvents, "PerformanceLossTracking"
 )

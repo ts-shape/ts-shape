@@ -50,7 +50,7 @@ class ContinuousProcessAlignmentEvents(Base):
         line_config: Physical layout description — list of dicts with keys
             ``name`` (str), ``offset`` (float, meters from reference), and
             ``uuids`` (list[str]).
-        ref_uuid: Deprecated; has no effect and will be removed in ts-shape 2.0
+        ref_uuid: Deprecated; has no effect and will be removed in the next major release
             (passing it emits a DeprecationWarning). Put a reference-point
             signal into ``line_config`` with ``offset`` 0 instead.
         cut_uuid: Optional UUID whose values carry the cut piece length in
@@ -91,7 +91,7 @@ class ContinuousProcessAlignmentEvents(Base):
         self.line_config = line_config
         if ref_uuid is not None:
             warnings.warn(
-                "ref_uuid has no effect and will be removed in ts-shape 2.0",
+                "ref_uuid has no effect and will be removed in the next major release",
                 DeprecationWarning,
                 stacklevel=2,
             )

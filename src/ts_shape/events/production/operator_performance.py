@@ -456,7 +456,7 @@ class OperatorPerformanceEvents(Base):
         return prod[["operator", "total_produced", "rank", "pct_of_best"]]
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 OperatorPerformanceTracking = deprecated_class(
     OperatorPerformanceEvents, "OperatorPerformanceTracking"
 )

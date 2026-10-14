@@ -1,6 +1,6 @@
 # Naming and output conventions
 
-One concept, one name. This page is the rule set for every detector, and the checklist for reviewing a new one. Older spellings still work: they are deprecated aliases that emit a `DeprecationWarning` naming the replacement, and they will be removed in 2.0 (see [Migration & Deprecations](migration.md)).
+One concept, one name. This page is the rule set for every detector, and the checklist for reviewing a new one. Older spellings still work: they are deprecated aliases that emit a `DeprecationWarning` naming the replacement, and they are removed only in a future major release (see [Migration & Deprecations](migration.md)).
 
 ## Classes
 
@@ -45,7 +45,7 @@ Event classes do not use the prefixes `calculate_`, `compute_`, `get_` or `proce
 | Two severity levels | `warning_threshold`, `critical_threshold` | `minor_threshold`, `moderate_threshold` |
 | Count the state at the start of the data | `include_initial` | `include_first`, `count_initial_active` |
 | Restrict the output | `only_<what>` | `<what>_only` |
-| Counter resets | `handle_resets` | |
+| Counter resets | `handle_resets` (default `True`) | |
 
 Signal, column and frame arguments come first. Every optional argument after them is keyword-only.
 
@@ -66,6 +66,8 @@ Every detector returns a `pandas.DataFrame` in one of four shapes (`ts_shape.eve
 - **Counts** use `<thing>_count`. Use `sample_count` for samples, not `n_samples`.
 - **Severity** is one of `info`, `warn`, `critical` when a detector emits a categorical level. Numeric scores go in `severity_score`.
 - **Empty results** keep the full column set, so code written against a normal result also works when nothing was found.
+- **Precision:** numbers are returned as computed. Detectors never round; rounding belongs in reports.
+- **Defaults are correct:** a flag that fixes a known error (`handle_resets`, `interval_end="next_change"`, `time_weighted`, `group_by_uuid`) defaults to the correct behavior; the naive behavior is opt-in.
 
 ## Errors and warnings
 
@@ -73,11 +75,13 @@ Every detector returns a `pandas.DataFrame` in one of four shapes (`ts_shape.eve
 |---|---|
 | The time column is missing (non-empty frame) | `ColumnNotFoundError` (a `ValueError`) naming the column and listing the columns |
 | The uuid column is missing (non-empty frame) | `ColumnNotFoundError` |
+| A value column argument names a column the frame does not have | `ColumnNotFoundError` naming the column |
 | A signal uuid argument (`*_uuid`, `*_uuids`) is not in a non-empty frame | `DataQualityWarning` listing the available uuids; the result is empty. A few detectors (alarm, batch, degradation, line balancing, ...) also raise `ValueError` |
 | Too little data for a statistic | empty result or NaN |
+| Input rows are skipped (non-numeric values, unreadable files, malformed spec entries) | `DataQualityWarning` saying what was skipped; never silent |
 | A deprecated name is used | `DeprecationWarning` naming the replacement |
 
-The uuid and column checks are applied to every detector in `ts_shape.events` by its base class, so they behave the same in every pack. They report the call you made, not the detector's internal calls. A missing *value* column (`value_double`, ...) is not checked up front yet: methods that need it raise a `KeyError`.
+The uuid and column checks are applied to every detector in `ts_shape.events` by its base class, so they behave the same in every pack. They report the call you made, not the detector's internal calls. A missing *value* column (`value_column`, `value_column_<role>`, ...) raises `ColumnNotFoundError` naming the column when the method looks it up.
 
 ## Wording
 

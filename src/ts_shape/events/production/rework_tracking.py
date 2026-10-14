@@ -577,5 +577,5 @@ class ReworkEvents(Base):
         return add_period_window(pd.DataFrame(results, columns=columns), window)
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 ReworkTracking = deprecated_class(ReworkEvents, "ReworkTracking")

@@ -680,5 +680,5 @@ class QualityEvents(Base):
         return add_day_window(daily, data_tz(self.dataframe[self.time_column]))
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 QualityTracking = deprecated_class(QualityEvents, "QualityTracking")

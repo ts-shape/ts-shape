@@ -380,7 +380,7 @@ class ValueTraceabilityEvents(Base):
         return stats
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 OrderTraceabilityEvents = deprecated_class(
     ValueTraceabilityEvents, "OrderTraceabilityEvents"
 )

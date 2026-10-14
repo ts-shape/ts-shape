@@ -777,7 +777,7 @@ class StatisticalProcessControlEvents(Base):
         ].drop_duplicates()
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 StatisticalProcessControlRuleBased = deprecated_class(
     StatisticalProcessControlEvents, "StatisticalProcessControlRuleBased"
 )

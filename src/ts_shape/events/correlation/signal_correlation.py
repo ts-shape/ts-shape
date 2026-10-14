@@ -22,7 +22,7 @@ def _window_size_from_int_window(func: Callable[P, R]) -> Callable[P, R]:
     """Route an integer ``window`` (the rolling row count) to ``window_size``.
 
     ``window`` is the resample interval (an offset string) and the rolling row
-    count is ``window_size``. Before 1.0 ``window`` was the row count, so an
+    count is ``window_size``. Earlier releases used ``window`` as the row count, so an
     integer ``window`` is moved to ``window_size`` with a
     ``DeprecationWarning``. Apply it outside ``renamed_kwargs(resample=...)``
     so a call that also passes ``resample`` keeps its grid.
@@ -41,7 +41,7 @@ def _window_size_from_int_window(func: Callable[P, R]) -> Callable[P, R]:
             warnings.warn(
                 f"{name}(): an integer window is the rolling row count, pass it "
                 "as window_size (window is the resample interval); the integer "
-                f"form will be removed in ts-shape {REMOVAL}",
+                f"form will be removed in {REMOVAL}",
                 DeprecationWarning,
                 stacklevel=3,
             )

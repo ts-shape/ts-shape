@@ -553,5 +553,5 @@ class PeriodSummaryEvents(Base):
         return pd.DataFrame(rows)
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 PeriodSummary = deprecated_class(PeriodSummaryEvents, "PeriodSummary")

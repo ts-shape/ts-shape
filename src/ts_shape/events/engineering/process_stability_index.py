@@ -304,7 +304,7 @@ class ProcessStabilityIndexEvents(Base):
         return self._summary(result[cols].reset_index(drop=True), cols, window)
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 ProcessStabilityIndex = deprecated_class(
     ProcessStabilityIndexEvents, "ProcessStabilityIndex"
 )

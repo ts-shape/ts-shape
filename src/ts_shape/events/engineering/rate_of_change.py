@@ -90,7 +90,7 @@ class RateOfChangeEvents(Base):
             warnings.warn(
                 "RateOfChangeEvents.detect_rapid_change: window is not used (the "
                 "rate is computed between consecutive samples) and will be "
-                f"removed in ts-shape {REMOVAL}; filter the result on "
+                f"removed in {REMOVAL}; filter the result on "
                 "duration_seconds instead",
                 DeprecationWarning,
                 stacklevel=4,

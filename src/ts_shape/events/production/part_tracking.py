@@ -490,7 +490,7 @@ class PartProductionEvents(Base):
         return totals
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 PartProductionTracking = deprecated_class(
     PartProductionEvents, "PartProductionTracking"
 )

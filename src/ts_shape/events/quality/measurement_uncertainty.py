@@ -30,7 +30,7 @@ class MeasurementUncertaintyEvents(Base):
     - uncertainty_budget: Contribution breakdown by source.
 
     ``part_uuid`` is deprecated: it has no effect (no method groups by
-    part) and will be removed in 2.0; passing it emits a
+    part) and will be removed in the next major release; passing it emits a
     ``DeprecationWarning``.
     """
 
@@ -62,7 +62,7 @@ class MeasurementUncertaintyEvents(Base):
         if self.part_uuid is not None:
             warnings.warn(
                 "MeasurementUncertaintyEvents(): part_uuid has no effect and "
-                "will be removed in ts-shape 2.0",
+                "will be removed in the next major release",
                 DeprecationWarning,
                 stacklevel=3,
             )

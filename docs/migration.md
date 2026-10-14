@@ -1,12 +1,72 @@
 # Migration & Deprecations
 
-A running list of renames and deprecated aliases, so existing code keeps working
-while you migrate. Deprecated names still function but emit a
-`DeprecationWarning`; they may be removed in a future major release. The
-authoritative, dated record is the [Changelog](changelog.md) — this page is the
+A running list of renames, deprecated aliases and behavior changes. Deprecated
+names still work and emit a `DeprecationWarning`; they are removed only in a
+future major release. The
+authoritative, dated record is the [Changelog](changelog.md); this page is the
 quick old → new lookup.
 
-## Renamed parameters (old keywords deprecated, removed in 2.0)
+## Correct by default (October 2026)
+
+This release makes the correct behavior the default and returns full-precision numbers.
+Your code keeps running: no name was removed. But **results change** wherever
+your data has counter resets, change-encoded signals, uneven sampling or
+several signals in one frame. Each old behavior is still one argument away.
+
+### Defaults that changed
+
+| Parameter | Old default | New default | What it fixes | Where |
+|---|---|---|---|---|
+| `handle_resets` | `False` | `True` | A counter that resets (shift start, rollover) no longer makes a window report too little, often 0. Results carry a `resets` column. | production (OEE, parts, quality, scrap, rework, operator, target, period summary, shift report and handover, batch yield, line throughput, process alignment), energy (EnPI, efficiency, consumption, carbon), `utils.counters`, `TimeGroupedStatistics` (`'diff'`) |
+| `interval_end` | `"last_sample"` | `"next_change"` | An interval lasts until the signal changes. A change-encoded (deadband) signal's interval is no longer cut to zero length. | machine state, duty cycle, micro stops, long downtime, steady state, threshold monitoring, degradation, vibration, recipe phases, inventory, signal quality, flatline, correlation breakdown, `SegmentExtractor`, `utils.intervals` |
+| `time_weighted` | `False` | `True` | Shares and averages are weighted by time, not by sample count, so irregular sampling no longer biases them. | bottleneck detection, duty cycle by window, operating range, material balance, idle energy, efficiency idle waste |
+| `group_by_uuid` | `False` | `True` | Statistics are computed per signal instead of pooling unrelated signals. | `OutlierDetectionEvents`, `TimeGroupedStatistics`, `BooleanFilter` edges, `StringFilter.detect_changes_in_string` |
+| `slope_per` | `"sample"` | `"second"` | Drift slopes are per second, so irregular sampling no longer distorts them; `min_slope` is per second too. | `AnomalyClassificationEvents.detect_drift`, `classify_anomalies` |
+| `missing_as_zero` | `True` | `False` | A missing flow signal makes the balance NaN instead of a false imbalance. | `MaterialBalanceEvents` |
+| `handle_refills` | `False` | `True` | A refill no longer turns into negative consumption. | `InventoryMonitoringEvents.consumption_rate` |
+| `include_severity` | `False` | `True` | Violations carry `triggered_rule` and `severity`. | `StatisticalProcessControlEvents.detect_violations` |
+| `regex` | `True` | `False` | Substring filters match literally (`"A.1"` no longer matches `"AB1"`). | `StringFilter.filter_string_contains`, `StringStatistics.contains_substring_count` |
+| `trim_to_range` | `False` | `True` | Loaders return only rows inside the requested time range. | Azure Blob and Databricks Unity parquet loaders |
+| `as_frame` | `False` | `True` | `best_and_worst_shifts` returns one DataFrame with a `rank_type` column; `as_frame=False` (a dict) is deprecated. | `ShiftReportEvents` |
+| `layout` (new) | — | `"long"` | `batch_transition_matrix` returns `from_state`, `to_state`, `transition_count`, and an empty result keeps that schema. `layout="wide"` gives the old matrix. | `BatchTrackingEvents` |
+
+To compare old and new numbers, pass the old default explicitly, for example `oee(..., handle_resets=False)`.
+
+### Other result changes
+
+- **Full precision.** Detectors no longer round results (they used 0 to 8 decimals). Round when you display: `df.round(2)`.
+- **`machine_running_pct` is a percentage (0–100).** In `IdleEnergyDetectionEvents.idle_energy_by_window` and `EnergyEfficiencyEvents.idle_energy_waste` it held a 0–1 ratio. The ratio is `machine_running_ratio`.
+- **Flatlines:** with `"next_change"`, a single sample counts as a flatline only when the gap after it is longer than the signal's usual sampling interval.
+- **`ValueDistributionEvents.detect_bimodal`** returns a unimodal row for a constant signal (it was empty or had a `None` mode).
+- **`CriticalParameterRankingEvents.rank`** raises `ValueError` for an unknown candidate column (it was skipped).
+- **`TimezoneShift.list_available_timezones`** returns a sorted list (it was a set).
+- **`make_timeseries`** no longer rounds `value_double`.
+
+### Nothing is skipped silently
+
+- **Loaders:** an unreadable blob or file used to disappear from the result. Multi-object Azure Blob and Databricks Unity methods take `errors="warn"` (default: skip it and name it in one `DataQualityWarning`) or `errors="raise"` (`LoaderError`). Series metadata that exists but cannot be read raises `LoaderError`.
+- **Non-numeric values** in numeric inputs are still treated as missing, but a `DataQualityWarning` now says how many there were.
+- **A missing value column** (`value_column`, `value_column_<role>`, ...) raises `ColumnNotFoundError` naming it and listing the columns, instead of a bare `KeyError`.
+- Malformed recipe-phase specs, untestable normality windows, failed fits and event-log object bindings to a missing column now warn instead of being dropped.
+- `lambda_rules.load_yaml` without PyYAML raises `ImportError` pointing to `ts-shape[yaml]`.
+
+### Newly deprecated
+
+| Old | New |
+|---|---|
+| `OrderTraceabilityEvents` | `ValueTraceabilityEvents` |
+| `ToleranceDeviationEvents(tolerance_uuid=...)` alone | `upper_tolerance_uuid` and/or `lower_tolerance_uuid` (either one alone is a one-sided spec) |
+| `RoutingTraceabilityEvents(station_map=...)` | `state_map` |
+| `eventlog.adapters.adapt(legacy=...)` | `frame=` |
+| integer `window` in `SignalCorrelationEvents` | `window_size` |
+| `best_and_worst_shifts(as_frame=False)` | the default DataFrame |
+
+### New
+
+- `OutlierDetectionEvents(signal_uuids=[...])` restricts the analysis to some signals.
+- `pip install ts-shape[parquet]` installs pyarrow (also pulled in by `[s3]` and `[azure]`); `[all]` now installs every optional feature.
+
+## Renamed parameters (old keywords deprecated)
 
 Parameter names follow [Naming & Output Conventions](naming.md). The old keyword still works, but emits a `DeprecationWarning`.
 
@@ -34,7 +94,7 @@ The default `event_uuid` values now all follow `"<pack>:<name>"`:
 
 If you filter results by these values, update the filters.
 
-## Renamed classes and methods (old names deprecated, removed in 2.0)
+## Renamed classes and methods (old names deprecated)
 
 Detector classes all end in `Events`. Event classes no longer use `calculate_` / `compute_` / `process_`: methods that find events start with `detect_`, and metrics are nouns (see [Naming & Output Conventions](naming.md)).
 
@@ -117,10 +177,6 @@ daily = quality.merge(production, on=["start", "end", "duration_seconds"])
 
 - **Night shifts are one row.** An overnight shift (e.g. 22:00 to 06:00) is attributed to the day it starts (`production_day=True` is now the default). Before, grouping by calendar date split one night across two rows, and each row mixed two different nights. Pass `production_day=False` to get the old grouping.
 
-## `ShiftReporting.best_and_worst_shifts` will return a DataFrame
-
-It still returns `{"best": DataFrame, "worst": DataFrame}`, but now emits a `FutureWarning`. Pass `as_frame=True` to get the 1.0 behavior already: one frame with a `rank_type` column (`best` / `worst`).
-
 ## Removed exporter aliases
 
 The event-log exporters were renamed into a consistent `to_event_log_*` family.
@@ -168,7 +224,7 @@ need it.
 
 | Alias (back-compat) | Canonical name | Notes |
 |---|---|---|
-| `OrderTraceabilityEvents` | `ValueTraceabilityEvents` | Same class; the alias tracks single-ID traceability that is no longer order-specific. New code should import `ValueTraceabilityEvents`. |
+| `OrderTraceabilityEvents` | `ValueTraceabilityEvents` | Deprecated (warns): single-ID traceability is not order-specific. |
 
 ## Standardized detector output (May 2026)
 

@@ -450,7 +450,7 @@ class ShiftReportEvents(Base):
             as_frame: When True (default), return a single DataFrame (see
                 below). ``as_frame=False`` returns the dictionary form; it is
                 deprecated, emits a ``DeprecationWarning`` and will be removed
-                in ts-shape 2.0.
+                in the next major release.
 
         Returns:
             With ``as_frame=True`` (default), one DataFrame with columns:
@@ -479,7 +479,7 @@ class ShiftReportEvents(Base):
         if not as_frame:
             warnings.warn(
                 "ShiftReportEvents.best_and_worst_shifts(as_frame=False) is "
-                "deprecated: the dict return will be removed in ts-shape 2.0; "
+                "deprecated: the dict return will be removed in the next major release; "
                 "use the default DataFrame return",
                 DeprecationWarning,
                 stacklevel=2,
@@ -522,5 +522,5 @@ class ShiftReportEvents(Base):
         return {"best": best, "worst": worst}
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 ShiftReporting = deprecated_class(ShiftReportEvents, "ShiftReporting")

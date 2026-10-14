@@ -55,7 +55,7 @@ print(f"Cpk: {capability['Cpk']:.2f}, Ppk: {capability['Ppk']:.2f}")
     Pass `upper_tolerance_uuid` and `lower_tolerance_uuid` for a two-sided spec. With only one of them the spec is one-sided: Cp/Pp are undefined (NaN), Cpk/Ppk are the one-sided index (CPU or CPL), and `deviation_pct` is relative to the magnitude of the single limit. Cp/Cpk measure distance to the spec limits. σ is the overall sample standard deviation (the data has no subgroups), so Cp/Cpk equal Pp/Ppk. When `target_value` is given, the Taguchi index `Cpm = Cp / sqrt(1 + ((mean - target) / σ)²)` is added; otherwise `target` is only reported back (the spec midpoint).
 
 !!! warning "`tolerance_uuid` is deprecated"
-    The single `tolerance_uuid` (compared through `compare_func`) emits a `DeprecationWarning` and will be removed in 2.0. A single upper limit is `upper_tolerance_uuid` alone.
+    The single `tolerance_uuid` (compared through `compare_func`) emits a `DeprecationWarning` and will be removed in the next major release. A single upper limit is `upper_tolerance_uuid` alone.
 
 !!! info "Related modules"
     - [SPC Rules](spc.md) — Western Electric rule-based monitoring with control limits

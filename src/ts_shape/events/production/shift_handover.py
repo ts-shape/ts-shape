@@ -587,5 +587,5 @@ class ShiftHandoverEvents(Base):
         return issues
 
 
-#: Deprecated name, removed in 2.0.
+#: Deprecated name, removed in the next major release.
 ShiftHandoverReport = deprecated_class(ShiftHandoverEvents, "ShiftHandoverReport")
