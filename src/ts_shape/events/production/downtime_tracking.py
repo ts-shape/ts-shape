@@ -12,15 +12,17 @@ from collections.abc import Mapping
 
 import pandas as pd
 
+from ts_shape.events._compat import state_mask
 from ts_shape.events._windows import (
     add_period_window,
     add_shift_window,
     data_tz,
+    window_bounds,
 )
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +30,39 @@ _SHIFT_COLS = [
     "date",
     "shift",
     "total_minutes",
+    "total_seconds",
     "downtime_minutes",
+    "downtime_seconds",
     "uptime_minutes",
+    "uptime_seconds",
     "availability_pct",
+    "excluded_seconds",
 ]
-_TREND_COLS = ["period", "availability_pct", "uptime_minutes", "downtime_minutes"]
+_TREND_COLS = [
+    "period",
+    "availability_pct",
+    "uptime_minutes",
+    "uptime_seconds",
+    "downtime_minutes",
+    "downtime_seconds",
+    "excluded_seconds",
+]
+_REASON_COLS = [
+    "reason",
+    "occurrences",
+    "total_minutes",
+    "total_seconds",
+    "avg_minutes",
+    "avg_seconds",
+    "pct_of_total",
+]
+_TOP_COLS = [
+    "reason",
+    "total_minutes",
+    "total_seconds",
+    "pct_of_total",
+    "cumulative_pct",
+]
 
 
 class DowntimeEvents(Base):
@@ -44,6 +74,17 @@ class DowntimeEvents(Base):
 
     Merge keys: [date, shift] for shift-level, [period] for trend data.
 
+    Run state comes in one of two forms, and both give the same result:
+
+    - a string state signal in ``value_string`` (``running_value="Running"``,
+      ``stopped_value="Stopped"``), or
+    - a boolean run signal in ``value_bool`` (True = running). It is used when
+      the state rows carry ``value_bool`` but no ``value_string``, or when
+      ``running_value`` / ``stopped_value`` is a bool (then matched as given).
+
+    Durations are reported in seconds (``*_seconds``); the ``*_minutes``
+    columns are kept as a convenience.
+
     Pipeline example::
 
         downtime = DowntimeEvents(df)
@@ -52,21 +93,14 @@ class DowntimeEvents(Base):
         # → merge with ShiftReportEvents.shift_production() on [date, shift]
         # → feed into ShiftHandoverEvents.from_shift_data()
 
-    Example usage:
-        tracker = DowntimeEvents(df)
-
-        # Downtime per shift
-        shift_downtime = tracker.downtime_by_shift(
-            state_uuid='machine_state',
-            running_value='Running'
-        )
-
-        # Downtime by reason
-        reason_analysis = tracker.downtime_by_reason(
-            state_uuid='machine_state',
-            reason_uuid='downtime_reason',
-            stopped_value='Stopped'
-        )
+    Example:
+        >>> import ts_shape
+        >>> df = ts_shape.make_id_signal("state", ["Running", "Stopped", "Running"],
+        ...                              hold=20, freq="1min", start="2025-01-01 08:00")
+        >>> out = ts_shape.DowntimeEvents(df).downtime_by_shift("state")
+        >>> out[["date", "shift", "downtime_minutes", "availability_pct"]].round(1)
+                 date    shift  downtime_minutes  availability_pct
+        0  2025-01-01  shift_1              20.0              66.1
     """
 
     def __init__(
@@ -100,26 +134,13 @@ class DowntimeEvents(Base):
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
         """Assign shift based on time of day."""
-        time = timestamp.time()
-
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-
-        return "unknown"
+        return assign_shift(timestamp, self.shift_definitions)
 
     def downtime_by_shift(
         self,
         state_uuid: str,
         *,
-        running_value: str = "Running",
+        running_value: str | bool = "Running",
         value_column: str = "value_string",
         max_gap: str | None = None,
         production_day: bool = True,
@@ -128,7 +149,10 @@ class DowntimeEvents(Base):
 
         Args:
             state_uuid: UUID for machine state signal
-            running_value: Value that indicates machine is running
+            running_value: Value that indicates machine is running. A bool
+                matches a boolean run signal (``value_bool`` by default); a
+                boolean run signal is also used, with True as running, when
+                the state rows carry no ``value_column`` value.
             value_column: Column containing state values
             max_gap: Optional cap (e.g. "15min"). A duration between two
                 consecutive readings longer than this is treated as a logging
@@ -152,17 +176,24 @@ class DowntimeEvents(Base):
             - duration_seconds: Shift window length in seconds
             - date: Production date
             - shift: Shift name
-            - total_minutes: Total shift duration in minutes
-            - downtime_minutes: Downtime duration in minutes
-            - uptime_minutes: Running time in minutes
+            - total_minutes / total_seconds: Observed shift time (uptime +
+                downtime)
+            - downtime_minutes / downtime_seconds: Downtime duration
+            - uptime_minutes / uptime_seconds: Running time
             - availability_pct: Uptime percentage
+            - excluded_seconds: Time removed by ``max_gap`` as "no data"
+                (0 without a cap); it is in neither uptime nor downtime
+            The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
         Example:
-            >>> downtime_by_shift('machine_state', running_value='Running')
-                date        shift    total_minutes  downtime_minutes  uptime_minutes  availability_pct
-            0   2024-01-01  shift_1  480            45.2             434.8           90.6
-            1   2024-01-01  shift_2  480            67.5             412.5           85.9
-            2   2024-01-01  shift_3  480            92.0             388.0           80.8
+            >>> import ts_shape
+            >>> df = ts_shape.make_id_signal(
+            ...     "state", ["Running", "Stopped", "Running"], hold=20, freq="1min",
+            ...     start="2025-01-01 08:00")
+            >>> out = ts_shape.DowntimeEvents(df).downtime_by_shift("state")
+            >>> out[["shift", "downtime_minutes", "uptime_minutes", "availability_pct"]]
+                 shift  downtime_minutes  uptime_minutes  availability_pct
+            0  shift_1              20.0            39.0         66.101695
         """
         state_data = (
             self.dataframe[self.dataframe["uuid"] == state_uuid]
@@ -178,7 +209,9 @@ class DowntimeEvents(Base):
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
 
         # Assign shifts and dates
-        state_data["shift"] = state_data[self.time_column].apply(self._assign_shift)
+        state_data["shift"] = assign_shift(
+            state_data[self.time_column], self.shift_definitions
+        )
         state_data["date"] = (
             production_dates(
                 state_data[self.time_column],
@@ -191,9 +224,11 @@ class DowntimeEvents(Base):
 
         # Calculate duration for each state
         state_data["next_time"] = state_data[self.time_column].shift(-1)
-        state_data["duration_minutes"] = (
+        state_data["duration_s"] = (
             state_data["next_time"] - state_data[self.time_column]
-        ).dt.total_seconds() / 60
+        ).dt.total_seconds()
+        state_data["duration_minutes"] = state_data["duration_s"] / 60
+        state_data["excluded_s"] = 0.0
 
         if max_gap is None and state_uuid in self.specs:
             spec_gap = self.specs[state_uuid].max_gap
@@ -203,10 +238,28 @@ class DowntimeEvents(Base):
         if max_gap is not None:
             cap_minutes = pd.to_timedelta(max_gap).total_seconds() / 60
             over_gap = state_data["duration_minutes"] > cap_minutes
-            state_data.loc[over_gap, "duration_minutes"] = float("nan")
+            state_data.loc[over_gap, "excluded_s"] = state_data.loc[
+                over_gap, "duration_s"
+            ]
+            state_data.loc[over_gap, ["duration_minutes", "duration_s"]] = float("nan")
 
         # Mark running vs downtime
-        state_data["is_running"] = state_data[value_column] == running_value
+        state_data["is_running"] = state_mask(
+            state_data, value_column, running_value, bool_value=True
+        )
+
+        # Seconds per (date, shift), aggregated in one pass.
+        seconds = (
+            state_data.assign(
+                _up=state_data["duration_s"].where(state_data["is_running"], 0.0),
+                _down=state_data["duration_s"].where(~state_data["is_running"], 0.0),
+            )
+            .groupby(["date", "shift"])[["_up", "_down", "excluded_s"]]
+            .sum()
+        )
+        seconds_by_group = dict(
+            zip(seconds.index, seconds.itertuples(index=False, name=None), strict=True)
+        )
 
         # Group by date and shift
         results = []
@@ -227,6 +280,9 @@ class DowntimeEvents(Base):
                 "duration_minutes"
             ].sum()
             total_minutes = uptime_minutes + downtime_minutes
+            uptime_seconds, downtime_seconds, excluded_seconds = seconds_by_group[
+                (date, shift)
+            ]
 
             availability_pct = (
                 (uptime_minutes / total_minutes * 100) if total_minutes > 0 else 0
@@ -237,9 +293,13 @@ class DowntimeEvents(Base):
                     "date": date,
                     "shift": shift,
                     "total_minutes": total_minutes,
+                    "total_seconds": float(uptime_seconds + downtime_seconds),
                     "downtime_minutes": downtime_minutes,
+                    "downtime_seconds": float(downtime_seconds),
                     "uptime_minutes": uptime_minutes,
+                    "uptime_seconds": float(uptime_seconds),
                     "availability_pct": availability_pct,
+                    "excluded_seconds": float(excluded_seconds),
                 }
             )
 
@@ -254,7 +314,7 @@ class DowntimeEvents(Base):
         state_uuid: str,
         reason_uuid: str,
         *,
-        stopped_value: str = "Stopped",
+        stopped_value: str | bool = "Stopped",
         value_column_state: str = "value_string",
         value_column_reason: str = "value_string",
     ) -> pd.DataFrame:
@@ -263,7 +323,10 @@ class DowntimeEvents(Base):
         Args:
             state_uuid: UUID for machine state signal
             reason_uuid: UUID for downtime reason signal
-            stopped_value: Value indicating machine is stopped
+            stopped_value: Value indicating machine is stopped. A bool
+                matches a boolean run signal (``value_bool`` by default); a
+                boolean run signal is also used, with False as stopped, when
+                the state rows carry no ``value_column_state`` value.
             value_column_state: Column containing state values
             value_column_reason: Column containing reason codes
 
@@ -271,16 +334,22 @@ class DowntimeEvents(Base):
             DataFrame with downtime by reason:
             - reason: Reason code
             - occurrences: Number of downtime events
-            - total_minutes: Total downtime for this reason
-            - avg_minutes: Average downtime per occurrence
+            - total_minutes / total_seconds: Total downtime for this reason
+            - avg_minutes / avg_seconds: Average downtime per occurrence
             - pct_of_total: Percentage of total downtime
+            The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
         Example:
-            >>> downtime_by_reason('state', 'reason', stopped_value='Stopped')
-                reason              occurrences  total_minutes  avg_minutes  pct_of_total
-            0   Material_Shortage   12           145.5         12.1         35.2
-            1   Tool_Change         8            98.2          12.3         23.8
-            2   Quality_Issue       5            76.0          15.2         18.4
+            >>> import pandas as pd, ts_shape
+            >>> states = ["Running", "Stopped", "Running", "Stopped", "Running"]
+            >>> df = pd.concat([ts_shape.make_id_signal("state", states, hold=10, freq="1min"),
+            ...     ts_shape.make_id_signal("reason", ["-", "Jam", "-", "Tool", "-"], hold=10,
+            ...                             freq="1min")])
+            >>> out = ts_shape.DowntimeEvents(df).downtime_by_reason("state", "reason")
+            >>> out[["reason", "occurrences", "total_minutes", "pct_of_total"]]
+              reason  occurrences  total_minutes  pct_of_total
+            0    Jam           10           10.0          50.0
+            1   Tool           10           10.0          50.0
         """
         state_data = (
             self.dataframe[self.dataframe["uuid"] == state_uuid]
@@ -295,23 +364,17 @@ class DowntimeEvents(Base):
         )
 
         if state_data.empty or reason_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "reason",
-                    "occurrences",
-                    "total_minutes",
-                    "avg_minutes",
-                    "pct_of_total",
-                ]
-            )
+            return pd.DataFrame(columns=_REASON_COLS)
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
         reason_data[self.time_column] = pd.to_datetime(reason_data[self.time_column])
 
         # Merge state with reason - select only needed columns to avoid suffix issues
         # Note: both dataframes likely have value_string, so we need to be careful
-        state_clean = state_data[[self.time_column, value_column_state, "uuid"]].copy()
-        state_clean = state_clean.rename(columns={value_column_state: "state"})
+        state_data["is_stopped"] = state_mask(
+            state_data, value_column_state, stopped_value, bool_value=False
+        )
+        state_clean = state_data[[self.time_column, "is_stopped", "uuid"]].copy()
 
         reason_clean = reason_data[[self.time_column, value_column_reason]].copy()
         reason_clean = reason_clean.rename(columns={value_column_reason: "reason"})
@@ -326,39 +389,22 @@ class DowntimeEvents(Base):
         # after filtering would book the intervening running time as downtime.
         merged = merged.sort_values(self.time_column)
         merged["next_time"] = merged[self.time_column].shift(-1)
-        merged["duration_minutes"] = (
+        merged["duration_s"] = (
             merged["next_time"] - merged[self.time_column]
-        ).dt.total_seconds() / 60
+        ).dt.total_seconds()
+        merged["duration_minutes"] = merged["duration_s"] / 60
 
         # Filter for stopped states, then drop the trailing open interval (NaN).
-        stopped = merged[merged["state"] == stopped_value].copy()
+        stopped = merged[merged["is_stopped"]].copy()
         stopped = stopped[stopped["duration_minutes"].notna()]
 
         if stopped.empty:
-            return pd.DataFrame(
-                columns=[
-                    "reason",
-                    "occurrences",
-                    "total_minutes",
-                    "avg_minutes",
-                    "pct_of_total",
-                ]
-            )
-
-        if stopped.empty:
-            return pd.DataFrame(
-                columns=[
-                    "reason",
-                    "occurrences",
-                    "total_minutes",
-                    "avg_minutes",
-                    "pct_of_total",
-                ]
-            )
+            return pd.DataFrame(columns=_REASON_COLS)
 
         # Group by reason
+        grouped = stopped.groupby("reason")
         reason_stats = (
-            stopped.groupby("reason")["duration_minutes"]
+            grouped["duration_minutes"]
             .agg(
                 [
                     ("occurrences", "count"),
@@ -368,6 +414,9 @@ class DowntimeEvents(Base):
             )
             .reset_index()
         )
+        seconds = grouped["duration_s"].agg(["sum", "mean"]).reset_index(drop=True)
+        reason_stats.insert(3, "total_seconds", seconds["sum"].to_numpy())
+        reason_stats.insert(5, "avg_seconds", seconds["mean"].to_numpy())
 
         # Calculate percentage of total
         total_downtime = reason_stats["total_minutes"].sum()
@@ -380,7 +429,7 @@ class DowntimeEvents(Base):
         # Sort by total downtime descending
         reason_stats = reason_stats.sort_values("total_minutes", ascending=False)
 
-        return reason_stats.reset_index(drop=True)
+        return reason_stats[_REASON_COLS].reset_index(drop=True)
 
     def top_downtime_reasons(
         self,
@@ -388,7 +437,7 @@ class DowntimeEvents(Base):
         reason_uuid: str,
         *,
         top_n: int = 5,
-        stopped_value: str = "Stopped",
+        stopped_value: str | bool = "Stopped",
         value_column_state: str = "value_string",
         value_column_reason: str = "value_string",
     ) -> pd.DataFrame:
@@ -398,19 +447,25 @@ class DowntimeEvents(Base):
             state_uuid: UUID for machine state signal
             reason_uuid: UUID for downtime reason signal
             top_n: Number of top reasons to return
-            stopped_value: Value indicating machine is stopped
+            stopped_value: Value indicating machine is stopped (a string, or
+                a bool for a boolean run signal; see :meth:`downtime_by_reason`)
             value_column_state: Column containing state values
             value_column_reason: Column containing reason codes
 
         Returns:
-            DataFrame with top N reasons and cumulative percentage
+            DataFrame with top N reasons and cumulative percentage: reason,
+            total_minutes, total_seconds, pct_of_total, cumulative_pct
 
         Example:
-            >>> top_downtime_reasons('state', 'reason', top_n=5)
-                reason              total_minutes  pct_of_total  cumulative_pct
-            0   Material_Shortage   145.5         35.2          35.2
-            1   Tool_Change         98.2          23.8          59.0
-            2   Quality_Issue       76.0          18.4          77.4
+            >>> import pandas as pd, ts_shape
+            >>> states = ["Running", "Stopped", "Running", "Stopped", "Running"]
+            >>> df = pd.concat([ts_shape.make_id_signal("state", states, hold=10, freq="1min"),
+            ...     ts_shape.make_id_signal("reason", ["-", "Jam", "-", "Tool", "-"], hold=10,
+            ...                             freq="1min")])
+            >>> top = ts_shape.DowntimeEvents(df).top_downtime_reasons("state", "reason", top_n=1)
+            >>> top[["reason", "total_minutes", "cumulative_pct"]]
+              reason  total_minutes  cumulative_pct
+            0    Jam           10.0            50.0
         """
         reason_stats = self.downtime_by_reason(
             state_uuid,
@@ -421,9 +476,7 @@ class DowntimeEvents(Base):
         )
 
         if reason_stats.empty:
-            return pd.DataFrame(
-                columns=["reason", "total_minutes", "pct_of_total", "cumulative_pct"]
-            )
+            return pd.DataFrame(columns=_TOP_COLS)
 
         # Get top N
         top_reasons = reason_stats.head(top_n).copy()
@@ -431,15 +484,13 @@ class DowntimeEvents(Base):
         # Calculate cumulative percentage
         top_reasons["cumulative_pct"] = top_reasons["pct_of_total"].cumsum()
 
-        return top_reasons[
-            ["reason", "total_minutes", "pct_of_total", "cumulative_pct"]
-        ]
+        return top_reasons[_TOP_COLS]
 
     def availability_trend(
         self,
         state_uuid: str,
         *,
-        running_value: str = "Running",
+        running_value: str | bool = "Running",
         value_column: str = "value_string",
         window: str = "1D",
         max_gap: str | None = None,
@@ -448,7 +499,9 @@ class DowntimeEvents(Base):
 
         Args:
             state_uuid: UUID for machine state signal
-            running_value: Value that indicates machine is running
+            running_value: Value that indicates machine is running (a string,
+                or a bool for a boolean run signal; see
+                :meth:`downtime_by_shift`)
             value_column: Column containing state values
             window: Time window for aggregation (e.g., '1D', '1W')
             max_gap: Optional cap (e.g. "15min"). A gap between consecutive
@@ -465,15 +518,21 @@ class DowntimeEvents(Base):
             - duration_seconds: Period length in seconds
             - period: Time period
             - availability_pct: Availability percentage
-            - uptime_minutes: Total uptime
-            - downtime_minutes: Total downtime
+            - uptime_minutes / uptime_seconds: Total uptime
+            - downtime_minutes / downtime_seconds: Total downtime
+            - excluded_seconds: Time removed by ``max_gap`` as "no data"
+                (0 without a cap)
+            The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
         Example:
-            >>> availability_trend('state', window='1D')
-                period      availability_pct  uptime_minutes  downtime_minutes
-            0   2024-01-01  87.5             1260.0          180.0
-            1   2024-01-02  91.2             1313.3          126.7
-            2   2024-01-03  85.8             1235.5          204.5
+            >>> import ts_shape
+            >>> df = ts_shape.make_id_signal(
+            ...     "state", ["Running", "Stopped", "Running"], hold=20, freq="1min")
+            >>> out = ts_shape.DowntimeEvents(df).availability_trend("state", window="30min")
+            >>> out[["period", "availability_pct", "downtime_minutes"]]
+                           period  availability_pct  downtime_minutes
+            0 2025-01-01 00:00:00         66.666667              10.0
+            1 2025-01-01 00:30:00         65.517241              10.0
         """
         state_data = (
             self.dataframe[self.dataframe["uuid"] == state_uuid]
@@ -488,18 +547,25 @@ class DowntimeEvents(Base):
 
         # Calculate duration for each state
         state_data["next_time"] = state_data[self.time_column].shift(-1)
-        state_data["duration_minutes"] = (
+        state_data["duration_s"] = (
             state_data["next_time"] - state_data[self.time_column]
-        ).dt.total_seconds() / 60
+        ).dt.total_seconds()
+        state_data["duration_minutes"] = state_data["duration_s"] / 60
 
         # Treat over-long gaps as "no data" so they are excluded below.
+        excluded: pd.Series | None = None
         if max_gap is not None:
             cap_minutes = pd.to_timedelta(max_gap).total_seconds() / 60
             over_gap = state_data["duration_minutes"] > cap_minutes
-            state_data.loc[over_gap, "duration_minutes"] = float("nan")
+            excluded = state_data.loc[over_gap].set_index(self.time_column)[
+                "duration_s"
+            ]
+            state_data.loc[over_gap, ["duration_minutes", "duration_s"]] = float("nan")
 
         # Mark running vs downtime
-        state_data["is_running"] = state_data[value_column] == running_value
+        state_data["is_running"] = state_mask(
+            state_data, value_column, running_value, bool_value=True
+        )
 
         # Remove NaN durations
         state_data = state_data[state_data["duration_minutes"].notna()]
@@ -510,10 +576,35 @@ class DowntimeEvents(Base):
         # Group by time window
         state_data = state_data.set_index(self.time_column)
 
+        grouper = pd.Grouper(freq=window)
+        seconds = (
+            state_data.assign(
+                _up=state_data["duration_s"].where(state_data["is_running"], 0.0),
+                _down=state_data["duration_s"].where(~state_data["is_running"], 0.0),
+            )
+            .groupby(grouper)[["_up", "_down"]]
+            .sum()
+        )
+        seconds_by_period = dict(
+            zip(seconds.index, seconds.itertuples(index=False, name=None), strict=True)
+        )
+        # Excluded time is booked to the window (as reported in start/end)
+        # holding the reading before the gap.
+        excluded_by_period: dict = {}
+        if excluded is not None and len(excluded):
+            labels = pd.Series(seconds.index)
+            lo, hi = window_bounds(labels, window)
+            bins = pd.IntervalIndex.from_arrays(lo, hi, closed="left")
+            pos = bins.get_indexer(excluded.index)
+            hit = pos >= 0
+            sums = excluded[hit].groupby(pos[hit]).sum()
+            excluded_by_period = {labels.iloc[i]: v for i, v in sums.items()}
+
         results = []
-        for period, group in state_data.groupby(pd.Grouper(freq=window)):
+        for period, group in state_data.groupby(grouper):
             if group.empty:
                 continue
+            excluded_seconds = float(excluded_by_period.get(period, 0.0))
 
             uptime = group[group["is_running"]]["duration_minutes"].sum()
             downtime = group[~group["is_running"]]["duration_minutes"].sum()
@@ -526,7 +617,10 @@ class DowntimeEvents(Base):
                     "period": period,
                     "availability_pct": availability,
                     "uptime_minutes": uptime,
+                    "uptime_seconds": float(seconds_by_period[period][0]),
                     "downtime_minutes": downtime,
+                    "downtime_seconds": float(seconds_by_period[period][1]),
+                    "excluded_seconds": excluded_seconds,
                 }
             )
 

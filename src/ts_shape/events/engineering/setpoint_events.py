@@ -53,6 +53,8 @@ class SetpointChangeEvents(Base):
 
         # Cache for performance optimization
         self._actual_cache: dict[str, pd.DataFrame] = {}
+        # Sorted int64 ticks of each cached actual frame, for _window.
+        self._ticks_cache: dict[int, tuple[pd.DataFrame, np.ndarray]] = {}
 
     def _get_actual(self, actual_uuid: str) -> pd.DataFrame:
         """
@@ -67,6 +69,23 @@ class SetpointChangeEvents(Base):
             actual[self.time_column] = pd.to_datetime(actual[self.time_column])
             self._actual_cache[actual_uuid] = actual
         return self._actual_cache[actual_uuid]
+
+    def _window(
+        self, actual: pd.DataFrame, t0: pd.Timestamp, t1: pd.Timestamp
+    ) -> pd.DataFrame:
+        """Rows of the (time-sorted) ``actual`` with ``t0 <= time <= t1``.
+
+        Same rows (and index labels) as the boolean mask, found by binary
+        search instead of a scan of the whole signal per setpoint change.
+        """
+        key = id(actual)
+        if self._ticks_cache.get(key, (None,))[0] is not actual:
+            ticks = pd.DatetimeIndex(actual[self.time_column]).as_unit("ns").asi8
+            self._ticks_cache[key] = (actual, ticks)
+        ticks = self._ticks_cache[key][1]
+        a = np.searchsorted(ticks, pd.Timestamp(t0).as_unit("ns").value, side="left")
+        b = np.searchsorted(ticks, pd.Timestamp(t1).as_unit("ns").value, side="right")
+        return actual.iloc[a:b]
 
     def _change_intervals(
         self, rows: list[dict[str, Any]], cols: list[str]
@@ -169,8 +188,11 @@ class SetpointChangeEvents(Base):
         valid_change_times = change_times[hold_ok]
 
         rows: list[dict[str, Any]] = []
-        for t in valid_change_times:
-            row = sp.loc[sp[self.time_column] == t].iloc[0]
+        # The first setpoint sample at each change time (binary search on the
+        # sorted series instead of a full-series comparison per change).
+        first_at = sp[self.time_column].searchsorted(valid_change_times, side="left")
+        for t, pos in zip(valid_change_times, first_at):
+            row = sp.iloc[pos]
             rows.append(
                 {
                     "start": t,
@@ -218,7 +240,19 @@ class SetpointChangeEvents(Base):
         sp = self.sp[[self.time_column, self.value_column]].copy()
         sp["dt_s"] = sp[self.time_column].diff().dt.total_seconds()
         sp["dv"] = sp[self.value_column].diff()
-        sp["rate"] = sp["dv"] / sp["dt_s"]
+        # A sample sharing its timestamp with the previous one (dt = 0) has no
+        # rate (it was +-inf, so always "ramping"): its rate is NaN, it does not
+        # count as ramping and its jump is not part of a ramp's delta.
+        dup = sp["dt_s"] <= 0
+        if dup.any():
+            warnings.warn(
+                f"detect_setpoint_ramps(): {int(dup.sum())} setpoint sample(s) "
+                "share a timestamp with the previous sample; their rate is "
+                "undefined and they are not counted as ramping",
+                DataQualityWarning,
+                stacklevel=2,
+            )
+        sp["rate"] = sp["dv"] / sp["dt_s"].where(~dup)
         rate_mask = sp["rate"].abs() >= float(min_rate)
 
         # group contiguous True segments
@@ -360,7 +394,7 @@ class SetpointChangeEvents(Base):
         ].reset_index(drop=True)
 
         rows: list[dict[str, Any]] = []
-        for _, c in change_times.iterrows():
+        for c in change_times.to_dict("records"):
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
             delta = float(c["delta"]) if pd.notna(c["delta"]) else 0.0
@@ -371,10 +405,7 @@ class SetpointChangeEvents(Base):
             else:
                 effective_tol = tol
 
-            window = actual[
-                (actual[self.time_column] >= t0)
-                & (actual[self.time_column] <= t0 + look_td)
-            ]
+            window = self._window(actual, t0, t0 + look_td)
             if window.empty:
                 rows.append(
                     {
@@ -475,15 +506,12 @@ class SetpointChangeEvents(Base):
         ]
 
         out_rows: list[dict[str, Any]] = []
-        for _, r in changes.iterrows():
+        for r in changes.to_dict("records"):
             t0 = r[self.time_column]
             s_new = float(r[self.value_column])
             _s_prev = float(r["prev"]) if pd.notna(r["prev"]) else s_new
             delta = float(r["delta"]) if pd.notna(r["delta"]) else 0.0
-            win = actual[
-                (actual[self.time_column] >= t0)
-                & (actual[self.time_column] <= t0 + look_td)
-            ]
+            win = self._window(actual, t0, t0 + look_td)
 
             if win.empty:
                 out_rows.append(
@@ -643,12 +671,9 @@ class SetpointChangeEvents(Base):
         ].reset_index(drop=True)
 
         rows: list[dict[str, Any]] = []
-        for _, c in change_times.iterrows():
+        for c in change_times.to_dict("records"):
             t0 = c[self.time_column]
-            window = actual[
-                (actual[self.time_column] >= t0)
-                & (actual[self.time_column] <= t0 + look_td)
-            ]
+            window = self._window(actual, t0, t0 + look_td)
 
             if window.empty or len(window) < 2:
                 rows.append(
@@ -763,16 +788,13 @@ class SetpointChangeEvents(Base):
         ].reset_index(drop=True)
 
         rows: list[dict[str, Any]] = []
-        for _, c in changes.iterrows():
+        for c in changes.to_dict("records"):
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
             s_prev = float(c["prev"]) if pd.notna(c["prev"]) else s_new
             delta = float(c["delta"]) if pd.notna(c["delta"]) else 0.0
 
-            window = actual[
-                (actual[self.time_column] >= t0)
-                & (actual[self.time_column] <= t0 + look_td)
-            ]
+            window = self._window(actual, t0, t0 + look_td)
 
             if window.empty or delta == 0:
                 rows.append(
@@ -871,13 +893,10 @@ class SetpointChangeEvents(Base):
 
         rows: list[dict[str, Any]] = []
         failed_fits: list[pd.Timestamp] = []
-        for _, c in changes.iterrows():
+        for c in changes.to_dict("records"):
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
-            window = actual[
-                (actual[self.time_column] >= t0)
-                & (actual[self.time_column] <= t0 + look_td)
-            ]
+            window = self._window(actual, t0, t0 + look_td)
 
             if window.empty or len(window) < min_points:
                 rows.append(
@@ -1000,13 +1019,10 @@ class SetpointChangeEvents(Base):
         ].reset_index(drop=True)
 
         rows: list[dict[str, Any]] = []
-        for _, c in changes.iterrows():
+        for c in changes.to_dict("records"):
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
-            win = actual[
-                (actual[self.time_column] >= t0)
-                & (actual[self.time_column] <= t0 + look_td)
-            ]
+            win = self._window(actual, t0, t0 + look_td)
 
             if win.empty:
                 rows.append(
@@ -1175,13 +1191,10 @@ class SetpointChangeEvents(Base):
         ].reset_index(drop=True)
 
         ss_error_rows: list[dict[str, Any]] = []
-        for _, c in changes.iterrows():
+        for c in changes.to_dict("records"):
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
-            win = actual[
-                (actual[self.time_column] >= t0)
-                & (actual[self.time_column] <= t0 + look_td)
-            ]
+            win = self._window(actual, t0, t0 + look_td)
 
             if win.empty:
                 ss_error = None
@@ -1198,7 +1211,9 @@ class SetpointChangeEvents(Base):
 
             ss_error_rows.append({"start": t0, "steady_state_error": ss_error})
 
-        ss_error_df = pd.DataFrame(ss_error_rows)
+        ss_error_df = pd.DataFrame(
+            ss_error_rows, columns=["start", "steady_state_error"]
+        )
 
         # Merge all metrics on 'start'. Every KPI method emits one row per
         # setpoint change in the same order, so two changes at the same

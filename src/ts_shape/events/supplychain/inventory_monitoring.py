@@ -338,62 +338,30 @@ class InventoryMonitoringEvents(Base):
         lv = self.levels[[self.time_column, self.value_column]].copy()
         window_td = pd.to_timedelta(consumption_rate_window)
 
-        rows: list[dict[str, Any]] = []
-        times = lv[self.time_column].array
-        values = lv[self.value_column].values
-
-        for i in range(len(lv)):
-            current_time = times[i]
-            current_level = float(values[i])
-            # Lookback window
-            start = current_time - window_td
-            mask = (times >= start) & (times <= current_time)
-            window_vals = values[mask]
-            window_times = times[mask]
-
-            if len(window_vals) < 2:
-                rows.append(
-                    {
-                        "systime": pd.Timestamp(current_time),
-                        "uuid": self.event_uuid,
-                        "source_uuid": self.level_uuid,
-                        "is_delta": True,
-                        "current_level": current_level,
-                        "consumption_rate": 0.0,
-                        "estimated_stockout_time_hours": np.inf,
-                    }
-                )
-                continue
-
-            # Consumption = first - last in window (positive if consuming)
-            first_val = float(window_vals[0])
-            last_val = float(window_vals[-1])
-            elapsed_hours = (
-                pd.Timestamp(window_times[-1]) - pd.Timestamp(window_times[0])
-            ).total_seconds() / 3600.0
-
-            if elapsed_hours <= 0:
-                rate = 0.0
-            else:
-                rate = (first_val - last_val) / elapsed_hours
-
-            if rate > 0:
-                est_hours = current_level / rate
-            else:
-                est_hours = np.inf
-
-            rows.append(
-                {
-                    "systime": pd.Timestamp(current_time),
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.level_uuid,
-                    "is_delta": True,
-                    "current_level": current_level,
-                    "consumption_rate": float(rate),
-                    "estimated_stockout_time_hours": float(est_hours),
-                }
+        # Lookback window [t - window, t] (every sample at time t included) as
+        # index bounds on the sorted levels; consumption = first - last value
+        # in the window over the time between its first and last sample.
+        times = lv[self.time_column]
+        values = lv[self.value_column].to_numpy(dtype=float)
+        lo = times.searchsorted(times - window_td, side="left")
+        hi = times.searchsorted(times, side="right") - 1
+        t_ns = times.to_numpy(dtype="datetime64[ns]")
+        elapsed_hours = (t_ns[hi] - t_ns[lo]) / np.timedelta64(1, "h")
+        with np.errstate(invalid="ignore", divide="ignore"):
+            rate = np.where(
+                elapsed_hours > 0, (values[lo] - values[hi]) / elapsed_hours, 0.0
             )
+            rate = np.where(hi - lo + 1 < 2, 0.0, rate)
+            est_hours = np.where(rate > 0, values / rate, np.inf)
 
-        if not rows:
-            return pd.DataFrame(columns=empty_cols)
-        return pd.DataFrame(rows)
+        return pd.DataFrame(
+            {
+                "systime": times.to_numpy(),
+                "uuid": self.event_uuid,
+                "source_uuid": self.level_uuid,
+                "is_delta": True,
+                "current_level": values,
+                "consumption_rate": rate.astype(float),
+                "estimated_stockout_time_hours": est_hours.astype(float),
+            }
+        )

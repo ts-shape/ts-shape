@@ -80,12 +80,14 @@ Classes:
   - calculate_custom_func: Apply a custom aggregation per window.
 
 - CycleExtractor: Build cycles from state/step/value changes.
-  - process_persistent_cycle: True stretches define cycles.
-  - process_trigger_cycle: True-to-False transition defines a cycle end.
-  - process_separate_start_end_cycle: Separate starts and ends signals.
-  - process_step_sequence: Start/end steps in integer values.
-  - process_state_change_cycle: Sequential rows define boundaries.
-  - process_value_change_cycle: Any value change defines a boundary.
+  - process_persistent_cycle: a cycle runs from a rising edge to the next
+    falling edge.
+  - process_trigger_cycle: a cycle runs from one rising edge to the next.
+  - process_separate_start_end_cycle: start and end events on two signals.
+  - process_step_sequence: entering a start step opens a cycle, entering an
+    end step closes it.
+  - process_state_change_cycle: every sample is a boundary.
+  - process_value_change_cycle: a change above a threshold is a boundary.
 
 - CycleDataProcessor: Split/merge/group by cycle windows.
   - split_by_cycle: Split values by cycle ranges.

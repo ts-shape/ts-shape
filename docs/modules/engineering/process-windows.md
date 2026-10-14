@@ -1,70 +1,39 @@
 # ProcessWindowEvents
 
-> Analyze time-windowed process statistics for shift reports, SPC context, and trend monitoring.
+Descriptive statistics of a signal per time window, and the windows whose mean or spread changed against the previous window or stands out from all windows.
 
-**Module:** `ts_shape.events.engineering.process_window`  
-**Guide:** [Process Engineering](../../guides/engineering.md)
+`ts_shape.events.engineering.process_window` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/engineering/process_window.md)
 
----
-
-## When to Use
-
-Use as a building block for shift-level process monitoring. Answers "how is my process doing this hour/shift?" with windowed statistics and shift detection. Provides the statistical foundation for SPC charts, shift handover reports, and trend dashboards.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.engineering.process_window import ProcessWindowEvents
 
-analyzer = ProcessWindowEvents(
-    dataframe=process_data,
-    signal_uuid="mixer_torque_01",
-)
+df = ts_shape.make_timeseries(["mixer_torque"], n_points=1440, freq="1min", baseline=40.0, noise=0.5)
+df.loc[700:760, "value_double"] += 3.0
 
-# Descriptive statistics per 1-hour window
-stats = analyzer.windowed_statistics(window="1h")
-
-# Detect windows where the mean has shifted vs. the previous window
-shifts = analyzer.detect_mean_shift(window="1h", sensitivity=2.0)
-
-# Detect windows where variance has changed
-var_changes = analyzer.detect_variance_change(
-    window="1h",
-    ratio_threshold=2.0
-)
-
-# Compare each window mean to the overall baseline
-comparison = analyzer.window_comparison(window="1h")
+pw = ProcessWindowEvents(df, "mixer_torque")
+stats = pw.windowed_statistics(window="1h")
+print(pw.detect_mean_shift(window="1h", sensitivity=2.0))
+variance = pw.detect_variance_change(window="1h", ratio_threshold=2.0)
+outliers = pw.window_comparison(window="1h")
 ```
 
----
+## Methods
 
-## Key Methods
+All arguments are keyword-only.
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `windowed_statistics(window='1h')` | Per-window descriptive stats | DataFrame: `start`, `count`, `mean`, `std`, `min`, `max`, `median`, `p25`, `p75`, `range` |
-| `detect_mean_shift(window='1h', sensitivity=2.0)` | Mean shift detection | DataFrame of shift events (`start`, `end`, `prev_mean`, `current_mean`, `shift_sigma`) |
-| `detect_variance_change(window='1h', ratio_threshold=2.0)` | Variance change detection | DataFrame of variance events (`start`, `end`, `prev_std`, `current_std`, `variance_ratio`) |
-| `window_comparison(window='1h')` | Compare windows to baseline | DataFrame: `start`, `mean`, `z_score_vs_global`, `is_anomalous` |
+| Method | Returns |
+|---|---|
+| `windowed_statistics(window='1h')` | per window: `count`, `mean`, `std`, `min`, `max`, `median`, `p25`, `p75`, `range` |
+| `detect_mean_shift(window='1h', sensitivity=2.0)` | `prev_mean`, `current_mean`, `shift_sigma` |
+| `detect_variance_change(window='1h', ratio_threshold=2.0)` | `prev_std`, `current_std`, `variance_ratio` |
+| `window_comparison(window='1h')` | per window: `mean`, `z_score_vs_global`, `is_anomalous` |
 
----
+## Notes
 
-## Tips & Hints
-
-!!! tip "Align windows to shift boundaries"
-    Use `window='8h'` for 8-hour shifts or `window='12h'` for 12-hour shifts. This ensures each window maps to exactly one shift, making handover reports straightforward. Combine with `detect_mean_shift()` to flag shifts that deviate from normal.
-
-!!! info "Related modules"
-    - [Steady State Detection](steady-state.md) — filter to steady-state before computing window statistics
-    - [Process Stability Index](process-stability.md) — roll window statistics into a single stability score
-    - [Operating Range](operating-range.md) — envelope analysis that complements windowed stats
-
----
-
-## See Also
-
-- [Process Engineering Guide](../../guides/engineering.md)
-- [API Reference](../../reference/ts_shape/events/engineering/process_window.md)
+- A mean shift is flagged when |current mean − previous mean| > `sensitivity` × the previous window's standard deviation.
+- A variance change is flagged when current std / previous std is above `ratio_threshold` or below its reciprocal.
+- In both, `start` is the previous window's start and `end` the current window's start.
+- `is_anomalous`: the window mean lies more than 2 standard deviations of all window means from their average.

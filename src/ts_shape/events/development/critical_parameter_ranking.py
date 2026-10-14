@@ -42,20 +42,39 @@ class CriticalParameterRankingEvents(Base):
     aggregated value of an input parameter during that run, and an
     outcome column holds the quality / yield measurement of interest.
 
-    The constructor still accepts a long-form ``dataframe`` for symmetry
-    with the rest of ts-shape, but :meth:`rank` requires the wide-format
-    per-run table directly because aggregating "the right number" for
-    each parameter is a development-engineer judgment call (mean of the
-    hold phase? settled value? peak?) that varies by parameter.
+    :meth:`rank` takes the wide per-run table directly, because aggregating
+    "the right number" for each parameter is a development-engineer
+    judgment call (mean of the hold phase? settled value? peak?) that varies
+    by parameter. The constructor's long-format ``dataframe`` is optional and
+    not used by :meth:`rank`: ``CriticalParameterRankingEvents().rank(runs,
+    ...)`` works without a time column.
+
+    Example:
+        >>> import pandas as pd
+        >>> runs = pd.DataFrame({"temp": [180, 185, 190, 195, 200],
+        ...                      "speed": [5, 3, 4, 2, 1],
+        ...                      "yield_pct": [90, 92, 94, 96, 98]})
+        >>> ranked = CriticalParameterRankingEvents().rank(
+        ...     runs, ["temp", "speed"], "yield_pct")
+        >>> ranked["parameter"].tolist()
+        ['temp', 'speed']
     """
 
     def __init__(
         self,
-        dataframe: pd.DataFrame,
+        dataframe: pd.DataFrame | None = None,
         *,
         event_uuid: str = "dev:cpp_ranking",
         time_column: str = "systime",
     ) -> None:
+        """
+        Args:
+            dataframe: Optional long-format data; :meth:`rank` does not use it.
+            event_uuid: ``uuid`` of the emitted rows.
+            time_column: Timestamp column of ``dataframe``.
+        """
+        if dataframe is None:
+            dataframe = pd.DataFrame(columns=[time_column])
         super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column

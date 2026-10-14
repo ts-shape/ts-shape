@@ -102,19 +102,17 @@ class ThresholdMonitoringEvents(Base):
             if not exceeded.any():
                 continue
 
-            groups = (exceeded != exceeded.shift()).cumsum()
-            for _, seg in sig.groupby(groups):
-                seg_exc = exceeded.loc[seg.index]
-                if not seg_exc.iloc[0]:
-                    continue
-                start = seg[self.time_column].iloc[0]
-                end = ends.loc[seg.index[-1]]
-                peak = float(
-                    seg[self.value_column].max()
-                    if direction == "above"
-                    else seg[self.value_column].min()
-                )
-
+            # Runs of exceeding samples as index ranges [first, last].
+            exc = exceeded.to_numpy(dtype=bool)
+            edges = np.diff(np.r_[False, exc, False].astype(np.int8))
+            first = np.flatnonzero(edges == 1)
+            last = np.flatnonzero(edges == -1) - 1
+            vals = sig[self.value_column].to_numpy(dtype=float)
+            starts = sig[self.time_column].iloc[first]
+            end_times = ends.iloc[last]
+            for i, (start, end) in enumerate(zip(starts, end_times)):
+                seg_vals = vals[first[i] : last[i] + 1]
+                peak = float(seg_vals.max() if direction == "above" else seg_vals.min())
                 all_events.append(
                     {
                         "start": start,

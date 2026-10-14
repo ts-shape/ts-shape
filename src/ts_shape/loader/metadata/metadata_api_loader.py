@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -81,11 +81,14 @@ class DatapointAPI:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get(self, path: str) -> list:
+    def _get(self, path: str) -> list[dict[str, Any]]:
         url = f"{self.base_url}{path}"
         response = requests.get(url, headers=self._headers, timeout=self.timeout)
         response.raise_for_status()
-        return response.json()
+        # ``Response.json()`` is untyped JSON; every endpoint used here returns
+        # a list of records.
+        records: list[dict[str, Any]] = response.json()
+        return records
 
     def _filter_by_query(
         self, records: list[dict], query: str, fields: list[str]
@@ -103,7 +106,7 @@ class DatapointAPI:
         """GET /api/datatrons — return all datatrons."""
         return self._get(self._DATATRONS_PATH)
 
-    def get_devices(self, datatron_id) -> list[dict]:
+    def get_devices(self, datatron_id: int | str) -> list[dict]:
         """GET /api/datatrons/{datatron_id}/devices — return all devices for a datatron.
 
         Args:
@@ -112,7 +115,9 @@ class DatapointAPI:
         """
         return self._get(self._DEVICES_PATH.format(datatron_id=datatron_id))
 
-    def get_datapoints(self, datatron_id, device_id) -> list[dict]:
+    def get_datapoints(
+        self, datatron_id: int | str, device_id: int | str
+    ) -> list[dict]:
         """GET /api/datatrons/{datatron_id}/devices/{device_id}/data_points.
 
         Args:
@@ -143,7 +148,7 @@ class DatapointAPI:
         return self._filter_by_query(self.get_datatrons(), query, fields)
 
     def search_devices(
-        self, datatron_id, query: str, fields: list[str] | None = None
+        self, datatron_id: int | str, query: str, fields: list[str] | None = None
     ) -> list[dict]:
         """Filter devices for a datatron whose fields contain *query*.
 
@@ -158,7 +163,11 @@ class DatapointAPI:
         return self._filter_by_query(self.get_devices(datatron_id), query, fields)
 
     def search_datapoints(
-        self, datatron_id, device_id, query: str, fields: list[str] | None = None
+        self,
+        datatron_id: int | str,
+        device_id: int | str,
+        query: str,
+        fields: list[str] | None = None,
     ) -> list[dict]:
         """Filter datapoints for a device whose fields contain *query*.
 

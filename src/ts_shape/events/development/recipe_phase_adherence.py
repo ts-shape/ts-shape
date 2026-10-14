@@ -33,7 +33,10 @@ class RecipePhaseAdherenceEvents(Base):
     The spec is a mapping ``{phase_name: criteria_dict}``. Recognized
     criteria keys (all optional) per phase:
 
-    * ``duration_s``        -- ``(min, max)`` seconds.
+    * ``duration_seconds``  -- ``(min, max)`` seconds. ``duration_s`` is the
+      legacy spelling of the same criterion and is still accepted (giving
+      both for one phase raises ``ValueError``); ``criteria_failed`` names
+      the key the spec used.
     * ``hold_value``        -- ``(min, max)`` for the mean value during
       the phase.
     * ``ramp_rate_max``     -- maximum absolute slope (value-units per
@@ -64,6 +67,12 @@ class RecipePhaseAdherenceEvents(Base):
         self.value_column = value_column
         self.time_column = time_column
         self.spec = dict(spec)
+        for phase, criteria in self.spec.items():
+            if "duration_s" in criteria and "duration_seconds" in criteria:
+                raise ValueError(
+                    f"Recipe spec for phase {phase!r} gives both 'duration_seconds' "
+                    "and its legacy spelling 'duration_s'; give one"
+                )
         self._validate_uuid(self.dataframe, phase_uuid)
         self._validate_uuid(self.dataframe, value_uuid)
 
@@ -206,13 +215,16 @@ class RecipePhaseAdherenceEvents(Base):
             failed: list[str] = []
             phase_spec = self.spec.get(ivl["phase"], {})
 
-            if "duration_s" in phase_spec and not self._check_range(
+            duration_key = (
+                "duration_seconds" if "duration_seconds" in phase_spec else "duration_s"
+            )
+            if duration_key in phase_spec and not self._check_range(
                 duration_s,
-                phase_spec["duration_s"],
+                phase_spec[duration_key],
                 phase=ivl["phase"],
-                key="duration_s",
+                key=duration_key,
             ):
-                failed.append("duration_s")
+                failed.append(duration_key)
             if "hold_value" in phase_spec and not self._check_range(
                 mean_v, phase_spec["hold_value"], phase=ivl["phase"], key="hold_value"
             ):

@@ -17,7 +17,7 @@ from ts_shape.events._windows import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +26,13 @@ _SHIFT_COLS = [
     "shift",
     "actual_parts",
     "avg_cycle_time_s",
+    "avg_cycle_time_seconds",
     "target_cycle_time_s",
+    "target_cycle_time_seconds",
     "performance_pct",
     "loss_minutes",
+    "loss_seconds",
+    "run_seconds",
 ]
 _SLOW_COLS = [
     "start",
@@ -38,16 +42,37 @@ _SLOW_COLS = [
     "source_uuid",
     "actual_parts",
     "avg_cycle_time_s",
+    "avg_cycle_time_seconds",
     "performance_pct",
     "loss_minutes",
+    "loss_seconds",
+    "run_seconds",
 ]
 _TREND_COLS = [
     "period",
     "actual_parts",
     "avg_cycle_time_s",
+    "avg_cycle_time_seconds",
     "performance_pct",
     "loss_minutes",
+    "loss_seconds",
+    "run_seconds",
 ]
+
+
+def _loss_row(
+    grp: pd.DataFrame, target_cycle_time: float
+) -> tuple[int, float, float, float, float]:
+    """``(parts, avg cycle s, performance %, loss s, run s)`` of a group."""
+    actual_parts = len(grp)
+    avg_ct = grp["cycle_time_s"].mean()
+    elapsed = grp["cycle_time_s"].sum()
+    if elapsed > 0 and target_cycle_time > 0:
+        performance = (actual_parts * target_cycle_time / elapsed) * 100.0
+    else:
+        performance = 0.0
+    loss_seconds = max(0, elapsed - actual_parts * target_cycle_time)
+    return actual_parts, avg_ct, performance, loss_seconds, float(elapsed)
 
 
 class PerformanceLossEvents(Base):
@@ -60,7 +85,12 @@ class PerformanceLossEvents(Base):
     - cycle_uuid: cycle trigger or production counter
 
     All methods compare against a single ``target_cycle_time``; there are no
-    per-part targets. For a line that runs several part numbers, filter the
+    per-part targets.
+
+    Every row carries its basis: ``run_seconds`` is the summed cycle time
+    (the elapsed running time the performance is measured over). Durations
+    are in seconds (``*_seconds``); ``loss_minutes`` and the ``*_s`` cycle
+    time columns are kept as a convenience. For a line that runs several part numbers, filter the
     data to one part (or one product run) per call.
 
     Merge keys: [date, shift] for shift-level, [period] for trend data.
@@ -120,17 +150,8 @@ class PerformanceLossEvents(Base):
         }
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        time = timestamp.time()
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-        return "unknown"
+        """Assign shift based on time of day."""
+        return assign_shift(timestamp, self.shift_definitions)
 
     def _compute_cycle_times(
         self,
@@ -200,7 +221,13 @@ class PerformanceLossEvents(Base):
                 ``shift_definitions`` (tz-aware in the data's tz; an overnight
                 shift ends on the next day)
             - date, shift, actual_parts, avg_cycle_time_s,
-                target_cycle_time_s, performance_pct, loss_minutes
+                avg_cycle_time_seconds, target_cycle_time_s,
+                target_cycle_time_seconds, performance_pct, loss_minutes,
+                loss_seconds
+            - run_seconds: summed cycle time of the shift (the basis of
+                ``performance_pct``)
+            ``avg_cycle_time_s`` / ``target_cycle_time_s`` / ``loss_minutes``
+            are convenience duplicates of the ``*_seconds`` columns.
         """
         data = self._compute_cycle_times(
             cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
@@ -210,7 +237,7 @@ class PerformanceLossEvents(Base):
                 pd.DataFrame(columns=_SHIFT_COLS), self.shift_definitions, None
             )
 
-        data["shift"] = data[self.time_column].apply(self._assign_shift)
+        data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
         data["date"] = (
             production_dates(
                 data[self.time_column], data["shift"], self.shift_definitions
@@ -221,27 +248,22 @@ class PerformanceLossEvents(Base):
 
         results = []
         for (date, shift), grp in data.groupby(["date", "shift"]):
-            actual_parts = len(grp)
-            avg_ct = grp["cycle_time_s"].mean()
-            elapsed = grp["cycle_time_s"].sum()
-
-            if elapsed > 0 and target_cycle_time > 0:
-                ideal_time = actual_parts * target_cycle_time
-                performance = (ideal_time / elapsed) * 100.0
-            else:
-                performance = 0.0
-
-            loss_seconds = max(0, elapsed - actual_parts * target_cycle_time)
-
+            parts, avg_ct, performance, loss_seconds, run_seconds = _loss_row(
+                grp, target_cycle_time
+            )
             results.append(
                 {
                     "date": date,
                     "shift": shift,
-                    "actual_parts": actual_parts,
+                    "actual_parts": parts,
                     "avg_cycle_time_s": avg_ct,
+                    "avg_cycle_time_seconds": avg_ct,
                     "target_cycle_time_s": target_cycle_time,
+                    "target_cycle_time_seconds": target_cycle_time,
                     "performance_pct": min(performance, 100.0),
                     "loss_minutes": loss_seconds / 60,
+                    "loss_seconds": float(loss_seconds),
+                    "run_seconds": run_seconds,
                 }
             )
 
@@ -277,7 +299,10 @@ class PerformanceLossEvents(Base):
             DataFrame with columns:
             - start, end, duration_seconds (float seconds, end - start),
                 uuid (event uuid), source_uuid (cycle_uuid), actual_parts,
-                avg_cycle_time_s, performance_pct, loss_minutes
+                avg_cycle_time_s, avg_cycle_time_seconds, performance_pct,
+                loss_minutes, loss_seconds
+            - run_seconds: summed cycle time in the window (the basis of
+                ``performance_pct``)
         """
         data = self._compute_cycle_times(
             cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
@@ -292,18 +317,10 @@ class PerformanceLossEvents(Base):
             if grp.empty or len(grp) < 2:
                 continue
 
-            actual_parts = len(grp)
-            avg_ct = grp["cycle_time_s"].mean()
-            elapsed = grp["cycle_time_s"].sum()
-
-            if elapsed > 0 and target_cycle_time > 0:
-                ideal_time = actual_parts * target_cycle_time
-                performance = (ideal_time / elapsed) * 100.0
-            else:
-                performance = 0.0
-
+            parts, avg_ct, performance, loss_seconds, run_seconds = _loss_row(
+                grp, target_cycle_time
+            )
             if performance < threshold_pct:
-                loss_seconds = max(0, elapsed - actual_parts * target_cycle_time)
                 results.append(
                     {
                         "start": start,
@@ -311,10 +328,13 @@ class PerformanceLossEvents(Base):
                         "duration_seconds": pd.Timedelta(window).total_seconds(),
                         "uuid": self.event_uuid,
                         "source_uuid": cycle_uuid,
-                        "actual_parts": actual_parts,
+                        "actual_parts": parts,
                         "avg_cycle_time_s": avg_ct,
+                        "avg_cycle_time_seconds": avg_ct,
                         "performance_pct": performance,
                         "loss_minutes": loss_seconds / 60,
+                        "loss_seconds": float(loss_seconds),
+                        "run_seconds": run_seconds,
                     }
                 )
 
@@ -343,7 +363,10 @@ class PerformanceLossEvents(Base):
         Returns:
             DataFrame with columns:
             - start, end (start + window), duration_seconds
-            - period, actual_parts, avg_cycle_time_s, performance_pct, loss_minutes
+            - period, actual_parts, avg_cycle_time_s, avg_cycle_time_seconds,
+                performance_pct, loss_minutes, loss_seconds
+            - run_seconds: summed cycle time in the period (the basis of
+                ``performance_pct``)
         """
         data = self._compute_cycle_times(
             cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
@@ -358,25 +381,19 @@ class PerformanceLossEvents(Base):
             if grp.empty:
                 continue
 
-            actual_parts = len(grp)
-            avg_ct = grp["cycle_time_s"].mean()
-            elapsed = grp["cycle_time_s"].sum()
-
-            if elapsed > 0 and target_cycle_time > 0:
-                ideal_time = actual_parts * target_cycle_time
-                performance = (ideal_time / elapsed) * 100.0
-            else:
-                performance = 0.0
-
-            loss_seconds = max(0, elapsed - actual_parts * target_cycle_time)
-
+            parts, avg_ct, performance, loss_seconds, run_seconds = _loss_row(
+                grp, target_cycle_time
+            )
             results.append(
                 {
                     "period": period,
-                    "actual_parts": actual_parts,
+                    "actual_parts": parts,
                     "avg_cycle_time_s": avg_ct,
+                    "avg_cycle_time_seconds": avg_ct,
                     "performance_pct": min(performance, 100.0),
                     "loss_minutes": loss_seconds / 60,
+                    "loss_seconds": float(loss_seconds),
+                    "run_seconds": run_seconds,
                 }
             )
 

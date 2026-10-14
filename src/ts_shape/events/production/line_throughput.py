@@ -243,8 +243,33 @@ class LineThroughputEvents(Base):
 
         Returns:
             DataFrame with columns: start, end (start + window),
-            duration_seconds, uuid, source_uuid, is_delta, actual_count, target_count, availability, performance, oee_score
+            duration_seconds, uuid, source_uuid, is_delta, actual_count,
+            target_count, availability, performance, oee_score, followed by
+            the basis of the ratios:
+
+            - run_seconds: the window length when the window counts as
+                available, else 0 (the counter-only availability proxy)
+            - planned_seconds: the window length
+            - resets (only when ``handle_resets=True``): counter resets in
+                the window (see :meth:`count_parts`)
         """
+        out_cols = [
+            "start",
+            "end",
+            "duration_seconds",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "actual_count",
+            "target_count",
+            "availability",
+            "performance",
+            "oee_score",
+            "run_seconds",
+            "planned_seconds",
+        ]
+        if handle_resets:
+            out_cols.append("resets")
         parts_df = self.count_parts(
             counter_uuid,
             value_column=value_column,
@@ -253,21 +278,7 @@ class LineThroughputEvents(Base):
         )
 
         if parts_df.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "duration_seconds",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "actual_count",
-                    "target_count",
-                    "availability",
-                    "performance",
-                    "oee_score",
-                ]
-            )
+            return pd.DataFrame(columns=out_cols)
 
         # Calculate target rate if not provided
         if target_rate is None:
@@ -296,21 +307,14 @@ class LineThroughputEvents(Base):
         # OEE score (simplified - assumes quality = 1.0)
         parts_df["oee_score"] = parts_df["availability"] * parts_df["performance"]
 
-        return parts_df[
-            [
-                "start",
-                "end",
-                "duration_seconds",
-                "uuid",
-                "source_uuid",
-                "is_delta",
-                "actual_count",
-                "target_count",
-                "availability",
-                "performance",
-                "oee_score",
-            ]
-        ]
+        # Basis of the ratios: a window counted as available ran for its
+        # whole length (the counter carries no finer run-state information).
+        parts_df["planned_seconds"] = parts_df["duration_seconds"]
+        parts_df["run_seconds"] = (
+            parts_df["duration_seconds"] * parts_df["availability"]
+        )
+
+        return parts_df[out_cols]
 
     def throughput_trends(
         self,

@@ -37,7 +37,62 @@ COL_SOURCE_UUIDS = "source_uuids"
 
 COL_VALUE = "value"
 COL_SEVERITY = "severity"
+COL_SEVERITY_LEVEL = "severity_level"
 COL_IS_DELTA = "is_delta"
+
+#: The shared severity vocabulary of ``severity_level``.
+SEVERITY_LEVELS: tuple[str, ...] = ("info", "warn", "critical")
+
+#: How detector-specific severity labels map onto :data:`SEVERITY_LEVELS`.
+#: Detectors whose labels mean something else pass their own overrides to
+#: :func:`add_severity_level`.
+DEFAULT_SEVERITY_LEVEL: dict[str, str] = {
+    "info": "info",
+    "ok": "info",
+    "low": "info",
+    "warn": "warn",
+    "warning": "warn",
+    "medium": "warn",
+    "moderate": "warn",
+    "high": "critical",
+    "major": "critical",
+    "severe": "critical",
+    "critical": "critical",
+}
+
+
+def add_severity_level(
+    df: pd.DataFrame, overrides: dict[str, str] | None = None
+) -> pd.DataFrame:
+    """Add ``severity_level`` (info / warn / critical) after ``severity``.
+
+    Each detector keeps its own ``severity`` labels; ``severity_level`` maps
+    them onto one vocabulary so results of different detectors can be
+    filtered and ranked together. Labels without a mapping (e.g. ``"none"``)
+    give a missing value. Frames without a ``severity`` column are returned
+    unchanged.
+
+    Args:
+        df: A detector result.
+        overrides: Detector-specific label mappings that replace the
+            defaults in :data:`DEFAULT_SEVERITY_LEVEL`.
+
+    Returns:
+        ``df`` with the ``severity_level`` column.
+    """
+    if COL_SEVERITY not in df.columns:
+        return df
+    mapping = {**DEFAULT_SEVERITY_LEVEL, **(overrides or {})}
+    levels = df[COL_SEVERITY].map(
+        lambda v: mapping.get(v) if isinstance(v, str) else None
+    )
+    out = df.drop(columns=[COL_SEVERITY_LEVEL], errors="ignore")
+    out.insert(
+        list(out.columns).index(COL_SEVERITY) + 1,
+        COL_SEVERITY_LEVEL,
+        levels.astype(object),
+    )
+    return out
 
 
 # ---------------------------------------------------------------------------

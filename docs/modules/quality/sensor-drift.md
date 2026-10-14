@@ -1,64 +1,38 @@
 # SensorDriftEvents
 
-> Detect gradual calibration drift in inline sensors by tracking measurement behavior against reference values or historical baselines.
+Calibration drift of an inline sensor per window: zero-point offset, span (gain) changes, the trend of the window mean or spread, and a 0-100 calibration health score, against a reference value, a reference signal or the first window.
 
-**Module:** `ts_shape.events.quality.sensor_drift`  
-**Guide:** [Quality Control & SPC](../../guides/quality.md)
+`ts_shape.events.quality.sensor_drift` · [Quality guide](../../guides/quality.md) · [API reference](../../reference/ts_shape/events/quality/sensor_drift.md)
 
----
-
-## When to Use
-
-Use for continuous monitoring of inline sensor calibration. Detects gradual drift that may not trigger outlier alarms but degrades measurement accuracy over time. Ideal for pH probes, temperature sensors, pressure transmitters, and other instruments that require periodic calibration.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.quality.sensor_drift import SensorDriftEvents
 
-# Compare a pH probe against a 7.0 buffer reference
-# (or pass reference_uuid= to use a reference signal instead)
-drift = SensorDriftEvents(df, signal_uuid="ph_probe_01", reference_value=7.0)
+df = ts_shape.make_timeseries(["ph_probe_01"], n_points=4320, freq="1min", baseline=7.0, noise=0.02, drift=0.15)
 
-# Track zero-point offset over 8-hour windows (threshold auto-set if None)
+drift = SensorDriftEvents(df, signal_uuid="ph_probe_01", reference_value=7.0)  # pH 7 buffer
 zero = drift.detect_zero_drift(window="8h", threshold=0.05)
-
-# Monitor sensitivity changes (span drift; requires a reference)
 span = drift.detect_span_drift(window="8h")
-
-# Get a composite calibration health score, normalized to a +/-0.1 pH tolerance
 health = drift.calibration_health(window="8h", tolerance=0.1)
-print(health[["start", "health_score"]].head())
+print(zero[["start", "mean_offset", "drift_rate", "severity"]])
 ```
 
----
+## Methods
 
-## Key Methods
+All arguments are keyword-only.
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_zero_drift(window='8h', threshold=None)` | Track mean offset from reference or first-window baseline (zero-point drift) | DataFrame with `start`, `end`, `mean_offset`, `drift_rate`, `severity` |
-| `detect_span_drift(window='8h')` | Detect sensitivity/gain changes over time (requires `reference_uuid` or `reference_value`) | DataFrame with `start`, `sensitivity`, `sensitivity_change_pct` |
-| `drift_trend(window='1D', metric='mean')` | Rolling trend of the window `mean` or `std` | DataFrame with `start`, `value`, `slope`, `r_squared`, `direction` |
-| `calibration_health(window='8h', tolerance=None)` | Composite 0-100 health score from bias vs. reference and precision | DataFrame with `start`, `bias`, `precision`, `health_score` |
+| Method | Returns (per window) |
+|---|---|
+| `detect_zero_drift(window='8h', threshold=None)` | `mean_offset`, `drift_rate`, `severity` |
+| `detect_span_drift(window='8h')` | `sensitivity` (window mean / reference), `sensitivity_change_pct` (vs the first window) |
+| `drift_trend(window='1D', metric='mean')` | trend of the window `mean` or `std`: `value`, `slope`, `r_squared`, `direction` |
+| `calibration_health(window='8h', tolerance=None)` | `bias`, `precision` (window std), `health_score` |
 
----
+## Notes
 
-## Tips & Hints
-
-!!! tip "Align windows with shift schedules"
-    Use `window='8h'` to match typical manufacturing shifts. This makes it easy to correlate drift events with shift handovers and track which shifts see the most calibration degradation.
-
-!!! info "Related modules"
-    - [Multi-Sensor Validation](multi-sensor-validation.md) — cross-validate redundant sensors to confirm drift
-    - [Anomaly Classification](anomaly-classification.md) — classify drift as a specific anomaly type
-    - [Capability Trending](capability-trending.md) — track how sensor drift affects process capability
-
----
-
-## See Also
-
-- [Quality Control & SPC Guide](../../guides/quality.md) — narrative overview
-- [API Reference](../../reference/ts_shape/events/quality/sensor_drift.md) — full parameter docs
+- The reference is `reference_value` (a constant) or `reference_uuid` (a signal in the same frame, averaged per window). Without one, `detect_zero_drift` measures the offset from the first window's mean, and `detect_span_drift` needs a reference.
+- `drift_rate` is the offset change from the previous window. `severity` is `critical` above `threshold`, `high` above 66 %, `medium` above 33 %, else `low`; without `threshold` it is 3 × the first window's standard deviation.
+- With `tolerance`, `health_score` = 100 − up to 50 for bias (relative to `tolerance`) − up to 50 for precision (relative to `tolerance / 3`). Without it, the score is relative to the window's own spread.
+- Windows with fewer than 2 samples are skipped.

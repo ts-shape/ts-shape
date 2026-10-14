@@ -203,6 +203,16 @@ class TestOEECalculator:
             "performance_pct",
             "quality_pct",
             "oee_pct",
+            # KPI basis
+            "run_seconds",
+            "planned_seconds",
+            "excluded_seconds",
+            "actual_parts",
+            "ideal_parts",
+            "total_parts",
+            "reject_parts",
+            "good_parts",
+            "resets",
         }
         oee_val = result["oee_pct"].iloc[0]
         assert oee_val > 0.0

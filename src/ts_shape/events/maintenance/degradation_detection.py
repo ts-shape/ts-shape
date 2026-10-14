@@ -4,6 +4,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events.maintenance._rolling import (
+    py_max,
+    py_min,
+    time_window_bounds,
+    times_ns,
+    window_moments,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
@@ -94,28 +101,15 @@ class DegradationDetectionEvents(Base):
         ).dt.total_seconds()
 
         window_td = pd.to_timedelta(window)
-        _window_seconds = window_td.total_seconds()
 
-        # Compute rolling slope using time-based windows
-        slopes = []
-        for i in range(len(sig)):
-            t_end = sig[self.time_column].iloc[i]
-            t_start = t_end - window_td
-            mask = (sig[self.time_column] > t_start) & (sig[self.time_column] <= t_end)
-            win = sig.loc[mask]
-            if len(win) < 2:
-                slopes.append(np.nan)
-                continue
-            x = win["t_seconds"].values
-            y = win[self.value_column].values
-            try:
-                coeffs = np.polyfit(x, y, 1)
-                slopes.append(coeffs[0])
-            except (np.linalg.LinAlgError, ValueError):
-                logger.debug("Polyfit failed for degradation slope window.")
-                slopes.append(np.nan)
-
-        sig["slope"] = slopes
+        # Rolling least-squares slope over the time window (t - window, t]. A
+        # window with a NaN sample has a NaN slope (as np.polyfit gives); one
+        # whose samples all share a timestamp has no slope (NaN).
+        lo, hi = time_window_bounds(sig[self.time_column], window_td)
+        mom = window_moments(
+            sig["t_seconds"].to_numpy(), sig[self.value_column].to_numpy(), lo, hi
+        )
+        sig["slope"] = np.where(mom["n"] < mom["n_total"], np.nan, mom["slope"])
 
         # Filter by direction and min_slope
         if direction == "decreasing":
@@ -217,19 +211,12 @@ class DegradationDetectionEvents(Base):
         if baseline_var == 0:
             baseline_var = np.finfo(float).eps
 
-        # Compute rolling variance using time-based windows
-        variances = []
-        for i in range(len(sig)):
-            t_end = sig[self.time_column].iloc[i]
-            t_start = t_end - window_td
-            mask = (sig[self.time_column] > t_start) & (sig[self.time_column] <= t_end)
-            win = sig.loc[mask, self.value_column]
-            if len(win) < 2:
-                variances.append(np.nan)
-            else:
-                variances.append(float(win.var()))
-
-        sig["current_variance"] = variances
+        # Rolling sample variance over the time window (t - window, t], NaN
+        # samples skipped (pandas ``var``).
+        lo, hi = time_window_bounds(sig[self.time_column], window_td)
+        sig["current_variance"] = window_moments(
+            np.zeros(len(sig)), sig[self.value_column].to_numpy(), lo, hi
+        )["var"]
         sig["ratio"] = sig["current_variance"] / baseline_var
 
         exceeded = (sig["ratio"] >= threshold_factor).fillna(False)
@@ -300,8 +287,22 @@ class DegradationDetectionEvents(Base):
         )
         hold_td = pd.to_timedelta(hold)
 
-        values = sig[self.value_column].values
+        values = sig[self.value_column].to_numpy(dtype=float)
         times = sig[self.time_column].array
+        # Hold windows [t_i, t_i + hold] as index ranges, and NaN-aware prefix
+        # sums (offset by a reference value, for precision) for the window
+        # means -- no per-candidate scan of the whole series.
+        t_ns = times_ns(sig[self.time_column])
+        post_start = np.searchsorted(t_ns, t_ns, side="left")
+        post_end = np.searchsorted(t_ns, t_ns + np.int64(hold_td.value), side="right")
+        finite = ~np.isnan(values)
+        ref = float(values[finite][0]) if finite.any() else 0.0
+        csum = np.concatenate(([0.0], np.cumsum(np.where(finite, values - ref, 0.0))))
+        ccnt = np.concatenate(([0], np.cumsum(finite)))
+
+        def _mean(a: int, b: int) -> float:
+            k = int(ccnt[b] - ccnt[a])
+            return ref + float(csum[b] - csum[a]) / k if k else float("nan")
 
         events: list[dict[str, Any]] = []
 
@@ -319,14 +320,14 @@ class DegradationDetectionEvents(Base):
 
             if cusum_pos > abs(min_shift) or cusum_neg > abs(min_shift):
                 # Potential shift detected; compute pre/post means
-                prev_mean = float(np.mean(values[last_shift_idx:i]))
+                # np.mean semantics: NaN if the span holds a NaN sample.
+                if ccnt[i] - ccnt[last_shift_idx] < i - last_shift_idx:
+                    prev_mean = np.nan
+                else:
+                    prev_mean = float(_mean(last_shift_idx, i))
                 # Check hold: gather data after shift point
-                post_mask = (sig[self.time_column] >= pd.Timestamp(times[i])) & (
-                    sig[self.time_column] <= pd.Timestamp(times[i]) + hold_td
-                )
-                post_data = sig.loc[post_mask, self.value_column]
-                if len(post_data) >= 1:
-                    new_mean = float(post_data.mean())
+                if post_end[i] > post_start[i]:
+                    new_mean = float(_mean(post_start[i], post_end[i]))
                     shift_mag = new_mean - prev_mean
                     if abs(shift_mag) >= abs(min_shift):
                         events.append(
@@ -418,71 +419,53 @@ class DegradationDetectionEvents(Base):
             baseline_var = eps
         baseline_mean_for_pct = eps if baseline_mean == 0 else baseline_mean
 
-        # Compute rolling metrics
-        rows: list[dict[str, Any]] = []
-        for i in range(len(sig)):
-            t_end = sig[self.time_column].iloc[i]
-            t_start = t_end - window_td
-            mask = (sig[self.time_column] > t_start) & (sig[self.time_column] <= t_end)
-            win = sig.loc[mask]
+        # Rolling metrics over the time window (t - window, t]. Mean and
+        # variance skip NaN samples; the trend slope of a window holding a NaN
+        # (or whose samples share one timestamp) is NaN. Python ``min``/``max``
+        # semantics are kept for the penalties, so NaN metrics behave as before.
+        lo, hi = time_window_bounds(sig[self.time_column], window_td)
+        mom = window_moments(
+            sig["t_seconds"].to_numpy(), sig[self.value_column].to_numpy(), lo, hi
+        )
+        short = mom["n_total"] < 2
+        current_mean = mom["mean"]
+        mean_drift_pct = (
+            np.abs(current_mean - baseline_mean) / abs(baseline_mean_for_pct) * 100.0
+        )
+        variance_ratio = mom["var"] / baseline_var
+        trend_slope = np.where(mom["n"] < mom["n_total"], np.nan, mom["slope"])
+        # No defined slope (all samples at one timestamp): 0, as on a failed fit.
+        trend_slope = np.where(
+            (mom["n"] == mom["n_total"]) & np.isnan(mom["slope"]), 0.0, trend_slope
+        )
 
-            if len(win) < 2:
-                rows.append(
-                    {
-                        "systime": t_end,
-                        "uuid": self.event_uuid,
-                        "source_uuid": self.signal_uuid,
-                        "is_delta": True,
-                        "health_score": 100.0,
-                        "mean_drift_pct": 0.0,
-                        "variance_ratio": 1.0,
-                        "trend_slope": 0.0,
-                    }
-                )
-                continue
-
-            current_mean = float(win[self.value_column].mean())
-            current_var = float(win[self.value_column].var())
-            mean_drift_pct = (
-                abs(current_mean - baseline_mean) / abs(baseline_mean_for_pct) * 100.0
+        # Composite health score: penalize mean drift, variance increase, trend
+        # Each component maps to 0-33.3 penalty
+        drift_penalty = py_min(mean_drift_pct / 100.0, 1.0) * 33.3
+        var_penalty = py_min(py_max(variance_ratio - 1.0, 0.0) / 5.0, 1.0) * 33.3
+        slope_penalty = (
+            py_min(
+                np.abs(trend_slope) * 3600.0 / (abs(baseline_mean_for_pct) + 1e-9),
+                1.0,
             )
-            variance_ratio = current_var / baseline_var
+            * 33.4
+        )
+        score = py_max(
+            0.0,
+            py_min(100.0, 100.0 - drift_penalty - var_penalty - slope_penalty),
+        )
 
-            # Compute slope
-            x = win["t_seconds"].values
-            y = win[self.value_column].values
-            try:
-                coeffs = np.polyfit(x, y, 1)
-                trend_slope = float(coeffs[0])
-            except (np.linalg.LinAlgError, ValueError):
-                trend_slope = 0.0
-
-            # Composite health score: penalize mean drift, variance increase, trend
-            # Each component maps to 0-33.3 penalty
-            drift_penalty = min(mean_drift_pct / 100.0, 1.0) * 33.3
-            var_penalty = min(max(variance_ratio - 1.0, 0.0) / 5.0, 1.0) * 33.3
-            slope_penalty = (
-                min(
-                    abs(trend_slope) * 3600.0 / (abs(baseline_mean_for_pct) + 1e-9), 1.0
-                )
-                * 33.4
-            )
-
-            score = max(
-                0.0, min(100.0, 100.0 - drift_penalty - var_penalty - slope_penalty)
-            )
-
-            rows.append(
-                {
-                    "systime": t_end,
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": True,
-                    "health_score": float(score),
-                    "mean_drift_pct": float(mean_drift_pct),
-                    "variance_ratio": float(variance_ratio),
-                    "trend_slope": float(trend_slope),
-                }
-            )
-
-        return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
+        result = pd.DataFrame(
+            {
+                "systime": sig[self.time_column],
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": True,
+                "health_score": np.where(short, 100.0, score).astype(float),
+                "mean_drift_pct": np.where(short, 0.0, mean_drift_pct),
+                "variance_ratio": np.where(short, 1.0, variance_ratio),
+                "trend_slope": np.where(short, 0.0, trend_slope),
+            },
+            columns=cols,
+        )
+        return result

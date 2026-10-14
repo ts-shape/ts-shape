@@ -48,6 +48,11 @@ class TestExtractTimeRanges:
             "segment_end",
             "segment_duration",
             "segment_index",
+            "start",
+            "end",
+            "duration_seconds",
+            "source_uuid",
+            "end_inclusive",
         }
         assert set(result.columns) == expected
 

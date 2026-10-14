@@ -1,8 +1,10 @@
 import logging
+from typing import Any
 
+import numpy as np
 import pandas as pd
 
-from ts_shape.features.stats.numeric_stats import NumericStatistics
+from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,25 @@ ALL_METRICS = [
 ]
 
 
+def _to_tz(times: pd.Series, tz: Any) -> pd.Series:
+    """Express range bounds in the data's time zone.
+
+    Naive bounds on tz-aware data are read as local wall-clock times of the
+    data's zone. Aware bounds on naive data raise: the data's zone is unknown.
+    """
+    times_tz = times.dt.tz
+    if tz is None and times_tz is not None:
+        raise ValueError(
+            "time_ranges are tz-aware but the data's time column is naive; "
+            "localize the data (or make the ranges naive) first."
+        )
+    if tz is not None and times_tz is None:
+        return times.dt.tz_localize(tz, ambiguous="NaT", nonexistent="NaT")
+    if tz is not None:
+        return times.dt.tz_convert(tz)
+    return times
+
+
 class SegmentProcessor(Base):
     """Apply extracted time ranges to process data and compute metric profiles.
 
@@ -51,72 +72,164 @@ class SegmentProcessor(Base):
         time_column: str = "systime",
         target_uuids: list[str] | None = None,
     ) -> pd.DataFrame:
-        """Filter process parameter data by extracted time ranges.
+        """Cut process data into the extracted time ranges.
 
-        For each time range (segment), selects rows from the main DataFrame
-        that fall within [segment_start, segment_end] and annotates them with
-        the segment value and index.
+        Every row whose timestamp lies in a range gets that range's
+        ``segment_value`` and ``segment_index``. Ranges are half-open,
+        ``segment_start <= t < segment_end``, so a sample exactly at a
+        boundary belongs to the range that *starts* there and contiguous
+        ranges (``interval_end="next_change"``) cut every row exactly once.
+        The row exactly at ``segment_end`` belongs to the range only when the
+        range's ``end_inclusive`` is True (``extract_time_ranges`` sets it for
+        the last segment, closed at the end of the data, and for every
+        ``interval_end="last_sample"`` segment). Without an ``end_inclusive``
+        column, the end is inclusive when no other range starts at that
+        instant. Rows outside every range (before the first range, in gaps
+        such as an empty order number) are dropped; rows without a timestamp
+        are dropped.
+
+        Overlapping ranges (only possible with a hand-built ``time_ranges``)
+        are applied one by one, so a row in two ranges appears twice; a
+        warning says how many overlaps there are.
 
         Args:
             dataframe: Input DataFrame with process parameter data (all UUIDs).
-            time_ranges: Output from SegmentExtractor.extract_time_ranges.
+            time_ranges: Output from SegmentExtractor.extract_time_ranges, or
+                any frame with ``segment_start``, ``segment_end``,
+                ``segment_value`` and ``segment_index`` columns. Naive range
+                bounds are read in the data's time zone and aware bounds are
+                converted to it; aware bounds on naive data raise
+                ``ValueError``.
             uuid_column: Column identifying each timeseries.
             time_column: Column containing timestamps.
             target_uuids: Optional list of UUIDs to include. None keeps all.
 
         Returns:
-            Input DataFrame filtered to the time ranges, with added columns:
+            The matching rows of ``dataframe`` (all columns, time column
+            parsed to datetime), ordered by range and then by input order,
+            with added columns:
             - segment_value: The active order/part number for each row.
             - segment_index: The sequential segment index.
         """
         cls._validate_column(dataframe, time_column)
+        for col in ("segment_start", "segment_end", "segment_value", "segment_index"):
+            if not time_ranges.empty or col in time_ranges.columns:
+                cls._validate_column(time_ranges, col)
 
-        if time_ranges.empty:
-            logger.warning("No time ranges provided.")
-            result = dataframe.iloc[:0].copy()
-            result["segment_value"] = pd.Series(dtype="object")
+        df = dataframe
+        if target_uuids is not None:
+            cls._validate_column(dataframe, uuid_column)
+            df = df[df[uuid_column].isin(target_uuids)]
+        df = df.copy()
+        df[time_column] = pd.to_datetime(df[time_column])
+
+        def _empty() -> pd.DataFrame:
+            result = df.iloc[:0].copy()
+            result["segment_value"] = pd.Series(
+                dtype=(
+                    time_ranges["segment_value"].dtype
+                    if "segment_value" in time_ranges.columns
+                    else "object"
+                )
+            )
             result["segment_index"] = pd.Series(dtype="int64")
             return result
 
-        df = dataframe.copy()
-        df[time_column] = pd.to_datetime(df[time_column])
+        if time_ranges.empty:
+            logger.warning("No time ranges provided.")
+            return _empty()
 
-        if target_uuids is not None:
-            df = df[df[uuid_column].isin(target_uuids)]
+        tz = df[time_column].dt.tz
+        starts = _to_tz(pd.to_datetime(time_ranges["segment_start"]), tz)
+        ends = _to_tz(pd.to_datetime(time_ranges["segment_end"]), tz)
+        usable = (starts.notna() & ends.notna()).to_numpy()
+        if not usable.all():
+            logger.warning(
+                f"{int((~usable).sum())} time range(s) without start or end "
+                "were ignored."
+            )
+        positions = np.flatnonzero(usable)
+        if len(positions) == 0 or df.empty:
+            return _empty()
 
-        # Warn if time ranges overlap
-        sorted_ranges = time_ranges.sort_values("segment_start")
-        ends = sorted_ranges["segment_end"].values[:-1]
-        starts = sorted_ranges["segment_start"].values[1:]
-        if len(ends) > 0 and (ends > starts).any():
-            overlap_count = int((ends > starts).sum())
+        s_idx = pd.DatetimeIndex(starts.iloc[positions])
+        e_idx = pd.DatetimeIndex(ends.iloc[positions])
+        # Sort by (start, end): a zero-length range sorts before a range
+        # starting at the same instant, which then owns that instant.
+        order = np.lexsort((e_idx.asi8, s_idx.asi8))
+        s_sorted = s_idx[order]
+        e_sorted = e_idx[order]
+        pos_sorted = positions[order]
+        overlap_count = int((e_sorted[:-1] > s_sorted[1:]).sum())
+        if "end_inclusive" in time_ranges.columns:
+            closed_end = (
+                time_ranges["end_inclusive"]
+                .astype("boolean")
+                .fillna(False)
+                .to_numpy(dtype=bool)[pos_sorted]
+            )
+        else:
+            start_set = set(s_idx.asi8.tolist())
+            closed_end = np.array(
+                [e not in start_set for e in e_sorted.asi8], dtype=bool
+            )
+
+        times = pd.DatetimeIndex(df[time_column])
+        has_time = ~np.asarray(times.isna())
+        if overlap_count == 0:
+            # Non-overlapping ranges: one binary search per row.
+            k = s_sorted.searchsorted(times, side="right") - 1
+            k_safe = np.clip(k, 0, None)
+            t_i8 = times.asi8
+            e_i8 = e_sorted.asi8[k_safe]
+            inside = (
+                has_time
+                & (k >= 0)
+                & ((t_i8 < e_i8) | ((t_i8 == e_i8) & closed_end[k_safe]))
+            )
+            row_pos = np.flatnonzero(inside)
+            range_pos = pos_sorted[k_safe[row_pos]]
+        else:
             logger.warning(
                 f"{overlap_count} overlapping time range(s) detected. "
                 f"Overlapping rows will appear multiple times in the output."
             )
+            row_parts: list[np.ndarray] = []
+            range_parts: list[np.ndarray] = []
+            t_i8 = times.asi8
+            for s_val, e_val, closed, pos in zip(
+                s_sorted.asi8, e_sorted.asi8, closed_end, pos_sorted, strict=True
+            ):
+                hit = has_time & (t_i8 >= s_val) & (t_i8 < e_val)
+                if closed:
+                    hit |= has_time & (t_i8 == e_val)
+                rows = np.flatnonzero(hit)
+                row_parts.append(rows)
+                range_parts.append(np.full(len(rows), pos, dtype=np.int64))
+            row_pos = np.concatenate(row_parts)
+            range_pos = np.concatenate(range_parts)
 
-        segments = []
-        for _, seg in time_ranges.iterrows():
-            mask = (df[time_column] >= seg["segment_start"]) & (
-                df[time_column] <= seg["segment_end"]
-            )
-            matched = df[mask].copy()
-            matched["segment_value"] = seg["segment_value"]
-            matched["segment_index"] = seg["segment_index"]
-            segments.append(matched)
-
-        if not segments:
+        if len(row_pos) == 0:
             logger.warning("No data matched any time range.")
-            result = dataframe.iloc[:0].copy()
-            result["segment_value"] = pd.Series(dtype="object")
-            result["segment_index"] = pd.Series(dtype="int64")
-            return result
+            return _empty()
 
-        result = pd.concat(segments, ignore_index=True)
-        logger.info(
-            f"Applied {len(time_ranges)} ranges: {len(result)} rows across "
-            f"{result[uuid_column].nunique()} UUIDs."
+        # Output order: by range (in time_ranges order), then input order.
+        out_order = np.lexsort((row_pos, range_pos))
+        row_pos = row_pos[out_order]
+        range_pos = range_pos[out_order]
+
+        result = df.iloc[row_pos].reset_index(drop=True)
+        result["segment_value"] = (
+            time_ranges["segment_value"].iloc[range_pos].reset_index(drop=True)
         )
+        result["segment_index"] = (
+            time_ranges["segment_index"].iloc[range_pos].reset_index(drop=True)
+        )
+        if uuid_column in result.columns:
+            logger.info(
+                f"Applied {len(time_ranges)} ranges: {len(result)} rows across "
+                f"{result[uuid_column].nunique()} UUIDs."
+            )
         return result
 
     @classmethod
@@ -130,8 +243,10 @@ class SegmentProcessor(Base):
     ) -> pd.DataFrame:
         """Compute statistical metrics per UUID per segment.
 
-        Typically called on the output of apply_ranges. Computes metrics per
-        (UUID, segment) pair using NumericStatistics.
+        Typically called on the output of apply_ranges. Computes the
+        statistics of ``NumericStatistics.summary_as_dict`` per (UUID, segment)
+        pair, for all pairs at once. Missing values are ignored; pairs with
+        fewer than 2 non-missing values are left out.
 
         Args:
             dataframe: Input DataFrame (output of apply_ranges or similar).
@@ -143,7 +258,10 @@ class SegmentProcessor(Base):
             metrics: Subset of metric names to compute. None uses all 19.
 
         Returns:
-            DataFrame with columns [uuid, <group_column>, sample_count, metric_1, ...].
+            DataFrame with columns [uuid, <group_column>, sample_count,
+            metric_1, ...], one row per pair, sorted by uuid and group.
+            ``sample_count`` is the number of non-missing values. Empty (with
+            these columns) when no pair has 2 values.
         """
         cls._validate_column(dataframe, uuid_column)
         cls._validate_column(dataframe, value_column)
@@ -156,26 +274,11 @@ class SegmentProcessor(Base):
                     f"Unknown metrics: {invalid}. Available: {ALL_METRICS}"
                 )
 
-        rows = []
-        for (uuid_val, group_val), group in dataframe.groupby(
-            [uuid_column, group_column]
-        ):
-            numeric_data = group[value_column].dropna()
-            if len(numeric_data) < 2:
-                continue
-
-            stats = NumericStatistics.summary_as_dict(group, value_column)
-            if metrics is not None:
-                stats = {k: v for k, v in stats.items() if k in metrics}
-            stats[uuid_column] = uuid_val
-            stats[group_column] = group_val
-            stats["sample_count"] = len(numeric_data)
-            rows.append(stats)
-
-        if not rows:
-            return pd.DataFrame()
-
-        result = pd.DataFrame(rows)
-        leading = [uuid_column, group_column, "sample_count"]
-        metric_cols = [c for c in result.columns if c not in leading]
-        return result[leading + metric_cols].reset_index(drop=True)
+        wanted = metrics if metrics is not None else ALL_METRICS
+        metric_cols = [m for m in ALL_METRICS if m in wanted]
+        columns = [uuid_column, group_column, "sample_count", *metric_cols]
+        if dataframe.empty:
+            return pd.DataFrame(columns=columns)
+        result = summarize_groups(dataframe, [uuid_column, group_column], value_column)
+        result.columns = [uuid_column, group_column, *result.columns[2:]]
+        return result[columns]

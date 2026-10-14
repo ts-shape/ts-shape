@@ -1,9 +1,11 @@
 import logging
-from typing import Any
+from typing import Any, Literal, overload
 
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
+from ts_shape.events._compat import warn_dict_return
+from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
@@ -83,7 +85,7 @@ class BottleneckDetectionEvents(Base):
                 station = station[station["dur"].notna()]
                 if station.empty:
                     continue
-                station["win"] = station[self.time_column].dt.floor(window)
+                station["win"] = floor_local(station[self.time_column], window)
                 station["run_dur"] = station["state"] * station["dur"]
                 grouped = station.groupby("win").agg(
                     run=("run_dur", "sum"), total=("dur", "sum")
@@ -258,6 +260,26 @@ class BottleneckDetectionEvents(Base):
             )
         )
 
+    @overload
+    def throughput_constraint_summary(
+        self,
+        station_uuids: list[str],
+        window: str = ...,
+        *,
+        time_weighted: bool = ...,
+        as_frame: Literal[True] = ...,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def throughput_constraint_summary(
+        self,
+        station_uuids: list[str],
+        window: str = ...,
+        *,
+        time_weighted: bool = ...,
+        as_frame: Literal[False],
+    ) -> dict[str, Any]: ...
+
     @keyword_only(2)
     def throughput_constraint_summary(
         self,
@@ -265,25 +287,103 @@ class BottleneckDetectionEvents(Base):
         window: str = "1h",
         *,
         time_weighted: bool = True,
-    ) -> dict[str, Any]:
+        as_frame: bool = True,
+    ) -> pd.DataFrame | dict[str, Any]:
         """Summary statistics for bottleneck analysis.
 
         Args:
             station_uuids: List of station run-state UUIDs.
             window: Resample window.
             time_weighted: Forwarded to :meth:`station_utilization`.
+            as_frame: When True (default), return one row per station (see
+                below). ``as_frame=False`` returns the dictionary form; it is
+                deprecated, emits a ``DeprecationWarning`` and will be removed
+                in the next major release.
 
         Returns:
-            Dict with: bottleneck_counts, bottleneck_percentages,
+            With ``as_frame=True`` (default), a summary DataFrame with one row
+            per station that has data, in ``station_uuids`` order, columns:
+
+            - start, end, duration_seconds: the analysed span (first window
+                start to last window end), the same on every row
+            - uuid, source_uuid: the station uuid
+            - bottleneck_count: windows in which the station was the
+                bottleneck (``bottleneck_counts`` of the dict form)
+            - bottleneck_pct: share of windows, 0-100
+                (``bottleneck_percentages``)
+            - avg_utilization_pct: mean utilization over the windows
+                (``avg_utilization_per_station``)
+            - most_frequent_bottleneck: True on the station that was the
+                bottleneck most often
+
+            With ``as_frame=False`` (deprecated), a dict with:
+            bottleneck_counts, bottleneck_percentages,
             most_frequent_bottleneck, avg_utilization_per_station.
         """
+        if not as_frame:
+            warn_dict_return("BottleneckDetectionEvents.throughput_constraint_summary")
         bottlenecks = self.detect_bottleneck(
             station_uuids, window=window, time_weighted=time_weighted
         )
         util = self.station_utilization(
             station_uuids, window=window, time_weighted=time_weighted
         )
+        summary = self._constraint_summary(bottlenecks, util)
+        if not as_frame:
+            return summary
+        return self._constraint_frame(station_uuids, bottlenecks, util, summary)
 
+    _CONSTRAINT_COLUMNS = [
+        "start",
+        "end",
+        "duration_seconds",
+        "uuid",
+        "source_uuid",
+        "bottleneck_count",
+        "bottleneck_pct",
+        "avg_utilization_pct",
+        "most_frequent_bottleneck",
+    ]
+
+    def _constraint_frame(
+        self,
+        station_uuids: list[str],
+        bottlenecks: pd.DataFrame,
+        util: pd.DataFrame,
+        summary: dict[str, Any],
+    ) -> pd.DataFrame:
+        if util.empty:
+            return pd.DataFrame(columns=self._CONSTRAINT_COLUMNS)
+        start, end = util["start"].min(), util["end"].max()
+        seen = set(util["uuid"])
+        rows = []
+        for uid in dict.fromkeys(station_uuids):
+            if uid not in seen:
+                continue
+            rows.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "duration_seconds": (end - start).total_seconds(),
+                    "uuid": uid,
+                    "source_uuid": uid,
+                    "bottleneck_count": int(summary["bottleneck_counts"].get(uid, 0)),
+                    "bottleneck_pct": float(
+                        summary["bottleneck_percentages"].get(uid, 0.0)
+                    ),
+                    "avg_utilization_pct": float(
+                        summary["avg_utilization_per_station"].get(uid, float("nan"))
+                    ),
+                    "most_frequent_bottleneck": uid
+                    == summary["most_frequent_bottleneck"],
+                }
+            )
+        return pd.DataFrame(rows, columns=self._CONSTRAINT_COLUMNS)
+
+    @staticmethod
+    def _constraint_summary(
+        bottlenecks: pd.DataFrame, util: pd.DataFrame
+    ) -> dict[str, Any]:
         if bottlenecks.empty:
             return {
                 "bottleneck_counts": {},

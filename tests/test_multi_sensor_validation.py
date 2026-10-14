@@ -133,6 +133,28 @@ class TestIdentifyOutlierSensor:
         msv = MultiSensorValidationEvents(df, ["s1", "s2"])
         assert len(msv.detect_outlier_sensor()) == 0
 
+    def test_two_sensors_cannot_name_an_outlier(self, three_sensor_df):
+        from ts_shape.errors import DataQualityWarning
+
+        two = three_sensor_df[three_sensor_df["uuid"] != "sensor_1"]
+        msv = MultiSensorValidationEvents(two, ["sensor_2", "sensor_3"])
+        with pytest.warns(DataQualityWarning, match="fewer than three sensors"):
+            assert msv.detect_outlier_sensor(window="2h").empty
+
+    def test_exact_tie_goes_to_the_first_listed_sensor(self):
+        t = pd.date_range("2024-01-01", periods=4, freq="10min")
+        df = pd.concat(
+            [
+                pd.DataFrame({"systime": t, "uuid": u, "value_double": v})
+                for u, v in (("a", 0.0), ("b", 10.0), ("c", 20.0), ("d", 30.0))
+            ]
+        )
+        # a and d are equally far from the median (15).
+        out = MultiSensorValidationEvents(df, ["d", "a", "b", "c"])
+        assert out.detect_outlier_sensor(window="1h")["outlier_sensor"].tolist() == [
+            "d"
+        ]
+
 
 class TestConstructorValidation:
     def test_single_sensor_raises(self):

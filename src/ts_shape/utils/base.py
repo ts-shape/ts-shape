@@ -35,22 +35,30 @@ the right one based on the complexity of the operation:
 
 import logging
 import warnings
+from typing import ClassVar
 
 import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.normalize import normalize_signal_frame
 from ts_shape.utils.signal_checks import checked, checked_init
 
 logger = logging.getLogger(__name__)
 
 
 class Base:
+    #: Severity label overrides for ``severity_level``, keyed by method name
+    #: (``"*"`` for all methods); ``None`` when ``severity`` is a score.
+    _severity_levels: ClassVar[dict[str, dict[str, str]] | None] = {}
+
     def __init_subclass__(cls, **kwargs: object) -> None:
         """Give every detector in ``ts_shape.events`` the same input checks.
 
         Public methods and the constructor are wrapped by
-        :mod:`ts_shape.utils.signal_checks`: an unknown signal uuid warns
+        :mod:`ts_shape.utils.signal_checks`: results with a categorical
+        ``severity`` get ``severity_level`` (info / warn / critical), an
+        unknown signal uuid warns
         (:class:`~ts_shape.errors.DataQualityWarning`) and a missing uuid
         column raises :class:`~ts_shape.errors.ColumnNotFoundError`.
         """
@@ -160,9 +168,18 @@ class Base:
             if time_columns:
                 column_name = time_columns[0]
 
-        # Sort by the datetime column (either specified or detected)
+        # Detectors compute on NumPy-backed dtypes: nullable, pyarrow and
+        # text-number columns are converted once here (utils.normalize).
+        if type(self).__module__.startswith("ts_shape.events."):
+            normalize_signal_frame(self.dataframe, time_column=column_name)
+
+        # Sort by time; rows with the same timestamp keep a fixed order (by
+        # uuid), so a result never depends on the order rows arrived in.
         if column_name in self.dataframe.columns:
-            self.dataframe = self.dataframe.sort_values(by=column_name)
+            keys = [column_name]
+            if "uuid" in self.dataframe.columns:
+                keys.append("uuid")
+            self.dataframe = self.dataframe.sort_values(by=keys, kind="stable")
 
         # Warn on missing/unparseable timestamps. They are kept (sorted last),
         # but every duration or interval touching them comes out NaT/NaN.
@@ -193,10 +210,15 @@ class Base:
                     stacklevel=3,
                 )
 
-        # Warn on columns that are entirely NaN
+        # Warn on columns that are entirely NaN. In long format each signal
+        # fills one value_* column, so unused value columns are normal; they
+        # are reported only when no value column holds any data.
         all_nan_cols = [
             col for col in self.dataframe.columns if self.dataframe[col].isna().all()
         ]
+        value_cols = [c for c in self.dataframe.columns if str(c).startswith("value_")]
+        if any(c not in all_nan_cols for c in value_cols):
+            all_nan_cols = [c for c in all_nan_cols if c not in value_cols]
         if all_nan_cols:
             warnings.warn(
                 f"Column(s) {all_nan_cols} contain only NaN values.",

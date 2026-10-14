@@ -195,6 +195,23 @@ class RoutingTraceabilityEvents(Base):
             return f"State {int(number)}"
         return f"State {number}"
 
+    def _resolve_states(self, values: list[Any]) -> list[str]:
+        """:meth:`_resolve_state` for many values (each distinct value once)."""
+        cache: dict[tuple[type, str, Any], str] = {}
+        out: list[str] = []
+        for value in values:
+            # Type and str in the key: 1, 1.0 and True compare equal but can
+            # resolve differently.
+            try:
+                key = (type(value), str(value), value)
+                name = cache.get(key)
+                if name is None:
+                    name = cache[key] = self._resolve_state(value)
+            except TypeError:  # unhashable value
+                name = self._resolve_state(value)
+            out.append(name)
+        return out
+
     # ------------------------------------------------------------------
     # build_routing_timeline
     # ------------------------------------------------------------------
@@ -294,25 +311,25 @@ class RoutingTraceabilityEvents(Base):
         merged["combo"] = merged["item_id"] + "|" + merged["routing_value"].astype(str)
         merged["group"] = (merged["combo"] != merged["combo"].shift()).cumsum()
 
-        rows: list[dict[str, Any]] = []
-        for _, seg in merged.groupby("group"):
-            item_id = seg["item_id"].iloc[0]
-            routing_val = seg["routing_value"].iloc[0]
-            start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
-            rows.append(
-                {
-                    "item_id": item_id,
-                    "routing_value": routing_val,
-                    "station_name": self._resolve_state(routing_val),
-                    "start": start,
-                    "end": end,
-                    "duration_seconds": (end - start).total_seconds(),
-                    "sample_count": len(seg),
-                }
-            )
-
-        timeline = pd.DataFrame(rows)
+        # One row per contiguous (item_id, routing_value) run, in time order.
+        n = len(merged)
+        first_pos = np.flatnonzero(merged["group"].diff().fillna(1).to_numpy() != 0)
+        last_pos = np.r_[first_pos[1:] - 1, n - 1]
+        times = merged[self.time_column]
+        start = times.iloc[first_pos].reset_index(drop=True)
+        end = times.iloc[last_pos].reset_index(drop=True)
+        routing_vals = merged["routing_value"].iloc[first_pos].tolist()
+        timeline = pd.DataFrame(
+            {
+                "item_id": merged["item_id"].iloc[first_pos].tolist(),
+                "routing_value": routing_vals,
+                "station_name": self._resolve_states(routing_vals),
+                "start": start,
+                "end": end,
+                "duration_seconds": (end - start).dt.total_seconds(),
+                "sample_count": np.diff(np.r_[first_pos, n]).tolist(),
+            }
+        )
         timeline = timeline.sort_values(["item_id", "start"]).reset_index(drop=True)
         timeline["station_sequence"] = timeline.groupby("item_id").cumcount() + 1
         timeline["uuid"] = self.event_uuid

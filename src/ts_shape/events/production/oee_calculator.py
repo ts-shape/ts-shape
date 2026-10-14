@@ -18,8 +18,8 @@ from ts_shape.events._output import (
     COL_START,
     empty_event_df,
 )
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class, deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
@@ -60,22 +60,17 @@ class OEEEvents(Base):
     ``start`` (midnight) / ``end`` (next midnight) / ``duration_seconds`` (the
     real day length: 86400, or 23 h / 25 h on DST days with tz-aware data).
 
-    Example usage:
-        oee = OEEEvents(df)
-
-        # Individual components
-        avail = oee.availability('machine_state')
-        perf = oee.performance('part_counter', ideal_cycle_time=30.0, run_state_uuid='machine_state')
-        qual = oee.quality('total_counter', 'reject_counter')
-
-        # Combined daily OEE
-        daily = oee.oee(
-            run_state_uuid='machine_state',
-            counter_uuid='part_counter',
-            ideal_cycle_time=30.0,
-            total_uuid='total_counter',
-            reject_uuid='reject_counter',
-        )
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> kw = dict(n_points=60, freq="1min")
+        >>> run = ts_shape.make_timeseries(["run"], value_column="value_bool", **kw)
+        >>> parts = ts_shape.make_timeseries(["parts"], noise=0, drift=59,
+        ...                                  value_column="value_integer", **kw)
+        >>> daily = ts_shape.OEEEvents(pd.concat([run, parts])).oee(
+        ...     "run", "parts", ideal_cycle_time=30.0)
+        >>> daily[["availability_pct", "performance_pct", "quality_pct", "oee_pct"]].round(1)
+           availability_pct  performance_pct  quality_pct  oee_pct
+        0              54.2             92.2        100.0     50.0
     """
 
     def __init__(
@@ -141,8 +136,16 @@ class OEEEvents(Base):
             - run_seconds
             - planned_seconds
             - availability_pct
+            - excluded_seconds: time removed by ``max_gap`` as "no data"
+                (booked to the day of the reading before the gap; 0 without
+                ``max_gap``)
         """
-        avail_extra = ["run_seconds", "planned_seconds", "availability_pct"]
+        avail_extra = [
+            "run_seconds",
+            "planned_seconds",
+            "availability_pct",
+            "excluded_seconds",
+        ]
         state_data = (
             self.dataframe[self.dataframe["uuid"] == run_state_uuid]
             .copy()
@@ -163,11 +166,14 @@ class OEEEvents(Base):
 
         # Treat over-long gaps as "no data" so they inflate neither run nor
         # planned time.
+        excluded_by_day: dict = {}
         if max_gap is not None:
             cap_seconds = pd.to_timedelta(max_gap).total_seconds()
-            state_data.loc[state_data["duration"] > cap_seconds, "duration"] = float(
-                "nan"
+            over_gap = state_data["duration"] > cap_seconds
+            excluded_by_day = (
+                state_data.loc[over_gap].groupby("date")["duration"].sum().to_dict()
             )
+            state_data.loc[over_gap, "duration"] = float("nan")
 
         # Drop last row per day (NaN duration at boundaries handled by groupby)
         state_data = state_data[state_data["duration"].notna()]
@@ -193,6 +199,7 @@ class OEEEvents(Base):
                     "run_seconds": run_seconds,
                     "planned_seconds": planned_seconds,
                     "availability_pct": min(availability, 100.0),
+                    "excluded_seconds": float(excluded_by_day.get(date, 0.0)),
                 }
             )
 
@@ -230,7 +237,10 @@ class OEEEvents(Base):
             run_value_column: Column holding boolean run state.
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
-                ``actual_parts`` is the reset-aware total. The result gains a
+                ``actual_parts`` is the reset-aware total. The increments are
+                computed once over the whole signal and booked to the day of
+                the reading that reports them, so the days add up to the
+                signal total. The result gains a
                 ``resets`` column with the number of resets observed each day.
                 When False, ``actual_parts`` is simply
                 ``max(0, last - first)`` and a day containing a reset reports
@@ -273,15 +283,16 @@ class OEEEvents(Base):
             for _, row in avail_df.iterrows():
                 run_per_day[row[COL_START].date()] = row["run_seconds"]
 
+        # Parts per day: increments over the whole signal, booked to the day of
+        # the reading that reports them, so the days add up to the total.
+        parts = counter_totals(
+            counter_data, value_column, ["date"], handle_resets=handle_resets
+        ).set_index("date")
+
         results = []
         for date, grp in counter_data.groupby("date"):
             grp = grp.sort_values(self.time_column)
-            if handle_resets:
-                actual_parts = counter_quantity(grp[value_column], handle_resets=True)
-            else:
-                actual_parts = max(
-                    0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
-                )
+            actual_parts = float(parts.at[date, "quantity"])
 
             if date in run_per_day:
                 run_seconds = run_per_day[date]
@@ -306,7 +317,7 @@ class OEEEvents(Base):
                 "performance_pct": min(performance, 100.0),
             }
             if handle_resets:
-                row["resets"] = count_resets(grp[value_column])
+                row["resets"] = int(parts.at[date, "resets"])
             results.append(row)
 
         return _daily_summary(results, perf_extra, tz=self._tz)
@@ -334,7 +345,9 @@ class OEEEvents(Base):
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset for both the total and the
                 reject counters, so a day containing a reset is not
-                under-reported. The result gains a ``resets`` column with the
+                under-reported. Increments are booked to the day of the
+                reading that reports them, so the days add up to the signal
+                totals. The result gains a ``resets`` column with the
                 combined number of resets (total + reject) observed each day.
                 When False, both quantities are ``max(0, last - first)``.
 
@@ -374,27 +387,21 @@ class OEEEvents(Base):
                 reject_data[self.time_column]
             )
             reject_data["date"] = reject_data[self.time_column].dt.date
-            for date, grp in reject_data.groupby("date"):
-                grp = grp.sort_values(self.time_column)
+            rejects = counter_totals(
+                reject_data, value_column, ["date"], handle_resets=handle_resets
+            )
+            for date, qty, n_resets in rejects.itertuples(index=False):
+                reject_by_day[date] = float(qty)
                 if handle_resets:
-                    reject_by_day[date] = counter_quantity(
-                        grp[value_column], handle_resets=True
-                    )
-                    reject_resets_by_day[date] = count_resets(grp[value_column])
-                else:
-                    reject_by_day[date] = max(
-                        0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
-                    )
+                    reject_resets_by_day[date] = int(n_resets)
 
+        # Increments over each whole signal, booked to the day of the reading
+        # that reports them, so the days add up to the signal totals.
+        totals = counter_totals(
+            total_data, value_column, ["date"], handle_resets=handle_resets
+        )
         results = []
-        for date, grp in total_data.groupby("date"):
-            grp = grp.sort_values(self.time_column)
-            if handle_resets:
-                total_parts = counter_quantity(grp[value_column], handle_resets=True)
-            else:
-                total_parts = max(
-                    0, grp[value_column].iloc[-1] - grp[value_column].iloc[0]
-                )
+        for date, total_parts, n_resets in totals.itertuples(index=False):
             reject_parts = reject_by_day.get(date, 0)
             good_parts = max(0, total_parts - reject_parts)
             quality = (good_parts / total_parts * 100.0) if total_parts > 0 else 0.0
@@ -407,9 +414,7 @@ class OEEEvents(Base):
                 "quality_pct": min(quality, 100.0),
             }
             if handle_resets:
-                row["resets"] = count_resets(grp[value_column]) + int(
-                    reject_resets_by_day.get(date, 0)
-                )
+                row["resets"] = int(n_resets) + int(reject_resets_by_day.get(date, 0))
             results.append(row)
 
         return _daily_summary(results, qual_extra, tz=self._tz)
@@ -464,6 +469,19 @@ class OEEEvents(Base):
             - performance_pct
             - quality_pct
             - oee_pct
+
+            followed by the basis each percentage was computed from, taken
+            from the components (a day missing from a component reports 0):
+
+            - run_seconds, planned_seconds, excluded_seconds: from
+                :meth:`availability` (``excluded_seconds`` is the time
+                ``max_gap`` removed as "no data")
+            - actual_parts, ideal_parts: from :meth:`performance`
+            - total_parts, reject_parts, good_parts: from :meth:`quality`;
+                NaN when ``total_uuid`` / ``reject_uuid`` are not given
+                (quality is then assumed to be 100 %)
+            - resets (only when ``handle_resets=True``): counter resets of
+                the part counter plus the total / reject counters
         """
         oee_extra = [
             "availability_pct",
@@ -471,6 +489,12 @@ class OEEEvents(Base):
             "quality_pct",
             "oee_pct",
         ]
+        avail_basis = ["run_seconds", "planned_seconds", "excluded_seconds"]
+        perf_basis = ["actual_parts", "ideal_parts"]
+        qual_basis = ["total_parts", "reject_parts", "good_parts"]
+        basis = avail_basis + perf_basis + qual_basis
+        if handle_resets:
+            basis.append("resets")
         avail_df = self.availability(
             run_state_uuid, planned_time_hours=planned_time_hours, max_gap=max_gap
         )
@@ -488,26 +512,46 @@ class OEEEvents(Base):
             qual_df = None
 
         if avail_df.empty and perf_df.empty:
-            return empty_event_df("summary", extra_cols=oee_extra)
+            return empty_event_df("summary", extra_cols=oee_extra + basis)
 
         # Merge on canonical day boundaries (start/end/duration_seconds)
         key_cols = [COL_START, COL_END, COL_DURATION_S]
-        merged = avail_df[key_cols + ["availability_pct"]].copy()
+        perf_resets = ["resets"] if handle_resets else []
+        merged = avail_df[key_cols + ["availability_pct"] + avail_basis].copy()
         if not perf_df.empty:
-            merged = merged.merge(
-                perf_df[key_cols + ["performance_pct"]], on=key_cols, how="outer"
+            perf_part = perf_df[key_cols + ["performance_pct"] + perf_basis]
+            perf_part = perf_part.assign(
+                _perf_resets=perf_df["resets"] if perf_resets else 0
             )
+            merged = merged.merge(perf_part, on=key_cols, how="outer")
         else:
             merged["performance_pct"] = 0.0
+            for col in perf_basis:
+                merged[col] = 0.0
+            merged["_perf_resets"] = 0
 
+        has_quality = qual_df is not None
         if qual_df is not None and not qual_df.empty:
-            merged = merged.merge(
-                qual_df[key_cols + ["quality_pct"]], on=key_cols, how="outer"
+            qual_part = qual_df[key_cols + ["quality_pct"] + qual_basis]
+            qual_part = qual_part.assign(
+                _qual_resets=qual_df["resets"] if handle_resets else 0
             )
+            merged = merged.merge(qual_part, on=key_cols, how="outer")
         else:
             merged["quality_pct"] = 100.0
+            for col in qual_basis:
+                merged[col] = 0.0
+            merged["_qual_resets"] = 0
 
         merged = merged.fillna(0.0)
+        if not has_quality:
+            # Quality was not measured: the 100 % is an assumption, not a count.
+            for col in qual_basis:
+                merged[col] = float("nan")
+        if handle_resets:
+            merged["resets"] = (merged["_perf_resets"] + merged["_qual_resets"]).astype(
+                int
+            )
 
         merged["oee_pct"] = (
             merged["availability_pct"]
@@ -517,7 +561,9 @@ class OEEEvents(Base):
         )
 
         return (
-            merged[key_cols + oee_extra].sort_values(COL_START).reset_index(drop=True)
+            merged[key_cols + oee_extra + basis]
+            .sort_values(COL_START)
+            .reset_index(drop=True)
         )
 
 

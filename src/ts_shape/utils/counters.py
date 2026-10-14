@@ -31,6 +31,7 @@ import pandas as pd
 from ts_shape.utils.coerce import to_numeric_checked
 
 __all__ = [
+    "counter_by_group",
     "counter_increments",
     "counter_per_window",
     "counter_quantity",
@@ -56,7 +57,9 @@ def counter_increments(values: pd.Series) -> pd.Series:
         A float Series, index-aligned with ``values``, of the parts produced
         since the previous reading.
     """
-    numeric = to_numeric_checked(values, what="counter readings")
+    # float64: nullable/pyarrow comparisons with the first reading's missing
+    # predecessor give <NA>, which would count the first reading as output.
+    numeric = to_numeric_checked(values, what="counter readings").astype("float64")
     prev = numeric.shift(1)
     delta = numeric - prev
     is_reset = delta < 0
@@ -87,6 +90,52 @@ def counter_quantity(values: pd.Series, *, handle_resets: bool = True) -> float:
     if handle_resets:
         return float(counter_increments(numeric).sum())
     return float(max(0.0, numeric.iloc[-1] - numeric.iloc[0]))
+
+
+def counter_by_group(
+    values: pd.Series,
+    keys: pd.Series | list[pd.Series],
+    *,
+    handle_resets: bool = True,
+) -> pd.DataFrame:
+    """Counter quantity and resets per group (shift, day, operator, ...).
+
+    Computing :func:`counter_quantity` separately inside each group loses
+    the production between the last reading of one group and the first
+    reading of the next: every group boundary drops one increment. Here
+    the reset-aware increments are computed once over the whole signal and
+    each one is booked to the group of the reading that reports it, so the
+    group quantities add up to the signal's total.
+
+    Args:
+        values: Counter readings of one signal, ordered in time.
+        keys: Group label(s) per reading, index-aligned with ``values``.
+        handle_resets: When ``True`` (default) sum the reset-aware
+            increments. When ``False`` each group reports
+            ``max(0, last - first)`` of its own readings (the naive quantity,
+            which loses production at group boundaries and resets).
+
+    Returns:
+        A DataFrame indexed by the group keys with ``quantity`` (float) and
+        ``resets`` (int; the readings lower than their predecessor).
+    """
+    numeric = to_numeric_checked(values, what="counter readings").astype("float64")
+    present = numeric.notna()
+    numeric = numeric[present]
+    key_list = keys if isinstance(keys, list) else [keys]
+    groups = [k[present] for k in key_list]
+    resets = (numeric.diff() < 0).astype(int)
+    if handle_resets:
+        quantity = counter_increments(numeric)
+    else:
+        frame = pd.DataFrame({"v": numeric})
+        last = frame.groupby(groups, sort=True)["v"].transform("last")
+        first = frame.groupby(groups, sort=True)["v"].transform("first")
+        # Book each group's (last - first) once, on its first reading.
+        is_first = ~frame.groupby(groups, sort=True).cumcount().astype(bool)
+        quantity = ((last - first).clip(lower=0)).where(is_first, 0.0)
+    out = pd.DataFrame({"quantity": quantity, "resets": resets})
+    return out.groupby(groups, sort=True).sum()
 
 
 def count_resets(values: pd.Series) -> int:

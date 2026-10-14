@@ -270,6 +270,11 @@ def empty_object_changes() -> pd.DataFrame:
 # ---- Validation -------------------------------------------------------------
 
 
+def _isin(values: pd.Series, allowed: pd.Series) -> pd.Series:
+    """``values.isin(allowed)`` via object dtype (Arrow-string ``isin`` is slow)."""
+    return values.astype(object).isin(pd.Index(allowed.astype(object).unique()))
+
+
 def validate(eventlog: EventLog) -> None:
     """Raise ``ValueError`` if the event log violates the canonical schema."""
     events, objects, relations = eventlog.events, eventlog.objects, eventlog.relations
@@ -291,27 +296,30 @@ def validate(eventlog: EventLog) -> None:
         raise ValueError(f"relations table missing required columns: {missing}")
 
     if not relations.empty:
-        eids = set(events[OCEL_EID])
-        bad = relations[OCEL_EID][~relations[OCEL_EID].isin(eids)]
+        bad = relations[OCEL_EID][~_isin(relations[OCEL_EID], events[OCEL_EID])]
         if not bad.empty:
             raise ValueError(f"relations reference unknown {OCEL_EID}: {bad.iloc[0]!r}")
-        oids = set(zip(objects[OCEL_OID], objects[OCEL_TYPE]))
-        rel_pairs = list(zip(relations[OCEL_OID], relations[OCEL_TYPE]))
-        for pair in rel_pairs:
-            if pair not in oids:
-                raise ValueError(
-                    f"relation references unknown object {pair!r}; "
-                    "every (oid, type) in relations must appear in objects"
-                )
+        known = pd.MultiIndex.from_arrays(
+            [objects[OCEL_OID].astype(object), objects[OCEL_TYPE].astype(object)]
+        )
+        rel_pairs = pd.MultiIndex.from_arrays(
+            [relations[OCEL_OID].astype(object), relations[OCEL_TYPE].astype(object)]
+        )
+        unknown_pairs = ~rel_pairs.isin(known)
+        if unknown_pairs.any():
+            pair = rel_pairs[unknown_pairs][0]
+            raise ValueError(
+                f"relation references unknown object {pair!r}; "
+                "every (oid, type) in relations must appear in objects"
+            )
 
     o2o = eventlog.o2o
     missing = [c for c in O2O_REQUIRED_COLUMNS if c not in o2o.columns]
     if missing:
         raise ValueError(f"o2o table missing required columns: {missing}")
     if not o2o.empty:
-        known_oids = set(objects[OCEL_OID])
         for col in (OCEL_OID, OCEL_OID2):
-            unknown = o2o[col][~o2o[col].isin(known_oids)]
+            unknown = o2o[col][~_isin(o2o[col], objects[OCEL_OID])]
             if not unknown.empty:
                 raise ValueError(
                     f"o2o references unknown object id in {col!r}: "
@@ -323,7 +331,7 @@ def validate(eventlog: EventLog) -> None:
     if missing:
         raise ValueError(f"object_changes table missing required columns: {missing}")
     if not changes.empty:
-        unknown = changes[OCEL_OID][~changes[OCEL_OID].isin(set(objects[OCEL_OID]))]
+        unknown = changes[OCEL_OID][~_isin(changes[OCEL_OID], objects[OCEL_OID])]
         if not unknown.empty:
             raise ValueError(
                 f"object_changes references unknown object id: {unknown.iloc[0]!r}; "

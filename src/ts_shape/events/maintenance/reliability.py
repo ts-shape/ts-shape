@@ -103,6 +103,16 @@ class ReliabilityEvents(Base):
       wear-out.
     - reliability_at: Reliability and hazard at given operating times from
       the fitted model, optionally conditional on the current age.
+
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> t = pd.date_range("2025-01-01", periods=8, freq="1h")
+        >>> df = pd.DataFrame({"systime": t, "uuid": "fault", "value_bool":
+        ...                    [False, False, True, False, False, False, True, False]})
+        >>> kpi = ts_shape.ReliabilityEvents(df, "fault").mtbf_mttr()
+        >>> kpi[["failures", "mtbf_hours", "mttr_hours", "availability_pct"]].round(1)
+           failures  mtbf_hours  mttr_hours  availability_pct
+        0         2         2.5         1.0              71.4
     """
 
     def __init__(

@@ -1,69 +1,36 @@
 # DegradationDetectionEvents
 
-> Detect degradation patterns in time series signals: trend degradation, variance increases, level shifts, and composite health scores.
+Slow degradation in a sensor signal: sustained trends, growing variance, permanent level shifts, and a composite 0-100 health score against a baseline period.
 
-**Module:** `ts_shape.events.maintenance.degradation_detection`
-**Guide:** [Quality Guide](../../guides/quality.md)
+`ts_shape.events.maintenance.degradation_detection` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/maintenance/degradation_detection.md)
 
----
-
-## When to Use
-
-Use for predictive maintenance monitoring. Tracks gradual degradation in bearing temperature, motor current, or any signal that slowly drifts before failure. Ideal when you need early warning of equipment deterioration before alarm thresholds are reached.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.maintenance.degradation_detection import DegradationDetectionEvents
 
-detector = DegradationDetectionEvents(
-    dataframe=sensor_df,
-    signal_uuid="bearing_temp",
-)
+df = ts_shape.make_timeseries(["bearing_temp"], n_points=4320, freq="1min", baseline=60.0, noise=0.5, drift=8.0)
 
-# Detect slow upward drift in bearing temperature (slope in units per second)
-trend_events = detector.detect_trend_degradation(
-    window="6h", min_slope=0.0001, direction="increasing"
-)
-
-# Rolling variance vs. the first window as baseline
-variance_events = detector.detect_variance_increase(window="1h", threshold_factor=2.0)
-
-# Permanent mean shifts of at least 3 degrees that persist for 10 minutes
-shifts = detector.detect_level_shift(min_shift=3.0, hold="10min")
-
-# Composite 0-100 health score over time, baselined on the first 24 hours
-health = detector.health_score(window="1h", baseline_window="24h")
+dd = DegradationDetectionEvents(df, "bearing_temp")
+trends = dd.detect_trend_degradation(window="6h", min_slope=0.00002, direction="increasing")
+shifts = dd.detect_level_shift(3.0, hold="10min")
+health = dd.health_score(window="1h", baseline_window="24h")
 print(health[["systime", "health_score"]].tail())
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `detect_trend_degradation(window='1h', min_slope=0.0, direction='decreasing')` | intervals where the rolling regression slope exceeds `min_slope`: `avg_slope`, `total_change`, `duration_seconds` |
+| `detect_variance_increase(window='1h', threshold_factor=2.0)` | intervals where rolling variance / baseline variance exceeds `threshold_factor`: `baseline_variance`, `current_variance`, `ratio` |
+| `detect_level_shift(min_shift, hold='5min')` | point events: `systime`, `shift_magnitude`, `prev_mean`, `new_mean` |
+| `health_score(window='1h', baseline_window='24h')` | per sample: `health_score`, `mean_drift_pct`, `variance_ratio`, `trend_slope` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_trend_degradation()` | Rolling linear regression slope detection | Intervals with `start`, `end`, `avg_slope`, `total_change`, `duration_seconds` |
-| `detect_variance_increase()` | Rolling variance vs. baseline (first window) | Intervals with `baseline_variance`, `current_variance`, `ratio` |
-| `detect_level_shift()` | CUSUM-like mean shift detection | Events with `systime`, `shift_magnitude`, `prev_mean`, `new_mean` |
-| `health_score()` | Composite 0-100 health score per sample | DataFrame with `systime`, `health_score`, `mean_drift_pct`, `variance_ratio`, `trend_slope` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Set a meaningful baseline window"
-    `detect_variance_increase()` uses the first `window` of data as its baseline, and `health_score()` uses the first `baseline_window`. Start the input at a stable, known-good operating period; a poor baseline produces false positives.
-
-!!! info "Related modules"
-    - [`FailurePredictionEvents`](failure-prediction.md) - Estimate remaining useful life once degradation is confirmed
-    - [`VibrationAnalysisEvents`](vibration-analysis.md) - Specialized degradation detection for vibration signals
-
----
-
-## See Also
-
-- [Quality Guide](../../guides/quality.md)
-- [API Reference](../../reference/ts_shape/events/maintenance/degradation_detection.md)
+- Slopes are in signal units per second; `direction` is `"increasing"` or `"decreasing"` (default).
+- The baseline is the start of the data: the first `window` for `detect_variance_increase`, the first `baseline_window` for `health_score`. Start the input at a known-good period, or the baseline produces false alarms.
+- A level shift must hold at least `hold` and be at least `min_shift` in size.
+- Interval methods end an interval at the next sample after the condition stops holding (`interval_end="next_change"`, default) or at the last flagged sample (`"last_sample"`).

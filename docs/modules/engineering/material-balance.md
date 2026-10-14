@@ -1,75 +1,43 @@
 # MaterialBalanceEvents
 
-> Check whether inputs and outputs balance (mass, energy, flow) per time window.
+Mass, energy or flow balance per window: sum of input signals against sum of output signals, the imbalance trend, sustained imbalance events, and each signal's share of the totals.
 
-**Module:** `ts_shape.events.engineering.material_balance`  
-**Guide:** [Process Engineering](../../guides/engineering.md)
+`ts_shape.events.engineering.material_balance` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/engineering/material_balance.md)
 
----
-
-## When to Use
-
-Use as a fundamental daily engineering check for any process. Validates conservation of mass/energy across inputs and outputs. Imbalances indicate leaks, measurement errors, or unaccounted streams. Essential for process accounting, yield tracking, and regulatory compliance.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import pandas as pd
+import ts_shape
 from ts_shape.events.engineering.material_balance import MaterialBalanceEvents
 
-checker = MaterialBalanceEvents(
-    dataframe=flow_data,
-    input_uuids=["feed_flow_01", "feed_flow_02"],
-    output_uuids=["product_flow_01", "waste_flow_01"],
-)
+df = pd.concat([
+    ts_shape.make_timeseries(["feed_1"], n_points=1440, freq="1min", baseline=60.0, seed=1),
+    ts_shape.make_timeseries(["feed_2"], n_points=1440, freq="1min", baseline=40.0, seed=2),
+    ts_shape.make_timeseries(["product"], n_points=1440, freq="1min", baseline=95.0, drift=-15.0, seed=3),
+    ts_shape.make_timeseries(["waste"], n_points=1440, freq="1min", baseline=5.0, seed=4),
+], ignore_index=True)
 
-# Check balance within 5% tolerance per hour
-balance = checker.balance_check(window="1h", tolerance_pct=5.0)
-
-# Track imbalance trend over time
-trend = checker.imbalance_trend(window="1h")
-
-# Detect sustained imbalance periods (at least 2 hours)
-exceedances = checker.detect_balance_exceedance(
-    window="1h",
-    tolerance_pct=5.0,
-    min_duration="2h",
-)
-
-# Break down each signal's contribution to the imbalance
-breakdown = checker.contribution_breakdown(window="1h")
+mb = MaterialBalanceEvents(df, input_uuids=["feed_1", "feed_2"], output_uuids=["product", "waste"])
+print(mb.balance_check(window="1h", tolerance_pct=5.0).tail())
+events = mb.detect_balance_exceedance(window="1h", tolerance_pct=5.0, min_duration="2h")
+shares = mb.contribution_breakdown(window="1h")
 ```
 
----
+## Methods
 
-## Key Methods
+All arguments are keyword-only.
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `balance_check(window='1h', tolerance_pct=5.0)` | Balance pass/fail per window | DataFrame: `start`, `total_input`, `total_output`, `imbalance`, `imbalance_pct`, `balanced` |
-| `imbalance_trend(window='1h')` | Imbalance trend over time | DataFrame: `start`, `imbalance_pct`, `rolling_avg_imbalance`, `trend_direction` |
-| `detect_balance_exceedance(window='1h', tolerance_pct=5.0, min_duration='2h')` | Sustained imbalance intervals | DataFrame of exceedance intervals (`start`, `end`, `avg_imbalance_pct`, `duration_seconds`, ...) |
-| `contribution_breakdown(window='1h')` | Signal-level contributions | DataFrame: `start`, `uuid`, `role`, `value`, `pct_of_total` |
+| Method | Returns (per window) |
+|---|---|
+| `balance_check(window='1h', tolerance_pct=5.0)` | `total_input`, `total_output`, `imbalance`, `imbalance_pct`, `balanced` |
+| `imbalance_trend(window='1h')` | `imbalance_pct`, `rolling_avg_imbalance` (last three windows), `trend_direction` |
+| `detect_balance_exceedance(window='1h', tolerance_pct=5.0, min_duration='2h')` | runs of unbalanced windows: `avg_imbalance_pct`, `max_imbalance_pct`, `likely_cause` |
+| `contribution_breakdown(window='1h')` | per window and signal: `uuid`, `role`, `value`, `pct_of_total` |
 
----
+## Notes
 
-## Tips & Hints
-
-!!! tip "Start with contribution_breakdown when imbalance is detected"
-    When `balance_check()` fails, use `contribution_breakdown()` to identify which specific input or output stream is responsible. This narrows the investigation to one sensor or pipe instead of chasing the entire process.
-
-!!! note "Flows are averaged by time; missing data stays unknown"
-    Each flow is held until its next sample and averaged by time per window (pass `time_weighted=False` to average samples). A window in which a signal has no data has NaN totals and is not balanced, but `detect_balance_exceedance()` does not report it, so a sensor outage is not read as an imbalance. Pass `missing_as_zero=True` to count missing data as zero flow.
-
-!!! info "Related modules"
-    - [Signal Comparison](signal-comparison.md) — compare individual input/output signal pairs
-    - [Threshold Monitoring](threshold-monitoring.md) — set alarms on the imbalance metric itself
-    - [Process Windows](process-windows.md) — windowed statistics for the individual streams
-
----
-
-## See Also
-
-- [Process Engineering Guide](../../guides/engineering.md)
-- [API Reference](../../reference/ts_shape/events/engineering/material_balance.md)
+- `imbalance` = inputs − outputs; `imbalance_pct` = |imbalance| / inputs × 100. A window with zero input is balanced only if nothing flowed out (otherwise `inf`).
+- Each flow is held until its next sample and averaged by time per window (`time_weighted=True`, default). `time_weighted=False` averages the samples, which is biased on irregular or change-only signals.
+- A window in which a signal has no data has NaN totals and is not balanced, but `detect_balance_exceedance` does not report it and it ends a run, so a sensor outage is not read as an imbalance. `missing_as_zero=True` counts missing data as zero flow.
+- `likely_cause`: `accumulation` when inputs exceed outputs in every window of the run, `leak_or_unmetered` when outputs exceed inputs throughout, else `measurement_error`.

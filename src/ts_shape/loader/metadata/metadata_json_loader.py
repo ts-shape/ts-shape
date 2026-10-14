@@ -266,7 +266,8 @@ class MetadataJsonLoader:
         """
         if uuid not in self.df.index:
             return None
-        return self.df.loc[uuid].to_dict()
+        row: dict[str, Any] = self.df.loc[uuid].to_dict()
+        return row
 
     def get_by_label(self, label: str) -> dict[str, Any] | None:
         """

@@ -13,10 +13,10 @@ from typing import Literal, overload
 import pandas as pd
 
 from ts_shape.events._windows import add_shift_window, data_tz
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class, keyword_only
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -88,30 +88,8 @@ class ShiftReportEvents(Base):
         }
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        """Assign shift based on time of day.
-
-        Args:
-            timestamp: Timestamp to classify
-
-        Returns:
-            Shift name
-        """
-        time = timestamp.time()
-
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-
-            if start_time < end_time:
-                # Normal shift (e.g., 06:00-14:00)
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                # Overnight shift (e.g., 22:00-06:00)
-                if time >= start_time or time < end_time:
-                    return shift_name
-
-        return "unknown"
+        """Assign shift based on time of day."""
+        return assign_shift(timestamp, self.shift_definitions)
 
     @keyword_only(2)
     def shift_production(
@@ -127,24 +105,33 @@ class ShiftReportEvents(Base):
     ) -> pd.DataFrame:
         """Production quantity per shift.
 
-        A shift boundary is exactly where production counters commonly reset
-        (shift change, part change, PLC restart). With the default
-        ``max(0, last - first)`` quantity, any shift containing a reset
-        under-reports (often to 0). Pass ``handle_resets=True`` to treat a
-        decreasing counter as a reset and count the post-reset production.
+        The reset-aware increments are computed once over the whole counter
+        signal and each one is booked to the shift of the reading that
+        reports it, so the shift quantities add up to the signal total: the
+        parts made between the last reading of one shift and the first
+        reading of the next are counted in the next shift (in the example,
+        310 parts over 06:00-21:30 are 150 + 160, not 150 + 150). A shift
+        boundary is also where counters commonly reset (shift change, part
+        change, PLC restart); a decreasing counter is treated as a reset and
+        the post-reset production is counted.
 
         Args:
             counter_uuid: Production counter UUID
             part_id_uuid: Part number UUID (optional, for part-specific production)
             value_column_counter: Column containing counter values
             value_column_part: Column containing part numbers
-            date: Specific date in 'YYYY-MM-DD' format (optional)
+            date: Specific date in 'YYYY-MM-DD' format (optional). Selects the
+                readings of that calendar date; their increments are still
+                computed on the full signal, so the first reading of the day
+                carries the production since the reading before it.
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it. The
                 result gains a ``resets`` column with the number of resets
-                observed in each shift. When False, the quantity is
-                ``max(0, last_count - first_count)`` and a shift containing a
-                reset reports too little.
+                observed in each shift (a drop at the shift's first reading
+                counts in that shift). When False, the quantity is
+                ``max(0, last_count - first_count)`` of the shift's own
+                readings: a shift containing a reset reports too little and
+                the production between two shifts' readings is lost.
             production_day: When True, the post-midnight portion of an overnight
                 shift (e.g. ``22:00 -> 06:00``) is attributed to the shift's
                 start date, so a night shift is one contiguous ``(date, shift)``
@@ -161,16 +148,20 @@ class ShiftReportEvents(Base):
             - date: Production date
             - shift: Shift name
             - part_number: Part number (if part_id_uuid provided)
-            - quantity: Parts produced
+            - quantity: Parts produced: the reset-aware increments reported
+                by the shift's readings (each since the previous reading)
             - resets: Number of counter resets in the shift (only when
                 ``handle_resets=True``)
 
         Example:
-            >>> shift_production('counter', part_id_uuid='part_id')
-                date        shift    part_number  quantity
-            0   2024-01-01  shift_1  PART_A       450
-            1   2024-01-01  shift_2  PART_A       425
-            2   2024-01-01  shift_3  PART_A       380
+            >>> import ts_shape
+            >>> df = ts_shape.make_timeseries(["counter"], n_points=32, freq="30min",
+            ...     start="2025-01-01 06:00", noise=0, drift=310, value_column="value_integer")
+            >>> out = ts_shape.ShiftReportEvents(df).shift_production("counter")
+            >>> out[["date", "shift", "quantity"]]
+                     date    shift  quantity
+            0  2025-01-01  shift_1       150
+            1  2025-01-01  shift_2       160
         """
         counter_data = (
             self.dataframe[self.dataframe["uuid"] == counter_uuid]
@@ -190,15 +181,18 @@ class ShiftReportEvents(Base):
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
 
-        # Filter by date if specified
+        # Shifts and dates on the FULL signal: a date filter only selects which
+        # groups are reported, so the first selected reading still carries the
+        # production since the reading before it.
+        select = None
         if date:
             target_date = pd.to_datetime(date).date()
-            counter_data = counter_data[
-                counter_data[self.time_column].dt.date == target_date
-            ]
+            select = counter_data[self.time_column].dt.date == target_date
 
         # Assign shifts
-        counter_data["shift"] = counter_data[self.time_column].apply(self._assign_shift)
+        counter_data["shift"] = assign_shift(
+            counter_data[self.time_column], self.shift_definitions
+        )
         if production_day:
             counter_data["date"] = production_dates(
                 counter_data[self.time_column],
@@ -234,6 +228,8 @@ class ShiftReportEvents(Base):
                     on=self.time_column,
                     direction="backward",
                 )
+                if select is not None:
+                    select = select.reset_index(drop=True)
 
                 # Rename part column
                 counter_data = counter_data.rename(
@@ -241,37 +237,20 @@ class ShiftReportEvents(Base):
                 )
                 group_cols.append("part_number")
 
-        # Calculate quantity per shift
-        results = []
-        for group_key, group_data in counter_data.groupby(group_cols):
-            if group_data.empty:
-                continue
+        # Quantity per shift: increments over the whole signal, each booked to
+        # the shift of the reading that reports it, so shifts add up.
+        totals = counter_totals(
+            counter_data,
+            value_column_counter,
+            group_cols,
+            handle_resets=handle_resets,
+            select=select,
+        )
+        out = totals[[*group_cols, "quantity"]].copy()
+        out["quantity"] = out["quantity"].astype(int)
+        if handle_resets:
+            out["resets"] = totals["resets"]
 
-            counter_series = group_data[value_column_counter]
-            quantity = int(
-                counter_quantity(counter_series, handle_resets=handle_resets)
-            )
-
-            if part_id_uuid and len(group_cols) == 3:
-                row = {
-                    "date": group_key[0],
-                    "shift": group_key[1],
-                    "part_number": group_key[2],
-                    "quantity": quantity,
-                }
-            else:
-                row = {
-                    "date": group_key[0],
-                    "shift": group_key[1],
-                    "quantity": quantity,
-                }
-
-            if handle_resets:
-                row["resets"] = count_resets(counter_series)
-
-            results.append(row)
-
-        out = pd.DataFrame(results)
         if out.empty:
             out = pd.DataFrame(columns=cols)
         return add_shift_window(
@@ -304,11 +283,16 @@ class ShiftReportEvents(Base):
             - days_count: Number of days included
 
         Example:
-            >>> shift_comparison('counter', days=7)
-                shift    avg_quantity  min_quantity  max_quantity  std_quantity  days_count
-            0   shift_1  445           420           465           15.2          7
-            1   shift_2  430           405           450           12.8          7
-            2   shift_3  385           360           410           18.5          7
+            >>> import ts_shape
+            >>> df = ts_shape.make_timeseries(["counter"], n_points=96, freq="30min",
+            ...     start="2025-01-01 06:00", baseline=10, noise=3, value_column="value_integer")
+            >>> df["value_integer"] = df["value_integer"].cumsum()  # running part counter
+            >>> out = ts_shape.ShiftReportEvents(df).shift_comparison("counter")
+            >>> out[["shift", "avg_quantity", "min_quantity", "max_quantity"]]
+                 shift  avg_quantity  min_quantity  max_quantity
+            0  shift_1         150.0           144           156
+            1  shift_2         163.5           157           170
+            2  shift_3         156.5           147           166
         """
         shift_prod = self.shift_production(
             counter_uuid, value_column_counter=value_column_counter
@@ -374,11 +358,15 @@ class ShiftReportEvents(Base):
             - achievement_pct: Percentage of target achieved
 
         Example:
-            >>> shift_targets('counter', targets={'shift_1': 450, 'shift_2': 450, 'shift_3': 400})
-                date        shift    actual  target  variance  achievement_pct
-            0   2024-01-01  shift_1  445     450     -5        98.9
-            1   2024-01-01  shift_2  465     450     15        103.3
-            2   2024-01-01  shift_3  390     400     -10       97.5
+            >>> import ts_shape
+            >>> df = ts_shape.make_timeseries(["counter"], n_points=32, freq="30min",
+            ...     start="2025-01-01 06:00", noise=0, drift=310, value_column="value_integer")
+            >>> rep = ts_shape.ShiftReportEvents(df)
+            >>> out = rep.shift_targets("counter", targets={"shift_1": 150, "shift_2": 200})
+            >>> out[["shift", "actual", "target", "variance", "achievement_pct"]]
+                 shift  actual  target  variance  achievement_pct
+            0  shift_1     150     150         0            100.0
+            1  shift_2     160     200       -40             80.0
         """
         shift_prod = self.shift_production(
             counter_uuid, value_column_counter=value_column_counter, date=date
@@ -468,13 +456,17 @@ class ShiftReportEvents(Base):
             - 'worst': Top 5 worst shifts (columns date, shift, quantity)
 
         Example:
-            >>> ranked = reporter.best_and_worst_shifts('counter')
+            >>> import ts_shape
+            >>> df = ts_shape.make_timeseries(["counter"], n_points=96, freq="30min",
+            ...     start="2025-01-01 06:00", baseline=10, noise=3, value_column="value_integer")
+            >>> df["value_integer"] = df["value_integer"].cumsum()  # running part counter
+            >>> ranked = ts_shape.ShiftReportEvents(df).best_and_worst_shifts("counter")
             >>> best = ranked[ranked["rank_type"] == "best"]
-            >>> best.loc[:, ["date", "shift", "quantity"]]
-                date        shift    quantity
-            0   2024-01-15  shift_2  495
-            1   2024-01-18  shift_1  490
-            2   2024-01-22  shift_2  485
+            >>> best[["date", "shift", "quantity"]].head(3)
+                    date    shift  quantity
+            0 2025-01-01  shift_2       170
+            1 2025-01-01  shift_3       166
+            2 2025-01-02  shift_2       157
         """
         if not as_frame:
             warnings.warn(

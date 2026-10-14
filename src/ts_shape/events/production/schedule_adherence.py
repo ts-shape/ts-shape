@@ -26,7 +26,11 @@ import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
-from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.counters import (
+    count_resets,
+    counter_increments,
+    counter_quantity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +204,16 @@ class ProductionScheduleAdherenceEvents(Base):
         Args:
             counter_uuid: Identifier of the monotonic production counter.
             handle_resets: Treat a decreasing counter as a reset and count the
-                post-reset value as new production. Default ``True``.
+                post-reset value as new production. Default ``True``. The
+                increments are computed once over the whole counter signal; a
+                reading reports the production since the previous reading, so
+                a period ``[start, end]`` gets the increments of the readings
+                in ``(start, end]``. The production between the last reading
+                before ``start`` and the first reading in the period is
+                counted, and a reading on a boundary shared by two periods is
+                booked once, to the period ending there. When False,
+                ``actual_qty`` is ``max(0, last - first)`` of the readings in
+                ``[start, end]``.
             as_of: Evaluation time for the recovery rate. Defaults to the last
                 timestamp present in the data.
             ahead_pct: Adherence above this is ``ahead``.
@@ -250,16 +263,30 @@ class ProductionScheduleAdherenceEvents(Base):
             else counter[self.time_column].iloc[-1]
         )
 
+        # Reset-aware increments over the whole signal: a reading reports the
+        # production since the previous reading, so a period [start, end]
+        # owns the increments of the readings in (start, end]. Production
+        # between the last reading before ``start`` and the first one inside
+        # the period is no longer lost, and a reading exactly on a shared
+        # boundary is booked to the period that ends there.
+        times = counter[self.time_column]
+        increments = counter_increments(counter[self.value_column])
+        is_reset = counter[self.value_column].diff() < 0
+
         rows: list[dict[str, Any]] = []
         for _, period in self.schedule.iterrows():
             start = period[self.schedule_start_column]
             end = period[self.schedule_end_column]
-            window = counter[
-                (counter[self.time_column] >= start)
-                & (counter[self.time_column] <= end)
-            ]
+            in_window = (times >= start) & (times <= end)
+            window = counter[in_window]
             values = window[self.value_column]
-            actual = counter_quantity(values, handle_resets=handle_resets)
+            if handle_resets:
+                booked = in_window & (times > start)
+                actual = float(increments[booked].sum())
+                n_resets = int(is_reset[booked].sum())
+            else:
+                actual = counter_quantity(values, handle_resets=False)
+                n_resets = count_resets(values)
             planned = float(period[self.planned_qty_column])
 
             adherence = actual / planned * 100.0 if planned > 0 else float("nan")
@@ -295,7 +322,7 @@ class ProductionScheduleAdherenceEvents(Base):
                     ),
                     "remaining_seconds": remaining,
                     "sample_count": int(len(window)),
-                    "resets": count_resets(values),
+                    "resets": n_resets,
                 }
             )
 

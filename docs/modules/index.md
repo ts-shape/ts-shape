@@ -1,70 +1,14 @@
 # Module Reference
 
-Focused documentation for every ts-shape class — purpose, usage example, method table, and tips.
+One page per detector class: what it computes, a short runnable example, the methods with their key output columns, and the behavior worth knowing. Every page links to the matching guide and to the [API reference](../reference/index.md), which lists all parameters.
 
-For narrative overviews with flow diagrams, see the [Guides](../guides/index.md).
-For exhaustive parameter docs, see the [API Reference](../reference/index.md).
-
----
-
-## Event Detection Packs
-
-<div class="grid cards" markdown>
-
--   :material-shield-check:{ .lg .middle } **[Quality](quality/outlier-detection.md)**
-
-    ---
-
-    Outlier detection, SPC rules, tolerance deviation, sensor drift, signal quality, gauge R&R, anomaly classification, capability trending, change-point detection, multivariate SPC (Hotelling T²).
-
-    **11 modules**
-
--   :material-factory:{ .lg .middle } **[Production](production/machine-state.md)**
-
-    ---
-
-    Machine states, OEE, throughput, cycle times, downtime, changeovers, alarms, batches, traceability, shift reports, and more.
-
-    **26 modules**
-
--   :material-cog-transfer:{ .lg .middle } **[Engineering](engineering/setpoint-events.md)**
-
-    ---
-
-    Setpoint analysis, startup detection, threshold monitoring, rate of change, steady state, control loop health, material balance.
-
-    **13 modules**
-
--   :material-wrench-clock:{ .lg .middle } **[Maintenance](maintenance/degradation-detection.md)**
-
-    ---
-
-    Degradation detection, failure prediction (RUL), vibration analysis for bearing health, reliability (MTBF / MTTR / Weibull).
-
-    **4 modules**
-
--   :material-lightning-bolt:{ .lg .middle } **[Energy](energy/power-integration.md)**
-
-    ---
-
-    kW to kWh integration, consumption patterns, peak demand, idle waste, efficiency tracking.
-
-    **3 modules**
-
--   :material-chart-scatter-plot:{ .lg .middle } **[Correlation](correlation/signal-correlation.md)**
-
-    ---
-
-    Rolling signal correlation, correlation breakdown, anomaly co-occurrence, cascade detection.
-
-    **2 modules**
-
--   :material-truck-delivery:{ .lg .middle } **[Supply Chain](supplychain/inventory-monitoring.md)**
-
-    ---
-
-    Inventory monitoring, stockout prediction, lead time analysis, demand patterns.
-
-    **3 modules**
-
-</div>
+| Pack | Covers | Start at |
+|---|---|---|
+| Production | machine state, downtime, OEE, throughput, cycle times, changeovers, alarms, batches, traceability, shift and period reports | [MachineStateEvents](production/machine-state.md) |
+| Quality | outliers, SPC rules, tolerances and capability, sensor drift, signal quality and gaps, gauge R&R, change points, multivariate SPC | [OutlierDetectionEvents](quality/outlier-detection.md) |
+| Engineering | setpoint response, startups, thresholds, rate of change, steady state, control loops, material balance, stability | [SetpointChangeEvents](engineering/setpoint-events.md) |
+| Maintenance | degradation, remaining useful life, vibration, MTBF/MTTR and Weibull | [DegradationDetectionEvents](maintenance/degradation-detection.md) |
+| Energy | kW to kWh integration, consumption, peak demand, idle energy, efficiency | [PowerIntegrator](energy/power-integration.md) |
+| Correlation | rolling and lagged signal correlation, coincident anomalies and cascades | [SignalCorrelationEvents](correlation/signal-correlation.md) |
+| Supply chain | inventory levels and stockouts, lead times, demand patterns | [InventoryMonitoringEvents](supplychain/inventory-monitoring.md) |
+| Development | critical parameters, DOE runs and effects, design space, golden batch, recipe phases | [DesignOfExperimentsEvents](development/design-of-experiments.md) |

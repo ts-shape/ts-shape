@@ -1,373 +1,166 @@
-# Production Monitoring
+# Production and OEE
 
-Track machine states, line throughput, changeovers, downtime, cycle times, and shift performance on the shop floor. These classes form the operational backbone of plant analytics.
+How to get machine states, downtime, OEE, shift figures and part traceability
+from run-state, counter and reason signals. The classes live in
+`ts_shape.events.production`; each has its own page in the
+[module reference](../modules/index.md).
 
----
+## Example data
 
-## Production Class Map
+One line over 24 hours, sampled every minute: a boolean run state, a
+cumulative part counter, a cumulative reject (NOK) counter, the good-part
+counter and a stop-reason string.
 
-```mermaid
-flowchart TB
-    subgraph DETECT["<b>Event Detection</b><br/><i>raw signals → events</i>"]
-        MS["MachineStateEvents<br/><code>run / idle / setup</code>"]
-        LT["LineThroughputEvents<br/><code>parts per window</code>"]
-        CO["ChangeoverEvents<br/><code>product changes</code>"]
-        FC["FlowConstraintEvents<br/><code>blocked / starved</code>"]
-    end
+```python
+import numpy as np
+import pandas as pd
 
-    subgraph TRACK["<b>Daily Tracking</b><br/><i>events → shift-level KPIs</i>"]
-        PT["PartProductionEvents"]
-        CT["CycleTimeEvents"]
-        DT["DowntimeEvents"]
-        QT["QualityEvents"]
-        SR["ShiftReportEvents"]
-    end
+rng = np.random.default_rng(1)
+t = pd.date_range("2024-06-03 06:00", periods=24 * 60, freq="1min", tz="Europe/Berlin")
+running = rng.random(len(t)) > 0.02                      # a short stop now and then
+running[600:660] = False                                 # one long stop
+parts = np.cumsum(running * 2)                           # 2 parts per running minute
+nok = np.cumsum(running & (rng.random(len(t)) < 0.03))   # about 3 % rejects
+reason = np.where(running, "", rng.choice(["material", "tooling"], len(t)))
 
-    MS -->|"run/idle intervals"| DT
-    LT -->|"part counts"| PT
-    CO -->|"product changes"| CT
-    FC -->|"constraint events"| DT
+def signal(uuid, column, values):
+    return pd.DataFrame({"systime": t, "uuid": uuid, column: values})
 
-    PT -->|"date, shift"| SR
-    CT -->|"date, shift"| SR
-    DT -->|"date, shift"| SR
-    QT -->|"date, shift"| SR
-
-    style DETECT fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
-    style TRACK fill:#1a3a4a,stroke:#f59e0b,color:#fef3c7
+df = pd.concat([
+    signal("line1:running", "value_bool", running),
+    signal("line1:parts", "value_integer", parts),
+    signal("line1:nok", "value_integer", nok),
+    signal("line1:ok", "value_integer", parts - nok),
+    signal("line1:stop_reason", "value_string", reason),
+], ignore_index=True)
 ```
 
----
+Counters may reset (shift start, PLC restart, rollover). All counter-based
+methods handle that by default (`handle_resets=True`) and report the number of
+resets in a `resets` column.
 
-## Machine State Events
-
-Detect run/idle intervals and state transitions from boolean or string state signals.
+## Machine states and downtime
 
 ```python
 from ts_shape.events.production.machine_state import MachineStateEvents
-
-state = MachineStateEvents(df, run_state_uuid='machine_running')
-
-# Run/idle intervals with minimum duration filter
-intervals = state.detect_run_idle(min_duration='30s')
-
-# State transitions (every change from one state to another)
-transitions = state.transition_events()
-
-# Detect rapid state changes (may indicate sensor noise)
-rapid = state.detect_rapid_transitions(threshold='5s', min_count=3)
-
-# Quality metrics for the state signal itself
-metrics = state.state_quality_metrics()
-print(f"Run/Idle ratio: {metrics['run_idle_ratio']:.2f}")
-```
-
----
-
-## Line Throughput Events
-
-Count parts per time window, check takt adherence, and detect throughput trends.
-
-```python
-from ts_shape.events.production.line_throughput import LineThroughputEvents
-
-throughput = LineThroughputEvents(df)
-
-# Parts per minute
-counts = throughput.count_parts(counter_uuid='part_counter', window='1min')
-
-# Takt adherence — flag cycles exceeding takt time
-violations = throughput.takt_adherence(
-    cycle_uuid='cycle_complete', takt_time='60s'
-)
-
-# Throughput trends with degradation detection
-trends = throughput.throughput_trends(
-    counter_uuid='part_counter', window='1h', trend_window=24
-)
-```
-
----
-
-## Changeover Detection
-
-Detect product/recipe changeovers and compute changeover windows.
-
-```python
-from ts_shape.events.production.changeover import ChangeoverEvents
-
-changeover = ChangeoverEvents(df)
-
-# Detect changeovers (product signal changes)
-changes = changeover.detect_changeover(product_uuid='product_signal', min_hold='5min')
-
-# Fixed-duration changeover window
-windows = changeover.changeover_window(
-    product_uuid='product_signal',
-    until='fixed_window',
-    config={'duration': '10min'}
-)
-
-# Stability-based changeover window (waits for process to settle)
-windows = changeover.changeover_window(
-    product_uuid='product_signal',
-    until='stable_band',
-    config={
-        'metrics': [
-            {'uuid': 'temperature', 'band': 2.0, 'hold': '2min'},
-            {'uuid': 'pressure', 'band': 5.0, 'hold': '2min'},
-        ],
-        'reference_method': 'ewma'
-    }
-)
-```
-
----
-
-## Flow Constraint Events
-
-Detect blockages (downstream full) and starvation (upstream empty) between stations.
-
-```python
-from ts_shape.events.production.flow_constraints import FlowConstraintEvents
-
-flow = FlowConstraintEvents(df)
-
-# Define station roles
-roles = {
-    'upstream_run': 'station_1_running',
-    'downstream_run': 'station_2_running',
-}
-
-# Detect blocked events (station 1 running but station 2 stopped)
-blocked = flow.blocked_events(roles=roles, tolerance='200ms', min_duration='5s')
-
-# Detect starved events (station 2 running but station 1 stopped)
-starved = flow.starved_events(roles=roles, tolerance='200ms', min_duration='5s')
-
-# Full analytics with severity classification
-analytics = flow.flow_constraint_analytics(
-    roles=roles, warning_threshold='5s', critical_threshold='30s'
-)
-```
-
----
-
-## Part Production Tracking
-
-Track production quantities by part number with time-based aggregation.
-
-```python
-from ts_shape.events.production.part_tracking import PartProductionEvents
-
-tracker = PartProductionEvents(df)
-
-# Hourly production by part
-hourly = tracker.production_by_part(
-    part_id_uuid='part_number_signal',
-    counter_uuid='counter_signal',
-    window='1h'
-)
-
-# Daily production summary
-daily = tracker.daily_production_summary(
-    part_id_uuid='part_number_signal',
-    counter_uuid='counter_signal'
-)
-
-# Total production for a date range
-totals = tracker.production_totals(
-    part_id_uuid='part_number_signal',
-    counter_uuid='counter_signal',
-    start_date='2024-01-01',
-    end_date='2024-01-31'
-)
-```
-
-### Handling counter resets
-
-Production counters are assumed to increase as parts are produced. Many counters reset back to zero (or a lower value) at a shift change, a part change, or a controller restart. By default (`handle_resets=True`) the quantity is the sum of per-reading increments, where a drop is treated as a reset that contributes the new counter value. The result has a `resets` column counting resets per window/day/range. The same flag is available on `daily_production_summary` and `production_totals`.
-
-With `handle_resets=False` the quantity is `max(0, last_count - first_count)`, so a window where the counter drops reports 0 and loses that window's production.
-
-```python
-# Reset-aware hourly production (includes a `resets` column)
-hourly = tracker.production_by_part(
-    part_id_uuid='part_number_signal',
-    counter_uuid='counter_signal',
-    window='1h',
-)
-
-# Inspect exactly when and how far the counter reset
-resets = tracker.detect_resets(
-    part_id_uuid='part_number_signal',
-    counter_uuid='counter_signal',
-)
-#             systime  part_number  count_before  count_after  drop
-#  2026-06-15 17:00:00  8842580               432           61   371
-#  2026-06-16 19:00:00  9423376               854            0   854
-```
-
-!!! tip "Confirm reset behavior first"
-    Use `detect_resets()` to check whether and when your counter resets. If it never resets, `handle_resets=False` and the default reset-aware result give the same quantities.
-
----
-
-## Cycle Time Tracking
-
-Analyze cycle times with trend detection and slow cycle identification.
-
-```python
-from ts_shape.events.production.cycle_time_tracking import CycleTimeEvents
-
-tracker = CycleTimeEvents(df)
-
-# Statistics by part (min, avg, max, std, median)
-stats = tracker.cycle_time_statistics(
-    part_id_uuid='part_number_signal',
-    cycle_trigger_uuid='cycle_complete_signal'
-)
-
-# Detect slow cycles (>1.5x median)
-slow = tracker.detect_slow_cycles(
-    part_id_uuid='part_number_signal',
-    cycle_trigger_uuid='cycle_complete_signal',
-    threshold_factor=1.5
-)
-
-# Trend analysis with rolling window
-trend = tracker.cycle_time_trend(
-    part_id_uuid='part_number_signal',
-    cycle_trigger_uuid='cycle_complete_signal',
-    part_number='PART_A',
-    window_size=20
-)
-```
-
----
-
-## Downtime Tracking
-
-Track machine downtime by shift, reason, and availability trends.
-
-```python
 from ts_shape.events.production.downtime_tracking import DowntimeEvents
+from ts_shape.events.production.micro_stop_detection import MicroStopEvents
 
-tracker = DowntimeEvents(df)
+intervals = MachineStateEvents(df, run_state_uuid="line1:running").detect_run_idle(min_duration="5min")
 
-# Downtime per shift with availability
-shift_downtime = tracker.downtime_by_shift(
-    state_uuid='machine_state', running_value='Running'
-)
-#     date        shift    downtime_minutes  uptime_minutes  availability_pct
-# 0   2024-01-01  shift_1  45.2             434.8           90.6
-
-# Pareto of downtime reasons
-reasons = tracker.downtime_by_reason(
-    state_uuid='machine_state',
-    reason_uuid='downtime_reason',
-    stopped_value='Stopped'
+downtime = DowntimeEvents(df)
+by_shift = downtime.downtime_by_shift("line1:running", running_value=True)
+by_reason = downtime.downtime_by_reason(
+    "line1:running", "line1:stop_reason", stopped_value=False, value_column_state="value_bool"
 )
 
-# Top 5 downtime reasons
-top = tracker.top_downtime_reasons(
-    state_uuid='machine_state', reason_uuid='downtime_reason', top_n=5
-)
-
-# Availability trend
-trend = tracker.availability_trend(
-    state_uuid='machine_state', running_value='Running', window='1D'
-)
+micro_stops = MicroStopEvents(df, run_state_uuid="line1:running").detect_micro_stops(max_duration="3min")
 ```
 
----
+- `detect_run_idle` returns one interval per run or idle period; intervals
+  shorter than `min_duration` are dropped.
+- `downtime_by_shift` returns downtime, uptime and `availability_pct` per
+  shift. The run state can be a boolean (`running_value=True`) or a string
+  state in `value_string` (`running_value="Running"`).
+- `downtime_by_reason` is a Pareto of stop reasons by occurrences and
+  duration.
 
-## Quality Tracking (NOK/Scrap)
+Shifts default to three 8-hour shifts starting at 06:00 (`shift_1` to
+`shift_3`). Pass `shift_definitions={"early": ("06:00", "14:00"), ...}` to the
+constructor of the shift-based classes to change them. A night shift that
+crosses midnight is counted on the day it starts (`production_day=True`).
 
-Track NOK parts, first-pass yield, and defect reasons.
+## OEE
 
 ```python
-from ts_shape.events.production.quality_tracking import QualityEvents
+from ts_shape.events.production.oee_calculator import OEEEvents
 
-tracker = QualityEvents(df, shift_definitions={
-    "day": ("06:00", "14:00"),
-    "afternoon": ("14:00", "22:00"),
-    "night": ("22:00", "06:00"),
-})
-
-# NOK parts per shift with first-pass yield
-shift_quality = tracker.nok_by_shift(
-    ok_counter_uuid='good_parts', nok_counter_uuid='bad_parts'
+oee = OEEEvents(df).oee(
+    "line1:running",
+    "line1:parts",
+    ideal_cycle_time=25.0,          # seconds per part at full speed
+    total_uuid="line1:parts",
+    reject_uuid="line1:nok",
 )
-
-# Quality by part number
-part_quality = tracker.quality_by_part(
-    ok_counter_uuid='good_parts',
-    nok_counter_uuid='bad_parts',
-    part_id_uuid='part_number'
-)
-
-# Pareto of defect reasons
-reasons = tracker.nok_by_reason(
-    nok_counter_uuid='bad_parts', defect_reason_uuid='defect_code'
-)
+oee[["start", "availability_pct", "performance_pct", "quality_pct", "oee_pct"]]
 ```
 
----
+One row per calendar day. Availability is run time over planned time,
+performance is actual over ideal parts in the run time, quality is good over
+total parts. The basis of each percentage is in the same row (`run_seconds`,
+`planned_seconds`, `ideal_parts`, `good_parts`, ...). Pass
+`planned_time_hours` for a fixed planned time per day, and `max_gap` so that a
+logging gap is not booked as run time. `availability`, `performance` and `quality` are also available on their own.
 
-## Shift Reporting
-
-Compare shift performance and track against targets.
+## Parts, quality and shift reports
 
 ```python
 from ts_shape.events.production.shift_reporting import ShiftReportEvents
+from ts_shape.events.production.quality_tracking import QualityEvents
+from ts_shape.events.production.shift_handover import ShiftHandoverEvents
 
-reporter = ShiftReportEvents(df)
+production = ShiftReportEvents(df).shift_production("line1:parts")
+quality = QualityEvents(df).nok_by_shift("line1:ok", "line1:nok")
 
-# Production per shift
-shift_prod = reporter.shift_production(
-    counter_uuid='counter_signal', part_id_uuid='part_number_signal'
+report = ShiftHandoverEvents(df).generate_report(
+    "line1:parts", "line1:ok", "line1:nok", "line1:running",
+    running_value=True,
+    targets={"shift_1": 900, "shift_2": 900, "shift_3": 900},
 )
-
-# Compare shifts (last 7 days)
-comparison = reporter.shift_comparison(counter_uuid='counter_signal', days=7)
-
-# Track against targets
-targets = reporter.shift_targets(
-    counter_uuid='counter_signal',
-    targets={'shift_1': 450, 'shift_2': 450, 'shift_3': 400}
-)
-
-# Best and worst shifts
-ranked = reporter.best_and_worst_shifts(counter_uuid='counter_signal')
-best = ranked[ranked['rank_type'] == 'best']
 ```
 
----
+`generate_report` combines production against target, quality and
+availability per shift in one table. `highlight_issues` lists every shift
+metric below its threshold (by default 95 % of the production target, 98 %
+quality, 90 % availability).
 
-## How They Connect
+## Which class answers which question
 
-| From | To | Merge Key | Purpose |
-|------|----|-----------|---------|
-| `MachineStateEvents` | `DowntimeEvents` | run/idle intervals | Calculate downtime from state changes |
-| `LineThroughputEvents` | `PartProductionEvents` | part counts per window | Aggregate to daily/shift totals |
-| `ChangeoverEvents` | `CycleTimeEvents` | product change timestamps | Exclude changeover time from cycle analysis |
-| `DowntimeEvents` | `ShiftReportEvents` | `date`, `shift` | Feed downtime into shift report |
-| `PartProductionEvents` | `ShiftReportEvents` | `date`, `shift` | Feed production counts into shift report |
-| `QualityEvents` | `ShiftReportEvents` | `date`, `shift` | Feed quality metrics into shift report |
+| Question | Class | Page |
+|---|---|---|
+| How many parts per hour or per part number? | `PartProductionEvents`, `LineThroughputEvents` | [Part tracking](../modules/production/part-tracking.md), [Line throughput](../modules/production/line-throughput.md) |
+| How long are the cycles, which ones are slow? | `CycleTimeEvents` | [Cycle time](../modules/production/cycle-time.md) |
+| Where is speed lost against the target cycle time? | `PerformanceLossEvents` | [Performance loss](../modules/production/performance-loss.md) |
+| Which stops are long, which are micro stops? | `LongDowntimeEvents`, `MicroStopEvents` | [Long downtime](../modules/production/long-downtime.md), [Micro stops](../modules/production/micro-stops.md) |
+| Which station limits the line? | `BottleneckDetectionEvents`, `LineBalancingEvents` | [Bottleneck](../modules/production/bottleneck-detection.md), [Line balancing](../modules/production/line-balancing.md) |
+| Is a station blocked or starved? | `FlowConstraintEvents` | [Flow constraints](../modules/production/flow-constraints.md) |
+| WIP, throughput and lead time (Little's law)? | `FlowMetricsEvents` | [Flow metrics](../modules/production/flow-metrics.md) |
+| When are product changes, how long are setups? | `ChangeoverEvents`, `SetupTimeEvents` | [Changeover](../modules/production/changeover.md), [Setup time](../modules/production/setup-time.md) |
+| Scrap, rework, NOK by reason and cost? | `ScrapEvents`, `ReworkEvents`, `QualityEvents` | [Scrap](../modules/production/scrap-tracking.md), [Rework](../modules/production/rework-tracking.md), [Quality tracking](../modules/production/quality-tracking.md) |
+| Actual against target per shift or day? | `TargetEvents` | [Target tracking](../modules/production/target-tracking.md) |
+| Output and quality per operator? | `OperatorPerformanceEvents` | [Operator performance](../modules/production/operator-performance.md) |
+| Weekly and monthly roll-ups? | `PeriodSummaryEvents` | [Period summary](../modules/production/period-summary.md) |
+| Batches, their durations and yield? | `BatchTrackingEvents` | [Batch tracking](../modules/production/batch-tracking.md) |
+| Alarm floods, chattering and standing alarms? | `AlarmManagementEvents` | [Alarm management](../modules/production/alarm-management.md) |
+| How often does a pump or valve cycle? | `DutyCycleEvents` | [Duty cycle](../modules/production/duty-cycle.md) |
+| Operating hours and starts? | `RuntimeAccountingEvents` | [Runtime accounting](../modules/production/runtime-accounting.md) |
 
----
+## Traceability
 
-## Module Deep Dives
+Three classes follow parts through stations, depending on how the part id is
+recorded:
 
-**Event Detection:** [Machine State](../modules/production/machine-state.md) | [Line Throughput](../modules/production/line-throughput.md) | [Changeover](../modules/production/changeover.md) | [Flow Constraints](../modules/production/flow-constraints.md)
+| Class | Signals |
+|---|---|
+| `ValueTraceabilityEvents` | one part-id string signal per station |
+| `RoutingTraceabilityEvents` | one part-id signal plus an integer routing-step signal |
+| `MultiProcessTraceabilityEvents` | one part-id signal per process, optional handover signals between parallel cells |
 
-**Daily Tracking:** [Part Tracking](../modules/production/part-tracking.md) | [Cycle Time](../modules/production/cycle-time.md) | [Downtime](../modules/production/downtime.md) | [Quality Tracking](../modules/production/quality-tracking.md) | [Shift Reporting](../modules/production/shift-reporting.md)
+```python
+from ts_shape.events.production.order_traceability import ValueTraceabilityEvents
 
----
+t = pd.date_range("2024-06-03 06:00", periods=5, freq="10min", tz="UTC")
+trace_df = pd.DataFrame({
+    "systime": list(t[:3]) + list(t[2:5]),
+    "uuid": ["press:part_id"] * 3 + ["weld:part_id"] * 3,
+    "value_string": ["P-001", "P-002", "P-003"] * 2,
+})
+trace = ValueTraceabilityEvents(trace_df, station_uuids={"press:part_id": "Press", "weld:part_id": "Weld"})
+timeline = trace.build_timeline()   # one row per part and station visit
+lead_times = trace.lead_time()      # first station to last station, per part
+```
 
-## Next Steps
-
-- [OEE & Plant Analytics](oee-analytics.md) — Combine availability, performance, quality into OEE
-- [Shift Reports & KPIs](reporting.md) — Performance loss, scrap, targets, handover reports
-- [API Reference](../reference/index.md) — Full production API documentation
+With one sample per visit the dwell time is 0; `build_timeline(infer_dwell_from_next=True)`
+estimates it from the next sample. See [Value traceability](../modules/production/order-traceability.md),
+[Routing traceability](../modules/production/routing-traceability.md) and
+[Multi-process traceability](../modules/production/multi-process-traceability.md).

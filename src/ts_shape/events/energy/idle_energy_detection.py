@@ -7,6 +7,7 @@ import pandas as pd
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.shifts import assign_shift
 from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
@@ -196,21 +197,8 @@ class IdleEnergyDetectionEvents(Base):
         if energy.empty or state.empty:
             return pd.DataFrame(columns=empty_cols)
 
-        def _assign_shift(ts: pd.Timestamp) -> str:
-            t = ts.time()
-            for name, (start, end) in shifts.items():
-                st = pd.to_datetime(start).time()
-                et = pd.to_datetime(end).time()
-                if st < et:
-                    if st <= t < et:
-                        return name
-                else:
-                    if t >= st or t < et:
-                        return name
-            return "unknown"
-
-        energy["_shift"] = energy[self.time_column].apply(_assign_shift)
-        state["_shift"] = state[self.time_column].apply(_assign_shift)
+        energy["_shift"] = assign_shift(energy[self.time_column], shifts)
+        state["_shift"] = assign_shift(state[self.time_column], shifts)
 
         energy_by_shift = (
             energy.groupby("_shift")[value_column_energy].sum().rename("total_energy")
@@ -296,7 +284,8 @@ class IdleEnergyDetectionEvents(Base):
             bins=[-np.inf, -0.01, 0.01, np.inf],
             labels=["improving", "stable", "worsening"],
         )
-        return with_window_bounds(by_window[empty_cols], window)
+        # idle_energy_by_window already carries the true window bounds.
+        return by_window[["start", "end", "duration_seconds", *empty_cols[1:]]]
 
     # ── Internal helpers ────────────────────────────────────────────────────
 

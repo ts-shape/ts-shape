@@ -1,243 +1,160 @@
-# Event Log: labeling standard & taxonomy
+# Labeling and taxonomy
 
-This page documents the rules that fill `ocel:activity` and the standard
-attributes every detector emits. It is the reference companion to the
-[Event Log overview](index.md) (the canonical schema and exports) and
-[Adapter anatomy](adapters.md) (how a detector's DataFrame is normalized).
+The rules that fill `ocel:activity` and the standard attributes of every event.
+They keep the events of any two detectors comparable without per-detector
+code downstream. Each detector method has one `LabelRule` in
+`ts_shape.eventlog.taxonomy.REGISTRY`; `tests/eventlog/test_adapter_coverage.py`
+fails when a public detector method has no rule.
 
----
-
-## Activity-name taxonomy
-
-The full set of rules is codified in [Event labeling standard](#event-labeling-standard). At a glance:
-
-| Detector method | `ocel:activity` |
-|---|---|
-| `OutlierDetectionEvents.detect_outliers_zscore` | `quality.outlier.zscore` |
-| `StatisticalProcessControlEvents.process` | `quality.spc.rule_violation` |
-| `MachineStateEvents.detect_run_idle` | `production.machine_state.{state}` |
-| `MachineStateEvents.transition_events` | `production.machine_state.transition_{transition}` |
-| `SetpointChangeEvents.detect_setpoint_steps` | `engineering.setpoint.step_{change_type}` |
-| `DegradationDetectionEvents.detect_trend_degradation` | `maintenance.degradation.trend` |
-
-The full registry lives in `ts_shape.eventlog.taxonomy.REGISTRY` and is enforced by `tests/eventlog/test_adapter_coverage.py` — adding a new detector method without registering a label rule fails CI.
-
----
-
-## Event labeling standard
-
-These are the rules every `LabelRule` in
-`ts_shape.eventlog.taxonomy.REGISTRY` follows. Adhering to them keeps
-the output of any two detectors directly compatible without per-pack
-glue code in downstream tools.
-
-### Activity-name format
+## Activity names
 
 ```
 <pack>.<family>.<specifier>[.<subtype>]
 ```
 
-- All segments **lowercase, snake_case**, separated by `.`.
-- `pack` is one of the seven fixed packs (see below).
-- `family` is the conceptual category within the pack (e.g. `outlier`,
-  `machine_state`, `setpoint`).
-- `specifier` distinguishes between methods/algorithms inside the
-  family (e.g. `zscore`, `iqr`, `mad` for `quality.outlier`).
-- `subtype` is optional and almost always **templated** — a placeholder
-  like `{state}` or `{change_type}` substituted from the legacy row.
-- Templated segments use `{column_name}` syntax. At adapter time the
-  value of that column is dropped in. **Missing values render as
-  `unknown` rather than raising.**
+- All segments are lowercase snake_case, separated by dots.
+- `pack` is one of `quality`, `production`, `engineering`, `maintenance`,
+  `energy`, `correlation`, `supplychain`, `development`.
+- `family` is the topic within the pack (`outlier`, `machine_state`,
+  `setpoint`, ...). Reuse an existing family where one fits.
+- `specifier` distinguishes methods within the family (`zscore`, `iqr`, `mad`
+  for `quality.outlier`).
+- A segment may be a `{column}` placeholder, filled from the detector's
+  output row. A missing value renders as `unknown`.
 
-### Pack vocabulary (fixed)
-
-| Pack | What belongs here |
+| Detector method | `ocel:activity` |
 |---|---|
-| `quality` | Per-measurement quality findings: outliers, SPC violations, tolerance breaches, sensor health. |
-| `production` | Shop-floor state and KPIs: machine state, alarms, batches, OEE, traceability, shift reports. |
-| `engineering` | Process-engineering analytics: setpoint behavior, control-loop health, steady state, thresholds. |
-| `maintenance` | Equipment health: degradation, failure prediction, vibration. |
-| `supplychain` | Inventory, demand, lead-time signals. |
-| `energy` | Energy consumption, efficiency, carbon intensity, EnPI. |
-| `correlation` | Cross-signal analytics that don't naturally belong to one asset (signal correlation, anomaly co-occurrence). |
+| `OutlierDetectionEvents.detect_outliers_zscore` | `quality.outlier.zscore` |
+| `StatisticalProcessControlEvents.detect_violations` | `quality.spc.rule_violation` |
+| `MachineStateEvents.detect_run_idle` | `production.machine_state.{state}` (`...run`, `...idle`) |
+| `MachineStateEvents.transition_events` | `production.machine_state.transition_{transition}` |
+| `SetpointChangeEvents.detect_setpoint_steps` | `engineering.setpoint.step_{change_type}` |
+| `DegradationDetectionEvents.detect_trend_degradation` | `maintenance.degradation.trend` |
 
-### Family vocabulary (extensible)
-
-| Pack | Standard families |
-|---|---|
-| `quality` | `outlier`, `spc`, `tolerance`, `sensor_drift`, `signal`, `data_gap`, `gauge_rr`, `multi_sensor`, `capability`, `distribution`, `anomaly` |
-| `production` | `machine_state`, `alarm`, `batch`, `bottleneck`, `changeover`, `cycle_time`, `downtime`, `duty_cycle`, `flow`, `long_downtime`, `micro_stop`, `oee`, `operator`, `order`, `part`, `performance`, `period`, `quality`, `rework`, `routing`, `scrap`, `setup`, `shift`, `target`, `throughput`, `traceability`, `value_trace`, `alignment` |
-| `engineering` | `setpoint`, `startup`, `threshold`, `rate_of_change`, `steady_state`, `signal_comparison`, `operating_range`, `thermal`, `process_window`, `control_loop`, `disturbance`, `material_balance`, `stability` |
-| `maintenance` | `degradation`, `failure`, `vibration`, `health` |
-| `supplychain` | `inventory`, `demand`, `lead_time` |
-| `energy` | `consumption`, `efficiency`, `enpi`, `carbon`, `idle` |
-| `correlation` | `signal`, `anomaly` |
-
-When a new detector class lands in an existing pack, prefer reusing
-one of the families above. Add a new family only when none fits.
-
-### Specifier conventions
-
-Use a **literal specifier** when the method always emits the same
-activity:
+The families in use can be listed from the registry:
 
 ```python
-("OutlierDetectionEvents", "detect_outliers_zscore"):
-    LabelRule(template="quality.outlier.zscore", ...)
+from ts_shape.eventlog.taxonomy import REGISTRY
+
+families = sorted({rule.template.split(".")[1] for rule in REGISTRY.values() if rule.pack == "quality"})
 ```
 
-Use a **templated specifier** when one method emits multiple
-semantically distinct activities, distinguished by a categorical column:
+Severity is never part of the activity name; it goes into `ts_shape:severity`.
 
-```python
-("MachineStateEvents", "detect_run_idle"):
-    LabelRule(template="production.machine_state.{state}", ...)
-# emits both production.machine_state.run and production.machine_state.idle
-```
+## Attribute prefixes
 
-Recommended placeholders (use the legacy column name verbatim):
-
-| Placeholder | From column | Examples |
+| Prefix | Source | Examples |
 |---|---|---|
-| `{state}` | `state` | `run`, `idle`, `setup`, `down` |
-| `{transition}` | `transition` | `run_to_idle`, `idle_to_run` |
-| `{change_type}` | `change_type` | `step_up`, `step_down`, `ramp` |
-| `{phase}` | `phase` | `warmup`, `nominal`, `cooldown` |
-| `{anomaly_class}` | `anomaly_class` | `drift`, `flatline`, `oscillation` |
+| `ocel:` | OCEL 2.0 | `ocel:eid`, `ocel:activity`, `ocel:timestamp`, `ocel:oid`, `ocel:type`, `ocel:qualifier` |
+| `ts_shape:` | ts-shape fields without an OCEL counterpart | `ts_shape:start_timestamp`, `ts_shape:duration_s`, `ts_shape:detector`, `ts_shape:severity` |
+| `<pack>:` | the detector's own output columns | `production:state`, `quality:triggered_rule`, `engineering:magnitude` |
+| `concept:`, `time:`, `case:`, `lifecycle:`, `org:` | XES, added by `to_event_log_xes` only | `concept:name`, `time:timestamp`, `case:concept:name` |
 
-Severity is **never** a templated segment — it lives in
-`ts_shape:severity` (see below).
+The pack prefix keeps columns of different packs apart: two packs that both
+output a `state` column produce `production:state` and `quality:state`.
 
-### Attribute-naming rule
+## Severity
 
-| Prefix | Origin | Examples |
-|---|---|---|
-| `ocel:` | OCEL 2.0 spec | `ocel:eid`, `ocel:activity`, `ocel:timestamp`, `ocel:oid`, `ocel:type`, `ocel:qualifier` |
-| `ts_shape:` | ts-shape canonical fields with no OCEL counterpart | `ts_shape:start_timestamp`, `ts_shape:duration_s`, `ts_shape:detector`, `ts_shape:pack`, `ts_shape:severity`, `ts_shape:value` |
-| `<pack>:` | Detector-specific legacy columns | `production:state`, `quality:rule_violated`, `engineering:overshoot`, `maintenance:health_score` |
-| `concept:`, `time:`, `case:`, `lifecycle:`, `org:` | XES spec — added only by `to_event_log_xes` | `concept:name`, `time:timestamp`, `case:concept:name`, `lifecycle:transition`, `org:resource` |
+When a rule names a numeric `severity_field`, its value is bucketed:
 
-The pack prefix prevents any clash between detectors (e.g. two packs
-that both use a `state` column become `production:state` and
-`quality:state`).
-
-### Severity bucket thresholds
-
-When a `LabelRule` declares a `severity_field`, the numeric value is
-bucketed into a string:
-
-| Numeric range | `ts_shape:severity` |
+| Value | `ts_shape:severity` |
 |---|---|
 | `< 3.0` | `info` |
-| `3.0 ≤ v < 4.5` | `warn` |
-| `v ≥ 4.5` | `critical` |
-| `NaN` / non-numeric / missing | `<NA>` |
+| `3.0` to `< 4.5` | `warn` |
+| `>= 4.5` | `critical` |
+| missing or not numeric | `<NA>` |
 
-The thresholds match the numeric `severity` column emitted by
-`OutlierDetectionEvents` and other detectors. If a DataFrame already
-carries a literal `severity` column with one of `info`/`warn`/`critical`,
-that string value is passed through verbatim.
+The thresholds match the z-score style `severity` column of
+`OutlierDetectionEvents`. A text column that already holds `info`, `warn` or
+`critical` is passed through.
 
-### Object-type vocabulary
+## Object types and qualifiers
 
-The 16 standard types in `STANDARD_OBJECT_TYPES`, grouped by what they
-represent. Extend with `register_object_type("name")` when none fits.
+`asset` is created automatically from `source_uuid`. The other standard object
+types are `tool`, `sensor`, `signal`, `station` (equipment), `cycle`, `batch`,
+`lot`, `recipe`, `work_order`, `shift` (process context), `material`, `part`,
+`serial`, `article` (product) and `operator`. Add your own with
+`register_object_type("name")`.
 
-| Group | Types | Used for |
-|---|---|---|
-| Physical | `asset`, `tool`, `sensor`, `signal`, `station` | Equipment and instrumentation. `asset` is the default auto-extracted from `source_uuid`. |
-| Process | `cycle`, `batch`, `lot`, `recipe`, `work_order`, `shift` | The process context an event happens in. |
-| Product | `material`, `part`, `serial`, `article` | What's being made. |
-| People | `operator` | The person responsible. |
-
-### Qualifier vocabulary
-
-Recommended values for `ocel:qualifier` (the role of the object in the
-event). Free text is permitted, but stick to these for cross-pack
-consistency:
+Recommended values for `ocel:qualifier` (free text is allowed):
 
 | Qualifier | Object type | Meaning |
 |---|---|---|
-| `produced_on` | `asset` | The event happened on this asset. |
-| `during_batch` | `batch` | The event occurred while this batch was running. |
-| `during_cycle` | `cycle` | The event occurred during this cycle. |
-| `during_shift` | `shift` | The event occurred during this shift. |
-| `made_of` | `material` | The product being processed contained this material. |
-| `identified_by` | `serial` | The product carries this serial number. |
-| `operated_by` | `operator` | The operator on duty. |
-| `measured_by` | `sensor` | The sensor producing the reading. |
-| `governed_by` | `recipe` | The recipe in effect. |
+| `produced_on` | `asset` | the event happened on this asset |
+| `during_batch` | `batch` | the event happened while this batch ran |
+| `during_cycle` | `cycle` | the event happened during this cycle |
+| `during_shift` | `shift` | the event happened during this shift |
+| `made_of` | `material` | the product contained this material |
+| `identified_by` | `serial` | the product carries this serial number |
+| `operated_by` | `operator` | the operator on duty |
+| `measured_by` | `sensor` | the sensor that produced the reading |
+| `governed_by` | `recipe` | the recipe in effect |
 
-### Standard attribute extension
+## Standard attribute extension
 
-In addition to the canonical event columns, every method's `LabelRule`
-declares a `standard_attrs` mapping that pins detector-specific values to
-a **fixed vocabulary** of attribute keys. This is what makes
-cross-detector aggregation possible — two detectors that conceptually
-emit the same thing emit it under the same column name.
+Besides the core columns, each `LabelRule` maps detector output to a fixed set
+of attribute keys (`ts_shape.eventlog.schema.STANDARD_ATTR_KEYS`). Two
+detectors that report the same kind of thing then use the same column.
 
-The full vocabulary (defined in `ts_shape.eventlog.schema.STANDARD_ATTR_KEYS`):
-
-| Key | Type | Used for |
+| Key | Type | Content |
 |---|---|---|
-| `ts_shape:method` | string | Algorithm name. Always literal. e.g. `"zscore"`, `"iqr"`, `"western_electric_rule_1"`, `"cusum"`. |
-| `ts_shape:baseline` | float | Expected / nominal value (SPC centerline, setpoint target, baseline mean). |
-| `ts_shape:threshold_low` | float | Lower bound. `NaN` if one-sided. |
-| `ts_shape:threshold_high` | float | Upper bound. `NaN` if one-sided. |
-| `ts_shape:deviation` | float | Signed `value - baseline`. |
-| `ts_shape:deviation_pct` | float | `(value - baseline) / baseline`. |
-| `ts_shape:direction` | string | `above` / `below` / `up` / `down` / `outside` / `inside` / `lead` / `lag` / `shift`. |
-| `ts_shape:confidence` | float | 0..1, for ML / probabilistic detectors. |
-| `ts_shape:sample_count` | int | Number of underlying observations rolled into this row. |
-| `ts_shape:outcome` | string | Categorical outcome: `ok` / `nok` / `rework` / `scrap` / `pass` / `fail`, or a normalized reason code. |
-| `ts_shape:lifecycle_state` | string | XES-style: `raised` / `cleared` / `predicted` / state names (`run`, `idle`). |
-| `ts_shape:lifecycle_pair_id` | string | Pairs raise/clear into a single occurrence. |
+| `ts_shape:method` | string | algorithm, for example `zscore`, `western_electric`, `cusum` |
+| `ts_shape:baseline` | float | expected value (center line, setpoint, baseline mean) |
+| `ts_shape:threshold_low` | float | lower bound; `NaN` if one-sided |
+| `ts_shape:threshold_high` | float | upper bound; `NaN` if one-sided |
+| `ts_shape:deviation` | float | `value - baseline` |
+| `ts_shape:deviation_pct` | float | `(value - baseline) / baseline` |
+| `ts_shape:direction` | string | `above`, `below`, `up`, `down`, `outside`, `inside`, `lead`, `lag`, `shift` |
+| `ts_shape:confidence` | float | 0 to 1, for probabilistic detectors |
+| `ts_shape:sample_count` | int | number of observations behind the row |
+| `ts_shape:outcome` | string | `ok`, `nok`, `rework`, `scrap`, `pass`, `fail` or a reason code |
+| `ts_shape:lifecycle_state` | string | `raised`, `cleared`, `predicted` or a state name (`run`, `idle`) |
+| `ts_shape:lifecycle_pair_id` | string | pairs a raise and a clear into one occurrence |
 
-Each entry in `standard_attrs` maps a key to either:
-
-* a **legacy column name** (string matching a column in the detector
-  output) — the adapter renames it and coerces to the declared type,
-* a **literal scalar** (string / float / int) — broadcast to every
-  row. This is the common case for `ts_shape:method = "zscore"`.
-* `None` — explicitly declares the attribute is not applicable for this
-  method (used for archetype-required keys when the detector has no
-  natural source).
-
-Example for `OutlierDetectionEvents.detect_outliers_zscore`:
+Each entry in `standard_attrs` is either the name of a detector output column
+(renamed and converted to the declared type), a literal broadcast to every row,
+or `None` (not applicable). Two registry entries as examples:
 
 ```python
+from ts_shape.eventlog.taxonomy import LabelRule
+
 LabelRule(
     template="quality.outlier.zscore",
     pack="quality",
     shape="point",
-    severity_field="severity_score",
-    standard_attrs={
-        "ts_shape:method": "zscore",          # literal — always "zscore"
-        "ts_shape:direction": "outside",      # literal
-    },
+    severity_field="severity",
+    standard_attrs={"ts_shape:method": "zscore", "ts_shape:direction": "outside"},  # literals
 )
-```
-
-And for an aggregate KPI like `CycleTimeEvents.cycle_time_statistics`:
-
-```python
 LabelRule(
     template="production.cycle_time.statistics",
     pack="production",
-    shape="summary",
-    standard_attrs={
-        "ts_shape:sample_count": "count",     # rename legacy `count` column
-    },
+    shape="static",
+    standard_attrs={"ts_shape:sample_count": "count"},  # taken from the "count" column
 )
+```
+
+With these keys, questions across detectors need no per-detector code:
+
+```python
+import ts_shape
+from ts_shape.eventlog import concat, to_event_log
+
+df = ts_shape.make_timeseries(["sensor:temp"], n_points=1000, n_outliers=5)
+detector = ts_shape.OutlierDetectionEvents(df, value_column="value_double")
+log = concat(
+    to_event_log(detector.detect_outliers_zscore(), detector="OutlierDetectionEvents.detect_outliers_zscore"),
+    to_event_log(detector.detect_outliers_mad(), detector="OutlierDetectionEvents.detect_outliers_mad"),
+)
+log.events.groupby(["ts_shape:method", "ts_shape:direction"])["ocel:eid"].count()
 ```
 
 ### Required keys per archetype
 
-The coverage test `test_required_standard_attrs_per_archetype` enforces
-this mapping at CI time — every method in `REGISTRY` must populate at
-least its archetype's required keys.
+Every method is assigned one archetype in
+`ts_shape.eventlog.archetypes.ARCHETYPE_BY_METHOD`, and must fill that
+archetype's required keys (checked by `test_required_standard_attrs_per_archetype`):
 
-| Archetype | Required keys | Typical optional keys |
+| Archetype | Required | Typical optional |
 |---|---|---|
 | `threshold` | `method`, `direction` | `baseline`, `threshold_low`, `threshold_high`, `deviation`, `deviation_pct`, `confidence` |
 | `interval` | `lifecycle_state` | `lifecycle_pair_id`, `sample_count`, `direction` |
@@ -248,64 +165,21 @@ least its archetype's required keys.
 | `forecast` | `method`, `confidence` | `baseline`, `threshold_low`, `threshold_high` |
 | `correlation` | `method` | `direction`, `confidence`, `sample_count` |
 
-The archetype assignment for every detector method lives in
-`ts_shape.eventlog.archetypes.ARCHETYPE_BY_METHOD` and is enforced by
-`test_archetype_assignment_is_complete` — every entry in `REGISTRY` has
-exactly one archetype.
+## Adding a new detector method
 
-### Why this matters — cross-detector aggregation
-
-Once every event log emits `ts_shape:method`, `ts_shape:direction`,
-`ts_shape:deviation_pct`, `ts_shape:sample_count`, `ts_shape:outcome`,
-queries like these become trivial:
-
-```python
-# All threshold violations grouped by algorithm.
-log.events.groupby("ts_shape:method")["ocel:eid"].count()
-
-# All "above-threshold" events with > 10% deviation.
-log.events.query(
-    "`ts_shape:direction` == 'above' and `ts_shape:deviation_pct` > 0.10"
-)
-
-# Pareto by outcome reason across scrap, rework, NOK.
-log.events.groupby("ts_shape:outcome")["ts_shape:sample_count"].sum().sort_values()
-```
-
-No per-detector dispatch — the column names are stable across all 290+
-methods.
-
-### Adding a new detector method
-
-1. Add a `LabelRule` entry to `REGISTRY` in
-   `src/ts_shape/eventlog/taxonomy.py`. Pick `pack`, `family`, and
-   `specifier` following the conventions above. Pick `shape` based on
-   what the method returns (`point` / `interval` / `summary` /
-   `static`).
-2. If the detector emits multiple activities, use a templated
-   specifier (`{column_name}`) and make sure the column is present in
-   the legacy DataFrame.
-3. If the legacy output uses a non-standard column name for severity
-   or value, set `severity_field=` / `value_field=` on the
-   `LabelRule`.
-4. Classify the method in `ts_shape.eventlog.archetypes.ARCHETYPE_BY_METHOD`
-   (one of `threshold`, `interval`, `aggregate`, `outcome`, `static`,
-   `trace`, `forecast`, `correlation`). Populate the
-   [required `standard_attrs`](#standard-attribute-extension) keys for
-   that archetype.
-5. Run the coverage test:
-
-    ```bash
-    pytest tests/eventlog/test_adapter_coverage.py -q
-    ```
-
-    It enforces:
-
-    * every detector method has a rule, and every rule maps to a method
-      (no orphans),
-    * every key in `standard_attrs` is in the fixed vocabulary,
-    * every method has an archetype, and the archetype's required keys
-      are populated.
-6. If your detector's shape is exotic (multiple events per row,
-   nested data, runtime-dependent objects), [register a custom
-   adapter](adapters.md#custom-adapters) instead of fighting the generic one.
+1. Add a `LabelRule` to `REGISTRY` in `src/ts_shape/eventlog/taxonomy.py`,
+   following the naming rules above. Set `shape` to what the method returns
+   (`point`, `interval`, `summary` or `static`).
+2. For several activities from one method, use a `{column}` placeholder and
+   make sure the column is in the output.
+3. If severity or the main value are in non-standard columns, set
+   `severity_field` or `value_field`.
+4. Add the method to `ARCHETYPE_BY_METHOD` in
+   `src/ts_shape/eventlog/archetypes.py` and fill the archetype's required
+   `standard_attrs`.
+5. Run `pytest tests/eventlog/test_adapter_coverage.py -q`. It checks that
+   every method has a rule and an archetype, that no rule is orphaned, that
+   every `standard_attrs` key is in the vocabulary and that the required keys
+   are filled.
+6. If the output does not fit the generic adapter (several events per row,
+   nested data), [register a custom adapter](adapters.md#custom-adapters).

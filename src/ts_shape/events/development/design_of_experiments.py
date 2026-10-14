@@ -92,8 +92,9 @@ class DesignOfExperimentsEvents(Base):
         operator drove the factor to a small number of explicit setpoints.
         """
         if n_levels is None:
-            return np.round(values, 6)
-        bins = pd.qcut(values, q=n_levels, labels=False, duplicates="drop")
+            levels: np.ndarray = np.round(values, 6)
+            return levels
+        bins: np.ndarray = pd.qcut(values, q=n_levels, labels=False, duplicates="drop")
         return bins.astype(float)
 
     # ------------------------------------------------------------------
@@ -155,31 +156,34 @@ class DesignOfExperimentsEvents(Base):
         # Group label increments at every transition.
         group_id = is_transition.cumsum()
 
+        # Runs are contiguous blocks of rows (group_id never decreases):
+        # their bounds and factor means are computed for all blocks at once
+        # instead of one ``loc`` lookup per block.
+        g = group_id.to_numpy()
+        first = np.flatnonzero(np.r_[True, g[1:] != g[:-1]])
+        last = np.append(first[1:], len(g)) - 1
+        start_t = wide.index[first]
+        end_t = wide.index[last]
+        span = end_t - start_t
+        keep = ((last - first + 1) >= 2) & np.asarray(span >= min_td)
+        means = wide.groupby(group_id, sort=True).mean()
         events: list[dict[str, Any]] = []
-        for gid, idxs in wide.groupby(group_id).groups.items():
-            block = wide.loc[idxs]
-            if len(block) < 2:
-                continue
-            start_t = block.index[0]
-            end_t = block.index[-1]
-            if (end_t - start_t) < min_td:
-                continue
+        for j in np.flatnonzero(keep):
             row: dict[str, Any] = {
-                "start": start_t,
-                "end": end_t,
-                "duration_seconds": (end_t - start_t).total_seconds(),
+                "start": start_t[j],
+                "end": end_t[j],
+                "duration_seconds": span[j].total_seconds(),
                 "uuid": self.event_uuid,
                 "source_uuid": ",".join(self.factor_uuids),
-                "run_id": int(gid),
+                "run_id": int(g[first[j]]),
             }
             for u in self.factor_uuids:
-                if u not in block.columns:
-                    row[f"factor__{u}_level"] = np.nan
-                    continue
                 # A single run cannot be binned in isolation: attach the mean
                 # here; the post-pass below assigns discrete levels (binned
                 # into n_levels[u] groups when set).
-                row[f"factor__{u}_level"] = float(block[u].mean())
+                row[f"factor__{u}_level"] = (
+                    float(means[u].iloc[j]) if u in means.columns else np.nan
+                )
             events.append(row)
 
         if not events:

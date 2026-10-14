@@ -72,7 +72,9 @@ class SensorDriftEvents(Base):
         else:
             self._reference_series = None
 
-    def _get_reference_for_window(self, start, end) -> float | None:
+    def _get_reference_for_window(
+        self, start: pd.Timestamp, end: pd.Timestamp
+    ) -> float | None:
         """Get reference value for a time window."""
         if self.reference_value is not None:
             return self.reference_value

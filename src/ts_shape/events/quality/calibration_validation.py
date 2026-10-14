@@ -60,7 +60,9 @@ class CalibrationValidationEvents(Base):
         else:
             self._reference = None
 
-    def _get_reference_for_window(self, window_start, window_end) -> float | None:
+    def _get_reference_for_window(
+        self, window_start: pd.Timestamp, window_end: pd.Timestamp
+    ) -> float | None:
         """Get reference value for a time window."""
         if self.reference_value is not None:
             return self.reference_value

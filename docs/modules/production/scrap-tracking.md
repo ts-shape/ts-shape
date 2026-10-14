@@ -1,74 +1,40 @@
 # ScrapEvents
 
-> Track material scrap and waste from scrap and reason-code signals.
+Scrap quantity (weight or count) per shift, per reason and over time, and scrap cost per part or material, from a cumulative scrap signal (`value_double` by default).
 
-**Module:** `ts_shape.events.production.scrap_tracking`
-**Guide:** [Reporting Guide](../../guides/reporting.md)
+`ts_shape.events.production.scrap_tracking` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/scrap_tracking.md)
 
----
-
-## When to Use
-
-Use for scrap/waste tracking and cost accounting. Converts scrap quantities to monetary cost by material type for financial reporting. Essential for plants focused on material efficiency and sustainability goals, where understanding scrap drivers enables targeted waste reduction.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
+import ts_shape
 from ts_shape.events.production.scrap_tracking import ScrapEvents
 
-tracker = ScrapEvents(production_df)
+t = pd.date_range("2024-01-01 06:00", periods=960, freq="1min")
+df = pd.concat([
+    pd.DataFrame({"systime": t, "uuid": "line1:scrap_kg", "value_double": np.arange(960) * 0.05}),
+    ts_shape.make_id_signal("line1:part_id", ["PN-100", "PN-200"], hold=480, freq="1min", start="2024-01-01 06:00"),
+], ignore_index=True)
 
-# Scrap quantity per shift (cumulative scrap signal in value_double by default)
-by_shift = tracker.scrap_by_shift(scrap_uuid="line1:scrap")
-
-# Scrap breakdown by reason code
-by_reason = tracker.scrap_by_reason(
-    scrap_uuid="line1:scrap",
-    reason_uuid="line1:scrap_reason"
-)
-
-# Monetary cost of scrap; keys are the values of the part_id_uuid signal
-material_costs = {"PN-100": 3.20, "PN-200": 5.80, "PN-300": 1.10}
-cost = tracker.scrap_cost(
-    scrap_uuid="line1:scrap",
-    part_id_uuid="line1:part_id",
-    material_costs=material_costs
-)
-
-# Daily scrap trend
-trend = tracker.scrap_trend(scrap_uuid="line1:scrap", window="1D")
+sc = ScrapEvents(df)
+print(sc.scrap_by_shift(scrap_uuid="line1:scrap_kg"))
+cost = sc.scrap_cost(scrap_uuid="line1:scrap_kg", part_id_uuid="line1:part_id",
+                     material_costs={"PN-100": 3.20, "PN-200": 5.80})
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `scrap_by_shift(scrap_uuid)` | `date`, `shift`, `scrap_quantity` |
+| `scrap_by_reason(scrap_uuid, reason_uuid)` | `reason`, `scrap_quantity`, `pct_of_total` |
+| `scrap_cost(scrap_uuid, part_id_uuid, material_costs)` | per part: `scrap_quantity`, `cost_per_unit`, `total_cost` |
+| `scrap_trend(scrap_uuid, window='1D')` | `period`, `scrap_quantity` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `scrap_by_shift(scrap_uuid)` | Scrap quantity per shift | `DataFrame` with `date`, `shift`, `scrap_quantity` |
-| `scrap_by_reason(scrap_uuid, reason_uuid)` | Scrap quantity grouped by reason code | `DataFrame` with `reason`, `scrap_quantity`, `pct_of_total` |
-| `scrap_cost(scrap_uuid, part_id_uuid, material_costs)` | Monetary cost of scrap by part number / material type | `DataFrame` with `part_number`, `scrap_quantity`, `cost_per_unit`, `total_cost` |
-| `scrap_trend(scrap_uuid, window='1D')` | Scrap quantity per time period | `DataFrame` with `period`, `scrap_quantity` |
+## Notes
 
-All methods count scrap across counter resets by default (`handle_resets=True`) and add a `resets` column. Pass `handle_resets=False` for the plain `max(0, last - first)` quantity.
-
----
-
-## Tips & Hints
-
-!!! tip "Track scrap at the point of generation"
-    Place scrap counters as close to the source as possible. If scrap is only counted at end-of-line inspection, you lose visibility into which station generated it. Per-station scrap signals enable root-cause analysis.
-
-!!! info "Related modules"
-    - [Rework Tracking](rework-tracking.md) — parts that can be reworked instead of scrapped
-    - [Quality Tracking](quality-tracking.md) — overall quality metrics including scrap rates
-    - [OEE Calculator](oee-calculator.md) — scrap feeds into the quality component of OEE
-
----
-
-## See Also
-
-- [Reporting Guide](../../guides/reporting.md)
-- [API Reference](../../reference/ts_shape/events/production/scrap_tracking.md)
+- With `handle_resets=True` (default) a decreasing signal is a reset and the scrap after it still counts; every method adds a `resets` column. Increments are booked to the shift, reason or part of the reading that reports them, so groups add up to the signal total. `handle_resets=False` uses `max(0, last - first)` per group.
+- `material_costs` keys are the values of the `part_id_uuid` signal; the cost is per unit of the scrap signal (e.g. per kg).
+- Default shifts are 06-14, 14-22, 22-06; a night shift belongs to its start date (`production_day=True`).

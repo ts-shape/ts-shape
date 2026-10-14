@@ -1,10 +1,11 @@
 import logging
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal, overload
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.signals.primitives import intervals as spec_intervals
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
@@ -23,6 +24,19 @@ class MachineStateEvents(Base):
     - MachineStateEvents: Run/idle state intervals and transitions.
       - detect_run_idle: Intervalize run/idle states with optional min duration filter.
       - transition_events: Point events on state changes (idle->run, run->idle).
+
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> t = pd.date_range("2025-01-01 08:00", periods=6, freq="10min")
+        >>> df = pd.DataFrame({"systime": t, "uuid": "run",
+        ...                    "value_bool": [True, True, False, True, True, False]})
+        >>> out = ts_shape.MachineStateEvents(df, "run").detect_run_idle()
+        >>> out[["start", "state", "duration_seconds"]]
+                        start state  duration_seconds
+        0 2025-01-01 08:00:00   run            1200.0
+        1 2025-01-01 08:20:00  idle             600.0
+        2 2025-01-01 08:30:00   run            1200.0
+        3 2025-01-01 08:50:00  idle               0.0
     """
 
     def __init__(
@@ -284,12 +298,31 @@ class MachineStateEvents(Base):
         gaps = time_diffs[time_diffs > max_gap_td]
         return len(gaps)
 
+    @overload
+    def state_quality_metrics(
+        self,
+        *,
+        interval_end: str | None = ...,
+        data_end: pd.Timestamp | None = ...,
+        as_frame: Literal[True] = ...,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def state_quality_metrics(
+        self,
+        *,
+        interval_end: str | None = ...,
+        data_end: pd.Timestamp | None = ...,
+        as_frame: Literal[False],
+    ) -> dict[str, Any]: ...
+
     def state_quality_metrics(
         self,
         *,
         interval_end: str | None = None,
         data_end: pd.Timestamp | None = None,
-    ) -> dict[str, Any]:
+        as_frame: bool = True,
+    ) -> pd.DataFrame | dict[str, Any]:
         """Return quality metrics for the state data.
 
         Args:
@@ -300,9 +333,18 @@ class MachineStateEvents(Base):
                 transition).
             data_end: Forwarded to :meth:`detect_run_idle`; optional bound for
                 the final, still-open interval.
+            as_frame: When True (default), return a one-row DataFrame (see
+                below). ``as_frame=False`` returns the dictionary form; it is
+                deprecated, emits a ``DeprecationWarning`` and will be removed
+                in the next major release.
 
         Returns:
-            Dictionary with:
+            With ``as_frame=True`` (default), a one-row summary DataFrame with
+            columns start, end, duration_seconds (the span of the state
+            signal; NaT / 0 without data), uuid (event uuid), source_uuid
+            (run-state uuid), followed by the metrics below.
+
+            With ``as_frame=False`` (deprecated), a dictionary with:
 
             - total_transitions: total number of state transitions
             - avg_run_duration: average duration of run states in seconds
@@ -313,6 +355,8 @@ class MachineStateEvents(Base):
             - data_gaps_detected: number of data gaps found
             - rapid_transitions_detected: number of rapid transition events
         """
+        if not as_frame:
+            warn_dict_return("MachineStateEvents.state_quality_metrics")
         transitions = self.transition_events()
         intervals = self.detect_run_idle(interval_end=interval_end, data_end=data_end)
 
@@ -356,7 +400,7 @@ class MachineStateEvents(Base):
         data_gaps_detected = self._detect_data_gaps()
         rapid_transitions_detected = len(self.detect_rapid_transitions())
 
-        return {
+        metrics = {
             "total_transitions": total_transitions,
             "avg_run_duration": (
                 float(avg_run_duration) if not np.isnan(avg_run_duration) else 0.0
@@ -368,3 +412,18 @@ class MachineStateEvents(Base):
             "data_gaps_detected": data_gaps_detected,
             "rapid_transitions_detected": rapid_transitions_detected,
         }
+        if not as_frame:
+            return metrics
+        start, end, span = summary_bounds(self.series[self.time_column])
+        return pd.DataFrame(
+            [
+                {
+                    "start": start,
+                    "end": end,
+                    "duration_seconds": span,
+                    "uuid": self.event_uuid,
+                    "source_uuid": self.run_state_uuid,
+                    **metrics,
+                }
+            ]
+        )

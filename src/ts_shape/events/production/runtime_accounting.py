@@ -19,6 +19,7 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.events._output import empty_event_df, finalize_summary_df
+from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
 
@@ -197,7 +198,7 @@ class RuntimeAccountingEvents(Base):
             return empty_event_df("summary", extra_cols=extra)
 
         samples = samples.copy()
-        samples["win"] = samples[self.time_column].dt.floor(window)
+        samples["win"] = floor_local(samples[self.time_column], window)
         rows: list[dict[str, Any]] = []
         for win, grp in samples.groupby("win", sort=True):
             run_s = float(grp.loc[grp["state"], "dur"].sum())
@@ -241,7 +242,7 @@ class RuntimeAccountingEvents(Base):
             return empty_event_df("summary", extra_cols=extra)
 
         samples = samples.copy()
-        samples["win"] = samples[self.time_column].dt.floor(window)
+        samples["win"] = floor_local(samples[self.time_column], window)
         all_windows = samples.groupby("win", sort=True).size().index
         run_per = (
             samples[samples["state"]]

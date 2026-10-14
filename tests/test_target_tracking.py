@@ -54,9 +54,10 @@ class TestTargetTracking:
             metric_uuid="prod_counter",
             daily_target=1300,
         )
-        assert "total_days" in result
-        assert "hit_rate_pct" in result
-        assert result["total_days"] > 0
+        assert len(result) == 1
+        assert "total_days" in result.columns
+        assert "hit_rate_pct" in result.columns
+        assert result["total_days"].iloc[0] > 0
 
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer"])
@@ -71,4 +72,4 @@ class TestTargetTracking:
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer"])
         tracker = TargetEvents(df)
         result = tracker.target_hit_rate(metric_uuid="x", daily_target=100)
-        assert result["total_days"] == 0
+        assert result["total_days"].iloc[0] == 0

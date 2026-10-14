@@ -46,6 +46,5 @@ python examples/quality_events_demo.py
 
 ## See also
 
-- [Architecture map](https://ts-shape.github.io/ts-shape/guides/architecture-map/) — every module, searchable
 - [Guides](https://ts-shape.github.io/ts-shape/guides/) — topic-focused walkthroughs
 - [API reference](https://ts-shape.github.io/ts-shape/reference/) — full reference docs

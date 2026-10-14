@@ -1,75 +1,38 @@
 # PeriodSummaryEvents
 
-> Aggregate daily metrics into weekly/monthly summaries.
+Weekly and monthly production summaries and a comparison of two date ranges from a production counter, or a weekly/monthly roll-up of any daily metrics table.
 
-**Module:** `ts_shape.events.production.period_summary`
-**Guide:** [Reporting Guide](../../guides/reporting.md)
+`ts_shape.events.production.period_summary` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/period_summary.md)
 
----
-
-## When to Use
-
-Use to roll up daily production data into weekly or monthly summaries. Enables period-over-period comparison for management reporting. Ideal for generating the weekly and monthly KPI reports that plant management and corporate teams rely on for capacity planning and performance reviews.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape.events.production.period_summary import PeriodSummaryEvents
 
-summarizer = PeriodSummaryEvents(production_df)
+t = pd.date_range("2024-01-01", periods=60 * 144, freq="10min")  # 60 days
+df = pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.arange(len(t)) * 3})
 
-# Weekly summary from raw signals
-weekly = summarizer.weekly_summary(
-    counter_uuid="line1:parts",
-    ok_counter_uuid="line1:ok",
-    nok_counter_uuid="line1:nok",
-)
-
-# Monthly summary from raw signals
-monthly = summarizer.monthly_summary(counter_uuid="line1:parts")
-
-# Compare two specific periods
-comparison = summarizer.compare_periods(
-    counter_uuid="line1:parts",
-    period1=("2024-01-01", "2024-03-31"),
-    period2=("2024-04-01", "2024-06-30")
-)
-
-# Or roll up an existing daily DataFrame (must have a "date" column)
-monthly_from_df = PeriodSummaryEvents.from_daily_data(
-    daily_df=daily_metrics,
-    window="MS",
-)
+summary = PeriodSummaryEvents(df)
+print(summary.weekly_summary(counter_uuid="line1:parts").head())
+monthly = summary.monthly_summary(counter_uuid="line1:parts")
+comparison = summary.compare_periods(counter_uuid="line1:parts",
+                                     period1=("2024-01-01", "2024-01-31"),
+                                     period2=("2024-02-01", "2024-02-29"))
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `weekly_summary(counter_uuid, ok_counter_uuid=None, nok_counter_uuid=None)` | per week: `week_start`, `week_end`, `total_production`, `daily_avg`, `production_days` (+ `ok_parts`, `nok_parts`, `quality_pct`, `resets`) |
+| `monthly_summary(counter_uuid, ok_counter_uuid=None, nok_counter_uuid=None)` | per month: `year`, `month`, same metrics |
+| `compare_periods(counter_uuid, period1, period2)` | one row per metric: `metric`, `period1_value`, `period2_value`, `change`, `change_pct` |
+| `from_daily_data(daily_df, window='W', date_column='date')` (static) | `start`, `end`, `days` and the aggregated numeric columns |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `from_daily_data(daily_df, window='W', date_column='date')` | Roll up a daily DataFrame to weekly (`'W'`: Monday-to-Sunday weeks, `start` = Monday, `end` = Sunday; `'W-<DAY>'` = weeks ending on `<DAY>`) or monthly (`'MS'`) frequency | `DataFrame` with `start`, `end`, `days` plus aggregated metric columns |
-| `weekly_summary(counter_uuid, ok_counter_uuid=None, nok_counter_uuid=None)` | Weekly production summary from raw signals | `DataFrame` with `week_start`, `week_end`, `total_production`, `daily_avg`, `production_days` (plus `ok_parts`, `nok_parts`, `quality_pct` when OK/NOK counters are given) |
-| `monthly_summary(counter_uuid, ok_counter_uuid=None, nok_counter_uuid=None)` | Monthly production summary from raw signals | `DataFrame` with `year`, `month`, `total_production`, `daily_avg`, `production_days` (plus quality columns as above) |
-| `compare_periods(counter_uuid, period1, period2)` | Side-by-side comparison of two date ranges | `DataFrame` with `metric`, `period1_value`, `period2_value`, `change`, `change_pct` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Align periods to calendar boundaries"
-    Use ISO week boundaries (Monday start) or calendar month boundaries for consistency. Partial weeks or months at the edges of your date range can skew averages and make period comparisons misleading.
-
-!!! info "Related modules"
-    - [Shift Reporting](shift-reporting.md) — shift-level data that feeds into daily and period summaries
-    - [Target Tracking](target-tracking.md) — compare period summaries against targets
-    - [OEE Calculator](oee-calculator.md) — period-level OEE trends
-
----
-
-## See Also
-
-- [Reporting Guide](../../guides/reporting.md)
-- [API Reference](../../reference/ts_shape/events/production/period_summary.md)
+- Weeks run Monday to Monday midnight; months are calendar months. Partial weeks or months at the edges of the data lower the averages.
+- `from_daily_data` takes any daily table with a `date` column (for example `QualityEvents.daily_quality_summary()` merged with `DowntimeEvents.availability_trend(window="1D")`). Columns whose name contains `pct` are averaged; all other numeric columns are summed. `window='W'` gives Monday-to-Sunday weeks, `'W-<DAY>'` weeks ending on that day, `'MS'` calendar months.
+- Counters are reset-aware by default (`handle_resets=True`); increments are booked to the day of the reading that reports them.

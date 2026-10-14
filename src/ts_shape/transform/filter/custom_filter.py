@@ -28,10 +28,12 @@ class CustomFilter(Base):
             pd.DataFrame: A DataFrame containing only the rows that meet the specified conditions.
 
         Example:
-        --------
-        # Given a DataFrame 'df' containing columns 'age' and 'score':
-        >>> filtered_data = CustomFilter.filter_custom_conditions(df, "age > 30 and score > 80")
-        >>> print(filtered_data)
+            >>> import pandas as pd
+            >>> from ts_shape.transform.filter.custom_filter import CustomFilter
+            >>> df = pd.DataFrame({"age": [25, 35, 45], "score": [90, 85, 70]})
+            >>> CustomFilter.filter_custom_conditions(df, "age > 30 and score > 80")
+               age  score
+            1   35     85
 
         Note:
             Ensure that the column names and values used in conditions match those in the DataFrame.

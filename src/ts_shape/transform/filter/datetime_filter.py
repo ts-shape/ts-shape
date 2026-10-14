@@ -54,9 +54,12 @@ class DateTimeFilter(Base):
             pd.DataFrame: A DataFrame containing rows where the 'systime' is after the specified date.
 
         Example:
-        --------
-        >>> filtered_data = DateTimeFilter.filter_after_date(df, "systime", "2023-01-01")
-        >>> print(filtered_data)
+            >>> import ts_shape
+            >>> from ts_shape.transform.filter.datetime_filter import DateTimeFilter
+            >>> df = ts_shape.make_timeseries(n_points=4, freq="12h")  # 2025-01-01 00:00 .. 01-02 12:00
+            >>> out = DateTimeFilter.filter_after_date(df, "systime", "2025-01-02")
+            >>> out["systime"].dt.strftime("%Y-%m-%d %H:%M").tolist()
+            ['2025-01-02 12:00']
         """
         if date is None:
             raise ValueError("date parameter is required")
@@ -84,9 +87,12 @@ class DateTimeFilter(Base):
             pd.DataFrame: A DataFrame containing rows where the 'systime' is before the specified date.
 
         Example:
-        --------
-        >>> filtered_data = DateTimeFilter.filter_before_date(df, "systime", "2023-01-01")
-        >>> print(filtered_data)
+            >>> import ts_shape
+            >>> from ts_shape.transform.filter.datetime_filter import DateTimeFilter
+            >>> df = ts_shape.make_timeseries(n_points=4, freq="12h")  # 2025-01-01 00:00 .. 01-02 12:00
+            >>> out = DateTimeFilter.filter_before_date(df, "systime", "2025-01-02")
+            >>> out["systime"].dt.strftime("%Y-%m-%d %H:%M").tolist()
+            ['2025-01-01 00:00', '2025-01-01 12:00']
         """
         if date is None:
             raise ValueError("date parameter is required")
@@ -119,9 +125,12 @@ class DateTimeFilter(Base):
             pd.DataFrame: A DataFrame containing rows where the 'systime' is between the specified dates.
 
         Example:
-        --------
-        >>> filtered_data = DateTimeFilter.filter_between_dates(df, "systime", "2023-01-01", "2023-02-01")
-        >>> print(filtered_data)
+            >>> import ts_shape
+            >>> from ts_shape.transform.filter.datetime_filter import DateTimeFilter
+            >>> df = ts_shape.make_timeseries(n_points=4, freq="12h")  # 2025-01-01 00:00 .. 01-02 12:00
+            >>> out = DateTimeFilter.filter_between_dates(df, "systime", "2025-01-01", "2025-01-02")
+            >>> out["systime"].dt.strftime("%Y-%m-%d %H:%M").tolist()
+            ['2025-01-01 12:00']
         """
         if start_date is None or end_date is None:
             raise ValueError("start_date and end_date parameters are required")
@@ -151,9 +160,12 @@ class DateTimeFilter(Base):
             pd.DataFrame: A DataFrame containing rows where the 'systime' is after the specified datetime.
 
         Example:
-        --------
-        >>> filtered_data = DateTimeFilter.filter_after_datetime(df, "systime", "2023-01-01 12:00:00")
-        >>> print(filtered_data)
+            >>> import ts_shape
+            >>> from ts_shape.transform.filter.datetime_filter import DateTimeFilter
+            >>> df = ts_shape.make_timeseries(n_points=4, freq="12h")  # 2025-01-01 00:00 .. 01-02 12:00
+            >>> out = DateTimeFilter.filter_after_datetime(df, "systime", "2025-01-01 12:00:00")
+            >>> out["systime"].dt.strftime("%Y-%m-%d %H:%M").tolist()
+            ['2025-01-02 00:00', '2025-01-02 12:00']
         """
         if datetime is None:
             raise ValueError("datetime parameter is required")
@@ -181,9 +193,12 @@ class DateTimeFilter(Base):
             pd.DataFrame: A DataFrame containing rows where the 'systime' is before the specified datetime.
 
         Example:
-        --------
-        >>> filtered_data = DateTimeFilter.filter_before_datetime(df, "systime", "2023-01-01 12:00:00")
-        >>> print(filtered_data)
+            >>> import ts_shape
+            >>> from ts_shape.transform.filter.datetime_filter import DateTimeFilter
+            >>> df = ts_shape.make_timeseries(n_points=4, freq="12h")  # 2025-01-01 00:00 .. 01-02 12:00
+            >>> out = DateTimeFilter.filter_before_datetime(df, "systime", "2025-01-01 12:00:00")
+            >>> out["systime"].dt.strftime("%Y-%m-%d %H:%M").tolist()
+            ['2025-01-01 00:00']
         """
         if datetime is None:
             raise ValueError("datetime parameter is required")
@@ -216,9 +231,13 @@ class DateTimeFilter(Base):
             pd.DataFrame: A DataFrame containing rows where the 'systime' is between the specified datetimes.
 
         Example:
-        --------
-        >>> filtered_data = DateTimeFilter.filter_between_datetimes(df, "systime", "2023-01-01 12:00:00", "2023-02-01 12:00:00")
-        >>> print(filtered_data)
+            >>> import ts_shape
+            >>> from ts_shape.transform.filter.datetime_filter import DateTimeFilter
+            >>> df = ts_shape.make_timeseries(n_points=4, freq="12h")  # 2025-01-01 00:00 .. 01-02 12:00
+            >>> out = DateTimeFilter.filter_between_datetimes(df, "systime", "2025-01-01 06:00:00",
+            ...                                          "2025-01-02 12:00:00", inclusive="both")
+            >>> out["systime"].dt.strftime("%Y-%m-%d %H:%M").tolist()
+            ['2025-01-01 12:00', '2025-01-02 00:00', '2025-01-02 12:00']
         """
         if start_datetime is None or end_datetime is None:
             raise ValueError("start_datetime and end_datetime parameters are required")

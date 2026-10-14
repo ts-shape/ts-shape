@@ -24,7 +24,22 @@ class StatisticalProcessControlEvents(Base):
     Technology 16(4); rules 1, 5 and 6 are the Western Electric zone rules
     (Montgomery, Introduction to Statistical Quality Control, Table 5.1).
     The center line and sigma come from the ``tolerance_uuid`` rows.
+
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> ref = ts_shape.make_timeseries(["ref"], n_points=50, seed=1)  # in-control
+        >>> act = ts_shape.make_timeseries(["act"], n_points=50, n_outliers=2)
+        >>> spc = ts_shape.StatisticalProcessControlEvents(
+        ...     pd.concat([ref, act]), "value_double", "ref", "act", "quality:spc")
+        >>> out = spc.detect_rule_violations(selected_rules=["rule_1"])
+        >>> out[["systime", "value", "rule", "severity"]].round(1)
+                      systime  value    rule  severity
+        0 2025-01-01 00:19:30  112.7  rule_1  critical
+        1 2025-01-01 00:24:30   88.1  rule_1  critical
     """
+
+    #: CUSUM: ``high`` is a detected shift, ``critical`` twice the threshold.
+    _severity_levels = {"detect_cusum_shifts": {"high": "warn"}}
 
     def __init__(
         self,

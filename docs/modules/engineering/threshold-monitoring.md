@@ -1,65 +1,34 @@
 # ThresholdMonitoringEvents
 
-> Multi-level threshold monitoring with hysteresis for numeric signals.
+Intervals above (or below) named threshold levels, alarm intervals with hysteresis, time above a threshold per window, and the exceedance trend.
 
-**Module:** `ts_shape.events.engineering.threshold_monitoring`  
-**Guide:** [Process Engineering](../../guides/engineering.md)
+`ts_shape.events.engineering.threshold_monitoring` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/engineering/threshold_monitoring.md)
 
----
-
-## When to Use
-
-Use for continuous monitoring of process limits. Multi-level thresholds (warning/alarm/critical) with hysteresis prevent chattering around limit boundaries. Ideal for real-time alerting pipelines and shift-level compliance reporting.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.engineering.threshold_monitoring import ThresholdMonitoringEvents
 
-monitor = ThresholdMonitoringEvents(
-    dataframe=process_data,
-    signal_uuid="reactor_pressure_01",
-)
+df = ts_shape.make_timeseries(["reactor_pressure"], n_points=2880, freq="30s", baseline=80.0, noise=4.0, drift=12.0)
 
-# Define warning, alarm, and critical levels (name -> threshold)
-levels = {"warning": 85.0, "alarm": 92.0, "critical": 98.0}
-exceedances = monitor.multi_level_threshold(levels, direction="above")
-
-# Hysteresis-based alarm to avoid chattering
-alarms = monitor.threshold_with_hysteresis(upper_limit=90.0, lower_limit=85.0)
-
-# Track cumulative time above a limit per hour
-time_above = monitor.time_above_threshold(threshold=85.0, window="1h")
+tm = ThresholdMonitoringEvents(df, "reactor_pressure")
+levels = tm.multi_level_threshold({"warning": 85.0, "alarm": 92.0, "critical": 98.0}, direction="above")
+alarms = tm.threshold_with_hysteresis(upper_limit=90.0, lower_limit=85.0)
+print(tm.time_above_threshold(85.0, window="1h").tail())
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `multi_level_threshold(levels, direction='above')` | intervals per level: `start`, `end`, `duration`, `level`, `peak_value` |
+| `threshold_with_hysteresis(upper_limit, lower_limit)` | alarm intervals: `start`, `end`, `duration`, `peak_value` |
+| `time_above_threshold(threshold, window='1h')` | per window: `time_above`, `pct_above`, `exceedance_count` |
+| `threshold_exceedance_trend(threshold, window='1D')` | per window: `exceedance_count`, `total_duration`, `trend_direction` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `multi_level_threshold(levels, direction='above')` | Multi-level threshold detection (`levels` is a dict of name to value) | DataFrame: `start`, `end`, `duration`, `level`, `peak_value` |
-| `threshold_with_hysteresis(upper_limit, lower_limit)` | Alarm with hysteresis band | DataFrame: `start`, `end`, `duration`, `peak_value` |
-| `time_above_threshold(threshold, window='1h')` | Cumulative time above per window | DataFrame: `start`, `time_above`, `pct_above`, `exceedance_count` |
-| `threshold_exceedance_trend(threshold, window='1D')` | Exceedance trend over time | DataFrame: `start`, `exceedance_count`, `total_duration`, `trend_direction` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Always use hysteresis for alarms"
-    Raw threshold crossings produce noisy on/off chatter when a signal hovers near the limit. Use `threshold_with_hysteresis()` with a dead-band gap of at least 2-5% of the operating range to get clean alarm intervals.
-
-!!! info "Related modules"
-    - [Rate of Change](rate-of-change.md) — catch rapid approaches to a limit before the threshold is breached
-    - [Operating Range](operating-range.md) — understand the full operating envelope, not just the limits
-    - [Process Stability Index](process-stability.md) — roll threshold violations into an overall stability score
-
----
-
-## See Also
-
-- [Process Engineering Guide](../../guides/engineering.md)
-- [API Reference](../../reference/ts_shape/events/engineering/threshold_monitoring.md)
+- `levels` maps names to values, e.g. `{"warning": 80, "alarm": 90}`; `direction` is `"above"` or `"below"`.
+- Hysteresis: the alarm starts when the signal crosses `upper_limit` and ends when it drops below `lower_limit`, which avoids chattering near a single limit.
+- With `interval_end="next_change"` (default) intervals end at the next sample and `time_above_threshold` holds each value until the next sample, so it measures real time. `"last_sample"` uses the share of samples × window length, which is right only for uniform sampling.

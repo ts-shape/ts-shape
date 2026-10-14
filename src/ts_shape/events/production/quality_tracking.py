@@ -17,10 +17,11 @@ from ts_shape.events._windows import (
     add_shift_window,
     data_tz,
 )
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -49,25 +50,17 @@ class QualityEvents(Base):
     so downstream modules (ShiftHandoverEvents, PeriodSummaryEvents, OEEEvents)
     can join on a consistent column name.
 
-    Example usage:
-        tracker = QualityEvents(df)
-
-        # NOK parts per shift
-        shift_nok = tracker.nok_by_shift(
-            ok_counter_uuid='good_parts',
-            nok_counter_uuid='bad_parts'
-        )
-
-        # Quality by part number
-        part_quality = tracker.quality_by_part(
-            ok_counter_uuid='good_parts',
-            nok_counter_uuid='bad_parts',
-            part_id_uuid='part_number'
-        )
-
-        # Pipeline: feed into PeriodSummaryEvents
-        daily = tracker.daily_quality_summary('good', 'bad')
-        # daily has [date, ok_parts, nok_parts, total_parts, quality_pct, ...]
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> kw = dict(n_points=20, freq="1min", noise=0, value_column="value_integer")
+        >>> df = pd.concat([ts_shape.make_timeseries(["ok"], drift=190, **kw),
+        ...                 ts_shape.make_timeseries(["nok"], drift=19, **kw),
+        ...                 ts_shape.make_id_signal("part", ["A", "B"], freq="1min")])
+        >>> out = ts_shape.QualityEvents(df).quality_by_part("ok", "nok", "part")
+        >>> out[["part_number", "ok_parts", "nok_parts", "first_pass_yield_pct"]].round(1)
+          part_number  ok_parts  nok_parts  first_pass_yield_pct
+        0           A      90.0        9.0                  90.9
+        1           B     100.0       10.0                  90.9
     """
 
     MERGE_KEYS_SHIFT = ["date", "shift"]
@@ -101,20 +94,7 @@ class QualityEvents(Base):
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
         """Assign shift based on time of day."""
-        time = timestamp.time()
-
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-
-        return "unknown"
+        return assign_shift(timestamp, self.shift_definitions)
 
     def nok_by_shift(
         self,
@@ -133,11 +113,16 @@ class QualityEvents(Base):
             value_column: Column containing counter values
             handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the parts accumulated after the reset, for both the
-                OK and NOK counters. The result gains a ``resets`` column with
-                the number of resets observed in each shift (across both
-                counters). When False, each counter uses
-                ``max(0, last - first)`` and a shift containing a reset
-                reports too little (often 0).
+                OK and NOK counters. The increments are computed once over
+                each whole counter signal and booked to the shift of the
+                reading that reports them, so the shifts add up to the signal
+                totals (the parts made between the last reading of one shift
+                and the first of the next count in the next shift). The
+                result gains a ``resets`` column with the number of resets
+                observed in each shift (across both counters). When False,
+                each counter uses ``max(0, last - first)`` of the shift's own
+                readings; a shift containing a reset reports too little (often
+                0) and the production between two shifts' readings is lost.
             production_day: Attribute an overnight shift's post-midnight
                 readings to the shift's start date, so a night shift is one
                 ``(date, shift)`` row (default). False groups by raw calendar
@@ -161,11 +146,15 @@ class QualityEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> nok_by_shift('good_counter', 'bad_counter')
-                date        shift    ok_parts  nok_parts  total_parts  nok_rate_pct  first_pass_yield_pct
-            0   2024-01-01  shift_1  450       12         462          2.6           97.4
-            1   2024-01-01  shift_2  425       18         443          4.1           95.9
-            2   2024-01-01  shift_3  380       25         405          6.2           93.8
+            >>> import pandas as pd, ts_shape
+            >>> kw = dict(n_points=16, freq="30min", start="2025-01-01 06:00", noise=0,
+            ...           value_column="value_integer")
+            >>> df = pd.concat([ts_shape.make_timeseries(["ok"], drift=150, **kw),
+            ...                 ts_shape.make_timeseries(["nok"], drift=15, **kw)])
+            >>> out = ts_shape.QualityEvents(df).nok_by_shift("ok", "nok")
+            >>> out[["shift", "ok_parts", "nok_parts", "first_pass_yield_pct"]].round(1)
+                 shift  ok_parts  nok_parts  first_pass_yield_pct
+            0  shift_1     150.0       15.0                  90.9
         """
         # Get OK counter data
         ok_data = (
@@ -193,7 +182,9 @@ class QualityEvents(Base):
         ok_processed = None
         if not ok_data.empty:
             ok_data[self.time_column] = pd.to_datetime(ok_data[self.time_column])
-            ok_data["shift"] = ok_data[self.time_column].apply(self._assign_shift)
+            ok_data["shift"] = assign_shift(
+                ok_data[self.time_column], self.shift_definitions
+            )
             if production_day:
                 ok_data["date"] = production_dates(
                     ok_data[self.time_column], ok_data["shift"], self.shift_definitions
@@ -206,7 +197,9 @@ class QualityEvents(Base):
         nok_processed = None
         if not nok_data.empty:
             nok_data[self.time_column] = pd.to_datetime(nok_data[self.time_column])
-            nok_data["shift"] = nok_data[self.time_column].apply(self._assign_shift)
+            nok_data["shift"] = assign_shift(
+                nok_data[self.time_column], self.shift_definitions
+            )
             if production_day:
                 nok_data["date"] = production_dates(
                     nok_data[self.time_column],
@@ -217,44 +210,39 @@ class QualityEvents(Base):
                 nok_data["date"] = nok_data[self.time_column].dt.date
             nok_processed = nok_data
 
-        # Calculate quantities per shift
+        # Quantities per shift: increments over each whole counter signal,
+        # booked to the shift of the reading that reports them, so the shifts
+        # add up to the signal total (no production lost at shift boundaries).
+        keys = ["date", "shift"]
+        ok_totals = (
+            counter_totals(
+                ok_processed, value_column, keys, handle_resets=handle_resets
+            )
+            if ok_processed is not None
+            else None
+        )
+        nok_totals = (
+            counter_totals(
+                nok_processed, value_column, keys, handle_resets=handle_resets
+            )
+            if nok_processed is not None
+            else None
+        )
+        ok_by_shift: dict[tuple[Any, Any], tuple[float, int]] = {}
+        nok_by_shift: dict[tuple[Any, Any], tuple[float, int]] = {}
+        for totals, target in ((ok_totals, ok_by_shift), (nok_totals, nok_by_shift)):
+            if totals is None:
+                continue
+            for d, sh, qty, n_resets in totals[
+                ["date", "shift", "quantity", "resets"]
+            ].itertuples(index=False):
+                target[(d, sh)] = (float(qty), int(n_resets))
+
         results = []
-
-        # Get all unique date/shift combinations
-        date_shifts: set[tuple[Any, Any]] = set()
-        if ok_processed is not None:
-            date_shifts.update(zip(ok_processed["date"], ok_processed["shift"]))
-        if nok_processed is not None:
-            date_shifts.update(zip(nok_processed["date"], nok_processed["shift"]))
-
-        for date, shift in sorted(date_shifts):
-            ok_parts: float = 0
-            nok_parts: float = 0
-            resets = 0
-
-            # Calculate OK parts for this shift
-            if ok_processed is not None:
-                ok_shift = ok_processed[
-                    (ok_processed["date"] == date) & (ok_processed["shift"] == shift)
-                ]
-                if not ok_shift.empty:
-                    ok_parts = counter_quantity(
-                        ok_shift[value_column], handle_resets=handle_resets
-                    )
-                    if handle_resets:
-                        resets += count_resets(ok_shift[value_column])
-
-            # Calculate NOK parts for this shift
-            if nok_processed is not None:
-                nok_shift = nok_processed[
-                    (nok_processed["date"] == date) & (nok_processed["shift"] == shift)
-                ]
-                if not nok_shift.empty:
-                    nok_parts = counter_quantity(
-                        nok_shift[value_column], handle_resets=handle_resets
-                    )
-                    if handle_resets:
-                        resets += count_resets(nok_shift[value_column])
+        for date, shift in sorted(set(ok_by_shift) | set(nok_by_shift)):
+            ok_parts, ok_resets = ok_by_shift.get((date, shift), (0.0, 0))
+            nok_parts, nok_resets = nok_by_shift.get((date, shift), (0.0, 0))
+            resets = ok_resets + nok_resets
 
             total_parts = ok_parts + nok_parts
 
@@ -327,10 +315,16 @@ class QualityEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> quality_by_part('good', 'bad', 'part_id')
-                part_number  ok_parts  nok_parts  total_parts  nok_rate_pct  first_pass_yield_pct
-            0   PART_A       1255      55         1310         4.2           95.8
-            1   PART_B       890       38         928          4.1           95.9
+            >>> import pandas as pd, ts_shape
+            >>> kw = dict(n_points=20, freq="1min", noise=0, value_column="value_integer")
+            >>> df = pd.concat([ts_shape.make_timeseries(["ok"], drift=190, **kw),
+            ...                 ts_shape.make_timeseries(["nok"], drift=19, **kw),
+            ...                 ts_shape.make_id_signal("part", ["A", "B"], freq="1min")])
+            >>> out = ts_shape.QualityEvents(df).quality_by_part("ok", "nok", "part")
+            >>> out[["part_number", "ok_parts", "nok_parts", "nok_rate_pct"]]
+              part_number  ok_parts  nok_parts  nok_rate_pct
+            0           A      90.0        9.0      9.090909
+            1           B     100.0       10.0      9.090909
         """
         # Get part ID data
         part_data = (
@@ -506,11 +500,14 @@ class QualityEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> nok_by_reason('bad_parts', 'defect_reason')
-                reason              nok_parts  pct_of_total
-            0   Dimension_Error     45         40.5
-            1   Surface_Defect      28         25.2
-            2   Wrong_Color         22         19.8
+            >>> import pandas as pd, ts_shape
+            >>> kw = dict(n_points=20, freq="1min", noise=0, value_column="value_integer")
+            >>> df = pd.concat([ts_shape.make_timeseries(["nok"], drift=19, **kw),
+            ...                 ts_shape.make_id_signal("reason", ["Scratch", "Dent"], freq="1min")])
+            >>> ts_shape.QualityEvents(df).nok_by_reason("nok", "reason")
+                reason  nok_parts  pct_of_total  resets
+            0     Dent       10.0     52.631579       0
+            1  Scratch        9.0     47.368421       0
         """
         nok_data = (
             self.dataframe[self.dataframe["uuid"] == nok_counter_uuid]
@@ -606,7 +603,8 @@ class QualityEvents(Base):
             value_column: Column containing counter values
             handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the parts accumulated after the reset (see
-                :meth:`nok_by_shift`). The result gains a ``resets`` column
+                :meth:`nok_by_shift`; the day totals add up to the signal
+                totals). The result gains a ``resets`` column
                 with the number of resets observed that day. When False, a shift containing a reset reports too little.
             production_day: Forwarded to :meth:`nok_by_shift`; attributes an
                 overnight shift's post-midnight readings to the shift's start
@@ -628,11 +626,15 @@ class QualityEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> daily_quality_summary('good', 'bad')
-                date        ok_parts  nok_parts  total_parts  nok_rate_pct  first_pass_yield_pct
-            0   2024-01-01  1255      55         1310         4.2           95.8
-            1   2024-01-02  1308      42         1350         3.1           96.9
-            2   2024-01-03  1290      60         1350         4.4           95.6
+            >>> import pandas as pd, ts_shape
+            >>> kw = dict(n_points=16, freq="30min", start="2025-01-01 06:00", noise=0,
+            ...           value_column="value_integer")
+            >>> df = pd.concat([ts_shape.make_timeseries(["ok"], drift=150, **kw),
+            ...                 ts_shape.make_timeseries(["nok"], drift=15, **kw)])
+            >>> out = ts_shape.QualityEvents(df).daily_quality_summary("ok", "nok")
+            >>> out[["date", "ok_parts", "nok_parts", "nok_rate_pct"]].round(1)
+                     date  ok_parts  nok_parts  nok_rate_pct
+            0  2025-01-01     150.0       15.0           9.1
         """
         shift_quality = self.nok_by_shift(
             ok_counter_uuid,

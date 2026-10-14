@@ -91,6 +91,10 @@ def test_optional_arguments_are_keyword_only(cls_name):
     bad = []
     for name, fn in _callables(cls):
         for p in _params(fn):
+            # The input frame is always the first, positional argument, even
+            # where it is optional.
+            if p.name == "dataframe":
+                continue
             if p.kind is p.POSITIONAL_OR_KEYWORD and p.default is not p.empty:
                 bad.append(f"{cls_name}.{name}({p.name}=...)")
     assert not bad, "pass these by keyword (add `*`):\n" + "\n".join(bad)

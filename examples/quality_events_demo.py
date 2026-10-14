@@ -5,7 +5,7 @@ Quality Events Demo for ts-shape
 
 Demonstrates quality event detection classes for manufacturing measurement data:
 1. OutlierDetectionEvents  - Detect outliers via Z-score, IQR, MAD, and Isolation Forest
-2. StatisticalProcessControlRuleBased - Western Electric SPC rules and CUSUM analysis
+2. StatisticalProcessControlEvents - Western Electric SPC rules and CUSUM analysis
 3. ToleranceDeviationEvents - Tolerance deviation detection with severity classification
 
 Scenario: A CNC milling machine produces parts with a target bore diameter of 25.000 mm.
@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 from ts_shape.events.quality.statistical_process_control import (
-    StatisticalProcessControlRuleBased,
+    StatisticalProcessControlEvents,
 )
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 
@@ -275,7 +275,7 @@ def demo_spc():
     df = create_spc_data()
     print(f"\nInput data: {len(df)} rows ({df['uuid'].value_counts().to_dict()})")
 
-    spc = StatisticalProcessControlRuleBased(
+    spc = StatisticalProcessControlEvents(
         dataframe=df,
         value_column="value_double",
         tolerance_uuid="bore_tolerance",
@@ -297,7 +297,7 @@ def demo_spc():
 
     # --- Apply all rules ---
     print("\n--- Apply all Western Electric rules ---")
-    violations = spc.process(include_severity=True)
+    violations = spc.detect_violations(include_severity=True)
     if not violations.empty:
         print(f"  Found {len(violations)} violations")
         print(violations.head(10).to_string(index=False))
@@ -306,7 +306,7 @@ def demo_spc():
 
     # --- Vectorized rule application (selected rules) ---
     print("\n--- Vectorized rules: rule_1, rule_2, rule_3 ---")
-    vec_violations = spc.apply_rules_vectorized(
+    vec_violations = spc.detect_rule_violations(
         selected_rules=["rule_1", "rule_2", "rule_3"]
     )
     if not vec_violations.empty:
@@ -361,7 +361,7 @@ def demo_tolerance_deviation():
 
     # --- Process and group tolerance events ---
     print("\n--- Process tolerance deviation events ---")
-    events = tol.process_and_group_data_with_events()
+    events = tol.detect_deviations()
     if not events.empty:
         print(f"  Generated {len(events)} event rows")
         display_cols = [
@@ -379,7 +379,7 @@ def demo_tolerance_deviation():
     # --- Process capability indices ---
     print("\n--- Process capability indices ---")
     try:
-        capability = tol.compute_capability_indices()
+        capability = tol.capability_indices().iloc[0]
         print(f"  Cp  = {capability['Cp']:.4f}  (potential capability)")
         print(f"  Cpk = {capability['Cpk']:.4f}  (actual capability)")
         print(f"  Pp  = {capability['Pp']:.4f}  (process performance)")

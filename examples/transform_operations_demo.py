@@ -371,7 +371,7 @@ def demo_timezone_shift(df: pd.DataFrame):
         input_timezone="UTC",
         target_timezone="America/New_York",
     )
-    print(f"  After shift to US/Eastern:")
+    print(f"  After shift to America/New_York:")
     print(f"    First timestamp: {shifted['systime'].iloc[0]}")
     print(f"    Timezone-aware?  {TimezoneShift.detect_timezone_awareness(shifted, 'systime')}")
 
@@ -393,10 +393,12 @@ def demo_timezone_shift(df: pd.DataFrame):
     print(f"  Reverted to UTC: {reverted['systime'].iloc[0]}")
 
     # Calculate time difference between two columns
+    # Both columns must carry a time zone: systime is UTC, made explicit here.
     dual2 = dual.copy()
+    dual2["systime"] = dual2["systime"].dt.tz_localize("UTC")
     if tz_cols:
         diff_seconds = TimezoneShift.calculate_time_difference(dual2, "systime", tz_cols[0])
-        print(f"  Time diff (UTC vs Berlin), first 3 (seconds): {diff_seconds.head(3).tolist()}")
+        print(f"  Same instants in UTC and Berlin, difference (s): {diff_seconds.head(3).tolist()}")
     print()
 
 
@@ -423,9 +425,9 @@ def demo_timestamp_converter():
     converted_utc = TimestampConverter.convert_to_datetime(ts_df.copy(), columns=["systime"], unit="ns", timezone="UTC")
     print(f"  After ns -> UTC datetime: {converted_utc['systime'].iloc[0]}")
 
-    # Convert from nanoseconds directly to US/Pacific
-    converted_pac = TimestampConverter.convert_to_datetime(ts_df.copy(), columns=["systime"], unit="ns", timezone="US/Pacific")
-    print(f"  After ns -> US/Pacific:   {converted_pac['systime'].iloc[0]}")
+    # Convert from nanoseconds directly to America/Los_Angeles
+    converted_pac = TimestampConverter.convert_to_datetime(ts_df.copy(), columns=["systime"], unit="ns", timezone="America/Los_Angeles")
+    print(f"  After ns -> America/Los_Angeles:   {converted_pac['systime'].iloc[0]}")
 
     # Demonstrate seconds-based conversion
     epoch_s = [ts / 1e9 for ts in epoch_ns]

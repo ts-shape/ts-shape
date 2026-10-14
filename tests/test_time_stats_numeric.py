@@ -93,3 +93,21 @@ def test_calculate_multiple_and_custom():
         df, "systime", "value_double", "h", lambda s: (s.max() - s.min())
     )
     assert "custom" in custom.columns
+
+
+def test_calculate_statistics_per_uuid_by_default():
+    import ts_shape
+    from ts_shape.features.time_stats.time_stats_numeric import (
+        TimeGroupedStatistics,
+    )
+
+    df = ts_shape.make_timeseries(["a", "b"], n_points=50)
+    out = TimeGroupedStatistics.calculate_statistics(
+        df, "systime", "value_double", "10min", ["mean", "max"]
+    )
+    assert list(out.columns) == ["mean", "max"]
+    assert set(out.index.get_level_values("uuid")) == {"a", "b"}
+    one = TimeGroupedStatistics.calculate_statistic(
+        df, "systime", "value_double", "10min", "mean"
+    )
+    assert out["mean"].equals(one["mean"])

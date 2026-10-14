@@ -8,8 +8,17 @@ from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
+from ts_shape.utils.shifts import assign_shift
 
 logger = logging.getLogger(__name__)
+
+
+# Fixed shift grid of ``pattern_analysis(by="shift")``.
+_HOUR_SHIFTS: dict[str, tuple[str, str]] = {
+    "morning": ("06:00", "14:00"),
+    "afternoon": ("14:00", "22:00"),
+    "night": ("22:00", "06:00"),
+}
 
 
 class MicroStopEvents(Base):
@@ -340,15 +349,7 @@ class MicroStopEvents(Base):
             return result
         else:
 
-            def assign_shift(hour: int) -> str:
-                if 6 <= hour < 14:
-                    return "morning"
-                elif 14 <= hour < 22:
-                    return "afternoon"
-                else:
-                    return "night"
-
-            stops["group"] = stops["start"].dt.hour.apply(assign_shift)
+            stops["group"] = assign_shift(stops["start"], _HOUR_SHIFTS)
             stops["date"] = stops["start"].dt.date
 
             daily_counts = (

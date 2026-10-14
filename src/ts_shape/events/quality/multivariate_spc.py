@@ -81,6 +81,16 @@ class MultivariateSPCEvents(Base):
     - contributions: Which variables drive each out-of-control T².
     - detect_out_of_control: Runs of out-of-control observations as
       intervals, with the top contributing variable.
+
+    Example:
+        >>> import ts_shape
+        >>> df = ts_shape.make_timeseries(["temp", "pressure"], n_points=200)
+        >>> df.loc[150, "value_double"] += 8  # one disturbed temp sample
+        >>> mspc = ts_shape.MultivariateSPCEvents(df, ["temp", "pressure"])
+        >>> out = mspc.detect_out_of_control()
+        >>> out[["start", "max_t2", "ucl", "top_contributor"]].round(1)
+                        start  max_t2   ucl top_contributor
+        0 2025-01-01 01:15:00    56.9  11.5            temp
     """
 
     def __init__(
@@ -155,7 +165,8 @@ class MultivariateSPCEvents(Base):
         if tz is not None:
             start = start.tz_localize(tz) if start.tzinfo is None else start
             end = end.tz_localize(tz) if end.tzinfo is None else end
-        return ((t >= start) & (t < end)).to_numpy()
+        mask: np.ndarray = ((t >= start) & (t < end)).to_numpy()
+        return mask
 
     def _fit(
         self, reference_period: tuple[TimeLike, TimeLike] | None

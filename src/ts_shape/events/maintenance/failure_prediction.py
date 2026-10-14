@@ -1,9 +1,13 @@
 import logging
-from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.events.maintenance._rolling import (
+    count_window_bounds,
+    interval_bounds,
+    window_moments,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
@@ -83,80 +87,55 @@ class FailurePredictionEvents(Base):
             sig[self.time_column] - sig[self.time_column].iloc[0]
         ).dt.total_seconds()
 
-        rows: list[dict[str, Any]] = []
-        for i in range(len(sig)):
-            current_val = float(sig[self.value_column].iloc[i])
-            t_now = sig[self.time_column].iloc[i]
+        current = sig[self.value_column].to_numpy(dtype=float)
+        # Local least-squares slope over the last 10 samples (NaN samples
+        # skipped). A window without a usable slope -- fewer than two samples,
+        # or all at one timestamp -- falls back to degradation_rate.
+        lo, hi = count_window_bounds(len(sig), 10)
+        mom = window_moments(sig["t_seconds"].to_numpy(), current, lo, hi)
+        n = mom["n"]
+        fitted = (n >= 2) & ~np.isnan(mom["slope"])
+        local_slope = np.where(fitted, mom["slope"], degradation_rate)
 
-            # Use recent points (up to last 10) for local slope estimate
-            start_idx = max(0, i - 9)
-            # NaN samples make polyfit return NaN silently; fit on the rest.
-            recent = sig.iloc[start_idx : i + 1].dropna(subset=[self.value_column])
+        # Confidence based on fit quality: R^2 of the local fit.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            ss_res = np.maximum(mom["syy"] - mom["sxy"] ** 2 / mom["sxx"], 0.0)
+            r2 = np.where(mom["syy"] > 0, 1 - ss_res / mom["syy"], 0.0)
+        confidence = np.where(fitted, np.where(n >= 3, np.clip(r2, 0.0, 1.0), 0.5), 0.3)
 
-            if len(recent) >= 2:
-                x = recent["t_seconds"].values
-                y = recent[self.value_column].values
-                try:
-                    coeffs = np.polyfit(x, y, 1)
-                    local_slope = coeffs[0]
-                except (np.linalg.LinAlgError, ValueError):
-                    logger.debug(
-                        "Polyfit failed for failure prediction; using degradation_rate."
-                    )
-                    local_slope = degradation_rate
+        # A zero local slope falls back to degradation_rate.
+        effective_rate = np.where(local_slope == 0, degradation_rate, local_slope)
 
-                # Confidence based on fit quality
-                if len(recent) >= 3:
-                    y_pred = np.polyval(coeffs, x)
-                    ss_res = np.sum((y - y_pred) ** 2)
-                    ss_tot = np.sum((y - y.mean()) ** 2)
-                    r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
-                    confidence = max(0.0, min(1.0, r2))
-                else:
-                    confidence = 0.5
-            else:
-                local_slope = degradation_rate
-                confidence = 0.3
+        # Calculate RUL
+        distance = failure_threshold - current
+        failure_dir = np.sign(degradation_rate) or np.sign(effective_rate)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            projected = distance / effective_rate
+        unknown = np.isnan(current) | np.isnan(effective_rate)
+        # Threshold already reached or passed in the failure direction
+        reached = (failure_dir != 0) & (failure_dir * -distance >= 0)
+        # Flat, or trending away from the threshold: no failure projected.
+        # (Previously reported as 0, i.e. imminent failure.)
+        away = (effective_rate == 0) | (projected < 0)
+        rul = np.where(reached, 0.0, projected)
+        none = unknown | (~reached & away)
+        rul_seconds = _floats_or_none(rul, none)
+        rul_hours = _floats_or_none(rul / 3600.0, none)
 
-            # Use local slope if it has the right sign, else fallback
-            if local_slope == 0:
-                local_slope = degradation_rate
-            effective_rate = local_slope if local_slope != 0 else degradation_rate
-
-            # Calculate RUL
-            distance_to_threshold = failure_threshold - current_val
-            failure_dir = np.sign(degradation_rate) or np.sign(effective_rate)
-            if np.isnan(current_val) or np.isnan(effective_rate):
-                rul_seconds = None
-                rul_hours = None
-            elif failure_dir != 0 and failure_dir * -distance_to_threshold >= 0:
-                # Threshold already reached or passed in the failure direction
-                rul_seconds = 0.0
-                rul_hours = 0.0
-            elif effective_rate == 0 or distance_to_threshold / effective_rate < 0:
-                # Flat, or trending away from the threshold: no failure projected.
-                # (Previously reported as 0, i.e. imminent failure.)
-                rul_seconds = None
-                rul_hours = None
-            else:
-                rul_s = distance_to_threshold / effective_rate
-                rul_seconds = float(rul_s)
-                rul_hours = float(rul_s / 3600.0)
-
-            rows.append(
-                {
-                    "systime": t_now,
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": True,
-                    "current_value": current_val,
-                    "rul_seconds": rul_seconds,
-                    "rul_hours": rul_hours,
-                    "confidence": float(confidence),
-                }
-            )
-
-        return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
+        result = pd.DataFrame(
+            {
+                "systime": sig[self.time_column],
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": True,
+                "current_value": current,
+                "rul_seconds": rul_seconds,
+                "rul_hours": rul_hours,
+                "confidence": confidence.astype(float),
+            },
+            columns=cols,
+        )
+        return result
 
     @keyword_only(3)
     def detect_exceedance_pattern(
@@ -213,43 +192,36 @@ class FailurePredictionEvents(Base):
         t_max = sig[self.time_column].iloc[-1]
         window_starts = pd.date_range(start=t_min, end=t_max, freq=window_td)
 
-        rows: list[dict[str, Any]] = []
-        prev_warning_count = 0
-        prev_critical_count = 0
-
-        for ws in window_starts:
-            we = ws + window_td
-            mask = (sig[self.time_column] >= ws) & (sig[self.time_column] < we)
-            win = sig.loc[mask]
-            if win.empty:
-                continue
-
-            warning_count = int(win["is_warning"].sum())
-            critical_count = int(win["is_critical"].sum())
-
-            # Escalation: current counts exceed previous window counts
-            escalation = (warning_count > prev_warning_count) or (
-                critical_count > prev_critical_count
-            )
-
-            rows.append(
-                {
-                    "start": ws,
-                    "end": we,
-                    "duration_seconds": (we - ws).total_seconds(),
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": True,
-                    "warning_count": warning_count,
-                    "critical_count": critical_count,
-                    "escalation_detected": escalation,
-                }
-            )
-
-            prev_warning_count = warning_count
-            prev_critical_count = critical_count
-
-        return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
+        # Per-window counts over [ws, ws + window) from prefix sums; empty
+        # windows are skipped, and escalation compares with the previous
+        # non-empty window.
+        lo, hi = interval_bounds(sig[self.time_column], window_starts, window_td)
+        keep = hi > lo
+        cw = np.concatenate(([0], np.cumsum(sig["is_warning"].to_numpy(dtype=bool))))
+        cc = np.concatenate(([0], np.cumsum(sig["is_critical"].to_numpy(dtype=bool))))
+        warning_count = (cw[hi] - cw[lo])[keep]
+        critical_count = (cc[hi] - cc[lo])[keep]
+        prev_w = np.concatenate(([0], warning_count[:-1]))
+        prev_c = np.concatenate(([0], critical_count[:-1]))
+        ws = window_starts[keep]
+        we = ws + window_td
+        if not len(ws):
+            return pd.DataFrame(columns=cols)
+        return pd.DataFrame(
+            {
+                "start": ws,
+                "end": we,
+                "duration_seconds": (we - ws).total_seconds(),
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": True,
+                "warning_count": warning_count.astype(int),
+                "critical_count": critical_count.astype(int),
+                "escalation_detected": (warning_count > prev_w)
+                | (critical_count > prev_c),
+            },
+            columns=cols,
+        )
 
     @keyword_only(2)
     def time_to_threshold(
@@ -289,49 +261,42 @@ class FailurePredictionEvents(Base):
             sig[self.time_column] - sig[self.time_column].iloc[0]
         ).dt.total_seconds()
 
-        rows: list[dict[str, Any]] = []
-        for i in range(len(sig)):
-            current_val = float(sig[self.value_column].iloc[i])
-            t_now = sig[self.time_column].iloc[i]
+        current = sig[self.value_column].to_numpy(dtype=float)
+        # Rate of change: least-squares slope over the last 10 samples (NaN
+        # samples skipped); 0 when it cannot be computed (fewer than two
+        # samples, or all at one timestamp).
+        lo, hi = count_window_bounds(len(sig), 10)
+        mom = window_moments(sig["t_seconds"].to_numpy(), current, lo, hi)
+        rate = np.where((mom["n"] >= 2) & ~np.isnan(mom["slope"]), mom["slope"], 0.0)
 
-            # Use recent points for rate of change
-            start_idx = max(0, i - 9)
-            # NaN samples make polyfit return NaN silently; fit on the rest.
-            recent = sig.iloc[start_idx : i + 1].dropna(subset=[self.value_column])
+        # Check if rate is in the right direction
+        distance = threshold - current
+        wrong_way = (
+            (rate == 0)
+            | ((direction == "increasing") & (rate <= 0))
+            | ((direction == "decreasing") & (rate >= 0))
+        )
+        with np.errstate(invalid="ignore", divide="ignore"):
+            est = np.where(distance / rate > 0, distance / rate, 0.0)
+        # A NaN current value has no estimate (was reported as 0, i.e. "at the
+        # threshold now").
+        estimated = _floats_or_none(est, wrong_way | np.isnan(current))
 
-            if len(recent) >= 2:
-                x = recent["t_seconds"].values
-                y = recent[self.value_column].values
-                try:
-                    coeffs = np.polyfit(x, y, 1)
-                    rate = float(coeffs[0])
-                except (np.linalg.LinAlgError, ValueError):
-                    rate = 0.0
-            else:
-                rate = 0.0
+        result = pd.DataFrame(
+            {
+                "systime": sig[self.time_column],
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": True,
+                "current_value": current,
+                "rate_of_change": rate.astype(float),
+                "estimated_time_seconds": estimated,
+            },
+            columns=cols,
+        )
+        return result
 
-            # Check if rate is in the right direction
-            distance = threshold - current_val
-            if (
-                rate == 0
-                or (direction == "increasing" and rate <= 0)
-                or (direction == "decreasing" and rate >= 0)
-            ):
-                estimated_time = None
-            else:
-                est = distance / rate
-                estimated_time = float(est) if est > 0 else 0.0
 
-            rows.append(
-                {
-                    "systime": t_now,
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": True,
-                    "current_value": current_val,
-                    "rate_of_change": rate,
-                    "estimated_time_seconds": estimated_time,
-                }
-            )
-
-        return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
+def _floats_or_none(values: np.ndarray, none: np.ndarray) -> list[float | None]:
+    """Python floats, ``None`` where ``none`` is set (the historical column type)."""
+    return [None if skip else float(v) for v, skip in zip(values, none)]

@@ -1,176 +1,87 @@
-# Data Acquisition
+# Loading data
 
-Connect to plant historians, data lakes, and metadata stores. Every loader returns a standard Pandas DataFrame.
+Every loader returns a long-format DataFrame (`systime`, `uuid`, `value_*`).
+If you already have such a frame, from pandas or any other source, skip this
+page: nothing else in ts-shape requires a loader.
 
----
+| Source | Class | Module | Extra |
+|---|---|---|---|
+| Local parquet files | `ParquetLoader` | `loader.timeseries.parquet_loader` | `parquet` |
+| Azure Blob Storage (parquet) | `AzureBlobParquetLoader` | `loader.timeseries.azure_blob_loader` | `azure` |
+| Azure Blob Storage (CSV, JSON, XML) | `AzureBlobFlexibleFileLoader` | `loader.timeseries.azure_blob_loader` | `azure` |
+| S3-compatible storage | `S3ProxyDataAccess` | `loader.timeseries.s3proxy_parquet_loader` | `s3` |
+| Databricks Unity Catalog Volume | `DatabricksUnityParquetLoader` | `loader.timeseries.databricks_unity_parquet_loader` | |
+| Databricks via Spark | `DatabricksSparkParquetLoader` | `loader.timeseries.databricks_spark_parquet_loader` | pyspark on the cluster |
+| TimescaleDB | `TimescaleDBDataAccess` | `loader.timeseries.timescale_loader` | `sql` |
+| Signal metadata (JSON) | `MetadataJsonLoader` | `loader.metadata.metadata_json_loader` | |
 
-## Data Sources
+## The hourly folder layout
 
-```mermaid
-flowchart LR
-    subgraph SOURCES["<b>Plant Data Sources</b>"]
-        direction TB
-        P["Parquet Files<br/><i>local / network</i>"]
-        S3["S3 Storage<br/><i>MinIO / AWS</i>"]
-        AZ["Azure Blob<br/><i>container layout</i>"]
-        TS["TimescaleDB<br/><i>SQL timeseries</i>"]
-        MD["Metadata JSON<br/><i>signal config</i>"]
-    end
-
-    subgraph LOAD["<b>ts-shape Loaders</b>"]
-        PL["ParquetLoader"]
-        S3L["S3ProxyDataAccess"]
-        AZL["AzureBlobParquetLoader"]
-        TSL["TimescaleLoader"]
-        MDL["MetadataJsonLoader"]
-    end
-
-    subgraph OUT["<b>Output</b>"]
-        DF["Pandas DataFrame<br/><code>uuid | systime | value_*</code>"]
-    end
-
-    P --> PL --> DF
-    S3 --> S3L --> DF
-    AZ --> AZL --> DF
-    TS --> TSL --> DF
-    MD --> MDL --> DF
-
-    style SOURCES fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
-    style LOAD fill:#1a3a4a,stroke:#2dd4bf,color:#e0f2fe
-    style OUT fill:#1a3a4a,stroke:#f59e0b,color:#fef3c7
-```
-
----
-
-## Loading from Parquet Files
-
-The most common pattern for offline analysis — load all parquet files from a directory.
+The file-based loaders expect one file per signal and hour:
+`<base>/YYYY/MM/DD/HH/<uuid>.parquet`. The example writes a small dataset in
+that layout and reads it back.
 
 ```python
+import tempfile
+from pathlib import Path
+
+import pandas as pd
+import ts_shape
 from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
 
-# Load all parquet files from a directory
-df = ParquetLoader.load_all_files("data/sensors/")
+base = Path(tempfile.mkdtemp())
+df = ts_shape.make_timeseries(["temperature", "pressure"], n_points=240, freq="1min", start="2024-01-15 06:00")
+for (hour, uuid), part in df.groupby([df["systime"].dt.floor("h"), "uuid"]):
+    folder = base / hour.strftime("%Y/%m/%d/%H")
+    folder.mkdir(parents=True, exist_ok=True)
+    part.to_parquet(folder / f"{uuid}.parquet", index=False)
 
-print(df.head())
-#          uuid                   systime  value_double
-# 0  temperature  2024-01-01 00:00:00+00:00         23.5
-# 1  temperature  2024-01-01 00:01:00+00:00         23.7
-# 2     pressure  2024-01-01 00:00:00+00:00       1013.2
+everything = ParquetLoader.load_all_files(base)
+temperature = ParquetLoader.load_files_by_time_range_and_uuids(
+    base, pd.Timestamp("2024-01-15 07:00"), pd.Timestamp("2024-01-15 08:00"), ["temperature"]
+)
 ```
 
----
+`ParquetLoader` selects whole hour folders: the second call returns the 07:00
+and 08:00 folders completely (07:00 to 08:59). Filter the rows afterwards if you
+need an exact range.
 
-## Loading from Azure Blob Storage
+## Azure Blob Storage
 
-Three authentication methods are supported. Pick whichever matches your plant's IT setup.
-
-### Connect with a SAS URL (simplest)
+Authenticate with a SAS URL, a connection string, or an AAD credential:
 
 ```python
 from ts_shape.loader.timeseries.azure_blob_loader import AzureBlobParquetLoader
 
 loader = AzureBlobParquetLoader(
-    sas_url="https://myaccount.blob.core.windows.net/timeseries?sv=2021-06-08&st=...&se=...&sr=c&sp=rl&sig=...",
+    sas_url="https://myaccount.blob.core.windows.net/timeseries?sv=...&sig=...",
     prefix="parquet/",
 )
-```
+# or: AzureBlobParquetLoader(connection_string="...", container_name="timeseries", prefix="parquet/")
+# or: AzureBlobParquetLoader(account_url="https://myaccount.blob.core.windows.net",
+#         container_name="timeseries", credential=DefaultAzureCredential(), prefix="parquet/")
 
-### Connect with a connection string
+loader.list_structure(limit=20)   # {"folders": [...], "files": [...]}
 
-```python
-loader = AzureBlobParquetLoader(
-    connection_string="DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...",
-    container_name="timeseries",
-    prefix="parquet/",
-)
-```
-
-### Connect with AAD credential
-
-```python
-from azure.identity import DefaultAzureCredential
-
-loader = AzureBlobParquetLoader(
-    account_url="https://myaccount.blob.core.windows.net",
-    container_name="timeseries",
-    credential=DefaultAzureCredential(),
-    prefix="parquet/",
-)
-```
-
-### Explore container structure
-
-```python
-structure = loader.list_structure(limit=20)
-print("Folders:", structure["folders"])
-print("Files:",   structure["files"])
-```
-
-### Load by time range
-
-```python
-# Requires time-structured folders: prefix/YYYY/MM/DD/HH/
-df = loader.load_by_time_range("2024-01-15 08:00", "2024-01-15 12:00")
-```
-
-Every hour folder that overlaps the range is read, then rows whose `systime`
-falls outside `[start, end]` are dropped (`trim_to_range=True`, the default).
-Pass `trim_to_range=False` to keep whole hour folders.
-
-A blob that cannot be downloaded or parsed (missing, no permission, not valid
-parquet) is skipped, and one `DataQualityWarning` names every skipped blob.
-Pass `errors="raise"` to get a `LoaderError` instead. The same `errors`
-argument exists on every Azure Blob and Databricks Unity Catalog method that
-reads many files.
-
-### Load by time range and specific UUIDs
-
-```python
 df = loader.load_files_by_time_range_and_uuids(
     start_timestamp="2024-01-15 08:00",
     end_timestamp="2024-01-15 12:00",
-    uuid_list=["temperature", "pressure", "humidity"],
+    uuid_list=["temperature", "pressure"],
 )
 ```
 
-### Stream results (low memory)
+- `load_by_time_range` reads all signals; `stream_by_time_range` yields
+  `(blob_name, frame)` pairs one blob at a time.
+- Rows outside `[start, end]` are dropped (`trim_to_range=True`, the default).
+- A blob that cannot be downloaded or parsed is skipped, and one
+  `DataQualityWarning` names every skipped blob. Pass `errors="raise"` to get a
+  `LoaderError` instead. The Databricks Unity loader takes the same argument.
 
-```python
-for blob_name, chunk_df in loader.stream_by_time_range("2024-01-15 08:00", "2024-01-15 12:00"):
-    print(f"{blob_name}: {len(chunk_df)} rows")
-    process(chunk_df)
-```
+`AzureBlobFlexibleFileLoader` lists and downloads non-parquet files in the
+same layout (`list_files_by_time_range`, `fetch_files_by_time_range(...,
+parse=True)`).
 
-### Non-parquet files (CSV, JSON, XML)
-
-```python
-from ts_shape.loader.timeseries.azure_blob_loader import AzureBlobFlexibleFileLoader
-
-loader = AzureBlobFlexibleFileLoader(
-    sas_url="https://myaccount.blob.core.windows.net/rawdata?sv=...&sig=...",
-    prefix="incoming/",
-)
-
-# List files by time range and extension
-names = loader.list_files_by_time_range(
-    start_timestamp="2024-01-15 08:00",
-    end_timestamp="2024-01-15 12:00",
-    extensions=[".csv", ".json"],
-)
-
-# Download and auto-parse
-results = loader.fetch_files_by_time_range(
-    start_timestamp="2024-01-15 08:00",
-    end_timestamp="2024-01-15 12:00",
-    extensions=[".csv"],
-    parse=True,
-)
-```
-
----
-
-## Loading from S3-Compatible Storage
+## S3-compatible storage
 
 ```python
 from ts_shape.loader.timeseries.s3proxy_parquet_loader import S3ProxyDataAccess
@@ -191,18 +102,12 @@ loader = S3ProxyDataAccess(
 df = loader.fetch_data_as_dataframe()
 ```
 
----
+## Databricks
 
-## Loading from Databricks
+Two loaders read the hourly layout on Databricks. Choose by who does the scan.
 
-The canonical hourly layout (`<base>/YYYY/MM/DD/HH/<uuid>.parquet`) can be read
-from Databricks two ways. Pick by **who does the scan**.
-
-### Mounted Unity Catalog Volume (pandas)
-
-`DatabricksUnityParquetLoader` reads the FUSE-mounted UC Volume directly with
-`pandas.read_parquet` — no Spark, no download. Best for light, driver-local
-reads with column/row pushdown and optional streaming.
+`DatabricksUnityParquetLoader` reads a mounted Unity Catalog Volume on the
+driver with pandas, with no Spark involved:
 
 ```python
 from ts_shape.loader.timeseries.databricks_unity_parquet_loader import (
@@ -215,122 +120,72 @@ loader = DatabricksUnityParquetLoader(
 df = loader.load_by_time_range("2026-06-19 06:00", "2026-06-19 14:00")
 ```
 
-### Spark-native read (`DatabricksSparkParquetLoader`)
-
-`DatabricksSparkParquetLoader` lets the **cluster's Spark session** do the scan
-(distributed read, predicate/column pushdown) and collects to pandas only at the
-end. It generalizes the common notebook idiom
-
-```python
-hours = pd.date_range(start, end, freq="h")
-paths = [f"{base}/{h:%Y/%m/%d/%H}/{uuid}.parquet" for h in hours]
-sdf = spark.read.option("basePath", base).parquet(*paths)
-df = sdf.select("systime", "uuid", "value_integer").toPandas()
-```
-
-into a reusable, parameterized loader:
+`DatabricksSparkParquetLoader` lets the cluster's Spark session read the files
+and converts to pandas at the end:
 
 ```python
 from ts_shape.loader.timeseries.databricks_spark_parquet_loader import (
     DatabricksSparkParquetLoader,
 )
 
-# `spark` defaults to the active session inside Databricks; pass it explicitly
-# off-cluster. pyspark stays an optional, lazily-imported dependency.
+# spark defaults to the active session on Databricks; pass it explicitly elsewhere
 loader = DatabricksSparkParquetLoader("/Volumes/main/plant/timeseries", spark=spark)
-
 df = loader.load_by_time_range_and_uuids(
     "2026-06-19 06:00", "2026-06-19 14:00",
-    uuids=["ABC", "DEF"],                 # one UUID or a list
-    columns=["systime", "uuid", "value_integer"],  # projection pushdown
-    filter_expr="value_integer > 0",      # Spark SQL predicate
-)                                          # -> pandas; as_pandas=False -> Spark DataFrame
+    uuids=["ABC", "DEF"],
+    columns=["systime", "uuid", "value_integer"],   # column pruning
+    filter_expr="value_integer > 0",                # Spark SQL predicate
+)
+loader.build_paths("2026-06-19 06:00", "2026-06-19 08:00", ["ABC"])   # the files it would read
 ```
-
-Key options:
 
 | Argument | Purpose |
-|----------|---------|
-| `uuids` | A single UUID or a list; one path is built per *(hour, uuid)*. |
-| `columns` | Columns to `select` (projection pushdown). |
-| `filter_expr` | Spark SQL predicate applied with `.where`. |
-| `hour_pattern` / `file_template` | Customize the folder/file layout (defaults match ts-shape). |
-| `ignore_missing` | Skip hours with no file for a UUID instead of failing (default `True`). |
-| `path_exists` | Optional callable (e.g. over `dbutils.fs`) to pre-filter to existing paths. |
-| `as_pandas` | Return pandas (`True`, default) or the Spark DataFrame (`False`). |
+|---|---|
+| `uuids` | one uuid or a list; one path per hour and uuid |
+| `columns` | columns to select |
+| `filter_expr` | Spark SQL predicate applied with `.where` |
+| `hour_pattern`, `file_template` | a different folder or file layout |
+| `ignore_missing` | skip hours without a file (default `True`) |
+| `path_exists` | callable (for example over `dbutils.fs`) to pre-filter paths |
+| `as_pandas` | `False` returns the Spark DataFrame |
 
-The path construction is exposed as a pure, Spark-free method so you can inspect
-exactly what will be read (and unit-test it off-cluster):
+## TimescaleDB
+
+`TimescaleDBDataAccess` queries a `telemetry` table with the standard columns:
 
 ```python
-loader.build_paths("2026-06-19 06:00", "2026-06-19 08:00", ["ABC"])
-# ['/Volumes/main/plant/timeseries/2026/06/19/06/ABC.parquet',
-#  '/Volumes/main/plant/timeseries/2026/06/19/07/ABC.parquet',
-#  '/Volumes/main/plant/timeseries/2026/06/19/08/ABC.parquet']
+from ts_shape.loader.timeseries.timescale_loader import TimescaleDBDataAccess
+
+loader = TimescaleDBDataAccess(
+    start_timestamp="2024-01-01 00:00:00",
+    end_timestamp="2024-01-02 00:00:00",
+    uuids=["temperature", "pressure"],
+    db_config={"db_user": "...", "db_pass": "...", "db_host": "...", "db_name": "..."},
+)
+df = loader.fetch_data_as_dataframe()
 ```
 
-> **Which one?** Use the Unity loader for cheap driver-local reads of a mounted
-> Volume; use the Spark loader when you want Spark to distribute the scan or you
-> are already working with Spark DataFrames.
+## Combining timeseries with metadata
 
----
-
-## Loading Metadata
-
-Signal metadata (names, units, configuration) stored in JSON files.
+`MetadataJsonLoader` reads signal metadata (a `uuid`, `label` and `config` per
+signal; `config` keys become columns). `DataIntegratorHybrid.combine_data`
+joins it to the timeseries on `uuid`:
 
 ```python
 from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
-
-meta = MetadataJsonLoader.from_file("config/signals.json").to_df()
-
-print(meta)
-#          uuid         label    unit
-# 0  temperature  Temperature  Celsius
-# 1     pressure     Pressure     hPa
-```
-
----
-
-## Combining Timeseries with Metadata
-
-Join signal data with metadata for enriched analysis.
-
-```python
 from ts_shape.loader.combine.integrator import DataIntegratorHybrid
 
+meta = MetadataJsonLoader.from_str("""{
+  "uuid":   {"0": "temperature", "1": "pressure"},
+  "label":  {"0": "Oven temperature", "1": "Line pressure"},
+  "config": {"0": {"unit": "degC"}, "1": {"unit": "bar"}}
+}""").to_df()      # MetadataJsonLoader.from_file("signals.json") for a file
+
 combined = DataIntegratorHybrid.combine_data(
-    timeseries_sources=[ts_df],
-    metadata_sources=[meta_df],
-    join_key="uuid",
-    merge_how="left"
-)
-
-print(combined.head())
-#          uuid                   systime  value_double        label     unit
-# 0  temperature  2024-01-01 00:00:00+00:00         23.5  Temperature  Celsius
-```
-
-### Filter by specific signals
-
-```python
-combined = DataIntegratorHybrid.combine_data(
-    timeseries_sources=[ts_df],
-    metadata_sources=[meta_df],
-    uuids=["temperature", "humidity"],
-    join_key="uuid"
+    timeseries_sources=[everything],
+    metadata_sources=[meta],
+    uuids=["temperature"],    # optional: keep only these signals
 )
 ```
 
----
-
-## Module Deep Dives
-
-**Supply Chain:** [Inventory Monitoring](../modules/supplychain/inventory-monitoring.md) | [Lead Time Analysis](../modules/supplychain/lead-time-analysis.md) | [Demand Patterns](../modules/supplychain/demand-patterns.md)
-
----
-
-## Next Steps
-
-- [Signal Conditioning](transforms.md) — Clean and filter the loaded data
-- [API Reference](../reference/index.md) — Full loader API documentation
+Next: [Transforms and statistics](transforms.md).

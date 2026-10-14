@@ -1,72 +1,41 @@
 # LineThroughputEvents
 
-> Count parts per window and check takt adherence from counter or trigger signals.
+Parts per window, takt adherence, a counter-only OEE estimate and throughput trends from a part counter and/or a cycle trigger.
 
-**Module:** `ts_shape.events.production.line_throughput`
-**Guide:** [Production Monitoring](../../guides/production.md)
+`ts_shape.events.production.line_throughput` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/line_throughput.md)
 
----
-
-## When to Use
-
-Use for real-time throughput monitoring. Counts parts from monotonic counters and checks cycle times against takt time targets. Ideal for lines where a PLC counter increments on each part produced or a trigger signal fires per cycle.
-
----
-
-## Quick Example
+## Example
 
 ```python
-from ts_shape.events.production.line_throughput import LineThroughputEvents
-import pandas as pd
 import numpy as np
+import pandas as pd
+from ts_shape.events.production.line_throughput import LineThroughputEvents
 
-# Long format: a monotonic part counter and a boolean cycle trigger
-np.random.seed(0)
-times = pd.date_range("2024-01-01 06:00", periods=480, freq="15s")
-done = times[0] + pd.to_timedelta(np.random.normal(58, 4, 120).cumsum(), unit="s")
+t = pd.date_range("2024-01-01 06:00", periods=480, freq="30s")
 df = pd.concat([
-    pd.DataFrame({"systime": times, "uuid": "line1:part_counter",
-                  "value_integer": np.arange(1, 481)}),
-    pd.DataFrame({"systime": np.concatenate([done, done + pd.Timedelta("1s")]),
-                  "uuid": "line1:cycle_trigger",
-                  "value_bool": [True] * 120 + [False] * 120}),
+    pd.DataFrame({"systime": t, "uuid": "line1:part_counter", "value_integer": np.arange(480) // 2}),
+    pd.DataFrame({"systime": t, "uuid": "line1:cycle_trigger", "value_bool": np.arange(480) % 2 == 0}),
 ], ignore_index=True)
 
 tp = LineThroughputEvents(df)
-parts = tp.count_parts(counter_uuid="line1:part_counter", window="5min")
-takt = tp.takt_adherence(cycle_uuid="line1:cycle_trigger", takt_time="60s")
-oee = tp.throughput_oee(counter_uuid="line1:part_counter", window="15min", target_rate=60)
-print(parts.head())
-print(takt[takt["violation"]].head())
+print(tp.count_parts(counter_uuid="line1:part_counter", window="15min").head())
+takt = tp.takt_adherence(cycle_uuid="line1:cycle_trigger", takt_time="55s")
+oee = tp.throughput_oee(counter_uuid="line1:part_counter", window="1h", target_rate=60)
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `count_parts(counter_uuid, window='1min', handle_resets=True)` | per window: `count` (+ `resets`) |
+| `takt_adherence(cycle_uuid, takt_time='60s', min_violation='0s')` | one row per cycle: `systime`, `cycle_time_seconds`, `violation` |
+| `throughput_oee(counter_uuid, window='1h', target_rate=None, availability_threshold=0.0)` | per window: `actual_count`, `target_count`, `availability`, `performance`, `oee_score` (0-1), `run_seconds`, `planned_seconds` (+ `resets`) |
+| `throughput_trends(counter_uuid, window='1h', trend_window=24)` | per window: `count`, `moving_avg`, `trend_direction`, `degradation_detected` |
+| `cycle_quality_check(cycle_uuid, expected_cycle_time=None, tolerance_pct=0.1)` | one row per cycle: `cycle_time_seconds`, `expected_time`, `deviation_pct`, `is_valid`, `quality_flag` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `count_parts(counter_uuid, window='1min', handle_resets=True)` | Count produced parts per time window from a monotonic counter signal | DataFrame with `start`, `uuid`, `source_uuid`, `is_delta`, `count` (plus `resets` unless `handle_resets=False`) |
-| `takt_adherence(cycle_uuid, takt_time='60s', min_violation='0s')` | Measure each cycle (rising edges of a boolean trigger, or increases of a numeric counter -- a reset is not a cycle) against the takt time; `violation` = cycle strictly longer than `takt_time + min_violation` | DataFrame with `systime`, `uuid`, `source_uuid`, `is_delta`, `cycle_time_seconds`, `violation` |
-| `throughput_oee(counter_uuid, window='1h', target_rate=None, availability_threshold=0.0)` | Counter-only OEE estimate per window (quality assumed 1.0; `target_rate` defaults to the 95th percentile of counts) | DataFrame with `start`, `actual_count`, `target_count`, `availability`, `performance`, `oee_score` |
-| `throughput_trends(counter_uuid, window='1h', trend_window=24)` | Analyze throughput trends with moving averages and degradation detection | DataFrame with `start`, `count`, `moving_avg`, `trend_direction`, `degradation_detected` |
-| `cycle_quality_check(cycle_uuid, expected_cycle_time=None, tolerance_pct=0.1)` | Validate each cycle time against an expected value (median if not given) | DataFrame with `systime`, `cycle_time_seconds`, `expected_time`, `deviation_pct`, `is_valid`, `quality_flag` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Handle counter resets"
-    Monotonic counters may reset at shift boundaries or after a PLC restart. By default (`handle_resets=True`) `count_parts` treats a decreasing counter as a reset, counts the post-reset value as new production, and adds a `resets` column per window. With `handle_resets=False` it clips negative window deltas to zero, which loses the production around a reset.
-
-!!! info "Related modules"
-    - [Cycle Time Tracking](cycle-time.md) — per-part cycle time analysis
-    - [Part Production Tracking](part-tracking.md) — production quantities by part number
-    - [OEE Calculator](oee-calculator.md) — uses throughput for the performance component
-
----
-
-## See Also
-
-- [Production Monitoring Guide](../../guides/production.md)
-- [API Reference](../../reference/ts_shape/events/production/line_throughput.md)
+- Counter resets: with `handle_resets=True` (default) a decreasing counter is a reset and the post-reset value counts as new production; `resets` gives the number per window. `handle_resets=False` uses the window-over-window difference of the counter maximum clipped at zero, which loses the production around a reset.
+- Cycles: a boolean trigger (`value_bool`) uses rising edges; a numeric column uses every increase (a reset is not a cycle boundary); a string column uses every value change. A cycle is a violation when it is strictly longer than `takt_time + min_violation`.
+- `throughput_oee` has no run-state signal: a window counts as available when its count reaches `availability_threshold × target_rate` (default 0: any part). Quality is assumed 1.0, and `target_rate` (parts per window) defaults to the 95th percentile of the counts. Use [OEEEvents](oee-calculator.md) when a run signal and reject counter exist.
+- `cycle_quality_check` uses the median cycle time when `expected_cycle_time` is not given.

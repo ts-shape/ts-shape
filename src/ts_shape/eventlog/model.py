@@ -58,15 +58,18 @@ class EventLog:
 
     def _restrict_to_events(self, events: pd.DataFrame) -> EventLog:
         """Build a sub-log keeping only the objects/relations the events use."""
-        eids = set(events[schema.OCEL_EID])
-        relations = self.relations[self.relations[schema.OCEL_EID].isin(eids)]
+        isin = schema._isin
+        relations = self.relations[
+            isin(self.relations[schema.OCEL_EID], events[schema.OCEL_EID])
+        ]
         used = set(zip(relations[schema.OCEL_OID], relations[schema.OCEL_TYPE]))
         objects = _objects_in(self.objects, used)
-        oids = set(objects[schema.OCEL_OID])
+        oids = objects[schema.OCEL_OID]
         o2o = self.o2o[
-            self.o2o[schema.OCEL_OID].isin(oids) & self.o2o[schema.OCEL_OID2].isin(oids)
+            isin(self.o2o[schema.OCEL_OID], oids)
+            & isin(self.o2o[schema.OCEL_OID2], oids)
         ]
-        changes = self.object_changes[self.object_changes[schema.OCEL_OID].isin(oids)]
+        changes = self.object_changes[isin(self.object_changes[schema.OCEL_OID], oids)]
         return EventLog(
             events.reset_index(drop=True),
             objects.reset_index(drop=True),

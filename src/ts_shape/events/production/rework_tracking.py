@@ -9,7 +9,6 @@ Track rework events and their impact:
 """
 
 import logging
-from typing import Any
 
 import pandas as pd
 
@@ -18,10 +17,14 @@ from ts_shape.events._windows import (
     add_shift_window,
     data_tz,
 )
+from ts_shape.events.production._counter_groups import (
+    counter_totals,
+    counter_totals_per_period,
+)
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.counters import counter_increments, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -76,17 +79,8 @@ class ReworkEvents(Base):
         }
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        time = timestamp.time()
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-        return "unknown"
+        """Assign shift based on time of day."""
+        return assign_shift(timestamp, self.shift_definitions)
 
     def _get_counter_quantity(
         self,
@@ -121,10 +115,14 @@ class ReworkEvents(Base):
             value_column: Column containing counter values.
             handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the rework accumulated after the reset instead of
-                losing it. The result gains a ``resets`` column with the
-                number of resets observed in each shift. When False,
-                the quantity is ``max(0, last - first)`` and a shift
-                containing a reset reports too little (often 0).
+                losing it. The increments are computed once over the whole
+                signal and booked to the shift of the reading that reports
+                them, so the shifts add up to the signal total. The result
+                gains a ``resets`` column with the number of resets observed
+                in each shift. When False,
+                the quantity is ``max(0, last - first)`` of the shift's own
+                readings: a shift containing a reset reports too little (often
+                0) and the production between two shifts' readings is lost.
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night
                 shift is one contiguous ``(date, shift)`` group. Default True;
@@ -156,7 +154,7 @@ class ReworkEvents(Base):
             )
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
-        data["shift"] = data[self.time_column].apply(self._assign_shift)
+        data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
         if production_day:
             data["date"] = production_dates(
                 data[self.time_column], data["shift"], self.shift_definitions
@@ -164,22 +162,12 @@ class ReworkEvents(Base):
         else:
             data["date"] = data[self.time_column].dt.date
 
-        results = []
-        for (date, shift), grp in data.groupby(["date", "shift"]):
-            qty = self._get_counter_quantity(
-                grp, value_column, handle_resets=handle_resets
-            )
-            row = {
-                "date": date,
-                "shift": shift,
-                "rework_count": qty,
-            }
-            if handle_resets:
-                row["resets"] = count_resets(grp[value_column])
-            results.append(row)
+        totals = counter_totals(
+            data, value_column, ["date", "shift"], handle_resets=handle_resets
+        ).rename(columns={"quantity": "rework_count"})
 
         return add_shift_window(
-            pd.DataFrame(results, columns=columns),
+            totals[columns],
             self.shift_definitions,
             data_tz(data[self.time_column]),
         )
@@ -306,7 +294,9 @@ class ReworkEvents(Base):
             handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the production/rework accumulated after the reset,
                 for both the numerator (rework) and denominator (total
-                produced). The result gains ``rework_resets``,
+                produced). Both are computed once over the whole signal and
+                booked to the shift of the reading that reports them, so the
+                shifts add up to the signal totals. The result gains ``rework_resets``,
                 ``production_resets`` and ``resets`` (their sum) columns with
                 the number of resets observed in each shift. When False, both use ``max(0, last - first)`` per shift and a
                 reset is lost.
@@ -354,8 +344,12 @@ class ReworkEvents(Base):
         rework_data[self.time_column] = pd.to_datetime(rework_data[self.time_column])
         prod_data[self.time_column] = pd.to_datetime(prod_data[self.time_column])
 
-        rework_data["shift"] = rework_data[self.time_column].apply(self._assign_shift)
-        prod_data["shift"] = prod_data[self.time_column].apply(self._assign_shift)
+        rework_data["shift"] = assign_shift(
+            rework_data[self.time_column], self.shift_definitions
+        )
+        prod_data["shift"] = assign_shift(
+            prod_data[self.time_column], self.shift_definitions
+        )
         if production_day:
             rework_data["date"] = production_dates(
                 rework_data[self.time_column],
@@ -371,60 +365,31 @@ class ReworkEvents(Base):
             rework_data["date"] = rework_data[self.time_column].dt.date
             prod_data["date"] = prod_data[self.time_column].dt.date
 
-        # Get all date/shift combos
-        date_shifts = set(zip(rework_data["date"], rework_data["shift"])) | set(
-            zip(prod_data["date"], prod_data["shift"])
+        # Increments over each whole signal, booked to the shift of the reading
+        # that reports them, so the shifts add up to the signal totals.
+        keys = ["date", "shift"]
+        rw_totals = counter_totals(
+            rework_data, value_column_rework, keys, handle_resets=handle_resets
+        ).rename(columns={"quantity": "rework_count", "resets": "rework_resets"})
+        pr_totals = counter_totals(
+            prod_data, value_column_production, keys, handle_resets=handle_resets
+        ).rename(columns={"quantity": "total_produced", "resets": "production_resets"})
+        merged = (
+            pr_totals.merge(rw_totals, on=keys, how="outer")
+            .sort_values(keys, kind="stable")
+            .reset_index(drop=True)
         )
-
-        results = []
-        for date, shift in sorted(date_shifts):
-            rw_grp = rework_data[
-                (rework_data["date"] == date) & (rework_data["shift"] == shift)
-            ]
-            pr_grp = prod_data[
-                (prod_data["date"] == date) & (prod_data["shift"] == shift)
-            ]
-
-            rework_count = (
-                self._get_counter_quantity(
-                    rw_grp, value_column_rework, handle_resets=handle_resets
-                )
-                if not rw_grp.empty
-                else 0
-            )
-            total_produced = (
-                self._get_counter_quantity(
-                    pr_grp, value_column_production, handle_resets=handle_resets
-                )
-                if not pr_grp.empty
-                else 0
-            )
-
-            rate = (rework_count / total_produced * 100) if total_produced > 0 else 0
-
-            row: dict[str, Any] = {
-                "date": date,
-                "shift": shift,
-                "total_produced": total_produced,
-                "rework_count": rework_count,
-                "rework_rate_pct": rate,
-            }
-            if handle_resets:
-                rw_resets = (
-                    count_resets(rw_grp[value_column_rework]) if not rw_grp.empty else 0
-                )
-                pr_resets = (
-                    count_resets(pr_grp[value_column_production])
-                    if not pr_grp.empty
-                    else 0
-                )
-                row["rework_resets"] = rw_resets
-                row["production_resets"] = pr_resets
-                row["resets"] = rw_resets + pr_resets
-            results.append(row)
+        for col in ("rework_count", "total_produced"):
+            merged[col] = merged[col].fillna(0.0)
+        for col in ("rework_resets", "production_resets"):
+            merged[col] = merged[col].fillna(0).astype(int)
+        merged["rework_rate_pct"] = (
+            merged["rework_count"] / merged["total_produced"] * 100
+        ).where(merged["total_produced"] > 0, 0.0)
+        merged["resets"] = merged["rework_resets"] + merged["production_resets"]
 
         return add_shift_window(
-            pd.DataFrame(results, columns=rate_cols),
+            merged[rate_cols],
             self.shift_definitions,
             data_tz(prod_data[self.time_column]),
         )
@@ -448,7 +413,10 @@ class ReworkEvents(Base):
             value_column_rework: Column containing rework counter values.
             value_column_part: Column containing part number values.
             handle_resets: When True (default), treat a decreasing counter as a reset
-                and count the rework accumulated after the reset. The result
+                and count the rework accumulated after the reset. The
+                increments are computed once over the whole signal and booked
+                to the part of the reading that reports them, so the parts add
+                up to the signal total (also when parts alternate). The result
                 gains a ``resets`` column with the number of resets observed
                 for each part. When False, the quantity is
                 ``max(0, last - first)`` per part and a reset is lost.
@@ -494,24 +462,18 @@ class ReworkEvents(Base):
         )
         merged = merged.dropna(subset=["part_number"])
 
-        results = []
-        for part_num, grp in merged.groupby("part_number"):
-            qty = self._get_counter_quantity(
-                grp, "rework_val", handle_resets=handle_resets
-            )
-            cost = rework_costs.get(part_num, 0.0)
-            row = {
-                "part_number": part_num,
-                "rework_count": qty,
-                "cost_per_rework": cost,
-                "total_cost": qty * cost,
-            }
-            if handle_resets:
-                row["resets"] = count_resets(grp["rework_val"])
-            results.append(row)
+        # Increments over the whole signal, booked to the part of the reading
+        # that reports them (no boundary loss, no interleaving over-count).
+        totals = counter_totals(
+            merged, "rework_val", ["part_number"], handle_resets=handle_resets
+        ).rename(columns={"quantity": "rework_count"})
+        totals["cost_per_rework"] = [
+            rework_costs.get(p, 0.0) for p in totals["part_number"]
+        ]
+        totals["total_cost"] = totals["rework_count"] * totals["cost_per_rework"]
 
         return (
-            pd.DataFrame(results, columns=columns)
+            totals[columns]
             .sort_values("total_cost", ascending=False)
             .reset_index(drop=True)
         )
@@ -531,10 +493,14 @@ class ReworkEvents(Base):
             value_column: Column containing counter values.
             window: Time window for aggregation (default '1D').
             handle_resets: When True (default), treat a decreasing counter as a reset
-                and count the rework accumulated after the reset. The result
-                gains a ``resets`` column with the number of resets observed
-                in each period. When False, the quantity is
-                ``max(0, last - first)`` per period and a reset is lost.
+                and count the rework accumulated after the reset. The
+                increments are computed once over the whole signal and booked
+                to the period of the reading that reports them, so the periods
+                add up to the signal total. The result gains a ``resets``
+                column with the number of resets observed in each period.
+                When False, the quantity is ``max(0, last - first)`` of the
+                period's own readings: a reset and the production between two
+                periods' readings are lost.
 
         Returns:
             DataFrame with columns:
@@ -556,25 +522,13 @@ class ReworkEvents(Base):
             return add_period_window(pd.DataFrame(columns=columns), window)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
-        data = data.set_index(self.time_column)
+        totals = counter_totals_per_period(
+            data.set_index(self.time_column)[value_column],
+            window,
+            handle_resets=handle_resets,
+        ).rename(columns={"quantity": "rework_count"})
 
-        results = []
-        for period, grp in data.groupby(pd.Grouper(freq=window)):
-            if grp.empty:
-                continue
-            grp = grp.reset_index()
-            qty = self._get_counter_quantity(
-                grp, value_column, handle_resets=handle_resets
-            )
-            row = {
-                "period": period,
-                "rework_count": qty,
-            }
-            if handle_resets:
-                row["resets"] = count_resets(grp[value_column])
-            results.append(row)
-
-        return add_period_window(pd.DataFrame(results, columns=columns), window)
+        return add_period_window(totals[columns], window)
 
 
 #: Deprecated name, removed in the next major release.

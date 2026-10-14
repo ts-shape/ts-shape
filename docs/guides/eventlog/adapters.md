@@ -1,205 +1,91 @@
-# Event Log: adapter anatomy & custom adapters
+# Adapters
 
-How a detector's raw DataFrame becomes a canonical `EventLog`. This is the
-mechanics companion to the [Event Log overview](index.md) (the schema and
-exports) and the [Labeling standard & taxonomy](taxonomy.md) (the naming and
-attribute rules).
+An adapter converts one detector's output frame into an
+[`EventLog`](index.md#the-canonical-schema). ts-shape has one generic adapter
+(`ts_shape.eventlog.adapters.adapt`), configured per detector method by a
+`LabelRule` in `REGISTRY`. For a new detector method you normally add a
+`LabelRule` ([Adding a new detector method](taxonomy.md#adding-a-new-detector-method));
+a custom adapter is needed only for output the generic adapter cannot express.
 
----
+## Shapes
 
-## Adapter anatomy
+The rule's `shape` decides where the event time comes from:
 
-An **adapter** is the function that turns one detector's output DataFrame (its *detector frame*)
-into a canonical [`EventLog`](index.md#the-canonical-schema). ts-shape ships
-*one* generic adapter (`adapters.adapt`) plus a registry of per-method
-[`LabelRule`](#the-labelrule-fields) entries that parameterize it. In
-practice you almost never write a custom adapter; you add a `LabelRule`
-to the registry and the generic adapter does the rest.
-
-### The four shapes
-
-Every detector method is classified into one of four shapes. The shape
-tells the generic adapter which detector-frame columns to look for and how to
-populate `ocel:timestamp` / `ts_shape:start_timestamp` /
-`ts_shape:duration_s`.
-
-| Shape | When to use it | Time columns probed | Resulting timestamps |
+| Shape | Required columns | `ocel:timestamp` | `ts_shape:start_timestamp`, `ts_shape:duration_s` |
 |---|---|---|---|
-| `point` | One event per row, single timestamp (e.g. outlier detected at T). | `systime` (canonical). Falls back to the first datetime column if absent. | `ocel:timestamp` = the detected time; `ts_shape:start_timestamp` = `NaT`; `ts_shape:duration_s` = `NaN`. |
-| `interval` | Each row spans a window with explicit `start` and `end` (e.g. a run/idle interval). | Start: `start`. End: `end`. | `ocel:timestamp` = end; `ts_shape:start_timestamp` = start; `ts_shape:duration_s` = `(end - start).total_seconds()`. Falls back to `point` shape if start/end columns are absent. |
-| `summary` | Each row is an aggregate over a window (KPI per shift, daily mean, etc.). | Start: `start`. End: `end`. Both come from the canonical summary schema declared in `events/_output.py`. | `ocel:timestamp` = `end`; `ts_shape:start_timestamp` = `start`; `ts_shape:duration_s` = `(end - start).total_seconds()`. |
-| `static` | No natural time (e.g. a Gauge R&R summary, a routing-paths table). | None — a fixed `now-UTC` is broadcast to every row. | All rows share the same `ocel:timestamp = now`; `start_timestamp`/`duration_s` are null. |
+| `point` | `systime` | `systime` | `NaT`, `NaN` |
+| `interval` | `start`, `end` | `end` | `start`, `end - start` in seconds |
+| `summary` | `start`, `end` | `end` | `start`, `end - start` in seconds |
+| `static` | none | the time of conversion (UTC), the same for all rows | `NaT`, `NaN` |
 
-The shape is declared in the `LabelRule` and lives in
-`src/ts_shape/eventlog/taxonomy.py`. The branches that implement each
-shape live in `src/ts_shape/eventlog/adapters.py` (function `adapt`).
+A frame without the required columns raises an error naming the detector.
+The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
 
-### The `LabelRule` fields
+## LabelRule fields
 
-| Field | Type | Default | What it controls |
-|---|---|---|---|
-| `template` | `str` | required | The `ocel:activity` value. May contain `{column}` placeholders that get substituted from the detector-frame row at adapter time. Example: `"production.machine_state.{state}"`. |
-| `pack` | `str` | required | One of `quality`, `production`, `engineering`, `maintenance`, `supplychain`, `energy`, `correlation`. Stored as `ts_shape:pack` and used as the prefix for detector-specific attributes. |
-| `shape` | `str` | `"point"` | One of `point`, `interval`, `summary`, `static` — see above. |
-| `produces_objects` | `tuple[str, ...]` | `("asset",)` | Object types the adapter auto-extracts from standard detector-frame columns (e.g. `source_uuid → asset`). Empty tuple = events only, no auto-extracted objects. Caller-supplied bindings via `objects=` are honored regardless. |
-| `severity_field` | `str \| None` | `None` | Name of a numeric column to bucket into `ts_shape:severity`. Falls back to a `severity` column (passed through verbatim) when omitted. |
-| `value_field` | `str \| None` | `None` | Name of the numeric column to expose as `ts_shape:value`. Falls back to `value` / `value_double` / `value_integer` when omitted. |
-| `drop_fields` | `tuple[str, ...]` | `()` | Detector-frame columns to *not* promote to attributes (e.g. internal helper columns). |
-
-### What `to_event_log()` does, step by step
-
-1. Parse the `detector="ClassName.method_name"` string and look up
-   `(ClassName, method_name)` in
-   `ts_shape.eventlog.taxonomy.REGISTRY`. Missing entry → `KeyError`
-   (the coverage test prevents this from ever shipping).
-2. Check the `_OVERRIDES` table for a function registered with
-   `@register_adapter("ClassName", "method_name")`. If one is
-   registered, call it with `(detector_frame, *, rule, detector,
-   objects, qualifiers)` and use its return value directly.
-3. Otherwise call `adapters.adapt(detector_frame, rule=…, detector=…,
-   objects=…, qualifiers=…)`:
-    - **Resolve timestamps** based on `rule.shape` (see the four-shapes
-      table above).
-    - **Render `ocel:activity`** per row by substituting `{column}`
-      placeholders in `rule.template` with values from the detector-frame row.
-      Missing columns render as `unknown` (never raise).
-    - **Generate stable `ocel:eid`** as
-      `"e-" + uuid5(namespace, f"{detector}|{ts.isoformat()}|{i}|{activity}")`.
-      Same input → same eid; safe to re-run.
-    - **Map severity**: if `rule.severity_field` is set and numeric,
-      bucket via `< 3.0 → info`, `3.0–4.5 → warn`, `≥ 4.5 → critical`.
-      Falls back to a literal `severity` column when present.
-    - **Pull value**: if `rule.value_field` is set, coerce to float and
-      expose as `ts_shape:value`. Falls back to `value` /
-      `value_double` / `value_integer`.
-    - **Prefix attributes**: every detector-frame column not consumed above is
-      added as `<pack>:<col>` so it's namespaced and never clashes with
-      OCEL/XES columns.
-    - **Trim empty extras**: any non-core column (a `<pack>:<col>`
-      passthrough or a standard-attr extension) that is entirely empty is
-      dropped — only the 9 canonical core columns are kept unconditionally,
-      preserving a stable append-friendly schema.
-    - **Auto-extract objects**: for each type in `rule.produces_objects`,
-      look for the standard binding column (today: `source_uuid → asset`)
-      and create relations. Merge in caller-supplied `objects=` (any
-      type allowed; `qualifiers=` provides the role string).
-4. Run `schema.validate(...)` on the result — checks required columns,
-   dtypes, unique `ocel:eid`, and that every relation references an
-   existing event and object.
-
-### Concrete walkthrough — `MachineStateEvents.detect_run_idle`
-
-The detector frame returned by `detect_run_idle()` looks like this:
-
-| `start` | `end` | `uuid` | `source_uuid` | `is_delta` | `state` | `duration_seconds` |
-|---|---|---|---|---|---|---|
-| `2026-05-07 08:00:00+00:00` | `2026-05-07 08:04:30+00:00` | `prod:run_idle` | `asset-A` | `False` | `run` | `270.0` |
-
-`to_event_log(detector_frame, detector="MachineStateEvents.detect_run_idle")`
-applies the registry entry
-`LabelRule(template="production.machine_state.{state}",
-pack="production", shape="interval", produces_objects=("asset",))`
-and produces:
-
-| Detector-frame column | Lands in… | Why |
+| Field | Default | Effect |
 |---|---|---|
-| `start` | `ts_shape:start_timestamp` | Interval-shape start probe matched. |
-| `end` | `ocel:timestamp` | Interval-shape end probe matched. |
-| (computed) | `ts_shape:duration_s = 270.0` | `(end - start).total_seconds()`. |
-| `state = "run"` | `ocel:activity = "production.machine_state.run"` | Substituted into `{state}` placeholder. |
-| `source_uuid` | `ocel:oid` (in `objects` & `relations`), with `ocel:type = "asset"` | Auto-extracted because `produces_objects` includes `"asset"`. |
-| `uuid` | `production:uuid` (event attribute) | Non-canonical column → prefixed and attached. |
-| `is_delta` | `production:is_delta` (event attribute) | Same. |
-| `duration_seconds` | `production:duration_seconds` (event attribute) | Same. The canonical `ts_shape:duration_s` is always recomputed. |
-| (computed) | `ocel:eid = "e-<uuid5>"` | Stable hash of `(detector, timestamp, row-key, activity)`. |
-| (constant) | `ts_shape:detector = "MachineStateEvents.detect_run_idle"` | From the `detector=` argument. |
-| (constant) | `ts_shape:pack = "production"` | From the `LabelRule`. |
+| `template` | required | the `ocel:activity`; `{column}` placeholders are filled per row |
+| `pack` | required | stored as `ts_shape:pack` and used as prefix of the detector's own columns |
+| `shape` | `"point"` | see above |
+| `produces_objects` | `("asset",)` | object types created automatically from standard columns (`source_uuid` becomes an `asset`); `()` for none |
+| `severity_field` | `None` | numeric column bucketed into `ts_shape:severity`; without it a `severity` column with `info` / `warn` / `critical` is passed through |
+| `value_field` | `None` | column used as `ts_shape:value`; without it the first of `value`, `value_double`, `value_integer` |
+| `drop_fields` | `()` | output columns not copied into the event log |
+| `standard_attrs` | `{}` | mapping to the [standard attribute keys](taxonomy.md#standard-attribute-extension) |
 
-If the caller had passed `objects={"batch": "batch_id"}`, an additional
-`batch` object would have been bound from the (caller-provided)
-`batch_id` column, with relation qualifier from the `qualifiers={"batch":
-"during_batch"}` mapping.
+## What `to_event_log` does
 
-### When to override with a custom adapter
+1. Looks up `(class, method)` from `detector="Class.method"` in `REGISTRY`
+   (deprecated names are resolved to the current ones). An unknown name
+   raises `KeyError`.
+2. Uses a custom adapter if one is registered for that method.
+3. Otherwise runs the generic adapter:
+    - takes the timestamps according to the shape;
+    - renders the activity from the template;
+    - builds a stable `ocel:eid` (a UUIDv5 of detector, timestamp and row), so
+      the same input always gives the same ids;
+    - fills `ts_shape:severity`, `ts_shape:value` and the standard attributes;
+    - copies every other output column as `<pack>:<column>` and drops such
+      columns when they are completely empty;
+    - creates the automatic objects and those passed with `objects=`.
+4. Validates the result: required columns and dtypes, unique `ocel:eid`, and
+   every relation pointing to an existing event and object.
 
-Reach for `@register_adapter` only when the generic adapter cannot
-express what your detector returns:
-
-- The detector frame is irregular (no time column, multiple
-  sub-frames, nested dict columns).
-- You need to emit **multiple events per detector-frame row** — e.g. one row
-  describes a batch with five sub-stage transitions and you want one
-  event per transition.
-- You want `produces_objects` to depend on **runtime data** rather than
-  on a static rule.
-- You need cross-row state (running totals, sessions) that the row-by-row
-  generic adapter cannot compute.
-
-In every other case — including new methods on existing detectors —
-just add a `LabelRule`. See [Adding a new detector method](taxonomy.md#adding-a-new-detector-method).
-
----
+For `MachineStateEvents.detect_run_idle` (template
+`production.machine_state.{state}`, shape `interval`) an output row with
+`state="run"`, `source_uuid="asset-A"`, `start` and `end` becomes an event
+with activity `production.machine_state.run`, timestamp `end`, start
+timestamp `start`, an `asset` object `asset-A`, and the attributes
+`production:uuid`, `production:is_delta` and `production:duration_seconds`.
 
 ## Custom adapters
 
-For the rare detector whose output doesn't fit any of the four shapes
-(see [When to override](#when-to-override-with-a-custom-adapter)),
-register an override with `@register_adapter`. The normalizer consults
-the override **before** the generic adapter and validates the result
-the same way.
-
-### Adapter signature
-
-```python
-def my_adapter(
-    detector_frame: pd.DataFrame,
-    *,
-    rule: LabelRule,            # the registry entry for this method
-    detector: str,              # "MyDetector.weird_method"
-    objects:    Mapping[str, object] | None,
-    qualifiers: Mapping[str, str] | None,
-) -> EventLog: ...
-```
-
-### Invariants the override must satisfy
-
-- `events` has the columns listed in the [Events table](index.md#events): at
-  minimum `ocel:eid` (unique), `ocel:activity`, `ocel:timestamp`,
-  `ts_shape:detector`, `ts_shape:pack`.
-- Every `ocel:eid` referenced from `relations` exists in `events`.
-- Every `(ocel:oid, ocel:type)` pair in `relations` exists in `objects`.
-
-`to_event_log()` runs `schema.validate(...)` on the returned
-`EventLog`, so violations surface immediately.
-
-### Working example
+Register a custom adapter with `@register_adapter("Class", "method")` when
+the generic one does not fit: several events per output row, no usable time
+columns, objects that depend on the data, or state carried across rows. The
+adapter receives the detector frame and returns an `EventLog`; it is validated
+like any other.
 
 ```python
 import pandas as pd
-from ts_shape.eventlog import EventLog, register_adapter
+from ts_shape.eventlog import EventLog, register_adapter, to_event_log
 from ts_shape.eventlog import schema as S
 from ts_shape.eventlog.taxonomy import REGISTRY, LabelRule
 
-# 1. Make the registry aware of the method (real detectors do this in
-#    src/ts_shape/eventlog/taxonomy.py — done inline here for brevity).
-REGISTRY[("MyDetector", "weird_method")] = LabelRule(
-    template="production.custom.{kind}",
-    pack="production",
-    shape="point",
-    produces_objects=("asset",),
+# A real detector registers its rule in src/ts_shape/eventlog/taxonomy.py.
+REGISTRY[("MyDetector", "alarm_windows")] = LabelRule(
+    template="production.custom.{kind}", pack="production", shape="point",
 )
 
-# 2. Register an override that emits TWO events per detector-frame row
-#    (one "raised", one "cleared") — something the generic adapter
-#    cannot express.
-@register_adapter("MyDetector", "weird_method")
-def expand_pairs(detector_frame, *, rule, detector, objects, qualifiers):
-    rows: list[dict] = []
-    relations: list[dict] = []
+@register_adapter("MyDetector", "alarm_windows")
+def raise_and_clear(detector_frame, *, rule, detector, objects, qualifiers):
+    """Two events per row: one when the alarm is raised, one when it clears."""
+    events, relations = [], []
     for i, row in detector_frame.iterrows():
         for kind in ("raised", "cleared"):
             eid = f"e-{detector}-{i}-{kind}"
-            rows.append({
+            events.append({
                 S.OCEL_EID: eid,
                 S.OCEL_ACTIVITY: f"production.custom.{kind}",
                 S.OCEL_TIMESTAMP: pd.Timestamp(row[f"{kind}_at"], tz="UTC"),
@@ -207,19 +93,23 @@ def expand_pairs(detector_frame, *, rule, detector, objects, qualifiers):
                 S.TS_PACK: rule.pack,
             })
             relations.append({
-                S.OCEL_EID: eid,
-                S.OCEL_OID: row["asset_id"],
-                S.OCEL_TYPE: "asset",
-                S.OCEL_QUALIFIER: "produced_on",
+                S.OCEL_EID: eid, S.OCEL_OID: row["asset_id"],
+                S.OCEL_TYPE: "asset", S.OCEL_QUALIFIER: "produced_on",
             })
-    events = pd.concat([S.empty_events(), pd.DataFrame(rows)], ignore_index=True)
-    rels = pd.concat([S.empty_relations(), pd.DataFrame(relations)], ignore_index=True)
-    objs = pd.DataFrame({
-        S.OCEL_OID: detector_frame["asset_id"].astype("string").unique(),
-        S.OCEL_TYPE: "asset",
-    })
-    return EventLog(events=events, objects=objs, relations=rels)
+    return EventLog(
+        events=pd.concat([S.empty_events(), pd.DataFrame(events)], ignore_index=True),
+        objects=pd.DataFrame({
+            S.OCEL_OID: detector_frame["asset_id"].astype("string").unique(),
+            S.OCEL_TYPE: "asset",
+        }),
+        relations=pd.concat([S.empty_relations(), pd.DataFrame(relations)], ignore_index=True),
+    )
+
+frame = pd.DataFrame({"asset_id": ["press-01"], "raised_at": ["2025-01-01 08:00"], "cleared_at": ["2025-01-01 08:05"]})
+log = to_event_log(frame, detector="MyDetector.alarm_windows")
 ```
 
-Once registered, `to_event_log(df, detector="MyDetector.weird_method")`
-calls the override automatically.
+The returned log must have at least `ocel:eid` (unique), `ocel:activity`,
+`ocel:timestamp`, `ts_shape:detector` and `ts_shape:pack` in `events`, and
+every relation must point to an existing event and object.
+`clear_overrides()` removes registered adapters again.

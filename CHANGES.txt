@@ -1,3 +1,53 @@
+# October 14, 2026 (round 6)
+Maturity of the existing functions: same numbers for any data source, fast
+on real data sizes, proven against references, traceable outputs.
+fix: results no longer depend on how the data was loaded. Nullable,
+  pyarrow and text-number columns are converted once (utils.normalize):
+  52 methods gave different numbers (counter totals counted the first
+  reading as production, downtime per shift was 0) and 172 crashed.
+  Rows with the same timestamp are ordered by uuid.
+perf: shift reports, maintenance trend fits, routing, warmup and stockout
+  methods are vectorized: 10-300x faster on 200k rows (nok_by_shift
+  59 s -> 1.3 s, remaining_useful_life 55 s -> 0.2 s).
+fix: DST fall-back nights no longer crash window flooring (floor_local);
+  duplicate timestamps no longer give infinite rates; single-row and
+  constant inputs, all-null/boolean string columns, and window <= 0 in
+  oscillation detection are handled.
+fix: capability trending uses the spec in force in each window; energy
+  methods with weekly/month-end windows report the real window (and
+  energy_per_unit / carbon_intensity_per_unit no longer return empty or
+  raise); downtime and shift handover read boolean run signals (was 100%
+  downtime); flow_constraint_analytics applies its thresholds;
+  from_shift_data matches string dates; detect_outlier_sensor needs
+  three sensors to name an outlier.
+fix: group counter totals add up to the signal total (counter_by_group):
+  every shift/day/operator/part/batch boundary lost one increment, and
+  alternating operators or parts were double counted (609 parts reported
+  on a 360-part counter). FlowConstraintEvents intervals end at the next
+  change.
+change: KPIs carry their basis (run/planned/excluded seconds, parts,
+  resets); every duration has a *_seconds column; seven summary methods
+  return a DataFrame (as_frame=False deprecated). See docs/migration.md.
+test: reference tests for SPC rules 1-8, Cp/Cpk (Montgomery), GUM,
+  Weibull (Lieblein-Zelen) and energy values; property tests; harness
+  dtypes check; examples/ and docstring examples run in the test suite.
+types: strict mypy flags for the whole library, no exemptions.
+fix: cycles, period cutters and object detection verified against
+  hand-built scenarios. Cycles: correct pairing for back-to-back and
+  nested markers, deterministic cycle_uuid, one half-open boundary rule.
+  Segments: the last period keeps its data, boundary samples are cut
+  once, segment_by_cut is no longer one piece off. Objects: empty
+  readings end a presence, change-encoded ids last to the data end,
+  hand-over events link once, pm4py export round-trips. All three are
+  10-100x faster.
+feat: severity_level (info/warn/critical) next to every categorical
+  severity, so detectors can be filtered together; detector labels stay.
+fix: lag_profile windows without speed data are NaN (was the lag at
+  min_speed); CriticalParameterRankingEvents needs no long-format frame;
+  TimeWindowedFeatureTable takes window (freq deprecated).
+docs: the site is cut from 139 to 106 pages (14k to 6k lines) and
+  rewritten in plain language; every example runs.
+
 # October 14, 2026 (round 5)
 Correct by default. Results change wherever data has counter resets,
 change-encoded signals, uneven sampling or several signals per frame; the

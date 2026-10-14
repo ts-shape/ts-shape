@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._windows import with_window_bounds
+from ts_shape.events._windows import window_bounds, with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_per_window
 from ts_shape.utils.deprecation import renamed_kwargs
@@ -208,8 +208,17 @@ class CarbonIntensityEvents(Base):
         out = pd.concat([scope1, scope2], axis=1).fillna(0.0).reset_index()
         out["total_kgco2e"] = out["scope1_kgco2e"] + out["scope2_kgco2e"]
         out["uuid"] = self.event_uuid
-        return with_window_bounds(
-            out[empty_cols].sort_values("start").reset_index(drop=True), window
+        # ``start`` is already the true window start (emissions_by_window is
+        # bounded); take each window's end from there instead of re-bounding.
+        ends = all_emissions.groupby("start")["end"].first()
+        out.insert(1, "end", out["start"].map(ends))
+        out.insert(
+            2, "duration_seconds", (out["end"] - out["start"]).dt.total_seconds()
+        )
+        return (
+            out[["start", "end", "duration_seconds", *empty_cols[1:]]]
+            .sort_values("start")
+            .reset_index(drop=True)
         )
 
     @renamed_kwargs(counter_column="value_column_counter")
@@ -271,8 +280,12 @@ class CarbonIntensityEvents(Base):
             .reset_index()
             .rename(columns={self.time_column: "start"})
         )
+        # ``totals`` carries true window starts; the counter raw resample labels.
+        counter_agg["start"] = window_bounds(counter_agg["start"], window)[0]
 
         merged = totals.merge(counter_agg, on="start", how="inner")
+        if merged.empty:
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
         merged["carbon_intensity"] = np.where(
             merged["units_produced"] > 0,
             merged["total_kgco2e"] / merged["units_produced"],
@@ -290,7 +303,7 @@ class CarbonIntensityEvents(Base):
             "improving",
             np.where(slope > 0.001, "worsening", "stable"),
         )
-        return with_window_bounds(merged[empty_cols], window)
+        return merged[["start", "end", "duration_seconds", *empty_cols[1:]]]
 
     def emission_factor_audit(self) -> pd.DataFrame:
         """Return the configured emission factors for audit and reporting.

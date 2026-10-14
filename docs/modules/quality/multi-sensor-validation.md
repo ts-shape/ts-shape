@@ -1,65 +1,36 @@
 # MultiSensorValidationEvents
 
-> Cross-validate redundant inline sensors measuring the same process variable. Detects disagreement, identifies drifting sensors, and assesses measurement consensus.
+Cross-checks redundant sensors that measure the same variable: windows where they disagree, pairwise bias, a consensus score, and which sensor deviates from the group.
 
-**Module:** `ts_shape.events.quality.multi_sensor_validation`  
-**Guide:** [Quality Control & SPC](../../guides/quality.md)
+`ts_shape.events.quality.multi_sensor_validation` · [Quality guide](../../guides/quality.md) · [API reference](../../reference/ts_shape/events/quality/multi_sensor_validation.md)
 
----
-
-## When to Use
-
-Use when you have 2+ redundant sensors measuring the same variable. Validates measurement consistency and identifies which sensor is drifting or failing. Common in critical process loops where redundant temperature, pressure, or flow sensors are installed for safety and accuracy.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.quality.multi_sensor_validation import MultiSensorValidationEvents
 
-validator = MultiSensorValidationEvents(
-    df,
-    signal_uuids=["temp_sensor_1", "temp_sensor_2", "temp_sensor_3"],
-)
+sensors = ["temp_1", "temp_2", "temp_3"]
+df = ts_shape.make_timeseries(sensors, n_points=1440, freq="1min", noise=0.1, seed=None)
+df.loc[df["uuid"] == "temp_3", "value_double"] += 0.8  # temp_3 reads high
 
-# Flag windows where sensor spread exceeds 0.5 degrees
-disagreements = validator.detect_disagreement(threshold=0.5, window="5min")
-
-# Compute pairwise bias between all sensor pairs
-bias = validator.pairwise_bias(window="1h")
-
-# Identify which sensor deviates most from the group
-outlier = validator.detect_outlier_sensor(window="1h", method="median")
-print(outlier[["start", "outlier_sensor", "deviation"]].head())
+msv = MultiSensorValidationEvents(df, signal_uuids=sensors)
+disagreements = msv.detect_disagreement(threshold=0.5, window="5min")
+bias = msv.pairwise_bias(window="1h")
+print(msv.detect_outlier_sensor(window="1h", method="median").head())
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns (per window) |
+|---|---|
+| `detect_disagreement(threshold, window='5min')` | windows where max − min across sensors exceeds `threshold`: `max_spread`, `sensor_high`, `sensor_low`, `duration` |
+| `pairwise_bias(window='1h')` | one row per sensor pair: `sensor_a`, `sensor_b`, `bias`, `abs_bias` |
+| `consensus_score(window='1h')` | `consensus_mean`, `spread_std`, `consensus_score` (1.0 = perfect agreement, 0.0 = high disagreement) |
+| `detect_outlier_sensor(window='1h', method='median')` | `outlier_sensor`, `deviation`, `other_sensors_mean` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_disagreement(threshold, window='5min')` | Flag windows where sensor spread exceeds threshold | DataFrame with `start`, `end`, `max_spread`, `sensor_high`, `sensor_low`, `duration` |
-| `pairwise_bias(window='1h')` | Mean difference between all sensor pairs per window | DataFrame with `start`, `sensor_a`, `sensor_b`, `bias`, `abs_bias` |
-| `consensus_score(window='1h')` | Measurement consensus (1.0 = perfect agreement) across all sensors | DataFrame with `start`, `consensus_mean`, `spread_std`, `consensus_score` |
-| `detect_outlier_sensor(window='1h', method='median')` | Identify the sensor furthest from group consensus | DataFrame with `start`, `outlier_sensor`, `deviation`, `other_sensors_mean` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Set threshold from historical data"
-    Determine the `detect_disagreement` threshold from a known-good calibration period. Compute the maximum spread during that period and add a small margin — this avoids false alarms from normal sensor-to-sensor variation.
-
-!!! info "Related modules"
-    - [Sensor Drift](sensor-drift.md) — deep-dive into drift for the sensor identified as outlier
-    - [Signal Quality](signal-quality.md) — check individual sensor data quality before cross-validation
-    - [Gauge R&R](gauge-rr.md) — formal measurement system analysis for sensor qualification
-
----
-
-## See Also
-
-- [Quality Control & SPC Guide](../../guides/quality.md) — narrative overview
-- [API Reference](../../reference/ts_shape/events/quality/multi_sensor_validation.md) — full parameter docs
+- Telling which sensor is off needs at least three sensors; windows with fewer reporting are skipped with a `DataQualityWarning`. On ties the first sensor in `signal_uuids` wins.
+- `method` is `"median"` or `"mean"` (the group center).
+- Take the `detect_disagreement` threshold from the largest spread seen in a known-good period plus a margin.

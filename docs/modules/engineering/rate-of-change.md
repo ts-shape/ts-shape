@@ -1,63 +1,33 @@
 # RateOfChangeEvents
 
-> Detect rapid changes and step jumps in a numeric signal.
+Intervals where a signal changes faster than a rate limit, rate statistics per window, and sudden step jumps.
 
-**Module:** `ts_shape.events.engineering.rate_of_change`  
-**Guide:** [Process Engineering](../../guides/engineering.md)
+`ts_shape.events.engineering.rate_of_change` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/engineering/rate_of_change.md)
 
----
-
-## When to Use
-
-Use for detecting sudden process upsets, valve jumps, or rapid thermal changes. Complements threshold monitoring by catching the rate of change, not just the absolute level. Especially useful as an early-warning mechanism before a threshold is actually breached.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.engineering.rate_of_change import RateOfChangeEvents
 
-detector = RateOfChangeEvents(
-    dataframe=process_data,
-    signal_uuid="flow_rate_01",
-)
+df = ts_shape.make_timeseries(["flow_rate"], n_points=3600, freq="1s", baseline=50.0, noise=0.1)
+df.loc[1800:, "value_double"] += 20.0  # step
 
-# Detect intervals where the rate exceeds 0.5 units/second
-rapid = detector.detect_rapid_change(threshold=0.5)
-
-# Get rate statistics per hour for trend reporting
-stats = detector.rate_statistics(window="1h")
-
-# Find sudden step jumps (large delta in short time)
-steps = detector.detect_step_changes(min_delta=20.0, max_duration="5s")
+roc = RateOfChangeEvents(df, "flow_rate")
+rapid = roc.detect_rapid_change(threshold=0.5)
+stats = roc.rate_statistics(window="15min")
+print(roc.detect_step_changes(min_delta=10.0, max_duration="5s"))
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `detect_rapid_change(threshold)` | intervals with \|rate\| ≥ `threshold`: `start`, `end`, `max_rate`, `direction` |
+| `rate_statistics(window='1h')` | per window: `mean_rate`, `std_rate`, `max_rate`, `min_rate` |
+| `detect_step_changes(min_delta, max_duration='5s')` | jumps of at least `min_delta` within `max_duration`: `time` (after the jump), `value_before`, `value_after`, `delta`, `duration` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_rapid_change(threshold)` | Intervals where \|rate\| (units/second) reaches `threshold` (the rate is taken between consecutive samples; passing the deprecated `window` warns) | DataFrame: `start`, `end`, `max_rate`, `direction` |
-| `rate_statistics(window='1h')` | Rate statistics per window | DataFrame: `start`, `mean_rate`, `std_rate`, `max_rate`, `min_rate` |
-| `detect_step_changes(min_delta, max_duration='5s')` | Sudden value jumps | DataFrame: `time`, `value_before`, `value_after`, `delta`, `duration` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Pair with threshold monitoring for defense-in-depth"
-    A rapid rate of change often precedes a threshold breach. Use `detect_rapid_change()` as an early warning, and `ThresholdMonitoringEvents` as the definitive alarm. This two-layer approach gives operators more lead time.
-
-!!! info "Related modules"
-    - [Threshold Monitoring](threshold-monitoring.md) — absolute-level alarms that complement rate detection
-    - [Setpoint Events](setpoint-events.md) — distinguish intentional setpoint steps from unexpected jumps
-    - [Disturbance Recovery](disturbance-recovery.md) — characterize recovery after a detected upset
-
----
-
-## See Also
-
-- [Process Engineering Guide](../../guides/engineering.md)
-- [API Reference](../../reference/ts_shape/events/engineering/rate_of_change.md)
+- Rates are in signal units per second, computed between consecutive samples. Each run of consecutive samples at or above `threshold` is one interval; filter on `duration_seconds` to drop short ones.
+- `detect_rapid_change(window=...)` is deprecated and ignored.

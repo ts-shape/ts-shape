@@ -3,9 +3,9 @@
 Demonstration of production tracking in ts-shape.
 
 This script shows how to use:
-1. ShiftReporting (shift production, comparison, targets)
-2. DowntimeTracking (downtime by shift and reason)
-3. CycleTimeTracking (cycle time analysis by part number)
+1. ShiftReportEvents (shift production, comparison, targets)
+2. DowntimeEvents (downtime by shift and reason)
+3. CycleTimeEvents (cycle time analysis by part number)
 """
 
 import pandas as pd
@@ -17,9 +17,9 @@ import os
 # Add parent directory to path to import ts_shape
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from ts_shape.events.production.shift_reporting import ShiftReporting
-from ts_shape.events.production.downtime_tracking import DowntimeTracking
-from ts_shape.events.production.cycle_time_tracking import CycleTimeTracking
+from ts_shape.events.production.shift_reporting import ShiftReportEvents
+from ts_shape.events.production.downtime_tracking import DowntimeEvents
+from ts_shape.events.production.cycle_time_tracking import CycleTimeEvents
 
 
 def create_shift_production_data():
@@ -162,7 +162,7 @@ def demo_shift_reporting():
     df = create_shift_production_data()
     print(f"\nDataset: {len(df)} records over 5 days")
 
-    reporter = ShiftReporting(
+    reporter = ShiftReportEvents(
         df,
         shift_definitions={
             'shift_1': ('06:00', '14:00'),
@@ -224,7 +224,7 @@ def demo_downtime_tracking():
     df = create_downtime_data()
     print(f"\nDataset: {len(df)} records")
 
-    tracker = DowntimeTracking(
+    tracker = DowntimeEvents(
         df,
         shift_definitions={
             'shift_1': ('06:00', '14:00'),
@@ -283,7 +283,7 @@ def demo_cycle_time_tracking():
     df = create_cycle_time_data()
     print(f"\nDataset: {len(df)} records (2 part types)")
 
-    tracker = CycleTimeTracking(df)
+    tracker = CycleTimeEvents(df)
 
     # Cycle times by part
     print("\n--- Cycle Times by Part ---")

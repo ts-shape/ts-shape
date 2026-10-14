@@ -12,14 +12,16 @@ Two modes of operation:
 """
 
 import logging
+from typing import Any, Literal, overload
 
 import pandas as pd
 
+from ts_shape.events._compat import state_mask, warn_dict_return
 from ts_shape.events._windows import add_shift_window, data_tz
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class, keyword_only
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,11 @@ class ShiftHandoverEvents(Base):
         )
 
     Both patterns return the same output schema.
+
+    Run state may be a string state signal (``running_value="Running"`` in
+    ``value_string``) or a boolean run signal (``value_bool``, True =
+    running); see :meth:`generate_report`. ``downtime_seconds`` is the
+    downtime in seconds; ``downtime_minutes`` is kept as a convenience.
     """
 
     MERGE_KEYS = ["date", "shift"]
@@ -73,6 +80,19 @@ class ShiftHandoverEvents(Base):
         "quality_pct",
         "availability_pct",
         "downtime_minutes",
+        "downtime_seconds",
+    ]
+    ISSUE_COLUMNS = [
+        "start",
+        "end",
+        "duration_seconds",
+        "date",
+        "shift",
+        "metric",
+        "value",
+        "threshold",
+        "severity",
+        "severity_level",
     ]
 
     def __init__(
@@ -91,17 +111,8 @@ class ShiftHandoverEvents(Base):
         }
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        time = timestamp.time()
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-        return "unknown"
+        """Assign shift based on time of day."""
+        return assign_shift(timestamp, self.shift_definitions)
 
     def _counter_by_shift(
         self,
@@ -115,7 +126,10 @@ class ShiftHandoverEvents(Base):
 
         When ``handle_resets`` is True a decreasing counter is treated as a
         reset and the post-reset production is counted, and a ``resets`` column
-        with the per-shift reset count is added. When ``production_day`` is True
+        with the per-shift reset count is added. Increments are computed once
+        over the whole signal and booked to the shift of the reading that
+        reports them, so the shifts add up to the signal total. When
+        ``production_day`` is True
         an overnight shift's post-midnight readings are attributed to the
         shift's start date.
         """
@@ -131,20 +145,19 @@ class ShiftHandoverEvents(Base):
             return pd.DataFrame(columns=cols)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
-        data["shift"] = data[self.time_column].apply(self._assign_shift)
+        data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
         data["date"] = self._group_dates(data, production_day)
 
-        results = []
-        for (dt, shift), grp in data.groupby(["date", "shift"]):
-            grp = grp.sort_values(self.time_column)
-            counter_series = grp[value_column]
-            qty = int(counter_quantity(counter_series, handle_resets=handle_resets))
-            row = {"date": dt, "shift": shift, "quantity": qty}
-            if handle_resets:
-                row["resets"] = count_resets(counter_series)
-            results.append(row)
-
-        return pd.DataFrame(results)
+        # Increments over the whole signal, booked to the shift of the reading
+        # that reports them, so the shifts add up to the signal total.
+        totals = counter_totals(
+            data, value_column, ["date", "shift"], handle_resets=handle_resets
+        )
+        totals["quantity"] = totals["quantity"].astype(int)
+        cols = ["date", "shift", "quantity"]
+        if handle_resets:
+            cols.append("resets")
+        return totals[cols]
 
     def _group_dates(self, data: pd.DataFrame, production_day: bool) -> pd.Series:
         """Grouping date per row: calendar date, or production day when set."""
@@ -157,7 +170,7 @@ class ShiftHandoverEvents(Base):
     def _availability_by_shift(
         self,
         state_uuid: str,
-        running_value: str,
+        running_value: str | bool,
         value_column: str,
         *,
         production_day: bool = True,
@@ -170,13 +183,21 @@ class ShiftHandoverEvents(Base):
         )
         if data.empty:
             return pd.DataFrame(
-                columns=["date", "shift", "availability_pct", "downtime_minutes"]
+                columns=[
+                    "date",
+                    "shift",
+                    "availability_pct",
+                    "downtime_minutes",
+                    "downtime_seconds",
+                ]
             )
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
-        data["shift"] = data[self.time_column].apply(self._assign_shift)
+        data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
         data["date"] = self._group_dates(data, production_day)
-        data["is_running"] = data[value_column] == running_value
+        data["is_running"] = state_mask(
+            data, value_column, running_value, bool_value=True
+        )
         data["duration_s"] = data[self.time_column].diff().shift(-1).dt.total_seconds()
         data = data[data["duration_s"].notna()]
 
@@ -192,6 +213,7 @@ class ShiftHandoverEvents(Base):
                     "shift": shift,
                     "availability_pct": avail,
                     "downtime_minutes": down / 60,
+                    "downtime_seconds": float(down),
                 }
             )
 
@@ -222,15 +244,19 @@ class ShiftHandoverEvents(Base):
                 ``ShiftReportEvents.shift_production()``.
             quality_df: DataFrame with [date, shift, ok_parts, nok_parts, quality_pct]
                 — e.g. from ``QualityEvents.nok_by_shift()``.  Optional.
-            downtime_df: DataFrame with [date, shift, availability_pct, downtime_minutes]
-                — e.g. from ``DowntimeEvents.downtime_by_shift()``.  Optional.
+            downtime_df: DataFrame with [date, shift, availability_pct,
+                downtime_seconds] (or the legacy ``downtime_minutes``) — e.g.
+                from ``DowntimeEvents.downtime_by_shift()``.  Optional.
             targets: Per-shift production targets (dict).
             report_date: Specific date (YYYY-MM-DD).  If None, uses latest.
 
         Returns:
             DataFrame with columns:
             date, shift, production, production_target, production_achievement_pct,
-            ok_parts, nok_parts, quality_pct, availability_pct, downtime_minutes
+            ok_parts, nok_parts, quality_pct, availability_pct, downtime_minutes,
+            downtime_seconds. When ``downtime_df`` carries only one of
+            ``downtime_seconds`` / ``downtime_minutes``, the other is derived
+            from it.
         """
         output_cols = ShiftHandoverEvents.OUTPUT_COLUMNS
 
@@ -243,15 +269,23 @@ class ShiftHandoverEvents(Base):
         if "quantity" in prod.columns and "production" not in prod.columns:
             prod = prod.rename(columns={"quantity": "production"})
 
+        # Dates may come as strings, datetimes or dates: compare them as dates
+        # in every frame, or the merges below silently match nothing.
+        def as_dates(frame: pd.DataFrame) -> pd.DataFrame:
+            frame = frame.copy()
+            frame["date"] = pd.to_datetime(frame["date"]).dt.date
+            return frame
+
+        prod = as_dates(prod)
+        if quality_df is not None and not quality_df.empty:
+            quality_df = as_dates(quality_df)
+        if downtime_df is not None and not downtime_df.empty:
+            downtime_df = as_dates(downtime_df)
+
         # Filter to report date
         if report_date:
             target_date = pd.to_datetime(report_date).date()
         else:
-            prod["date"] = (
-                pd.to_datetime(prod["date"]).dt.date
-                if not pd.api.types.is_object_dtype(prod["date"])
-                else prod["date"]
-            )
             target_date = prod["date"].max()
 
         result = prod[prod["date"] == target_date].copy()
@@ -286,9 +320,18 @@ class ShiftHandoverEvents(Base):
                 d_cols.append("availability_pct")
             if "downtime_minutes" in d.columns:
                 d_cols.append("downtime_minutes")
+            if "downtime_seconds" in d.columns:
+                d_cols.append("downtime_seconds")
             result = result.merge(d[d_cols], on=["date", "shift"], how="left")
 
-        for col in ["availability_pct", "downtime_minutes"]:
+        has_minutes = "downtime_minutes" in result.columns
+        has_seconds = "downtime_seconds" in result.columns
+        if has_seconds and not has_minutes:
+            result["downtime_minutes"] = result["downtime_seconds"] / 60
+        elif has_minutes and not has_seconds:
+            result["downtime_seconds"] = result["downtime_minutes"] * 60
+
+        for col in ["availability_pct", "downtime_minutes", "downtime_seconds"]:
             if col not in result.columns:
                 result[col] = 0.0
 
@@ -332,7 +375,7 @@ class ShiftHandoverEvents(Base):
         targets: dict[str, float] | None = None,
         quality_target_pct: float = 98.0,
         availability_target_pct: float = 90.0,
-        running_value: str = "Running",
+        running_value: str | bool = "Running",
         value_column_counter: str = "value_integer",
         value_column_state: str = "value_string",
         report_date: str | None = None,
@@ -352,7 +395,10 @@ class ShiftHandoverEvents(Base):
             targets: Per-shift production targets.
             quality_target_pct: Quality target percentage.
             availability_target_pct: Availability target percentage.
-            running_value: Value indicating machine is running.
+            running_value: Value indicating machine is running. A bool
+                matches a boolean run signal (``value_bool`` by default); a
+                boolean run signal is also used, with True as running, when
+                the state rows carry no ``value_column_state`` value.
             value_column_counter: Column for counter values.
             value_column_state: Column for state values.
             report_date: Specific date (YYYY-MM-DD). If None, uses latest date.
@@ -360,7 +406,12 @@ class ShiftHandoverEvents(Base):
                 count the production after the reset for production, ok_parts and
                 nok_parts. A shift boundary is exactly where counters commonly
                 reset, so ``max(0, last - first)`` (``handle_resets=False``) under-reports any
-                shift containing a reset. The result gains a ``resets`` column
+                shift containing a reset. The increments are computed once over
+                each whole signal (before ``report_date`` is selected) and
+                booked to the shift of the reading that reports them, so the
+                shifts add up to the signal totals; with
+                ``handle_resets=False`` the production between two shifts'
+                readings is lost. The result gains a ``resets`` column
                 with the number of production-counter resets in each shift.
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night
@@ -374,8 +425,9 @@ class ShiftHandoverEvents(Base):
             ``shift_definitions``, tz-aware in the data's tz; an overnight
             shift ends on the next day), date, shift, production,
             production_target, production_achievement_pct, ok_parts,
-            nok_parts, quality_pct, availability_pct, downtime_minutes,
-            and ``resets`` (only when ``handle_resets=True``).
+            nok_parts, quality_pct, availability_pct, downtime_minutes
+            (convenience), downtime_seconds, and ``resets`` (only when
+            ``handle_resets=True``).
         """
         output_cols = list(self.OUTPUT_COLUMNS)
         if handle_resets:
@@ -448,13 +500,22 @@ class ShiftHandoverEvents(Base):
         if not avail.empty:
             avail_filt = avail[avail["date"] == target_date]
             result = result.merge(
-                avail_filt[["date", "shift", "availability_pct", "downtime_minutes"]],
+                avail_filt[
+                    [
+                        "date",
+                        "shift",
+                        "availability_pct",
+                        "downtime_minutes",
+                        "downtime_seconds",
+                    ]
+                ],
                 on=["date", "shift"],
                 how="left",
             )
         else:
             result["availability_pct"] = 0.0
             result["downtime_minutes"] = 0.0
+            result["downtime_seconds"] = 0.0
 
         result = result.fillna(0)
 
@@ -478,6 +539,42 @@ class ShiftHandoverEvents(Base):
             data_tz(self.dataframe[self.time_column]),
         )
 
+    @overload
+    def highlight_issues(
+        self,
+        counter_uuid: str | None = ...,
+        ok_counter_uuid: str | None = ...,
+        nok_counter_uuid: str | None = ...,
+        state_uuid: str | None = ...,
+        *,
+        report_df: pd.DataFrame | None = ...,
+        thresholds: dict[str, float] | None = ...,
+        targets: dict[str, float] | None = ...,
+        running_value: str | bool = ...,
+        value_column_counter: str = ...,
+        value_column_state: str = ...,
+        report_date: str | None = ...,
+        as_frame: Literal[True] = ...,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def highlight_issues(
+        self,
+        counter_uuid: str | None = ...,
+        ok_counter_uuid: str | None = ...,
+        nok_counter_uuid: str | None = ...,
+        state_uuid: str | None = ...,
+        *,
+        report_df: pd.DataFrame | None = ...,
+        thresholds: dict[str, float] | None = ...,
+        targets: dict[str, float] | None = ...,
+        running_value: str | bool = ...,
+        value_column_counter: str = ...,
+        value_column_state: str = ...,
+        report_date: str | None = ...,
+        as_frame: Literal[False],
+    ) -> list[dict[str, Any]]: ...
+
     @keyword_only(1)
     def highlight_issues(
         self,
@@ -489,11 +586,12 @@ class ShiftHandoverEvents(Base):
         report_df: pd.DataFrame | None = None,
         thresholds: dict[str, float] | None = None,
         targets: dict[str, float] | None = None,
-        running_value: str = "Running",
+        running_value: str | bool = "Running",
         value_column_counter: str = "value_integer",
         value_column_state: str = "value_string",
         report_date: str | None = None,
-    ) -> list[dict[str, str]]:
+        as_frame: bool = True,
+    ) -> pd.DataFrame | list[dict[str, Any]]:
         """Identify issues that need attention.
 
         Can be called in two ways:
@@ -518,15 +616,29 @@ class ShiftHandoverEvents(Base):
             value_column_counter: Column for counter values.
             value_column_state: Column for state values.
             report_date: Specific date (YYYY-MM-DD).
+            as_frame: When True (default), return a DataFrame (see below).
+                ``as_frame=False`` returns the list of dicts; it is
+                deprecated, emits a ``DeprecationWarning`` and will be removed
+                in the next major release.
 
         Returns:
-            List of dicts with keys: shift, metric, value, threshold, severity.
+            With ``as_frame=True`` (default), one row per issue with columns
+            (:attr:`ISSUE_COLUMNS`): start, end, duration_seconds (the shift
+            window of the report row; NaT / NaN when the report has none,
+            e.g. one built by :meth:`from_shift_data`), date, shift, metric,
+            value, threshold, severity, severity_level (warn / critical).
+
+            With ``as_frame=False`` (deprecated), a list of dicts with keys
+            shift, metric, value, threshold, severity.
+
             severity is 'warning' (within 5% of threshold) or 'critical'.
 
         Raises:
             ValueError: If ``report_df`` is None and any of the four signal
                 UUIDs is missing, so no report can be built.
         """
+        if not as_frame:
+            warn_dict_return("ShiftHandoverEvents.highlight_issues", kind="list")
         thresholds = thresholds or {
             "production_achievement_pct": 95.0,
             "quality_pct": 98.0,
@@ -563,10 +675,8 @@ class ShiftHandoverEvents(Base):
                 f"UUIDs to build the report; missing: {', '.join(missing)}"
             )
 
-        if report.empty:
-            return []
-
-        issues = []
+        issues: list[dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for _, row in report.iterrows():
             for metric, threshold in thresholds.items():
                 if metric not in row:
@@ -574,17 +684,29 @@ class ShiftHandoverEvents(Base):
                 value = row[metric]
                 if value < threshold:
                     severity = "warning" if value >= threshold * 0.95 else "critical"
-                    issues.append(
+                    issue = {
+                        "shift": row["shift"],
+                        "metric": metric,
+                        "value": float(value),
+                        "threshold": threshold,
+                        "severity": severity,
+                    }
+                    issues.append(issue)
+                    rows.append(
                         {
-                            "shift": row["shift"],
-                            "metric": metric,
-                            "value": float(value),
-                            "threshold": threshold,
-                            "severity": severity,
+                            "start": row.get("start", pd.NaT),
+                            "end": row.get("end", pd.NaT),
+                            "duration_seconds": row.get(
+                                "duration_seconds", float("nan")
+                            ),
+                            "date": row.get("date"),
+                            **issue,
                         }
                     )
 
-        return issues
+        if not as_frame:
+            return issues
+        return pd.DataFrame(rows, columns=self.ISSUE_COLUMNS)
 
 
 #: Deprecated name, removed in the next major release.

@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
@@ -116,15 +117,17 @@ class AnomalyCorrelationEvents(Base):
         rows: list[dict[str, Any]] = []
         processed = set()
 
-        for i, row in combined.iterrows():
+        # combined is time-sorted, so each window [t, t + window] is a
+        # positional slice (found by binary search, not a mask per anomaly).
+        times = combined[self.time_column]
+        labels = combined.index.to_numpy()
+        uuids = combined["uuid"].to_numpy()
+        lo = times.searchsorted(times, side="left")
+        hi = times.searchsorted(times + window_td, side="right")
+        for p, (i, t) in enumerate(zip(labels, times)):
             if i in processed:
                 continue
-            t = row[self.time_column]
-            window_mask = (combined[self.time_column] >= t) & (
-                combined[self.time_column] <= t + window_td
-            )
-            window_data = combined[window_mask]
-            unique_signals = window_data["uuid"].unique()
+            unique_signals = pd.unique(uuids[lo[p] : hi[p]])
 
             if len(unique_signals) >= min_signals:
                 involved = ",".join(sorted(unique_signals))
@@ -136,11 +139,11 @@ class AnomalyCorrelationEvents(Base):
                         "uuid": self.event_uuid,
                         "source_uuid": involved,
                         "is_delta": True,
-                        "anomaly_count": len(window_data),
+                        "anomaly_count": int(hi[p] - lo[p]),
                         "signal_uuids_involved": involved,
                     }
                 )
-                processed.update(window_data.index.tolist())
+                processed.update(labels[lo[p] : hi[p]].tolist())
 
         return pd.DataFrame(rows, columns=cols)
 
@@ -191,27 +194,34 @@ class AnomalyCorrelationEvents(Base):
         rows: list[dict[str, Any]] = []
         used_followers = set()
 
-        for _, lrow in leader_anom.iterrows():
-            lt = lrow[self.time_column]
-            candidates = follower_anom[
-                (follower_anom[self.time_column] > lt)
-                & (follower_anom[self.time_column] <= lt + max_delay_td)
-            ]
-            for fidx, frow in candidates.iterrows():
+        f_times = follower_anom[self.time_column]
+        f_labels = follower_anom.index.to_numpy()
+        sorted_followers = f_times.is_monotonic_increasing
+        for lt in leader_anom[self.time_column]:
+            # Followers in (lt, lt + max_delay], in follower order.
+            if sorted_followers:
+                a = f_times.searchsorted(lt, side="right")
+                b = f_times.searchsorted(lt + max_delay_td, side="right")
+                cand: range | np.ndarray = range(a, b)
+            else:
+                cand = np.flatnonzero(
+                    ((f_times > lt) & (f_times <= lt + max_delay_td)).to_numpy()
+                )
+            for p in cand:
+                fidx = f_labels[p]
                 if fidx not in used_followers:
+                    ft = f_times.iloc[p]
                     rows.append(
                         {
-                            "systime": frow[self.time_column],
+                            "systime": ft,
                             "leader_time": lt,
-                            "follower_time": frow[self.time_column],
+                            "follower_time": ft,
                             "uuid": self.event_uuid,
                             "source_uuid": f"{leader_uuid},{follower_uuid}",
                             "is_delta": True,
                             "leader_uuid": leader_uuid,
                             "follower_uuid": follower_uuid,
-                            "delay_seconds": (
-                                frow[self.time_column] - lt
-                            ).total_seconds(),
+                            "delay_seconds": (ft - lt).total_seconds(),
                         }
                     )
                     used_followers.add(fidx)

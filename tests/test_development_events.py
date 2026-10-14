@@ -558,3 +558,21 @@ class TestCriticalParameterRankingEvents:
                 outcome_column="yield",
                 method="bogus",
             )
+
+
+def test_cpp_ranking_needs_no_long_format_frame():
+    from ts_shape.events.development.critical_parameter_ranking import (
+        CriticalParameterRankingEvents,
+    )
+
+    runs = pd.DataFrame(
+        {"temp": [180, 185, 190, 195, 200], "yield_pct": [90, 92, 94, 96, 98]}
+    )
+    ranked = CriticalParameterRankingEvents().rank(runs, ["temp"], "yield_pct")
+    assert ranked["parameter"].tolist() == ["temp"]
+    # A per-run table without a time column also works as the constructor frame.
+    assert (
+        CriticalParameterRankingEvents(pd.DataFrame())
+        .rank(runs, ["temp"], "yield_pct")
+        .equals(ranked)
+    )

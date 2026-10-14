@@ -1,73 +1,40 @@
 # BatchTrackingEvents
 
-> Track batch/recipe production from a batch-ID string signal.
+Batches, their durations and yields from a batch-ID string signal. A batch is a run of constant batch-ID values; a new batch starts when the value changes.
 
-**Module:** `ts_shape.events.production.batch_tracking`
-**Guide:** [OEE Analytics](../../guides/oee-analytics.md)
+`ts_shape.events.production.batch_tracking` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/batch_tracking.md)
 
----
-
-## When to Use
-
-Use for batch production environments (food, pharma, chemicals). Tracks batch boundaries from a batch-ID signal and computes duration and yield statistics. Essential for regulatory traceability and for optimizing batch scheduling to minimize transition losses.
-
----
-
-## Quick Example
+## Example
 
 ```python
-from ts_shape.events.production.batch_tracking import BatchTrackingEvents
 import pandas as pd
-import numpy as np
+import ts_shape
+from ts_shape.events.production.batch_tracking import BatchTrackingEvents
 
-# Long format: a batch-ID string signal plus a monotonic part counter
-times = pd.date_range("2024-01-01 06:00", periods=360, freq="1min")
-batch = pd.DataFrame({
-    "systime": times,
-    "uuid": "line1:batch_id",
-    "value_string": ["BATCH-001"] * 90 + ["BATCH-002"] * 120 + ["BATCH-003"] * 150,
-})
-counter = pd.DataFrame({
-    "systime": times,
-    "uuid": "line1:part_counter",
-    "value_integer": np.arange(1, 361),
-})
-df = pd.concat([batch, counter], ignore_index=True)
+df = pd.concat([
+    ts_shape.make_id_signal("line1:batch_id", ["B-001", "B-002", "B-001"], hold=60, freq="1min"),
+    ts_shape.make_timeseries(["line1:part_counter"], n_points=180, freq="1min",
+                             baseline=0, noise=0, drift=360, value_column="value_integer"),
+], ignore_index=True)
 
 bt = BatchTrackingEvents(df, batch_uuid="line1:batch_id")
-batches = bt.detect_batches()
-stats = bt.batch_duration_statistics()
+print(bt.detect_batches())
 yields = bt.batch_yield(counter_uuid="line1:part_counter")
-matrix = bt.batch_transition_matrix()
-print(batches)
+matrix = bt.batch_transition_matrix(layout="wide")
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `detect_batches()` | one row per batch: `batch_id`, `start` (first sample), `end` (last sample), `duration_seconds`, `sample_count` |
+| `batch_duration_statistics()` | per batch ID: `count`, `min_`/`avg_`/`max_`/`total_duration_seconds` |
+| `batch_yield(counter_uuid, handle_resets=True)` | per batch: `batch_id`, `start`, `end`, `duration_seconds`, `quantity` (+ `resets`) |
+| `batch_transition_matrix(layout='long')` | `from_state`, `to_state`, `transition_count`; `layout='wide'` gives the from/to pivot table with a `total` column |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_batches()` | Identify batch start and end times from value changes in the batch-ID signal | DataFrame with `batch_id`, `start`, `end`, `duration_seconds`, `sample_count`, `uuid`, `source_uuid` |
-| `batch_duration_statistics()` | Compute duration statistics (count, min, avg, max, total) grouped by batch type | DataFrame with `batch_id`, `count`, `min_`/`avg_`/`max_`/`total_duration_seconds` |
-| `batch_yield(counter_uuid, handle_resets=True)` | Calculate production quantity per batch from a monotonic counter signal | DataFrame with `batch_id`, `start`, `end`, `duration_seconds`, `quantity` (plus `resets` unless `handle_resets=False`) |
-| `batch_transition_matrix(layout='long')` | Count which batch follows which, useful for scheduling analysis | DataFrame with `from_state`, `to_state`, `transition_count`, one row per observed transition (the empty result keeps these columns). `layout='wide'` returns the from-batch by to-batch pivot table with a `total` column |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Watch for empty or null batch IDs"
-    Gaps in the batch-ID signal (empty strings or nulls) often represent cleaning or changeover periods. Filter these out or treat them as explicit changeover events.
-
-!!! info "Related modules"
-    - [Changeover](changeover.md) — detects product changes, complementary for discrete manufacturing
-    - [Part Production Tracking](part-tracking.md) — tracks production by part number rather than batch
-    - [Quality Tracking](quality-tracking.md) — quality metrics that can be joined to batch data
-
----
-
-## See Also
-
-- [OEE Analytics Guide](../../guides/oee-analytics.md)
-- [API Reference](../../reference/ts_shape/events/production/batch_tracking.md)
+- `batch_yield` with `handle_resets=True` books every reset-aware counter increment to the batch that was running when it was produced: a reading reports the production since the previous reading, so it belongs to the batch whose ID was last seen strictly before it. Production between the last sample of one batch and the first sample of the next counts for the earlier batch, and the batch quantities add up to the counter total.
+- Readings before the first or after the last batch-ID sample, or while the batch ID is empty, belong to no batch.
+- `handle_resets=False` keeps `max(0, last - first)` over each batch's `[start, end]`.
+- With fewer than two batches the transition matrix is empty (long layout keeps its columns).

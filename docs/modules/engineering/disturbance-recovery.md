@@ -1,73 +1,38 @@
 # DisturbanceRecoveryEvents
 
-> Detect external upsets hitting a process signal and measure recovery.
+Process upsets on a signal (deviations from a rolling baseline or a setpoint), how long the process took to recover, how often upsets occur, and whether the process settled at a different level afterwards.
 
-**Module:** `ts_shape.events.engineering.disturbance_recovery`  
-**Guide:** [Process Engineering](../../guides/engineering.md)
+`ts_shape.events.engineering.disturbance_recovery` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/engineering/disturbance_recovery.md)
 
----
-
-## When to Use
-
-Use to detect and characterize external process upsets (material changes, ambient disturbances, upstream failures) and measure how quickly the process recovers. Critical for root cause analysis and for quantifying process robustness against unplanned events.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.engineering.disturbance_recovery import DisturbanceRecoveryEvents
 
-analyzer = DisturbanceRecoveryEvents(
-    dataframe=process_data,
-    signal_uuid="reactor_temperature_01",
-)
+df = ts_shape.make_timeseries(["reactor_temp"], n_points=2880, freq="10s", baseline=180.0, noise=0.3)
+df.loc[1500:1540, "value_double"] += 6.0  # upset of about 7 min
 
-# Detect disturbances exceeding 3 sigma from baseline
-disturbances = analyzer.detect_disturbances(
-    baseline_window="10min",
-    n_sigma=3.0
-)
-
-# Measure recovery time for each disturbance
-recovery = analyzer.recovery_time(
-    baseline_window="10min",
-    recovery_pct=0.95
-)
-
-# Count disturbances per 8-hour shift
-frequency = analyzer.disturbance_frequency(window="8h")
-
-# Compare process behavior before vs after each upset
-comparison = analyzer.before_after_comparison(baseline_window="10min")
+dr = DisturbanceRecoveryEvents(df, "reactor_temp")
+print(dr.detect_disturbances(baseline_window="10min", n_sigma=3.0, min_duration="30s"))
+recovery = dr.recovery_time(baseline_window="10min", recovery_pct=0.95, max_recovery="1h")
+frequency = dr.disturbance_frequency(window="8h")
+before_after = dr.before_after_comparison(comparison_window="5min")
 ```
 
----
+## Methods
 
-## Key Methods
+All arguments are keyword-only; each method also takes `baseline_window` and `n_sigma`.
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_disturbances(baseline_window='10min', n_sigma=3.0, min_duration='30s')` | Detect process upsets | DataFrame of disturbance intervals (`start`, `end`, `peak_deviation`, `direction`, `duration_seconds`, ...) |
-| `recovery_time(baseline_window='10min', n_sigma=3.0, recovery_pct=0.95, max_recovery='1h')` | Recovery time per disturbance | DataFrame: `start`, `end`, `recovery_time_seconds`, `recovered`, `residual_offset`, ... |
-| `disturbance_frequency(window='8h')` | Count disturbances per window | DataFrame: `start`, `disturbance_count`, `total_disturbance_seconds`, `pct_time_disturbed`, `avg_recovery_seconds` |
-| `before_after_comparison(baseline_window='10min', comparison_window='5min')` | Before vs after statistics | DataFrame: `start`, `pre_mean`, `post_mean`, `mean_shift`, `variance_ratio`, ... |
+| Method | Returns |
+|---|---|
+| `detect_disturbances(baseline_window='10min', n_sigma=3.0, min_duration='30s')` | one interval per upset: `peak_deviation`, `mean_deviation`, `direction`, `disturbance_type` |
+| `recovery_time(recovery_pct=0.95, max_recovery='1h')` | per upset: `recovery_time_seconds`, `recovered`, `pre_disturbance_mean`, `post_recovery_mean`, `residual_offset` |
+| `disturbance_frequency(window='8h')` | per window: `disturbance_count`, `total_disturbance_seconds`, `pct_time_disturbed`, `avg_recovery_seconds` |
+| `before_after_comparison(comparison_window='5min')` | per upset: `pre_mean`, `post_mean`, `pre_std`, `post_std`, `mean_shift`, `variance_ratio` |
 
----
+## Notes
 
-## Tips & Hints
-
-!!! tip "Correlate disturbances with upstream events"
-    After detecting disturbances, use `before_after_comparison()` to quantify the impact, then cross-reference timestamps with upstream signals or operator logs to identify root causes. Pair with `disturbance_frequency()` to spot recurring patterns.
-
-!!! info "Related modules"
-    - [Rate of Change](rate-of-change.md) — detect the rapid change that characterizes the onset of a disturbance
-    - [Control Loop Health](control-loop-health.md) — assess how well the control loop handles the upset
-    - [Process Stability Index](process-stability.md) — disturbances directly impact the stability score
-
----
-
-## See Also
-
-- [Process Engineering Guide](../../guides/engineering.md)
-- [API Reference](../../reference/ts_shape/events/engineering/disturbance_recovery.md)
+- A disturbance is where the signal deviates from the rolling mean over `baseline_window` by more than `n_sigma` rolling standard deviations, for at least `min_duration`. With `setpoint_uuid=` in the constructor, the setpoint replaces the rolling baseline.
+- Recovered means the deviation has fallen to within `1 − recovery_pct` of the peak deviation, searched up to `max_recovery` after the upset.
+- `before_after_comparison` compares `comparison_window` just before the start and just after the end; upsets with fewer than two samples on either side are skipped.

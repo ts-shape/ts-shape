@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,11 @@ NONE: tuple[str, ...] = ()
 
 
 def _r(
-    template: str, pack: str, shape: str = P, objs: tuple[str, ...] = ASSET, **kw
+    template: str,
+    pack: str,
+    shape: str = P,
+    objs: tuple[str, ...] = ASSET,
+    **kw: Any,
 ) -> LabelRule:
     return LabelRule(
         template=template, pack=pack, shape=shape, produces_objects=objs, **kw
@@ -87,6 +92,51 @@ def _r(
 # ----------------------------------------------------------------------------
 
 REGISTRY: dict[tuple[str, str], LabelRule] = {
+    ("SteadyStateDetectionEvents", "steady_state_statistics"): _r(
+        "engineering.steady_state.statistics",
+        _E,
+        S,
+        standard_attrs={"ts_shape:sample_count": "num_steady_periods"},
+    ),
+    ("BottleneckDetectionEvents", "throughput_constraint_summary"): _r(
+        "production.bottleneck.constraint_summary",
+        _PR,
+        S,
+        objs=("asset", "station"),
+        standard_attrs={"ts_shape:sample_count": "bottleneck_count"},
+    ),
+    ("FlowConstraintEvents", "flow_constraint_analytics"): _r(
+        "production.flow.{constraint_type}_summary",
+        _PR,
+        S,
+        objs=("asset", "station"),
+        standard_attrs={"ts_shape:sample_count": "event_count"},
+    ),
+    ("MachineStateEvents", "state_quality_metrics"): _r(
+        "production.machine_state.quality_metrics",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "total_transitions"},
+    ),
+    ("TargetEvents", "target_hit_rate"): _r(
+        "production.target.hit_rate",
+        _PR,
+        S,
+        standard_attrs={"ts_shape:sample_count": "total_days"},
+    ),
+    ("ToleranceDeviationEvents", "capability_indices"): _r(
+        "quality.tolerance.capability",
+        _Q,
+        S,
+        standard_attrs={"ts_shape:sample_count": "sample_count"},
+    ),
+    ("ShiftHandoverEvents", "highlight_issues"): _r(
+        "production.shift.issue_{metric}",
+        _PR,
+        S,
+        objs=("asset", "shift"),
+        standard_attrs={"ts_shape:sample_count": None},
+    ),
     # ---- correlation -------------------------------------------------------
     ("AnomalyCorrelationEvents", "cascade_detection"): _r(
         "correlation.anomaly.cascade",
@@ -2671,10 +2721,10 @@ def render_activity(rule: LabelRule, row: Mapping[str, object]) -> str:
             parts.append(template[j:])
             break
         field_name = template[j + 1 : k]
-        val = row.get(field_name) if hasattr(row, "get") else None  # type: ignore[arg-type]
+        val = row.get(field_name) if hasattr(row, "get") else None
         if val is None:
             try:
-                val = row[field_name]  # type: ignore[index]
+                val = row[field_name]
             except (KeyError, TypeError):
                 val = "unknown"
         parts.append(str(val))

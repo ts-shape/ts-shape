@@ -2,7 +2,12 @@ import logging
 from typing import Any
 
 import pandas as pd
-from pandas.api.types import is_bool_dtype, is_numeric_dtype, is_object_dtype
+from pandas.api.types import (
+    infer_dtype,
+    is_bool_dtype,
+    is_numeric_dtype,
+    is_object_dtype,
+)
 
 from .boolean_stats import BooleanStatistics
 from .numeric_stats import NumericStatistics
@@ -68,6 +73,23 @@ class DescriptiveFeatures:
         for col in group.columns:
             if col == "uuid":
                 continue
+            # Long-format value columns are object dtype as soon as a signal
+            # has missing values: judge them by the values they hold.
+            kind = (
+                infer_dtype(group[col], skipna=True)
+                if is_object_dtype(group[col])
+                else None
+            )
+            if kind == "boolean":
+                values = group[col].dropna().astype(bool).to_frame(col)
+                results[col] = {
+                    "boolean_stats": BooleanStatistics.summary_as_dict(values, col)
+                }
+            elif kind in ("integer", "floating", "mixed-integer-float", "decimal"):
+                values = pd.to_numeric(group[col]).to_frame(col)
+                results[col] = {
+                    "numeric_stats": NumericStatistics.summary_as_dict(values, col)
+                }
             elif is_bool_dtype(group[col]):
                 # Use BooleanStatistics for boolean columns
                 results[col] = {

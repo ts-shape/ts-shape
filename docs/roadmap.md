@@ -1,136 +1,139 @@
-# Roadmap: the reference library for manufacturing time series
+# Roadmap
 
-ts-shape is broad: more than 70 detectors in 8 packs. The goal is to make it
-**trusted by default** and **understood immediately**. Two gap screens (see
-the screening reports) fixed about 90 correctness bugs. The same six bug
-classes kept coming back:
-- counter resets;
-- interval closing;
-- logging gaps;
-- sample-count means;
-- timezones;
-- per-signal grouping.
+The goal is a library whose results are correct by default and easy to
+understand. Two rounds of gap screening fixed about 90 correctness bugs, and
+most of them fell into six recurring classes: counter resets, interval
+closing, logging gaps, sample-count means, time zones and per-signal
+grouping. Because the same classes keep recurring, the fix is in the
+architecture rather than in individual detectors.
 
-That points to the architecture, not to individual detectors. The roadmap
-fixes the architecture.
+## W1: signal semantics core (started)
 
-## W1 — Signal semantics core ✅ (started)
-`SignalSpec`, `infer_specs`, `profile()` and the spec-driven primitives
-(`ts_shape.signals`). Detectors call the primitives instead of re-deriving
-semantics row by row. See [Signal semantics & profiling](guides/signals.md).
+`SignalSpec`, `infer_specs`, `profile()` and the spec-driven primitives in
+`ts_shape.signals`. Detectors call the primitives instead of re-deriving
+signal semantics. See [Signal semantics and profiling](guides/signals.md).
 
 ## Consistency audit (done, October 2026)
-A full audit of wording, names, outputs and behavior. The rules are in [Naming & Output Conventions](naming.md), and tests enforce them:
-- **Docs show code that runs:** every documented call binds against the real signature.
-- **Detector outputs follow their declared shape:** the harness checks this, and empty results keep every column.
-- **One name per concept:** a lint over every signature, with deprecated aliases for old names.
-- **Every public parameter is documented.**
-- **Inputs are checked the same way** in every pack.
 
-Resolved (October 2026): full precision, value columns checked, `best_and_worst_shifts` returns a DataFrame, and `batch_transition_matrix` returns a long table.
+An audit of wording, names, outputs and behavior. The rules are in [Naming and
+output conventions](naming.md), and tests enforce them:
 
-Left, all additive (new accepted forms, nothing removed):
-- **Run state in one form.** `DowntimeEvents` expects string states (`"Running"`), while `MachineStateEvents` and `OEEEvents` expect booleans. Accept either through `SignalSpec`.
-- **One place for the signal uuid.** Some detectors take it in the constructor, others per method.
-- **Durations in one form.** `OEEEvents` takes `ideal_cycle_time` as float seconds; `takt_time` takes an offset string. Accept both everywhere.
+- every documented call binds against the real signature;
+- detector outputs follow their declared shape, and empty results keep every column;
+- one name per concept, checked by a lint over every signature, with deprecated aliases for old names;
+- every public parameter is documented;
+- inputs are checked the same way in every pack.
 
-For a future major release: remove the deprecated aliases (they warn since 0.0.63).
+Also done in October 2026: full precision, value columns checked,
+`best_and_worst_shifts` returns a DataFrame, `batch_transition_matrix` returns
+a long table.
 
-## W2 — 1.0: correct by default, one API, one output
-- ✅ The correctness flags (`handle_resets`, `interval_end`, `time_weighted`,
-  `group_by_uuid`, `slope_per`, ...) default to the correct behavior (October 2026).
-  `max_gap` stays `None` (no cap), because no single value fits every
-  signal; set it per signal or through a `SignalSpec`.
-- ✅ No silent data loss: skipped inputs warn (`DataQualityWarning`), loaders
-  take `errors="warn" | "raise"`.
-- Migrate the detectors pack by pack onto the primitives. Defaults come from
-  the spec.
-- One enforced output contract (point / interval / summary) for every
-  detector, and one API style with standard keyword names.
+Open, all additive (new accepted forms, nothing removed):
+
+- **Run state in one form.** `DowntimeEvents` reads string states
+  (`"Running"`) or booleans, `MachineStateEvents` and `OEEEvents` read
+  booleans. Accept either everywhere through `SignalSpec`.
+- **One place for the signal uuid.** Some detectors take it in the
+  constructor, others per method.
+- **Durations in one form.** `OEEEvents` takes `ideal_cycle_time` in float
+  seconds, `takt_time` takes an offset string. Accept both everywhere.
+
+In a future major release the deprecated aliases (warning since 0.0.63) are
+removed.
+
+## W2: 1.0, correct by default, one API, one output
+
+- Done (October 2026): the correctness flags (`handle_resets`,
+  `interval_end`, `time_weighted`, `group_by_uuid`, `slope_per`, ...) default
+  to the correct behavior. `max_gap` stays `None` (no cap), because no single
+  value fits every signal; set it per signal or through a `SignalSpec`.
+- Done: no silent data loss. Skipped inputs warn with `DataQualityWarning`;
+  loaders take `errors="warn" | "raise"`.
+- Move the detectors pack by pack onto the primitives, with defaults taken
+  from the spec.
+- One enforced output contract (point, interval, summary) and one keyword
+  style for every detector.
 - KPIs carry their basis (run seconds, planned seconds, excluded gaps,
   resets), so every number can be audited.
 
-## W3 — Proven correctness ✅ (harness started)
+## W3: proven correctness (harness started)
+
 - A registry-wide invariant harness (`tests/invariants`) runs every detector
-  method on empty input, on tz-aware input, and with an unrelated extra
-  signal. It is pinned to a ratchet baseline.
-- Property-based tests (hypothesis) cover the primitives.
-- Reference-validated KPI tests:
-  - AIAG MSA Gauge R&R ✅ (average-and-range worksheet: K1/K2/K3 and the
-    `EV²/(n·r)` AV correction);
-  - ISO 50001 / 50006 EnPI ✅ (opt-in regression baseline);
-  - ISO 22400 OEE and MTBF / MTTR ✅ (reference examples);
-  - next: AIAG SPC rules and Cp/Cpk.
-- The docs are tested: every `ts_shape` name in a code block must import,
-  and CI builds the docs with `mkdocs build --strict`.
+  method on empty input, on tz-aware input, with an unrelated extra signal,
+  and with nullable, pyarrow and text-number dtypes (same result required).
+  It is pinned to a baseline: 278 methods, 0 failures.
+- Property-based tests (hypothesis) cover the primitives, counters, intervals
+  and window bounds.
+- Reference tests, done: AIAG MSA Gauge R&R (average-and-range method,
+  K1/K2/K3 and the `EV²/(n·r)` correction of AV); ISO 50001 / 50006 EnPI;
+  ISO 22400 OEE and MTBF / MTTR; Western Electric / Nelson SPC rules 1 to 8;
+  Cp, Cpk, Pp, Ppk, Cpm (Montgomery, Introduction to SQC); GUM measurement
+  uncertainty (JCGM 100 §4.4.3); Weibull MLE (Lieblein–Zelen ball bearings,
+  Lawless Ex. 5.2.2).
+- The docs are tested: every `ts_shape` name in a code block must import, and
+  CI builds the docs with `mkdocs build --strict`.
 
-## W4 — Scale and lean install
-- Core install: pandas, numpy and scipy only. Cloud and SQL loaders become
-  extras.
-- Vectorize the remaining row loops.
-- After 1.0: backend-agnostic primitives (Polars / DuckDB) and
-  TimescaleDB push-down. Publish benchmarks.
+## W4: scale and lean install
 
-## W5 — Understanding
+- Done: the core install needs only pandas, numpy and scipy; cloud and SQL
+  loaders are extras.
+- Done: slow row loops vectorized (shift assignment, maintenance trend fits,
+  routing, warm-up, stockout; 10 to 300 times faster on 200k rows). PELT
+  change points are still quadratic on data without change points (about 6 s
+  on 200k rows). A scale test guards the fixed methods.
+- After 1.0: backend-agnostic primitives (Polars, DuckDB), TimescaleDB
+  push-down, published benchmarks.
+
+## W5: understanding
+
 - `profile()` as the entry point.
 - A question-first cookbook ("Why did OEE drop?", "Which station is the
-  bottleneck?", "Is my gauge capable?") on a bundled, realistic plant
-  dataset.
-- Auto-generated detector reference: assumptions, input signal kinds, and
-  output shape.
+  bottleneck?", "Is my gauge capable?") on a bundled, realistic plant dataset.
+- A generated detector reference: assumptions, input signal kinds and output
+  shape.
 
-## W6 — Ecosystem
-- Grafana / TimescaleDB recipes.
-- A CLI (`ts-shape profile data.parquet`).
-- ✅ Deprecation policy: renamed names keep working with a warning and are
+## W6: ecosystem
+
+- Grafana and TimescaleDB recipes.
+- A command line (`ts-shape profile data.parquet`).
+- Done: deprecation policy. Renamed names keep working with a warning and are
   removed only in a major release.
 
 ## Process analytics
-Added:
-- change-point detection (`ChangePointEvents`: exact PELT and binary segmentation);
-- multivariate SPC (`MultivariateSPCEvents`: Hotelling T² with Phase I / II limits and contributions);
-- reliability (`ReliabilityEvents`: MTBF / MTTR per ISO 22400 and a censored Weibull life model).
 
-Candidates from past sessions, by value and effort:
+Added: change-point detection (`ChangePointEvents`: exact PELT and binary
+segmentation), multivariate SPC (`MultivariateSPCEvents`: Hotelling T² with
+Phase I and II limits and contributions), reliability (`ReliabilityEvents`:
+MTBF and MTTR per ISO 22400, censored Weibull life model).
+
+Candidates:
 
 | Feature | Value | Effort |
 |---|---|---|
 | Vibration: FFT spectral band energy | high | M |
-| Tool wear vs. measurement drift; first-article / setup verification; part disposition | high | M each |
-| MQTT / Kafka streaming loader | med-high | M |
-| Detector evaluation (precision / recall against labels) | med | M |
-| Scaling transforms | med | S |
-| Energy / production plot helpers in an optional `[viz]` extra | med | S |
+| Tool wear vs. measurement drift; first-article and setup verification; part disposition | high | M each |
+| MQTT or Kafka streaming loader | medium-high | M |
+| Detector evaluation (precision and recall against labels) | medium | M |
+| Scaling transforms | medium | S |
+| Energy and production plot helpers in an optional `[viz]` extra | medium | S |
 
-## Recoverable work on other branches
-Two large branches from earlier sessions were never merged. Both are intact
-and can be ported in their own PRs. Reconcile each with the core first:
+## Unmerged branches
 
-- **`claude/reporting-python-library-2fhu1a`**: `ts_shape.reporting`
-  (8.7k lines, 211 tests).
-  - Contents:
-    - facility calendar with IANA time zones;
-    - weighted KPI roll-up;
-    - ISA-95 hierarchy;
-    - benchmarking, scorecard and variance bridge;
-    - FX normalization;
-    - reporting coverage.
-  - Reconcile:
-    - build the calendar on `signals.windows` / `shift_windows` (DST-correct
-      already) instead of a second implementation;
-    - drop its docs-CI job (the strict docs build is now in `ci.yml`);
-    - keep SECURITY.md and the issue templates.
-- **`claude/global-production-reporting-w5f10n`**: `FleetProductionReport`
-  and `FleetSpec` (11k lines).
-  - Contents:
-    - machine-status adapters (PackML, stacklight, code maps);
-    - counter wrap vs. reset;
-    - part-done pulses;
-    - cycle-time unit inference;
-    - production context with late binding.
-  - Reconcile:
-    - map the status adapters onto `SignalSpec(kind="state")` and
-      `OperatingStateEvents`;
-    - add counter wrap as a `reset_policy` (`"wrap"`) in `SignalSpec` and
-      `utils.counters`, instead of a parallel counter model;
-    - fold cycle-time unit inference into `infer_specs`.
+Two large branches from earlier work were never merged. Both can be ported in
+their own pull requests after reconciling them with the core:
+
+- **`claude/reporting-python-library-2fhu1a`**: `ts_shape.reporting` (8.7k
+  lines, 211 tests): facility calendar with IANA time zones, weighted KPI
+  roll-up, ISA-95 hierarchy, benchmarking, scorecard and variance bridge, FX
+  normalization, reporting coverage. To reconcile: build the calendar on
+  `signals.windows` / `shift_windows` (already DST-correct) instead of a second
+  implementation; drop its docs CI job (the strict docs build is in `ci.yml`);
+  keep SECURITY.md and the issue templates.
+- **`claude/global-production-reporting-w5f10n`**: `FleetProductionReport` and
+  `FleetSpec` (11k lines): machine-status adapters (PackML, stack light, code
+  maps), counter wrap vs. reset, part-done pulses, cycle-time unit inference,
+  production context with late binding. To reconcile: map the status adapters
+  onto `SignalSpec(kind="state")` and `OperatingStateEvents`; add counter wrap
+  as a `reset_policy` (`"wrap"`) in `SignalSpec` and `utils.counters` instead
+  of a parallel counter model; fold cycle-time unit inference into
+  `infer_specs`.

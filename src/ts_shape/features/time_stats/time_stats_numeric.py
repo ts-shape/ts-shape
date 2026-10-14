@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 
@@ -140,12 +142,9 @@ class TimeGroupedStatistics(Base):
         Returns:
             pd.DataFrame: A DataFrame with the time intervals and the calculated statistics for each method.
         """
-        # Initialize an empty DataFrame for combining results
-        result_df = pd.DataFrame()
-
-        # Calculate each requested statistic and join to the result DataFrame
-        for method in stat_methods:
-            stat_df = cls.calculate_statistic(
+        # One column per statistic, aligned on the (uuid,) time-window index.
+        frames = [
+            cls.calculate_statistic(
                 dataframe,
                 time_column,
                 value_column,
@@ -154,9 +153,11 @@ class TimeGroupedStatistics(Base):
                 group_by_uuid=group_by_uuid,
                 handle_resets=handle_resets,
             )
-            result_df = result_df.join(stat_df, how="outer")
-
-        return result_df
+            for method in stat_methods
+        ]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, axis=1)
 
     @classmethod
     def calculate_custom_func(
@@ -165,7 +166,7 @@ class TimeGroupedStatistics(Base):
         time_column: str,
         value_column: str,
         freq: str,
-        func,
+        func: Callable[[pd.Series], Any],
     ) -> pd.DataFrame:
         """
         Apply a custom aggregation function on the value column over the grouped time intervals.

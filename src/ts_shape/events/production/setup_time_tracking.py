@@ -14,9 +14,41 @@ import pandas as pd
 from ts_shape.events._windows import add_period_window
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
+
+_PRODUCT_COLS = [
+    "from_product",
+    "to_product",
+    "avg_minutes",
+    "avg_seconds",
+    "min_minutes",
+    "min_seconds",
+    "max_minutes",
+    "max_seconds",
+    "count",
+]
+_STATS_COLS = [
+    "total_setups",
+    "total_minutes",
+    "total_seconds",
+    "avg_minutes",
+    "avg_seconds",
+    "median_minutes",
+    "median_seconds",
+    "std_minutes",
+    "std_seconds",
+    "pct_of_available_time",
+]
+_TREND_COLS = [
+    "period",
+    "avg_setup_minutes",
+    "avg_setup_seconds",
+    "setup_count",
+    "total_setup_minutes",
+    "total_setup_seconds",
+]
 
 
 class SetupTimeEvents(Base):
@@ -28,6 +60,9 @@ class SetupTimeEvents(Base):
 
     Merge keys: [date, shift] for shift-level, [period] for trend data,
     [from_product, to_product] for product transition analysis.
+
+    Durations are reported in seconds (``*_seconds``); the ``*_minutes``
+    columns are kept as a convenience.
 
     Pipeline example::
 
@@ -79,17 +114,8 @@ class SetupTimeEvents(Base):
         }
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        time = timestamp.time()
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-        return "unknown"
+        """Assign shift based on time of day."""
+        return assign_shift(timestamp, self.shift_definitions)
 
     def _extract_setup_intervals(
         self,
@@ -104,7 +130,7 @@ class SetupTimeEvents(Base):
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=["start", "end", "duration_minutes"])
+            return pd.DataFrame(columns=["start", "end", "duration_minutes", "_dur_s"])
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
 
@@ -114,7 +140,7 @@ class SetupTimeEvents(Base):
 
         setup_blocks = data[data["is_setup"]]
         if setup_blocks.empty:
-            return pd.DataFrame(columns=["start", "end", "duration_minutes"])
+            return pd.DataFrame(columns=["start", "end", "duration_minutes", "_dur_s"])
 
         intervals = []
         for _, block in setup_blocks.groupby("block"):
@@ -127,13 +153,15 @@ class SetupTimeEvents(Base):
             else:
                 end = block[self.time_column].iloc[-1]
 
-            duration = (end - start).total_seconds() / 60
+            seconds = (end - start).total_seconds()
+            duration = seconds / 60
             if duration > 0:
                 intervals.append(
                     {
                         "start": start,
                         "end": end,
                         "duration_minutes": duration,
+                        "_dur_s": seconds,
                     }
                 )
 
@@ -162,9 +190,12 @@ class SetupTimeEvents(Base):
             DataFrame with columns:
             - start, end, duration_seconds (float seconds, end - start),
                 uuid (event uuid), source_uuid (state_uuid),
-                duration_minutes, date, shift
+                duration_minutes (convenience: duration_seconds / 60), date,
+                shift
         """
-        intervals = self._extract_setup_intervals(state_uuid, setup_value, value_column)
+        intervals = self._extract_setup_intervals(
+            state_uuid, setup_value, value_column
+        ).drop(columns=["_dur_s"])
         if intervals.empty:
             return pd.DataFrame(
                 columns=[
@@ -179,7 +210,7 @@ class SetupTimeEvents(Base):
                 ]
             )
 
-        intervals["shift"] = intervals["start"].apply(self._assign_shift)
+        intervals["shift"] = assign_shift(intervals["start"], self.shift_definitions)
         intervals["date"] = (
             production_dates(
                 intervals["start"], intervals["shift"], self.shift_definitions
@@ -217,22 +248,15 @@ class SetupTimeEvents(Base):
 
         Returns:
             DataFrame with columns:
-            - from_product, to_product, avg_minutes, min_minutes, max_minutes, count
+            - from_product, to_product, avg_minutes, avg_seconds, min_minutes,
+                min_seconds, max_minutes, max_seconds, count
+            The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
         """
         intervals = self._extract_setup_intervals(
             state_uuid, setup_value, value_column_state
         )
         if intervals.empty:
-            return pd.DataFrame(
-                columns=[
-                    "from_product",
-                    "to_product",
-                    "avg_minutes",
-                    "min_minutes",
-                    "max_minutes",
-                    "count",
-                ]
-            )
+            return pd.DataFrame(columns=_PRODUCT_COLS)
 
         part_data = (
             self.dataframe[self.dataframe["uuid"] == part_id_uuid]
@@ -240,16 +264,7 @@ class SetupTimeEvents(Base):
             .sort_values(self.time_column)
         )
         if part_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "from_product",
-                    "to_product",
-                    "avg_minutes",
-                    "min_minutes",
-                    "max_minutes",
-                    "count",
-                ]
-            )
+            return pd.DataFrame(columns=_PRODUCT_COLS)
 
         part_data[self.time_column] = pd.to_datetime(part_data[self.time_column])
 
@@ -271,24 +286,17 @@ class SetupTimeEvents(Base):
                     "from_product": from_product,
                     "to_product": to_product,
                     "duration_minutes": interval["duration_minutes"],
+                    "duration_s": interval["_dur_s"],
                 }
             )
 
         if not rows:
-            return pd.DataFrame(
-                columns=[
-                    "from_product",
-                    "to_product",
-                    "avg_minutes",
-                    "min_minutes",
-                    "max_minutes",
-                    "count",
-                ]
-            )
+            return pd.DataFrame(columns=_PRODUCT_COLS)
 
         transitions = pd.DataFrame(rows)
+        grouped = transitions.groupby(["from_product", "to_product"])
         result = (
-            transitions.groupby(["from_product", "to_product"])["duration_minutes"]
+            grouped["duration_minutes"]
             .agg(
                 [
                     ("avg_minutes", "mean"),
@@ -299,6 +307,18 @@ class SetupTimeEvents(Base):
             )
             .reset_index()
         )
+        seconds = (
+            grouped["duration_s"]
+            .agg(
+                [
+                    ("avg_seconds", "mean"),
+                    ("min_seconds", "min"),
+                    ("max_seconds", "max"),
+                ]
+            )
+            .reset_index(drop=True)
+        )
+        result = pd.concat([result, seconds], axis=1)[_PRODUCT_COLS]
 
         return result.sort_values("avg_minutes", ascending=False).reset_index(drop=True)
 
@@ -318,23 +338,17 @@ class SetupTimeEvents(Base):
 
         Returns:
             DataFrame (single row) with columns:
-            - total_setups, total_minutes, avg_minutes, median_minutes,
-                std_minutes, pct_of_available_time
+            - total_setups, total_minutes, total_seconds, avg_minutes,
+                avg_seconds, median_minutes, median_seconds, std_minutes,
+                std_seconds, pct_of_available_time
+            The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
         """
         intervals = self._extract_setup_intervals(state_uuid, setup_value, value_column)
         if intervals.empty:
-            return pd.DataFrame(
-                columns=[
-                    "total_setups",
-                    "total_minutes",
-                    "avg_minutes",
-                    "median_minutes",
-                    "std_minutes",
-                    "pct_of_available_time",
-                ]
-            )
+            return pd.DataFrame(columns=_STATS_COLS)
 
         durations = intervals["duration_minutes"]
+        seconds = intervals["_dur_s"].astype(float)
 
         # Calculate total available time from the data
         state_data = (
@@ -355,12 +369,17 @@ class SetupTimeEvents(Base):
                 {
                     "total_setups": len(durations),
                     "total_minutes": total_setup,
+                    "total_seconds": float(seconds.sum()),
                     "avg_minutes": durations.mean(),
+                    "avg_seconds": seconds.mean(),
                     "median_minutes": durations.median(),
+                    "median_seconds": seconds.median(),
                     "std_minutes": durations.std() if len(durations) > 1 else 0.0,
+                    "std_seconds": seconds.std() if len(seconds) > 1 else 0.0,
                     "pct_of_available_time": pct,
                 }
-            ]
+            ],
+            columns=_STATS_COLS,
         )
 
     def setup_trend(
@@ -384,14 +403,11 @@ class SetupTimeEvents(Base):
             - start, end, duration_seconds: the period's bin bounds (for the
                 default ``'1W'`` the Monday-to-Monday week; ``period`` is the
                 pandas bin label, i.e. the week's Sunday)
-            - period, avg_setup_minutes, setup_count, total_setup_minutes
+            - period, avg_setup_minutes, avg_setup_seconds, setup_count,
+                total_setup_minutes, total_setup_seconds (the ``*_minutes``
+                columns are a convenience)
         """
-        trend_cols = [
-            "period",
-            "avg_setup_minutes",
-            "setup_count",
-            "total_setup_minutes",
-        ]
+        trend_cols = _TREND_COLS
         intervals = self._extract_setup_intervals(state_uuid, setup_value, value_column)
         if intervals.empty:
             return add_period_window(pd.DataFrame(columns=trend_cols), window)
@@ -406,8 +422,10 @@ class SetupTimeEvents(Base):
                 {
                     "period": period,
                     "avg_setup_minutes": grp["duration_minutes"].mean(),
+                    "avg_setup_seconds": grp["_dur_s"].astype(float).mean(),
                     "setup_count": len(grp),
                     "total_setup_minutes": grp["duration_minutes"].sum(),
+                    "total_setup_seconds": float(grp["_dur_s"].sum()),
                 }
             )
 

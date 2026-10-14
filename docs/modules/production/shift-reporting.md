@@ -1,71 +1,39 @@
 # ShiftReportEvents
 
-> Simple shift-based production reporting from counter and part-ID signals.
+Production per shift, shift-to-shift comparison, actual against per-shift targets, and the best and worst shifts, from a production counter.
 
-**Module:** `ts_shape.events.production.shift_reporting`
-**Guide:** [Production Guide](../../guides/production.md)
+`ts_shape.events.production.shift_reporting` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/shift_reporting.md)
 
----
-
-## When to Use
-
-Use for daily shift performance reporting. Computes production quantities per shift and compares to targets and historical performance. Ideal for shift supervisors who need a quick view of how each shift performed relative to plan.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape.events.production.shift_reporting import ShiftReportEvents
 
-reporter = ShiftReportEvents(
-    production_df,
-    shift_definitions={
-        "morning": ("06:00", "14:00"),
-        "afternoon": ("14:00", "22:00"),
-        "night": ("22:00", "06:00"),
-    },
-)
+t = pd.date_range("2024-01-01 06:00", periods=7 * 1440, freq="1min")
+df = pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.arange(len(t)) // 2})
 
-# Production totals per shift
-shift_prod = reporter.shift_production(counter_uuid="line1:parts")
-
-# Compare shifts over the last 7 days
+reporter = ShiftReportEvents(df, shift_definitions={
+    "morning": ("06:00", "14:00"), "afternoon": ("14:00", "22:00"), "night": ("22:00", "06:00")})
+print(reporter.shift_production(counter_uuid="line1:parts").head())
 comparison = reporter.shift_comparison(counter_uuid="line1:parts", days=7)
-
-# Check actual vs targets (keys must match the shift names)
-targets = {"morning": 500, "afternoon": 480, "night": 400}
-result = reporter.shift_targets(counter_uuid="line1:parts", targets=targets)
+result = reporter.shift_targets(counter_uuid="line1:parts",
+                                targets={"morning": 250, "afternoon": 240, "night": 200})
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `shift_production(counter_uuid, part_id_uuid=None, date=None)` | `date`, `shift`, `quantity` (+ `part_number` with `part_id_uuid`, + `resets`) |
+| `shift_comparison(counter_uuid, days=7)` | per shift: `avg_quantity`, `min_quantity`, `max_quantity`, `std_quantity`, `days_count` |
+| `shift_targets(counter_uuid, targets, date=None)` | `date`, `shift`, `actual`, `target`, `variance`, `achievement_pct` |
+| `best_and_worst_shifts(counter_uuid, days=30)` | the five best and five worst shifts: `rank_type` (`best`/`worst`), `date`, `shift`, `quantity` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `shift_production(counter_uuid, part_id_uuid=None)` | Production totals per shift, optionally split by part ID | `DataFrame` with `date`, `shift`, `quantity` (plus `part_number` when `part_id_uuid` is given) |
-| `shift_comparison(counter_uuid, days=7)` | Compare shift performance over a number of days | `DataFrame` with `shift`, `avg_quantity`, `min_quantity`, `max_quantity`, `std_quantity`, `days_count` |
-| `shift_targets(counter_uuid, targets)` | Compare actual production against per-shift targets | `DataFrame` with `date`, `shift`, `actual`, `target`, `variance`, `achievement_pct` |
-| `best_and_worst_shifts(counter_uuid, days=30)` | Identify the five best and five worst shifts over a period | `DataFrame` with `start`, `end`, `duration_seconds`, `rank_type` (`"best"`/`"worst"`), `date`, `shift`, `quantity`. `as_frame=False` returns the deprecated `dict` form |
+## Notes
 
-Without `shift_definitions`, the default shifts are `shift_1` (06:00-14:00), `shift_2` (14:00-22:00) and `shift_3` (22:00-06:00).
-
----
-
-## Tips & Hints
-
-!!! tip "Define shift boundaries consistently"
-    Pass `shift_definitions` that match your plant's actual shift calendar. Misaligned boundaries will split production counts incorrectly.
-
-!!! info "Related modules"
-    - [Target Tracking](target-tracking.md) — generic target vs actual comparison
-    - [Shift Handover](shift-handover.md) — full handover reports combining production, quality, and downtime
-    - [Period Summary](period-summary.md) — roll up shift data into weekly/monthly summaries
-
----
-
-## See Also
-
-- [Production Guide](../../guides/production.md)
-- [API Reference](../../reference/ts_shape/events/production/shift_reporting.md)
+- Shift quantities add up to the counter total: reset-aware increments are computed once over the whole signal and each is booked to the shift of the reading that reports it, so parts made between the last reading of one shift and the first of the next count in the next shift. `date` only selects which shifts are reported. `handle_resets=False` uses the per-shift `max(0, last - first)` and loses that production.
+- Without `shift_definitions`, shifts are `shift_1` (06:00-14:00), `shift_2` (14:00-22:00) and `shift_3` (22:00-06:00). `targets` keys must match the shift names.
+- With `production_day=True` (default) the post-midnight part of a night shift belongs to the shift's start date.
+- `best_and_worst_shifts(..., as_frame=False)` returns the deprecated dict.

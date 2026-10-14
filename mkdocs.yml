@@ -1,5 +1,5 @@
 site_name: "ts-shape"
-site_description: "From raw industrial timeseries to OEE, SPC, and process-mining-ready event logs — a composable Python toolkit, DataFrame in, DataFrame out."
+site_description: "Manufacturing time-series analytics for pandas: events, KPIs, SPC and event logs from long-format signal data."
 site_url: "https://ts-shape.github.io/ts-shape"
 repo_url: "https://github.com/ts-shape/ts-shape"
 repo_name: "ts-shape"
@@ -10,58 +10,37 @@ edit_uri: edit/main/docs/
 not_in_nav: |
   /reference/index.md
 
+# Kept in the repository until it is rewritten; not part of the site.
 validation:
   omitted_files: warn
   absolute_links: warn
   unrecognized_links: warn
 
 nav:
-- Home:
-  - Overview: index.md
-  - Concept: concept.md
-  - Migration & Deprecations: migration.md
-  - Naming & Output Conventions: naming.md
-  - Changelog: changelog.md
-  - Roadmap: roadmap.md
-  - Gap screening (production): production_gap_screening.md
-  - Gap screening (other packs): gap_screening_other_packs.md
-  - Manufacturing operations research: research/manufacturing-operations-research.md
-  - License: license.md
-- Getting Started:
+- Home: index.md
+- Get started:
   - Installation: user_guide/installation.md
-  - Quick Start: user_guide/quick_start.md
+  - Quick start: user_guide/quick_start.md
+- Concepts:
+  - Data model and layers: concept.md
+  - Signal semantics and profiling: guides/signals.md
+  - Naming and output conventions: naming.md
 - Guides:
-  - Overview: guides/index.md
-  - Architecture: guides/architecture.md
-  - Architecture Map: guides/architecture-map.md
-  - Signal Semantics & Profiling: guides/signals.md
-  - Data Acquisition: guides/loading.md
-  - Signal Conditioning: guides/transforms.md
-  - Feature Extraction: guides/feature-extraction.md
-  - Pipeline: guides/pipeline-builder.md
-  - Signal Analytics: guides/statistics.md
-  - Quality Control & SPC: guides/quality.md
-  - Production Monitoring: guides/production.md
-  - OEE & Plant Analytics: guides/oee-analytics.md
-  - Product Traceability: guides/traceability.md
-  - Process Engineering: guides/engineering.md
-  - Shift Reports & KPIs: guides/reporting.md
-  - Event Log (XES & OCEL):
+  - Loading data: guides/loading.md
+  - Transforms and statistics: guides/transforms.md
+  - Cycles and segments: guides/feature-extraction.md
+  - Production and OEE: guides/production.md
+  - Quality and SPC: guides/quality.md
+  - Process engineering: guides/engineering.md
+  - Pipelines: guides/pipeline-builder.md
+  - Event log (XES and OCEL):
     - Overview: guides/eventlog/index.md
-    - Object Detection: guides/eventlog/objects.md
-    - Labeling Standard & Taxonomy: guides/eventlog/taxonomy.md
-    - Adapter Anatomy & Custom Adapters: guides/eventlog/adapters.md
-  - Event Handling — Visual Overview: guides/event-handling-flow.md
-  - Lambda Rules: guides/lambda-rules.md
-- Pipelines:
-  - Overview: pipelines/index.md
-  - OEE Dashboard: pipelines/oee-dashboard.md
-  - Cycle Time Analysis: pipelines/cycle-time-analysis.md
-  - Downtime Pareto: pipelines/downtime-pareto.md
-  - Quality & SPC: pipelines/quality-spc.md
-  - Process Engineering: pipelines/process-engineering.md
-  - Feature-Table Pipeline: pipelines/feature-pipeline.md
-- Module Reference:
+    - Object detection: guides/eventlog/objects.md
+    - Labeling and taxonomy: guides/eventlog/taxonomy.md
+    - Adapters: guides/eventlog/adapters.md
+  - Lambda rules: guides/lambda-rules.md
+  - Example scripts: examples.md
+- Module reference:
   - Overview: modules/index.md
   - Quality:
     - Outlier Detection: modules/quality/outlier-detection.md
@@ -156,27 +135,14 @@ nav:
     - Golden Batch Deviation: modules/development/golden-batch.md
     - Recipe Phase Adherence: modules/development/recipe-phase-adherence.md
     - Critical Parameter Ranking: modules/development/critical-parameter-ranking.md
-- Examples:
-  - Overview: examples/index.md
-  - Quality Events: examples/quality-events.md
-  - Production Events: examples/production-events.md
-  - Production Tracking: examples/production-tracking.md
-  - Engineering Events: examples/engineering-events.md
-  - Maintenance Events: examples/maintenance-events.md
-  - Energy Events: examples/energy-events.md
-  - Correlation Events: examples/correlation-events.md
-  - Supply Chain Events: examples/supplychain-events.md
-  - Loader Usage: examples/loader-usage.md
-  - Transform Operations: examples/transform-operations.md
-  - Statistics & Features: examples/statistics-features.md
-  - Cycle Extractor: examples/cycle-extractor.md
-  - Context Enricher: examples/context-enricher.md
-  - Statistics (Basic): examples/statistics-basic.md
-  - Event Log (XES & OCEL): examples/eventlog.md
-- API Reference: reference/
-- Development:
+- API reference: reference/
+- Project:
+  - Migration and deprecations: migration.md
+  - Changelog: changelog.md
+  - Roadmap: roadmap.md
   - Contributing: contributing.md
-  - Development Guide: insiders/development.md
+  - Development: insiders/development.md
+  - License: license.md
 
 theme:
   name: material
@@ -254,7 +220,6 @@ plugins:
 - gen-files:
     scripts:
     - scripts/gen_ref_pages.py  # (2)!
-    - scripts/gen_architecture_graph.py
 - literate-nav:
     nav_file: SUMMARY.md
 - mkdocstrings:
@@ -273,16 +238,6 @@ plugins:
           merge_init_into_class: true
           separate_signature: true
           show_signature_annotations: true
-
-extra_css:
-  - stylesheets/extra.css
-  - assets/architecture-sunburst.css
-
-extra_javascript:
-  - https://d3js.org/d3.v7.min.js
-  - assets/architecture-sunburst.js
-  - https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js
-  - javascripts/pyodide-repl.js
 
 extra:
   social:

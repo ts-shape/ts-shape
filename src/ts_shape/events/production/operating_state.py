@@ -107,29 +107,31 @@ class OperatingStateEvents(Base):
         min_td = pd.to_timedelta(min_duration)
         state_change = (sig["state"] != sig["state"].shift()).cumsum()
 
-        events: list[dict[str, Any]] = []
-        for _, seg in sig.groupby(state_change):
-            state_id = int(seg["state"].iloc[0])
-            start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
-            duration = end - start
-            if duration < min_td:
-                continue
-            events.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "state": state_id,
-                    "state_label": labels[state_id],
-                    "mean_value": float(seg[self.value_column].mean()),
-                    "duration_seconds": duration.total_seconds(),
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                }
-            )
-
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        # One row per run of equal states: positions of each run's first and
+        # last sample (runs are contiguous, in time order).
+        first_pos = np.flatnonzero(state_change.diff().fillna(1).to_numpy() != 0)
+        last_pos = np.r_[first_pos[1:] - 1, len(sig) - 1]
+        times = sig[self.time_column]
+        start = times.iloc[first_pos].reset_index(drop=True)
+        end = times.iloc[last_pos].reset_index(drop=True)
+        duration = end - start
+        keep = ~(duration < min_td).to_numpy()
+        if not keep.any():
+            return pd.DataFrame(columns=cols)
+        state_ids = sig["state"].iloc[first_pos[keep]].astype("int64")
+        means = sig.groupby(state_change, sort=True)[self.value_column].mean()
+        return pd.DataFrame(
+            {
+                "start": start[keep].reset_index(drop=True),
+                "end": end[keep].reset_index(drop=True),
+                "state": state_ids.to_numpy(),
+                "state_label": [labels[i] for i in state_ids.tolist()],
+                "mean_value": means.to_numpy(dtype="float64")[keep],
+                "duration_seconds": duration[keep].dt.total_seconds().to_numpy(),
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+            },
+            columns=cols,
         )
 
     state_duration_stats = deprecated_method("state_duration_statistics")
@@ -233,32 +235,24 @@ class OperatingStateEvents(Base):
                 pair for pair, count in transition_counts.items() if count >= threshold
             }
 
-        events: list[dict[str, Any]] = []
-        for i in range(len(intervals) - 1):
-            from_state = int(intervals.iloc[i]["state"])
-            to_state = int(intervals.iloc[i + 1]["state"])
-            is_unusual = (from_state, to_state) not in normal_transitions
-            events.append(
-                {
-                    "transition_time": intervals.iloc[i + 1]["start"],
-                    "from_state": from_state,
-                    "to_state": to_state,
-                    "from_label": (
-                        labels[from_state]
-                        if from_state < len(labels)
-                        else f"state_{from_state}"
-                    ),
-                    "to_label": (
-                        labels[to_state]
-                        if to_state < len(labels)
-                        else f"state_{to_state}"
-                    ),
-                    "is_unusual": is_unusual,
-                }
-            )
+        def _label(state_id: int) -> str:
+            return labels[state_id] if state_id < len(labels) else f"state_{state_id}"
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        from_states = [int(x) for x in states[:-1]]
+        to_states = [int(x) for x in states[1:]]
+        return pd.DataFrame(
+            {
+                "transition_time": intervals["start"].iloc[1:].reset_index(drop=True),
+                "from_state": from_states,
+                "to_state": to_states,
+                "from_label": [_label(x) for x in from_states],
+                "to_label": [_label(x) for x in to_states],
+                "is_unusual": [
+                    (a, b) not in normal_transitions
+                    for a, b in zip(from_states, to_states, strict=True)
+                ],
+            },
+            columns=cols,
         )
 
     @keyword_only(3)

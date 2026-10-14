@@ -1,82 +1,41 @@
 # QualityEvents
 
-> Track NOK (defective) parts and quality metrics from OK/NOK counter signals.
+NOK counts, NOK rate and first-pass yield per shift, per day and per part number, and a defect-reason Pareto, from cumulative OK/NOK counters.
 
-**Module:** `ts_shape.events.production.quality_tracking`
-**Guide:** [Production Monitoring](../../guides/production.md)
+`ts_shape.events.production.quality_tracking` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/quality_tracking.md)
 
----
-
-## When to Use
-
-Use for quality tracking on production lines. Computes scrap rates, first-pass yield, and defect Pareto by reason code per shift. Pairs naturally with the OEE calculator's quality component and with part-level tracking for per-SKU quality analysis.
-
----
-
-## Quick Example
+## Example
 
 ```python
-from ts_shape.events.production.quality_tracking import QualityEvents
-import pandas as pd
 import numpy as np
+import pandas as pd
+import ts_shape
+from ts_shape.events.production.quality_tracking import QualityEvents
 
-np.random.seed(42)
-t = pd.date_range("2024-01-01 06:00", periods=480, freq="1min")
-ok_counts = np.cumsum(np.random.choice([0, 1], size=480, p=[0.05, 0.95]))
-nok_counts = np.cumsum(np.random.choice([0, 1], size=480, p=[0.97, 0.03]))
-
-# Long format: one row per signal reading, identified by uuid
+t = pd.date_range("2024-01-01 06:00", periods=960, freq="1min")
 df = pd.concat([
-    pd.DataFrame({"uuid": "line1:ok", "systime": t, "value_integer": ok_counts}),
-    pd.DataFrame({"uuid": "line1:nok", "systime": t, "value_integer": nok_counts}),
-    pd.DataFrame({"uuid": "line1:part_id", "systime": t,
-                  "value_string": ["PN-100"] * 240 + ["PN-200"] * 240}),
-    pd.DataFrame({"uuid": "line1:defect_reason", "systime": t,
-                  "value_string": np.random.choice(
-                      ["SCRATCH", "DIMENSION", "CRACK", "COSMETIC"], size=480)}),
+    pd.DataFrame({"systime": t, "uuid": "line1:ok", "value_integer": np.arange(960)}),
+    pd.DataFrame({"systime": t, "uuid": "line1:nok", "value_integer": np.arange(960) // 30}),
+    ts_shape.make_id_signal("line1:part_id", ["PN-100", "PN-200"], hold=480, freq="1min", start="2024-01-01 06:00"),
 ], ignore_index=True)
 
 qt = QualityEvents(df)
-by_shift = qt.nok_by_shift(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok")
-by_part = qt.quality_by_part(
-    ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok", part_id_uuid="line1:part_id"
-)
-by_reason = qt.nok_by_reason(
-    nok_counter_uuid="line1:nok", defect_reason_uuid="line1:defect_reason"
-)
-daily = qt.daily_quality_summary(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok")
-print(by_shift)
+print(qt.nok_by_shift(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok"))
+by_part = qt.quality_by_part(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok", part_id_uuid="line1:part_id")
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `nok_by_shift(ok_counter_uuid, nok_counter_uuid)` | per date and shift: `ok_parts`, `nok_parts`, `total_parts`, `nok_rate_pct`, `first_pass_yield_pct`, `quality_pct` |
+| `quality_by_part(ok_counter_uuid, nok_counter_uuid, part_id_uuid)` | per part number: same metrics |
+| `nok_by_reason(nok_counter_uuid, defect_reason_uuid)` | per reason: `nok_parts`, `pct_of_total` |
+| `daily_quality_summary(ok_counter_uuid, nok_counter_uuid)` | per date: same metrics as `nok_by_shift` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `nok_by_shift(ok_counter_uuid, nok_counter_uuid)` | Compute NOK count and NOK rate per shift | DataFrame with `date`, `shift`, `ok_parts`, `nok_parts`, `total_parts`, `nok_rate_pct`, `first_pass_yield_pct`, `quality_pct` |
-| `quality_by_part(ok_counter_uuid, nok_counter_uuid, part_id_uuid)` | Break down quality metrics by part number | DataFrame with `part_number`, `ok_parts`, `nok_parts`, `total_parts`, `nok_rate_pct`, `first_pass_yield_pct`, `quality_pct` |
-| `nok_by_reason(nok_counter_uuid, defect_reason_uuid)` | Pareto of defect reasons by count | DataFrame with `reason`, `nok_parts`, `pct_of_total` |
-| `daily_quality_summary(ok_counter_uuid, nok_counter_uuid)` | Daily summary with total parts, rejects, and quality rates | DataFrame with `date`, `ok_parts`, `nok_parts`, `total_parts`, `nok_rate_pct`, `first_pass_yield_pct`, `quality_pct` |
+## Notes
 
-All methods count production across counter resets by default (`handle_resets=True`) and add a `resets` column; pass `handle_resets=False` for the plain `max(0, last - first)` quantity.
-
----
-
-## Tips & Hints
-
-!!! tip "Use monotonic counters, not deltas"
-    Pass cumulative OK and NOK counters — the module computes deltas internally. Counter resets are handled by default. If your PLC provides per-cycle OK/NOK flags instead, convert them to cumulative sums first.
-
-!!! info "Related modules"
-    - [OEE Calculator](oee-calculator.md) — uses quality ratio as the third OEE factor
-    - [Part Production Tracking](part-tracking.md) — production volumes to contextualize quality rates
-    - [Batch Tracking](batch-tracking.md) — quality metrics per batch for process industries
-    - [Cycle Time Tracking](cycle-time.md) — correlate slow cycles with quality defects
-
----
-
-## See Also
-
-- [Production Monitoring Guide](../../guides/production.md)
-- [API Reference](../../reference/ts_shape/events/production/quality_tracking.md)
+- Pass cumulative counters; the module takes the increments. Convert per-cycle OK/NOK flags to cumulative sums first.
+- With `handle_resets=True` (default) a decreasing counter is a reset and the parts after it still count; a `resets` column is added. Increments are computed once over each whole counter and booked to the shift, day, part or reason of the reading that reports them, so the groups add up to the counter total. `handle_resets=False` uses `max(0, last - first)` per group.
+- `quality_pct` equals `first_pass_yield_pct`; it is the column name other modules (OEE, shift handover, period summary) join on.
+- Default shifts are 06-14, 14-22, 22-06 (`shift_definitions=` to change).

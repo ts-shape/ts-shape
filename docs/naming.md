@@ -62,9 +62,11 @@ Every detector returns a `pandas.DataFrame` in one of four shapes (`ts_shape.eve
 
 - **Time** columns are tz-aware whenever the input is. Calendar labels (`date`, `shift`, `period`) may be added next to `start` and `end`, never instead of them.
 - **Units** go in the column name: `_seconds`, `_minutes`, `_hours`, `_kwh`. Percentages end in `_pct` and run 0–100. Fractions end in `_ratio` and run 0–1. A bare name such as `availability` does not say which.
-- **Durations** are float seconds in `duration_seconds`. Timedelta columns may be added for convenience, but not instead.
+- **Durations** are float seconds in `duration_seconds`. Timedelta columns may be added for convenience, but not instead. Any other duration is reported in `<name>_seconds`. A column in another unit (`_minutes`, or the legacy `_s`) is a convenience only and sits right after its `_seconds` twin.
+- **KPI percentages carry their basis:** a `_pct` computed from times or counts comes with the columns it was computed from (for example `run_seconds`, `planned_seconds`, `excluded_seconds`, `good_parts`, `total_parts`).
+- **Summary methods return a DataFrame** (one row, or one row per item) with `start` / `end` / `duration_seconds` for the data the summary covers. A dict or list return is legacy, available only through `as_frame=False`.
 - **Counts** use `<thing>_count`. Use `sample_count` for samples, not `n_samples`.
-- **Severity** is one of `info`, `warn`, `critical` when a detector emits a categorical level. Numeric scores go in `severity_score`.
+- **Severity:** a detector's `severity` keeps its own labels (`minor`/`major`, `low`/`medium`/`high`, ...). Every result with a categorical `severity` also has `severity_level`, one of `info`, `warn`, `critical`, so results of different detectors can be filtered together. A numeric score (outlier detection) has no level.
 - **Empty results** keep the full column set, so code written against a normal result also works when nothing was found.
 - **Precision:** numbers are returned as computed. Detectors never round; rounding belongs in reports.
 - **Defaults are correct:** a flag that fixes a known error (`handle_resets`, `interval_end="next_change"`, `time_weighted`, `group_by_uuid`) defaults to the correct behavior; the naive behavior is opt-in.

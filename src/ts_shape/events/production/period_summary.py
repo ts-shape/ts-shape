@@ -15,8 +15,8 @@ import logging
 import pandas as pd
 
 from ts_shape.events._windows import add_day_window, data_tz
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,12 @@ class PeriodSummaryEvents(Base):
 
         When ``handle_resets`` is True a decreasing counter is treated as a
         reset and the post-reset production is counted, and a ``resets`` column
-        with the per-day reset count is added.
+        with the per-day reset count is added. The increments are computed once
+        over the whole signal and booked to the day of the reading that reports
+        them, so the days add up to the signal total (the production between
+        the last reading of one day and the first of the next counts in the
+        next day). When False each day is ``max(0, last - first)`` of its own
+        readings.
         """
         data = (
             self.dataframe[self.dataframe["uuid"] == uuid]
@@ -84,17 +89,14 @@ class PeriodSummaryEvents(Base):
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["date"] = data[self.time_column].dt.date
 
-        results = []
-        for date, grp in data.groupby("date"):
-            grp = grp.sort_values(self.time_column)
-            counter_series = grp[value_column]
-            qty = int(counter_quantity(counter_series, handle_resets=handle_resets))
-            row = {"date": date, "quantity": qty}
-            if handle_resets:
-                row["resets"] = count_resets(counter_series)
-            results.append(row)
-
-        return pd.DataFrame(results)
+        # Increments over the whole signal, booked to the day of the reading
+        # that reports them, so the days add up to the signal total.
+        totals = counter_totals(
+            data, value_column, ["date"], handle_resets=handle_resets
+        )
+        totals["quantity"] = totals["quantity"].astype(int)
+        cols = ["date", "quantity", "resets"] if handle_resets else ["date", "quantity"]
+        return totals[cols]
 
     # ------------------------------------------------------------------
     # Pipeline entry-point: roll up any daily DataFrame
@@ -237,7 +239,9 @@ class PeriodSummaryEvents(Base):
             value_column: Column containing counter values.
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it (a
-                daily boundary is a common reset point). The result gains a
+                daily boundary is a common reset point). Increments are booked
+                to the day of the reading that reports them, so no production
+                is lost between days. The result gains a
                 ``resets`` column with the number of resets observed each week.
 
         Returns:
@@ -362,7 +366,9 @@ class PeriodSummaryEvents(Base):
             nok_counter_uuid: UUID of the NOK part counter (optional).
             value_column: Column containing counter values.
             handle_resets: When True (default), treat a decreasing counter as a reset and
-                count the production after the reset instead of losing it. The
+                count the production after the reset instead of losing it.
+                Increments are booked to the day of the reading that reports
+                them, so no production is lost between days. The
                 result gains a ``resets`` column with the number of resets
                 observed each month.
 

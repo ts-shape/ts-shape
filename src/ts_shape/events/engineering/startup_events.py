@@ -1,9 +1,11 @@
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
@@ -13,6 +15,17 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
+
+
+def _between(
+    frame: pd.DataFrame, time_column: str, t0: pd.Timestamp, t1: pd.Timestamp
+) -> pd.DataFrame:
+    """Rows of the time-sorted ``frame`` with ``t0 <= time <= t1``: the rows
+    (and index labels) of the boolean mask, found by binary search."""
+    times = frame[time_column]
+    return frame.iloc[
+        times.searchsorted(t0, side="left") : times.searchsorted(t1, side="right")
+    ]
 
 
 class StartupDetectionEvents(Base):
@@ -90,9 +103,7 @@ class StartupDetectionEvents(Base):
         events: list[dict[str, Any]] = []
         for t0 in rise_times:
             # ensure dwell above exit threshold for min_above
-            win = s[
-                (s[self.time_column] >= t0) & (s[self.time_column] <= t0 + min_above_td)
-            ]
+            win = _between(s, self.time_column, t0, t0 + min_above_td)
             if win.empty:
                 continue
             if (win[self.value_column] >= exit_thr).all():
@@ -181,7 +192,18 @@ class StartupDetectionEvents(Base):
         else:
             s["dt_s"] = s[self.time_column].diff().dt.total_seconds()
             s["dv"] = s[self.value_column].diff()
-        s["slope"] = s["dv"] / s["dt_s"]
+        # Duplicate timestamps give dt = 0 and an infinite slope; such steps
+        # have no rate, so they are left out (slope NaN), with a warning.
+        dup = s["dt_s"] <= 0
+        if dup.any():
+            warnings.warn(
+                f"detect_startup_by_slope(): {int(dup.sum())} sample(s) share a "
+                "timestamp with the previous sample; their slope is undefined "
+                "and they are not counted as ramping",
+                DataQualityWarning,
+                stacklevel=2,
+            )
+        s["slope"] = s["dv"] / s["dt_s"].where(~dup)
         mask = s["slope"] >= float(min_slope)
 
         gid = (mask != mask.shift()).cumsum()
@@ -281,7 +303,7 @@ class StartupDetectionEvents(Base):
             # Union: any signal detecting is sufficient
             all_events = []
             for sig_uuid, events in signal_events.items():
-                for _, event in events.iterrows():
+                for event in events.to_dict("records"):
                     all_events.append(
                         {
                             "start": event["start"],
@@ -290,7 +312,7 @@ class StartupDetectionEvents(Base):
                             "is_delta": True,
                             "method": "multi_signal_any",
                             "signals_triggered": [sig_uuid],
-                            "signal_details": {sig_uuid: event.to_dict()},
+                            "signal_details": {sig_uuid: dict(event)},
                         }
                     )
             return pd.DataFrame(all_events)
@@ -315,11 +337,11 @@ class StartupDetectionEvents(Base):
 
             # Get events from first signal as reference
             first_sig = next(iter(signal_events))
-            for _, ref_event in signal_events[first_sig].iterrows():
+            for ref_event in signal_events[first_sig].to_dict("records"):
                 ref_start = ref_event["start"]
 
                 # Check if all other signals have an event within tolerance
-                matching_signals = {first_sig: ref_event.to_dict()}
+                matching_signals = {first_sig: dict(ref_event)}
                 all_match = True
 
                 for sig_uuid in list(signal_events.keys())[1:]:
@@ -448,9 +470,7 @@ class StartupDetectionEvents(Base):
             baseline_std = s.loc[idx, "rolling_std"]
 
             # Check if value stays above threshold for min_above duration
-            win = s[
-                (s[self.time_column] >= t0) & (s[self.time_column] <= t0 + min_above_td)
-            ]
+            win = _between(s, self.time_column, t0, t0 + min_above_td)
 
             if win.empty:
                 continue
@@ -519,14 +539,12 @@ class StartupDetectionEvents(Base):
         quality_results = []
         s = self.series[[self.time_column, self.value_column]].copy()
 
-        for _, event in startup_events.iterrows():
+        for event in startup_events.to_dict("records"):
             start = pd.to_datetime(event["start"])
             end = pd.to_datetime(event["end"])
 
             # Extract data for this startup period
-            period_data = s[
-                (s[self.time_column] >= start) & (s[self.time_column] <= end)
-            ].copy()
+            period_data = _between(s, self.time_column, start, end).copy()
 
             if period_data.empty or len(period_data) < 2:
                 quality_results.append(
@@ -780,17 +798,17 @@ class StartupDetectionEvents(Base):
 
         if condition == "threshold":
             min_val = phase.get("min_value", float("-inf"))
-            return value >= min_val
+            return bool(value >= min_val)
 
         elif condition == "range":
             min_val = phase.get("min_value", float("-inf"))
             max_val = phase.get("max_value", float("inf"))
-            return min_val <= value <= max_val
+            return bool(min_val <= value <= max_val)
 
         elif condition == "slope":
             min_slope = phase.get("min_slope", 0)
             slope = row.get("slope", 0)
-            return pd.notna(slope) and slope >= min_slope
+            return bool(pd.notna(slope) and slope >= min_slope)
 
         return False
 
@@ -855,10 +873,9 @@ class StartupDetectionEvents(Base):
 
         for t0 in rise_times:
             # Get data for potential startup period
-            startup_window = s[
-                (s[self.time_column] >= t0)
-                & (s[self.time_column] <= t0 + max_completion_td)
-            ].copy()
+            startup_window = _between(
+                s, self.time_column, t0, t0 + max_completion_td
+            ).copy()
 
             if len(startup_window) < 2:
                 continue

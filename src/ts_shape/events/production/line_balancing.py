@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.events._output import empty_event_df, finalize_summary_df
+from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
@@ -34,7 +35,8 @@ def _to_seconds(value: _Number | None) -> float | None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    return pd.to_timedelta(value).total_seconds()
+    seconds: float = pd.to_timedelta(value).total_seconds()
+    return seconds
 
 
 class LineBalancingEvents(Base):
@@ -176,7 +178,7 @@ class LineBalancingEvents(Base):
         if cycles.empty:
             return empty_event_df("summary", extra_cols=extra)
 
-        cycles["start"] = cycles["completion"].dt.floor(window)
+        cycles["start"] = floor_local(cycles["completion"], window)
         grouped = cycles.groupby(["start", "uuid", "station_name"], sort=True)
         agg = grouped["cycle_time"].agg(
             cycle_time_mean="mean",
@@ -243,7 +245,7 @@ class LineBalancingEvents(Base):
 
         n_known = len(self.station_uuids)
         takt = self._resolve_takt(takt_time, demand, available_time)
-        cycles["start"] = cycles["completion"].dt.floor(window)
+        cycles["start"] = floor_local(cycles["completion"], window)
         means = cycles.groupby(["start", "uuid"])["cycle_time"].mean().reset_index()
 
         rows: list[dict[str, Any]] = []

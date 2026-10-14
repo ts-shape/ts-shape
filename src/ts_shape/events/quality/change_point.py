@@ -61,22 +61,42 @@ def _robust_sigma(x: np.ndarray) -> float:
     return sigma if sigma > 0 else 1.0
 
 
+def _prefix_cost(
+    x: np.ndarray, cost: Cost
+) -> tuple[np.ndarray, np.ndarray, Callable[[Any, Any, Any, Any], Any]]:
+    """Cumulative sums of ``x`` and ``x**2`` and the segment cost of ``x[s:t]``
+    as ``cost(s1[s], s2[s], s, t)`` -- callers holding ``s1[s]``/``s2[s]``
+    already skip the gather. ``cost`` is validated by the caller.
+    """
+    s1 = np.concatenate([[0.0], np.cumsum(x)])
+    s2 = np.concatenate([[0.0], np.cumsum(x * x)])
+
+    def sse(s1s: Any, s2s: Any, s: Any, t: Any) -> Any:
+        return (s2[t] - s2s) - (s1[t] - s1s) ** 2 / (t - s)
+
+    if cost == "normal_mean":
+        inv_var = 1.0 / _robust_sigma(x) ** 2
+        return (
+            s1,
+            s2,
+            lambda s1s, s2s, s, t: np.maximum(sse(s1s, s2s, s, t), 0.0) * inv_var,
+        )
+    var_floor = max(float(np.var(x)), 1e-12) * 1e-6
+    return (
+        s1,
+        s2,
+        lambda s1s, s2s, s, t: (t - s)
+        * np.log(np.maximum(sse(s1s, s2s, s, t) / (t - s), var_floor)),
+    )
+
+
 def _cost_function(x: np.ndarray, cost: Cost) -> Callable[[Any, Any], Any]:
     """Vectorised segment cost ``C(s, t)`` of ``x[s:t]`` from cumulative sums.
 
     ``cost`` is validated by the caller (:func:`_setup`).
     """
-    s1 = np.concatenate([[0.0], np.cumsum(x)])
-    s2 = np.concatenate([[0.0], np.cumsum(x * x)])
-
-    def sse(s: Any, t: Any) -> Any:
-        return (s2[t] - s2[s]) - (s1[t] - s1[s]) ** 2 / (t - s)
-
-    if cost == "normal_mean":
-        inv_var = 1.0 / _robust_sigma(x) ** 2
-        return lambda s, t: np.maximum(sse(s, t), 0.0) * inv_var
-    var_floor = max(float(np.var(x)), 1e-12) * 1e-6
-    return lambda s, t: (t - s) * np.log(np.maximum(sse(s, t) / (t - s), var_floor))
+    s1, s2, prefix_cost = _prefix_cost(x, cost)
+    return lambda s, t: prefix_cost(s1[s], s2[s], s, t)
 
 
 def _setup(
@@ -128,7 +148,7 @@ def pelt(
     n = len(x)
     if n < 2 * min_size:
         return []
-    seg_cost = _cost_function(x, cost)
+    s1, s2, prefix_cost = _prefix_cost(x, cost)
 
     f = np.full(n + 1, np.inf)
     f[0] = -penalty
@@ -138,24 +158,45 @@ def pelt(
     # last change for an end T >= t + min_size (K = 0 holds for Gaussian
     # likelihood costs), but for t < T < t + min_size the segment [t, T) is
     # too short, so s stays eligible until then.
-    cand = np.array([0], dtype=int)
-    pruned_at = np.array([n + 1], dtype=int)
+    #
+    # Candidates live in preallocated buffers, ascending (they are appended in
+    # time order), so the evaluable ones (t - s >= min_size) are a prefix
+    # slice, and pruned starts are compacted out only when one expires. The
+    # cost arithmetic is unchanged, so results are bit-identical to the
+    # straightforward version; pruning cannot help on a series without
+    # changes (every start stays optimal-capable), which keeps PELT quadratic
+    # there.
+    # f, s1 and s2 at each candidate are stored alongside it (no gathers).
+    cand = np.empty(n + 1, dtype=int)
+    pruned_at = np.empty(n + 1, dtype=int)
+    cf = np.empty(n + 1)
+    cs1 = np.empty(n + 1)
+    cs2 = np.empty(n + 1)
+    cand[0], pruned_at[0], cf[0], cs1[0], cs2[0], m = 0, n + 1, f[0], 0.0, 0.0, 1
+    next_expiry = n + 1  # smallest pruned_at among the stored candidates
     for t in range(min_size, n + 1):
-        alive = pruned_at > t - min_size
-        cand, pruned_at = cand[alive], pruned_at[alive]
-        evaluable = t - cand >= min_size
-        if not evaluable.any():
+        if next_expiry <= t - min_size:
+            alive = pruned_at[:m] > t - min_size
+            k = int(alive.sum())
+            for buf in (cand, pruned_at, cf, cs1, cs2):
+                buf[:k] = buf[:m][alive]
+            m = k
+            next_expiry = int(pruned_at[:m].min()) if m else n + 1
+        k = int(np.searchsorted(cand[:m], t - min_size, side="right"))
+        if k == 0:
             continue
-        eligible = cand[evaluable]
-        costs = f[eligible] + seg_cost(eligible, t)
+        eligible = cand[:k]
+        costs = cf[:k] + prefix_cost(cs1[:k], cs2[:k], eligible, t)
         best = int(np.argmin(costs))
         f[t] = costs[best] + penalty
         last[t] = eligible[best]
-        newly = np.zeros(len(cand), dtype=bool)
-        newly[evaluable] = costs > f[t]
-        pruned_at[newly & (pruned_at > n)] = t
-        cand = np.append(cand, t)
-        pruned_at = np.append(pruned_at, n + 1)
+        sub = pruned_at[:k]
+        newly = (costs > f[t]) & (sub > n)
+        if newly.any():
+            sub[newly] = t
+            next_expiry = min(next_expiry, t)
+        cand[m], pruned_at[m], cf[m], cs1[m], cs2[m] = t, n + 1, f[t], s1[t], s2[t]
+        m += 1
 
     points = []
     t = n
@@ -213,6 +254,15 @@ class ChangePointEvents(Base):
       level and spread before and after.
     - segment_statistics: The stable stretches between change points as
       intervals with their mean, std and sample count.
+
+    Example:
+        >>> import ts_shape
+        >>> df = ts_shape.make_timeseries(["pressure"], n_points=100)
+        >>> df.loc[50:, "value_double"] += 5  # level shift half-way
+        >>> out = ts_shape.ChangePointEvents(df, "pressure").detect_change_points()
+        >>> out[["systime", "mean_before", "mean_after", "shift_sigma"]].round(1)
+                      systime  mean_before  mean_after  shift_sigma
+        0 2025-01-01 00:25:00        100.1       104.8          6.1
     """
 
     def __init__(

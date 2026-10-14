@@ -14,7 +14,7 @@ schema validation as built-in detectors. No parallel pipeline.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -70,7 +70,9 @@ def _pick_time_col(df: pd.DataFrame) -> str | None:
             return c
     for c in df.columns:
         if pd.api.types.is_datetime64_any_dtype(df[c]):
-            return c
+            # pandas is untyped here (no stubs), so column labels are Any;
+            # rule frames use string column names.
+            return cast(str, c)
     return None
 
 

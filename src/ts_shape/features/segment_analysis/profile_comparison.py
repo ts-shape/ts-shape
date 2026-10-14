@@ -38,6 +38,10 @@ class ProfileComparison(Base):
             "segment_index",
             "window_start",
             "window_end",
+            "time_window",
+            "start",
+            "end",
+            "duration_seconds",
             "sample_count",
         }
         available = [
@@ -334,7 +338,7 @@ class ProfileComparison(Base):
         return pd.DataFrame(rows)
 
     @staticmethod
-    def _condensed_to_square(idx: int, n: int):
+    def _condensed_to_square(idx: int, n: int) -> tuple[int, int]:
         """Convert a condensed distance matrix index to (row, col) pair."""
         i = int(n - 2 - np.floor(np.sqrt(-8 * idx + 4 * n * (n - 1) - 7) / 2.0 - 0.5))
         j = int(idx + i + 1 - n * (n - 1) // 2 + (n - i) * ((n - i) - 1) // 2)

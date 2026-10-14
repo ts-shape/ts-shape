@@ -11,10 +11,10 @@ import logging
 
 import pandas as pd
 
+from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -70,35 +70,8 @@ class OperatorPerformanceEvents(Base):
         }
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        time = timestamp.time()
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-        return "unknown"
-
-    def _get_counter_quantity(
-        self,
-        data: pd.DataFrame,
-        value_column: str,
-        *,
-        handle_resets: bool = True,
-    ) -> float:
-        """Get quantity from a monotonic counter.
-
-        When ``handle_resets`` is True (default) a decreasing counter is
-        treated as a reset and the post-reset production is counted (see
-        :func:`ts_shape.utils.counters.counter_quantity`). When False the
-        quantity is ``max(0, last - first)``.
-        """
-        if data.empty:
-            return 0.0
-        return counter_quantity(data[value_column], handle_resets=handle_resets)
+        """Assign shift based on time of day."""
+        return assign_shift(timestamp, self.shift_definitions)
 
     def _correlate_operator_counter(
         self,
@@ -146,7 +119,7 @@ class OperatorPerformanceEvents(Base):
             direction="backward",
         )
         merged = merged.dropna(subset=["operator"])
-        merged["shift"] = merged[self.time_column].apply(self._assign_shift)
+        merged["shift"] = assign_shift(merged[self.time_column], self.shift_definitions)
         if production_day:
             merged["date"] = production_dates(
                 merged[self.time_column], merged["shift"], self.shift_definitions
@@ -175,7 +148,10 @@ class OperatorPerformanceEvents(Base):
             value_column_counter: Column containing counter values.
             handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the production accumulated after the reset instead
-                of losing it. Production is summed per (date, shift) worked.
+                of losing it. The increments are computed once over the whole
+                signal and booked to the (operator, date, shift) of the reading
+                that reports them, so the operators add up to the signal total
+                and nothing is lost at a shift or operator change.
                 The result gains a ``resets`` column with the number of resets
                 observed across the operator's shifts. When False,
                 each shift uses ``max(0, last - first)`` and a shift
@@ -205,22 +181,22 @@ class OperatorPerformanceEvents(Base):
         if merged.empty:
             return pd.DataFrame(columns=columns)
 
+        # Increments over the whole signal, booked to the (operator, date,
+        # shift) of the reading that reports them, so no production is lost
+        # at shift or operator changes.
+        per_shift = counter_totals(
+            merged,
+            "counter_val",
+            ["operator", "date", "shift"],
+            handle_resets=handle_resets,
+        )
         results = []
-        for operator, op_data in merged.groupby("operator"):
-            # Calculate production per shift, then sum
-            shift_production = []
-            resets = 0
-            for (date, shift), grp in op_data.groupby(["date", "shift"]):
-                qty = self._get_counter_quantity(
-                    grp, "counter_val", handle_resets=handle_resets
-                )
-                if handle_resets:
-                    resets += count_resets(grp["counter_val"])
-                if qty > 0:
-                    shift_production.append(qty)
-
-            total = sum(shift_production)
-            shifts_worked = len(shift_production)
+        for operator, op_shifts in per_shift.groupby("operator", sort=True):
+            # A shift counts as worked when it produced something.
+            worked = op_shifts["quantity"][op_shifts["quantity"] > 0]
+            resets = int(op_shifts["resets"].sum())
+            total = float(worked.sum())
+            shifts_worked = len(worked)
 
             row = {
                 "operator": operator,
@@ -303,8 +279,11 @@ class OperatorPerformanceEvents(Base):
                 over the whole range, a single reset otherwise wipes out an
                 operator's entire tally. The result gains a ``resets`` column
                 with the number of resets observed across the operator's OK
-                and NOK counters. When False, both counters use
-                ``max(0, last - first)`` and a reset is lost.
+                and NOK counters. The increments are computed once over each
+                whole signal and booked to the operator of the reading that
+                reports them, so the operators add up to the signal totals
+                (also when operators alternate). When False, both counters use
+                ``max(0, last - first)`` per operator and a reset is lost.
 
         Returns:
             DataFrame with columns:
@@ -361,14 +340,13 @@ class OperatorPerformanceEvents(Base):
             )
             merged_ok = merged_ok.dropna(subset=["operator"])
 
-            for op, grp in merged_ok.groupby("operator"):
-                ok_by_operator[op] = self._get_counter_quantity(
-                    grp, "counter_val", handle_resets=handle_resets
-                )
+            ok_totals = counter_totals(
+                merged_ok, "counter_val", ["operator"], handle_resets=handle_resets
+            )
+            for op, qty, n_resets in ok_totals.itertuples(index=False):
+                ok_by_operator[op] = float(qty)
                 if handle_resets:
-                    resets_by_operator[op] = resets_by_operator.get(
-                        op, 0
-                    ) + count_resets(grp["counter_val"])
+                    resets_by_operator[op] = resets_by_operator.get(op, 0) + n_resets
 
         # Process NOK parts
         if not nok_data.empty:
@@ -384,14 +362,13 @@ class OperatorPerformanceEvents(Base):
             )
             merged_nok = merged_nok.dropna(subset=["operator"])
 
-            for op, grp in merged_nok.groupby("operator"):
-                nok_by_operator[op] = self._get_counter_quantity(
-                    grp, "counter_val", handle_resets=handle_resets
-                )
+            nok_totals = counter_totals(
+                merged_nok, "counter_val", ["operator"], handle_resets=handle_resets
+            )
+            for op, qty, n_resets in nok_totals.itertuples(index=False):
+                nok_by_operator[op] = float(qty)
                 if handle_resets:
-                    resets_by_operator[op] = resets_by_operator.get(
-                        op, 0
-                    ) + count_resets(grp["counter_val"])
+                    resets_by_operator[op] = resets_by_operator.get(op, 0) + n_resets
 
         # Combine
         all_operators = set(ok_by_operator.keys()) | set(nok_by_operator.keys())
