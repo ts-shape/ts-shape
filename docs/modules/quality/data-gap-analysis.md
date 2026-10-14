@@ -32,7 +32,7 @@ All arguments are keyword-only.
 
 ## Notes
 
-- A gap is an interval between two consecutive samples of at least `min_gap`.
+- A gap is an interval between two consecutive samples of at least `min_gap`. A zero-length step (duplicate timestamp) is never a gap, even with `min_gap="0s"`.
 - `gap_fraction` = total gap time / time from first to last sample; time outside that span is not counted.
 - `coverage_by_period` clips each gap to the window. Without `min_gap` it uses twice the median positive sampling interval. Windows follow the calendar, so `"1D"` on a DST day is 23 or 25 hours.
 - `interpolation_candidates` reports every interval between `min_gap` and `max_gap`; with `min_gap="0s"` that is every sample interval, so set `min_gap` just above the normal sampling interval. A gap is `safe_to_interpolate` when the value jump across it is within 2 standard deviations of the whole signal.

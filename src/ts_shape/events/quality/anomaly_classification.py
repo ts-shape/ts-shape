@@ -56,12 +56,15 @@ class AnomalyClassificationEvents(Base):
         tolerance: float = 1e-6,
         *,
         interval_end: str = "next_change",
+        max_gap: str | pd.Timedelta | None = None,
     ) -> pd.DataFrame:
         """Detect intervals where the signal is stuck at a constant value.
 
         A run starts at its first sample (the value was already stuck there)
         and continues while each sample is within ``tolerance`` of the
-        previous one.
+        previous one. Samples at the same timestamp (duplicates) add no
+        duration: a run whose samples all share one timestamp counts as a
+        single sample.
 
         Args:
             min_duration: Minimum duration to qualify as a flatline.
@@ -73,6 +76,10 @@ class AnomalyClassificationEvents(Base):
                 after it is longer than the signal's median sampling
                 interval. ``"last_sample"`` ends a run at its own last
                 sample and needs at least two samples.
+            max_gap: Longest time between two samples a run may span (e.g.
+                ``"15min"``). A longer gap is "no data": the run before it
+                ends at its last sample and a new run starts after it, even
+                if the value is unchanged. ``None`` (default): no limit.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid, source_uuid,
@@ -91,28 +98,40 @@ class AnomalyClassificationEvents(Base):
             .reset_index(drop=True)
         )
         min_td = pd.to_timedelta(min_duration)
-        ends = interval_end_times(sig[self.time_column], interval_end)
+        times = sig[self.time_column]
+        ends = interval_end_times(times, interval_end)
+        steps_all = times.diff()
 
         values = sig[self.value_column]
         # A new run starts wherever the step from the previous sample exceeds
         # the tolerance (or there is no comparable previous sample).
         new_run = ~(values.diff().abs() <= tolerance)
+        if max_gap is not None:
+            # A gap longer than max_gap is "no data": split the run there and
+            # end the run before it at its own last sample.
+            gap_before = (steps_all > pd.Timedelta(max_gap)).to_numpy()
+            new_run |= gap_before
+            gap_after = np.append(gap_before[1:], False)
+            ends = ends.where(~gap_after, times)
 
         # A one-sample run is only a flatline when the silence after it is
         # longer than the signal's usual sampling interval (a deadband
         # historian); otherwise every sample of a slow signal would qualify.
-        # Two samples give no sampling interval to compare against.
-        steps = sig[self.time_column].diff().dropna()
+        # Two samples give no sampling interval to compare against; duplicate
+        # timestamps (zero steps) are no sampling interval either.
+        steps = steps_all[steps_all > pd.Timedelta(0)]
         typical_step = steps.median() if len(steps) >= 2 else pd.Timedelta(0)
 
         # Runs as index ranges [first, last] (vectorized; no per-run groupby).
         first = np.flatnonzero(new_run.to_numpy())
         last = np.append(first[1:], len(sig)) - 1
         stuck = values.to_numpy(dtype=float)[first]
-        start = sig[self.time_column].iloc[first].reset_index(drop=True)
+        start = times.iloc[first].reset_index(drop=True)
         end = ends.iloc[last].reset_index(drop=True)
         duration = end - start
-        single = (last - first + 1) < 2
+        # A run whose samples share one timestamp is a single sample.
+        t_np = times.to_numpy()
+        single = t_np[last] == t_np[first]
         keep = ~np.isnan(stuck)
         if interval_end == "last_sample":
             keep &= ~single

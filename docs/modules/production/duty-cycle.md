@@ -26,7 +26,7 @@ excessive = dc.excessive_cycling(max_transitions=20, window="15min")
 
 | Method | Returns |
 |---|---|
-| `on_off_intervals()` | every interval: `start`, `end`, `state` (`on`/`off`), `duration_seconds`, `duration` (Timedelta) |
+| `on_off_intervals(max_gap=None)` | every interval: `start`, `end`, `state` (`on`/`off`), `duration_seconds`, `duration` (Timedelta). With `max_gap` (e.g. `"15min"`) an interval ends at its last sample before a longer gap and a new one starts after it |
 | `duty_cycle_by_window(window='1h', time_weighted=True)` | per window: `on_time`, `off_time`, `duty_cycle_pct` |
 | `cycle_count(window='1h')` | per window: `on_count`, `off_count`, `total_transitions` |
 | `excessive_cycling(max_transitions=20, window='1h')` | windows above `max_transitions`: `transition_count`, `avg_on_duration`, `avg_off_duration` (seconds) |
