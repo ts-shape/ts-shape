@@ -71,10 +71,13 @@ Every detector returns a `pandas.DataFrame` in one of four shapes (`ts_shape.eve
 
 | Situation | Behavior |
 |---|---|
-| A required column is missing | `ColumnNotFoundError` (a `ValueError`) naming the column |
-| The requested signal uuid is not in a non-empty frame | `DataQualityWarning`, empty result with the full schema |
-| Too little data for a statistic | empty result or NaN, plus `DataQualityWarning` |
+| The time column is missing (non-empty frame) | `ColumnNotFoundError` (a `ValueError`) naming the column and listing the columns |
+| The uuid column is missing (non-empty frame) | `ColumnNotFoundError` |
+| A signal uuid argument (`*_uuid`, `*_uuids`) is not in a non-empty frame | `DataQualityWarning` listing the available uuids; the result is empty. A few detectors (alarm, batch, degradation, line balancing, ...) also raise `ValueError` |
+| Too little data for a statistic | empty result or NaN |
 | A deprecated name is used | `DeprecationWarning` naming the replacement |
+
+The uuid and column checks are applied to every detector in `ts_shape.events` by its base class, so they behave the same in every pack. They report the call you made, not the detector's internal calls. A missing *value* column (`value_double`, ...) is not checked up front yet: methods that need it raise a `KeyError`.
 
 ## Wording
 

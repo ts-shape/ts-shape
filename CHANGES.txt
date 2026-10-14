@@ -1,4 +1,9 @@
 # October 14, 2026 (round 4)
+change: consistent input checks for every detector (Base.__init_subclass__ +
+  utils.signal_checks): a signal uuid that is not in a non-empty frame emits
+  DataQualityWarning naming the available uuids (one per call, not per
+  internal sub-call); a missing time or uuid column raises
+  ColumnNotFoundError (a ValueError) instead of a bare KeyError.
 change: parameters follow docs/naming.md: time_column (was column_name),
   window (freq/period/resample), window_size (integer row counts), n_sigma,
   lower_limit/upper_limit, warning/critical_threshold, include_initial,

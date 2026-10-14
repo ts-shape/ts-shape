@@ -40,11 +40,35 @@ import pandas as pd  # type: ignore
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.signal_checks import checked, checked_init
 
 logger = logging.getLogger(__name__)
 
 
 class Base:
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Give every detector in ``ts_shape.events`` the same input checks.
+
+        Public methods and the constructor are wrapped by
+        :mod:`ts_shape.utils.signal_checks`: an unknown signal uuid warns
+        (:class:`~ts_shape.errors.DataQualityWarning`) and a missing uuid
+        column raises :class:`~ts_shape.errors.ColumnNotFoundError`.
+        """
+        super().__init_subclass__(**kwargs)
+        if not cls.__module__.startswith("ts_shape.events."):
+            return
+        for name, member in list(vars(cls).items()):
+            if name == "__init__" and callable(member):
+                setattr(cls, name, checked_init(member))
+            elif (
+                not name.startswith("_")
+                and callable(member)
+                and not isinstance(member, (staticmethod, classmethod, type))
+                and type(member).__name__ != "_Forward"
+                and not getattr(member, "__ts_shape_checked__", False)
+            ):
+                setattr(cls, name, checked(member))
+
     @staticmethod
     def _validate_column(dataframe: pd.DataFrame, column_name: str) -> None:
         """Validate that a column exists in the DataFrame.
@@ -93,6 +117,8 @@ class Base:
 
         Raises:
             TypeError: If ``dataframe`` is not a pandas DataFrame.
+            ColumnNotFoundError: For a detector (``ts_shape.events``), if a
+                non-empty ``dataframe`` has no ``time_column``.
         """
         column_name = time_column
         if not isinstance(dataframe, pd.DataFrame):
@@ -102,6 +128,14 @@ class Base:
         self.dataframe = dataframe.copy()
         if self.dataframe.empty:
             return
+        if (
+            type(self).__module__.startswith("ts_shape.events.")
+            and column_name not in self.dataframe.columns
+        ):
+            raise ColumnNotFoundError(
+                f"{type(self).__name__}: time column {column_name!r} not found. "
+                f"Columns: {list(self.dataframe.columns)}; pass time_column=..."
+            )
 
         # Attempt to convert the specified column_name to datetime if it exists
         if column_name in self.dataframe.columns:
