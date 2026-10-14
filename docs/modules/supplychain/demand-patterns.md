@@ -19,24 +19,24 @@ Use to understand demand patterns for production planning. Identifies spikes, se
 from ts_shape.events.supplychain.demand_pattern import DemandPatternEvents
 
 analyzer = DemandPatternEvents(
-    df=orders_df,
-    timestamp_col="timestamp",
-    value_col="order_quantity"
+    dataframe=orders_df,
+    demand_uuid="order_quantity",
 )
 
-# Aggregate demand per period
-daily_demand = analyzer.demand_by_period(period="1D", agg="sum")
+# Aggregate demand per day (total, average, and peak)
+daily_demand = analyzer.demand_by_period(period="1D")
 
-# Detect abnormal demand spikes
-spikes = analyzer.detect_demand_spikes(
-    window="7D", threshold_std=2.5
-)
+# Flag days whose demand exceeds mean + 2.5 * std
+spikes = analyzer.detect_demand_spikes(threshold_factor=2.5, window="1D")
 print(f"Detected {len(spikes)} demand spikes")
 
-# Analyze day-of-week and hour-of-day seasonality
-seasonality = analyzer.seasonality_summary()
-print("Busiest day:", seasonality["day_of_week"].idxmax())
-print("Peak hour:", seasonality["hour_of_day"].idxmax())
+# Day-of-week pattern (use a sub-daily period such as "1h" for hour-of-day)
+by_weekday = analyzer.seasonality_summary(period="1D")
+busiest = by_weekday.loc[by_weekday["avg_demand"].idxmax(), "period_label"]
+print("Busiest day:", busiest)
+
+by_hour = analyzer.seasonality_summary(period="1h")
+print("Peak hour:", by_hour.loc[by_hour["avg_demand"].idxmax(), "period_label"])
 ```
 
 ---
@@ -45,9 +45,9 @@ print("Peak hour:", seasonality["hour_of_day"].idxmax())
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `demand_by_period()` | Aggregate demand per time period | DataFrame with total/mean demand per period |
-| `detect_demand_spikes()` | Flag abnormal demand levels | DataFrame of spike events with magnitude |
-| `seasonality_summary()` | Day-of-week and hour-of-day patterns | DataFrame with average demand by time component |
+| `demand_by_period()` | Aggregate demand per time period | DataFrame with `start`, `total_demand`, `avg_demand`, `peak_demand` |
+| `detect_demand_spikes()` | Flag periods above mean + `threshold_factor` * std | DataFrame with `start`, `demand`, `baseline_mean`, `spike_magnitude` |
+| `seasonality_summary()` | Day-of-week (`period="1D"`) or hour-of-day (sub-daily period) patterns | DataFrame with `period_label`, `avg_demand`, `std_demand`, `min_demand`, `max_demand` |
 
 ---
 

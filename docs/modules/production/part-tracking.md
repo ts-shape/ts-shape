@@ -58,10 +58,10 @@ resets = pt.detect_resets(part_id_uuid="part_id", counter_uuid="part_counter")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `production_by_part(part_id_uuid, counter_uuid, window='1h', handle_resets=False)` | Count parts produced per part number per time window | DataFrame with window, part_id, and quantity (plus `resets` when `handle_resets=True`) |
-| `daily_production_summary(part_id_uuid, counter_uuid, handle_resets=False)` | Aggregate daily production totals by part number | DataFrame with date, part_id, and daily quantity |
-| `production_totals(part_id_uuid, counter_uuid, handle_resets=False)` | Compute total production by part number over the entire date range | DataFrame with part_id and total quantity |
-| `detect_resets(part_id_uuid, counter_uuid)` | Find when the counter was reset | DataFrame with timestamp, part_id, `count_before`, `count_after`, `drop` |
+| `production_by_part(part_id_uuid, counter_uuid, window='1h', handle_resets=False)` | Count parts produced per part number per time window | DataFrame with `start`, `part_number`, `quantity`, `first_count`, `last_count` (plus `resets` when `handle_resets=True`) |
+| `daily_production_summary(part_id_uuid, counter_uuid, handle_resets=False)` | Aggregate daily production totals by part number | DataFrame with `date`, `part_number`, `total_quantity`, `hours_active` (plus `resets` when `handle_resets=True`) |
+| `production_totals(part_id_uuid, counter_uuid, start_date=None, end_date=None, handle_resets=False)` | Compute total production by part number, optionally limited to a date range | DataFrame with `part_number`, `total_quantity`, `days_produced` (plus `resets` when `handle_resets=True`) |
+| `detect_resets(part_id_uuid, counter_uuid)` | Find when the counter was reset | DataFrame with the time column (e.g. `systime`), `part_number`, `count_before`, `count_after`, `drop` |
 
 ---
 
@@ -80,7 +80,7 @@ hourly = pt.production_by_part(
 
 # Inspect exactly when the counter reset
 resets = pt.detect_resets(part_id_uuid="part_id", counter_uuid="part_counter")
-print(resets)   # timestamp, part_number, count_before, count_after, drop
+print(resets)   # systime, part_number, count_before, count_after, drop
 ```
 
 ---

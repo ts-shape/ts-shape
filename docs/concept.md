@@ -17,7 +17,7 @@ flowchart TB
         L2[Transforms · Features · Statistics]
     end
     subgraph DETECT["Detection Layer"]
-        D1["Built-in detectors<br/>(290+ methods, 70+ classes)"]
+        D1["Built-in detectors<br/>(80+ detector classes, 300+ methods)"]
         D2["Lambda rules<br/>(YAML / DSL)"]
         D3["Gen-AI authoring<br/><i>roadmap</i>"]
     end

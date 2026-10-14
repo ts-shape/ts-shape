@@ -19,8 +19,8 @@ Use to detect and characterize external process upsets (material changes, ambien
 from ts_shape.events.engineering.disturbance_recovery import DisturbanceRecoveryEvents
 
 analyzer = DisturbanceRecoveryEvents(
-    df=process_data,
-    uuid="reactor_temperature_01"
+    dataframe=process_data,
+    signal_uuid="reactor_temperature_01",
 )
 
 # Detect disturbances exceeding 3 sigma from baseline
@@ -48,10 +48,10 @@ comparison = analyzer.before_after_comparison(baseline_window="10min")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_disturbances(baseline_window='10min', threshold_sigma=3.0)` | Detect process upsets | DataFrame of disturbance events |
-| `recovery_time(baseline_window='10min', recovery_pct=0.95)` | Recovery time per disturbance | DataFrame with recovery metrics |
-| `disturbance_frequency(window='8h')` | Count disturbances per window | DataFrame with counts |
-| `before_after_comparison(baseline_window='10min')` | Before vs after statistics | DataFrame with comparison stats |
+| `detect_disturbances(baseline_window='10min', threshold_sigma=3.0, min_duration='30s')` | Detect process upsets | DataFrame of disturbance intervals (`start`, `end`, `peak_deviation`, `direction`, `duration_seconds`, ...) |
+| `recovery_time(baseline_window='10min', threshold_sigma=3.0, recovery_pct=0.95, max_recovery='1h')` | Recovery time per disturbance | DataFrame: `start`, `end`, `recovery_time_seconds`, `recovered`, `residual_offset`, ... |
+| `disturbance_frequency(window='8h')` | Count disturbances per window | DataFrame: `start`, `disturbance_count`, `total_disturbance_seconds`, `pct_time_disturbed`, `avg_recovery_seconds` |
+| `before_after_comparison(baseline_window='10min', comparison_window='5min')` | Before vs after statistics | DataFrame: `start`, `pre_mean`, `post_mean`, `mean_shift`, `variance_ratio`, ... |
 
 ---
 

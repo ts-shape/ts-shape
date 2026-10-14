@@ -20,16 +20,24 @@ from ts_shape.events.production.line_throughput import LineThroughputEvents
 import pandas as pd
 import numpy as np
 
-df = pd.DataFrame({
-    "timestamp": pd.date_range("2024-01-01 06:00", periods=480, freq="15s"),
-    "part_counter": np.arange(1, 481),
-    "cycle_time_s": np.random.normal(loc=58, scale=4, size=480),
-})
+# Long format: a monotonic part counter and a boolean cycle trigger
+np.random.seed(0)
+times = pd.date_range("2024-01-01 06:00", periods=480, freq="15s")
+done = times[0] + pd.to_timedelta(np.random.normal(58, 4, 120).cumsum(), unit="s")
+df = pd.concat([
+    pd.DataFrame({"systime": times, "uuid": "line1:part_counter",
+                  "value_integer": np.arange(1, 481)}),
+    pd.DataFrame({"systime": np.concatenate([done, done + pd.Timedelta("1s")]),
+                  "uuid": "line1:cycle_trigger",
+                  "value_bool": [True] * 120 + [False] * 120}),
+], ignore_index=True)
 
-tp = LineThroughputEvents(df, timestamp_column="timestamp")
-parts = tp.count_parts(counter_uuid="part_counter", window="1min")
-violations = tp.takt_adherence(cycle_uuid="cycle_time_s", takt_time="60s")
+tp = LineThroughputEvents(df)
+parts = tp.count_parts(counter_uuid="line1:part_counter", window="5min", handle_resets=True)
+takt = tp.takt_adherence(cycle_uuid="line1:cycle_trigger", takt_time="60s")
+oee = tp.throughput_oee(counter_uuid="line1:part_counter", window="15min", target_rate=60)
 print(parts.head())
+print(takt[takt["violation"]].head())
 ```
 
 ---
@@ -38,18 +46,18 @@ print(parts.head())
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `count_parts(counter_uuid, window='1min')` | Count produced parts per time window from a monotonic counter signal | DataFrame with window start and part count |
-| `takt_adherence(cycle_uuid, takt_time='60s')` | Identify cycles that exceed the target takt time | DataFrame of violations with timestamp and overshoot |
-| `throughput_oee(counter_uuid, window='1h')` | Compute OEE-style throughput metrics per window | DataFrame with actual vs ideal counts and performance ratio |
-| `throughput_trends(counter_uuid, window='1h')` | Analyze throughput trends over time for shift or daily review | DataFrame with trend statistics per window |
-| `cycle_quality_check(cycle_uuid)` | Validate cycle signal integrity: gaps, duplicates, out-of-range values | Dict of quality check results |
+| `count_parts(counter_uuid, window='1min', handle_resets=False)` | Count produced parts per time window from a monotonic counter signal | DataFrame with `start`, `uuid`, `source_uuid`, `is_delta`, `count` (plus `resets` when `handle_resets=True`) |
+| `takt_adherence(cycle_uuid, takt_time='60s', min_violation='0s')` | Measure each cycle (rising edges of a boolean trigger, or increments of an integer step) against the takt time | DataFrame with `systime`, `uuid`, `source_uuid`, `is_delta`, `cycle_time_seconds`, `violation` |
+| `throughput_oee(counter_uuid, window='1h', target_rate=None, availability_threshold=0.0)` | Counter-only OEE estimate per window (quality assumed 1.0; `target_rate` defaults to the 95th percentile of counts) | DataFrame with `start`, `actual_count`, `target_count`, `availability`, `performance`, `oee_score` |
+| `throughput_trends(counter_uuid, window='1h', trend_window=24)` | Analyze throughput trends with moving averages and degradation detection | DataFrame with `start`, `count`, `moving_avg`, `trend_direction`, `degradation_detected` |
+| `cycle_quality_check(cycle_uuid, expected_cycle_time=None, tolerance_pct=0.1)` | Validate each cycle time against an expected value (median if not given) | DataFrame with `systime`, `cycle_time_seconds`, `expected_time`, `deviation_pct`, `is_valid`, `quality_flag` |
 
 ---
 
 ## Tips & Hints
 
 !!! tip "Handle counter resets"
-    Monotonic counters may reset at shift boundaries or after a PLC restart. `count_parts` automatically detects and compensates for resets by looking at negative deltas.
+    Monotonic counters may reset at shift boundaries or after a PLC restart. By default `count_parts` clips negative window deltas to zero, which loses the production around a reset. Pass `handle_resets=True` to treat a decreasing counter as a reset, count the post-reset value as new production, and get a `resets` column per window.
 
 !!! info "Related modules"
     - [Cycle Time Tracking](cycle-time.md) — per-part cycle time analysis

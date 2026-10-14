@@ -18,25 +18,27 @@ Use when analyzing PID or setpoint-based control systems. Detects recipe changes
 ```python
 from ts_shape.events.engineering.setpoint_events import SetpointChangeEvents
 
+# process_data holds both the setpoint and the actual signal
 detector = SetpointChangeEvents(
-    df=process_data,
-    uuid="setpoint_temperature_01"
+    dataframe=process_data,
+    setpoint_uuid="temperature_setpoint_01",
 )
 
 # Detect all setpoint step changes
 steps = detector.detect_setpoint_steps(min_delta=5.0, min_hold="30s")
 
 # Measure how quickly the actual signal settles after each change
+# (settle_pct=0.02 means within 2% of the step size; it overrides tol)
 settling = detector.time_to_settle(
-    actual_uuid="actual_temperature_01",
-    tol=0.5,
-    settle_pct=0.02
+    actual_uuid="temperature_actual_01",
+    settle_pct=0.02,
+    hold="30s",
 )
 
 # Get comprehensive control quality metrics
 quality = detector.control_quality_metrics(
-    actual_uuid="actual_temperature_01",
-    tol=0.5
+    actual_uuid="temperature_actual_01",
+    tol=0.5,
 )
 ```
 
@@ -46,14 +48,15 @@ quality = detector.control_quality_metrics(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_setpoint_steps(min_delta, min_hold='0s')` | Point events at setpoint changes | DataFrame of step events |
+| `detect_setpoint_steps(min_delta, min_hold='0s')` | Point events at setpoint changes | DataFrame: `start`, `end`, `change_type`, `magnitude`, `prev_level`, `new_level`, ... |
 | `detect_setpoint_ramps(min_rate, min_duration='0s')` | Interval events for ramps | DataFrame of ramp intervals |
 | `detect_setpoint_changes(min_delta=0.0, min_rate=None)` | Unified step+ramp table | DataFrame of all changes |
-| `time_to_settle(actual_uuid, tol=0.0, settle_pct=None)` | Settling time after each change | DataFrame with settling times |
+| `time_to_settle(actual_uuid, tol=0.0, settle_pct=None)` | Settling time after each change | DataFrame: `start`, `t_settle_seconds`, `settled`, ... |
+| `time_to_settle_derivative(actual_uuid, rate_threshold=0.01)` | Settling time based on rate of change | DataFrame: `start`, `t_settle_seconds`, `settled`, `final_rate`, ... |
 | `overshoot_metrics(actual_uuid, window='10min')` | Overshoot/undershoot per change | DataFrame with overshoot stats |
-| `rise_time(actual_uuid, start_pct=0.1, end_pct=0.9)` | Rise time (10-90% by default) | DataFrame with rise times |
-| `decay_rate(actual_uuid, lookahead='10min')` | Exponential decay rate | DataFrame with decay constants |
-| `oscillation_frequency(actual_uuid, window='10min')` | Oscillation frequency | DataFrame with frequency estimates |
+| `rise_time(actual_uuid, start_pct=0.1, end_pct=0.9)` | Rise time (10-90% by default) | DataFrame: `start`, `rise_time_seconds`, `reached_end`, ... |
+| `decay_rate(actual_uuid, lookahead='10min')` | Exponential decay rate | DataFrame: `start`, `decay_rate_lambda`, `fit_quality_r2`, ... |
+| `oscillation_frequency(actual_uuid, window='10min')` | Oscillation frequency | DataFrame: `start`, `oscillation_freq_hz`, `period_seconds`, ... |
 | `control_quality_metrics(actual_uuid, tol=0.0)` | Comprehensive control quality | DataFrame with combined KPIs |
 
 ---

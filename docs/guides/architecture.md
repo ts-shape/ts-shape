@@ -26,7 +26,7 @@ flowchart TB
     subgraph CONTEXT["context"]
         CX["value_mapping"]
     end
-    subgraph EVENTS["events — detector library (290+ methods, 70+ classes)"]
+    subgraph EVENTS["events — detector library (80+ detector classes, 300+ methods)"]
         EV["quality · production · engineering · maintenance · energy · correlation · supplychain · development"]
     end
     subgraph EVENTLOG["eventlog — OCEL 2.0 canonical layer"]

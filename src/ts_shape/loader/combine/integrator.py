@@ -22,15 +22,19 @@ class DataIntegratorHybrid:
         join_key: str = "uuid",
         merge_how: str = "left",
     ) -> pd.DataFrame:
-        """
-        Combine timeseries and metadata from various sources.
+        """Combine timeseries and metadata from various sources.
 
-        :param timeseries_sources: List of timeseries sources (DataFrame or instances with `fetch_data_as_dataframe`).
-        :param metadata_sources: List of metadata sources (DataFrame or instances with `fetch_metadata`).
-        :param uuids: Optional list of UUIDs to filter the combined data.
-        :param join_key: Key column to use for merging, default is "uuid".
-        :param merge_how: Merge strategy ('left', 'inner', etc.), default is "left".
-        :return: A combined DataFrame.
+        Args:
+            timeseries_sources: List of timeseries sources (DataFrame or instances
+                with `fetch_data_as_dataframe`).
+            metadata_sources: List of metadata sources (DataFrame or instances with
+                `fetch_metadata`).
+            uuids: Optional list of UUIDs to filter the combined data.
+            join_key: Key column to use for merging, default is "uuid".
+            merge_how: Merge strategy ('left', 'inner', etc.), default is "left".
+
+        Returns:
+            A combined DataFrame.
         """
         # Retrieve and combine timeseries data
         timeseries_data = cls._combine_timeseries(timeseries_sources, join_key)
@@ -74,12 +78,15 @@ class DataIntegratorHybrid:
     def _combine_timeseries(
         cls, sources: list[pd.DataFrame | object] | None, join_key: str
     ) -> pd.DataFrame:
-        """
-        Combine timeseries data from multiple sources.
+        """Combine timeseries data from multiple sources.
 
-        :param sources: List of sources (DataFrame or instances with `fetch_data_as_dataframe`).
-        :param join_key: Key column to use for merging.
-        :return: A combined timeseries DataFrame.
+        Args:
+            sources: List of sources (DataFrame or instances with
+                `fetch_data_as_dataframe`).
+            join_key: Key column to use for merging.
+
+        Returns:
+            A combined timeseries DataFrame.
         """
         if not sources:
             return pd.DataFrame()
@@ -102,12 +109,15 @@ class DataIntegratorHybrid:
     def _combine_metadata(
         cls, sources: list[pd.DataFrame | object] | None, join_key: str
     ) -> pd.DataFrame:
-        """
-        Combine metadata from multiple sources.
+        """Combine metadata from multiple sources.
 
-        :param sources: List of sources (DataFrame or instances with `fetch_metadata`).
-        :param join_key: Key column to use for merging.
-        :return: A combined metadata DataFrame.
+        Args:
+            sources: List of sources (DataFrame or instances with
+                `fetch_metadata`).
+            join_key: Key column to use for merging.
+
+        Returns:
+            A combined metadata DataFrame.
         """
         if not sources:
             return pd.DataFrame()

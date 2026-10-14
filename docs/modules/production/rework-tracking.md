@@ -18,32 +18,28 @@ Use to track rework events and their cost. Identifies which parts and reasons dr
 ```python
 from ts_shape.events.production.rework_tracking import ReworkTracking
 
-tracker = ReworkTracking(
-    df=production_df,
-    start_time="2024-01-01",
-    end_time="2024-03-31"
-)
+tracker = ReworkTracking(production_df)
 
 # Rework counts per shift
-by_shift = tracker.rework_by_shift(rework_uuid="rework-counter-001")
+by_shift = tracker.rework_by_shift(rework_uuid="line1:rework")
 
 # Rework breakdown by reason code
 by_reason = tracker.rework_by_reason(
-    rework_uuid="rework-counter-001",
-    reason_uuid="reason-code-001"
+    rework_uuid="line1:rework",
+    reason_uuid="line1:rework_reason"
 )
 
 # Rework rate as percentage of total production
 rate = tracker.rework_rate(
-    rework_uuid="rework-counter-001",
-    total_production_uuid="total-counter-001"
+    rework_uuid="line1:rework",
+    total_production_uuid="line1:parts"
 )
 
 # Monetary cost of rework by part type
-rework_costs = {"part-A": 12.50, "part-B": 8.75, "part-C": 22.00}
+rework_costs = {"PN-100": 12.50, "PN-200": 8.75, "PN-300": 22.00}
 cost = tracker.rework_cost(
-    rework_uuid="rework-counter-001",
-    part_id_uuid="part-id-001",
+    rework_uuid="line1:rework",
+    part_id_uuid="line1:part_id",
     rework_costs=rework_costs
 )
 ```
@@ -54,11 +50,13 @@ cost = tracker.rework_cost(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `rework_by_shift(rework_uuid)` | Rework count per shift | `DataFrame` |
-| `rework_by_reason(rework_uuid, reason_uuid)` | Rework count grouped by reason code | `DataFrame` |
-| `rework_rate(rework_uuid, total_production_uuid)` | Rework rate as percentage of total production | `DataFrame` |
-| `rework_cost(rework_uuid, part_id_uuid, rework_costs)` | Monetary cost of rework by part type | `DataFrame` |
-| `rework_trend(rework_uuid, window='1D')` | Rolling trend of rework counts over time | `DataFrame` |
+| `rework_by_shift(rework_uuid)` | Rework count per shift | `DataFrame` with `date`, `shift`, `rework_count` |
+| `rework_by_reason(rework_uuid, reason_uuid)` | Rework count grouped by reason code | `DataFrame` with `reason`, `rework_count`, `pct_of_total` |
+| `rework_rate(rework_uuid, total_production_uuid)` | Rework rate as percentage of total production per shift | `DataFrame` with `date`, `shift`, `total_produced`, `rework_count`, `rework_rate_pct` |
+| `rework_cost(rework_uuid, part_id_uuid, rework_costs)` | Monetary cost of rework by part number | `DataFrame` with `part_number`, `rework_count`, `cost_per_rework`, `total_cost` |
+| `rework_trend(rework_uuid, window='1D')` | Rework counts per time period | `DataFrame` with `period`, `rework_count` |
+
+All methods accept `handle_resets=True` for counters that reset; `rework_by_shift`, `rework_by_reason`, `rework_cost` and `rework_trend` then add a `resets` column.
 
 ---
 

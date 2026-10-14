@@ -18,29 +18,29 @@ Use to generate automated shift handover reports for shift meetings. Combines pr
 ```python
 from ts_shape.events.production.shift_handover import ShiftHandoverReport
 
-report = ShiftHandoverReport(
-    df=production_df,
-    start_time="2024-01-15 06:00",
-    end_time="2024-01-15 14:00"
-)
+report = ShiftHandoverReport(production_df)
 
-# Generate from raw signals
+# Generate from raw signals (one row per shift for the latest date)
+targets = {"shift_1": 450, "shift_2": 450, "shift_3": 400}
 handover = report.generate_report(
-    counter_uuid="counter-001",
-    ok_counter_uuid="ok-counter-001",
-    nok_counter_uuid="nok-counter-001",
-    state_uuid="machine-state-001"
+    counter_uuid="line1:parts",
+    ok_counter_uuid="line1:ok",
+    nok_counter_uuid="line1:nok",
+    state_uuid="line1:state",
+    targets=targets,
+    report_date="2024-01-15",
 )
 
-# Highlight issues that need attention
-thresholds = {"min_output": 450, "min_quality_pct": 98.0, "max_downtime_min": 30}
-issues = report.highlight_issues(thresholds=thresholds)
+# Highlight issues that need attention (list of dicts)
+thresholds = {"production_achievement_pct": 95.0, "quality_pct": 98.0, "availability_pct": 90.0}
+issues = report.highlight_issues(report_df=handover, thresholds=thresholds)
 
-# Or build from pre-computed DataFrames
+# Or build from pre-computed shift-level DataFrames
 handover = ShiftHandoverReport.from_shift_data(
-    production_df=shift_production,
-    quality_df=shift_quality,
-    downtime_df=shift_downtime
+    production_df=shift_production,   # e.g. ShiftReporting.shift_production()
+    quality_df=shift_quality,         # e.g. QualityTracking.nok_by_shift()
+    downtime_df=shift_downtime,       # e.g. DowntimeTracking.downtime_by_shift()
+    targets=targets,
 )
 ```
 
@@ -50,9 +50,11 @@ handover = ShiftHandoverReport.from_shift_data(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `from_shift_data(production_df, quality_df=None, downtime_df=None)` | Build report from pre-computed DataFrames | `ShiftHandoverReport` |
-| `generate_report(counter_uuid, ok_counter_uuid, nok_counter_uuid, state_uuid)` | Generate report from raw signal UUIDs | `DataFrame` |
-| `highlight_issues(thresholds=None)` | Identify issues exceeding thresholds for incoming shift attention | `DataFrame` |
+| `from_shift_data(production_df, quality_df=None, downtime_df=None, targets=None, report_date=None)` | Build report from pre-computed shift-level DataFrames (static method) | `DataFrame` |
+| `generate_report(counter_uuid, ok_counter_uuid, nok_counter_uuid, state_uuid, targets=None)` | Generate report from raw signal UUIDs | `DataFrame` |
+| `highlight_issues(report_df=None, thresholds=None)` | Identify metrics below thresholds, from a report DataFrame or from raw signal UUIDs | `list[dict]` with `shift`, `metric`, `value`, `threshold`, `severity` |
+
+Both report methods return one row per shift with `date`, `shift`, `production`, `production_target`, `production_achievement_pct`, `ok_parts`, `nok_parts`, `quality_pct`, `availability_pct`, `downtime_minutes`. `highlight_issues` defaults to thresholds of `production_achievement_pct=95`, `quality_pct=98`, `availability_pct=90`; `severity` is `"warning"` within 5% of the threshold, otherwise `"critical"`.
 
 ---
 

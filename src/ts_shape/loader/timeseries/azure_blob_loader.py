@@ -874,6 +874,14 @@ class AzureBlobFlexibleFileLoader:
     # ---- Parser registry ----
     @classmethod
     def register_parser(cls, extension: str, func: Callable[[bytes, str], Any]) -> None:
+        """Register a parser for a file extension, replacing any existing one.
+
+        Args:
+            extension: File extension, with or without the leading dot
+                (case-insensitive).
+            func: Callable receiving the blob content and blob name and
+                returning the parsed object.
+        """
         ext = extension.lower()
         if not ext.startswith("."):
             ext = "." + ext
@@ -881,6 +889,12 @@ class AzureBlobFlexibleFileLoader:
 
     @classmethod
     def unregister_parser(cls, extension: str) -> None:
+        """Remove the parser for a file extension, if one is registered.
+
+        Args:
+            extension: File extension, with or without the leading dot
+                (case-insensitive).
+        """
         ext = extension.lower()
         if not ext.startswith("."):
             ext = "." + ext
@@ -888,6 +902,7 @@ class AzureBlobFlexibleFileLoader:
 
     @classmethod
     def available_parsers(cls) -> set[str]:
+        """Return the set of file extensions that have a registered parser."""
         return set(cls._parsers.keys())
 
     @classmethod

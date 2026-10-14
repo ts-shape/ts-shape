@@ -1,6 +1,6 @@
 # Product Traceability
 
-Track parts through single stations, multi-step routings, or parallel process lines. Three classes provide increasing levels of traceability complexity.
+Track parts through stations that each log the part ID, multi-step routings, or parallel process lines. Three classes provide increasing levels of traceability complexity.
 
 ---
 
@@ -9,7 +9,7 @@ Track parts through single stations, multi-step routings, or parallel process li
 ```mermaid
 flowchart LR
     subgraph L1["<b>Level 1 — Value</b><br/><i>simplest</i>"]
-        V1["Part ID signal at<br/>a single station"]
+        V1["Part ID signal<br/>per station"]
     end
 
     subgraph L2["<b>Level 2 — Routing</b><br/><i>multi-step</i>"]
@@ -34,23 +34,25 @@ flowchart LR
 
 | Class | Use When | Signals Required |
 |-------|----------|-----------------|
-| `ValueTraceabilityEvents` | Single station, one ID signal | Part ID (string) |
-| `RoutingTraceabilityEvents` | Sequential stations with routing/state signal | Part ID + routing/state (integer) |
-| `MultiProcessTraceabilityEvents` | Parallel lines with handovers | Multiple Part IDs + handover signals |
+| `ValueTraceabilityEvents` | Each station logs the part ID on its own signal | One part ID signal per station (`value_string`) |
+| `RoutingTraceabilityEvents` | One part ID signal plus a routing/step signal | Part ID (`value_string`) + routing/state (`value_integer`) |
+| `MultiProcessTraceabilityEvents` | Parallel cells/lines with handovers | One part ID signal per process + optional handover signals (`value_integer`) |
 
 ---
 
 ## Level 1 — Value Traceability
 
-Track a part ID at a single station. The simplest form of traceability.
+Each station carries its own string signal holding the part ID currently being processed. The simplest form of traceability.
 
 ```python
 from ts_shape.events.production.order_traceability import ValueTraceabilityEvents
 
 trace = ValueTraceabilityEvents(
-    dataframe=df,
-    id_uuid='part_id_signal',
-    station_uuids=['station_1_present', 'station_2_present'],
+    df,
+    station_uuids={
+        'station_1_part_id': 'Station 1',
+        'station_2_part_id': 'Station 2',
+    },
 )
 
 # Build timeline: when each part was at each station
@@ -59,8 +61,11 @@ timeline = trace.build_timeline()
 # Lead time per part (first seen → last seen)
 lead_times = trace.lead_time()
 
+# Where is each part right now?
+status = trace.current_status()
+
 # Station dwell time statistics
-station_stats = trace.station_statistics()
+station_stats = trace.station_dwell_statistics()
 ```
 
 ---
@@ -73,11 +78,10 @@ Track parts through a sequential routing — correlate the part ID signal with a
 from ts_shape.events.production.routing_traceability import RoutingTraceabilityEvents
 
 trace = RoutingTraceabilityEvents(
-    dataframe=df,
+    df,
     id_uuid='part_id_signal',
     routing_uuid='routing_step_signal',
     state_map={1: 'Loading', 2: 'Processing', 3: 'Inspection', 4: 'Unloading'},
-    station_map={10: 'Station A', 20: 'Station B', 30: 'Station C'},
 )
 
 # Correlate ID with routing state — full timeline
@@ -97,21 +101,21 @@ paths = trace.routing_paths()
 
 ## Level 3 — Multi-Process Traceability
 
-Track parts across parallel process lines with handover events between them.
+Track parts across parallel cells or lines with handover events between them. Each process carries its own part ID signal; parallel cells that share a `station` name are grouped together.
 
 ```python
 from ts_shape.events.production.multi_process_traceability import MultiProcessTraceabilityEvents
 
 trace = MultiProcessTraceabilityEvents(
-    dataframe=df,
+    df,
     processes=[
-        {'id_uuid': 'line_a_part_id', 'station_uuids': ['press_present', 'weld_present']},
-        {'id_uuid': 'line_b_part_id', 'station_uuids': ['mill_present', 'drill_present']},
-        {'id_uuid': 'assembly_part_id', 'station_uuids': ['assy_present']},
+        {'id_uuid': 'press_part_id', 'station': 'Press'},
+        {'id_uuid': 'mill_part_id', 'station': 'Mill'},
+        {'id_uuid': 'assembly_part_id', 'station': 'Assembly'},
     ],
     handovers=[
-        {'from_id_uuid': 'line_a_part_id', 'to_id_uuid': 'assembly_part_id'},
-        {'from_id_uuid': 'line_b_part_id', 'to_id_uuid': 'assembly_part_id'},
+        {'uuid': 'ho_press_assy', 'from_station': 'Press', 'to_station': 'Assembly'},
+        {'uuid': 'ho_mill_assy', 'from_station': 'Mill', 'to_station': 'Assembly'},
     ],
 )
 
@@ -140,11 +144,11 @@ paths = trace.routing_paths()
 
 ```mermaid
 flowchart TD
-    Q1{"How many<br/>process lines?"} -->|"One line"| Q2{"Does the part<br/>visit multiple stations?"}
+    Q1{"How many<br/>process lines?"} -->|"One line"| Q2{"How is the<br/>station encoded?"}
     Q1 -->|"Multiple lines<br/>with handovers"| L3["<b>Multi-Process</b><br/>MultiProcessTraceabilityEvents"]
 
-    Q2 -->|"Single station"| L1["<b>Value</b><br/>ValueTraceabilityEvents"]
-    Q2 -->|"Multiple stations<br/>in sequence"| L2["<b>Routing</b><br/>RoutingTraceabilityEvents"]
+    Q2 -->|"Part ID signal<br/>per station"| L1["<b>Value</b><br/>ValueTraceabilityEvents"]
+    Q2 -->|"One ID signal +<br/>routing/step signal"| L2["<b>Routing</b><br/>RoutingTraceabilityEvents"]
 
     style L1 fill:#14532d,stroke:#22c55e,color:#dcfce7
     style L2 fill:#1a3a4a,stroke:#f59e0b,color:#fef3c7

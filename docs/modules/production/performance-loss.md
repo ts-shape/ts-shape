@@ -18,28 +18,24 @@ Use to identify hidden speed losses where the machine runs but slower than targe
 ```python
 from ts_shape.events.production.performance_loss import PerformanceLossTracking
 
-tracker = PerformanceLossTracking(
-    df=production_df,
-    start_time="2024-01-01",
-    end_time="2024-01-31"
-)
+tracker = PerformanceLossTracking(production_df)
 
-# Performance percentage per shift
+# Performance percentage per shift (cycle_uuid is a part counter or cycle trigger)
 perf = tracker.performance_by_shift(
-    cycle_uuid="cycle-time-001",
+    cycle_uuid="line1:parts",
     target_cycle_time=4.5  # seconds
 )
 
 # Find periods where performance dropped below 90%
 slow = tracker.slow_periods(
-    cycle_uuid="cycle-time-001",
+    cycle_uuid="line1:parts",
     target_cycle_time=4.5,
     threshold_pct=90.0
 )
 
 # Daily trend of performance percentage
 trend = tracker.performance_trend(
-    cycle_uuid="cycle-time-001",
+    cycle_uuid="line1:parts",
     target_cycle_time=4.5,
     window="1D"
 )
@@ -51,9 +47,9 @@ trend = tracker.performance_trend(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `performance_by_shift(cycle_uuid, target_cycle_time)` | Performance percentage per shift (ideal / actual) | `DataFrame` |
-| `slow_periods(cycle_uuid, target_cycle_time, threshold_pct=90.0)` | Time windows where performance fell below threshold | `DataFrame` |
-| `performance_trend(cycle_uuid, target_cycle_time, window='1D')` | Rolling trend of performance percentage | `DataFrame` |
+| `performance_by_shift(cycle_uuid, target_cycle_time, max_cycle_gap=None)` | Performance percentage per shift (ideal / actual) | `DataFrame` with `date`, `shift`, `actual_parts`, `avg_cycle_time_s`, `target_cycle_time_s`, `performance_pct`, `loss_minutes` |
+| `slow_periods(cycle_uuid, target_cycle_time, threshold_pct=90.0, window='1h', max_cycle_gap=None)` | Time windows where performance fell below threshold | `DataFrame` with `start`, `end`, `actual_parts`, `avg_cycle_time_s`, `performance_pct`, `loss_minutes` |
+| `performance_trend(cycle_uuid, target_cycle_time, window='1D', max_cycle_gap=None)` | Performance percentage per time period | `DataFrame` with `period`, `actual_parts`, `avg_cycle_time_s`, `performance_pct`, `loss_minutes` |
 
 ---
 

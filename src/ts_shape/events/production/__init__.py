@@ -6,6 +6,8 @@ Event Detection Classes:
 - MachineStateEvents: Run/idle intervals and transition points from a boolean state signal.
   - detect_run_idle: Intervalize run/idle with optional min duration.
   - transition_events: Point events on idle→run and run→idle changes.
+  - detect_rapid_transitions: Identify suspicious rapid state changes.
+  - state_quality_metrics: Return quality metrics for the state data.
 
 - LongDowntimeEvents: Detect idle/stopped intervals exceeding a minimum duration, and
   count production events between consecutive long-downtime boundaries.
@@ -15,26 +17,33 @@ Event Detection Classes:
 - LineThroughputEvents: Throughput metrics and takt adherence.
   - count_parts: Parts per fixed window from a counter uuid.
   - takt_adherence: Cycle time violations vs. a takt time.
+  - cycle_quality_check: Enhanced cycle detection with quality validation.
+  - throughput_oee: Calculate Overall Equipment Effectiveness (OEE) metrics.
+  - throughput_trends: Throughput trend with moving averages and degradation flags.
 
 - ChangeoverEvents: Product/recipe changes and end-of-changeover derivation.
   - detect_changeover: Point events at product value changes.
   - changeover_window: End via fixed window or stable band metrics.
+  - changeover_quality_metrics: Compute quality metrics for changeovers.
 
 - FlowConstraintEvents: Blocked/starved intervals between upstream/downstream run signals.
   - blocked_events: Upstream running while downstream not consuming.
   - starved_events: Downstream running while upstream not supplying.
+  - flow_constraint_analytics: Blocked and starved events with severity and summary statistics.
 
 Daily Production Tracking Classes:
 - PartProductionTracking: Track production quantities by part number.
   - production_by_part: Production quantity per time window.
   - daily_production_summary: Daily totals by part.
   - production_totals: Totals over date ranges.
+  - detect_resets: Find the points in time where the counter was reset.
 
 - CycleTimeTracking: Analyze cycle times by part number.
   - cycle_time_by_part: Calculate cycle times.
   - cycle_time_statistics: Statistical analysis (min/avg/max/std).
   - detect_slow_cycles: Anomaly detection.
   - cycle_time_trend: Trend analysis.
+  - hourly_cycle_time_summary: Hourly summary of cycle times by part.
 
 - ShiftReporting: Shift-based performance analysis.
   - shift_production: Production per shift.
@@ -100,7 +109,8 @@ Traceability:
   (OrderTraceabilityEvents is a backwards-compatible alias.)
 
 - RoutingTraceabilityEvents: Trace item routing using ID + state/routing signal.
-  - state_map: Maps signal values (PLC steps, station codes) to station names.
+  The ``state_map`` argument maps signal values (PLC steps, station codes) to
+  station names.
   - build_routing_timeline: Correlate ID signal with state signal.
   - lead_time: End-to-end lead time per item.
   - station_statistics: Dwell-time stats per station/step.
@@ -163,11 +173,13 @@ Performance and Target Tracking:
 - ShiftHandoverReport: Automated shift handover report generation.
   - generate_report: Full shift report with production, quality, downtime.
   - highlight_issues: Auto-identify metrics below thresholds.
+  - from_shift_data: Build a handover report from pre-computed shift-level DataFrames.
 
 - PeriodSummary: Weekly/monthly summary aggregation.
   - weekly_summary: Roll up daily metrics to weekly.
   - monthly_summary: Roll up daily metrics to monthly.
   - compare_periods: Period-over-period comparison.
+  - from_daily_data: Roll up a pre-computed daily DataFrame to weekly or monthly.
 
 - OperatingStateEvents: Infer operating states from continuous signals.
   - infer_states: Cluster the signal into N operating states.

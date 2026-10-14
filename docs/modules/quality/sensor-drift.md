@@ -18,16 +18,18 @@ Use for continuous monitoring of inline sensor calibration. Detects gradual drif
 ```python
 from ts_shape.events.quality.sensor_drift import SensorDriftEvents
 
-drift = SensorDriftEvents(df, value_column="value_double")
+# Compare a pH probe against a 7.0 buffer reference
+# (or pass reference_uuid= to use a reference signal instead)
+drift = SensorDriftEvents(df, signal_uuid="ph_probe_01", reference_value=7.0)
 
-# Track zero-point offset over 8-hour windows
-zero = drift.detect_zero_drift(window="8h", threshold=None)
+# Track zero-point offset over 8-hour windows (threshold auto-set if None)
+zero = drift.detect_zero_drift(window="8h", threshold=0.05)
 
-# Monitor sensitivity changes (span drift)
+# Monitor sensitivity changes (span drift; requires a reference)
 span = drift.detect_span_drift(window="8h")
 
-# Get a composite calibration health score
-health = drift.calibration_health(window="8h", tolerance=None)
+# Get a composite calibration health score, normalized to a +/-0.1 pH tolerance
+health = drift.calibration_health(window="8h", tolerance=0.1)
 print(health[["start", "health_score"]].head())
 ```
 
@@ -37,10 +39,10 @@ print(health[["start", "health_score"]].head())
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_zero_drift(window='8h', threshold=None)` | Track mean offset from baseline (zero-point drift) | DataFrame with offset per window |
-| `detect_span_drift(window='8h')` | Detect sensitivity/gain changes over time | DataFrame with span metrics per window |
-| `drift_trend(window='1D', metric='mean')` | Rolling trend of a chosen metric for visualization | DataFrame with trend values |
-| `calibration_health(window='8h', tolerance=None)` | Composite health score combining zero and span drift | DataFrame with health scores |
+| `detect_zero_drift(window='8h', threshold=None)` | Track mean offset from reference or first-window baseline (zero-point drift) | DataFrame with `start`, `end`, `mean_offset`, `drift_rate`, `severity` |
+| `detect_span_drift(window='8h')` | Detect sensitivity/gain changes over time (requires `reference_uuid` or `reference_value`) | DataFrame with `start`, `sensitivity`, `sensitivity_change_pct` |
+| `drift_trend(window='1D', metric='mean')` | Rolling trend of the window `mean` or `std` | DataFrame with `start`, `value`, `slope`, `r_squared`, `direction` |
+| `calibration_health(window='8h', tolerance=None)` | Composite 0-100 health score from bias vs. reference and precision | DataFrame with `start`, `bias`, `precision`, `health_score` |
 
 ---
 

@@ -19,8 +19,8 @@ Use for operating envelope analysis. Tracks what ranges your process actually op
 from ts_shape.events.engineering.operating_range import OperatingRangeEvents
 
 analyzer = OperatingRangeEvents(
-    df=process_data,
-    uuid="extruder_speed_01"
+    dataframe=process_data,
+    signal_uuid="extruder_speed_01",
 )
 
 # Get the operating envelope per hour
@@ -32,7 +32,7 @@ shifts = analyzer.detect_regime_change(
     shift_threshold=2.0
 )
 
-# Calculate time in a target operating range
+# Percentage of time in a target operating range
 in_range = analyzer.time_in_range(
     lower=180.0,
     upper=220.0,
@@ -49,10 +49,10 @@ distribution = analyzer.value_distribution(n_bins=10)
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `operating_envelope(window='1h')` | Per-window min/max/mean envelope | DataFrame with envelope stats |
-| `detect_regime_change(window='1h', shift_threshold=2.0)` | Operating point shifts | DataFrame of regime changes |
-| `time_in_range(lower, upper, window='1h')` | Time in target range per window | DataFrame with in-range durations |
-| `value_distribution(n_bins=10)` | Value histogram | DataFrame with bin counts |
+| `operating_envelope(window='1h')` | Per-window min/p5/mean/p95/max envelope | DataFrame: `start`, `min_value`, `p5`, `mean_value`, `p95`, `max_value`, `range_width` |
+| `detect_regime_change(window='1h', shift_threshold=2.0)` | Operating point shifts | DataFrame of regime changes (`start`, `end`, `prev_mean`, `new_mean`, `shift_magnitude`) |
+| `time_in_range(lower, upper, window='1h')` | Percentage of time in target range per window | DataFrame: `start`, `time_in_range_pct`, `time_below_pct`, `time_above_pct` |
+| `value_distribution(n_bins=10)` | Value histogram | DataFrame: `bin_lower`, `bin_upper`, `count`, `pct`, `cumulative_pct` |
 
 ---
 

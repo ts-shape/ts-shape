@@ -15,9 +15,9 @@ For exhaustive parameter docs, see the [API Reference](../reference/index.md).
 
     ---
 
-    Outlier detection, SPC rules, tolerance deviation, sensor drift, signal quality, gauge R&R, anomaly classification, capability trending.
+    Outlier detection, SPC rules, tolerance deviation, sensor drift, signal quality, gauge R&R, anomaly classification, capability trending, change-point detection, multivariate SPC (Hotelling T²).
 
-    **9 modules**
+    **11 modules**
 
 -   :material-factory:{ .lg .middle } **[Production](production/machine-state.md)**
 
@@ -25,7 +25,7 @@ For exhaustive parameter docs, see the [API Reference](../reference/index.md).
 
     Machine states, OEE, throughput, cycle times, downtime, changeovers, alarms, batches, traceability, shift reports, and more.
 
-    **28 modules**
+    **26 modules**
 
 -   :material-cog-transfer:{ .lg .middle } **[Engineering](engineering/setpoint-events.md)**
 
@@ -39,9 +39,9 @@ For exhaustive parameter docs, see the [API Reference](../reference/index.md).
 
     ---
 
-    Degradation detection, failure prediction (RUL), vibration analysis for bearing health.
+    Degradation detection, failure prediction (RUL), vibration analysis for bearing health, reliability (MTBF / MTTR / Weibull).
 
-    **3 modules**
+    **4 modules**
 
 -   :material-lightning-bolt:{ .lg .middle } **[Energy](energy/power-integration.md)**
 

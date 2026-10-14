@@ -90,6 +90,7 @@ class SignalSpec:
 
     @property
     def is_change_encoded(self) -> bool:
+        """Whether rows are emitted only when the value changes."""
         return self.encoding == "change_encoded"
 
     @property
@@ -123,6 +124,19 @@ class SignalSpec:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> SignalSpec:
+        """Build a spec from a plain mapping of field names to values.
+
+        Args:
+            data: Mapping of `SignalSpec` field names to values, e.g. the
+                output of `to_dict`.
+
+        Returns:
+            The validated SignalSpec.
+
+        Raises:
+            ValueError: If ``data`` contains unknown field names or invalid
+                field values.
+        """
         known = {f for f in cls.__dataclass_fields__}
         unknown = set(data) - known
         if unknown:
@@ -182,6 +196,14 @@ class SignalSpecs(Mapping[str, SignalSpec]):
         return pd.DataFrame(rows, columns=cols)
 
     def to_dict(self) -> dict[str, dict[str, Any]]:
+        """Serialize to ``{uuid: {field: value}}`` (the YAML/JSON layout).
+
+        The ``uuid`` key is omitted from each inner mapping and ``notes`` are
+        excluded.
+
+        Returns:
+            Mapping of uuid to that signal's spec fields.
+        """
         out = {}
         for uuid, spec in self._specs.items():
             data = spec.to_dict()

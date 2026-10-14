@@ -19,22 +19,24 @@ Use for predictive maintenance monitoring. Tracks gradual degradation in bearing
 from ts_shape.events.maintenance.degradation_detection import DegradationDetectionEvents
 
 detector = DegradationDetectionEvents(
-    df=sensor_df,
-    timestamp_col="timestamp",
-    value_col="bearing_temp"
+    dataframe=sensor_df,
+    signal_uuid="bearing_temp",
 )
 
-# Detect slow upward drift in bearing temperature
-trend_events = detector.detect_trend_degradation(window="7D", slope_threshold=0.05)
-
-# Check variance increase against a known-good baseline
-variance_events = detector.detect_variance_increase(baseline_window="30D", threshold=2.0)
-
-# Composite health score combining all indicators
-score = detector.health_score(
-    trend_weight=0.4, variance_weight=0.3, shift_weight=0.3
+# Detect slow upward drift in bearing temperature (slope in units per second)
+trend_events = detector.detect_trend_degradation(
+    window="6h", min_slope=0.0001, direction="increasing"
 )
-print(f"Health score: {score}/100")
+
+# Rolling variance vs. the first window as baseline
+variance_events = detector.detect_variance_increase(window="1h", threshold_factor=2.0)
+
+# Permanent mean shifts of at least 3 degrees that persist for 10 minutes
+shifts = detector.detect_level_shift(min_shift=3.0, hold="10min")
+
+# Composite 0-100 health score over time, baselined on the first 24 hours
+health = detector.health_score(window="1h", baseline_window="24h")
+print(health[["systime", "health_score"]].tail())
 ```
 
 ---
@@ -43,17 +45,17 @@ print(f"Health score: {score}/100")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_trend_degradation()` | Rolling linear regression slope detection | DataFrame of intervals with degrading trend |
-| `detect_variance_increase()` | Variance vs baseline comparison | DataFrame of intervals with elevated variance |
-| `detect_level_shift()` | CUSUM-like mean shift detection | DataFrame of detected level shift events |
-| `health_score()` | Composite 0-100 health score | Float score combining trend, variance, and shift indicators |
+| `detect_trend_degradation()` | Rolling linear regression slope detection | Intervals with `start`, `end`, `avg_slope`, `total_change`, `duration_seconds` |
+| `detect_variance_increase()` | Rolling variance vs. baseline (first window) | Intervals with `baseline_variance`, `current_variance`, `ratio` |
+| `detect_level_shift()` | CUSUM-like mean shift detection | Events with `systime`, `shift_magnitude`, `prev_mean`, `new_mean` |
+| `health_score()` | Composite 0-100 health score per sample | DataFrame with `systime`, `health_score`, `mean_drift_pct`, `variance_ratio`, `trend_slope` |
 
 ---
 
 ## Tips & Hints
 
 !!! tip "Set a meaningful baseline window"
-    Use the first stable operating period as your baseline. A poorly chosen baseline will produce false positives from `detect_variance_increase()` and `detect_level_shift()`.
+    `detect_variance_increase()` uses the first `window` of data as its baseline, and `health_score()` uses the first `baseline_window`. Start the input at a stable, known-good operating period; a poor baseline produces false positives.
 
 !!! info "Related modules"
     - [`FailurePredictionEvents`](failure-prediction.md) - Estimate remaining useful life once degradation is confirmed

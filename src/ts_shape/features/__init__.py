@@ -128,3 +128,35 @@ Classes:
   - to_feature_matrix: Pivot by uuid × value_col × agg into {uuid}__{col}__{agg} columns.
     Supports optional group_col (cycle, batch, segment) as row index.
 """
+
+import importlib as _importlib
+
+# The classes listed above, importable from the pack. They are imported on
+# first access, so a class whose optional dependency is missing only fails
+# when it is used.
+_CLASSES = {
+    "BooleanStatistics": "ts_shape.features.stats.boolean_stats",
+    "CrossSignalAnalytics": "ts_shape.features.cross_signal",
+    "CycleDataProcessor": "ts_shape.features.cycles.cycle_processor",
+    "CycleExtractor": "ts_shape.features.cycles.cycles_extractor",
+    "FeatureMatrixExporter": "ts_shape.features.export",
+    "NumericStatistics": "ts_shape.features.stats.numeric_stats",
+    "ProfileComparison": "ts_shape.features.segment_analysis.profile_comparison",
+    "SegmentExtractor": "ts_shape.features.segment_analysis.segment_extractor",
+    "SegmentProcessor": "ts_shape.features.segment_analysis.segment_processor",
+    "StringStatistics": "ts_shape.features.stats.string_stats",
+    "TimeGroupedStatistics": "ts_shape.features.time_stats.time_stats_numeric",
+    "TimestampStatistics": "ts_shape.features.stats.timestamp_stats",
+}
+
+__all__ = sorted(_CLASSES)
+
+
+def __getattr__(name: str) -> object:
+    if name in _CLASSES:
+        return getattr(_importlib.import_module(_CLASSES[name]), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_CLASSES))

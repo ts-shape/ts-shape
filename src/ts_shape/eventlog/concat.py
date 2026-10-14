@@ -9,6 +9,20 @@ from .model import EventLog
 
 
 def concat(*logs: EventLog) -> EventLog:
+    """Concatenate several event logs into one.
+
+    Each table is concatenated, then deduplicated: objects by
+    ``(oid, type)``, events by event id (after sorting by timestamp),
+    relations by ``(eid, oid, type)``, object-to-object links by
+    ``(oid, oid2, qualifier)``, and object changes by
+    ``(oid, field, timestamp)``.
+
+    Args:
+        *logs: Event logs to combine.
+
+    Returns:
+        A new EventLog; an empty EventLog when no logs are given.
+    """
     if not logs:
         return EventLog()
     events = pd.concat([log.events for log in logs], ignore_index=True)

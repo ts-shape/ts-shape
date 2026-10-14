@@ -19,25 +19,23 @@ Use for real-time inventory monitoring in manufacturing. Tracks stock levels, ca
 from ts_shape.events.supplychain.inventory_monitoring import InventoryMonitoringEvents
 
 monitor = InventoryMonitoringEvents(
-    df=inventory_df,
-    timestamp_col="timestamp",
-    value_col="stock_level"
+    dataframe=inventory_df,
+    level_uuid="stock_level",
 )
 
-# Flag intervals where stock drops below safety threshold
-low_stock = monitor.detect_low_stock(threshold=100, min_duration="2H")
+# Flag intervals where stock stays below 100 units for at least 2 hours
+low_stock = monitor.detect_low_stock(min_level=100, hold="2h")
 print(f"Low stock events: {len(low_stock)}")
 
-# Calculate rolling consumption rate
-rate = monitor.consumption_rate(window="1D")
+# Daily consumption rate (units per hour), ignoring refills
+rate = monitor.consumption_rate(window="1D", handle_refills=True)
 
-# Detect when stock falls below the reorder point
-breaches = monitor.reorder_point_breach(reorder_point=250)
+# Detect when stock falls below the reorder point or safety stock
+breaches = monitor.reorder_point_breach(reorder_level=250, safety_stock=80)
 
-# Predict time until stockout at current consumption rate
-prediction = monitor.stockout_prediction(window="7D")
-if prediction is not None:
-    print(f"Predicted stockout in: {prediction.days} days")
+# Hours until stockout, based on the last 24 hours of consumption
+prediction = monitor.stockout_prediction(consumption_rate_window="24h")
+print(prediction[["systime", "current_level", "estimated_stockout_time_hours"]].tail())
 ```
 
 ---
@@ -46,17 +44,17 @@ if prediction is not None:
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_low_stock()` | Flag low inventory intervals | DataFrame of periods below stock threshold |
-| `consumption_rate()` | Rolling consumption rate | DataFrame with consumption rate per window |
-| `reorder_point_breach()` | Detect when stock falls below reorder point | DataFrame of breach events with timestamps |
-| `stockout_prediction()` | Time estimate until stockout | Timedelta estimate or None if stock is stable |
+| `detect_low_stock()` | Flag intervals below `min_level` for at least `hold` | DataFrame with `start`, `end`, `min_value`, `avg_value`, `duration_seconds` |
+| `consumption_rate()` | Consumption rate per window (units per hour) | DataFrame with `start`, `consumption_rate`, `level_start`, `level_end` |
+| `reorder_point_breach()` | Detect when stock falls below reorder point or safety stock | DataFrame with `systime`, `current_level`, `breach_type`, `deficit` |
+| `stockout_prediction()` | Time estimate until stockout per sample | DataFrame with `systime`, `current_level`, `consumption_rate`, `estimated_stockout_time_hours` |
 
 ---
 
 ## Tips & Hints
 
 !!! tip "Account for replenishment events"
-    Stock level jumps (replenishments) can skew `consumption_rate()`. Filter out positive deltas or use a median-based rate to get robust consumption estimates that ignore restocking spikes.
+    By default `consumption_rate()` uses the first-minus-last level of each window, so a refill inside the window cancels out consumption. Pass `handle_refills=True` to sum only level decreases and treat refills like counter resets.
 
 !!! info "Related modules"
     - [`DemandPatternEvents`](demand-patterns.md) - Understand demand patterns driving inventory depletion

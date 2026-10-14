@@ -20,6 +20,7 @@ nav:
   - Overview: index.md
   - Concept: concept.md
   - Migration & Deprecations: migration.md
+  - Naming & Output Conventions: naming.md
   - Changelog: changelog.md
   - Roadmap: roadmap.md
   - Gap screening (production): production_gap_screening.md
@@ -74,12 +75,19 @@ nav:
     - Capability Trending: modules/quality/capability-trending.md
     - Change-Point Detection: modules/quality/change-point.md
     - Multivariate SPC (Hotelling T²): modules/quality/multivariate-spc.md
+    - Calibration Validation: modules/quality/calibration-validation.md
+    - Measurement Uncertainty (GUM): modules/quality/measurement-uncertainty.md
+    - Value Distribution: modules/quality/value-distribution.md
+    - Sampling & Resolution: modules/quality/sampling-resolution.md
+    - Data Gap Analysis: modules/quality/data-gap-analysis.md
+    - Environmental Compensation: modules/quality/environmental-compensation.md
   - Production:
     - Event Detection:
       - Machine State: modules/production/machine-state.md
       - Line Throughput: modules/production/line-throughput.md
       - Changeover: modules/production/changeover.md
       - Flow Constraints: modules/production/flow-constraints.md
+      - Continuous Process Alignment: modules/production/continuous-process-alignment.md
     - Daily Tracking:
       - Part Tracking: modules/production/part-tracking.md
       - Cycle Time: modules/production/cycle-time.md
@@ -93,6 +101,10 @@ nav:
       - Bottleneck Detection: modules/production/bottleneck-detection.md
       - Micro-Stop Detection: modules/production/micro-stops.md
       - Duty Cycle: modules/production/duty-cycle.md
+      - Line Balancing: modules/production/line-balancing.md
+      - Flow Metrics (Little's Law): modules/production/flow-metrics.md
+      - Long Downtime: modules/production/long-downtime.md
+      - Runtime Accounting: modules/production/runtime-accounting.md
     - Traceability:
       - Value Traceability: modules/production/order-traceability.md
       - Routing Traceability: modules/production/routing-traceability.md
@@ -121,6 +133,7 @@ nav:
     - Disturbance Recovery: modules/engineering/disturbance-recovery.md
     - Material Balance: modules/engineering/material-balance.md
     - Process Stability Index: modules/engineering/process-stability.md
+    - Time to Threshold: modules/engineering/time-to-threshold.md
   - Maintenance:
     - Degradation Detection: modules/maintenance/degradation-detection.md
     - Failure Prediction: modules/maintenance/failure-prediction.md
@@ -137,6 +150,12 @@ nav:
     - Inventory Monitoring: modules/supplychain/inventory-monitoring.md
     - Demand Patterns: modules/supplychain/demand-patterns.md
     - Lead Time Analysis: modules/supplychain/lead-time-analysis.md
+  - Development:
+    - Design of Experiments: modules/development/design-of-experiments.md
+    - Design Space: modules/development/design-space.md
+    - Golden Batch Deviation: modules/development/golden-batch.md
+    - Recipe Phase Adherence: modules/development/recipe-phase-adherence.md
+    - Critical Parameter Ranking: modules/development/critical-parameter-ranking.md
 - Examples:
   - Overview: examples/index.md
   - Quality Events: examples/quality-events.md

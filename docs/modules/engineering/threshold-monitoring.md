@@ -19,16 +19,12 @@ Use for continuous monitoring of process limits. Multi-level thresholds (warning
 from ts_shape.events.engineering.threshold_monitoring import ThresholdMonitoringEvents
 
 monitor = ThresholdMonitoringEvents(
-    df=process_data,
-    uuid="reactor_pressure_01"
+    dataframe=process_data,
+    signal_uuid="reactor_pressure_01",
 )
 
-# Define warning, alarm, and critical levels
-levels = [
-    {"name": "warning", "value": 85.0},
-    {"name": "alarm", "value": 92.0},
-    {"name": "critical", "value": 98.0},
-]
+# Define warning, alarm, and critical levels (name -> threshold)
+levels = {"warning": 85.0, "alarm": 92.0, "critical": 98.0}
 exceedances = monitor.multi_level_threshold(levels, direction="above")
 
 # Hysteresis-based alarm to avoid chattering
@@ -44,10 +40,10 @@ time_above = monitor.time_above_threshold(threshold=85.0, window="1h")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `multi_level_threshold(levels, direction='above')` | Multi-level threshold detection | DataFrame of level exceedances |
-| `threshold_with_hysteresis(high, low)` | Alarm with hysteresis band | DataFrame of alarm intervals |
-| `time_above_threshold(threshold, window='1h')` | Cumulative time above per window | DataFrame with durations |
-| `threshold_exceedance_trend(threshold, window='1D')` | Exceedance trend over time | DataFrame with daily trend |
+| `multi_level_threshold(levels, direction='above')` | Multi-level threshold detection (`levels` is a dict of name to value) | DataFrame: `start`, `end`, `duration`, `level`, `peak_value` |
+| `threshold_with_hysteresis(high, low)` | Alarm with hysteresis band | DataFrame: `start`, `end`, `duration`, `peak_value` |
+| `time_above_threshold(threshold, window='1h')` | Cumulative time above per window | DataFrame: `start`, `time_above`, `pct_above`, `exceedance_count` |
+| `threshold_exceedance_trend(threshold, window='1D')` | Exceedance trend over time | DataFrame: `start`, `exceedance_count`, `total_duration`, `trend_direction` |
 
 ---
 

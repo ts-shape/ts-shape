@@ -11,37 +11,35 @@ logger = logging.getLogger(__name__)
 
 
 class DescriptiveFeatures:
-    """
-    A class used to compute descriptive statistics for a DataFrame, grouped by UUID.
+    """Compute descriptive statistics for a DataFrame, grouped by UUID.
 
-    Attributes
-    ----------
-    data : pandas.DataFrame
-        DataFrame containing the data
+    Use `compute` to get descriptive statistics for each UUID in the DataFrame.
 
-    Methods
-    -------
-    compute():
-        Compute and return descriptive statistics for each UUID in the DataFrame.
+    Attributes:
+        data (pandas.DataFrame): DataFrame containing the data.
     """
 
     def __init__(self, dataframe: pd.DataFrame):
-        """
-        Parameters
-        ----------
-        dataframe : pandas.DataFrame
-            DataFrame containing the data
+        """Initialize with the DataFrame to describe.
+
+        Args:
+            dataframe: DataFrame containing the data.
         """
         self.data = dataframe
 
     def overall_stats(self, group: pd.DataFrame) -> dict[str, int | float]:
         """Compute and return overall statistics for the DataFrame group.
 
+        The returned dictionary contains:
+
         - **total_rows**: Total number of rows in the group.
         - **total_time**: Total time difference from max and min of 'systime' column.
         - **is_delta_sum**: Sum of the 'is_delta' column.
         - **is_delta_avg**: Mean of the 'is_delta' column.
         - **is_delta_std**: Standard deviation of the 'is_delta' column.
+
+        Args:
+            group: DataFrame group (rows of a single UUID) to summarize.
 
         Returns:
             dict: A dictionary with overall statistics.
@@ -60,8 +58,12 @@ class DescriptiveFeatures:
     ) -> dict[str, dict[str, int | float | str | bool]]:
         """Compute and return statistics for each column in the DataFrame group.
 
+        Args:
+            group: DataFrame group (rows of a single UUID) to summarize.
+
         Returns:
-            dict: A dictionary with overall statistics, and string, numeric, and boolean statistics per column.
+            dict: A dictionary with overall statistics, and string, numeric, and
+                boolean statistics per column.
         """
         results = {"overall": self.overall_stats(group)}
         for col in group.columns:
@@ -91,10 +93,13 @@ class DescriptiveFeatures:
         """Compute and return descriptive statistics for each UUID in the DataFrame.
 
         Args:
-            output_format (str, optional): The desired output format ('dict' or 'dataframe'). Defaults to 'dict'.
+            output_format (str, optional): The desired output format ('dict' or
+                'dataframe'). Defaults to 'dict'.
 
         Returns:
-            Union[DataFrame, dict]: A DataFrame or a nested dictionary with the UUID as the key and specific statistics related to that UUID's data type.
+            Union[DataFrame, dict]: A DataFrame or a nested dictionary with the
+                UUID as the key and specific statistics related to that UUID's
+                data type.
         """
         if output_format == "dataframe":
             rows_list = []

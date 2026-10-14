@@ -19,27 +19,30 @@ Use as a generic target vs actual comparison module. Works with any production m
 from ts_shape.events.production.target_tracking import TargetTracking
 
 tracker = TargetTracking(
-    df=production_df,
-    start_time="2024-01-01",
-    end_time="2024-01-31"
+    production_df,
+    shift_definitions={
+        "morning": ("06:00", "14:00"),
+        "afternoon": ("14:00", "22:00"),
+        "night": ("22:00", "06:00"),
+    },
 )
 
-# Compare actual production to shift targets
+# Compare actual production to shift targets (keys must match the shift names)
 shift_targets = {"morning": 500, "afternoon": 480, "night": 400}
 comparison = tracker.compare_to_target(
-    metric_uuid="counter-001",
+    metric_uuid="line1:parts",
     targets=shift_targets
 )
 
-# Achievement summary over time
+# Daily achievement summary
 summary = tracker.target_achievement_summary(
-    metric_uuid="counter-001",
+    metric_uuid="line1:parts",
     daily_target=1400
 )
 
 # How often do we hit the daily target?
 hit_rate = tracker.target_hit_rate(
-    metric_uuid="counter-001",
+    metric_uuid="line1:parts",
     daily_target=1400
 )
 ```
@@ -50,9 +53,11 @@ hit_rate = tracker.target_hit_rate(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `compare_to_target(metric_uuid, targets)` | Actual vs target per shift with delta and percentage | `DataFrame` |
-| `target_achievement_summary(metric_uuid, daily_target)` | Daily achievement percentage over the analysis period | `DataFrame` |
-| `target_hit_rate(metric_uuid, daily_target)` | Percentage of days/shifts where target was met or exceeded | `float` |
+| `compare_to_target(metric_uuid, targets)` | Actual vs target per shift with variance and percentage | `DataFrame` with `date`, `shift`, `actual`, `target`, `variance`, `achievement_pct`, `status` |
+| `target_achievement_summary(metric_uuid, daily_target)` | Daily achievement percentage over the analysis period | `DataFrame` with `date`, `actual`, `target`, `variance`, `achievement_pct`, `status` |
+| `target_hit_rate(metric_uuid, daily_target)` | Share of days where the daily target was met or exceeded | `dict` with `total_days`, `days_on_target`, `hit_rate_pct`, `avg_achievement_pct` |
+
+`compare_to_target` and `target_achievement_summary` accept `handle_resets=True` for counters that reset; the result then gains a `resets` column. Without `shift_definitions`, shifts are named `shift_1`, `shift_2`, `shift_3`.
 
 ---
 

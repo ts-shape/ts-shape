@@ -19,14 +19,21 @@ Use to track product/recipe changes on production lines. Detects when the produc
 from ts_shape.events.production.changeover import ChangeoverEvents
 import pandas as pd
 
+# Long format: a product/recipe string signal
 df = pd.DataFrame({
-    "timestamp": pd.date_range("2024-01-01 06:00", periods=360, freq="1min"),
-    "product_id": ["SKU-A"]*120 + ["SKU-B"]*100 + ["SKU-A"]*140,
+    "systime": pd.date_range("2024-01-01 06:00", periods=360, freq="1min"),
+    "uuid": "line1:product",
+    "value_string": ["SKU-A"] * 120 + ["SKU-B"] * 100 + ["SKU-A"] * 140,
 })
 
-co = ChangeoverEvents(df, timestamp_column="timestamp")
-changes = co.detect_changeover(product_uuid="product_id")
-windows = co.changeover_window(product_uuid="product_id", until="fixed_window")
+co = ChangeoverEvents(df)
+changes = co.detect_changeover(product_uuid="line1:product", include_initial=False)
+windows = co.changeover_window(
+    product_uuid="line1:product",
+    until="fixed_window",
+    config={"duration": "10min"},
+)
+metrics = co.changeover_quality_metrics(product_uuid="line1:product")
 print(changes)
 ```
 
@@ -36,9 +43,9 @@ print(changes)
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_changeover(product_uuid)` | Generate point events at each product/recipe change | DataFrame with timestamp, previous product, and new product |
-| `changeover_window(product_uuid, until='fixed_window')` | Compute changeover duration windows from change point to next stable production | DataFrame with start, end, duration, and product pair |
-| `changeover_quality_metrics(product_uuid)` | Compute quality metrics around changeover events such as first-article pass rate | DataFrame with changeover quality statistics |
+| `detect_changeover(product_uuid, min_hold='0s', include_initial=True)` | Generate point events at each product/recipe change | DataFrame with `systime`, `uuid`, `source_uuid`, `is_delta`, `new_value` |
+| `changeover_window(product_uuid, until='fixed_window', config=None)` | Compute changeover windows from each change point: a fixed duration (`config={'duration': '10min'}`) or until process metrics stabilize (`until='stable_band'`) | DataFrame with `start`, `end`, `uuid`, `source_uuid`, `is_delta`, `method`, `completed` |
+| `changeover_quality_metrics(product_uuid)` | Compute changeover frequency and time-between-changeovers statistics per product | DataFrame with `product`, `changeover_count`, `avg_`/`min_`/`max_`/`std_time_between_seconds` |
 
 ---
 

@@ -19,8 +19,8 @@ Use to segment process data into steady-state vs transient periods. Essential fo
 from ts_shape.events.engineering.steady_state_detection import SteadyStateDetectionEvents
 
 detector = SteadyStateDetectionEvents(
-    df=process_data,
-    uuid="reactor_temperature_01"
+    dataframe=process_data,
+    signal_uuid="reactor_temperature_01",
 )
 
 # Detect steady-state intervals
@@ -46,10 +46,10 @@ bands = detector.steady_state_value_bands(window="5min")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_steady_state(window='5min', std_threshold=1.0, min_duration='10min')` | Steady-state intervals | DataFrame of steady intervals |
-| `detect_transient_periods(window='5min', std_threshold=1.0)` | Transient/dynamic intervals | DataFrame of transient intervals |
-| `steady_state_statistics(window='5min')` | Summary statistics | DataFrame with steady-state stats |
-| `steady_state_value_bands(window='5min')` | Distinct operating bands | DataFrame of value bands |
+| `detect_steady_state(window='5min', std_threshold=1.0, min_duration='10min')` | Steady-state intervals | DataFrame: `start`, `end`, `mean_value`, `std_value`, `duration_seconds`, ... |
+| `detect_transient_periods(window='5min', std_threshold=1.0)` | Transient/dynamic intervals | DataFrame: `start`, `end`, `max_std`, `duration_seconds`, ... |
+| `steady_state_statistics(window='5min', std_threshold=1.0, min_duration='10min')` | Summary statistics | dict: `total_steady_seconds`, `total_transient_seconds`, `steady_pct`, `num_steady_periods`, `avg_steady_duration_seconds` |
+| `steady_state_value_bands(window='5min')` | Distinct operating bands | DataFrame: `start`, `end`, `mean_value`, `lower_band`, `upper_band`, `duration_seconds` |
 
 ---
 

@@ -19,23 +19,23 @@ Use when a degradation trend has been identified and you need to estimate how mu
 from ts_shape.events.maintenance.failure_prediction import FailurePredictionEvents
 
 predictor = FailurePredictionEvents(
-    df=sensor_df,
-    timestamp_col="timestamp",
-    value_col="bearing_temp"
+    dataframe=sensor_df,
+    signal_uuid="bearing_temp",
 )
 
-# Estimate remaining useful life via linear extrapolation
-rul = predictor.remaining_useful_life(threshold=95.0, window="7D")
-print(f"Estimated RUL: {rul.days:.1f} days")
+# Estimate remaining useful life via linear extrapolation to 95 degrees
+# (degradation_rate is a fallback slope in units per second; positive = rising)
+rul = predictor.remaining_useful_life(degradation_rate=0.0001, failure_threshold=95.0)
+print(rul[["systime", "current_value", "rul_hours", "confidence"]].tail())
 
-# Detect escalating threshold breaches
+# Detect escalating warning/critical breaches per rolling window
 exceedances = predictor.detect_exceedance_pattern(
-    threshold=80.0, window="1D", min_exceedances=3
+    warning_threshold=80.0, critical_threshold=90.0, window="1D"
 )
 
-# Time estimate to reach critical threshold
-tte = predictor.time_to_threshold(threshold=95.0)
-print(f"Time to threshold: {tte}")
+# Time estimate to reach the critical threshold
+tte = predictor.time_to_threshold(threshold=95.0, direction="increasing")
+print(tte[["systime", "estimated_time_seconds"]].tail())
 ```
 
 ---
@@ -44,9 +44,9 @@ print(f"Time to threshold: {tte}")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `remaining_useful_life()` | RUL via linear extrapolation to threshold | Timedelta estimate of remaining life |
-| `detect_exceedance_pattern()` | Escalating threshold breaches over time | DataFrame of windows with increasing breach frequency |
-| `time_to_threshold()` | Time estimate to reach a given threshold | Timedelta or None if trend is stable |
+| `remaining_useful_life()` | RUL via linear extrapolation to a failure threshold | DataFrame with `systime`, `current_value`, `rul_seconds`, `rul_hours`, `confidence` (`rul_*` is None when no failure is projected) |
+| `detect_exceedance_pattern()` | Escalating warning/critical breaches over time | DataFrame with `start`, `warning_count`, `critical_count`, `escalation_detected` |
+| `time_to_threshold()` | Time estimate to reach a given threshold | DataFrame with `systime`, `current_value`, `rate_of_change`, `estimated_time_seconds` |
 
 ---
 

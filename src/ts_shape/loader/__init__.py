@@ -56,3 +56,29 @@ Classes:
   - get_all_metadata: Metadata per device.
   - display_dataframe: Print DataFrames for devices.
 """
+
+import importlib as _importlib
+
+# The classes listed above, importable from the pack. They are imported on
+# first access, so a class whose optional dependency is missing only fails
+# when it is used.
+_CLASSES = {
+    "AzureBlobEnergyLoader": "ts_shape.loader.timeseries.azure_blob_energy_loader",
+    "AzureBlobParquetLoader": "ts_shape.loader.timeseries.azure_blob_loader",
+    "DataIntegratorHybrid": "ts_shape.loader.combine.integrator",
+    "MetadataJsonLoader": "ts_shape.loader.metadata.metadata_json_loader",
+    "ParquetLoader": "ts_shape.loader.timeseries.parquet_loader",
+    "TimescaleDBDataAccess": "ts_shape.loader.timeseries.timescale_loader",
+}
+
+__all__ = sorted(_CLASSES)
+
+
+def __getattr__(name: str) -> object:
+    if name in _CLASSES:
+        return getattr(_importlib.import_module(_CLASSES[name]), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_CLASSES))

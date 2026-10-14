@@ -18,9 +18,11 @@ Use for Measurement System Analysis when qualifying inline sensors. Required by 
 ```python
 from ts_shape.events.quality.gauge_repeatability import GaugeRepeatabilityEvents
 
+# df: long-format rows for one gauge signal, with extra
+# "part_id" and "operator" columns identifying each trial
 grr = GaugeRepeatabilityEvents(
     df,
-    value_column="measurement",
+    signal_uuid="inline_gauge_01",
     part_column="part_id",
     operator_column="operator",
 )
@@ -33,8 +35,9 @@ av = grr.reproducibility()
 
 # Full GR&R summary with tolerance range
 summary = grr.gauge_rr_summary(tolerance_range=10.0)
-print(f"GR&R %: {summary['grr_percent']:.1f}%")
-print(f"Acceptable: {summary['grr_percent'] < 10}")
+pct = summary["pct_GRR_tolerance"].iloc[0]
+print(f"GR&R % of tolerance: {pct:.1f}%")
+print(f"Acceptable: {pct < 10}")
 ```
 
 ---
@@ -43,10 +46,10 @@ print(f"Acceptable: {summary['grr_percent'] < 10}")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `repeatability(n_trials=None)` | Equipment Variation (EV) — within-operator, within-part variation | Dictionary with EV metrics |
-| `reproducibility()` | Appraiser Variation (AV) — between-operator variation | Dictionary with AV metrics |
-| `gauge_rr_summary(tolerance_range=None)` | Full GR&R summary: EV, AV, GR&R, %GR&R, ndc | Dictionary with complete MSA results |
-| `measurement_bias(reference_values)` | Compare measurements to known reference standards | DataFrame with bias statistics |
+| `repeatability(n_trials=None)` | Equipment Variation (EV) — within-operator, within-part variation | DataFrame with `part`, `mean`, `range`, `repeatability_std`, `EV` |
+| `reproducibility()` | Appraiser Variation (AV) — between-operator variation (requires `operator_column`) | DataFrame with `operator`, `mean`, `reproducibility_std`, `AV` |
+| `gauge_rr_summary(tolerance_range=None)` | Full GR&R summary: EV, AV, GRR, PV, TV, %GRR, %PV, ndc | Single-row DataFrame with `EV`, `AV`, `GRR`, `PV`, `TV`, `pct_GRR`, `pct_PV`, `ndc` (plus `pct_GRR_tolerance` when `tolerance_range` is given) |
+| `measurement_bias(reference_values)` | Compare measurements to known reference standards | DataFrame with `part`, `measured_mean`, `reference`, `bias`, `bias_pct` |
 
 ---
 

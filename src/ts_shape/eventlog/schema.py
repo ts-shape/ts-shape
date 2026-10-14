@@ -170,6 +170,14 @@ def register_object_type(name: str) -> None:
 
 
 def is_known_object_type(name: str) -> bool:
+    """Check whether an OCEL object type is built in or has been registered.
+
+    Args:
+        name: Object type name to look up.
+
+    Returns:
+        True if ``name`` is a known object type, otherwise False.
+    """
     return name in _OBJECT_TYPES
 
 
@@ -177,6 +185,11 @@ def is_known_object_type(name: str) -> bool:
 
 
 def empty_events() -> pd.DataFrame:
+    """Return an empty events table with the canonical columns and dtypes.
+
+    Returns:
+        A zero-row DataFrame with the expected events schema.
+    """
     return pd.DataFrame(
         {
             OCEL_EID: pd.Series(dtype="string"),
@@ -193,6 +206,11 @@ def empty_events() -> pd.DataFrame:
 
 
 def empty_objects() -> pd.DataFrame:
+    """Return an empty objects table with the canonical columns and dtypes.
+
+    Returns:
+        A zero-row DataFrame with the expected objects schema.
+    """
     return pd.DataFrame(
         {
             OCEL_OID: pd.Series(dtype="string"),
@@ -202,6 +220,11 @@ def empty_objects() -> pd.DataFrame:
 
 
 def empty_relations() -> pd.DataFrame:
+    """Return an empty event-to-object relations table with the canonical columns and dtypes.
+
+    Returns:
+        A zero-row DataFrame with the expected event-to-object relations schema.
+    """
     return pd.DataFrame(
         {
             OCEL_EID: pd.Series(dtype="string"),
@@ -213,6 +236,11 @@ def empty_relations() -> pd.DataFrame:
 
 
 def empty_o2o() -> pd.DataFrame:
+    """Return an empty object-to-object relations table with the canonical columns and dtypes.
+
+    Returns:
+        A zero-row DataFrame with the expected object-to-object relations schema.
+    """
     return pd.DataFrame(
         {
             OCEL_OID: pd.Series(dtype="string"),
@@ -223,6 +251,11 @@ def empty_o2o() -> pd.DataFrame:
 
 
 def empty_object_changes() -> pd.DataFrame:
+    """Return an empty object changes table with the canonical columns and dtypes.
+
+    Returns:
+        A zero-row DataFrame with the expected object changes schema.
+    """
     return pd.DataFrame(
         {
             OCEL_OID: pd.Series(dtype="string"),

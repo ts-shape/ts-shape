@@ -9,7 +9,7 @@
 
 ## When to Use
 
-Use when items follow defined routing paths through stations. Pairs an ID signal with a routing/state signal to track which process step each item is in. This is especially useful when a single station can perform multiple process steps and you need to distinguish between them.
+Use when items follow defined routing paths through stations. Pairs an ID signal (`id_uuid`) with a routing/state signal (`routing_uuid`) to track which process step each item is in; `state_map` translates routing values (e.g. PLC step numbers) into readable station or step names. This is especially useful when a single station can perform multiple process steps and you need to distinguish between them.
 
 ---
 
@@ -19,10 +19,10 @@ Use when items follow defined routing paths through stations. Pairs an ID signal
 from ts_shape.events.production.routing_traceability import RoutingTraceabilityEvents
 
 tracer = RoutingTraceabilityEvents(
-    df=production_df,
-    id_uuid="serial-number-uuid",
-    routing_uuid="routing-step-uuid",
-    station_uuids=["station-001", "station-002", "station-003"]
+    production_df,
+    id_uuid="line1:serial",
+    routing_uuid="line1:routing_step",
+    state_map={1: "Welding", 2: "Painting", 3: "Assembly"},
 )
 
 # Correlate ID with routing signal
@@ -54,7 +54,7 @@ stats = tracer.station_statistics()
 ## Tips & Hints
 
 !!! tip "Map routing codes to readable names"
-    Routing signals often carry numeric codes. Map them to human-readable step names before analysis for clearer reports and visualizations.
+    Routing signals often carry numeric codes. Pass a `state_map` (e.g. `{10: "Heating", 20: "Holding"}`) so reports show readable step names instead of raw values.
 
 !!! info "Related modules"
     - [Order Traceability](order-traceability.md) — simpler tracing without routing signals

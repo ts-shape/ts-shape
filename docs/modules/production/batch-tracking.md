@@ -20,16 +20,24 @@ from ts_shape.events.production.batch_tracking import BatchTrackingEvents
 import pandas as pd
 import numpy as np
 
-df = pd.DataFrame({
-    "timestamp": pd.date_range("2024-01-01 06:00", periods=360, freq="1min"),
-    "batch_id": ["BATCH-001"]*90 + ["BATCH-002"]*120 + ["BATCH-003"]*150,
-    "part_counter": np.arange(1, 361),
+# Long format: a batch-ID string signal plus a monotonic part counter
+times = pd.date_range("2024-01-01 06:00", periods=360, freq="1min")
+batch = pd.DataFrame({
+    "systime": times,
+    "uuid": "line1:batch_id",
+    "value_string": ["BATCH-001"] * 90 + ["BATCH-002"] * 120 + ["BATCH-003"] * 150,
 })
+counter = pd.DataFrame({
+    "systime": times,
+    "uuid": "line1:part_counter",
+    "value_integer": np.arange(1, 361),
+})
+df = pd.concat([batch, counter], ignore_index=True)
 
-bt = BatchTrackingEvents(df, timestamp_column="timestamp")
+bt = BatchTrackingEvents(df, batch_uuid="line1:batch_id")
 batches = bt.detect_batches()
 stats = bt.batch_duration_stats()
-yields = bt.batch_yield(counter_uuid="part_counter")
+yields = bt.batch_yield(counter_uuid="line1:part_counter")
 matrix = bt.batch_transition_matrix()
 print(batches)
 ```
@@ -40,10 +48,10 @@ print(batches)
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_batches()` | Identify batch start and end times from value changes in the batch-ID signal | DataFrame with batch_id, start, end, and duration |
-| `batch_duration_stats()` | Compute duration statistics (min, mean, max, std) grouped by batch type | DataFrame with duration statistics per batch type |
-| `batch_yield(counter_uuid)` | Calculate production yield per batch using a counter signal | DataFrame with batch_id and total parts produced |
-| `batch_transition_matrix()` | Build a matrix showing which batch follows which, useful for scheduling analysis | DataFrame pivot table of from-batch vs to-batch counts |
+| `detect_batches()` | Identify batch start and end times from value changes in the batch-ID signal | DataFrame with `batch_id`, `start`, `end`, `duration_seconds`, `sample_count`, `uuid`, `source_uuid` |
+| `batch_duration_stats()` | Compute duration statistics (count, min, avg, max, total) grouped by batch type | DataFrame with `batch_id`, `count`, `min_`/`avg_`/`max_`/`total_duration_seconds` |
+| `batch_yield(counter_uuid, handle_resets=False)` | Calculate production quantity per batch from a monotonic counter signal | DataFrame with `batch_id`, `start`, `end`, `duration_seconds`, `quantity` (plus `resets` when `handle_resets=True`) |
+| `batch_transition_matrix()` | Build a matrix showing which batch follows which, useful for scheduling analysis | DataFrame pivot table of from-batch vs to-batch counts, plus a `total` column |
 
 ---
 

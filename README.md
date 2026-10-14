@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 
-**ts-shape** is a composable, production-ready Python toolkit for loading, shaping, and analysing industrial timeseries data. Built for manufacturing and IoT, it follows a simple **DataFrame-in, DataFrame-out** philosophy across loaders, transforms, feature extractors, and event detectors.
+**ts-shape** is a composable, production-ready Python toolkit for loading, shaping, and analyzing industrial timeseries data. Built for manufacturing and IoT, it follows a simple **DataFrame-in, DataFrame-out** philosophy across loaders, transforms, feature extractors, and event detectors.
 
 ---
 
@@ -15,7 +15,7 @@
 
 - **Unified DataFrame workflow** -- Load timeseries + metadata, join on `uuid`, process.
 - **Modular packs** -- Quality, Production, Engineering, Maintenance, Supply Chain, Energy, Correlation, and Development (product & process R&D) events.
-- **Performance-aware** -- Vectorised ops, chunked DB reads, concurrent I/O.
+- **Performance-aware** -- Vectorized ops, chunked DB reads, concurrent I/O.
 - **Zero ML dependencies** -- Core uses only pandas, numpy, scipy.
 - **Multi-source loaders** -- Parquet, S3, Azure Blob, TimescaleDB, REST APIs.
 
@@ -40,15 +40,9 @@ The core install needs only pandas, numpy and scipy. Loader backends are extras:
 | REST APIs (metadata, energy) | `pip install ts-shape[api]` |
 | TimescaleDB / SQL metadata | `pip install ts-shape[sql]` (`[postgres]` adds the psycopg2 driver) |
 | Signal specs from YAML | `pip install ts-shape[yaml]` |
-| Everything above | `pip install ts-shape[all]` |
+| All loader extras (`s3`, `azure`, `api`, `sql`, `yaml`) | `pip install ts-shape[all]` |
 | Unit conversion (`UnitConverter`) | `pip install ts-shape[units]` (pulls in `pint`) |
-
--------------|---------|
-| Azure Blob Storage | `pip install azure-storage-blob` |
-| Azure AAD + management | `pip install azure-identity azure-mgmt-storage` |
-| S3 proxy access | Included via `s3fs` |
-| TimescaleDB / PostgreSQL | `pip install ts-shape[postgres]` or any SQLAlchemy-compatible driver |
-| Unit conversion (`UnitConverter`) | `pip install ts-shape[units]` (pulls in `pint`) |
+| Isolation Forest outlier detection | `pip install ts-shape[ml]` (pulls in `scikit-learn`) |
 
 ---
 
@@ -67,7 +61,7 @@ report = ts_shape.profile(df)
 print(report.summary())        # kinds, encodings, gaps, resets, duplicates, ...
 specs = report.specs           # signal semantics to hand to detectors
 
-# Discover what is available -- 70+ detectors across 8 packs
+# Discover what is available -- 80+ detector classes, 300+ methods, across 8 packs
 ts_shape.list_detectors("events.quality")
 
 # Detect outliers
@@ -78,14 +72,14 @@ print(outliers)
 
 Every script under [`examples/`](examples/) is likewise self-contained -- run any
 of them straight after install, e.g. `python examples/quality_events_demo.py`. See
-[`examples/README.md`](examples/README.md) for the full, authoritative catalogue
+[`examples/README.md`](examples/README.md) for the full, authoritative catalog
 (loaders, transforms, pipelines, and every event pack).
 
 ---
 
 ## Data Model
 
-ts-shape works with a standardised timeseries DataFrame schema:
+ts-shape works with a standardized timeseries DataFrame schema:
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -108,18 +102,24 @@ ts_shape/
 ├── loader/              # Data Loading & Integration
 │   ├── timeseries/      # Parquet, S3, Azure Blob, TimescaleDB, Energy API
 │   ├── metadata/        # JSON, REST API, Database metadata
+│   ├── context/         # Context enrichment
 │   └── combine/         # DataIntegratorHybrid (merge timeseries + metadata)
 │
 ├── transform/           # Data Transformation
 │   ├── filter/          # Numeric, String, Boolean, DateTime, Custom filters
 │   ├── calculator/      # Arithmetic ops, unit conversion, kW -> kWh integration
 │   ├── functions/       # Lambda/callable application
-│   └── time_functions/  # Timestamp conversion, timezone operations
+│   ├── time_functions/  # Timestamp conversion, timezone operations
+│   └── harmonization.py # Pivot, resample, align, gap filling (DataHarmonizer)
 │
 ├── features/            # Feature Extraction
 │   ├── stats/           # Numeric, String, Boolean, Timestamp statistics
 │   ├── time_stats/      # Time-windowed aggregations
-│   └── cycles/          # Cycle detection & processing (6 methods)
+│   ├── cycles/          # Cycle detection & processing (6 methods)
+│   ├── segment_analysis/ # Segment extraction, profile comparison, windowed features
+│   ├── cross_signal.py  # Granger causality, transfer entropy, lead-lag
+│   ├── pattern_recognition.py  # Motifs, discords, DTW template matching
+│   └── export.py        # Feature matrix export for ML
 │
 ├── events/              # Event Detection (Domain Packs)
 │   ├── quality/         # Outlier detection, SPC (8 rules), tolerance deviation
@@ -128,10 +128,17 @@ ts_shape/
 │   ├── maintenance/     # Degradation, failure prediction, vibration analysis
 │   ├── energy/          # Consumption analysis, efficiency tracking, EnPI, carbon
 │   ├── correlation/     # Signal correlation, anomaly co-occurrence
-│   └── supplychain/     # Inventory monitoring, lead time, demand patterns
+│   ├── supplychain/     # Inventory monitoring, lead time, demand patterns
+│   └── development/     # Golden batch, DoE, design space, recipe adherence
 │
+├── eventlog/            # Canonical event log (XES / OCEL 2.0), taxonomy registry, lambda rules
+├── signals/             # Signal specs and semantic inference
+├── profiling.py         # ts_shape.profile(): data profile and signal specs
+├── pipeline.py          # Declarative Pipeline (source / transform / detect steps)
+├── catalog.py           # list_detectors() discovery
+├── datasets.py          # make_timeseries() sample data
 ├── context/             # Value mapping (categorical codes → labels)
-└── utils/               # Base class and shared utilities
+└── utils/               # Base class, counters, intervals, shifts, time weighting
 ```
 
 ---
@@ -251,7 +258,7 @@ df_psi = UnitConverter.convert_column(df, "bar", "psi", column_name="value_doubl
 ```
 
 ### Engineering Events
-Analyse control system behaviour and setpoint responses.
+Analyze control system behavior and setpoint responses.
 
 ```python
 from ts_shape.events.engineering.setpoint_events import SetpointChangeEvents
@@ -264,7 +271,7 @@ settle = sp.time_to_settle(actual_uuid="actual:temp", tol=0.5)
 quality = sp.control_quality_metrics(actual_uuid="actual:temp")
 
 # Startup detection
-startup = StartupDetectionEvents(df, signal_uuid="motor:speed")
+startup = StartupDetectionEvents(df, target_uuid="motor:speed")
 events = startup.detect_startup_by_threshold(threshold=100.0)
 ```
 
@@ -555,7 +562,7 @@ before merging; the next release increments from it.
 ```
 ts-shape/
 ├── src/ts_shape/           # Library source code
-├── tests/                  # pytest test suite (100+ tests)
+├── tests/                  # pytest test suite (1,500+ tests)
 ├── examples/               # Runnable demo scripts
 ├── docs/                   # MkDocs documentation
 ├── .github/workflows/      # CI/CD pipelines

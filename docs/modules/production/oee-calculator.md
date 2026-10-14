@@ -20,23 +20,33 @@ from ts_shape.events.production.oee_calculator import OEECalculator
 import pandas as pd
 import numpy as np
 
-df = pd.DataFrame({
-    "timestamp": pd.date_range("2024-01-01 06:00", periods=480, freq="1min"),
-    "machine_running": [True]*400 + [False]*30 + [True]*50,
-    "part_counter": np.arange(1, 481),
-    "reject_counter": np.cumsum(np.random.choice([0, 1], size=480, p=[0.97, 0.03])),
-})
+# Long format: run state (bool), part counter and reject counter (integer)
+np.random.seed(42)
+times = pd.date_range("2024-01-01 06:00", periods=480, freq="1min")
+df = pd.concat([
+    pd.DataFrame({"systime": times, "uuid": "line1:running",
+                  "value_bool": [True] * 400 + [False] * 30 + [True] * 50}),
+    pd.DataFrame({"systime": times, "uuid": "line1:part_counter",
+                  "value_integer": np.arange(1, 481)}),
+    pd.DataFrame({"systime": times, "uuid": "line1:reject_counter",
+                  "value_integer": np.cumsum(np.random.choice([0, 1], size=480, p=[0.97, 0.03]))}),
+], ignore_index=True)
 
-oee = OEECalculator(df, timestamp_column="timestamp")
-availability = oee.calculate_availability(run_state_uuid="machine_running")
-performance = oee.calculate_performance(counter_uuid="part_counter", ideal_cycle_time="55s")
-quality = oee.calculate_quality(total_uuid="part_counter", reject_uuid="reject_counter")
-result = oee.calculate_oee(
-    run_state_uuid="machine_running",
-    counter_uuid="part_counter",
-    ideal_cycle_time="55s",
+oee = OEECalculator(df)
+availability = oee.calculate_availability(run_state_uuid="line1:running", planned_time_hours=8)
+performance = oee.calculate_performance(
+    counter_uuid="line1:part_counter", ideal_cycle_time=55.0, run_state_uuid="line1:running"
 )
-print(f"OEE: {result['oee']:.1%}")
+quality = oee.calculate_quality(total_uuid="line1:part_counter", reject_uuid="line1:reject_counter")
+daily = oee.calculate_oee(
+    run_state_uuid="line1:running",
+    counter_uuid="line1:part_counter",
+    ideal_cycle_time=55.0,  # seconds per part
+    total_uuid="line1:part_counter",
+    reject_uuid="line1:reject_counter",
+    planned_time_hours=8,
+)
+print(daily[["start", "availability_pct", "performance_pct", "quality_pct", "oee_pct"]])
 ```
 
 ---
@@ -45,10 +55,10 @@ print(f"OEE: {result['oee']:.1%}")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `calculate_availability(run_state_uuid)` | Compute availability ratio from run/idle state signal | Float between 0.0 and 1.0 |
-| `calculate_performance(counter_uuid, ideal_cycle_time)` | Compute performance ratio: actual output vs theoretical maximum at ideal cycle time | Float between 0.0 and 1.0 |
-| `calculate_quality(total_uuid, reject_uuid)` | Compute quality ratio: good parts divided by total parts produced | Float between 0.0 and 1.0 |
-| `calculate_oee(run_state_uuid, counter_uuid, ideal_cycle_time)` | Compute full OEE as Availability x Performance x Quality with daily breakdown | Dict with oee, availability, performance, quality, and daily DataFrame |
+| `calculate_availability(run_state_uuid, planned_time_hours=None, max_gap=None)` | Compute daily availability from a boolean run-state signal (planned time defaults to the data span per day) | DataFrame per day with `start`, `end`, `duration_seconds`, `run_seconds`, `planned_seconds`, `availability_pct` |
+| `calculate_performance(counter_uuid, ideal_cycle_time, run_state_uuid=None, handle_resets=False)` | Compute daily performance: actual output vs theoretical maximum at the ideal cycle time (seconds per part) | DataFrame per day with `actual_parts`, `ideal_parts`, `run_seconds`, `performance_pct` |
+| `calculate_quality(total_uuid, reject_uuid, handle_resets=False)` | Compute daily quality: good parts divided by total parts produced | DataFrame per day with `total_parts`, `reject_parts`, `good_parts`, `quality_pct` |
+| `calculate_oee(run_state_uuid, counter_uuid, ideal_cycle_time, total_uuid=None, reject_uuid=None, planned_time_hours=None)` | Compute daily OEE as Availability x Performance x Quality (quality is 100% without `total_uuid`/`reject_uuid`) | DataFrame per day with `start`, `end`, `duration_seconds`, `availability_pct`, `performance_pct`, `quality_pct`, `oee_pct` |
 
 ---
 

@@ -9,7 +9,7 @@
 
 ## When to Use
 
-Use when you have process signals with defined upper/lower specification limits and need to track deviations with severity classification. Computes Cp/Cpk/Pp/Ppk indices for process capability assessment. Requires a DataFrame with actual measurement values and corresponding specification limits.
+Use when you have process signals with defined upper/lower specification limits and need to track deviations with severity classification. Computes Cp/Cpk/Pp/Ppk indices for process capability assessment. Requires long-format data with the actual measurements under `actual_uuid` and the specification limits under `upper_tolerance_uuid`/`lower_tolerance_uuid` (or a single one-sided upper limit under `tolerance_uuid`).
 
 ---
 
@@ -18,12 +18,22 @@ Use when you have process signals with defined upper/lower specification limits 
 ```python
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 
-tdev = ToleranceDeviationEvents(df, value_column="value_double")
+tdev = ToleranceDeviationEvents(
+    df,
+    tolerance_column="value_double",
+    actual_column="value_double",
+    actual_uuid="shaft_diameter",
+    upper_tolerance_uuid="shaft_diameter:usl",
+    lower_tolerance_uuid="shaft_diameter:lsl",
+    event_uuid="quality:tolerance_violation",
+    time_threshold="5min",
+)
 
 # Apply tolerance checks with severity classification
 events = tdev.process_and_group_data_with_events()
+print(events[["systime", "deviation_abs", "deviation_pct", "severity"]].head())
 
-# Compute process capability indices
+# Compute process capability indices against the latest spec limits
 capability = tdev.compute_capability_indices(target_value=50.0)
 print(f"Cpk: {capability['Cpk']:.2f}, Ppk: {capability['Ppk']:.2f}")
 ```
@@ -34,15 +44,15 @@ print(f"Cpk: {capability['Cpk']:.2f}, Ppk: {capability['Ppk']:.2f}")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `process_and_group_data_with_events()` | Apply tolerance checks with severity classification | DataFrame with deviation events and severity levels |
-| `compute_capability_indices(target_value=None)` | Calculate Cp, Cpk, Pp, Ppk capability indices | Dictionary with capability metrics |
+| `process_and_group_data_with_events()` | Apply tolerance checks, group out-of-tolerance samples within `time_threshold` into events (first and last row per event) | DataFrame with `systime`, `uuid`, `deviation_abs`, `deviation_pct`, `severity` (`minor`, `major`, `critical`) |
+| `compute_capability_indices(target_value=None)` | Calculate Cp, Cpk, Pp, Ppk capability indices | Dictionary with `Cp`, `Cpk`, `Pp`, `Ppk`, `mean`, `std`, `usl`, `lsl`, `target` |
 
 ---
 
 ## Tips & Hints
 
-!!! tip "Set a target value for Cpk accuracy"
-    When calling `compute_capability_indices`, always provide the `target_value` parameter if your process has a nominal target. Without it, the method assumes the midpoint of the specification range, which may overestimate Cpk for off-center processes.
+!!! tip "Use separate upper and lower limits for two-sided specs"
+    With a single `tolerance_uuid` the limit is treated as a one-sided upper spec: Cp/Pp are undefined (NaN) and Cpk/Ppk are the one-sided upper index. Pass `upper_tolerance_uuid` and `lower_tolerance_uuid` for full two-sided capability. Cp/Cpk measure distance to the spec limits; `target_value` is only reported back (defaulting to the spec midpoint) and does not change the indices.
 
 !!! info "Related modules"
     - [SPC Rules](spc.md) — Western Electric rule-based monitoring with control limits

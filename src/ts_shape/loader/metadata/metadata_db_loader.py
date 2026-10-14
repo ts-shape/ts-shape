@@ -28,16 +28,17 @@ class DatapointDB:
         required_uuid_list: list[str] | None = None,
         filter_enabled: bool = True,
     ):
-        """
-        Initialize the DatapointDB class.
+        """Initialize the DatapointDB class and load metadata for each device.
 
-        :param device_names: List of device names to retrieve metadata for.
-        :param db_user: Database user.
-        :param db_pass: Database password.
-        :param db_host: Database host.
-        :param output_path: Directory to save JSON files.
-        :param required_uuid_list: List of UUIDs to filter the metadata (optional).
-        :param filter_enabled: Whether to filter metadata by "enabled == True" and "archived == False" (default is True).
+        Args:
+            device_names: List of device names to retrieve metadata for.
+            db_user: Database user.
+            db_pass: Database password.
+            db_host: Database host.
+            output_path: Directory to save JSON files.
+            required_uuid_list: List of UUIDs to filter the metadata (optional).
+            filter_enabled: Whether to filter metadata by "enabled == True" and
+                "archived == False" (default is True).
         """
         require_optional(create_engine, "sqlalchemy", "sql")
         self.device_names = device_names
@@ -112,11 +113,12 @@ class DatapointDB:
     def display_dataframe(
         self, device_name: str | None = None, aggregate: bool = False
     ) -> None:
-        """
-        Display metadata as a DataFrame for a specific device or all devices.
+        """Display metadata as a DataFrame for a specific device or all devices.
 
-        :param device_name: Name of the device to display metadata for (optional).
-        :param aggregate: If True, combine metadata from all devices into a single DataFrame.
+        Args:
+            device_name: Name of the device to display metadata for (optional).
+            aggregate: If True, combine metadata from all devices into a single
+                DataFrame.
         """
         if aggregate:
             combined_df = pd.concat(

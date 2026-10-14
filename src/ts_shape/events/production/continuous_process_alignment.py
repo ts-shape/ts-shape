@@ -34,36 +34,35 @@ _LAG_COLS = [
 
 
 class ContinuousProcessAlignmentEvents(Base):
-    """Align multi-station readings on a continuous production line to a common
-    material reference time via speed-based transport lag compensation.
+    """Align multi-station readings on a continuous production line.
 
-    Parameters
-    ----------
-    dataframe:
-        Long-format DataFrame with ``time_column``, ``uuid_column``, and signal
-        value columns.  All UUIDs (speed, stations, cut signals) share the same
-        DataFrame.
-    speed_uuid:
-        UUID of the line-speed signal.
-    line_config:
-        Physical layout description — list of dicts with keys:
-        ``name`` (str), ``offset`` (float, metres from reference), ``uuids`` (list[str]).
-    ref_uuid:
-        Optional UUID of a signal located at the reference point (offset = 0).
-    cut_uuid:
-        Optional UUID whose values carry the cut piece length in metres.
-    time_column:
-        Name of the timestamp column (default ``"systime"``).
-    uuid_column:
-        Name of the UUID/identifier column (default ``"uuid"``).
-    value_column:
-        Default value column used when no override is supplied to a method
-        (default ``"value_double"``).
-    speed_unit:
-        Unit of the speed signal.  One of ``"m/min"``, ``"m/s"``, ``"mm/s"``.
-    min_speed:
-        Minimum speed in m/s used to clamp the speed before computing lag,
-        preventing infinite lag at standstill (default ``0.01``).
+    Readings are shifted to a common material reference time via speed-based
+    transport lag compensation.
+
+    Args:
+        dataframe: Long-format DataFrame with ``time_column``, ``uuid_column``,
+            and signal value columns. All UUIDs (speed, stations, cut signals)
+            share the same DataFrame.
+        speed_uuid: UUID of the line-speed signal.
+        line_config: Physical layout description — list of dicts with keys
+            ``name`` (str), ``offset`` (float, meters from reference), and
+            ``uuids`` (list[str]).
+        ref_uuid: Optional UUID of a signal located at the reference point
+            (offset = 0).
+        cut_uuid: Optional UUID whose values carry the cut piece length in
+            meters.
+        time_column: Name of the timestamp column (default ``"systime"``).
+        uuid_column: Name of the UUID/identifier column (default ``"uuid"``).
+        value_column: Default value column used when no override is supplied
+            to a method (default ``"value_double"``).
+        speed_unit: Unit of the speed signal. One of ``"m/min"``, ``"m/s"``,
+            ``"mm/s"``.
+        min_speed: Minimum speed in m/s used to clamp the speed before
+            computing lag, preventing infinite lag at standstill (default
+            ``0.01``).
+
+    Raises:
+        ValueError: If ``speed_unit`` is not one of the supported units.
     """
 
     def __init__(
@@ -162,23 +161,20 @@ class ContinuousProcessAlignmentEvents(Base):
         *,
         value_column: str | None = None,
     ) -> pd.DataFrame:
-        """Shift each station reading backward by its transport lag to produce
-        a common ``material_ref_time``.
+        """Shift each station reading backward by its transport lag.
 
-        Parameters
-        ----------
-        station_uuids:
-            Subset of UUIDs to process.  Defaults to all UUIDs in
-            ``line_config``.
-        value_column:
-            Value column to carry through.  Defaults to the constructor
-            ``value_column``.
+        This produces a common ``material_ref_time`` for all stations.
 
-        Returns
-        -------
-        DataFrame with columns:
-        ``material_ref_time``, ``systime``, ``uuid``, ``component``,
-        ``position_offset_m``, ``lag_seconds``, ``<value_column>``.
+        Args:
+            station_uuids: Subset of UUIDs to process. Defaults to all UUIDs in
+                ``line_config``.
+            value_column: Value column to carry through. Defaults to the
+                constructor ``value_column``.
+
+        Returns:
+            DataFrame with columns ``material_ref_time``, ``systime``, ``uuid``,
+                ``component``, ``position_offset_m``, ``lag_seconds``, and
+                ``<value_column>``.
         """
         val_col = value_column or self.value_column
         uuids = station_uuids if station_uuids is not None else self._all_station_uuids
@@ -232,8 +228,10 @@ class ContinuousProcessAlignmentEvents(Base):
         cut_value_column: str = "value_double",
         handle_resets: bool = False,
     ) -> pd.DataFrame:
-        """Add ``piece_id``, ``piece_length_m``, and ``piece_cut_ref_time`` to
-        ``aligned_df`` (output of :meth:`align_to_reference`).
+        """Add piece columns to the output of `align_to_reference`.
+
+        Adds ``piece_id``, ``piece_length_m``, and ``piece_cut_ref_time`` to
+        ``aligned_df``.
 
         Cut-event detection strategies (in priority order):
 
@@ -244,29 +242,29 @@ class ContinuousProcessAlignmentEvents(Base):
            cut rate.
         3. ``cut_length_uuid`` only: each row of the length signal = 1 cut.
 
-        Parameters
-        ----------
-        aligned_df:
-            Output of :meth:`align_to_reference`.
-        cut_length_uuid:
-            UUID carrying the cut piece length value.
-        part_counter_uuid:
-            UUID of a part-counter signal (boolean or monotonically increasing
-            integer).
-        cut_value_column:
-            Column holding the length value in ``cut_length_uuid`` rows.
-        handle_resets:
-            When True and a numeric ``part_counter_uuid`` is used, a decreasing
-            counter (a reset at a shift/part change or PLC restart) is treated
-            as new production: the post-reset counter value is emitted as that
-            many cut events instead of being skipped. When False (default), a
-            reset's negative delta is ignored and its post-reset pieces are
-            lost, matching the previous behaviour.
+        Args:
+            aligned_df: Output of `align_to_reference`.
+            cut_length_uuid: UUID carrying the cut piece length value.
+            part_counter_uuid: UUID of a part-counter signal (boolean or
+                monotonically increasing integer).
+            cut_value_column: Column holding the length value in
+                ``cut_length_uuid`` rows.
+            handle_resets: When True and a numeric ``part_counter_uuid`` is
+                used, a decreasing counter (a reset at a shift/part change or
+                PLC restart) is treated as new production: the post-reset
+                counter value is emitted as that many cut events instead of
+                being skipped. When False (default), a reset's negative delta is
+                ignored and its post-reset pieces are lost, matching the
+                previous behavior.
 
-        Returns
-        -------
-        ``aligned_df`` augmented with ``piece_id`` (int, 1-based),
-        ``piece_length_m`` (float or NaN), ``piece_cut_ref_time`` (Timestamp).
+        Returns:
+            ``aligned_df`` augmented with ``piece_id`` (int, 1-based),
+                ``piece_length_m`` (float or NaN), and ``piece_cut_ref_time``
+                (Timestamp).
+
+        Raises:
+            ValueError: If neither ``cut_length_uuid`` nor
+                ``part_counter_uuid`` is given.
         """
         if cut_length_uuid is None and part_counter_uuid is None:
             raise ValueError(
@@ -470,11 +468,15 @@ class ContinuousProcessAlignmentEvents(Base):
     ) -> pd.DataFrame:
         """Compute per-window mean lag for each station.
 
-        Returns
-        -------
-        DataFrame with columns:
-        ``start``, ``uuid``, ``component``, ``position_offset_m``,
-        ``mean_speed_m_s``, ``lag_seconds``.
+        Args:
+            station_uuids: Subset of UUIDs to process. Defaults to all UUIDs in
+                ``line_config``.
+            window: Pandas resample frequency for the speed averaging window
+                (default ``"1min"``).
+
+        Returns:
+            DataFrame with columns ``start``, ``uuid``, ``component``,
+                ``position_offset_m``, ``mean_speed_m_s``, and ``lag_seconds``.
         """
         uuids = station_uuids if station_uuids is not None else self._all_station_uuids
         speed_df = self._get_speed_df()
@@ -522,11 +524,16 @@ class ContinuousProcessAlignmentEvents(Base):
     ) -> pd.DataFrame:
         """Coverage check: sample counts per window for speed and each station.
 
-        Returns
-        -------
-        DataFrame with columns:
-        ``start``, ``speed_sample_count``, ``has_speed_data``,
-        ``has_full_coverage``, ``per_uuid_counts``.
+        Args:
+            station_uuids: Subset of UUIDs to check. Defaults to all UUIDs in
+                ``line_config``.
+            window: Pandas resample frequency for the counting window (default
+                ``"1h"``).
+
+        Returns:
+            DataFrame with columns ``start``, ``speed_sample_count``,
+                ``has_speed_data``, ``has_full_coverage``, and
+                ``per_uuid_counts``.
         """
         uuids = station_uuids if station_uuids is not None else self._all_station_uuids
         df = self.dataframe

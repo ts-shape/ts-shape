@@ -19,20 +19,23 @@ Use as a single-number KPI for process health dashboards. Answers "is my process
 from ts_shape.events.engineering.process_stability_index import ProcessStabilityIndex
 
 scorer = ProcessStabilityIndex(
-    df=process_data,
-    uuid="reactor_temperature_01"
+    dataframe=process_data,
+    signal_uuid="reactor_temperature_01",
+    target=180.0,        # optional; defaults to the signal mean
+    lower_spec=175.0,    # optional; defaults to mean - 3 std
+    upper_spec=185.0,    # optional; defaults to mean + 3 std
 )
 
 # Get a 0-100 stability score per 8-hour shift
 scores = scorer.stability_score(window="8h")
 
-# Track score trend over the past 7 shifts
+# Track the score trend with a 7-window rolling average
 trend = scorer.score_trend(window="8h", n_windows=7)
 
 # Find the 5 worst 1-hour periods for investigation
 worst = scorer.worst_periods(window="1h", n=5)
 
-# Compare current performance to historical best
+# Compare each shift to the best-observed shift
 comparison = scorer.stability_comparison(window="8h")
 ```
 
@@ -42,10 +45,10 @@ comparison = scorer.stability_comparison(window="8h")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `stability_score(window='8h')` | Composite 0-100 stability score | DataFrame with scores per window |
-| `score_trend(window='8h', n_windows=7)` | Score trend over N windows | DataFrame with trend data |
-| `worst_periods(window='1h', n=5)` | N worst-scoring windows | DataFrame of worst periods |
-| `stability_comparison(window='8h')` | Compare to historical best | DataFrame with comparison metrics |
+| `stability_score(window='8h')` | Composite 0-100 stability score | DataFrame: `start`, `stability_score`, four 0-25 sub-scores, `grade` |
+| `score_trend(window='8h', n_windows=7)` | Score trend with an N-window rolling average | DataFrame: `start`, `stability_score`, `rolling_avg`, `trend_direction`, `score_change` |
+| `worst_periods(window='1h', n=5)` | N worst-scoring windows | DataFrame of worst windows with sub-scores and `primary_issue` |
+| `stability_comparison(window='8h')` | Compare each window to the best-observed window | DataFrame: `start`, `stability_score`, `best_score`, `gap_to_best`, `pct_of_best` |
 
 ---
 

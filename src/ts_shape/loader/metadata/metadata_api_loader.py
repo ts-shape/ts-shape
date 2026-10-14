@@ -44,15 +44,18 @@ class DatapointAPI:
         filter_enabled: bool = True,
         timeout: int = 30,
     ):
-        """
-        :param device_names: Device names to collect datapoints for.
-        :param base_url: API host, e.g. ``"https://datadash.example.com"``.
-        :param api_token: JWT bearer token for ``Authorization: Bearer <token>``.
-        :param output_path: Directory to write per-device JSON exports.
-        :param required_uuid_list: Optional allowlist; only matching UUIDs are kept.
-        :param filter_enabled: When True, only datapoints with ``enabled=True`` are kept.
-        :param timeout: Per-request timeout in seconds; prevents an unresponsive
-            server from hanging the loader indefinitely.
+        """Initialize the loader and fetch metadata for all requested devices.
+
+        Args:
+            device_names: Device names to collect datapoints for.
+            base_url: API host, e.g. ``"https://datadash.example.com"``.
+            api_token: JWT bearer token for ``Authorization: Bearer <token>``.
+            output_path: Directory to write per-device JSON exports.
+            required_uuid_list: Optional allowlist; only matching UUIDs are kept.
+            filter_enabled: When True, only datapoints with ``enabled=True`` are
+                kept.
+            timeout: Per-request timeout in seconds; prevents an unresponsive
+                server from hanging the loader indefinitely.
         """
         require_optional(requests, "requests", "api")
         self.device_names = device_names

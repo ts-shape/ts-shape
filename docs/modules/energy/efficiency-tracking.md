@@ -18,32 +18,23 @@ Use to track energy efficiency over time and identify waste. Detects energy cons
 ```python
 from ts_shape.events.energy.efficiency_tracking import EnergyEfficiencyEvents
 
-tracker = EnergyEfficiencyEvents(
-    df=production_df,
-    timestamp_col="timestamp",
-    value_col="power_kw"
-)
+# df: systime | uuid | value_double (kWh deltas) | value_integer | value_bool
+tracker = EnergyEfficiencyEvents(df)
 
-# Rolling energy efficiency (output per kWh)
-trend = tracker.efficiency_trend(
-    production_col="units_produced", window="1D"
-)
+# Rolling energy efficiency (units per kWh)
+trend = tracker.efficiency_trend("meter:main", "counter:parts", window="1D")
 
-# Detect energy waste during idle periods
+# Detect energy waste while the machine is idle (state: True = running)
 waste = tracker.idle_energy_waste(
-    state_col="machine_state", idle_value="IDLE", window="1H"
+    "meter:main", "machine:running", window="1h", time_weighted=True
 )
-print(f"Total idle waste: {waste['waste_kwh'].sum():.1f} kWh")
+print(f"Total idle waste: {waste['waste_energy'].sum():.1f} kWh")
 
-# Specific energy consumption per period
-sec = tracker.specific_energy_consumption(
-    production_col="units_produced", window="1D"
-)
+# Specific energy consumption (kWh per unit) per day
+sec = tracker.specific_energy_consumption("meter:main", "counter:parts", window="1D")
 
-# Compare efficiency across shifts
-comparison = tracker.efficiency_comparison(
-    group_col="shift", production_col="units_produced"
-)
+# Compare efficiency across shifts (default: three 8-hour shifts from 06:00)
+comparison = tracker.efficiency_comparison("meter:main", "counter:parts")
 ```
 
 ---
@@ -52,10 +43,10 @@ comparison = tracker.efficiency_comparison(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `efficiency_trend()` | Rolling energy efficiency over time | DataFrame with efficiency (units/kWh) per window |
-| `idle_energy_waste()` | Energy consumed during idle periods | DataFrame of idle intervals with wasted energy |
-| `specific_energy_consumption()` | SEC (kWh per unit) per period | DataFrame with SEC per window |
-| `efficiency_comparison()` | Compare efficiency across groups | DataFrame with efficiency stats per group |
+| `efficiency_trend(meter_uuid, counter_uuid)` | Rolling energy efficiency over time (`trend_window` windows) | `start`, `uuid`, `source_uuid`, `is_delta`, `energy`, `units`, `efficiency`, `rolling_avg_efficiency`, `trend_direction` |
+| `idle_energy_waste(meter_uuid, state_uuid)` | Energy consumed while a boolean run state is False | `start`, `uuid`, `source_uuid`, `is_delta`, `energy_consumed`, `machine_running_pct`, `is_idle_waste`, `waste_energy` |
+| `specific_energy_consumption(meter_uuid, counter_uuid)` | SEC (kWh per unit) per period (default `window="1D"`) | `start`, `uuid`, `source_uuid`, `is_delta`, `total_energy`, `total_output`, `sec`, `sec_trend` |
+| `efficiency_comparison(meter_uuid, counter_uuid)` | Compare efficiency across shifts (`shift_definitions`) | `shift`, `avg_energy`, `avg_output`, `avg_efficiency`, `total_energy`, `total_output` |
 
 ---
 

@@ -18,30 +18,26 @@ Use for fair operator performance comparison. Tracks production output, efficien
 ```python
 from ts_shape.events.production.operator_performance import OperatorPerformanceTracking
 
-tracker = OperatorPerformanceTracking(
-    df=production_df,
-    start_time="2024-01-01",
-    end_time="2024-01-31"
-)
+tracker = OperatorPerformanceTracking(production_df)
 
 # Parts produced per operator
 by_operator = tracker.production_by_operator(
-    operator_uuid="operator-badge-001",
-    counter_uuid="counter-001"
+    operator_uuid="line1:operator",
+    counter_uuid="line1:parts"
 )
 
 # Efficiency vs target
 efficiency = tracker.operator_efficiency(
-    operator_uuid="operator-badge-001",
-    counter_uuid="counter-001",
+    operator_uuid="line1:operator",
+    counter_uuid="line1:parts",
     target_per_shift=500
 )
 
 # First-pass yield per operator
 quality = tracker.quality_by_operator(
-    operator_uuid="operator-badge-001",
-    ok_uuid="ok-counter-001",
-    nok_uuid="nok-counter-001"
+    operator_uuid="line1:operator",
+    ok_uuid="line1:ok",
+    nok_uuid="line1:nok"
 )
 ```
 

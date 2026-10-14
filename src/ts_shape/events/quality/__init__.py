@@ -7,6 +7,8 @@ Classes:
 - OutlierDetectionEvents: Detect and group outlier events in a time series.
   - detect_outliers_zscore: Detect outliers using Z-score thresholding and group nearby points.
   - detect_outliers_iqr: Detect outliers using IQR bounds and group nearby points.
+  - detect_outliers_isolation_forest: Detects outliers using sklearn's IsolationForest algorithm.
+  - detect_outliers_mad: Detects outliers using the Median Absolute Deviation (MAD) method.
 
 - StatisticalProcessControlRuleBased: Apply Western Electric rules to actual values
   using tolerance context to flag control-limit violations.
@@ -20,10 +22,15 @@ Classes:
   - rule_6: Four of five consecutive points near the control limit (between 1 and 2 sigma).
   - rule_7: Fifteen consecutive points within 1 sigma of the mean.
   - rule_8: Eight consecutive points on both sides of the mean within 1 sigma.
+  - apply_rules_vectorized: Apply the selected Western Electric rules in one vectorized pass.
+  - calculate_dynamic_control_limits: Calculate dynamic control limits that adapt over time.
+  - detect_cusum_shifts: Detect process shifts using CUSUM (Cumulative Sum) control chart.
+  - interpret_violations: Add human-readable interpretations to rule violations.
 
 - ToleranceDeviationEvents: Flag intervals where actual values cross/compare against
   tolerance settings and group them into start/end events.
   - process_and_group_data_with_events: Build grouped deviation events with event UUIDs.
+  - compute_capability_indices: Calculate process capability indices (Cp, Cpk, Pp, Ppk).
 
 - AnomalyClassificationEvents: Classify anomaly types in numeric signals.
   - classify_anomalies: Detect and classify by type (spike/drift/oscillation/flatline/level_shift).
@@ -106,3 +113,26 @@ Classes:
   - normality_windows: Flag time windows with non-normal distributions.
   - percentile_tracking: Track selected percentiles over time windows.
 """
+
+import importlib as _importlib
+
+from ts_shape import _LAZY
+
+# Classes are imported on first access, so ``import ts_shape.events.quality``
+# stays cheap and optional dependencies (e.g. scikit-learn for the isolation
+# forest) are only needed by the class that uses them.
+_CLASSES = {
+    name: module for name, module in _LAZY.items() if module.startswith(__name__ + ".")
+}
+
+__all__ = sorted(_CLASSES)
+
+
+def __getattr__(name: str) -> object:
+    if name in _CLASSES:
+        return getattr(_importlib.import_module(_CLASSES[name]), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_CLASSES))
