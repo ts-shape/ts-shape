@@ -16,6 +16,7 @@ at the call sites so day-only schedules are unaffected.
 
 import datetime as _dt
 
+import numpy as np
 import pandas as pd
 
 __all__ = ["DEFAULT_SHIFTS", "assign_shift", "production_dates"]
@@ -37,15 +38,31 @@ def _bounds(
 
 
 def assign_shift(
-    timestamp: pd.Timestamp, shift_definitions: dict[str, tuple[str, str]]
-) -> str:
+    timestamp: pd.Timestamp | _dt.datetime | pd.Series,
+    shift_definitions: dict[str, tuple[str, str]],
+) -> str | pd.Series:
     """Return the shift a timestamp falls in, or ``"unknown"``.
 
     An overnight shift (start time >= end time, e.g. ``22:00 -> 06:00``) matches
-    timestamps at or after its start *or* before its end.
+    timestamps at or after its start *or* before its end. Shifts are tried in
+    the order of ``shift_definitions``; the first match wins.
+
+    Pass a datetime Series to label every row at once (vectorized). The local
+    wall-clock time is used for tz-aware data, and a missing timestamp (NaT)
+    is labeled ``"unknown"``.
+
+    Args:
+        timestamp: A single timestamp, or a datetime Series.
+        shift_definitions: Mapping of shift name to ``(start, end)`` strings.
+
+    Returns:
+        The shift name, or a Series of shift names aligned to ``timestamp``.
     """
+    bounds = _bounds(shift_definitions)
+    if isinstance(timestamp, pd.Series):
+        return _assign_shift_series(timestamp, bounds)
     t = timestamp.time()
-    for name, (start, end) in _bounds(shift_definitions).items():
+    for name, (start, end) in bounds.items():
         if start < end:
             if start <= t < end:
                 return name
@@ -53,6 +70,46 @@ def assign_shift(
             if t >= start or t < end:
                 return name
     return "unknown"
+
+
+def _time_us(t: _dt.time) -> int:
+    return ((t.hour * 60 + t.minute) * 60 + t.second) * 1_000_000 + t.microsecond
+
+
+def _time_of_day_us(timestamps: pd.Series) -> np.ndarray:
+    """Local wall-clock time of day in microseconds (NaN for NaT).
+
+    Matches ``Timestamp.time()``: nanoseconds are dropped and tz-aware values
+    use their local time.
+    """
+    times = timestamps
+    if not pd.api.types.is_datetime64_any_dtype(times.dtype):
+        times = pd.to_datetime(times)
+    dt = times.dt
+    return (
+        ((dt.hour.astype("float64") * 60 + dt.minute) * 60 + dt.second) * 1_000_000
+        + dt.microsecond
+    ).to_numpy(dtype="float64", na_value=np.nan)
+
+
+def _assign_shift_series(
+    timestamps: pd.Series, bounds: dict[str, tuple[_dt.time, _dt.time]]
+) -> pd.Series:
+    tod = _time_of_day_us(timestamps)
+    labels = np.full(len(tod), "unknown", dtype=object)
+    free = ~np.isnan(tod)
+    for name, (start, end) in bounds.items():
+        if not free.any():
+            break
+        s, e = _time_us(start), _time_us(end)
+        if start < end:
+            hit = (tod >= s) & (tod < e)
+        else:
+            hit = (tod >= s) | (tod < e)
+        hit &= free
+        labels[hit] = name
+        free &= ~hit
+    return pd.Series(labels, index=timestamps.index, dtype=object)
 
 
 def _is_overnight(start: _dt.time, end: _dt.time) -> bool:
@@ -85,10 +142,12 @@ def production_dates(
     # A reading belongs to the previous day when its shift is overnight and its
     # time is before that shift's end (the small hours after midnight).
     shifted = (times - pd.Timedelta(days=1)).dt.date
-    is_post_midnight = pd.Series(False, index=times.index)
+    tod = _time_of_day_us(times)
+    names = shifts.to_numpy()
+    mask = np.zeros(len(times), dtype=bool)
     for name, (start, end) in bounds.items():
         if not _is_overnight(start, end):
             continue
-        mask = (shifts.to_numpy() == name) & (times.dt.time < end).to_numpy()
-        is_post_midnight |= pd.Series(mask, index=times.index)
+        mask |= (names == name) & (tod < _time_us(end))
+    is_post_midnight = pd.Series(mask, index=times.index)
     return calendar.where(~is_post_midnight, shifted)

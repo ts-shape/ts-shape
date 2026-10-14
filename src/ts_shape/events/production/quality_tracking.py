@@ -20,7 +20,7 @@ from ts_shape.events._windows import (
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -101,20 +101,7 @@ class QualityEvents(Base):
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
         """Assign shift based on time of day."""
-        time = timestamp.time()
-
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-
-        return "unknown"
+        return assign_shift(timestamp, self.shift_definitions)
 
     def nok_by_shift(
         self,
@@ -193,7 +180,9 @@ class QualityEvents(Base):
         ok_processed = None
         if not ok_data.empty:
             ok_data[self.time_column] = pd.to_datetime(ok_data[self.time_column])
-            ok_data["shift"] = ok_data[self.time_column].apply(self._assign_shift)
+            ok_data["shift"] = assign_shift(
+                ok_data[self.time_column], self.shift_definitions
+            )
             if production_day:
                 ok_data["date"] = production_dates(
                     ok_data[self.time_column], ok_data["shift"], self.shift_definitions
@@ -206,7 +195,9 @@ class QualityEvents(Base):
         nok_processed = None
         if not nok_data.empty:
             nok_data[self.time_column] = pd.to_datetime(nok_data[self.time_column])
-            nok_data["shift"] = nok_data[self.time_column].apply(self._assign_shift)
+            nok_data["shift"] = assign_shift(
+                nok_data[self.time_column], self.shift_definitions
+            )
             if production_day:
                 nok_data["date"] = production_dates(
                     nok_data[self.time_column],

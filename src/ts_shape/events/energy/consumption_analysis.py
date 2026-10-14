@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._windows import with_window_bounds
+from ts_shape.events._windows import window_bounds, with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_per_window
@@ -278,21 +278,21 @@ class EnergyConsumptionEvents(Base):
             consumption["deviation_pct"].abs() > deviation_threshold
         )
 
-        return with_window_bounds(
-            consumption[
-                [
-                    "start",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "consumption",
-                    "baseline",
-                    "deviation_pct",
-                    "is_anomaly",
-                ]
-            ],
-            window,
-        )
+        # consumption_by_window already carries the true window bounds.
+        return consumption[
+            [
+                "start",
+                "end",
+                "duration_seconds",
+                "uuid",
+                "source_uuid",
+                "is_delta",
+                "consumption",
+                "baseline",
+                "deviation_pct",
+                "is_anomaly",
+            ]
+        ].reset_index(drop=True)
 
     @renamed_kwargs(
         counter_column="value_column_counter", energy_column="value_column_energy"
@@ -358,6 +358,9 @@ class EnergyConsumptionEvents(Base):
         )
         counts = counts.to_frame("units_produced").reset_index()
         counts = counts.rename(columns={self.time_column: "start"})
+        # Join on the true window start: ``energy`` is already bounded, the
+        # counter still carries raw resample labels (right edge for 'W'/'ME').
+        counts["start"] = window_bounds(counts["start"], window)[0]
 
         merged = energy.merge(counts, on="start", how="inner")
         merged["energy"] = merged["consumption"]
@@ -367,17 +370,16 @@ class EnergyConsumptionEvents(Base):
             np.nan,
         )
 
-        return with_window_bounds(
-            merged[
-                [
-                    "start",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "energy",
-                    "units_produced",
-                    "energy_per_unit",
-                ]
-            ],
-            window,
-        )
+        return merged[
+            [
+                "start",
+                "end",
+                "duration_seconds",
+                "uuid",
+                "source_uuid",
+                "is_delta",
+                "energy",
+                "units_produced",
+                "energy_per_unit",
+            ]
+        ].reset_index(drop=True)

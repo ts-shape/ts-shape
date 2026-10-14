@@ -20,7 +20,7 @@ from ts_shape.events._windows import (
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -100,20 +100,7 @@ class DowntimeEvents(Base):
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
         """Assign shift based on time of day."""
-        time = timestamp.time()
-
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-
-        return "unknown"
+        return assign_shift(timestamp, self.shift_definitions)
 
     def downtime_by_shift(
         self,
@@ -178,7 +165,9 @@ class DowntimeEvents(Base):
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
 
         # Assign shifts and dates
-        state_data["shift"] = state_data[self.time_column].apply(self._assign_shift)
+        state_data["shift"] = assign_shift(
+            state_data[self.time_column], self.shift_definitions
+        )
         state_data["date"] = (
             production_dates(
                 state_data[self.time_column],

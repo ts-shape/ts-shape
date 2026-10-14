@@ -21,6 +21,7 @@ from ts_shape.events._output import (
     finalize_point_df,
     finalize_summary_df,
 )
+from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
@@ -184,7 +185,7 @@ class FlowMetricsEvents(Base):
             return empty_event_df("summary", extra_cols=extra)
 
         window_hours = pd.Timedelta(window).total_seconds() / 3600.0
-        counts = exits.dt.floor(window).value_counts().sort_index()
+        counts = floor_local(exits, window).value_counts().sort_index()
         out = counts.reset_index()
         out.columns = ["start", "units_out"]
         out["end"] = out["start"] + pd.Timedelta(window)
@@ -265,7 +266,7 @@ class FlowMetricsEvents(Base):
         lead = self.lead_time()
         if not lead.empty:
             lead = lead.copy()
-            lead["start"] = lead["systime"].dt.floor(window)
+            lead["start"] = floor_local(lead["systime"], window)
             lead_mean = lead.groupby("start")["lead_time_seconds"].mean().reset_index()
             lead_mean.columns = ["start", "lead_time_mean_seconds"]
             merged = merged.merge(lead_mean, on="start", how="left")

@@ -14,7 +14,7 @@ import pandas as pd
 from ts_shape.events._windows import add_period_window
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -79,17 +79,8 @@ class SetupTimeEvents(Base):
         }
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        time = timestamp.time()
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-        return "unknown"
+        """Assign shift based on time of day."""
+        return assign_shift(timestamp, self.shift_definitions)
 
     def _extract_setup_intervals(
         self,
@@ -179,7 +170,7 @@ class SetupTimeEvents(Base):
                 ]
             )
 
-        intervals["shift"] = intervals["start"].apply(self._assign_shift)
+        intervals["shift"] = assign_shift(intervals["start"], self.shift_definitions)
         intervals["date"] = (
             production_dates(
                 intervals["start"], intervals["shift"], self.shift_definitions

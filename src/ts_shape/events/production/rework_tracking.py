@@ -21,7 +21,7 @@ from ts_shape.events._windows import (
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -76,17 +76,8 @@ class ReworkEvents(Base):
         }
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        time = timestamp.time()
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-        return "unknown"
+        """Assign shift based on time of day."""
+        return assign_shift(timestamp, self.shift_definitions)
 
     def _get_counter_quantity(
         self,
@@ -156,7 +147,7 @@ class ReworkEvents(Base):
             )
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
-        data["shift"] = data[self.time_column].apply(self._assign_shift)
+        data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
         if production_day:
             data["date"] = production_dates(
                 data[self.time_column], data["shift"], self.shift_definitions
@@ -354,8 +345,12 @@ class ReworkEvents(Base):
         rework_data[self.time_column] = pd.to_datetime(rework_data[self.time_column])
         prod_data[self.time_column] = pd.to_datetime(prod_data[self.time_column])
 
-        rework_data["shift"] = rework_data[self.time_column].apply(self._assign_shift)
-        prod_data["shift"] = prod_data[self.time_column].apply(self._assign_shift)
+        rework_data["shift"] = assign_shift(
+            rework_data[self.time_column], self.shift_definitions
+        )
+        prod_data["shift"] = assign_shift(
+            prod_data[self.time_column], self.shift_definitions
+        )
         if production_day:
             rework_data["date"] = production_dates(
                 rework_data[self.time_column],

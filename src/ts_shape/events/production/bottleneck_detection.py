@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
+from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
@@ -83,7 +84,7 @@ class BottleneckDetectionEvents(Base):
                 station = station[station["dur"].notna()]
                 if station.empty:
                     continue
-                station["win"] = station[self.time_column].dt.floor(window)
+                station["win"] = floor_local(station[self.time_column], window)
                 station["run_dur"] = station["state"] * station["dur"]
                 grouped = station.groupby("win").agg(
                     run=("run_dur", "sum"), total=("dur", "sum")

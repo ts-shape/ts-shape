@@ -12,6 +12,7 @@ import logging
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
 
@@ -498,7 +499,7 @@ class CycleTimeEvents(Base):
             )
 
         # Add hour column
-        cycle_data["hour"] = cycle_data["systime"].dt.floor("h")
+        cycle_data["hour"] = floor_local(cycle_data["systime"], "h")
 
         # Group by hour and part
         hourly = (

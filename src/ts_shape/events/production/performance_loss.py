@@ -17,7 +17,7 @@ from ts_shape.events._windows import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import production_dates
+from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -120,17 +120,8 @@ class PerformanceLossEvents(Base):
         }
 
     def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        time = timestamp.time()
-        for shift_name, (start, end) in self.shift_definitions.items():
-            start_time = pd.to_datetime(start).time()
-            end_time = pd.to_datetime(end).time()
-            if start_time < end_time:
-                if start_time <= time < end_time:
-                    return shift_name
-            else:
-                if time >= start_time or time < end_time:
-                    return shift_name
-        return "unknown"
+        """Assign shift based on time of day."""
+        return assign_shift(timestamp, self.shift_definitions)
 
     def _compute_cycle_times(
         self,
@@ -210,7 +201,7 @@ class PerformanceLossEvents(Base):
                 pd.DataFrame(columns=_SHIFT_COLS), self.shift_definitions, None
             )
 
-        data["shift"] = data[self.time_column].apply(self._assign_shift)
+        data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
         data["date"] = (
             production_dates(
                 data[self.time_column], data["shift"], self.shift_definitions

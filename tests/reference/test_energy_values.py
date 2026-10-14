@@ -289,14 +289,6 @@ def test_weekly_bounds_of_single_pass_methods():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "total_emissions_by_window re-applies with_window_bounds to the "
-        "already bounded emissions_by_window frame (carbon_intensity.py:211): "
-        "for 'W' every window reports end = start + 1 day"
-    ),
-)
 def test_total_emissions_weekly_windows():
     df = _weekly_frame()
     _weekly_ok(
@@ -304,14 +296,6 @@ def test_total_emissions_weekly_windows():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "consumption_baseline_deviation re-applies with_window_bounds to the "
-        "already bounded consumption_by_window frame (consumption_analysis.py:"
-        "281): for 'W' every window reports end = start + 1 day"
-    ),
-)
 def test_consumption_baseline_deviation_weekly_windows():
     out = EnergyConsumptionEvents(_weekly_frame()).consumption_baseline_deviation(
         "m", window="W", baseline_periods=2
@@ -319,28 +303,12 @@ def test_consumption_baseline_deviation_weekly_windows():
     _weekly_ok(out)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "energy_per_unit merges the bounded consumption_by_window starts with "
-        "raw right-edge resample labels of the counter (consumption_analysis.py:"
-        "362): for 'W' / 'ME' no start matches and the result is empty"
-    ),
-)
 def test_energy_per_unit_weekly_windows():
     out = EnergyConsumptionEvents(_weekly_frame()).energy_per_unit("m", "c", window="W")
     _weekly_ok(out)
     assert list(out["energy"]) == [168.0] * 3
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "enpi_by_hierarchy re-applies with_window_bounds to enpi_by_window "
-        "output (energy_performance_indicator.py:336): for 'W' every window "
-        "reports end = start + 1 day"
-    ),
-)
 def test_enpi_by_hierarchy_weekly_windows():
     out = EnergyPerformanceIndicatorEvents(_weekly_frame()).enpi_by_hierarchy(
         ["m"], "c", window="W"
@@ -348,14 +316,6 @@ def test_enpi_by_hierarchy_weekly_windows():
     _weekly_ok(out)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "idle_energy_trend re-applies with_window_bounds to idle_energy_by_window "
-        "output (idle_energy_detection.py:287): for 'W' every window reports "
-        "end = start + 1 day"
-    ),
-)
 def test_idle_energy_trend_weekly_windows():
     out = IdleEnergyDetectionEvents(_weekly_frame()).idle_energy_trend(
         "m", "run", window="W"
@@ -363,15 +323,6 @@ def test_idle_energy_trend_weekly_windows():
     _weekly_ok(out)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason=(
-        "carbon_intensity_per_unit merges bounded total_emissions_by_window "
-        "starts with raw right-edge counter labels (carbon_intensity.py:275); "
-        "for 'W' the merge is empty and rolling(window=0) raises ValueError"
-    ),
-)
 def test_carbon_intensity_per_unit_weekly_windows():
     out = CarbonIntensityEvents(_weekly_frame(), {"m": 2.0}).carbon_intensity_per_unit(
         "c", window="W"

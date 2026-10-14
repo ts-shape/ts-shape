@@ -8,6 +8,7 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_increments, counter_per_window
 from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.shifts import assign_shift
 from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
@@ -527,21 +528,9 @@ class EnergyEfficiencyEvents(Base):
         counter[self.time_column] = pd.to_datetime(counter[self.time_column])
 
         # Assign shifts
-        def _assign_shift(ts: pd.Timestamp) -> str:
-            t = ts.time()
-            for name, (start, end) in shift_definitions.items():
-                st = pd.to_datetime(start).time()
-                et = pd.to_datetime(end).time()
-                if st < et:
-                    if st <= t < et:
-                        return name
-                else:
-                    if t >= st or t < et:
-                        return name
-            return "unknown"
 
-        energy["shift"] = energy[self.time_column].apply(_assign_shift)
-        counter["shift"] = counter[self.time_column].apply(_assign_shift)
+        energy["shift"] = assign_shift(energy[self.time_column], shift_definitions)
+        counter["shift"] = assign_shift(counter[self.time_column], shift_definitions)
 
         energy_by_shift = (
             energy.groupby("shift")[value_column_energy]

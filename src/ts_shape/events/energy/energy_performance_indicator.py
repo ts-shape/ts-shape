@@ -311,6 +311,8 @@ class EnergyPerformanceIndicatorEvents(Base):
                     df[
                         [
                             "start",
+                            "end",
+                            "duration_seconds",
                             "meter_uuid",
                             "energy_kwh",
                             "units_produced",
@@ -333,11 +335,11 @@ class EnergyPerformanceIndicatorEvents(Base):
                 window,
             )
 
-        return with_window_bounds(
+        # enpi_by_window frames already carry the true window bounds.
+        return (
             pd.concat(frames, ignore_index=True)
             .sort_values(["start", "meter_uuid"])
-            .reset_index(drop=True),
-            window,
+            .reset_index(drop=True)
         )
 
     # ── Internal helpers ────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.events._output import empty_event_df
-from ts_shape.events._windows import window_bounds
+from ts_shape.events._windows import floor_local, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
 from ts_shape.utils.intervals import state_intervals
@@ -152,7 +152,7 @@ class DutyCycleEvents(Base):
             s = s[s["dur"].notna()]
             if s.empty:
                 return self._with_window(pd.DataFrame(columns=cols), window)
-            s["win"] = s[self.time_column].dt.floor(window)
+            s["win"] = floor_local(s[self.time_column], window)
             s["on_dur"] = s["state"] * s["dur"]
             grouped = s.groupby("win").agg(on=("on_dur", "sum"), total=("dur", "sum"))
             for ts, row in grouped.iterrows():
