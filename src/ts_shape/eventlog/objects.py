@@ -84,9 +84,11 @@ def _segments(
     sig = sig.sort_values(time_column)
     times = _to_utc(sig[time_column]).reset_index(drop=True)
     vals = sig[value_column].ffill().reset_index(drop=True)
-    changed = vals.ne(vals.shift())
-    changed.iloc[0] = True  # the first sample always starts a segment
-    groups = changed.cumsum().to_numpy()
+    # Arrow-backed strings compare to a nullable ``bool[pyarrow]`` that has no
+    # ``cumsum``; a comparison against a missing value counts as a change.
+    changed = vals.ne(vals.shift()).fillna(True).to_numpy(dtype=bool)
+    changed[0] = True  # the first sample always starts a segment
+    groups = changed.cumsum()
 
     work = pd.DataFrame(
         {"value": vals.to_numpy(), "start": times, "end": times, "_g": groups}

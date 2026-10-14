@@ -14,6 +14,8 @@ new sample has no mean at all.
 import numpy as np
 import pandas as pd
 
+from ts_shape.utils.coerce import to_numeric_checked
+
 __all__ = ["time_weighted_resample"]
 
 
@@ -28,18 +30,22 @@ def time_weighted_resample(
 
     Args:
         series: Values with a ``DatetimeIndex`` (naive or tz-aware). NaN
-            values are ignored; for duplicate timestamps the last value wins.
+            values are ignored (non-numeric values are treated as NaN, with a
+            :class:`~ts_shape.errors.DataQualityWarning`); for duplicate
+            timestamps the last value wins.
         window: Resample frequency (e.g. ``'1h'``).
         data_end: Hold the last value until this time (e.g. the end of a
             companion signal). Default: the series ends at its last sample.
         max_gap: If set, a value is not held across a gap to the next sample
-            longer than this; that span counts as "no data" instead.
+            longer than this; that span counts as "no data" instead. ``None``
+            (default) holds every value until the next sample, however long
+            the gap.
 
     Returns:
         A float Series indexed by window start. Windows without any held
         value are NaN.
     """
-    s = pd.to_numeric(series, errors="coerce").dropna().sort_index()
+    s = to_numeric_checked(series, what="time-weighted values").dropna().sort_index()
     s = s[~s.index.duplicated(keep="last")]
     if s.empty:
         return pd.Series(dtype=float)

@@ -106,7 +106,7 @@ Traceability:
   - lead_time: End-to-end lead time per identifier.
   - current_status: Last-known station for each identifier.
   - station_dwell_statistics: Dwell-time stats per station.
-  (OrderTraceabilityEvents is a backwards-compatible alias.)
+  (OrderTraceabilityEvents is a deprecated alias.)
 
 - RoutingTraceabilityEvents: Trace item routing using ID + state/routing signal.
   The ``state_map`` argument maps signal values (PLC steps, station codes) to
@@ -303,7 +303,7 @@ __all__ = [
     # Traceability
     "ContinuousProcessAlignmentEvents",
     "ValueTraceabilityEvents",
-    "OrderTraceabilityEvents",  # backwards-compatible alias
+    "OrderTraceabilityEvents",  # deprecated alias
     "RoutingTraceabilityEvents",
     "MultiProcessTraceabilityEvents",
     # Setup, Rework, and Operator Tracking

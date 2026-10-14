@@ -31,13 +31,13 @@ def _counter_series():
     return pd.Series(COUNTER_V, index=COUNTER_T)
 
 
-def test_counter_per_window_default_is_legacy_max_minus_min():
-    out = counter_per_window(_counter_series(), "1h")
+def test_counter_per_window_max_minus_min_when_resets_off():
+    out = counter_per_window(_counter_series(), "1h", handle_resets=False)
     assert list(out) == [50, 65]
 
 
-def test_counter_per_window_handle_resets():
-    out = counter_per_window(_counter_series(), "1h", handle_resets=True)
+def test_counter_per_window_handles_resets_by_default():
+    out = counter_per_window(_counter_series(), "1h")
     assert list(out) == [50.0, 45.0]
     assert out.sum() == 95.0
 
@@ -72,18 +72,19 @@ def test_energy_methods_thread_handle_resets():
         ),
     ]
     for method, col, kw in cases:
-        legacy = method("m", "c", **kw)
-        fixed = method("m", "c", handle_resets=True, **kw)
-        assert _total(legacy, col) == 115.0, method.__name__
-        assert _total(fixed, col) == 95.0, method.__name__
+        # Default: a counter reset is handled, all 95 parts are counted.
+        default = method("m", "c", **kw)
+        max_minus_min = method("m", "c", handle_resets=False, **kw)
+        assert _total(default, col) == 95.0, method.__name__
+        assert _total(max_minus_min, col) == 115.0, method.__name__
 
 
 def test_carbon_intensity_per_unit_handle_resets():
     ev = CarbonIntensityEvents(_energy_frame(), emission_factors={"m": 0.4})
-    legacy = ev.carbon_intensity_per_unit("c", window="1h")
-    fixed = ev.carbon_intensity_per_unit("c", window="1h", handle_resets=True)
-    assert _total(legacy, "units_produced") == 115.0
-    assert _total(fixed, "units_produced") == 95.0
+    default = ev.carbon_intensity_per_unit("c", window="1h")
+    max_minus_min = ev.carbon_intensity_per_unit("c", window="1h", handle_resets=False)
+    assert _total(default, "units_produced") == 95.0
+    assert _total(max_minus_min, "units_produced") == 115.0
 
 
 def test_time_stats_diff_handle_resets_and_uuid_grouping():
@@ -109,6 +110,7 @@ def test_inventory_consumption_rate_handle_refills():
         {"systime": t, "uuid": "lvl", "value_double": [100.0, 40, 100, 40]}
     )
     ev = InventoryMonitoringEvents(df, "lvl")
-    assert ev.consumption_rate(window="1h")["consumption_rate"].iloc[0] == 0.0
-    fixed = ev.consumption_rate(window="1h", handle_refills=True)
-    assert fixed["consumption_rate"].sum() == 120.0
+    # Default: the refill does not cancel the consumption around it.
+    assert ev.consumption_rate(window="1h")["consumption_rate"].sum() == 120.0
+    first_minus_last = ev.consumption_rate(window="1h", handle_refills=False)
+    assert first_minus_last["consumption_rate"].iloc[0] == 0.0

@@ -91,14 +91,14 @@ class MachineStateEvents(Base):
         """Return intervals labeled as 'run' or 'idle'.
 
         - min_duration: discard intervals shorter than this duration.
-        - interval_end: how to close each interval. ``"last_sample"`` ends an
-          interval at its last sample -- backward compatible, but a
-          change-encoded (``is_delta``) signal logs one row per transition, so
-          every interval collapses to zero duration. ``"next_change"`` closes
-          each interval at the next transition instant. Default (``None``):
-          follow the signal's spec when ``specs=`` was given (held states
-          close at the next change, and gaps longer than the spec's
-          ``max_gap`` are "no data"), otherwise ``"last_sample"``.
+        - interval_end: how to close each interval. ``"next_change"`` closes
+          each interval at the next transition instant, which measures both
+          dense and change-encoded (``is_delta``) signals. ``"last_sample"``
+          ends an interval at its last sample; on a change-encoded signal
+          (one row per transition) every interval then has zero duration.
+          Default (``None``): follow the signal's spec when ``specs=`` was
+          given (held states close at the next change, and gaps longer than
+          the spec's ``max_gap`` are "no data"), otherwise ``"next_change"``.
         - data_end: optional bound for the final, still-open interval when
           intervals close at the next change (e.g. the end of the data window).
         Columns: start, end, uuid, source_uuid, is_delta, state, duration_seconds
@@ -133,7 +133,7 @@ class MachineStateEvents(Base):
                 s,
                 time_column=self.time_column,
                 state_column="state",
-                interval_end=interval_end or "last_sample",
+                interval_end=interval_end or "next_change",
                 data_end=data_end,
             )
         min_td = pd.to_timedelta(min_duration)
@@ -293,12 +293,11 @@ class MachineStateEvents(Base):
         """Return quality metrics for the state data.
 
         Args:
-            interval_end: Forwarded to :meth:`detect_run_idle`. Pass
-                ``"next_change"`` for change-encoded signals so the run/idle
-                durations are measured to the next transition rather than
-                collapsing to zero. Default ``None`` resolves exactly as in
-                :meth:`detect_run_idle`: follow the signal's spec when
-                ``specs=`` was given, otherwise ``"last_sample"``.
+            interval_end: Forwarded to :meth:`detect_run_idle`. Default
+                ``None`` resolves exactly as in :meth:`detect_run_idle`:
+                follow the signal's spec when ``specs=`` was given, otherwise
+                ``"next_change"`` (run/idle durations are measured to the next
+                transition).
             data_end: Forwarded to :meth:`detect_run_idle`; optional bound for
                 the final, still-open interval.
 

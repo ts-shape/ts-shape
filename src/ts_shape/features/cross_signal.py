@@ -173,7 +173,7 @@ class CrossSignalAnalytics:
         joint_3d, _ = np.histogramdd(
             np.column_stack([yf_d, yp_d, x_d]),
             bins=[bins, bins, bins],
-            range=[[0, bins], [0, bins], [0, bins]],
+            range=[(0.0, float(bins))] * 3,
         )
         joint_3d = joint_3d / joint_3d.sum()
 

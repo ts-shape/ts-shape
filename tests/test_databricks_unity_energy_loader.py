@@ -3,7 +3,7 @@ import warnings
 import pandas as pd  # type: ignore
 import pytest
 
-from ts_shape.errors import LoaderConfigWarning
+from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
 from ts_shape.loader.timeseries.databricks_unity_energy_loader import (
     DatabricksUnityEnergyLoader,
 )
@@ -102,7 +102,8 @@ def test_load_series_metadata_missing_returns_empty(tmp_path):
     root = tmp_path / "Volumes" / "main" / "plant" / "energy"
     (root / "csv").mkdir(parents=True)
     loader = DatabricksUnityEnergyLoader(volume_path=str(root))
-    df = loader.load_series_metadata()
+    with pytest.warns(LoaderConfigWarning, match="does not exist"):
+        df = loader.load_series_metadata()
     assert df.empty
     assert "id" in df.columns
 
@@ -244,14 +245,28 @@ def test_prefix_subpath(tmp_path):
 
 def test_normalize_df_bad_values_become_nan():
     raw = pd.DataFrame({"time": ["2026-01-13T00:00:00Z"], "value": ["not_a_number"]})
-    out = DatabricksUnityEnergyLoader._normalize_df(raw, "s1")
+    with pytest.warns(DataQualityWarning, match="1 non-null value"):
+        out = DatabricksUnityEnergyLoader._normalize_df(raw, "s1")
     assert pd.isna(out["value_double"].iloc[0])
 
 
-def test_normalize_df_missing_value_column():
+def test_normalize_df_missing_value_column_raises():
     raw = pd.DataFrame({"time": ["2026-01-13T00:00:00Z"]})
-    out = DatabricksUnityEnergyLoader._normalize_df(raw, "s1")
-    assert out.empty
+    with pytest.raises(ValueError, match="value"):
+        DatabricksUnityEnergyLoader._normalize_df(raw, "s1")
+
+
+def test_unreadable_csv_is_reported(tmp_path):
+    loader, root = _loader(tmp_path)
+    _write(root / "csv/2026/01/13/sensor_003.csv", "wrong,header\n1,2\n")
+    with pytest.warns(DataQualityWarning, match="sensor_003.csv"):
+        df = loader.load_by_time_range("2026-01-13", "2026-01-13")
+    assert set(df["uuid"]) == {"sensor_001", "sensor_002"}
+    with pytest.raises(LoaderError, match="sensor_003.csv"):
+        loader.load_by_time_range("2026-01-13", "2026-01-13", errors="raise")
+    with pytest.warns(DataQualityWarning, match="sensor_003.csv"):
+        streamed = list(loader.stream_by_time_range("2026-01-13", "2026-01-13"))
+    assert sorted(sid for sid, _ in streamed) == ["sensor_001", "sensor_002"]
 
 
 def test_fetch_data_as_dataframe_start_only(tmp_path):

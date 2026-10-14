@@ -5,6 +5,7 @@ import pandas as pd
 
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_increments
 
 logger = logging.getLogger(__name__)
@@ -38,24 +39,24 @@ class LineThroughputEvents(Base):
         *,
         value_column: str = "value_integer",
         window: str = "1min",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Compute parts per window for a counter uuid.
 
-        When ``handle_resets`` is False (default), the count per window is the
-        window-over-window difference of the counter maximum, clipped at zero -
-        so a window in which the counter resets to a lower value silently loses
-        that production. When True, per-reading increments are computed on the
-        raw counter (a decreasing counter is treated as a reset and the
-        post-reset value counted as new production) and summed into each window,
-        and a ``resets`` column reports the number of resets per window.
+        When ``handle_resets`` is True (default), per-reading increments are
+        computed on the raw counter (a decreasing counter is treated as a reset
+        and the post-reset value counted as new production) and summed into
+        each window, and a ``resets`` column reports the number of resets per
+        window. When False, the count per window is the window-over-window
+        difference of the counter maximum, clipped at zero, so a window in
+        which the counter resets to a lower value loses that production.
 
         Args:
             counter_uuid: UUID of the part counter signal.
             value_column: Column holding the counter value.
             window: Count window (pandas offset string, e.g. '1min', '1h').
             handle_resets: Count production across counter resets (see
-                above) and add a ``resets`` column. Default False.
+                above) and add a ``resets`` column. Default True.
 
         Returns:
             DataFrame with columns: start, end (start + window),
@@ -83,7 +84,11 @@ class LineThroughputEvents(Base):
         c[self.time_column] = pd.to_datetime(c[self.time_column])
         c = c.set_index(self.time_column)
         if handle_resets:
-            series = c[value_column]
+            # Readings that are not numeric are dropped (with a warning), so
+            # the increment spans from the previous to the next valid reading.
+            series = to_numeric_checked(
+                c[value_column], what=f"counter {counter_uuid!r} ({value_column!r})"
+            ).dropna()
             increments = counter_increments(series)
             counts = increments.resample(window).sum()
             out = (
@@ -91,7 +96,7 @@ class LineThroughputEvents(Base):
                 .reset_index()
                 .rename(columns={self.time_column: "start"})
             )
-            is_reset = pd.to_numeric(series, errors="coerce").diff() < 0
+            is_reset = series.diff() < 0
             resets = is_reset.resample(window).sum().astype(int)
             out["resets"] = resets.values
         else:
@@ -211,7 +216,7 @@ class LineThroughputEvents(Base):
         window: str = "1h",
         target_rate: float | None = None,
         availability_threshold: float = 0.0,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Calculate Overall Equipment Effectiveness (OEE) metrics.
 
@@ -232,9 +237,9 @@ class LineThroughputEvents(Base):
                 reach to count as available (0.0-1.0). The default ``0.0`` keeps
                 the historical behavior -- any window with at least one part is
                 available. (Previously this argument was accepted but ignored.)
-            handle_resets: When True, the part counter is treated as reset-aware
+            handle_resets: When True (default), the part counter is treated as reset-aware
                 (see :meth:`count_parts`), so a window where the counter resets
-                is not dropped. Default False.
+                is not dropped. Default True.
 
         Returns:
             DataFrame with columns: start, end (start + window),

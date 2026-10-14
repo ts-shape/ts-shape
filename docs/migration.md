@@ -6,7 +6,7 @@ while you migrate. Deprecated names still function but emit a
 authoritative, dated record is the [Changelog](changelog.md) — this page is the
 quick old → new lookup.
 
-## Renamed parameters (old keywords deprecated, removed in 1.0)
+## Renamed parameters (old keywords deprecated, removed in 2.0)
 
 Parameter names follow [Naming & Output Conventions](naming.md). The old keyword still works, but emits a `DeprecationWarning`.
 
@@ -34,7 +34,7 @@ The default `event_uuid` values now all follow `"<pack>:<name>"`:
 
 If you filter results by these values, update the filters.
 
-## Renamed classes and methods (old names deprecated, removed in 1.0)
+## Renamed classes and methods (old names deprecated, removed in 2.0)
 
 Detector classes all end in `Events`. Event classes no longer use `calculate_` / `compute_` / `process_`: methods that find events start with `detect_`, and metrics are nouns (see [Naming & Output Conventions](naming.md)).
 

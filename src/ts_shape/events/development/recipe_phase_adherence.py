@@ -14,11 +14,13 @@ schema class -- see :meth:`evaluate` for the recognized keys.
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.intervals import state_intervals
 
@@ -71,7 +73,7 @@ class RecipePhaseAdherenceEvents(Base):
 
     def _phase_intervals(
         self,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
         data_end: pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         """Return contiguous phase intervals from the phase signal."""
@@ -100,12 +102,19 @@ class RecipePhaseAdherenceEvents(Base):
         return ivl.rename(columns={"state": "phase"})[["start", "end", "phase"]]
 
     @staticmethod
-    def _check_range(value: float, bounds: Any) -> bool:
+    def _check_range(value: float, bounds: Any, *, phase: Any, key: str) -> bool:
+        """``lo <= value <= hi``; a malformed ``bounds`` is not checked (warns)."""
         try:
             lo, hi = bounds
         except (TypeError, ValueError):
-            return True  # malformed spec entry -> skip silently
-        return (value >= lo) and (value <= hi)
+            warnings.warn(
+                f"Recipe spec for phase {phase!r}: {key!r} must be a (min, max) "
+                f"pair, got {bounds!r}; this criterion was not checked.",
+                DataQualityWarning,
+                stacklevel=4,
+            )
+            return True
+        return bool((value >= lo) and (value <= hi))
 
     # ------------------------------------------------------------------
     # Public API
@@ -114,22 +123,21 @@ class RecipePhaseAdherenceEvents(Base):
     def evaluate(
         self,
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
         data_end: pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         """Evaluate every observed phase interval against the spec.
 
         Args:
             interval_end: How each phase interval is closed.
-                ``"last_sample"`` (default) spans the first to the last
-                phase-signal sample carrying the phase -- backward
-                compatible, but a change-encoded (``is_delta``) phase signal
-                logs one row per transition, so every phase is zero-length.
-                ``"next_change"`` closes a phase at the next phase change;
-                value samples are then taken from ``[start, end)`` (the
+                ``"next_change"`` (default) closes a phase at the next phase
+                change; value samples are taken from ``[start, end)`` (the
                 sample at the transition belongs to the next phase), and the
                 final phase is closed at ``data_end`` when given, otherwise
-                at its own last sample.
+                at its own last sample. ``"last_sample"`` spans the first to
+                the last phase-signal sample carrying the phase; on a
+                change-encoded (``is_delta``) phase signal, which logs one row
+                per transition, every phase is then zero-length.
             data_end: Optional bound for the final phase when
                 ``interval_end="next_change"`` (e.g. the batch end).
 
@@ -173,6 +181,7 @@ class RecipePhaseAdherenceEvents(Base):
         half_open = interval_end == "next_change"
         last_pos = len(intervals) - 1
         rows: list[dict[str, Any]] = []
+        no_samples: list[Any] = []
         for pos, (_, ivl) in enumerate(intervals.iterrows()):
             if half_open and pos < last_pos:
                 upper = vals[self.time_column] < ivl["end"]
@@ -181,6 +190,7 @@ class RecipePhaseAdherenceEvents(Base):
             mask = (vals[self.time_column] >= ivl["start"]) & upper
             window = vals.loc[mask]
             if window.empty:
+                no_samples.append(ivl["phase"])
                 continue
             v = window[self.value_column].to_numpy(dtype=float)
             duration_s = (ivl["end"] - ivl["start"]).total_seconds()
@@ -197,19 +207,25 @@ class RecipePhaseAdherenceEvents(Base):
             phase_spec = self.spec.get(ivl["phase"], {})
 
             if "duration_s" in phase_spec and not self._check_range(
-                duration_s, phase_spec["duration_s"]
+                duration_s,
+                phase_spec["duration_s"],
+                phase=ivl["phase"],
+                key="duration_s",
             ):
                 failed.append("duration_s")
             if "hold_value" in phase_spec and not self._check_range(
-                mean_v, phase_spec["hold_value"]
+                mean_v, phase_spec["hold_value"], phase=ivl["phase"], key="hold_value"
             ):
                 failed.append("hold_value")
             if "peak_value" in phase_spec and not self._check_range(
-                max_v, phase_spec["peak_value"]
+                max_v, phase_spec["peak_value"], phase=ivl["phase"], key="peak_value"
             ):
                 failed.append("peak_value")
             if "trough_value" in phase_spec and not self._check_range(
-                min_v, phase_spec["trough_value"]
+                min_v,
+                phase_spec["trough_value"],
+                phase=ivl["phase"],
+                key="trough_value",
             ):
                 failed.append("trough_value")
             if "ramp_rate_max" in phase_spec:
@@ -233,4 +249,12 @@ class RecipePhaseAdherenceEvents(Base):
                 }
             )
 
+        if no_samples:
+            warnings.warn(
+                f"{len(no_samples)} phase interval(s) had no samples of value "
+                f"signal {self.value_uuid!r} and were not evaluated: "
+                f"{no_samples!r}.",
+                DataQualityWarning,
+                stacklevel=3,
+            )
         return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)

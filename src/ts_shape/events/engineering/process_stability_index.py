@@ -38,9 +38,6 @@ class ProcessStabilityIndexEvents(Base):
     ) -> None:
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
-        self.target = target
-        self.lower_spec = lower_spec
-        self.upper_spec = upper_spec
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
@@ -61,12 +58,18 @@ class ProcessStabilityIndexEvents(Base):
             self._global_mean = 0.0
             self._global_std = 1.0
 
-        if self.target is None:
-            self.target = self._global_mean
-        if self.lower_spec is None:
-            self.lower_spec = self._global_mean - 3 * self._global_std
-        if self.upper_spec is None:
-            self.upper_spec = self._global_mean + 3 * self._global_std
+        # Unset target/spec limits default to the data mean and mean +/- 3 sigma.
+        self.target: float = self._global_mean if target is None else float(target)
+        self.lower_spec: float = (
+            self._global_mean - 3 * self._global_std
+            if lower_spec is None
+            else float(lower_spec)
+        )
+        self.upper_spec: float = (
+            self._global_mean + 3 * self._global_std
+            if upper_spec is None
+            else float(upper_spec)
+        )
 
     @keyword_only(1)
     def stability_score(self, window: str = "8h") -> pd.DataFrame:
@@ -152,11 +155,11 @@ class ProcessStabilityIndexEvents(Base):
             events.append(
                 {
                     "start": start,
-                    "stability_score": round(total, 1),
-                    "variance_score": round(variance_score, 1),
-                    "bias_score": round(bias_score, 1),
-                    "excursion_score": round(excursion_score, 1),
-                    "smoothness_score": round(smoothness_score, 1),
+                    "stability_score": float(total),
+                    "variance_score": float(variance_score),
+                    "bias_score": float(bias_score),
+                    "excursion_score": float(excursion_score),
+                    "smoothness_score": float(smoothness_score),
                     "grade": grade,
                 }
             )
@@ -301,7 +304,7 @@ class ProcessStabilityIndexEvents(Base):
         return self._summary(result[cols].reset_index(drop=True), cols, window)
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in 2.0.
 ProcessStabilityIndex = deprecated_class(
     ProcessStabilityIndexEvents, "ProcessStabilityIndex"
 )

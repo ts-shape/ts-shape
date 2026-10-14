@@ -404,26 +404,6 @@ class StatisticalProcessControlEvents(Base):
         """
         return self._apply_rule("rule_8", df, limits)
 
-    def _calculate_rule_2_7_8_optimized(
-        self, df: pd.DataFrame, limits: pd.DataFrame
-    ) -> tuple[pd.Series, pd.Series, pd.Series]:
-        """
-        Masks for rules 2, 7 and 8 (kept for backward compatibility).
-
-        Args:
-            df (pd.DataFrame): DataFrame with values to analyze
-            limits (pd.DataFrame): Control limits
-
-        Returns:
-            Tuple[pd.Series, pd.Series, pd.Series]: Boolean series for rule_2, rule_7, rule_8 violations
-        """
-        values = df[self.value_column]
-        return (
-            self._rule_mask("rule_2", values, limits),
-            self._rule_mask("rule_7", values, limits),
-            self._rule_mask("rule_8", values, limits),
-        )
-
     apply_rules_vectorized = deprecated_method("detect_rule_violations")
 
     @keyword_only(1)
@@ -704,22 +684,25 @@ class StatisticalProcessControlEvents(Base):
 
     @keyword_only(1)
     def detect_violations(
-        self, selected_rules: list[str] | None = None, include_severity: bool = False
+        self, selected_rules: list[str] | None = None, include_severity: bool = True
     ) -> pd.DataFrame:
         """
         Applies the selected SPC rules and generates a DataFrame of events where any rules are violated.
 
         Args:
             selected_rules (Optional[List[str]]): List of rule names (e.g., ['rule_1', 'rule_3']) to apply.
-            include_severity (bool): If True, includes severity and rule information in output.
-                Default: False (maintains backward compatibility)
+            include_severity (bool): Include the rule that flagged each
+                point (``triggered_rule``) and its ``severity`` (default
+                ``True``). ``False`` returns only the point columns.
 
         Returns:
-            pd.DataFrame: DataFrame with rule violations and detected events.
-                If include_severity=False: columns are [systime, value_column, uuid, source_uuid]
-                If include_severity=True: columns include [systime, value_column, uuid,
-                triggered_rule, severity, source_uuid]. ``source_uuid`` is the actual
-                signal's uuid.
+            pd.DataFrame: One row per violating point (a point that violates
+                several rules is reported once, with the first selected rule
+                that flagged it). Columns: [systime, value_column, uuid,
+                triggered_rule, severity, source_uuid]; without
+                ``triggered_rule`` and ``severity`` when
+                ``include_severity=False``. ``source_uuid`` is the actual
+                signal's uuid. An empty result has the same columns.
         """
         df = self.dataframe[self.dataframe["uuid"] == self.actual_uuid].copy()
         df["systime"] = pd.to_datetime(df["systime"])
@@ -770,14 +753,15 @@ class StatisticalProcessControlEvents(Base):
                 subset=["systime", self.value_column]
             )
         else:
-            events = pd.DataFrame(columns=["systime", self.value_column])
+            events = pd.DataFrame(
+                columns=["systime", self.value_column, "triggered_rule", "severity"]
+            )
 
         # Add the event UUID to the detected events
         events["uuid"] = self.event_uuid
         events["source_uuid"] = self.actual_uuid
 
-        # Return appropriate columns based on include_severity flag
-        if include_severity and "triggered_rule" in events.columns:
+        if include_severity:
             return events[
                 [
                     "systime",
@@ -788,14 +772,12 @@ class StatisticalProcessControlEvents(Base):
                     "source_uuid",
                 ]
             ].drop_duplicates()
-        else:
-            # Backward compatible output
-            return events[
-                ["systime", self.value_column, "uuid", "source_uuid"]
-            ].drop_duplicates()
+        return events[
+            ["systime", self.value_column, "uuid", "source_uuid"]
+        ].drop_duplicates()
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in 2.0.
 StatisticalProcessControlRuleBased = deprecated_class(
     StatisticalProcessControlEvents, "StatisticalProcessControlRuleBased"
 )

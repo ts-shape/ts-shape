@@ -21,7 +21,9 @@ across more than ``max_gap``: no look-ahead).
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
+from typing import TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -33,9 +35,13 @@ from ts_shape.events._output import (
     finalize_point_df,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
+
+#: A value ``pd.Timestamp`` accepts as a point in time.
+TimeLike: TypeAlias = str | dt.datetime | dt.date | np.datetime64 | pd.Timestamp
 
 _T2_COLS = ["t2", "ucl", "phase", "out_of_control"]
 _CONTRIB_COLS = ["t2", "contribution", "contribution_pct", "z_score"]
@@ -116,7 +122,11 @@ class MultivariateSPCEvents(Base):
         out = pd.DataFrame(
             {
                 "systime": pd.to_datetime(rows[self.time_column]),
-                uuid: pd.to_numeric(rows[self.value_column], errors="coerce"),
+                uuid: to_numeric_checked(
+                    rows[self.value_column],
+                    what=f"{self.value_column!r} of signal {uuid!r}",
+                    stacklevel=6,
+                ),
             }
         ).dropna()
         out = out.sort_values("systime", kind="stable")
@@ -135,12 +145,12 @@ class MultivariateSPCEvents(Base):
         return merged.dropna().reset_index(drop=True)
 
     def _reference_mask(
-        self, reference_period: tuple[object, object] | None
+        self, reference_period: tuple[TimeLike, TimeLike] | None
     ) -> np.ndarray:
         t = self.matrix["systime"]
         if reference_period is None:
             return np.ones(len(t), dtype=bool)
-        start, end = (pd.Timestamp(v) for v in reference_period)  # type: ignore[arg-type]
+        start, end = (pd.Timestamp(v) for v in reference_period)
         tz = getattr(t.dt, "tz", None)
         if tz is not None:
             start = start.tz_localize(tz) if start.tzinfo is None else start
@@ -148,7 +158,7 @@ class MultivariateSPCEvents(Base):
         return ((t >= start) & (t < end)).to_numpy()
 
     def _fit(
-        self, reference_period: tuple[object, object] | None
+        self, reference_period: tuple[TimeLike, TimeLike] | None
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         x = self.matrix[self.signal_uuids].to_numpy(dtype=float)
         ref = self._reference_mask(reference_period)
@@ -172,7 +182,7 @@ class MultivariateSPCEvents(Base):
     @keyword_only(1)
     def hotelling_t2(
         self,
-        reference_period: tuple[object, object] | None = None,
+        reference_period: tuple[TimeLike, TimeLike] | None = None,
         alpha: float = 0.0027,
     ) -> pd.DataFrame:
         """Hotelling T² for every aligned observation.
@@ -211,7 +221,7 @@ class MultivariateSPCEvents(Base):
     @keyword_only(1)
     def contributions(
         self,
-        reference_period: tuple[object, object] | None = None,
+        reference_period: tuple[TimeLike, TimeLike] | None = None,
         alpha: float = 0.0027,
         only_out_of_control: bool = True,
     ) -> pd.DataFrame:
@@ -272,7 +282,7 @@ class MultivariateSPCEvents(Base):
     @keyword_only(1)
     def detect_out_of_control(
         self,
-        reference_period: tuple[object, object] | None = None,
+        reference_period: tuple[TimeLike, TimeLike] | None = None,
         alpha: float = 0.0027,
         min_samples: int = 1,
     ) -> pd.DataFrame:
@@ -311,7 +321,7 @@ class MultivariateSPCEvents(Base):
                     "end": t2["systime"].iloc[idx[-1]],
                     "max_t2": float(t2["t2"].iloc[peak]),
                     "ucl": float(t2["ucl"].iloc[peak]),
-                    "sample_count": int(len(idx)),
+                    "sample_count": len(idx),
                     "top_contributor": self.signal_uuids[top],
                 }
             )

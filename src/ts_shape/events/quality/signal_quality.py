@@ -158,11 +158,11 @@ class SignalQualityEvents(Base):
             events.append(
                 {
                     "start": ts,
-                    "mean_interval": round(mean_val, 4),
-                    "std_interval": round(std_val, 4),
-                    "min_interval": round(row["min"], 4),
-                    "max_interval": round(row["max"], 4),
-                    "regularity_score": round(max(0.0, min(1.0, regularity)), 4),
+                    "mean_interval": float(mean_val),
+                    "std_interval": float(std_val),
+                    "min_interval": float(row["min"]),
+                    "max_interval": float(row["max"]),
+                    "regularity_score": max(0.0, min(1.0, regularity)),
                 }
             )
 
@@ -180,17 +180,17 @@ class SignalQualityEvents(Base):
         min_value: float,
         max_value: float,
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Flag intervals where signal is outside expected range.
 
         Args:
             min_value: Minimum acceptable value.
             max_value: Maximum acceptable value.
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                next sample (the transition), so change-encoded signals -- one
+                row per change -- report the real time out of range.
+                ``"last_sample"`` ends it at its last flagged sample. See
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
@@ -303,7 +303,7 @@ class SignalQualityEvents(Base):
             # tz-aware signal is 23 h or 25 h, not 24 h.
             expected_per_window = int(((ts + offset) - ts) / expected_td)
             completeness = (
-                min(100.0, round(actual / expected_per_window * 100, 2))
+                min(100.0, actual / expected_per_window * 100)
                 if expected_per_window > 0
                 else 100.0
             )

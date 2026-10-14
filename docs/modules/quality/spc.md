@@ -29,7 +29,7 @@ spc = StatisticalProcessControlEvents(
 )
 
 # Run the full SPC pipeline (calculates limits + applies all rules)
-result = spc.detect_violations(include_severity=True)
+result = spc.detect_violations()  # includes triggered_rule and severity
 
 # Or apply specific rules only
 limits = spc.control_limits()
@@ -48,15 +48,15 @@ summary = spc.interpret_violations(violations)
 | `detect_rule_violations(selected_rules=None)` | Apply selected Western Electric rules (e.g. `["rule_1", "rule_3"]`) efficiently | DataFrame of violations with `rule` and `severity` |
 | `detect_cusum_shifts(target=None, k=0.5, h=5.0)` | CUSUM shift detection for small sustained shifts | DataFrame with `systime`, `value`, `cusum_high`, `cusum_low`, `shift_detected`, `shift_direction` |
 | `interpret_violations(violations_df)` | Add human-readable interpretations to violations | DataFrame with added `interpretation`, `meaning`, `recommendation` |
-| `process(selected_rules=None, include_severity=False)` | Full SPC pipeline: limits + rules | Violation events with `systime`, value column, `uuid` (plus `rule`, `severity` when `include_severity=True`) |
+| `detect_violations(selected_rules=None, include_severity=True)` | Full SPC pipeline: limits + rules | Violation events with `systime`, value column, `uuid`, `triggered_rule`, `severity`, `source_uuid` (`include_severity=False` drops `triggered_rule` and `severity`) |
 | `rule_1` through `rule_8` | Individual rule checks: the eight Nelson (1984) tests, which include the Western Electric zone rules (same-side counts include points beyond the next zone; run lengths count points). They do not modify the input frame | Violating rows with a boolean rule column |
 
 ---
 
 ## Tips & Hints
 
-!!! tip "Start with the process() method"
-    The `process()` method runs the complete pipeline and is the easiest entry point. Use individual rules or `detect_rule_violations(selected_rules=...)` only when you need to tune which rules apply to your specific process.
+!!! tip "Start with the detect_violations() method"
+    The `detect_violations()` method runs the complete pipeline and is the easiest entry point. Use individual rules or `detect_rule_violations(selected_rules=...)` only when you need to tune which rules apply to your specific process.
 
 !!! info "Related modules"
     - [Tolerance Deviation](tolerance-deviation.md) — specification-limit-based deviation tracking with Cp/Cpk

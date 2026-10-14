@@ -505,3 +505,24 @@ def test_daily_windows_conserve_energy_across_a_dst_changeover():
     )
     out = PowerIntegrator.energy_by_window(df, freq="1D")
     assert out["kwh"].sum() == pytest.approx(470.0)
+
+
+def test_non_numeric_power_and_bad_timestamps_warn():
+    from ts_shape.errors import DataQualityWarning
+
+    df = _df([("2024-01-01 00:00:00", 60.0), ("2024-01-01 01:00:00", 60.0)])
+    df = df.astype({"value_double": object, "systime": object})
+    extra = pd.DataFrame(
+        {
+            "systime": [pd.Timestamp("2024-01-01 00:30:00"), "not a time"],
+            "uuid": "m1",
+            "value_double": ["n/a", 10.0],
+        }
+    )
+    df = pd.concat([df, extra], ignore_index=True)
+    with pytest.warns(DataQualityWarning) as caught:
+        out = PowerIntegrator.energy_by_window(df)
+    messages = " ".join(str(w.message) for w in caught)
+    assert "1 non-null value(s) in power column 'value_double'" in messages
+    assert "1 value(s) in time column 'systime' are not timestamps" in messages
+    assert out["kwh"].iloc[0] == pytest.approx(60.0)

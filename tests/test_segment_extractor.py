@@ -162,3 +162,21 @@ class TestExtractTimeRanges:
         result = SegmentExtractor.extract_time_ranges(df, segment_uuid="order")
         assert len(result) == 1
         assert result.iloc[0]["segment_duration"] == pd.Timedelta(0)
+
+
+def test_change_encoded_segments_span_to_next_change_by_default():
+    df = pd.DataFrame(
+        {
+            "systime": pd.to_datetime(
+                ["2024-01-01 08:00", "2024-01-01 08:10", "2024-01-01 08:30"]
+            ),
+            "uuid": "order_number",
+            "value_string": ["A", "B", "A"],
+        }
+    )
+    out = SegmentExtractor.extract_time_ranges(df, "order_number")
+    assert list(out["segment_duration"].dt.total_seconds()) == [600.0, 1200.0, 0.0]
+    old = SegmentExtractor.extract_time_ranges(
+        df, "order_number", interval_end="last_sample"
+    )
+    assert (old["segment_duration"].dt.total_seconds() == 0).all()

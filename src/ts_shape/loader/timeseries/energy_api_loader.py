@@ -8,16 +8,22 @@ Classes:
 """
 
 import logging
-from typing import Any
+import warnings
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-try:
+if TYPE_CHECKING:
     import requests
-except ImportError:  # optional extra: ts-shape[api]
-    requests = None  # type: ignore[assignment]
+else:
+    try:
+        import requests
+    except ImportError:  # optional extra: ts-shape[api]
+        requests = None
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.loader._utils import require_optional
+from ts_shape.utils.coerce import to_numeric_checked
 
 logger = logging.getLogger(__name__)
 
@@ -198,12 +204,26 @@ class EnergyAPILoader:
         if time_key in df.columns:
             df["systime"] = pd.to_datetime(df[time_key])
         else:
+            warnings.warn(
+                f"{uuid_value}: none of the {len(df)} API record(s) has the time "
+                f"key {time_key!r} (keys: {list(df.columns)}); they are skipped.",
+                DataQualityWarning,
+                stacklevel=3,
+            )
             return pd.DataFrame(columns=["systime", "uuid", "value_double", "is_delta"])
 
         # Map value column
         if value_key in df.columns:
-            df["value_double"] = pd.to_numeric(df[value_key], errors="coerce")
+            df["value_double"] = to_numeric_checked(
+                df[value_key], what=f"{uuid_value} value key {value_key!r}"
+            )
         else:
+            warnings.warn(
+                f"{uuid_value}: none of the {len(df)} API record(s) has the value "
+                f"key {value_key!r} (keys: {list(df.columns)}); values are NaN.",
+                DataQualityWarning,
+                stacklevel=3,
+            )
             df["value_double"] = float("nan")
 
         df["uuid"] = uuid_value

@@ -33,7 +33,7 @@ class DutyCycleEvents(Base):
         event_uuid: str = "prod:duty_cycle",
         value_column: str = "value_bool",
         time_column: str = "systime",
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
         data_end: pd.Timestamp | None = None,
     ) -> None:
         """Initialize the duty-cycle analyzer.
@@ -45,12 +45,12 @@ class DutyCycleEvents(Base):
             value_column: Column holding the on/off state. Missing values
                 count as off.
             time_column: Timestamp column.
-            interval_end: How on/off intervals are closed. ``"last_sample"``
-                (default) ends each interval at its last sample -- backward
-                compatible, but a change-encoded (``is_delta``) signal logs one
-                row per transition, so every on/off interval collapses to zero
-                duration. ``"next_change"`` closes each interval at the next
-                transition, correctly measuring change-encoded signals.
+            interval_end: How on/off intervals are closed.
+                ``"next_change"`` (default) closes each interval at the next
+                transition, which measures both dense and change-encoded
+                (``is_delta``) signals. ``"last_sample"`` ends each interval at
+                its last sample; on a change-encoded signal (one row per
+                transition) every on/off interval then has zero duration.
             data_end: Optional bound for the final, still-open interval when
                 ``interval_end="next_change"``.
         """
@@ -116,19 +116,19 @@ class DutyCycleEvents(Base):
 
     @keyword_only(1)
     def duty_cycle_by_window(
-        self, window: str = "1h", *, time_weighted: bool = False
+        self, window: str = "1h", *, time_weighted: bool = True
     ) -> pd.DataFrame:
         """Percentage of time the signal is True per window.
 
         Args:
             window: Resample window.
-            time_weighted: When False (default), the duty cycle is the mean of
-                the boolean samples in the window -- correct only under uniform
-                sampling. On change-encoded / irregular signals the result is
-                driven by sample counts (``On@09:00, Off@09:59`` reads 50 %).
-                When True, each sample is weighted by the gap to the next sample,
-                so the duty cycle reflects wall-clock on-time; ``on_time`` and
-                ``off_time`` are then the actual covered seconds in the window.
+            time_weighted: When True (default), each sample is weighted by
+                the gap to the next sample, so the duty cycle reflects
+                wall-clock on-time on change-encoded and irregularly sampled
+                signals; ``on_time`` and ``off_time`` are the covered seconds
+                in the window. When False, the duty cycle is the mean of the
+                boolean samples in the window, which equals the time share only
+                under uniform sampling (``On@09:00, Off@09:59`` reads 50 %).
 
         Returns:
             DataFrame with columns: start, end (start + window),
@@ -162,9 +162,9 @@ class DutyCycleEvents(Base):
                 events.append(
                     {
                         "start": ts,
-                        "on_time": round(on_time, 2),
-                        "off_time": round(total - on_time, 2),
-                        "duty_cycle_pct": round(pct * 100, 2),
+                        "on_time": on_time,
+                        "off_time": total - on_time,
+                        "duty_cycle_pct": pct * 100,
                     }
                 )
         else:
@@ -173,14 +173,14 @@ class DutyCycleEvents(Base):
             for ts, pct in resampled.items():
                 if pd.isna(pct):
                     continue
-                on_time = round(pct * window_td.total_seconds(), 2)
-                off_time = round((1 - pct) * window_td.total_seconds(), 2)
+                on_time = pct * window_td.total_seconds()
+                off_time = (1 - pct) * window_td.total_seconds()
                 events.append(
                     {
                         "start": ts,
                         "on_time": on_time,
                         "off_time": off_time,
-                        "duty_cycle_pct": round(pct * 100, 2),
+                        "duty_cycle_pct": pct * 100,
                     }
                 )
 
@@ -284,8 +284,8 @@ class DutyCycleEvents(Base):
                 {
                     "start": w_start,
                     "transition_count": int(row["total_transitions"]),
-                    "avg_on_duration": round(avg_on, 2),
-                    "avg_off_duration": round(avg_off, 2),
+                    "avg_on_duration": avg_on,
+                    "avg_off_duration": avg_off,
                 }
             )
 

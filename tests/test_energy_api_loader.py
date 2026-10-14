@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.loader.timeseries.energy_api_loader import EnergyAPILoader
 
 
@@ -69,7 +70,8 @@ class TestFetchDataAsDataframe:
     @patch("ts_shape.loader.timeseries.energy_api_loader.requests.get")
     def test_missing_time_key(self, mock_get, loader):
         mock_get.return_value = _mock_response([{"val": 1.0}])
-        df = loader.fetch_data_as_dataframe("/readings", time_key="timestamp")
+        with pytest.warns(DataQualityWarning, match="time key 'timestamp'"):
+            df = loader.fetch_data_as_dataframe("/readings", time_key="timestamp")
         assert df.empty
 
     @patch("ts_shape.loader.timeseries.energy_api_loader.requests.get")
@@ -79,7 +81,8 @@ class TestFetchDataAsDataframe:
                 {"timestamp": "2024-01-01T08:00:00"},
             ]
         )
-        df = loader.fetch_data_as_dataframe("/readings", value_key="nonexistent")
+        with pytest.warns(DataQualityWarning, match="value key 'nonexistent'"):
+            df = loader.fetch_data_as_dataframe("/readings", value_key="nonexistent")
         assert len(df) == 1
         assert pd.isna(df["value_double"].iloc[0])
 

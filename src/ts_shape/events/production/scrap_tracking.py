@@ -96,14 +96,14 @@ class ScrapEvents(Base):
         data: pd.DataFrame,
         value_column: str,
         *,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> float:
         """Get quantity from a monotonic counter.
 
-        When ``handle_resets`` is False the quantity is the
-        backward-compatible ``max(0, last - first)``. When True a decreasing
-        counter is treated as a reset and the post-reset production is
-        counted (see :func:`ts_shape.utils.counters.counter_quantity`).
+        When ``handle_resets`` is True (default) a decreasing counter is
+        treated as a reset and the post-reset production is counted (see
+        :func:`ts_shape.utils.counters.counter_quantity`). When False the
+        quantity is ``max(0, last - first)``.
         """
         if data.empty:
             return 0.0
@@ -114,7 +114,7 @@ class ScrapEvents(Base):
         scrap_uuid: str,
         *,
         value_column: str = "value_double",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Scrap quantity per shift.
@@ -122,10 +122,10 @@ class ScrapEvents(Base):
         Args:
             scrap_uuid: UUID for scrap weight/count signal.
             value_column: Column containing scrap values.
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the scrap accumulated after the reset instead of
                 losing it. The result gains a ``resets`` column with the
-                number of resets observed in each shift. When False (default),
+                number of resets observed in each shift. When False,
                 the quantity is simply ``max(0, last - first)`` and a shift
                 containing a reset reports too little (often 0).
             production_day: When True, an overnight shift's post-midnight
@@ -175,7 +175,7 @@ class ScrapEvents(Base):
             row = {
                 "date": date,
                 "shift": shift,
-                "scrap_quantity": round(qty, 2),
+                "scrap_quantity": qty,
             }
             if handle_resets:
                 row["resets"] = count_resets(grp[value_column])
@@ -194,7 +194,7 @@ class ScrapEvents(Base):
         *,
         value_column_scrap: str = "value_double",
         value_column_reason: str = "value_string",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Scrap quantity by reason code.
 
@@ -203,7 +203,7 @@ class ScrapEvents(Base):
             reason_uuid: UUID for scrap reason code signal.
             value_column_scrap: Column containing scrap values.
             value_column_reason: Column containing reason codes.
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the scrap accumulated after the reset. The reason
                 is attached to a single global counter, so the reset-aware
                 quantity is the sum of per-reading increments over the full
@@ -211,7 +211,7 @@ class ScrapEvents(Base):
                 the over-count that ``last - first`` produces when reasons
                 alternate over a non-contiguous group. The result gains a
                 ``resets`` column with the number of resets attributed to
-                each reason. When False (default), the quantity is
+                each reason. When False, the quantity is
                 ``max(0, last - first)`` per reason group and a reset is lost.
 
         Returns:
@@ -270,11 +270,11 @@ class ScrapEvents(Base):
         for reason, grp in merged.groupby("reason"):
             if handle_resets:
                 qty = float(grp["_increment"].sum())
-                row = {"reason": reason, "scrap_quantity": round(qty, 2)}
+                row = {"reason": reason, "scrap_quantity": qty}
                 row["resets"] = int(grp["_is_reset"].sum())
             else:
-                qty = self._get_counter_quantity(grp, "scrap_val")
-                row = {"reason": reason, "scrap_quantity": round(qty, 2)}
+                qty = self._get_counter_quantity(grp, "scrap_val", handle_resets=False)
+                row = {"reason": reason, "scrap_quantity": qty}
             results.append(row)
 
         if not results:
@@ -283,7 +283,7 @@ class ScrapEvents(Base):
         result_df = pd.DataFrame(results)
         total = result_df["scrap_quantity"].sum()
         result_df["pct_of_total"] = (
-            (result_df["scrap_quantity"] / total * 100).round(1) if total > 0 else 0.0
+            (result_df["scrap_quantity"] / total * 100) if total > 0 else 0.0
         )
         return result_df.sort_values("scrap_quantity", ascending=False).reset_index(
             drop=True
@@ -297,7 +297,7 @@ class ScrapEvents(Base):
         *,
         value_column_scrap: str = "value_double",
         value_column_part: str = "value_string",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Convert scrap quantities to monetary cost.
 
@@ -307,10 +307,10 @@ class ScrapEvents(Base):
             material_costs: Dict mapping part numbers to cost per unit scrap.
             value_column_scrap: Column containing scrap values.
             value_column_part: Column containing part numbers.
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the scrap accumulated after the reset. The result
                 gains a ``resets`` column with the number of resets observed
-                for each part. When False (default), the quantity is
+                for each part. When False, the quantity is
                 ``max(0, last - first)`` per part and a reset is lost.
 
         Returns:
@@ -362,9 +362,9 @@ class ScrapEvents(Base):
             cost_per_unit = material_costs.get(part_num, 0.0)
             row = {
                 "part_number": part_num,
-                "scrap_quantity": round(qty, 2),
+                "scrap_quantity": qty,
                 "cost_per_unit": cost_per_unit,
-                "total_cost": round(qty * cost_per_unit, 2),
+                "total_cost": qty * cost_per_unit,
             }
             if handle_resets:
                 row["resets"] = count_resets(grp["scrap_val"])
@@ -382,7 +382,7 @@ class ScrapEvents(Base):
         *,
         value_column: str = "value_double",
         window: str = "1D",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Track scrap quantity trend over time.
 
@@ -390,10 +390,10 @@ class ScrapEvents(Base):
             scrap_uuid: UUID for scrap weight/count signal.
             value_column: Column containing scrap values.
             window: Time window for aggregation (default '1D').
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the scrap accumulated after the reset. The result
                 gains a ``resets`` column with the number of resets observed
-                in each period. When False (default), the quantity is
+                in each period. When False, the quantity is
                 ``max(0, last - first)`` per period and a reset is lost.
 
         Returns:
@@ -428,7 +428,7 @@ class ScrapEvents(Base):
             )
             row = {
                 "period": period,
-                "scrap_quantity": round(qty, 2),
+                "scrap_quantity": qty,
             }
             if handle_resets:
                 row["resets"] = count_resets(grp[value_column])
@@ -437,5 +437,5 @@ class ScrapEvents(Base):
         return add_period_window(pd.DataFrame(results, columns=columns), window)
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in 2.0.
 ScrapTracking = deprecated_class(ScrapEvents, "ScrapTracking")

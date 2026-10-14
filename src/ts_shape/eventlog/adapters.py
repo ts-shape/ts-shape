@@ -1,12 +1,12 @@
-"""Shape-driven adapters that convert legacy detector DataFrames into the
-canonical :class:`~ts_shape.eventlog.model.EventLog`.
+"""Shape-driven adapters that convert detector frames (the DataFrames
+detectors return) into the canonical :class:`~ts_shape.eventlog.model.EventLog`.
 
 There is one adapter implementation per *shape* (point, interval, summary,
 static). The per-method specifics live in
 :mod:`ts_shape.eventlog.taxonomy` (the ``REGISTRY``). A custom adapter for
 a specific ``(class, method)`` pair can be registered with
 ``@register_adapter(...)`` to override the shape-driven default — useful
-for the few detectors whose legacy schema does not fit any standard shape.
+for the few detectors whose frame layout does not fit any standard shape.
 """
 
 from __future__ import annotations
@@ -14,10 +14,14 @@ from __future__ import annotations
 import uuid as _uuid
 import warnings
 from collections.abc import Callable, Mapping
+from typing import SupportsFloat
 
 import pandas as pd
 
+from ..errors import DataQualityWarning
 from ..events._output import COL_END, COL_START, COL_SYSTIME
+from ..utils.coerce import to_numeric_checked
+from ..utils.deprecation import renamed_kwargs
 from . import schema
 from .model import EventLog
 from .taxonomy import LabelRule, render_activity, resolve
@@ -35,7 +39,7 @@ def register_adapter(
 ) -> Callable[[AdapterFn], AdapterFn]:
     """Register a custom adapter for a specific ``(class, method)``.
 
-    The function will be called with ``(legacy_df, *, rule, detector,
+    The function will be called with ``(detector_frame, *, rule, detector,
     objects, qualifiers)``.
     """
 
@@ -101,7 +105,7 @@ def _require_columns(
     """Raise KeyError if any canonical time column for ``shape`` is missing.
 
     Post-#62 every detector is guaranteed to emit these columns. A missing
-    column means the caller fed a malformed frame, not a legacy schema.
+    column means the caller fed a malformed frame.
     """
     missing = [c for c in cols if c not in df.columns]
     if missing:
@@ -129,6 +133,8 @@ def _classify_severity(value: object) -> str | None:
         return None
     if isinstance(value, str):
         return value
+    if not isinstance(value, SupportsFloat):
+        return None
     try:
         v = float(value)
     except (TypeError, ValueError):
@@ -141,29 +147,29 @@ def _classify_severity(value: object) -> str | None:
 
 
 def _build_attrs_columns(
-    legacy: pd.DataFrame,
+    frame: pd.DataFrame,
     *,
     pack: str,
     drop: set[str],
 ) -> dict[str, pd.Series]:
     """Return a dict of ``"<pack>:<col>" -> Series`` for non-canonical columns."""
     out: dict[str, pd.Series] = {}
-    for col in legacy.columns:
+    for col in frame.columns:
         if col in drop:
             continue
-        out[f"{pack}:{col}"] = legacy[col].reset_index(drop=True)
+        out[f"{pack}:{col}"] = frame[col].reset_index(drop=True)
     return out
 
 
 def _resolve_objects(
-    legacy: pd.DataFrame,
+    frame: pd.DataFrame,
     rule: LabelRule,
     user_objects: Mapping[str, object] | None,
 ) -> dict[str, pd.Series]:
-    """Produce ``object_type -> Series-of-oids`` aligned with legacy rows.
+    """Produce ``object_type -> Series-of-oids`` aligned with the frame rows.
 
     Auto-extracts types declared in ``rule.produces_objects`` from the
-    legacy DataFrame's standard columns (e.g. ``source_uuid -> asset``).
+    detector frame's standard columns (e.g. ``source_uuid -> asset``).
     Caller-supplied bindings via ``user_objects`` are always honored —
     object types not declared by the adapter are treated as contextual
     annotations the caller knows about (e.g. "this outlier happened
@@ -174,18 +180,25 @@ def _resolve_objects(
 
     def _bind(otype: str, value: object) -> None:
         if isinstance(value, str):
-            if value not in legacy.columns:
-                return  # silently skip; column not present
-            bindings[otype] = legacy[value].reset_index(drop=True).astype("string")
+            if value not in frame.columns:
+                warnings.warn(
+                    f"object type {otype!r} is bound to column {value!r}, which "
+                    f"the detector frame does not have (columns: "
+                    f"{list(frame.columns)}); no {otype!r} objects are linked.",
+                    DataQualityWarning,
+                    stacklevel=4,
+                )
+                return
+            bindings[otype] = frame[value].reset_index(drop=True).astype("string")
         elif callable(value):
             bindings[otype] = pd.Series(
-                [value(r) for r in legacy.to_dict("records")], dtype="string"
+                [value(r) for r in frame.to_dict("records")], dtype="string"
             )
         elif isinstance(value, pd.Series):
             bindings[otype] = value.reset_index(drop=True).astype("string")
         else:
             # Scalar broadcast.
-            bindings[otype] = pd.Series([str(value)] * len(legacy), dtype="string")
+            bindings[otype] = pd.Series([str(value)] * len(frame), dtype="string")
 
     if user_objects:
         for otype, val in user_objects.items():
@@ -193,9 +206,9 @@ def _resolve_objects(
 
     # Defaults: asset = source_uuid if column exists.
     if "asset" in declared and "asset" not in bindings:
-        if "source_uuid" in legacy.columns:
+        if "source_uuid" in frame.columns:
             bindings["asset"] = (
-                legacy["source_uuid"].reset_index(drop=True).astype("string")
+                frame["source_uuid"].reset_index(drop=True).astype("string")
             )
 
     # Drop empty / all-NaN bindings.
@@ -253,13 +266,15 @@ def _to_relations(
 _RESERVED = {"start", "end", "systime", "uuid", "source_uuid"}
 
 
-def _value_series(legacy: pd.DataFrame, rule: LabelRule) -> pd.Series:
-    if rule.value_field and rule.value_field in legacy.columns:
-        return pd.to_numeric(legacy[rule.value_field], errors="coerce")
+def _value_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
+    if rule.value_field and rule.value_field in frame.columns:
+        return to_numeric_checked(
+            frame[rule.value_field], what=f"value column {rule.value_field!r}"
+        )
     for c in ("value", "value_double", "value_integer", "ts_shape:value"):
-        if c in legacy.columns:
-            return pd.to_numeric(legacy[c], errors="coerce")
-    return pd.Series([float("nan")] * len(legacy), dtype="float64")
+        if c in frame.columns:
+            return to_numeric_checked(frame[c], what=f"value column {c!r}")
+    return pd.Series([float("nan")] * len(frame), dtype="float64")
 
 
 _SEVERITY_VOCABULARY = ("info", "warn", "critical")
@@ -276,13 +291,13 @@ _SEVERITY_ALIASES = {
 }
 
 
-def _severity_series(legacy: pd.DataFrame, rule: LabelRule) -> pd.Series:
-    if rule.severity_field and rule.severity_field in legacy.columns:
-        col = legacy[rule.severity_field]
-    elif "severity" in legacy.columns:
-        col = legacy["severity"]
+def _severity_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
+    if rule.severity_field and rule.severity_field in frame.columns:
+        col = frame[rule.severity_field]
+    elif "severity" in frame.columns:
+        col = frame["severity"]
     else:
-        return pd.Series([pd.NA] * len(legacy), dtype="string")
+        return pd.Series([pd.NA] * len(frame), dtype="string")
     out = col.map(_classify_severity).astype("string").str.lower()
     out = out.replace(_SEVERITY_ALIASES)
     unknown = out.notna() & ~out.isin(_SEVERITY_VOCABULARY)
@@ -299,14 +314,14 @@ def _severity_series(legacy: pd.DataFrame, rule: LabelRule) -> pd.Series:
 
 
 def _apply_standard_attrs(
-    legacy: pd.DataFrame,
+    frame: pd.DataFrame,
     rule: LabelRule,
     n: int,
 ) -> tuple[dict[str, pd.Series], set[str]]:
     """Resolve LabelRule.standard_attrs into typed columns.
 
     Returns ``(extra_columns, source_columns_consumed)``. The caller adds
-    ``source_columns_consumed`` to the drop set so the legacy column does
+    ``source_columns_consumed`` to the drop set so the source column does
     not also appear under its ``<pack>:<col>`` prefix.
     """
     extras: dict[str, pd.Series] = {}
@@ -319,9 +334,14 @@ def _apply_standard_attrs(
 
         if source is None:
             continue
-        if isinstance(source, str) and source in legacy.columns:
-            # String matching a legacy column → rename / coerce.
-            series = legacy[source].reset_index(drop=True)
+        numeric_target = target_dtype in ("Int64", "float64")
+        if numeric_target and isinstance(source, str) and source not in frame.columns:
+            # A numeric attribute named after a column this detector frame
+            # does not carry (optional output): there is no value to attach.
+            continue
+        if isinstance(source, str) and source in frame.columns:
+            # String matching a frame column → rename / coerce.
+            series = frame[source].reset_index(drop=True)
             consumed.add(source)
         else:
             # Literal scalar (or string that doesn't match a column,
@@ -329,10 +349,9 @@ def _apply_standard_attrs(
             # and similar enum-like values). Broadcast to every row.
             series = pd.Series([source] * n)
 
-        if target_dtype == "Int64":
-            extras[std_key] = pd.to_numeric(series, errors="coerce").astype("Int64")
-        elif target_dtype == "float64":
-            extras[std_key] = pd.to_numeric(series, errors="coerce").astype("float64")
+        if numeric_target:
+            numeric = to_numeric_checked(series, what=f"attribute {std_key!r}")
+            extras[std_key] = numeric.astype(target_dtype)
         else:
             extras[std_key] = series.astype("string")
 
@@ -344,8 +363,9 @@ def _apply_standard_attrs(
 # ----------------------------------------------------------------------------
 
 
+@renamed_kwargs(legacy="frame")
 def adapt(
-    legacy: pd.DataFrame,
+    frame: pd.DataFrame,
     *,
     rule: LabelRule,
     detector: str,
@@ -353,32 +373,32 @@ def adapt(
     qualifiers: Mapping[str, str] | None = None,
 ) -> EventLog:
     """Convert one detector's output into a canonical :class:`EventLog`."""
-    if legacy is None or len(legacy) == 0:
+    if frame is None or len(frame) == 0:
         return EventLog()
 
-    legacy = legacy.reset_index(drop=True)
-    n = len(legacy)
+    frame = frame.reset_index(drop=True)
+    n = len(frame)
 
     # Resolve timestamps based on shape. Detectors are required (post-#62) to
     # emit canonical time columns: ``systime`` for point, ``start``/``end``
     # for interval and summary. Missing columns indicate a malformed frame —
     # we fail fast rather than silently substituting ``utcnow()``.
     if rule.shape == "interval":
-        _require_columns(legacy, (COL_START, COL_END), rule.shape, detector)
-        ts_end = legacy[COL_END].apply(_to_utc_ts)
-        ts_start = legacy[COL_START].apply(_to_utc_ts)
+        _require_columns(frame, (COL_START, COL_END), rule.shape, detector)
+        ts_end = frame[COL_END].apply(_to_utc_ts)
+        ts_start = frame[COL_START].apply(_to_utc_ts)
         duration = (ts_end - ts_start).dt.total_seconds()
         time_cols_used = {COL_START, COL_END}
     elif rule.shape == "point":
-        _require_columns(legacy, (COL_SYSTIME,), rule.shape, detector)
-        ts_end = legacy[COL_SYSTIME].apply(_to_utc_ts)
+        _require_columns(frame, (COL_SYSTIME,), rule.shape, detector)
+        ts_end = frame[COL_SYSTIME].apply(_to_utc_ts)
         ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
         duration = pd.Series([float("nan")] * n, dtype="float64")
         time_cols_used = {COL_SYSTIME}
     elif rule.shape == "summary":
-        _require_columns(legacy, (COL_START, COL_END), rule.shape, detector)
-        ts_end = legacy[COL_END].apply(_to_utc_ts)
-        ts_start = legacy[COL_START].apply(_to_utc_ts)
+        _require_columns(frame, (COL_START, COL_END), rule.shape, detector)
+        ts_end = frame[COL_END].apply(_to_utc_ts)
+        ts_start = frame[COL_START].apply(_to_utc_ts)
         duration = (ts_end - ts_start).dt.total_seconds()
         time_cols_used = {COL_START, COL_END}
     elif rule.shape == "static":
@@ -392,7 +412,7 @@ def adapt(
         raise ValueError(f"unknown shape {rule.shape!r}")
 
     # Render activity name (template substitution per row).
-    activities = legacy.apply(lambda r: render_activity(rule, r), axis=1).astype(
+    activities = frame.apply(lambda r: render_activity(rule, r), axis=1).astype(
         "string"
     )
 
@@ -405,13 +425,13 @@ def adapt(
         dtype="string",
     )
 
-    severity = _severity_series(legacy, rule)
-    value = _value_series(legacy, rule)
+    severity = _severity_series(frame, rule)
+    value = _value_series(frame, rule)
 
     # Resolve standard attribute extension (ts_shape:method, baseline,
     # threshold_low/high, etc). Source columns get added to ``drop`` so
     # they don't double-up under their ``<pack>:<col>`` prefix.
-    standard_extras, std_consumed = _apply_standard_attrs(legacy, rule, n)
+    standard_extras, std_consumed = _apply_standard_attrs(frame, rule, n)
 
     # Drop time columns + columns redundantly captured elsewhere from attrs.
     drop = set(time_cols_used) | set(rule.drop_fields) | std_consumed
@@ -420,7 +440,7 @@ def adapt(
     if rule.value_field:
         drop.add(rule.value_field)
     # Don't dump huge object columns (`is_delta` etc are kept as attrs).
-    attrs = _build_attrs_columns(legacy, pack=rule.pack, drop=drop)
+    attrs = _build_attrs_columns(frame, pack=rule.pack, drop=drop)
 
     events = pd.DataFrame(
         {
@@ -453,7 +473,7 @@ def adapt(
     if drop_empty:
         events = events.drop(columns=drop_empty)
 
-    object_bindings = _resolve_objects(legacy, rule, objects)
+    object_bindings = _resolve_objects(frame, rule, objects)
     objects_df, relations_df = _to_relations(eids, object_bindings, qualifiers)
 
     return EventLog(events=events, objects=objects_df, relations=relations_df)

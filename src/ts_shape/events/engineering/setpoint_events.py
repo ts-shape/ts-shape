@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
@@ -587,9 +588,7 @@ class SetpointChangeEvents(Base):
                         if t_undershoot is not None
                         else None
                     ),
-                    "oscillation_count": (
-                        oscillation_count if oscillation_count > 0 else 0
-                    ),
+                    "oscillation_count": (max(0, oscillation_count)),
                     "oscillation_amplitude": oscillation_amplitude,
                 }
             )
@@ -871,6 +870,7 @@ class SetpointChangeEvents(Base):
         ].reset_index(drop=True)
 
         rows: list[dict[str, Any]] = []
+        failed_fits: list[pd.Timestamp] = []
         for _, c in changes.iterrows():
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
@@ -935,8 +935,8 @@ class SetpointChangeEvents(Base):
                         "fit_quality_r2": float(r2),
                     }
                 )
-            except Exception:
-                logger.debug("Exponential decay fit failed for window at %s", t0)
+            except (np.linalg.LinAlgError, ValueError):
+                failed_fits.append(t0)
                 rows.append(
                     {
                         "start": t0,
@@ -947,6 +947,14 @@ class SetpointChangeEvents(Base):
                     }
                 )
 
+        if failed_fits:
+            warnings.warn(
+                f"Exponential decay fit failed for {len(failed_fits)} setpoint "
+                f"change(s) of {actual_uuid!r} (first at {failed_fits[0]}); "
+                "their decay_rate_lambda and fit_quality_r2 are None.",
+                DataQualityWarning,
+                stacklevel=3,
+            )
         return self._kpi_frame(rows, cols, actual_uuid, lookahead)
 
     def oscillation_frequency(

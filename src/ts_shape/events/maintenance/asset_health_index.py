@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
@@ -143,7 +144,9 @@ class AssetHealthIndexEvents(Base):
             return pd.DataFrame(columns=[self.time_column, self.value_column])
         out = sel[[self.time_column, self.value_column]].copy()
         out[self.time_column] = pd.to_datetime(out[self.time_column])
-        out[self.value_column] = pd.to_numeric(out[self.value_column], errors="coerce")
+        out[self.value_column] = to_numeric_checked(
+            out[self.value_column], what=f"signal {uuid!r}"
+        )
         return out.dropna(subset=[self.value_column]).sort_values(self.time_column)
 
     @staticmethod
@@ -236,10 +239,10 @@ class AssetHealthIndexEvents(Base):
 
             rows.append(
                 {
-                    "health": round(health, 2),
-                    "mean_drift_pct": round(drift_pct, 4),
-                    "variance_ratio": round(var_ratio, 4),
-                    "trend_slope": round(slope, 8),
+                    "health": float(health),
+                    "mean_drift_pct": float(drift_pct),
+                    "variance_ratio": float(var_ratio),
+                    "trend_slope": float(slope),
                     "count": len(values),
                 }
             )
@@ -342,14 +345,14 @@ class AssetHealthIndexEvents(Base):
                     "uuid": self.event_uuid,
                     "source_uuid": self.asset_id,
                     "asset_id": self.asset_id,
-                    "asset_health_score": round(score, 2),
+                    "asset_health_score": float(score),
                     "dominant_failure_mode": mode,
                     "worst_signal_uuid": worst_uuid,
                     "signals_available": int(
                         sum(1 for f in per_signal.values() if start in f.index)
                     ),
                     "signals_expected": len(self.signals),
-                    "confidence_level": round(weight_sum / self._total_weight, 4),
+                    "confidence_level": float(weight_sum / self._total_weight),
                     "sample_count": samples,
                 }
             )
@@ -494,10 +497,10 @@ class AssetHealthIndexEvents(Base):
                     "signal_uuid": uuid,
                     "failure_mode": spec["failure_mode"],
                     "weight": weight,
-                    "mean_health": round(mean_health, 2),
-                    "min_health": round(float(frame["health"].min()), 2),
-                    "weighted_deficit": round((100.0 - mean_health) * weight, 4),
-                    "windows": int(len(frame)),
+                    "mean_health": float(mean_health),
+                    "min_health": float(frame["health"].min()),
+                    "weighted_deficit": float((100.0 - mean_health) * weight),
+                    "windows": len(frame),
                     "method": "weighted_deficit",
                 }
             )
@@ -507,7 +510,7 @@ class AssetHealthIndexEvents(Base):
         out = pd.DataFrame(rows)
         total = float(out["weighted_deficit"].sum())
         out["contribution_pct"] = (
-            (out["weighted_deficit"] / total * 100.0).round(2) if total > 0 else 0.0
+            out["weighted_deficit"] / total * 100.0 if total > 0 else 0.0
         )
         out = out.sort_values(
             ["weighted_deficit", "signal_uuid"], ascending=[False, True]
@@ -604,16 +607,16 @@ class AssetHealthIndexEvents(Base):
                     "uuid": self.event_uuid,
                     "source_uuid": self.asset_id,
                     "asset_id": self.asset_id,
-                    "current_health": round(current, 2),
-                    "decline_per_day": round(decline_per_day, 4),
+                    "current_health": float(current),
+                    "decline_per_day": float(decline_per_day),
                     "recommended_maintenance_days": (
-                        round(remaining_days, 2)
+                        float(remaining_days)
                         if pd.notna(remaining_days)
                         else float("nan")
                     ),
                     "forecast_time": forecast_time,
                     "critical_threshold": critical_threshold,
-                    "confidence": round(confidence, 4),
+                    "confidence": float(confidence),
                     "sample_count": int(index["sample_count"].sum()),
                     "method": "linear_health_extrapolation",
                 }

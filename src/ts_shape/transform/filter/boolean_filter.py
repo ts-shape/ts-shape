@@ -23,9 +23,8 @@ class IsDeltaFilter(Base):
             column_name: Name of the column to filter on. Default ``"is_delta"``.
         """
         Base._validate_column(dataframe, column_name)
-        return dataframe[
-            dataframe[column_name] == True  # noqa: E712 pandas-series-bool-comparison
-        ]  # noqa: E712 pandas-series-bool-comparison
+        # ``eq`` keeps missing values out of both filters.
+        return dataframe[dataframe[column_name].eq(True)]
 
     @classmethod
     def filter_is_delta_false(
@@ -38,12 +37,12 @@ class IsDeltaFilter(Base):
             column_name: Name of the column to filter on. Default ``"is_delta"``.
         """
         Base._validate_column(dataframe, column_name)
-        return dataframe[
-            dataframe[column_name] == False  # noqa: E712 pandas-series-bool-comparison
-        ]  # noqa: E712 pandas-series-bool-comparison
+        return dataframe[dataframe[column_name].eq(False)]
 
 
-def _previous(dataframe: pd.DataFrame, column_name: str, group_by_uuid: bool):
+def _previous(
+    dataframe: pd.DataFrame, column_name: str, group_by_uuid: bool
+) -> pd.Series:
     """Previous value of ``column_name``, optionally within each uuid."""
     if group_by_uuid and "uuid" in dataframe.columns:
         return dataframe.groupby("uuid", sort=False)[column_name].shift(1)
@@ -62,27 +61,22 @@ class BooleanFilter(Base):
         dataframe: pd.DataFrame,
         column_name: str = "value_bool",
         *,
-        group_by_uuid: bool = False,
+        group_by_uuid: bool = True,
     ) -> pd.DataFrame:
         """Filters rows where 'value_bool' changes from True to False.
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the column to filter on. Default ``"value_bool"``.
-            group_by_uuid: Compare each row with the previous row of the same
-                ``uuid``. Default ``False`` compares with the previous row of
-                the frame, so on a multi-signal frame the last row of one uuid
-                and the first of the next produce a false edge.
+            group_by_uuid: When ``True`` (default) each row is compared with
+                the previous row of the same ``uuid`` (when the frame has a
+                ``uuid`` column), so a multi-signal frame produces no edge
+                between the last row of one uuid and the first of the next.
+                ``False`` compares with the previous row of the frame.
         """
         Base._validate_column(dataframe, column_name)
         previous = _previous(dataframe, column_name, group_by_uuid)
-        return dataframe[
-            (previous == True)  # noqa: E712 pandas-series-bool-comparison
-            & (
-                dataframe[column_name]  # noqa: E712 pandas-series-bool-comparison
-                == False  # noqa: E712 pandas-series-bool-comparison
-            )  # noqa: E712 pandas-series-bool-comparison
-        ]  # noqa: E712 pandas-series-bool-comparison
+        return dataframe[previous.eq(True) & dataframe[column_name].eq(False)]
 
     @classmethod
     def filter_raising_value_bool(
@@ -90,24 +84,19 @@ class BooleanFilter(Base):
         dataframe: pd.DataFrame,
         column_name: str = "value_bool",
         *,
-        group_by_uuid: bool = False,
+        group_by_uuid: bool = True,
     ) -> pd.DataFrame:
         """Filters rows where 'value_bool' changes from False to True.
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the column to filter on. Default ``"value_bool"``.
-            group_by_uuid: Compare each row with the previous row of the same
-                ``uuid``. Default ``False`` compares with the previous row of
-                the frame, so on a multi-signal frame the last row of one uuid
-                and the first of the next produce a false edge.
+            group_by_uuid: When ``True`` (default) each row is compared with
+                the previous row of the same ``uuid`` (when the frame has a
+                ``uuid`` column), so a multi-signal frame produces no edge
+                between the last row of one uuid and the first of the next.
+                ``False`` compares with the previous row of the frame.
         """
         Base._validate_column(dataframe, column_name)
         previous = _previous(dataframe, column_name, group_by_uuid)
-        return dataframe[
-            (previous == False)  # noqa: E712 pandas-series-bool-comparison
-            & (
-                dataframe[column_name]  # noqa: E712 pandas-series-bool-comparison
-                == True  # noqa: E712 pandas-series-bool-comparison
-            )  # noqa: E712 pandas-series-bool-comparison
-        ]  # noqa: E712 pandas-series-bool-comparison
+        return dataframe[previous.eq(False) & dataframe[column_name].eq(True)]

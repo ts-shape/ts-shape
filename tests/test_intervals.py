@@ -20,9 +20,24 @@ def test_change_encoded_last_sample_collapses_to_zero():
             ("2024-01-01 08:30:00", False),
         ]
     )
-    out = state_intervals(df, time_column="systime", state_column="state")
-    # Default "last_sample" -> every single-row interval has zero duration.
+    out = state_intervals(
+        df, time_column="systime", state_column="state", interval_end="last_sample"
+    )
+    # "last_sample" -> every single-row interval has zero duration.
     assert (out["duration_seconds"] == 0).all()
+
+
+def test_change_encoded_default_spans_to_next_change():
+    df = _frame(
+        [
+            ("2024-01-01 08:00:00", True),
+            ("2024-01-01 08:10:00", False),
+            ("2024-01-01 08:12:00", True),
+            ("2024-01-01 08:30:00", False),
+        ]
+    )
+    out = state_intervals(df, time_column="systime", state_column="state")
+    assert list(out["duration_seconds"]) == [600.0, 120.0, 1080.0, 0.0]
 
 
 def test_change_encoded_next_change_measures_correctly():
@@ -66,12 +81,12 @@ def test_dense_sampling_next_change_recovers_full_interval():
     times = pd.date_range("2024-01-01 08:00:00", periods=10, freq="1s")
     states = [True] * 3 + [False] * 5 + [True] * 2
     df = pd.DataFrame({"systime": times, "state": states})
-    last = state_intervals(df, time_column="systime", state_column="state")
-    nxt = state_intervals(
-        df, time_column="systime", state_column="state", interval_end="next_change"
+    last = state_intervals(
+        df, time_column="systime", state_column="state", interval_end="last_sample"
     )
-    idle_last = last[last["state"] == False].iloc[0]  # noqa: E712
-    idle_next = nxt[nxt["state"] == False].iloc[0]  # noqa: E712
+    nxt = state_intervals(df, time_column="systime", state_column="state")
+    idle_last = last[~last["state"]].iloc[0]
+    idle_next = nxt[~nxt["state"]].iloc[0]
     assert idle_last["duration_seconds"] == 4.0  # 5 samples span only 4s
     assert idle_next["duration_seconds"] == 5.0  # to the next transition
 

@@ -7,7 +7,15 @@ from typing import Union
 
 import pandas as pd
 
-from ts_shape.errors import LoaderConfigWarning
+from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
+from ts_shape.loader._utils import (
+    ErrorsMode,
+    check_errors_mode,
+    describe_failures,
+    read_errors,
+    report_failures,
+)
+from ts_shape.utils.coerce import to_numeric_checked
 
 logger = logging.getLogger(__name__)
 
@@ -153,19 +161,32 @@ class DatabricksUnityEnergyLoader:
         Columns: id, label_lvl1, label_lvl2, label_lvl3, label_lvl4,
                  description, unit, hierarchy_lvl1 … hierarchy_lvl6
 
-        Returns an empty DataFrame with the expected columns when the file
-        does not exist.
+        Returns an empty DataFrame with the expected columns, and emits a
+        :class:`~ts_shape.errors.LoaderConfigWarning`, when the file does not
+        exist.
+
+        Raises:
+            LoaderError: When the file exists but cannot be read or parsed.
         """
         path = self.base_path / _METADATA_PATH
         try:
             df = pd.read_csv(path, sep="\t", dtype=str)
-            for col in _META_COLUMNS:
-                if col not in df.columns:
-                    df[col] = pd.NA
-            return df[_META_COLUMNS].reset_index(drop=True)
-        except Exception as exc:
-            logger.debug("Could not load series metadata from '%s': %s", path, exc)
+        except FileNotFoundError:
+            warnings.warn(
+                f"Series metadata file {str(path)!r} does not exist; returning "
+                "an empty metadata table.",
+                LoaderConfigWarning,
+                stacklevel=2,
+            )
             return pd.DataFrame(columns=_META_COLUMNS)
+        except read_errors() as exc:
+            raise LoaderError(
+                describe_failures([(str(path), exc)], "metadata file(s)")
+            ) from exc
+        for col in _META_COLUMNS:
+            if col not in df.columns:
+                df[col] = pd.NA
+        return df[_META_COLUMNS].reset_index(drop=True)
 
     # ── Timeseries ───────────────────────────────────────────────────────────
 
@@ -174,6 +195,8 @@ class DatabricksUnityEnergyLoader:
         start: Union[str, "pd.Timestamp"],
         end: Union[str, "pd.Timestamp"],
         series_ids: list[str] | None = None,
+        *,
+        errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
         Load all CSV files in ``csv/YYYY/MM/DD/`` for each date in [start, end].
@@ -182,19 +205,27 @@ class DatabricksUnityEnergyLoader:
             start: Start date/datetime (inclusive).
             end: End date/datetime (inclusive).
             series_ids: Optional list of series IDs to load. Loads all if None.
+            errors: ``"warn"`` (default) skips a CSV that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
 
         Returns:
             Standard schema DataFrame: systime | uuid | value_double | is_delta
         """
+        check_errors_mode(errors)
         ids_set = set(series_ids) if series_ids else None
         paths = self._list_csv_by_date_range(start, end, ids_set)
-        return self._read_and_concat(paths)
+        return self._read_and_concat(paths, errors=errors)
 
     def load_by_series_ids(
         self,
         series_ids: list[str],
         start: Union[str, "pd.Timestamp"] | None = None,
         end: Union[str, "pd.Timestamp"] | None = None,
+        *,
+        errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
         Load specific series by ID.
@@ -208,22 +239,30 @@ class DatabricksUnityEnergyLoader:
             series_ids: Series IDs to load.
             start: Optional start date filter (inclusive, whole days).
             end: Optional end date filter (inclusive, whole days).
+            errors: ``"warn"`` (default) skips a CSV that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
 
         Returns:
             Standard schema DataFrame: systime | uuid | value_double | is_delta
         """
+        check_errors_mode(errors)
         ids_set = set(series_ids)
         if start is not None and end is not None:
             paths = self._list_csv_by_date_range(start, end, ids_set)
         else:
             paths = self._list_csv_open_range(start, end, ids_set)
-        return self._read_and_concat(paths)
+        return self._read_and_concat(paths, errors=errors)
 
     def stream_by_time_range(
         self,
         start: Union[str, "pd.Timestamp"],
         end: Union[str, "pd.Timestamp"],
         series_ids: list[str] | None = None,
+        *,
+        errors: ErrorsMode = "warn",
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream CSV files one at a time as (series_id, DataFrame) tuples.
@@ -235,15 +274,31 @@ class DatabricksUnityEnergyLoader:
             start: Start date/datetime (inclusive).
             end: End date/datetime (inclusive).
             series_ids: Optional series filter.
+            errors: ``"warn"`` (default) skips a CSV that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
 
         Yields:
             (series_id, DataFrame) where DataFrame has the standard schema.
         """
+        check_errors_mode(errors)
         ids_set = set(series_ids) if series_ids else None
+        failures: list[tuple[str, Exception]] = []
         for path in self._list_csv_by_date_range(start, end, ids_set):
-            df = self._read_csv(path)
-            if df is not None and not df.empty:
+            try:
+                df = self._read_csv(path)
+            except read_errors() as exc:
+                if errors == "raise":
+                    raise LoaderError(
+                        describe_failures([(str(path), exc)], "CSV file(s)")
+                    ) from exc
+                failures.append((str(path), exc))
+                continue
+            if not df.empty:
                 yield self._series_id_from_path(path), df
+        report_failures(failures, what="CSV file(s)", errors=errors)
 
     def list_series(self) -> list[str]:
         """
@@ -262,6 +317,8 @@ class DatabricksUnityEnergyLoader:
         start: Union[str, "pd.Timestamp"] | None = None,
         end: Union[str, "pd.Timestamp"] | None = None,
         series_ids: list[str] | None = None,
+        *,
+        errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
         Return a combined DataFrame, for ``Pipeline`` / ``DataIntegratorHybrid``.
@@ -278,14 +335,24 @@ class DatabricksUnityEnergyLoader:
             end: End date/datetime (inclusive, whole days); None leaves the end
                 open.
             series_ids: Series IDs to load. None loads every series.
+            errors: ``"warn"`` (default) skips a CSV that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
 
         Returns:
             Standard schema DataFrame: systime | uuid | value_double | is_delta.
         """
         if start is not None and end is not None:
-            return self.load_by_time_range(start, end, series_ids=series_ids)
+            return self.load_by_time_range(
+                start, end, series_ids=series_ids, errors=errors
+            )
+        check_errors_mode(errors)
         ids_set = set(series_ids) if series_ids else None
-        return self._read_and_concat(self._list_csv_open_range(start, end, ids_set))
+        return self._read_and_concat(
+            self._list_csv_open_range(start, end, ids_set), errors=errors
+        )
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -316,9 +383,14 @@ class DatabricksUnityEnergyLoader:
                     if entry.is_file() and entry.name.endswith(".csv")
                 ]
         except (FileNotFoundError, NotADirectoryError):
-            return []
+            return []  # no folder for this day: no data, not an error
         except OSError as exc:
-            logger.debug("Failed to list directory '%s': %s", directory, exc)
+            warnings.warn(
+                f"Could not list {str(directory)!r} ({type(exc).__name__}: {exc}); "
+                "its CSV files are skipped.",
+                DataQualityWarning,
+                stacklevel=4,
+            )
             return []
 
     def _walk_csv(self, root: Path) -> list[Path]:
@@ -391,14 +463,15 @@ class DatabricksUnityEnergyLoader:
         """Extract series_id from path: csv/2026/01/13/sensor_001.csv → sensor_001."""
         return path.stem
 
-    def _read_csv(self, path: Path) -> pd.DataFrame | None:
-        """Read a single CSV file and normalize to standard schema; None on error."""
-        try:
-            raw = pd.read_csv(path, thousands=self.thousands, decimal=self.decimal)
-            return self._normalize_df(raw, self._series_id_from_path(path))
-        except Exception as exc:
-            logger.debug("Failed to read CSV '%s': %s", path, exc)
-            return None
+    def _read_csv(self, path: Path) -> pd.DataFrame:
+        """Read a single CSV file and normalize it to the standard schema.
+
+        Raises:
+            One of :func:`~ts_shape.loader._utils.read_errors` when the file
+            cannot be read or parsed, or lacks the ``time``/``value`` columns.
+        """
+        raw = pd.read_csv(path, thousands=self.thousands, decimal=self.decimal)
+        return self._normalize_df(raw, self._series_id_from_path(path))
 
     @staticmethod
     def _normalize_df(raw: pd.DataFrame, series_id: str) -> pd.DataFrame:
@@ -407,27 +480,51 @@ class DatabricksUnityEnergyLoader:
 
         Input columns: time, value
         Output columns: systime, uuid, value_double, is_delta
+
+        Raises:
+            ValueError: When a non-empty CSV lacks the ``time`` or ``value``
+                column.
         """
-        if raw.empty or "time" not in raw.columns or "value" not in raw.columns:
+        if raw.empty:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)
+        missing = [c for c in ("time", "value") if c not in raw.columns]
+        if missing:
+            raise ValueError(
+                f"series {series_id!r}: CSV has no {missing} column(s); "
+                f"columns are {list(raw.columns)}"
+            )
 
         out = pd.DataFrame()
         out["systime"] = pd.to_datetime(raw["time"], utc=True)
         out["uuid"] = series_id
-        out["value_double"] = pd.to_numeric(raw["value"], errors="coerce")
+        out["value_double"] = to_numeric_checked(
+            raw["value"], what=f"series {series_id!r}"
+        )
         out["is_delta"] = True
         return out.sort_values("systime").reset_index(drop=True)
 
-    def _read_and_concat(self, paths: list[Path]) -> pd.DataFrame:
-        """Read a list of CSV files sequentially and concatenate results."""
+    def _read_and_concat(
+        self, paths: list[Path], *, errors: ErrorsMode = "warn"
+    ) -> pd.DataFrame:
+        """Read CSV files sequentially and concatenate the results.
+
+        A file that cannot be read is reported according to ``errors`` (see
+        :func:`~ts_shape.loader._utils.report_failures`).
+        """
         if not paths:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)
 
         frames: list[pd.DataFrame] = []
+        failures: list[tuple[str, Exception]] = []
         for path in paths:
-            df = self._read_csv(path)
-            if df is not None and not df.empty:
+            try:
+                df = self._read_csv(path)
+            except read_errors() as exc:
+                failures.append((str(path), exc))
+                continue
+            if not df.empty:
                 frames.append(df)
+        report_failures(failures, what="CSV file(s)", errors=errors, stacklevel=4)
 
         if not frames:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)

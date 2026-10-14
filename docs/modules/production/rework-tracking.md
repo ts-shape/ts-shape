@@ -56,7 +56,7 @@ cost = tracker.rework_cost(
 | `rework_cost(rework_uuid, part_id_uuid, rework_costs)` | Monetary cost of rework by part number | `DataFrame` with `part_number`, `rework_count`, `cost_per_rework`, `total_cost` |
 | `rework_trend(rework_uuid, window='1D')` | Rework counts per time period | `DataFrame` with `period`, `rework_count` |
 
-All methods accept `handle_resets=True` for counters that reset; `rework_by_shift`, `rework_by_reason`, `rework_cost` and `rework_trend` then add a `resets` column.
+All methods count rework across counter resets by default (`handle_resets=True`); `rework_by_shift`, `rework_by_reason`, `rework_cost` and `rework_trend` add a `resets` column. Pass `handle_resets=False` for the plain `max(0, last - first)` quantity.
 
 ---
 

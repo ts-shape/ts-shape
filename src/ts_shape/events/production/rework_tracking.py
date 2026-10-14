@@ -93,14 +93,14 @@ class ReworkEvents(Base):
         data: pd.DataFrame,
         value_column: str,
         *,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> float:
         """Get quantity from a monotonic counter.
 
-        When ``handle_resets`` is False the quantity is the
-        backward-compatible ``max(0, last - first)``. When True a decreasing
-        counter is treated as a reset and the post-reset production is
-        counted (see :func:`ts_shape.utils.counters.counter_quantity`).
+        When ``handle_resets`` is True (default) a decreasing counter is
+        treated as a reset and the post-reset production is counted (see
+        :func:`ts_shape.utils.counters.counter_quantity`). When False the
+        quantity is ``max(0, last - first)``.
         """
         if data.empty:
             return 0.0
@@ -111,7 +111,7 @@ class ReworkEvents(Base):
         rework_uuid: str,
         *,
         value_column: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Rework count per shift.
@@ -119,10 +119,10 @@ class ReworkEvents(Base):
         Args:
             rework_uuid: UUID for rework event counter signal.
             value_column: Column containing counter values.
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the rework accumulated after the reset instead of
                 losing it. The result gains a ``resets`` column with the
-                number of resets observed in each shift. When False (default),
+                number of resets observed in each shift. When False,
                 the quantity is ``max(0, last - first)`` and a shift
                 containing a reset reports too little (often 0).
             production_day: When True, an overnight shift's post-midnight
@@ -172,7 +172,7 @@ class ReworkEvents(Base):
             row = {
                 "date": date,
                 "shift": shift,
-                "rework_count": round(qty, 0),
+                "rework_count": qty,
             }
             if handle_resets:
                 row["resets"] = count_resets(grp[value_column])
@@ -191,7 +191,7 @@ class ReworkEvents(Base):
         *,
         value_column_rework: str = "value_integer",
         value_column_reason: str = "value_string",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Rework quantity by reason code.
 
@@ -200,7 +200,7 @@ class ReworkEvents(Base):
             reason_uuid: UUID for rework reason code signal.
             value_column_rework: Column containing rework counter values.
             value_column_reason: Column containing reason codes.
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the rework accumulated after the reset. The reason
                 is attached to a single global counter, so the reset-aware
                 quantity is the sum of per-reading increments over the full
@@ -208,7 +208,7 @@ class ReworkEvents(Base):
                 the over-count that ``last - first`` produces when reasons
                 alternate over a non-contiguous group. The result gains a
                 ``resets`` column with the number of resets attributed to
-                each reason. When False (default), the quantity is
+                each reason. When False, the quantity is
                 ``max(0, last - first)`` per reason group and a reset is lost.
 
         Returns:
@@ -266,11 +266,11 @@ class ReworkEvents(Base):
         for reason, grp in merged.groupby("reason"):
             if handle_resets:
                 qty = float(grp["_increment"].sum())
-                row = {"reason": reason, "rework_count": round(qty, 0)}
+                row = {"reason": reason, "rework_count": qty}
                 row["resets"] = int(grp["_is_reset"].sum())
             else:
-                qty = self._get_counter_quantity(grp, "rework_val")
-                row = {"reason": reason, "rework_count": round(qty, 0)}
+                qty = self._get_counter_quantity(grp, "rework_val", handle_resets=False)
+                row = {"reason": reason, "rework_count": qty}
             results.append(row)
 
         if not results:
@@ -279,7 +279,7 @@ class ReworkEvents(Base):
         result_df = pd.DataFrame(results)
         total = result_df["rework_count"].sum()
         result_df["pct_of_total"] = (
-            (result_df["rework_count"] / total * 100).round(1) if total > 0 else 0.0
+            (result_df["rework_count"] / total * 100) if total > 0 else 0.0
         )
 
         return result_df.sort_values("rework_count", ascending=False).reset_index(
@@ -293,7 +293,7 @@ class ReworkEvents(Base):
         *,
         value_column_rework: str = "value_integer",
         value_column_production: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Rework rate as percentage of total production per shift.
@@ -303,13 +303,12 @@ class ReworkEvents(Base):
             total_production_uuid: UUID for total production counter signal.
             value_column_rework: Column containing rework counter values.
             value_column_production: Column containing production counter values.
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the production/rework accumulated after the reset,
                 for both the numerator (rework) and denominator (total
                 produced). The result gains ``rework_resets``,
                 ``production_resets`` and ``resets`` (their sum) columns with
-                the number of resets observed in each shift. When False
-                (default), both use ``max(0, last - first)`` per shift and a
+                the number of resets observed in each shift. When False, both use ``max(0, last - first)`` per shift and a
                 reset is lost.
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date. Default True;
@@ -406,9 +405,9 @@ class ReworkEvents(Base):
             row: dict[str, Any] = {
                 "date": date,
                 "shift": shift,
-                "total_produced": round(total_produced, 0),
-                "rework_count": round(rework_count, 0),
-                "rework_rate_pct": round(rate, 1),
+                "total_produced": total_produced,
+                "rework_count": rework_count,
+                "rework_rate_pct": rate,
             }
             if handle_resets:
                 rw_resets = (
@@ -438,7 +437,7 @@ class ReworkEvents(Base):
         *,
         value_column_rework: str = "value_integer",
         value_column_part: str = "value_string",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Convert rework counts to monetary cost by part number.
 
@@ -448,10 +447,10 @@ class ReworkEvents(Base):
             rework_costs: Dict mapping part numbers to cost per rework.
             value_column_rework: Column containing rework counter values.
             value_column_part: Column containing part number values.
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the rework accumulated after the reset. The result
                 gains a ``resets`` column with the number of resets observed
-                for each part. When False (default), the quantity is
+                for each part. When False, the quantity is
                 ``max(0, last - first)`` per part and a reset is lost.
 
         Returns:
@@ -503,9 +502,9 @@ class ReworkEvents(Base):
             cost = rework_costs.get(part_num, 0.0)
             row = {
                 "part_number": part_num,
-                "rework_count": round(qty, 0),
+                "rework_count": qty,
                 "cost_per_rework": cost,
-                "total_cost": round(qty * cost, 2),
+                "total_cost": qty * cost,
             }
             if handle_resets:
                 row["resets"] = count_resets(grp["rework_val"])
@@ -523,7 +522,7 @@ class ReworkEvents(Base):
         *,
         value_column: str = "value_integer",
         window: str = "1D",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Track rework count trend over time.
 
@@ -531,10 +530,10 @@ class ReworkEvents(Base):
             rework_uuid: UUID for rework counter signal.
             value_column: Column containing counter values.
             window: Time window for aggregation (default '1D').
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the rework accumulated after the reset. The result
                 gains a ``resets`` column with the number of resets observed
-                in each period. When False (default), the quantity is
+                in each period. When False, the quantity is
                 ``max(0, last - first)`` per period and a reset is lost.
 
         Returns:
@@ -569,7 +568,7 @@ class ReworkEvents(Base):
             )
             row = {
                 "period": period,
-                "rework_count": round(qty, 0),
+                "rework_count": qty,
             }
             if handle_resets:
                 row["resets"] = count_resets(grp[value_column])
@@ -578,5 +577,5 @@ class ReworkEvents(Base):
         return add_period_window(pd.DataFrame(results, columns=columns), window)
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in 2.0.
 ReworkTracking = deprecated_class(ReworkEvents, "ReworkTracking")

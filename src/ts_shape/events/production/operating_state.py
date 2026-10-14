@@ -121,8 +121,8 @@ class OperatingStateEvents(Base):
                     "end": end,
                     "state": state_id,
                     "state_label": labels[state_id],
-                    "mean_value": round(float(seg[self.value_column].mean()), 4),
-                    "duration_seconds": round(duration.total_seconds(), 3),
+                    "mean_value": float(seg[self.value_column].mean()),
+                    "duration_seconds": duration.total_seconds(),
                     "uuid": self.event_uuid,
                     "source_uuid": self.signal_uuid,
                 }
@@ -168,13 +168,11 @@ class OperatingStateEvents(Base):
                     "state": int(state_id),
                     "state_label": group["state_label"].iloc[0],
                     "count": len(group),
-                    "mean_duration": round(float(durations.mean()), 3),
-                    "std_duration": (
-                        round(float(durations.std()), 3) if len(group) > 1 else 0.0
-                    ),
-                    "min_duration": round(float(durations.min()), 3),
-                    "max_duration": round(float(durations.max()), 3),
-                    "total_duration": round(float(durations.sum()), 3),
+                    "mean_duration": float(durations.mean()),
+                    "std_duration": float(durations.std()) if len(group) > 1 else 0.0,
+                    "min_duration": float(durations.min()),
+                    "max_duration": float(durations.max()),
+                    "total_duration": float(durations.sum()),
                 }
             )
 
@@ -308,7 +306,7 @@ class OperatingStateEvents(Base):
                         "end": row["end"],
                         "state_label": row["state_label"],
                         "duration_seconds": dur,
-                        "excess_seconds": round(dur - max_td, 3),
+                        "excess_seconds": dur - max_td,
                         "uuid": self.event_uuid,
                         "source_uuid": self.signal_uuid,
                     }

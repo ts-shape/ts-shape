@@ -108,7 +108,7 @@ class ShiftHandoverEvents(Base):
         uuid: str,
         value_column: str,
         *,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Get counter deltas grouped by date/shift.
@@ -190,8 +190,8 @@ class ShiftHandoverEvents(Base):
                 {
                     "date": dt,
                     "shift": shift,
-                    "availability_pct": round(avail, 1),
-                    "downtime_minutes": round(down / 60, 1),
+                    "availability_pct": avail,
+                    "downtime_minutes": down / 60,
                 }
             )
 
@@ -298,10 +298,8 @@ class ShiftHandoverEvents(Base):
         if targets:
             result["production_target"] = result["shift"].map(targets).fillna(0)
             result["production_achievement_pct"] = (
-                (result["production"] / result["production_target"] * 100)
-                .where(result["production_target"] > 0, 0)
-                .round(1)
-            )
+                result["production"] / result["production_target"] * 100
+            ).where(result["production_target"] > 0, 0)
         else:
             result["production_target"] = 0.0
             result["production_achievement_pct"] = 0.0
@@ -309,8 +307,8 @@ class ShiftHandoverEvents(Base):
         # Ensure quality_pct is computed if we have ok/nok but no quality_pct from upstream
         if (result["quality_pct"] == 0).all() and (result["ok_parts"] > 0).any():
             total = result["ok_parts"] + result["nok_parts"]
-            result["quality_pct"] = (
-                (result["ok_parts"] / total * 100).where(total > 0, 0).round(1)
+            result["quality_pct"] = (result["ok_parts"] / total * 100).where(
+                total > 0, 0
             )
 
         # Return with consistent column order
@@ -338,7 +336,7 @@ class ShiftHandoverEvents(Base):
         value_column_counter: str = "value_integer",
         value_column_state: str = "value_string",
         report_date: str | None = None,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Generate a shift handover report from raw timeseries signals.
@@ -358,10 +356,10 @@ class ShiftHandoverEvents(Base):
             value_column_counter: Column for counter values.
             value_column_state: Column for state values.
             report_date: Specific date (YYYY-MM-DD). If None, uses latest date.
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset for production, ok_parts and
                 nok_parts. A shift boundary is exactly where counters commonly
-                reset, so the default ``max(0, last - first)`` under-reports any
+                reset, so ``max(0, last - first)`` (``handle_resets=False``) under-reports any
                 shift containing a reset. The result gains a ``resets`` column
                 with the number of production-counter resets in each shift.
             production_day: When True, an overnight shift's post-midnight
@@ -464,19 +462,15 @@ class ShiftHandoverEvents(Base):
         if targets:
             result["production_target"] = result["shift"].map(targets).fillna(0)
             result["production_achievement_pct"] = (
-                (result["production"] / result["production_target"] * 100)
-                .where(result["production_target"] > 0, 0)
-                .round(1)
-            )
+                result["production"] / result["production_target"] * 100
+            ).where(result["production_target"] > 0, 0)
         else:
             result["production_target"] = 0.0
             result["production_achievement_pct"] = 0.0
 
         # Quality
         total = result["ok_parts"] + result["nok_parts"]
-        result["quality_pct"] = (
-            (result["ok_parts"] / total * 100).where(total > 0, 0).round(1)
-        )
+        result["quality_pct"] = (result["ok_parts"] / total * 100).where(total > 0, 0)
 
         return add_shift_window(
             result[output_cols].reset_index(drop=True),
@@ -584,7 +578,7 @@ class ShiftHandoverEvents(Base):
                         {
                             "shift": row["shift"],
                             "metric": metric,
-                            "value": round(float(value), 1),
+                            "value": float(value),
                             "threshold": threshold,
                             "severity": severity,
                         }
@@ -593,5 +587,5 @@ class ShiftHandoverEvents(Base):
         return issues
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in 2.0.
 ShiftHandoverReport = deprecated_class(ShiftHandoverEvents, "ShiftHandoverReport")

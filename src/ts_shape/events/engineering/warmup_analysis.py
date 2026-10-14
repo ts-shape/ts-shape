@@ -1,4 +1,5 @@
 import logging
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
@@ -17,7 +18,7 @@ def _bridge_pauses(moving: np.ndarray, max_pause: int) -> np.ndarray:
     true_idx = np.flatnonzero(moving)
     if len(true_idx) < 2:
         return out
-    for left, right in zip(true_idx[:-1], true_idx[1:], strict=True):
+    for left, right in pairwise(true_idx):
         if 1 < right - left <= max_pause + 1:
             out[left + 1 : right] = True
     return out

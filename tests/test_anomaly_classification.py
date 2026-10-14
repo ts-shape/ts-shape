@@ -138,12 +138,12 @@ class TestSlopePerSecond:
     def test_detect_drift_slope_independent_of_sampling_rate(self):
         fast = AnomalyClassificationEvents(_ramp(1), "sensor_1")
         slow = AnomalyClassificationEvents(_ramp(10), "sensor_1")
-        # Per sample (default): slopes 0.01 vs 0.1 per sample.
-        assert fast.detect_drift(min_slope=0.05).empty
-        assert not slow.detect_drift(min_slope=0.05).empty
-        # Per second: 0.01 units/s for both.
+        # Per sample: slopes 0.01 vs 0.1 per sample.
+        assert fast.detect_drift(min_slope=0.05, slope_per="sample").empty
+        assert not slow.detect_drift(min_slope=0.05, slope_per="sample").empty
+        # Per second (default): 0.01 units/s for both.
         for det in (fast, slow):
-            out = det.detect_drift(min_slope=0.005, slope_per="second")
+            out = det.detect_drift(min_slope=0.005)
             assert not out.empty
             assert np.allclose(out["slope"], 0.01)
 
@@ -156,11 +156,11 @@ class TestSlopePerSecond:
         t = pd.Timestamp("2024-01-01") + pd.to_timedelta(np.arange(n) * 10, unit="s")
         df = pd.DataFrame({"systime": t, "uuid": "sensor_1", "value_double": v})
         det = AnomalyClassificationEvents(df, "sensor_1")
-        default = det.classify_anomalies(window="5min")
-        per_s = det.classify_anomalies(window="5min", slope_per="second")
+        per_sample = det.classify_anomalies(window="5min", slope_per="sample")
+        per_s = det.classify_anomalies(window="5min")
         # Regular sampling: the same windows and types are flagged.
-        assert list(default["anomaly_type"]) == list(per_s["anomaly_type"])
-        d0 = default[default["anomaly_type"] == "drift"]["details"]
+        assert list(per_sample["anomaly_type"]) == list(per_s["anomaly_type"])
+        d0 = per_sample[per_sample["anomaly_type"] == "drift"]["details"]
         d1 = per_s[per_s["anomaly_type"] == "drift"]["details"]
         assert list(d0) == ["slope=0.040000, direction=increasing"]
         assert list(d1) == ["slope=0.004000, direction=increasing"]
@@ -169,3 +169,47 @@ class TestSlopePerSecond:
         det = AnomalyClassificationEvents(_ramp(10), "sensor_1")
         with pytest.raises(ValueError, match="slope_per"):
             det.detect_drift(slope_per="minute")
+
+
+class TestDefaults:
+    def test_flatline_default_handles_change_encoded_signal(self):
+        # Deadband historian: one row, then nothing until the value moves.
+        t = pd.to_datetime(["2024-01-01 00:00", "2024-01-01 00:10"])
+        df = pd.DataFrame({"systime": t, "uuid": "s", "value_double": [5.0, 7.0]})
+        det = AnomalyClassificationEvents(df, "s")
+        out = det.detect_flatline(min_duration="5min")
+        assert len(out) == 1
+        assert out["duration_seconds"].iloc[0] == pytest.approx(600.0)
+        assert det.detect_flatline(
+            min_duration="5min", interval_end="last_sample"
+        ).empty
+
+    def test_drift_default_is_per_second(self):
+        # 0.01 units/s sampled every 10 s: 0.1 per sample, 0.01 per second.
+        n = 400
+        t = pd.Timestamp("2024-01-01") + pd.to_timedelta(np.arange(n) * 10, unit="s")
+        df = pd.DataFrame(
+            {"systime": t, "uuid": "s", "value_double": np.arange(n) * 0.1}
+        )
+        out = AnomalyClassificationEvents(df, "s").detect_drift(min_slope=0.005)
+        assert np.allclose(out["slope"], 0.01)
+
+    def test_drift_ignores_nan_values(self):
+        n = 400
+        t = pd.Timestamp("2024-01-01") + pd.to_timedelta(np.arange(n), unit="s")
+        v = np.arange(n) * 0.01
+        v[50] = np.nan
+        df = pd.DataFrame({"systime": t, "uuid": "s", "value_double": v})
+        out = AnomalyClassificationEvents(df, "s").detect_drift(
+            window="300s", min_slope=0.005
+        )
+        assert len(out) == 1
+        assert out["slope"].iloc[0] == pytest.approx(0.01)
+
+    def test_flatline_default_ignores_regular_slow_sampling(self):
+        # One sample per minute, every value different: no sample is stuck,
+        # even though each sample's span reaches min_duration.
+        t = pd.date_range("2024-01-01", periods=30, freq="1min")
+        df = pd.DataFrame({"systime": t, "uuid": "s", "value_double": range(30)})
+        det = AnomalyClassificationEvents(df, "s")
+        assert det.detect_flatline(min_duration="1min").empty

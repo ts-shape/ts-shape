@@ -30,6 +30,13 @@ from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 _NOT_SIGNALS = {"event_uuid", "uuid_column"}
 
 _CHECKING = "_ts_shape_checking"
+# Set on every wrapped method so ``Base`` can tell which methods are checked.
+_CHECKED_MARKER = "__ts_shape_checked__"
+
+
+def _mark_checked(wrapper: Callable[..., Any]) -> None:
+    """Flag ``wrapper`` as signal-checked (read back with ``getattr``)."""
+    setattr(wrapper, _CHECKED_MARKER, True)
 
 
 def _signal_values(name: str, value: Any) -> list[str]:
@@ -99,7 +106,7 @@ def checked(fn: Callable[..., Any]) -> Callable[..., Any]:
         finally:
             object.__setattr__(self, _CHECKING, False)
 
-    wrapper.__ts_shape_checked__ = True  # type: ignore[attr-defined]
+    _mark_checked(wrapper)
     return wrapper
 
 
@@ -131,5 +138,5 @@ def checked_init(fn: Callable[..., Any]) -> Callable[..., Any]:
         if type(self).__init__ is wrapper or not getattr(self, _CHECKING, False):
             check_signals(self, fn, args, kwargs)
 
-    wrapper.__ts_shape_checked__ = True  # type: ignore[attr-defined]
+    _mark_checked(wrapper)
     return wrapper

@@ -1,6 +1,6 @@
 # Naming and output conventions
 
-One concept, one name. This page is the rule set for every detector, and the checklist for reviewing a new one. Older spellings still work: they are deprecated aliases that emit a `DeprecationWarning` naming the replacement, and they will be removed in 1.0 (see [Migration & Deprecations](migration.md)).
+One concept, one name. This page is the rule set for every detector, and the checklist for reviewing a new one. Older spellings still work: they are deprecated aliases that emit a `DeprecationWarning` naming the replacement, and they will be removed in 2.0 (see [Migration & Deprecations](migration.md)).
 
 ## Classes
 

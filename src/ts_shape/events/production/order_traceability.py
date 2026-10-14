@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_class
 
 logger = logging.getLogger(__name__)
 
@@ -376,16 +377,10 @@ class ValueTraceabilityEvents(Base):
             .reset_index()
         )
 
-        for col in [
-            "min_dwell_seconds",
-            "avg_dwell_seconds",
-            "max_dwell_seconds",
-            "total_dwell_seconds",
-        ]:
-            stats[col] = stats[col].round(2)
-
         return stats
 
 
-# Backwards-compatible alias
-OrderTraceabilityEvents = ValueTraceabilityEvents
+#: Deprecated name, removed in 2.0.
+OrderTraceabilityEvents = deprecated_class(
+    ValueTraceabilityEvents, "OrderTraceabilityEvents"
+)

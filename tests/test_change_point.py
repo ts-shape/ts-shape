@@ -22,7 +22,7 @@ def _total_cost(x, points, cost, penalty):
     floor = max(np.var(x), 1e-12) * 1e-6
     bounds = [0, *points, len(x)]
     total = penalty * len(points)
-    for a, b in zip(bounds[:-1], bounds[1:]):
+    for a, b in itertools.pairwise(bounds):
         v = x[a:b]
         if cost == "normal_mean":
             total += ((v - v.mean()) ** 2).sum() / sigma**2
@@ -132,3 +132,16 @@ def test_validation_and_large_input_warning(monkeypatch):
     monkeypatch.setattr(cp, "PELT_WARN_SAMPLES", 10)
     with pytest.warns(UserWarning, match="binseg"):
         ChangePointEvents(df, "sig").detect_change_points()
+
+
+def test_non_numeric_values_warn():
+    from ts_shape.errors import DataQualityWarning
+
+    t = pd.date_range("2024-01-01", periods=4, freq="1min")
+    df = pd.DataFrame(
+        {"systime": t, "uuid": "s", "value_double": [1.0, "n/a", 2.0, 3.0]},
+        dtype=object,
+    )
+    with pytest.warns(DataQualityWarning, match="1 non-null value"):
+        ev = ChangePointEvents(df, "s")
+    assert len(ev.signal) == 3

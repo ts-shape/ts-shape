@@ -1,4 +1,4 @@
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
@@ -40,3 +40,26 @@ def test_outlier_output_is_canonical_point_shape():
     assert not z.empty
     assert (z["uuid"] == "outlier_evt").all()
     assert (z["source_uuid"] == "sensor:x").all()
+
+
+def test_signal_uuids_restricts_the_analysis():
+    import numpy as np
+
+    t = pd.date_range("2024-01-01", periods=50, freq="1min")
+    a = np.full(50, 10.0)
+    a[25] = 100.0
+    b = np.full(50, 5.0)
+    b[10] = -80.0
+    df = pd.concat(
+        [
+            pd.DataFrame({"systime": t, "uuid": "a", "value_double": a}),
+            pd.DataFrame({"systime": t, "uuid": "b", "value_double": b}),
+        ],
+        ignore_index=True,
+    )
+    both = OutlierDetectionEvents(df, "value_double").detect_outliers_iqr()
+    only_a = OutlierDetectionEvents(
+        df, "value_double", signal_uuids=["a"]
+    ).detect_outliers_iqr()
+    assert set(both["source_uuid"]) == {"a", "b"}
+    assert set(only_a["source_uuid"]) == {"a"}

@@ -96,30 +96,14 @@ class CycleExtractor(Base):
         filters starts by start_uuid and ends by end_uuid. Otherwise falls back
         to treating all True values as both start and end candidates.
         """
+        # ``eq(True)`` keeps missing values out of both candidate sets.
+        is_true = self.df["value_bool"].eq(True)
         if "uuid" in self.df.columns and self.start_uuid != self.end_uuid:
-            cycle_starts = self.df[
-                (self.df["uuid"] == self.start_uuid)
-                & (
-                    self.df["value_bool"]  # noqa: E712 pandas-series-bool-comparison
-                    == True  # noqa: E712 pandas-series-bool-comparison
-                )  # noqa: E712 pandas-series-bool-comparison
-            ]
-            cycle_ends = self.df[
-                (self.df["uuid"] == self.end_uuid)
-                & (
-                    self.df["value_bool"]  # noqa: E712 pandas-series-bool-comparison
-                    == True  # noqa: E712 pandas-series-bool-comparison
-                )  # noqa: E712 pandas-series-bool-comparison
-            ]
+            cycle_starts = self.df[(self.df["uuid"] == self.start_uuid) & is_true]
+            cycle_ends = self.df[(self.df["uuid"] == self.end_uuid) & is_true]
         else:
-            cycle_starts = self.df[
-                self.df["value_bool"]  # noqa: E712 pandas-series-bool-comparison
-                == True  # noqa: E712 pandas-series-bool-comparison
-            ]  # noqa: E712 pandas-series-bool-comparison
-            cycle_ends = self.df[
-                self.df["value_bool"]  # noqa: E712 pandas-series-bool-comparison
-                == True  # noqa: E712 pandas-series-bool-comparison
-            ]  # noqa: E712 pandas-series-bool-comparison
+            cycle_starts = self.df[is_true]
+            cycle_ends = cycle_starts
             # Starts and ends are the same rows: a start must close at the
             # *next* True, not at itself (which gave zero-length cycles).
             return self._generate_cycle_dataframe(
@@ -322,18 +306,17 @@ class CycleExtractor(Base):
             # Anything pandas understands ('5min', '90s', '1h30min', ...).
             try:
                 return pd.Timedelta(duration_str)
-            except ValueError:
-                pass
-            raise ValueError(
-                f"Invalid duration format: '{duration_str}'. Expected format: number followed by s/m/h/d (e.g., '1s', '5m', '1h')"
-            )
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid duration format: '{duration_str}'. Expected a pandas "
+                    "duration ('5min', '90s', '1h30min') or a number followed by "
+                    "s/m/h/d (e.g., '1s', '5m', '1h')"
+                ) from exc
 
-        value, unit = match.groups()
-        value = float(value)
-
+        number, unit = match.groups()
         unit_map = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}
 
-        return pd.Timedelta(**{unit_map[unit]: value})
+        return pd.Timedelta(**{unit_map[unit]: float(number)})
 
     def validate_cycles(
         self,

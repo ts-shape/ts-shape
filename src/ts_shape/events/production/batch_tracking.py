@@ -5,7 +5,7 @@ compute duration statistics, per-batch yield, and batch transition matrices.
 """
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -162,15 +162,6 @@ class BatchTrackingEvents(Base):
             .reset_index()
         )
 
-        # Round for readability
-        for col in [
-            "min_duration_seconds",
-            "avg_duration_seconds",
-            "max_duration_seconds",
-            "total_duration_seconds",
-        ]:
-            stats[col] = stats[col].round(2)
-
         return stats
 
     # ------------------------------------------------------------------
@@ -182,7 +173,7 @@ class BatchTrackingEvents(Base):
         counter_uuid: str,
         *,
         value_column_counter: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Compute production quantity for each detected batch.
 
@@ -192,11 +183,11 @@ class BatchTrackingEvents(Base):
         Args:
             counter_uuid: UUID of the monotonic part counter.
             value_column_counter: Column holding counter values.
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
                 ``quantity`` is the reset-aware total for the batch. The result
                 gains a ``resets`` column with the number of resets observed in
-                each batch. When False (default), ``quantity`` is simply
+                each batch. When False, ``quantity`` is simply
                 ``max(0, last - first)`` and a batch containing a reset reports
                 too little.
 
@@ -273,19 +264,44 @@ class BatchTrackingEvents(Base):
     # Transition matrix
     # ------------------------------------------------------------------
 
-    def batch_transition_matrix(self) -> pd.DataFrame:
-        """Build a transition frequency matrix: which batch follows which.
+    def batch_transition_matrix(
+        self, *, layout: Literal["long", "wide"] = "long"
+    ) -> pd.DataFrame:
+        """Count which batch follows which.
+
+        Args:
+            layout: ``"long"`` (default) returns one row per observed
+                transition. ``"wide"`` returns the pivoted matrix.
 
         Returns:
-            DataFrame (pivot table) where index = from_batch, columns = to_batch,
-            values = transition count.  An extra ``total`` column is appended.
-            The batch columns depend on the data, so with fewer than two
-            batches the result is an empty frame with only the ``total``
+            With ``layout="long"``, a DataFrame with columns ``from_state``,
+            ``to_state`` and ``transition_count`` (int), one row per observed
+            ``(from_state, to_state)`` pair, sorted by ``from_state`` and
+            ``to_state``. With fewer than two batches the result is empty and
+            keeps these columns.
+
+            With ``layout="wide"``, a pivot table where index = from_batch,
+            columns = to_batch, values = transition count, plus a ``total``
+            column. The batch columns depend on the data, so with fewer than
+            two batches the result is an empty frame with only the ``total``
             column (index named ``from_batch``).
+
+        Raises:
+            ValueError: If ``layout`` is not ``"long"`` or ``"wide"``.
         """
+        if layout not in ("long", "wide"):
+            raise ValueError(f"layout must be 'long' or 'wide', got {layout!r}")
         batches = self.detect_batches()
 
         if batches.empty or len(batches) < 2:
+            if layout == "long":
+                return pd.DataFrame(
+                    {
+                        "from_state": pd.Series(dtype=object),
+                        "to_state": pd.Series(dtype=object),
+                        "transition_count": pd.Series(dtype="int64"),
+                    }
+                )
             return pd.DataFrame(
                 columns=["total"], index=pd.Index([], name="from_batch")
             )
@@ -294,6 +310,14 @@ class BatchTrackingEvents(Base):
         to_batch = batches["batch_id"].iloc[1:].values
 
         transitions = pd.DataFrame({"from_batch": from_batch, "to_batch": to_batch})
+        if layout == "long":
+            return (
+                transitions.groupby(["from_batch", "to_batch"])
+                .size()
+                .astype("int64")
+                .reset_index(name="transition_count")
+                .rename(columns={"from_batch": "from_state", "to_batch": "to_state"})
+            )
         matrix = (
             transitions.groupby(["from_batch", "to_batch"]).size().unstack(fill_value=0)
         )

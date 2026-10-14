@@ -115,12 +115,13 @@ def test_time_in_range_time_weighted():
     df = _make_df("sensor", t, [5.0, 5.0, 20.0, 5.0])
     det = OperatingRangeEvents(df, "sensor")
 
-    by_sample = det.time_in_range(lower_limit=0.0, upper_limit=10.0, window="1h")
+    by_sample = det.time_in_range(
+        lower_limit=0.0, upper_limit=10.0, window="1h", time_weighted=False
+    )
     assert abs(by_sample["time_in_range_pct"].iloc[0] - 200 / 3) < 1e-9
 
-    by_time = det.time_in_range(
-        lower_limit=0.0, upper_limit=10.0, window="1h", time_weighted=True
-    )
+    # Default: weighted by time.
+    by_time = det.time_in_range(lower_limit=0.0, upper_limit=10.0, window="1h")
     row = by_time.iloc[0]
     assert abs(row["time_in_range_pct"] - 50 / 60 * 100) < 1e-9
     assert abs(row["time_above_pct"] - 10 / 60 * 100) < 1e-9

@@ -160,19 +160,19 @@ class StringStatistics(Base):
         substring: str,
         column_name: str = "value_string",
         *,
-        regex: bool = True,
+        regex: bool = False,
     ) -> int:
         """Counts how many strings contain the specified substring.
 
         Args:
             dataframe: Input DataFrame.
-            substring: Pattern to look for. It is a regular expression unless
-                ``regex=False``, so characters such as ``.``, ``(`` or ``+`` are
-                special by default.
+            substring: Text to look for, matched literally by default, so
+                characters such as ``.``, ``(`` or ``+`` have no special
+                meaning.
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
-            regex: If True (default), treat ``substring`` as a regular
-                expression; if False, match it literally.
+            regex: If False (default), match ``substring`` literally; if True,
+                treat it as a regular expression.
         """
         return int(
             dataframe[column_name].dropna().str.contains(substring, regex=regex).sum()
@@ -256,7 +256,7 @@ class StringStatistics(Base):
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
-    ) -> dict[str, int | str | float]:
+    ) -> dict[str, int | str | float | None]:
         """Returns a dictionary with comprehensive string statistics for the specified column.
 
         Args:

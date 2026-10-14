@@ -1,5 +1,6 @@
 import logging
 import operator
+import warnings
 from collections.abc import Callable
 
 import numpy as np
@@ -16,7 +17,7 @@ class ToleranceDeviationEvents(Base):
     Inherits from Base and processes DataFrame data for specific events, comparing tolerance and actual values.
 
     Enhanced features:
-    - Separate upper and lower tolerances
+    - Upper and lower tolerances (two-sided, or one-sided with only one of them)
     - Warning zones with configurable thresholds
     - Deviation magnitude tracking (absolute and percentage)
     - Severity level classification (minor, major, critical)
@@ -48,14 +49,24 @@ class ToleranceDeviationEvents(Base):
             dataframe: Input DataFrame with measurement data
             tolerance_column: Column name containing tolerance values
             actual_column: Column name containing actual measurement values
-            tolerance_uuid: UUID for tolerance (backward compatibility, used if upper/lower not specified)
+            tolerance_uuid: Deprecated (removed in 2.0; passing it without
+                ``upper_tolerance_uuid``/``lower_tolerance_uuid`` emits a
+                ``DeprecationWarning``). UUID of a single tolerance signal
+                that is compared with the actual values through
+                ``compare_func``. Use ``upper_tolerance_uuid`` and/or
+                ``lower_tolerance_uuid`` instead: a single upper limit is
+                ``upper_tolerance_uuid`` alone.
             actual_uuid: UUID for actual measurements. Required: a
                 ``ValueError`` is raised when it is missing.
             event_uuid: UUID for generated events (default None)
-            compare_func: Comparison function (default: operator.ge for greater-than-or-equal)
+            compare_func: Comparison used by the deprecated single
+                ``tolerance_uuid`` path only (default: ``operator.ge``, so
+                ``actual >= tolerance`` is a deviation).
             time_threshold: Time window for grouping events (default: '5min')
-            upper_tolerance_uuid: UUID for upper tolerance limit (optional)
-            lower_tolerance_uuid: UUID for lower tolerance limit (optional)
+            upper_tolerance_uuid: UUID for the upper tolerance limit. Given
+                alone, it is a one-sided upper limit.
+            lower_tolerance_uuid: UUID for the lower tolerance limit. Given
+                alone, it is a one-sided lower limit.
             warning_threshold: Threshold ratio for warning zone (default: 0.8 = 80% of tolerance)
             tolerance_lag: Time lag for tolerance application (default: '0s')
         """
@@ -75,23 +86,26 @@ class ToleranceDeviationEvents(Base):
         self.warning_threshold: float = warning_threshold
         self.tolerance_lag: str = tolerance_lag
 
-        # Handle backward compatibility for tolerance_uuid
+        self.tolerance_uuid: str | None = None
+        self.upper_tolerance_uuid: str | None = upper_tolerance_uuid
+        self.lower_tolerance_uuid: str | None = lower_tolerance_uuid
+        self.separate_tolerances: bool = True
         if upper_tolerance_uuid is None and lower_tolerance_uuid is None:
             if tolerance_uuid is None:
                 raise ValueError(
-                    "Either tolerance_uuid or both upper_tolerance_uuid and lower_tolerance_uuid must be provided"
+                    "Provide upper_tolerance_uuid and/or lower_tolerance_uuid "
+                    "(or the deprecated tolerance_uuid)"
                 )
-            # Use single tolerance for both upper and lower (backward compatibility)
-            self.tolerance_uuid: str | None = tolerance_uuid
-            self.upper_tolerance_uuid: str | None = None
-            self.lower_tolerance_uuid: str | None = None
-            self.separate_tolerances: bool = False
-        else:
-            # Use separate upper and lower tolerances
-            self.tolerance_uuid: str | None = None
-            self.upper_tolerance_uuid: str | None = upper_tolerance_uuid
-            self.lower_tolerance_uuid: str | None = lower_tolerance_uuid
-            self.separate_tolerances: bool = True
+            warnings.warn(
+                "ToleranceDeviationEvents(): tolerance_uuid is deprecated and will "
+                "be removed in ts-shape 2.0; use upper_tolerance_uuid and/or "
+                "lower_tolerance_uuid (a single upper limit is "
+                "upper_tolerance_uuid alone)",
+                DeprecationWarning,
+                stacklevel=4,
+            )
+            self.tolerance_uuid = tolerance_uuid
+            self.separate_tolerances = False
 
     def _apply_tolerance_lag(
         self, df: pd.DataFrame, tolerance_col: str
@@ -161,7 +175,7 @@ class ToleranceDeviationEvents(Base):
         Processes DataFrame to apply tolerance checks, group events by time, and generate an events DataFrame.
 
         Enhanced with:
-        - Separate upper/lower tolerances
+        - Upper/lower tolerances (two-sided or one-sided)
         - Deviation magnitude tracking (absolute and percentage)
         - Warning zones
         - Severity level classification
@@ -186,12 +200,10 @@ class ToleranceDeviationEvents(Base):
         df["systime"] = pd.to_datetime(df["systime"])
         df = df.sort_values(by="systime", kind="stable")
 
-        if not self.separate_tolerances:
-            # Backward compatibility: use single tolerance
-            df = self._process_single_tolerance(df)
-        else:
-            # Use separate upper and lower tolerances
+        if self.separate_tolerances:
             df = self._process_separate_tolerances(df)
+        else:
+            df = self._process_single_tolerance(df)
 
         # Apply time lag to tolerance if specified
         if self.tolerance_lag != "0s":
@@ -203,7 +215,7 @@ class ToleranceDeviationEvents(Base):
 
     def _process_single_tolerance(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Process data using single tolerance (backward compatibility).
+        Process data using the deprecated single ``tolerance_uuid``.
 
         Args:
             df: Input DataFrame
@@ -317,61 +329,55 @@ class ToleranceDeviationEvents(Base):
         Returns:
             Processed DataFrame with events
         """
-        # Create columns for upper and lower tolerance values
-        df["upper_tolerance"] = df.apply(
-            lambda row: (
-                row[self.tolerance_column]
-                if (row["uuid"] == self.upper_tolerance_uuid and row["is_delta"])
-                else pd.NA
-            ),
-            axis=1,
-        )
-
-        df["lower_tolerance"] = df.apply(
-            lambda row: (
-                row[self.tolerance_column]
-                if (row["uuid"] == self.lower_tolerance_uuid and row["is_delta"])
-                else pd.NA
-            ),
-            axis=1,
-        )
-
-        # Forward fill the tolerance values
-        df["upper_tolerance"] = df["upper_tolerance"].ffill()
-        df["lower_tolerance"] = df["lower_tolerance"].ffill()
+        # Upper and lower tolerance in force at each row (forward-filled from
+        # the tolerance signals). A side that is not configured stays NaN.
+        sides = {
+            "upper_tolerance": self.upper_tolerance_uuid,
+            "lower_tolerance": self.lower_tolerance_uuid,
+        }
+        for col, uuid in sides.items():
+            if uuid is None:
+                df[col] = np.nan
+                continue
+            setting = (df["uuid"] == uuid) & df["is_delta"].astype(bool)
+            df[col] = df[self.tolerance_column].where(setting).ffill()
 
         # Remove tolerance setting rows from the dataset
-        df = df[
-            ~df["uuid"].isin([self.upper_tolerance_uuid, self.lower_tolerance_uuid])
-        ]
+        configured = [uuid for uuid in sides.values() if uuid is not None]
+        df = df[~df["uuid"].isin(configured)]
 
-        # Ensure there are no NA values in the tolerance columns before comparison
-        df = df.dropna(subset=["upper_tolerance", "lower_tolerance"])
+        # Rows before the first setting of a configured side are not checked.
+        required = [col for col, uuid in sides.items() if uuid is not None]
+        df = df.dropna(subset=required).copy()
 
-        # Calculate tolerance midpoint and range
-        df["tolerance_midpoint"] = (df["upper_tolerance"] + df["lower_tolerance"]) / 2
-        df["tolerance_range"] = df["upper_tolerance"] - df["lower_tolerance"]
+        upper = df["upper_tolerance"].astype(float)
+        lower = df["lower_tolerance"].astype(float)
+        actual = df[self.actual_column]
+
+        # Tolerance range: the band width when two-sided; the magnitude of
+        # the single limit when one-sided.
+        two_sided = (
+            self.upper_tolerance_uuid is not None
+            and self.lower_tolerance_uuid is not None
+        )
+        if two_sided:
+            df["tolerance_range"] = upper - lower
+        else:
+            df["tolerance_range"] = upper.fillna(lower).abs()
 
         # Calculate deviations for all rows with actual values
         actual_mask = df["uuid"] == self.actual_uuid
 
-        # Absolute deviation from nearest tolerance boundary
-        df.loc[actual_mask, "deviation_from_upper"] = (
-            df.loc[actual_mask, self.actual_column]
-            - df.loc[actual_mask, "upper_tolerance"]
-        )
-        df.loc[actual_mask, "deviation_from_lower"] = (
-            df.loc[actual_mask, "lower_tolerance"]
-            - df.loc[actual_mask, self.actual_column]
-        )
+        # Signed distance beyond each boundary (NaN for a missing side).
+        df.loc[actual_mask, "deviation_from_upper"] = (actual - upper)[actual_mask]
+        df.loc[actual_mask, "deviation_from_lower"] = (lower - actual)[actual_mask]
 
-        # Calculate absolute deviation (distance to nearest boundary)
-        df.loc[actual_mask, "deviation_abs"] = df.loc[actual_mask].apply(
-            lambda row: max(
-                0, max(row["deviation_from_upper"], row["deviation_from_lower"])
-            ),
-            axis=1,
+        # Absolute deviation: distance beyond the violated boundary, 0 inside.
+        beyond = np.fmax(
+            df.loc[actual_mask, "deviation_from_upper"].to_numpy(dtype=float),
+            df.loc[actual_mask, "deviation_from_lower"].to_numpy(dtype=float),
         )
+        df.loc[actual_mask, "deviation_abs"] = np.maximum(0.0, beyond)
 
         # Calculate percentage deviation based on tolerance range
         tolerance_nonzero = df.loc[actual_mask, "tolerance_range"] != 0
@@ -381,22 +387,20 @@ class ToleranceDeviationEvents(Base):
             * 100
         )
 
-        # Calculate severity levels
+        # Calculate severity levels (a missing side never counts as violated)
         df.loc[actual_mask, "severity"] = df.loc[actual_mask].apply(
             lambda row: self._calculate_severity(
                 row["deviation_abs"],
                 row["tolerance_range"],
-                row["upper_tolerance"],
-                row["lower_tolerance"],
+                row["upper_tolerance"] if pd.notna(row["upper_tolerance"]) else np.inf,
+                row["lower_tolerance"] if pd.notna(row["lower_tolerance"]) else -np.inf,
                 row[self.actual_column],
             ),
             axis=1,
         )
 
-        # Check if values are outside tolerance bounds
-        outside_bounds = (df[self.actual_column] > df["upper_tolerance"]) | (
-            df[self.actual_column] < df["lower_tolerance"]
-        )
+        # Check if values are outside tolerance bounds (NaN compares False)
+        outside_bounds = (actual > upper) | (actual < lower)
 
         df = df[outside_bounds]
         df["value_bool"] = True
@@ -431,7 +435,6 @@ class ToleranceDeviationEvents(Base):
         cols_to_drop = [
             "upper_tolerance",
             "lower_tolerance",
-            "tolerance_midpoint",
             "tolerance_range",
             "group_id",
             "deviation_from_upper",
@@ -464,10 +467,15 @@ class ToleranceDeviationEvents(Base):
         within-subgroup (short-term) σ can be estimated: Cp/Cpk are computed
         from the overall σ and are therefore equal to Pp/Ppk.
 
+        With a one-sided spec (only an upper or only a lower limit) Cp/Pp
+        are NaN and Cpk/Ppk are the one-sided index (CPU or CPL); the
+        missing limit is reported as NaN.
+
         Args:
             target_value: Target/nominal value for the process. If None, the
-                midpoint of the tolerances is reported as ``target`` and no
-                ``Cpm`` is computed.
+                midpoint of the tolerances (or the single limit of a
+                one-sided spec) is reported as ``target`` and no ``Cpm`` is
+                computed.
 
         Returns:
             Dictionary containing:
@@ -493,35 +501,29 @@ class ToleranceDeviationEvents(Base):
 
         # Get tolerance limits: the latest setting is the one currently in force.
         if not self.separate_tolerances:
-            # Single tolerance case
+            # Deprecated single tolerance: a one-sided upper limit (the default
+            # compare_func flags actual >= tolerance).
             tolerance_rows = df[df["uuid"] == self.tolerance_uuid]
             if tolerance_rows.empty:
                 raise ValueError(
                     f"No tolerance data found for uuid: {self.tolerance_uuid}"
                 )
-
-            # A single tolerance is a one-sided upper limit (the default
-            # compare_func flags actual >= tolerance). Using it as both USL and
-            # LSL gave a zero-width spec and Cp == 0 for every process; now Cp/Pp
-            # are undefined (NaN) and Cpk/Ppk are the one-sided upper index.
             usl = tolerance_rows[self.tolerance_column].iloc[-1]
             lsl = np.nan
         else:
-            # Separate tolerances case
-            upper_rows = df[df["uuid"] == self.upper_tolerance_uuid]
-            lower_rows = df[df["uuid"] == self.lower_tolerance_uuid]
-
-            if upper_rows.empty:
-                raise ValueError(
-                    f"No upper tolerance data found for uuid: {self.upper_tolerance_uuid}"
-                )
-            if lower_rows.empty:
-                raise ValueError(
-                    f"No lower tolerance data found for uuid: {self.lower_tolerance_uuid}"
-                )
-
-            usl = upper_rows[self.tolerance_column].iloc[-1]
-            lsl = lower_rows[self.tolerance_column].iloc[-1]
+            limits = {}
+            for side, uuid in (
+                ("upper", self.upper_tolerance_uuid),
+                ("lower", self.lower_tolerance_uuid),
+            ):
+                if uuid is None:
+                    limits[side] = np.nan
+                    continue
+                rows = df[df["uuid"] == uuid]
+                if rows.empty:
+                    raise ValueError(f"No {side} tolerance data found for uuid: {uuid}")
+                limits[side] = rows[self.tolerance_column].iloc[-1]
+            usl, lsl = limits["upper"], limits["lower"]
 
         # Get actual measurements
         actual_data = df[df["uuid"] == self.actual_uuid][self.actual_column].dropna()
@@ -545,33 +547,39 @@ class ToleranceDeviationEvents(Base):
         # Determine target value
         target_given = target_value is not None
         if target_value is None:
-            target_value = usl if pd.isna(lsl) else (usl + lsl) / 2
+            if pd.isna(lsl):
+                target_value = usl
+            elif pd.isna(usl):
+                target_value = lsl
+            else:
+                target_value = (usl + lsl) / 2
 
-        # Calculate Cp (potential capability)
+        # Calculate Cp (potential capability); undefined (NaN) when one-sided
         cp = (usl - lsl) / (6 * process_std)
 
-        # Calculate Cpk (actual capability accounting for centering)
+        # Calculate Cpk (actual capability accounting for centering); a
+        # one-sided spec gives the one-sided index (CPU or CPL).
         cpu = (usl - process_mean) / (3 * process_std)
         cpl = (process_mean - lsl) / (3 * process_std)
-        cpk = cpu if pd.isna(cpl) else min(cpu, cpl)
+        cpk = cpu if pd.isna(cpl) else cpl if pd.isna(cpu) else min(cpu, cpl)
 
         # Without subgroups there is no short-term sigma: Pp/Ppk equal Cp/Cpk.
         pp = cp
         ppk = cpk
 
         result = {
-            "Cp": round(cp, 4),
-            "Cpk": round(cpk, 4),
-            "Pp": round(pp, 4),
-            "Ppk": round(ppk, 4),
-            "mean": round(process_mean, 4),
-            "std": round(process_std, 4),
-            "usl": round(usl, 4),
-            "lsl": round(lsl, 4),
-            "target": round(target_value, 4),
+            "Cp": float(cp),
+            "Cpk": float(cpk),
+            "Pp": float(pp),
+            "Ppk": float(ppk),
+            "mean": float(process_mean),
+            "std": float(process_std),
+            "usl": float(usl),
+            "lsl": float(lsl),
+            "target": float(target_value),
         }
         if target_given:
             # Taguchi index (Chan, Cheng & Spiring 1988, JQT 20(3)).
             cpm = cp / np.sqrt(1 + ((process_mean - target_value) / process_std) ** 2)
-            result["Cpm"] = round(cpm, 4)
+            result["Cpm"] = float(cpm)
         return result

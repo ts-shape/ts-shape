@@ -13,7 +13,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import REMOVAL, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class RateOfChangeEvents(Base):
 
     @keyword_only(2)
     def detect_rapid_change(
-        self, threshold: float, window: str = "1min"
+        self, threshold: float, window: str | None = None
     ) -> pd.DataFrame:
         """Flag intervals where rate of change exceeds threshold.
 
@@ -77,8 +77,8 @@ class RateOfChangeEvents(Base):
 
         Args:
             threshold: Minimum absolute rate (units/second) to flag.
-            window: Deprecated; has no effect and will be removed in 1.0.
-                Passing a value other than '1min' emits a
+            window: Deprecated and not used: the rate is always computed
+                between consecutive samples. Passing any value emits a
                 ``DeprecationWarning``. Filter the result on
                 ``duration_seconds`` to drop short intervals.
 
@@ -86,11 +86,14 @@ class RateOfChangeEvents(Base):
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, max_rate, direction.
         """
-        if window != "1min":
+        if window is not None:
             warnings.warn(
-                "window has no effect and will be removed in 1.0",
+                "RateOfChangeEvents.detect_rapid_change: window is not used (the "
+                "rate is computed between consecutive samples) and will be "
+                f"removed in ts-shape {REMOVAL}; filter the result on "
+                "duration_seconds instead",
                 DeprecationWarning,
-                stacklevel=3,
+                stacklevel=4,
             )
         cols = ["start", "end", "max_rate", "direction"]
         empty = empty_event_df("interval", ["max_rate", "direction"])
@@ -161,9 +164,6 @@ class RateOfChangeEvents(Base):
             "max_rate",
             "min_rate",
         ]
-
-        for col in ["mean_rate", "std_rate", "max_rate", "min_rate"]:
-            result[col] = result[col].round(6)
 
         return finalize_summary_df(add_window_bounds(result[cols], window))
 

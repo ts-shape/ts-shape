@@ -107,14 +107,14 @@ class TimezoneShift(Base):
         return df_copy
 
     @classmethod
-    def list_available_timezones(cls) -> list:
+    def list_available_timezones(cls) -> list[str]:
         """
-        Returns a list of all available timezones.
+        Returns a sorted list of all available timezones.
 
         Returns:
-            list: A list of strings representing all available timezones.
+            list: A sorted list of strings representing all available timezones.
         """
-        return available_timezones()
+        return sorted(available_timezones())
 
     @classmethod
     def detect_timezone_awareness(

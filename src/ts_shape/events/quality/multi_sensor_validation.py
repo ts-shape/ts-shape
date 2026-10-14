@@ -124,7 +124,7 @@ class MultiSensorValidationEvents(Base):
                     {
                         "start": ts,
                         "end": end,
-                        "max_spread": round(spread, 6),
+                        "max_spread": float(spread),
                         "sensor_high": valid_means.idxmax(),
                         "sensor_low": valid_means.idxmin(),
                         "duration": end - ts,
@@ -174,8 +174,8 @@ class MultiSensorValidationEvents(Base):
                         "start": ts,
                         "sensor_a": a,
                         "sensor_b": b,
-                        "bias": round(bias, 6),
-                        "abs_bias": round(abs(bias), 6),
+                        "bias": float(bias),
+                        "abs_bias": float(abs(bias)),
                     }
                 )
 
@@ -231,9 +231,9 @@ class MultiSensorValidationEvents(Base):
             events.append(
                 {
                     "start": ts,
-                    "consensus_mean": round(consensus_mean, 6),
-                    "spread_std": round(spread_std, 6),
-                    "consensus_score": round(min(1.0, score), 4),
+                    "consensus_mean": float(consensus_mean),
+                    "spread_std": float(spread_std),
+                    "consensus_score": float(min(1.0, score)),
                 }
             )
 
@@ -293,8 +293,8 @@ class MultiSensorValidationEvents(Base):
                 {
                     "start": ts,
                     "outlier_sensor": outlier,
-                    "deviation": round(deviation, 6),
-                    "other_sensors_mean": round(other_mean, 6),
+                    "deviation": float(deviation),
+                    "other_sensors_mean": float(other_mean),
                 }
             )
 

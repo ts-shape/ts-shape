@@ -52,7 +52,7 @@ trend = tracker.scrap_trend(scrap_uuid="line1:scrap", window="1D")
 | `scrap_cost(scrap_uuid, part_id_uuid, material_costs)` | Monetary cost of scrap by part number / material type | `DataFrame` with `part_number`, `scrap_quantity`, `cost_per_unit`, `total_cost` |
 | `scrap_trend(scrap_uuid, window='1D')` | Scrap quantity per time period | `DataFrame` with `period`, `scrap_quantity` |
 
-All methods accept `handle_resets=True` for scrap counters that reset; the result then gains a `resets` column.
+All methods count scrap across counter resets by default (`handle_resets=True`) and add a `resets` column. Pass `handle_resets=False` for the plain `max(0, last - first)` quantity.
 
 ---
 

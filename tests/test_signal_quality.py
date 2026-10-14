@@ -155,3 +155,16 @@ class TestEmptyData:
         assert len(detector.sampling_regularity()) == 0
         assert len(detector.detect_out_of_range(0, 100)) == 0
         assert len(detector.data_completeness()) == 0
+
+
+def test_sampling_regularity_full_precision():
+    # Intervals 1, 2, 1, 2 ... seconds: mean 1.5 is exact, std is not
+    # representable in 4 decimals.
+    t = pd.Timestamp("2024-01-01") + pd.to_timedelta(
+        np.cumsum([0] + [1, 2] * 10), unit="s"
+    )
+    df = pd.DataFrame({"systime": t, "uuid": "s", "value_double": 1.0})
+    out = SignalQualityEvents(df, "s").sampling_regularity(window="1h")
+    intervals = pd.Series([1.0, 2.0] * 10)
+    assert out.iloc[0]["std_interval"] == pytest.approx(intervals.std(), abs=1e-12)
+    assert out.iloc[0]["std_interval"] != round(intervals.std(), 4)

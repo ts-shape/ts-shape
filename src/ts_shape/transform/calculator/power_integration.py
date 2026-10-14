@@ -41,13 +41,16 @@ Note:
 from __future__ import annotations
 
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
 from pandas.tseries.offsets import Tick
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 
 logger = logging.getLogger(__name__)
 
@@ -156,12 +159,23 @@ class PowerIntegrator(Base):
         # they must share one index or a non-default input index silently
         # mispairs them.
         src = dataframe.reset_index(drop=True)
+        times = pd.to_datetime(src[time_column], errors="coerce")
+        bad_times = int((times.isna() & src[time_column].notna()).sum())
+        if bad_times:
+            warnings.warn(
+                f"{bad_times} value(s) in time column {time_column!r} are not "
+                "timestamps; those rows are skipped.",
+                DataQualityWarning,
+                stacklevel=4,
+            )
+        power = to_numeric_checked(
+            src[value_column], what=f"power column {value_column!r}", stacklevel=4
+        )
         df = pd.DataFrame(
             {
                 "uuid": src[uuid_column],
-                "ts": pd.to_datetime(src[time_column], errors="coerce"),
-                "kw": pd.to_numeric(src[value_column], errors="coerce")
-                * cls._power_scale(power_unit),
+                "ts": times,
+                "kw": power * cls._power_scale(power_unit),
             }
         )
         df = df.dropna(subset=["ts", "kw"])
@@ -318,7 +332,7 @@ class PowerIntegrator(Base):
                 towards neither energy nor coverage, because the power over
                 that span is unknown. Without a cap, one sample before a
                 three-hour outage bills three hours of energy at that power
-                level. Set it above the signal's normal logging cadence -- an
+                level; that is what ``None`` (default) does. Set it above the signal's normal logging cadence -- an
                 on-change signal on a steady machine can legitimately stay silent
                 for a long time, and too tight a cap silently discards real
                 consumption (watch ``coverage``).
@@ -394,7 +408,8 @@ class PowerIntegrator(Base):
             method: 'locf' (step hold, default) or 'linear' (trapezoidal).
             max_gap: Cap on how long one sample may be held (e.g. '15min').
                 Longer gaps are dropped as logging outages -- see
-                :meth:`segment_energy`.
+                :meth:`segment_energy`. ``None`` (default) holds every sample
+                until the next one, however long the gap.
             power_unit: Unit of ``value_column`` -- 'W', 'kW' or 'MW'.
             total: When True (default), sum across every signal in the frame --
                 energy is additive across machines. When False, return one row
@@ -537,7 +552,8 @@ class PowerIntegrator(Base):
             freq: Delta size -- one row per signal per window.
             method: 'locf' (default) or 'linear'.
             max_gap: Cap on how long one sample may be held; longer gaps
-                are dropped as logging outages.
+                are dropped as logging outages. ``None`` (default) holds every
+                sample until the next one, however long the gap.
             power_unit: Unit of ``value_column`` -- 'W', 'kW' or 'MW'.
             total: When True, collapse every signal into one plant-level
                 series identified by ``event_uuid``.

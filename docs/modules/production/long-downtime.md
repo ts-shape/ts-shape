@@ -24,7 +24,6 @@ ld = LongDowntimeEvents(df, "press7:running")
 
 stops = ld.detect_long_downtime(
     min_gap="3h",
-    interval_end="next_change",                 # the state is logged on change only
     data_end=pd.Timestamp("2026-10-14 06:00"),
 )
 
@@ -49,6 +48,6 @@ campaigns = ld.count_events_between_gaps(
 ## Notes
 
 - **State.** By default `value_column` (`value_bool`) is cast to bool: True is running, False is down. For a numeric state, pass `value_range=(low, high)`: values inside the inclusive range count as running.
-- **`interval_end`.** `"last_sample"` (default) ends a downtime at its last sample. A signal logged only on change has one row per stop, so every stop would have zero length and be missed. Use `"next_change"` for such signals; it closes each downtime at the next transition. A downtime still open at the end of the data is bounded by `data_end` (for example "now"), otherwise it is dropped.
-- **Counting.** `count_events_between_gaps` calls `detect_long_downtime` with the default `interval_end="last_sample"` and needs at least two long downtimes. Only rows strictly between the end of one downtime and the start of the next are counted. `aggregation` is `"count"` (rows), `"sum"` (of `value_column`) or `"transitions"` (value changes, the first row included); anything else raises `ValueError`.
+- **`interval_end`.** `"next_change"` (default) closes each downtime at the next transition, which works for dense signals and for signals logged only on change. A downtime still open at the end of the data is bounded by `data_end` (for example "now"), otherwise it is dropped. `"last_sample"` ends a downtime at its last sample; a signal logged only on change then has one zero-length row per stop and every stop is missed.
+- **Counting.** `count_events_between_gaps` calls `detect_long_downtime` with the default `interval_end="next_change"` and needs at least two long downtimes. Only rows strictly between the end of one downtime and the start of the next are counted. `aggregation` is `"count"` (rows), `"sum"` (of `value_column`) or `"transitions"` (value changes, the first row included); anything else raises `ValueError`.
 - The constructor raises `ValueError` if `state_uuid` is not in the DataFrame.

@@ -1,4 +1,5 @@
 import logging
+import warnings
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
@@ -6,6 +7,18 @@ from pathlib import PurePosixPath
 from typing import Any, Union
 
 import pandas as pd
+
+from ts_shape.errors import LoaderConfigWarning, LoaderError
+from ts_shape.loader._utils import (
+    ErrorsMode,
+    check_errors_mode,
+    describe_failures,
+    is_not_found,
+    missing_optional,
+    read_errors,
+    report_failures,
+)
+from ts_shape.utils.coerce import to_numeric_checked
 
 logger = logging.getLogger(__name__)
 
@@ -99,11 +112,8 @@ class AzureBlobEnergyLoader:
         """
         try:
             from azure.storage.blob import ContainerClient
-        except Exception as exc:  # pragma: no cover
-            raise ImportError(
-                "azure-storage-blob is required for AzureBlobEnergyLoader. "
-                "Install with `pip install azure-storage-blob`."
-            ) from exc
+        except ImportError as exc:  # pragma: no cover
+            raise missing_optional("azure-storage-blob", "azure") from exc
 
         # Auto-detect SAS URL passed as connection_string
         if connection_string and connection_string.strip().startswith("http"):
@@ -205,22 +215,36 @@ class AzureBlobEnergyLoader:
         Columns: id, label_lvl1, label_lvl2, label_lvl3, label_lvl4,
                  description, unit, hierarchy_lvl1 … hierarchy_lvl6
 
-        Returns an empty DataFrame with the expected columns when the blob
-        does not exist.
+        Returns an empty DataFrame with the expected columns, and emits a
+        :class:`~ts_shape.errors.LoaderConfigWarning`, when the blob does not
+        exist.
+
+        Raises:
+            LoaderError: When the blob exists but cannot be downloaded or
+                parsed.
         """
         blob_name = self._full_path(_METADATA_PATH)
         try:
             downloader = self.container_client.download_blob(blob_name)
             data = downloader.readall()
             df = pd.read_csv(BytesIO(data), sep="\t", dtype=str)
-            # Ensure all expected columns are present, fill missing with NA
-            for col in _META_COLUMNS:
-                if col not in df.columns:
-                    df[col] = pd.NA
-            return df[_META_COLUMNS].reset_index(drop=True)
-        except Exception as exc:
-            logger.debug("Could not load series metadata from '%s': %s", blob_name, exc)
-            return pd.DataFrame(columns=_META_COLUMNS)
+        except read_errors() as exc:
+            if is_not_found(exc):
+                warnings.warn(
+                    f"Series metadata blob {blob_name!r} does not exist; "
+                    "returning an empty metadata table.",
+                    LoaderConfigWarning,
+                    stacklevel=2,
+                )
+                return pd.DataFrame(columns=_META_COLUMNS)
+            raise LoaderError(
+                describe_failures([(blob_name, exc)], "metadata blob(s)")
+            ) from exc
+        # Ensure all expected columns are present, fill missing with NA
+        for col in _META_COLUMNS:
+            if col not in df.columns:
+                df[col] = pd.NA
+        return df[_META_COLUMNS].reset_index(drop=True)
 
     # ── Timeseries ───────────────────────────────────────────────────────────
 
@@ -229,6 +253,8 @@ class AzureBlobEnergyLoader:
         start: Union[str, "pd.Timestamp"],
         end: Union[str, "pd.Timestamp"],
         series_ids: list[str] | None = None,
+        *,
+        errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
         Load all CSV files in ``csv/YYYY/MM/DD/`` for each date in [start, end].
@@ -237,34 +263,49 @@ class AzureBlobEnergyLoader:
             start: Start date/datetime (inclusive).
             end: End date/datetime (inclusive).
             series_ids: Optional list of series IDs to load. Loads all if None.
+            errors: ``"warn"`` (default) skips a CSV that cannot be downloaded
+                or parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped blob; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
 
         Returns:
             Standard schema DataFrame: systime | uuid | value_double | is_delta
         """
+        check_errors_mode(errors)
         ids_set = set(series_ids) if series_ids else None
         blob_names = self._list_blobs_by_date_range(start, end, ids_set)
-        return self._download_and_concat(blob_names)
+        return self._download_and_concat(blob_names, errors=errors)
 
     def load_by_series_ids(
         self,
         series_ids: list[str],
         start: Union[str, "pd.Timestamp"] | None = None,
         end: Union[str, "pd.Timestamp"] | None = None,
+        *,
+        errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
         Load specific series by ID.
 
-        With start/end: constructs direct paths for each (date, series_id) pair.
-        Without dates: lists all blobs under ``csv/`` and filters by stem.
+        With start/end: lists the day folders in the range and keeps the
+        requested series. Without dates: lists all blobs under ``csv/`` and
+        filters by stem.
 
         Args:
             series_ids: Series IDs to load.
             start: Optional start date filter.
             end: Optional end date filter.
+            errors: ``"warn"`` (default) skips a CSV that cannot be downloaded
+                or parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped blob; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
 
         Returns:
             Standard schema DataFrame: systime | uuid | value_double | is_delta
         """
+        check_errors_mode(errors)
         if start is not None and end is not None:
             blob_names = self._list_blobs_by_date_range(start, end, set(series_ids))
         else:
@@ -279,13 +320,15 @@ class AzureBlobEnergyLoader:
                 if str(b.name).endswith(".csv")
                 and self._series_id_from_blob_name(b.name) in ids_set
             ]
-        return self._download_and_concat(blob_names)
+        return self._download_and_concat(blob_names, errors=errors)
 
     def stream_by_time_range(
         self,
         start: Union[str, "pd.Timestamp"],
         end: Union[str, "pd.Timestamp"],
         series_ids: list[str] | None = None,
+        *,
+        errors: ErrorsMode = "warn",
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream CSV files one at a time as (series_id, DataFrame) tuples.
@@ -296,16 +339,32 @@ class AzureBlobEnergyLoader:
             start: Start date/datetime (inclusive).
             end: End date/datetime (inclusive).
             series_ids: Optional series filter.
+            errors: ``"warn"`` (default) skips a CSV that cannot be downloaded
+                or parsed and emits one (after the last file)
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped blob; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
 
         Yields:
             (series_id, DataFrame) where DataFrame has the standard schema.
         """
+        check_errors_mode(errors)
         ids_set = set(series_ids) if series_ids else None
         blob_names = self._list_blobs_by_date_range(start, end, ids_set)
+        failures: list[tuple[str, Exception]] = []
         for blob_name in blob_names:
-            df = self._download_csv(blob_name)
-            if df is not None and not df.empty:
+            try:
+                df = self._download_csv(blob_name)
+            except read_errors() as exc:
+                if errors == "raise":
+                    raise LoaderError(
+                        describe_failures([(blob_name, exc)], "CSV blob(s)")
+                    ) from exc
+                failures.append((blob_name, exc))
+                continue
+            if not df.empty:
                 yield self._series_id_from_blob_name(blob_name), df
+        report_failures(failures, what="CSV blob(s)", errors=errors)
 
     def list_series(self) -> list[str]:
         """
@@ -377,21 +436,23 @@ class AzureBlobEnergyLoader:
         """Extract series_id from blob path: csv/2026/01/13/sensor_001.csv → sensor_001"""
         return PurePosixPath(blob_name).stem
 
-    def _download_csv(self, blob_name: str) -> pd.DataFrame | None:
-        """Download a single CSV blob and normalize to standard schema. Returns None on error."""
-        try:
-            downloader = self.container_client.download_blob(blob_name)
-            data = downloader.readall()
-            raw = pd.read_csv(
-                BytesIO(data),
-                thousands=self.thousands,
-                decimal=self.decimal,
-            )
-            series_id = self._series_id_from_blob_name(blob_name)
-            return self._normalize_df(raw, series_id)
-        except Exception as exc:
-            logger.debug("Failed to download blob '%s': %s", blob_name, exc)
-            return None
+    def _download_csv(self, blob_name: str) -> pd.DataFrame:
+        """Download a single CSV blob and normalize it to the standard schema.
+
+        Raises:
+            One of :func:`~ts_shape.loader._utils.read_errors` when the blob
+            cannot be downloaded or parsed, or lacks the ``time``/``value``
+            columns.
+        """
+        downloader = self.container_client.download_blob(blob_name)
+        data = downloader.readall()
+        raw = pd.read_csv(
+            BytesIO(data),
+            thousands=self.thousands,
+            decimal=self.decimal,
+        )
+        series_id = self._series_id_from_blob_name(blob_name)
+        return self._normalize_df(raw, series_id)
 
     @staticmethod
     def _normalize_df(raw: pd.DataFrame, series_id: str) -> pd.DataFrame:
@@ -400,31 +461,56 @@ class AzureBlobEnergyLoader:
 
         Input columns: time, value
         Output columns: systime, uuid, value_double, is_delta
+
+        Raises:
+            ValueError: When a non-empty CSV lacks the ``time`` or ``value``
+                column.
         """
-        if raw.empty or "time" not in raw.columns or "value" not in raw.columns:
+        if raw.empty:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)
+        missing = [c for c in ("time", "value") if c not in raw.columns]
+        if missing:
+            raise ValueError(
+                f"series {series_id!r}: CSV has no {missing} column(s); "
+                f"columns are {list(raw.columns)}"
+            )
 
         out = pd.DataFrame()
         out["systime"] = pd.to_datetime(raw["time"], utc=True)
         out["uuid"] = series_id
-        out["value_double"] = pd.to_numeric(raw["value"], errors="coerce")
+        out["value_double"] = to_numeric_checked(
+            raw["value"], what=f"series {series_id!r}"
+        )
         out["is_delta"] = True
         return out.sort_values("systime").reset_index(drop=True)
 
-    def _download_and_concat(self, blob_names: list[str]) -> pd.DataFrame:
-        """Download a list of CSV blobs concurrently and concatenate results."""
+    def _download_and_concat(
+        self, blob_names: list[str], *, errors: ErrorsMode = "warn"
+    ) -> pd.DataFrame:
+        """Download CSV blobs concurrently and concatenate the results.
+
+        A blob that cannot be read is reported according to ``errors`` (see
+        :func:`~ts_shape.loader._utils.report_failures`).
+        """
         if not blob_names:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)
 
         frames: list[pd.DataFrame] = []
+        failures: list[tuple[str, Exception]] = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
                 executor.submit(self._download_csv, name): name for name in blob_names
             }
             for future in as_completed(futures):
-                df = future.result()
-                if df is not None and not df.empty:
+                try:
+                    df = future.result()
+                except read_errors() as exc:
+                    failures.append((futures[future], exc))
+                    continue
+                if not df.empty:
                     frames.append(df)
+        failures.sort(key=lambda item: item[0])
+        report_failures(failures, what="CSV blob(s)", errors=errors, stacklevel=4)
 
         if not frames:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)

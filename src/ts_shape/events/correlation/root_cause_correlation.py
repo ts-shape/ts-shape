@@ -29,6 +29,7 @@ import pandas as pd
 from scipy import stats
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
@@ -112,8 +113,8 @@ class RootCauseCorrelationEvents(Base):
             return pd.Series(dtype="float64")
         frame = sel[[self.time_column, self.value_column]].copy()
         frame[self.time_column] = pd.to_datetime(frame[self.time_column])
-        frame[self.value_column] = pd.to_numeric(
-            frame[self.value_column], errors="coerce"
+        frame[self.value_column] = to_numeric_checked(
+            frame[self.value_column], what=f"signal {uuid!r}"
         )
         frame = frame.dropna(subset=[self.value_column])
         if frame.empty:
@@ -150,7 +151,7 @@ class RootCauseCorrelationEvents(Base):
             left, right = candidate, onsets
         mask = ~np.isnan(left) & ~np.isnan(right)
         left, right = left[mask], right[mask]
-        n = int(len(left))
+        n = len(left)
         if n < 3 or np.ptp(left) == 0 or np.ptp(right) == 0:
             return float("nan"), float("nan"), n
         r, p = stats.pearsonr(left, right)
@@ -167,7 +168,7 @@ class RootCauseCorrelationEvents(Base):
         cand = candidate.to_numpy(dtype=float)
         marks = onsets.to_numpy(dtype=float)
         best: tuple[float, float, int, int] = (float("nan"), float("nan"), 0, 0)
-        for lag in range(0, max_lag + 1):
+        for lag in range(max_lag + 1):
             r, p, n = self._correlate_at_lag(cand, marks, lag)
             if np.isnan(r):
                 continue
@@ -282,10 +283,10 @@ class RootCauseCorrelationEvents(Base):
                     "trigger_event_type": event_type,
                     "trigger_uuid": source,
                     "candidate_uuid": uuid,
-                    "correlation_coefficient": round(r, 6),
+                    "correlation_coefficient": float(r),
                     "lag_seconds": lag_bins * bin_seconds,
-                    "p_value": round(p, 6),
-                    "p_value_adjusted": round(p_adjusted, 6),
+                    "p_value": float(p),
+                    "p_value_adjusted": float(p_adjusted),
                     "significant": bool(p_adjusted <= p_threshold),
                     "sample_count": n,
                     "trigger_count": trigger_count,
@@ -394,8 +395,8 @@ class RootCauseCorrelationEvents(Base):
                     "confidence": (
                         0.0 if best is None else abs(best["correlation_coefficient"])
                     ),
-                    "candidates_tested": int(len(ranked)),
-                    "candidates_significant": int(len(significant)),
+                    "candidates_tested": len(ranked),
+                    "candidates_significant": len(significant),
                     "trigger_count": int(ranked["trigger_count"].iloc[0]),
                     "method": "lagged_onset_correlation",
                 }
@@ -454,7 +455,7 @@ class RootCauseCorrelationEvents(Base):
         marks = onsets.to_numpy(dtype=float)
 
         rows: list[dict[str, Any]] = []
-        for lag in range(0, max_lag + 1):
+        for lag in range(max_lag + 1):
             r, p, n = self._correlate_at_lag(candidate, marks, lag)
             if np.isnan(r):
                 continue
@@ -463,8 +464,8 @@ class RootCauseCorrelationEvents(Base):
                     "uuid": self.event_uuid,
                     "candidate_uuid": candidate_uuid,
                     "lag_seconds": lag * bin_seconds,
-                    "correlation": round(r, 6),
-                    "p_value": round(p, 6),
+                    "correlation": float(r),
+                    "p_value": float(p),
                     "sample_count": n,
                     "method": "lagged_onset_correlation",
                 }

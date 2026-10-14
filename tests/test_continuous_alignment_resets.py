@@ -71,9 +71,11 @@ def aligner():
     )
 
 
-def test_segment_by_cut_loses_post_reset_piece_by_default(aligner):
+def test_segment_by_cut_loses_post_reset_piece_when_naive(aligner):
     aligned = aligner.align_to_reference(station_uuids=["station:a"])
-    result = aligner.segment_by_cut(aligned, part_counter_uuid="counter:int")
+    result = aligner.segment_by_cut(
+        aligned, part_counter_uuid="counter:int", handle_resets=False
+    )
 
     # Original columns preserved, no new reset column.
     assert "piece_id" in result.columns
@@ -84,7 +86,9 @@ def test_segment_by_cut_loses_post_reset_piece_by_default(aligner):
 
 def test_segment_by_cut_handles_resets(aligner):
     aligned = aligner.align_to_reference(station_uuids=["station:a"])
-    default = aligner.segment_by_cut(aligned, part_counter_uuid="counter:int")
+    default = aligner.segment_by_cut(
+        aligned, part_counter_uuid="counter:int", handle_resets=False
+    )
     aware = aligner.segment_by_cut(
         aligned, part_counter_uuid="counter:int", handle_resets=True
     )
@@ -92,3 +96,15 @@ def test_segment_by_cut_handles_resets(aligner):
     # The reset's post-reset value is now counted as a cut.
     assert int(aware["piece_id"].max()) == 12
     assert int(aware["piece_id"].max()) == int(default["piece_id"].max()) + 1
+
+
+def test_segment_by_cut_default_is_reset_aware(aligner):
+    """The default ``handle_resets=True`` counts post-reset production."""
+    aligned = aligner.align_to_reference(station_uuids=["station:a"])
+
+    def call(**kw):
+        return aligner.segment_by_cut(aligned, part_counter_uuid="counter:int", **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert int(default["piece_id"].max()) == 12

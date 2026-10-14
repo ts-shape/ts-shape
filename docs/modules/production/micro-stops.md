@@ -32,7 +32,7 @@ df = pd.DataFrame({
     "value_bool": running,
 })
 
-ms = MicroStopEvents(df, run_state_uuid="line1:running", interval_end="next_change")
+ms = MicroStopEvents(df, run_state_uuid="line1:running")
 stops = ms.detect_micro_stops(max_duration="30s")
 frequency = ms.micro_stop_frequency(window="15min", max_duration="30s")
 impact = ms.micro_stop_impact(window="15min", max_duration="30s")
@@ -60,7 +60,7 @@ print(impact.head())
     The 30-second default works for high-speed discrete manufacturing. For slower processes (e.g., assembly), consider increasing to 60-120 seconds. The key is to capture stops below your standard downtime reporting threshold. Note that `max_duration` is passed to each method separately.
 
 !!! tip "Change-encoded signals"
-    If the run signal only logs a row on each state change, construct with `interval_end="next_change"`; with the default `"last_sample"` every interval collapses to zero duration and no lost time is reported.
+    Intervals close at the next transition by default (`interval_end="next_change"`), so a run signal that only logs a row on each state change is measured correctly. With `interval_end="last_sample"` every interval of such a signal has zero duration and no lost time is reported.
 
 !!! info "Related modules"
     - [Machine State](machine-state.md) — provides the run/idle signal that micro-stop detection analyzes

@@ -156,8 +156,8 @@ stats = batches.batch_duration_statistics()
 # Production yield per batch
 yield_df = batches.batch_yield(counter_uuid='part_counter')
 
-# Transition matrix — which batch follows which
-matrix = batches.batch_transition_matrix()
+# Transitions — which batch follows which (from_state, to_state, transition_count)
+transitions = batches.batch_transition_matrix()
 ```
 
 ---

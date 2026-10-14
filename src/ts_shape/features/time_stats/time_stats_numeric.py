@@ -22,8 +22,8 @@ class TimeGroupedStatistics(Base):
         freq: str,
         stat_method: str,
         *,
-        group_by_uuid: bool = False,
-        handle_resets: bool = False,
+        group_by_uuid: bool = True,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """
         Calculate a specified statistic on the value column over the grouped time intervals.
@@ -34,18 +34,24 @@ class TimeGroupedStatistics(Base):
             value_column (str): The name of the numeric column to calculate statistics on.
             freq (str): Frequency string for time grouping (e.g., 'h' for hourly, 'D' for daily; pandas 3 rejects 'H').
             stat_method (str): The statistical method to apply ('mean', 'sum', 'min', 'max', 'diff', 'range').
-            group_by_uuid (bool): Compute the statistic per ``uuid`` (result
-                indexed by ``uuid`` and time). Default ``False`` pools every
-                row, which mixes signals when the frame holds several uuids.
-            handle_resets (bool): For ``'diff'`` on a cumulative counter, sum
-                reset-aware increments per interval instead of
-                ``last - first`` (which goes negative across a reset). See
-                :func:`ts_shape.utils.counters.counter_per_window`.
+            group_by_uuid (bool): When ``True`` (default) and the frame has a
+                ``uuid`` column, compute the statistic per ``uuid`` (result
+                indexed by ``uuid`` and time), so signals are never mixed.
+                ``False`` pools every row into one series. A frame without a
+                ``uuid`` column is always treated as one series.
+            handle_resets (bool): For ``'diff'``: when ``True`` (default) the
+                column is treated as a cumulative counter and the reset-aware
+                increments are summed per interval (see
+                :func:`ts_shape.utils.counters.counter_per_window`). When
+                ``False`` the result is ``last - first`` within each interval,
+                which is the right choice for a signal that is not a counter
+                (it goes negative across a counter reset). Ignored for the
+                other methods.
 
         Returns:
             pd.DataFrame: A DataFrame with the time intervals and the calculated statistics.
         """
-        if group_by_uuid:
+        if group_by_uuid and "uuid" in dataframe.columns:
             parts = {
                 uuid: cls.calculate_statistic(
                     group,
@@ -53,13 +59,20 @@ class TimeGroupedStatistics(Base):
                     value_column,
                     freq,
                     stat_method,
+                    group_by_uuid=False,
                     handle_resets=handle_resets,
                 )
                 for uuid, group in dataframe.groupby("uuid", sort=True)
             }
             if not parts:
                 return cls.calculate_statistic(
-                    dataframe, time_column, value_column, freq, stat_method
+                    dataframe,
+                    time_column,
+                    value_column,
+                    freq,
+                    stat_method,
+                    group_by_uuid=False,
+                    handle_resets=handle_resets,
                 )
             return pd.concat(parts, names=["uuid"])
 
@@ -109,8 +122,8 @@ class TimeGroupedStatistics(Base):
         freq: str,
         stat_methods: list,
         *,
-        group_by_uuid: bool = False,
-        handle_resets: bool = False,
+        group_by_uuid: bool = True,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """
         Calculate multiple specified statistics on the value column over the grouped time intervals.

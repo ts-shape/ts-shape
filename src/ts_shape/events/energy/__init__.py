@@ -59,9 +59,9 @@ from .energy_performance_indicator import EnergyPerformanceIndicatorEvents
 from .idle_energy_detection import IdleEnergyDetectionEvents
 
 __all__ = [
+    "CarbonIntensityEvents",
     "EnergyConsumptionEvents",
     "EnergyEfficiencyEvents",
-    "IdleEnergyDetectionEvents",
     "EnergyPerformanceIndicatorEvents",
-    "CarbonIntensityEvents",
+    "IdleEnergyDetectionEvents",
 ]

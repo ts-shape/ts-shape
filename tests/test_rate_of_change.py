@@ -85,13 +85,13 @@ class TestDetectRapidChange:
         import warnings
 
         detector = RateOfChangeEvents(step_df, "pressure")
-        base = detector.detect_rapid_change(threshold=10.0)
-        with pytest.warns(DeprecationWarning, match="window has no effect"):
-            other = detector.detect_rapid_change(threshold=10.0, window="1h")
-        pd.testing.assert_frame_equal(base, other)
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            detector.detect_rapid_change(threshold=10.0, window="1min")
+            base = detector.detect_rapid_change(threshold=10.0)
+        for window in ("1h", "1min"):
+            with pytest.warns(DeprecationWarning, match="window is not used"):
+                other = detector.detect_rapid_change(threshold=10.0, window=window)
+            pd.testing.assert_frame_equal(base, other)
 
 
 class TestRateStatistics:

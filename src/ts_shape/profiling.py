@@ -12,7 +12,7 @@ Start every analysis here::
 The report infers each signal's semantics (see :mod:`ts_shape.signals`) and
 checks the things that silently corrupt industrial analytics: logging gaps,
 counter resets, duplicate or out-of-order timestamps, unparseable times,
-missing values, signals stuck at one value, and uuids that spread their
+missing or non-numeric values, signals stuck at one value, and uuids that spread their
 values over several ``value_*`` columns.
 """
 
@@ -166,9 +166,13 @@ def _profile_signal(
     longest_gap = float(diffs.max().total_seconds()) if not diffs.empty else 0.0
 
     resets = 0
+    non_numeric = 0
     vmin = vmax = None
     if spec.value_column in ("value_double", "value_integer") and not present.empty:
         numeric = pd.to_numeric(present, errors="coerce")
+        # ``present`` has no nulls, so every NaN here is a value that is not
+        # numeric; it is reported as an issue below rather than dropped.
+        non_numeric = int(numeric.isna().sum())
         vmin, vmax = float(numeric.min()), float(numeric.max())
         if spec.kind == "counter":
             resets = count_resets(numeric)
@@ -205,6 +209,14 @@ def _profile_signal(
         )
     if len(present) == 0:
         issues.append(("error", "no values", f"{spec.value_column} is empty"))
+    if non_numeric:
+        issues.append(
+            (
+                "error",
+                "non-numeric values",
+                f"{non_numeric} value(s) in {spec.value_column} are not numeric",
+            )
+        )
     if duplicates:
         issues.append(
             (

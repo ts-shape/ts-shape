@@ -27,8 +27,8 @@ monitor = InventoryMonitoringEvents(
 low_stock = monitor.detect_low_stock(min_level=100, hold="2h")
 print(f"Low stock events: {len(low_stock)}")
 
-# Daily consumption rate (units per hour), ignoring refills
-rate = monitor.consumption_rate(window="1D", handle_refills=True)
+# Daily consumption rate (units per hour); refills do not cancel consumption
+rate = monitor.consumption_rate(window="1D")
 
 # Detect when stock falls below the reorder point or safety stock
 breaches = monitor.reorder_point_breach(reorder_level=250, safety_stock=80)
@@ -54,7 +54,7 @@ print(prediction[["systime", "current_level", "estimated_stockout_time_hours"]].
 ## Tips & Hints
 
 !!! tip "Account for replenishment events"
-    By default `consumption_rate()` uses the first-minus-last level of each window, so a refill inside the window cancels out consumption. Pass `handle_refills=True` to sum only level decreases and treat refills like counter resets.
+    By default `consumption_rate()` sums only level decreases and treats a refill like a counter reset. Pass `handle_refills=False` to use the first-minus-last level of each window instead; a refill inside the window then cancels out consumption.
 
 !!! info "Related modules"
     - [`DemandPatternEvents`](demand-patterns.md) - Understand demand patterns driving inventory depletion

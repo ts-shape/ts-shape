@@ -86,7 +86,7 @@ def make_timeseries(
             }
         )
         if value_column == "value_double":
-            frame["value_double"] = np.round(signal, 6)
+            frame["value_double"] = signal
         elif value_column == "value_integer":
             frame["value_integer"] = signal.round().astype("int64")
         else:  # value_bool

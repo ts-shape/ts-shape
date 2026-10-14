@@ -16,8 +16,8 @@ The `ts_shape.eventlog` package goes one step further with a **canonical event l
 
 ```mermaid
 flowchart LR
-    LD1["Detector A<br/><i>legacy DataFrame</i>"]
-    LD2["Detector B<br/><i>legacy DataFrame</i>"]
+    LD1["Detector A<br/><i>detector frame</i>"]
+    LD2["Detector B<br/><i>detector frame</i>"]
     NORM["to_event_log(...)<br/><i>shape-driven adapter</i>"]
     LOG["EventLog<br/><i>events / objects / relations</i>"]
     XES["to_event_log_xes(...)<br/><i>XES style</i>"]
@@ -137,13 +137,13 @@ from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 from ts_shape.eventlog import to_event_log, concat, to_event_log_xes, to_event_log_ocel
 
 # 1. Run two detectors on the same input.
-state_legacy = MachineStateEvents(df, run_state_uuid="asset-A").detect_run_idle()
-outlier_legacy = OutlierDetectionEvents(df2, value_column="torque").detect_outliers_zscore()
+state_frame = MachineStateEvents(df, run_state_uuid="asset-A").detect_run_idle()
+outlier_frame = OutlierDetectionEvents(df2, value_column="torque").detect_outliers_zscore()
 
 # 2. Normalize each into a canonical EventLog.
-state_log = to_event_log(state_legacy, detector="MachineStateEvents.detect_run_idle")
+state_log = to_event_log(state_frame, detector="MachineStateEvents.detect_run_idle")
 outlier_log = to_event_log(
-    outlier_legacy,
+    outlier_frame,
     detector="OutlierDetectionEvents.detect_outliers_zscore",
     objects={"batch": "batch_id"},
 )
@@ -167,14 +167,14 @@ tables = to_event_log_ocel(log)
 
 OCEL is multi-object: an event can be linked to *several* objects of *several* types. ts-shape distinguishes two ways an object ends up on an event:
 
-1. **Auto-extracted** by the adapter from a standard legacy column. Each `LabelRule` declares `produces_objects` (e.g. `("asset",)`); when the legacy DataFrame contains the matching column (e.g. `source_uuid`), the asset object is created automatically.
+1. **Auto-extracted** by the adapter from a standard detector-frame column. Each `LabelRule` declares `produces_objects` (e.g. `("asset",)`); when the detector frame contains the matching column (e.g. `source_uuid`), the asset object is created automatically.
 2. **Caller-supplied** via the `objects=` argument. This is for *contextual* annotations — "this outlier happened during batch B-2026-117 on shift A". Caller-supplied bindings can use any object type.
 
 A binding value is one of: a **column name** (string), a **callable** `row -> oid`, a **`pd.Series`** aligned with the detector output, or a **non-string scalar** broadcast to every row. A bare string is always read as a column name — for a constant id use a callable.
 
 ```python
 to_event_log(
-    legacy_df,
+    detector_frame,
     detector="OutlierDetectionEvents.detect_outliers_zscore",
     objects={
         "batch":    "batch_id",                 # column name
@@ -193,7 +193,7 @@ Pass `o2o=` and `object_changes=` to attach the two remaining OCEL 2.0 tables. E
 
 ```python
 to_event_log(
-    legacy_df,
+    detector_frame,
     detector="OutlierDetectionEvents.detect_outliers_zscore",
     objects={"asset": "source_uuid", "station": lambda r: "line-1"},
     o2o=[{"ocel:oid": "asset-A", "ocel:oid_2": "line-1", "ocel:qualifier": "part_of"}],

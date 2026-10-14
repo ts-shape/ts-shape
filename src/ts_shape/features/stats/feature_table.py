@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_numeric_dtype, is_object_dtype
@@ -53,9 +54,7 @@ class DescriptiveFeatures:
         }
         return statistics
 
-    def compute_per_group(
-        self, group: pd.DataFrame
-    ) -> dict[str, dict[str, int | float | str | bool]]:
+    def compute_per_group(self, group: pd.DataFrame) -> dict[str, dict[str, Any]]:
         """Compute and return statistics for each column in the DataFrame group.
 
         Args:
@@ -65,7 +64,7 @@ class DescriptiveFeatures:
             dict: A dictionary with overall statistics, and string, numeric, and
                 boolean statistics per column.
         """
-        results = {"overall": self.overall_stats(group)}
+        results: dict[str, dict[str, Any]] = {"overall": self.overall_stats(group)}
         for col in group.columns:
             if col == "uuid":
                 continue
@@ -89,7 +88,7 @@ class DescriptiveFeatures:
 
     def compute(
         self, output_format: str = "dict"
-    ) -> pd.DataFrame | dict[str, dict[str, dict[str, int | float | str | bool]]]:
+    ) -> pd.DataFrame | dict[str, dict[str, dict[str, Any]]]:
         """Compute and return descriptive statistics for each UUID in the DataFrame.
 
         Args:

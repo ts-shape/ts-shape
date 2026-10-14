@@ -41,7 +41,7 @@ completeness = sq.data_completeness(window="1h", expected_freq="1s")
 |--------|---------|---------|
 | `detect_missing_data(expected_freq='1s', tolerance_factor=2.0)` | Find gaps exceeding expected sampling interval | DataFrame with `start`, `end`, `gap_duration`, `expected_samples_missing` |
 | `sampling_regularity(window='1h')` | Compute inter-sample interval statistics per window | DataFrame with `start`, `mean_interval`, `std_interval`, `min_interval`, `max_interval`, `regularity_score` |
-| `detect_out_of_range(min_value, max_value)` | Flag intervals outside physical or expected range | DataFrame with `start`, `end`, `duration`, `min_observed`, `max_observed`, `direction` |
+| `detect_out_of_range(min_value, max_value, interval_end='next_change')` | Flag intervals outside physical or expected range; an interval ends at the next sample back in range, so change-encoded signals report the real time out of range (`interval_end='last_sample'` ends it at the last flagged sample) | DataFrame with `start`, `end`, `duration`, `min_observed`, `max_observed`, `direction` |
 | `data_completeness(window='1h', expected_freq='1s')` | Calculate percentage of expected samples received | DataFrame with `start`, `expected_count`, `actual_count`, `completeness_pct` |
 
 ---

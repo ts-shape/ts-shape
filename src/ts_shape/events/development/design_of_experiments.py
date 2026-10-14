@@ -176,12 +176,10 @@ class DesignOfExperimentsEvents(Base):
                 if u not in block.columns:
                     row[f"factor__{u}_level"] = np.nan
                     continue
-                mean_val = float(block[u].mean())
-                k = n_levels.get(u)
-                # When n_levels[u] is set we cannot bin a single run in
-                # isolation, so we just attach the mean and rely on the
-                # post-pass below to assign discrete bin labels.
-                row[f"factor__{u}_level"] = mean_val if k is None else mean_val
+                # A single run cannot be binned in isolation: attach the mean
+                # here; the post-pass below assigns discrete levels (binned
+                # into n_levels[u] groups when set).
+                row[f"factor__{u}_level"] = float(block[u].mean())
             events.append(row)
 
         if not events:
@@ -296,7 +294,7 @@ class DesignOfExperimentsEvents(Base):
                     {
                         "factor": u,
                         "level": level,
-                        "n_runs": int(len(group)),
+                        "n_runs": len(group),
                         "response_mean": response_mean,
                         "response_std": (
                             float(group["_response"].std(ddof=1))

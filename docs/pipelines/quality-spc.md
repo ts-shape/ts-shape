@@ -153,7 +153,8 @@ pipe = (
 
 Each detector's constructor and method keyword arguments are passed flat —
 the pipeline routes them by name. The SPC `process` step applies the Western
-Electric rules; `include_severity=True` adds the `rule` and `severity` columns.
+Electric rules; `include_severity=True` (the default) adds the `triggered_rule` and
+`severity` columns.
 
 !!! tip "Choose the right outlier method"
     - **Z-score**: normally distributed signals (most process measurements)

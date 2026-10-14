@@ -31,8 +31,8 @@ def test_station_utilization_time_weighted():
     )
     bd = BottleneckDetectionEvents(df)
 
-    naive = bd.station_utilization(["s1"], window="1h")
-    weighted = bd.station_utilization(["s1"], window="1h", time_weighted=True)
+    naive = bd.station_utilization(["s1"], window="1h", time_weighted=False)
+    weighted = bd.station_utilization(["s1"], window="1h")  # default: weighted
 
     first_naive = naive[naive["start"] == pd.Timestamp("2024-01-01 09:00:00")]
     first_weighted = weighted[weighted["start"] == pd.Timestamp("2024-01-01 09:00:00")]
@@ -61,8 +61,8 @@ def test_duty_cycle_per_window_time_weighted():
         ]
     )
     dc = DutyCycleEvents(df, "sig")
-    naive = dc.duty_cycle_by_window(window="1h")
-    weighted = dc.duty_cycle_by_window(window="1h", time_weighted=True)
+    naive = dc.duty_cycle_by_window(window="1h", time_weighted=False)
+    weighted = dc.duty_cycle_by_window(window="1h")  # default: weighted
     assert naive["duty_cycle_pct"].iloc[0] == 50.0
     assert weighted["duty_cycle_pct"].iloc[0] > 95.0
 

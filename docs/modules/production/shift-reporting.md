@@ -47,7 +47,7 @@ result = reporter.shift_targets(counter_uuid="line1:parts", targets=targets)
 | `shift_production(counter_uuid, part_id_uuid=None)` | Production totals per shift, optionally split by part ID | `DataFrame` with `date`, `shift`, `quantity` (plus `part_number` when `part_id_uuid` is given) |
 | `shift_comparison(counter_uuid, days=7)` | Compare shift performance over a number of days | `DataFrame` with `shift`, `avg_quantity`, `min_quantity`, `max_quantity`, `std_quantity`, `days_count` |
 | `shift_targets(counter_uuid, targets)` | Compare actual production against per-shift targets | `DataFrame` with `date`, `shift`, `actual`, `target`, `variance`, `achievement_pct` |
-| `best_and_worst_shifts(counter_uuid, days=30)` | Identify the five best and five worst shifts over a period | `dict` with `"best"` and `"worst"` DataFrames |
+| `best_and_worst_shifts(counter_uuid, days=30)` | Identify the five best and five worst shifts over a period | `DataFrame` with `start`, `end`, `duration_seconds`, `rank_type` (`"best"`/`"worst"`), `date`, `shift`, `quantity`. `as_frame=False` returns the deprecated `dict` form |
 
 Without `shift_definitions`, the default shifts are `shift_1` (06:00-14:00), `shift_2` (14:00-22:00) and `shift_3` (22:00-06:00).
 

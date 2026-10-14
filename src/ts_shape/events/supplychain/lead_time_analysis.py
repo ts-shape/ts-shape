@@ -210,7 +210,7 @@ class LeadTimeAnalysisEvents(Base):
                     "min_hours": float(hours.min()),
                     "max_hours": float(hours.max()),
                     "p95_hours": float(hours.quantile(0.95)),
-                    "count": int(len(hours)),
+                    "count": len(hours),
                 }
             ]
         )

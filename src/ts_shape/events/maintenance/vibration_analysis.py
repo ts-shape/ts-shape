@@ -49,7 +49,7 @@ class VibrationAnalysisEvents(Base):
         threshold_factor: float = 1.5,
         window: str = "1min",
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """
         Compute rolling RMS and flag intervals exceeding baseline_rms * threshold_factor.
@@ -58,11 +58,11 @@ class VibrationAnalysisEvents(Base):
             baseline_rms: Known baseline RMS value for healthy equipment.
             threshold_factor: Multiplier above baseline to trigger alarm.
             window: Rolling window size.
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
-                :func:`ts_shape.utils.intervals.interval_end_times`.
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                next sample (the transition), so the interval spans the time the
+                condition held and change-encoded signals -- one row per change --
+                keep their duration. ``"last_sample"`` ends it at its last flagged
+                sample. See :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
@@ -213,7 +213,7 @@ class VibrationAnalysisEvents(Base):
                     "is_delta": True,
                     "amplitude": a["amplitude"],
                     "baseline_amplitude": amplitudes[0]["amplitude"],
-                    "growth_pct": round(growth_pct, 6),
+                    "growth_pct": float(growth_pct),
                 }
             )
 
@@ -285,12 +285,12 @@ class VibrationAnalysisEvents(Base):
                     "uuid": self.event_uuid,
                     "source_uuid": self.signal_uuid,
                     "is_delta": True,
-                    "rms": round(rms_val, 6),
-                    "peak": round(peak_val, 6),
+                    "rms": float(rms_val),
+                    "peak": float(peak_val),
                     "crest_factor": (
-                        round(crest_factor, 6) if crest_factor is not None else None
+                        float(crest_factor) if crest_factor is not None else None
                     ),
-                    "kurtosis": round(kurt_val, 6),
+                    "kurtosis": float(kurt_val),
                 }
             )
 

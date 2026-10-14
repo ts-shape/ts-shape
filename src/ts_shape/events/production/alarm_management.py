@@ -217,10 +217,10 @@ class AlarmManagementEvents(Base):
                 {
                     "source_uuid": self.alarm_uuid,
                     "alarm_count": len(intervals),
-                    "min_duration_seconds": round(durations.min(), 2),
-                    "avg_duration_seconds": round(durations.mean(), 2),
-                    "max_duration_seconds": round(durations.max(), 2),
-                    "total_duration_seconds": round(durations.sum(), 2),
+                    "min_duration_seconds": durations.min(),
+                    "avg_duration_seconds": durations.mean(),
+                    "max_duration_seconds": durations.max(),
+                    "total_duration_seconds": durations.sum(),
                 }
             ]
         )

@@ -244,7 +244,7 @@ class TestIdleEnergyDetectionEvents:
 
 
 class TestIdleFractionScale:
-    """machine_running_pct is a 0-1 fraction, so idle_fraction = 1 - pct."""
+    """machine_running_ratio is a 0-1 fraction, so idle_fraction = 1 - ratio."""
 
     @staticmethod
     def _frame() -> pd.DataFrame:
@@ -258,8 +258,12 @@ class TestIdleFractionScale:
 
     def test_by_window_uses_fraction(self):
         ev = IdleEnergyDetectionEvents(self._frame())
-        row = ev.idle_energy_by_window("meter:main", "state:m1", window="1h").iloc[0]
-        assert row["machine_running_pct"] == pytest.approx(0.3)
+        # Sample-weighted: 3 of 10 state samples are running.
+        row = ev.idle_energy_by_window(
+            "meter:main", "state:m1", window="1h", time_weighted=False
+        ).iloc[0]
+        assert row["machine_running_ratio"] == pytest.approx(0.3)
+        assert row["machine_running_pct"] == pytest.approx(30.0)
         assert row["idle_fraction"] == pytest.approx(0.7)
         assert row["idle_energy"] == pytest.approx(7.0)
         assert row["running_energy"] == pytest.approx(3.0)
@@ -513,8 +517,12 @@ class TestIdleThresholdConsistency:
 
     def test_running_ratio_column(self):
         ev = IdleEnergyDetectionEvents(self._frame())
-        out = ev.idle_energy_by_window("meter:main", "state:m1", window="1h")
-        assert (out["machine_running_ratio"] == out["machine_running_pct"]).all()
+        out = ev.idle_energy_by_window(
+            "meter:main", "state:m1", window="1h", time_weighted=False
+        )
+        assert out["machine_running_pct"].to_numpy() == pytest.approx(
+            out["machine_running_ratio"].to_numpy() * 100.0
+        )
         assert out["machine_running_ratio"].iloc[0] == pytest.approx(0.05)
 
     def test_by_shift_applies_idle_threshold_like_by_window(self):

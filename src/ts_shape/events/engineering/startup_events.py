@@ -314,7 +314,7 @@ class StartupDetectionEvents(Base):
             combined_events = []
 
             # Get events from first signal as reference
-            first_sig = list(signal_events.keys())[0]
+            first_sig = next(iter(signal_events))
             for _, ref_event in signal_events[first_sig].iterrows():
                 ref_start = ref_event["start"]
 
@@ -919,13 +919,15 @@ class StartupDetectionEvents(Base):
                         )
                     ]
 
-                    if not stability_window.empty:
-                        if not (
+                    if (
+                        not stability_window.empty
+                        and not (
                             stability_window[self.value_column] >= completion_threshold
-                        ).all():
-                            failure_detected = True
-                            failure_reason = "insufficient_stability_at_completion"
-                            failure_time = completion_time + stability_td
+                        ).all()
+                    ):
+                        failure_detected = True
+                        failure_reason = "insufficient_stability_at_completion"
+                        failure_time = completion_time + stability_td
 
             if failure_detected:
                 time_to_failure = (

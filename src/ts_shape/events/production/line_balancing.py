@@ -186,9 +186,6 @@ class LineBalancingEvents(Base):
         )
         out = agg.reset_index()
         out["end"] = self._window_bounds(window, out["start"])
-        out["cycle_time_mean"] = out["cycle_time_mean"].round(3)
-        out["cycle_time_median"] = out["cycle_time_median"].round(3)
-        out["cycle_time_std"] = out["cycle_time_std"].round(3)
         return finalize_summary_df(out)
 
     def balance_metrics(
@@ -258,6 +255,7 @@ class LineBalancingEvents(Base):
             total = float(times.sum())
             efficiency = total / (n * bottleneck) if (n > 0 and bottleneck > 0) else 0.0
             smoothness = float(np.sqrt(np.sum((bottleneck - times) ** 2)))
+            theoretical_min: int | float
             if takt is not None and takt > 0:
                 theoretical_min = math.ceil(total / takt)
             else:
@@ -268,11 +266,11 @@ class LineBalancingEvents(Base):
                 "end": start + pd.Timedelta(window),
                 "n_stations": n,
                 "bottleneck_uuid": bottleneck_uuid,
-                "bottleneck_cycle_time": round(bottleneck, 3),
-                "takt_seconds": round(takt, 3) if takt is not None else np.nan,
-                "balance_efficiency_pct": round(efficiency * 100, 2),
-                "balance_delay_pct": round((1 - efficiency) * 100, 2),
-                "smoothness_index": round(smoothness, 3),
+                "bottleneck_cycle_time": bottleneck,
+                "takt_seconds": takt if takt is not None else np.nan,
+                "balance_efficiency_pct": efficiency * 100,
+                "balance_delay_pct": (1 - efficiency) * 100,
+                "smoothness_index": smoothness,
                 "theoretical_min_stations": theoretical_min,
             }
             if require_all_stations:
@@ -323,8 +321,8 @@ class LineBalancingEvents(Base):
                 continue
             mean_ct = float(means[uuid])
             if takt is not None and takt > 0:
-                loading = round(mean_ct / takt * 100, 2)
-                idle = round(max(takt - mean_ct, 0.0), 3)
+                loading = mean_ct / takt * 100
+                idle = max(takt - mean_ct, 0.0)
             else:
                 loading = np.nan
                 idle = np.nan
@@ -332,8 +330,8 @@ class LineBalancingEvents(Base):
                 {
                     "uuid": uuid,
                     "station_name": name,
-                    "cycle_time_mean": round(mean_ct, 3),
-                    "takt_seconds": round(takt, 3) if takt is not None else np.nan,
+                    "cycle_time_mean": mean_ct,
+                    "takt_seconds": takt if takt is not None else np.nan,
                     "loading_pct": loading,
                     "idle_to_takt_seconds": idle,
                     "is_bottleneck": uuid == bottleneck_uuid,

@@ -165,12 +165,12 @@ class CapabilityTrendingEvents(Base):
             events.append(
                 {
                     "start": ts,
-                    "cp": round(cp, 4) if not np.isnan(cp) else np.nan,
-                    "cpk": round(cpk, 4) if not np.isnan(cpk) else np.nan,
-                    "pp": round(pp, 4) if not np.isnan(pp) else np.nan,
-                    "ppk": round(ppk, 4) if not np.isnan(ppk) else np.nan,
-                    "mean": round(mean, 6),
-                    "std": round(std, 6),
+                    "cp": float(cp),
+                    "cpk": float(cpk),
+                    "pp": float(pp),
+                    "ppk": float(ppk),
+                    "mean": float(mean),
+                    "std": float(std),
                     "n_samples": n,
                 }
             )
@@ -230,7 +230,7 @@ class CapabilityTrendingEvents(Base):
             prev_avg = float(np.mean(prev)) if len(prev) > 0 else np.nan
 
             if not np.isnan(prev_avg) and prev_avg > 0:
-                drop_pct = round((prev_avg - cpk) / prev_avg * 100, 2)
+                drop_pct = float((prev_avg - cpk) / prev_avg * 100)
             else:
                 drop_pct = 0.0
 
@@ -239,10 +239,8 @@ class CapabilityTrendingEvents(Base):
             events.append(
                 {
                     "start": cap.iloc[i]["start"],
-                    "cpk": round(cpk, 4),
-                    "prev_avg_cpk": (
-                        round(prev_avg, 4) if not np.isnan(prev_avg) else np.nan
-                    ),
+                    "cpk": float(cpk),
+                    "prev_avg_cpk": (float(prev_avg)),
                     "drop_pct": drop_pct,
                     "alert": alert,
                 }
@@ -323,16 +321,16 @@ class CapabilityTrendingEvents(Base):
                 # The fitted line crosses the threshold at window index
                 # (threshold - intercept) / slope; count windows from i.
                 breach_at = (threshold - intercept) / slope
-                windows_to = max(0, round(breach_at - i, 1))
+                windows_to = max(0, float(breach_at - i))
             else:
                 windows_to = np.nan  # Not degrading
 
             events.append(
                 {
                     "start": cap.iloc[i]["start"],
-                    "cpk": round(cpk, 4),
-                    "trend_slope": round(slope, 6),
-                    "forecast_cpk": round(forecast_cpk, 4),
+                    "cpk": float(cpk),
+                    "trend_slope": float(slope),
+                    "forecast_cpk": float(forecast_cpk),
                     "windows_to_threshold": windows_to,
                 }
             )
@@ -402,9 +400,9 @@ class CapabilityTrendingEvents(Base):
             events.append(
                 {
                     "start": ts,
-                    "estimated_yield_pct": round(yield_pct, 4),
-                    "dpmo": round(dpmo, 1),
-                    "sigma_level": round(sigma_level, 2),
+                    "estimated_yield_pct": float(yield_pct),
+                    "dpmo": float(dpmo),
+                    "sigma_level": float(sigma_level),
                 }
             )
 

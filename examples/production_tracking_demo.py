@@ -208,12 +208,11 @@ def demo_shift_reporting():
         value_column_counter='value_integer',
         days=5,
     )
-    print("  Best shifts:")
-    if not results['best'].empty:
-        print(results['best'].to_string(index=False))
-    print("  Worst shifts:")
-    if not results['worst'].empty:
-        print(results['worst'].to_string(index=False))
+    for rank_type in ("best", "worst"):
+        ranked = results[results["rank_type"] == rank_type]
+        print(f"  {rank_type.capitalize()} shifts:")
+        if not ranked.empty:
+            print(ranked.to_string(index=False))
 
 
 def demo_downtime_tracking():

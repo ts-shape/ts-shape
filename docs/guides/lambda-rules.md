@@ -58,7 +58,7 @@ flowchart LR
     COMP --> LD["LambdaDetector"]
     SP --> REG["register_lambda_rule<br/>(writes REGISTRY)"]
     DF[("DataFrame")] --> LD
-    LD --> LG["legacy DataFrame"]
+    LD --> LG["detector frame"]
     LG --> NORM["to_event_log"]
     REG -.-> NORM
     NORM --> EL["EventLog"]

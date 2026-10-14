@@ -21,14 +21,14 @@ logger = logging.getLogger(__name__)
 
 # Optional dependency: mirror the scikit-learn handling in
 # events/quality/outlier_detection.py -- import once, expose a flag.
+_UREG: "pint.UnitRegistry | None"
 try:
     import pint
 
-    PINT_AVAILABLE = True
     _UREG = pint.UnitRegistry()
 except ImportError:  # pragma: no cover - exercised only without the extra
-    PINT_AVAILABLE = False
     _UREG = None
+PINT_AVAILABLE = _UREG is not None
 
 _INSTALL_HINT = (
     "Unit conversion requires the 'pint' library. "
@@ -50,9 +50,11 @@ _ALIASES = {
 }
 
 
-def _require_pint() -> None:
-    if not PINT_AVAILABLE:
+def _require_pint() -> "pint.UnitRegistry":
+    """Return the shared unit registry, or raise when pint is not installed."""
+    if _UREG is None:
         raise ImportError(_INSTALL_HINT)
+    return _UREG
 
 
 def _normalize(unit: str) -> str:
@@ -90,9 +92,9 @@ class UnitConverter(Base):
             ImportError: If the ``pint`` library is not installed.
             ValueError: If a unit is unknown or the units are incompatible.
         """
-        _require_pint()
+        ureg = _require_pint()
         try:
-            quantity = _UREG.Quantity(value, _normalize(from_unit))
+            quantity = ureg.Quantity(value, _normalize(from_unit))
             return float(quantity.to(_normalize(to_unit)).magnitude)
         except pint.PintError as exc:
             raise ValueError(
@@ -151,12 +153,12 @@ class UnitConverter(Base):
             ColumnNotFoundError: If ``column_name`` is missing.
             ValueError: If a unit is unknown or the units are incompatible.
         """
-        _require_pint()
+        ureg = _require_pint()
         Base._validate_column(dataframe, column_name)
         df = dataframe.copy()
         target = target_column or column_name
         try:
-            quantity = _UREG.Quantity(
+            quantity = ureg.Quantity(
                 df[column_name].to_numpy(dtype=float), _normalize(from_unit)
             )
             df[target] = quantity.to(_normalize(to_unit)).magnitude

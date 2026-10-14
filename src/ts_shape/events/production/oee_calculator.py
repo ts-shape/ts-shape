@@ -131,7 +131,9 @@ class OEEEvents(Base):
                 planned time. Without it, an overnight or logger gap while the
                 last state was ``running`` is booked as run time, inflating
                 availability. Only meaningful when ``planned_time_hours`` is
-                None (the planned time is derived from the data).
+                None (the planned time is derived from the data). ``None``
+                (default) applies no cap: every interval between readings,
+                however long, counts toward the preceding state.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -188,9 +190,9 @@ class OEEEvents(Base):
             results.append(
                 {
                     "date": date,
-                    "run_seconds": round(run_seconds, 2),
-                    "planned_seconds": round(planned_seconds, 2),
-                    "availability_pct": round(min(availability, 100.0), 2),
+                    "run_seconds": run_seconds,
+                    "planned_seconds": planned_seconds,
+                    "availability_pct": min(availability, 100.0),
                 }
             )
 
@@ -211,7 +213,7 @@ class OEEEvents(Base):
         *,
         value_column: str = "value_integer",
         run_value_column: str = "value_bool",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate performance percentage (actual vs ideal throughput).
@@ -226,16 +228,17 @@ class OEEEvents(Base):
             run_state_uuid: Optional UUID for run-state to compute actual run time.
             value_column: Column holding counter values.
             run_value_column: Column holding boolean run state.
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
                 ``actual_parts`` is the reset-aware total. The result gains a
                 ``resets`` column with the number of resets observed each day.
-                When False (default), ``actual_parts`` is simply
+                When False, ``actual_parts`` is simply
                 ``max(0, last - first)`` and a day containing a reset reports
                 too little.
             max_gap: Optional cap forwarded to :meth:`availability`
                 when ``run_state_uuid`` is given, so a logging gap does not
                 inflate the run time used as the performance denominator.
+                ``None`` (default) applies no cap.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -298,9 +301,9 @@ class OEEEvents(Base):
             row = {
                 "date": date,
                 "actual_parts": int(actual_parts),
-                "ideal_parts": round(ideal_parts, 2),
-                "run_seconds": round(run_seconds, 2),
-                "performance_pct": round(min(performance, 100.0), 2),
+                "ideal_parts": ideal_parts,
+                "run_seconds": run_seconds,
+                "performance_pct": min(performance, 100.0),
             }
             if handle_resets:
                 row["resets"] = count_resets(grp[value_column])
@@ -320,7 +323,7 @@ class OEEEvents(Base):
         reject_uuid: str,
         *,
         value_column: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Calculate quality percentage (good parts / total parts).
 
@@ -328,12 +331,12 @@ class OEEEvents(Base):
             total_uuid: UUID of the total-parts counter.
             reject_uuid: UUID of the reject-parts counter.
             value_column: Column holding counter values.
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset for both the total and the
                 reject counters, so a day containing a reset is not
                 under-reported. The result gains a ``resets`` column with the
                 combined number of resets (total + reject) observed each day.
-                When False (default), both quantities are ``max(0, last - first)``.
+                When False, both quantities are ``max(0, last - first)``.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -401,7 +404,7 @@ class OEEEvents(Base):
                 "total_parts": int(total_parts),
                 "reject_parts": int(reject_parts),
                 "good_parts": int(good_parts),
-                "quality_pct": round(min(quality, 100.0), 2),
+                "quality_pct": min(quality, 100.0),
             }
             if handle_resets:
                 row["resets"] = count_resets(grp[value_column]) + int(
@@ -427,7 +430,7 @@ class OEEEvents(Base):
         reject_uuid: str | None = None,
         *,
         planned_time_hours: float | None = None,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         max_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate daily OEE = Availability * Performance * Quality.
@@ -442,15 +445,17 @@ class OEEEvents(Base):
             total_uuid: Optional UUID of total-parts counter (for quality).
             reject_uuid: Optional UUID of reject-parts counter (for quality).
             planned_time_hours: Fixed planned production hours per day.
-            handle_resets: When True, the part / total / reject counters are
+            handle_resets: When True (default), the part / total / reject counters are
                 treated as reset-aware (see :meth:`performance` and
                 :meth:`quality`), so a day where a counter resets does
                 not silently drag OEE toward zero. Forwarded to the performance
-                and quality components. Default False.
+                and quality components. Default True.
             max_gap: Optional cap (e.g. "15min") forwarded to the availability
                 and performance components so a logging gap is not booked as run
                 time (which would inflate availability and understate
-                performance). Default None.
+                performance). ``None`` (default) applies no cap: every
+                interval between readings, however long, counts toward the
+                preceding state.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -509,12 +514,12 @@ class OEEEvents(Base):
             * merged["performance_pct"]
             * merged["quality_pct"]
             / 10000.0  # three percentages multiplied: /100 /100
-        ).round(2)
+        )
 
         return (
             merged[key_cols + oee_extra].sort_values(COL_START).reset_index(drop=True)
         )
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in 2.0.
 OEECalculator = deprecated_class(OEEEvents, "OEECalculator")

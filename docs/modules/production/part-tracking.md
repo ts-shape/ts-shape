@@ -58,24 +58,24 @@ resets = pt.detect_resets(part_id_uuid="part_id", counter_uuid="part_counter")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `production_by_part(part_id_uuid, counter_uuid, window='1h', handle_resets=False)` | Count parts produced per part number per time window | DataFrame with `start`, `part_number`, `quantity`, `first_count`, `last_count` (plus `resets` when `handle_resets=True`) |
-| `daily_production_summary(part_id_uuid, counter_uuid, handle_resets=False)` | Aggregate daily production totals by part number | DataFrame with `date`, `part_number`, `total_quantity`, `hours_active` (plus `resets` when `handle_resets=True`) |
-| `production_totals(part_id_uuid, counter_uuid, start_date=None, end_date=None, handle_resets=False)` | Compute total production by part number, optionally limited to a date range | DataFrame with `part_number`, `total_quantity`, `days_produced` (plus `resets` when `handle_resets=True`) |
+| `production_by_part(part_id_uuid, counter_uuid, window='1h', handle_resets=True)` | Count parts produced per part number per time window | DataFrame with `start`, `part_number`, `quantity`, `first_count`, `last_count` (plus `resets` unless `handle_resets=False`) |
+| `daily_production_summary(part_id_uuid, counter_uuid, handle_resets=True)` | Aggregate daily production totals by part number | DataFrame with `date`, `part_number`, `total_quantity`, `hours_active` (plus `resets` unless `handle_resets=False`) |
+| `production_totals(part_id_uuid, counter_uuid, start_date=None, end_date=None, handle_resets=True)` | Compute total production by part number, optionally limited to a date range | DataFrame with `part_number`, `total_quantity`, `days_produced` (plus `resets` unless `handle_resets=False`) |
 | `detect_resets(part_id_uuid, counter_uuid)` | Find when the counter was reset | DataFrame with the time column (e.g. `systime`), `part_number`, `count_before`, `count_after`, `drop` |
 
 ---
 
 ## Counter Resets
 
-Production counters are assumed to increase as parts are produced. Many counters reset back to zero (or a lower value) — at a shift change, a part change, or a controller restart. By default (`handle_resets=False`), a window where the counter drops reports `quantity = max(0, last_count - first_count)`, which **clamps to 0 and loses all production in that window**.
+Production counters are assumed to increase as parts are produced. Many counters reset back to zero (or a lower value) — at a shift change, a part change, or a controller restart. By default (`handle_resets=True`) the quantity is the sum of per-reading increments, where a drop is treated as a reset that contributes the new counter value, and the result has a `resets` column counting resets per window.
 
-Pass `handle_resets=True` to count production correctly across resets. The quantity is then the sum of per-reading increments, where a drop is treated as a reset that contributes the new counter value. The result gains a `resets` column counting resets per window.
+With `handle_resets=False`, a window where the counter drops reports `quantity = max(0, last_count - first_count)`, which clamps to 0 and loses the production in that window.
 
 ```python
 # Reset-aware hourly production
 hourly = pt.production_by_part(
     part_id_uuid="part_id", counter_uuid="part_counter",
-    window="1h", handle_resets=True,
+    window="1h",
 )
 
 # Inspect exactly when the counter reset
@@ -87,8 +87,8 @@ print(resets)   # systime, part_number, count_before, count_after, drop
 
 ## Tips & Hints
 
-!!! tip "Enable reset handling when counters reset"
-    If your counter resets at part changes, shift boundaries, or controller restarts, pass `handle_resets=True` so production is not silently dropped. Use `detect_resets()` first to confirm whether and when your counter resets.
+!!! tip "Check when counters reset"
+    Reset handling is on by default, so production after a reset at a part change, shift boundary or controller restart is counted. Use `detect_resets()` to see whether and when your counter resets.
 
 !!! info "Related modules"
     - [Line Throughput](line-throughput.md) — aggregate throughput without part-level breakdown

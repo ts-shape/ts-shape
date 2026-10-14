@@ -223,3 +223,11 @@ def test_rolling_correlation_old_resample_and_int_window_still_work(correlated_d
             "signal:temperature", "signal:pressure", window=30
         )
     pd.testing.assert_frame_equal(new, only_int)
+
+
+def test_rolling_correlation_int_window_with_window_size_raises(correlated_df):
+    sc = SignalCorrelationEvents(correlated_df)
+    with pytest.raises(TypeError, match="window_size"):
+        sc.rolling_correlation(
+            "signal:temperature", "signal:pressure", window=30, window_size=30
+        )

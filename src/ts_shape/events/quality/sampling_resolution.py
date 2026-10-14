@@ -118,8 +118,8 @@ class SamplingResolutionEvents(Base):
                     "window_start": ts,
                     "n_unique_values": n_unique,
                     "expected_unique": expected_unique,
-                    "quantization_step": round(quant_step, 10),
-                    "quantization_ratio": round(ratio, 4),
+                    "quantization_step": float(quant_step),
+                    "quantization_ratio": float(ratio),
                     "quantized": bool(quantized),
                 }
             )
@@ -189,9 +189,9 @@ class SamplingResolutionEvents(Base):
             events.append(
                 {
                     "window_start": ts,
-                    "theoretical_resolution": round(theoretical, 10),
-                    "effective_resolution": round(effective, 10),
-                    "resolution_ratio": round(ratio, 4),
+                    "theoretical_resolution": float(theoretical),
+                    "effective_resolution": float(effective),
+                    "resolution_ratio": float(ratio),
                     "assessment": assessment,
                 }
             )
@@ -278,9 +278,9 @@ class SamplingResolutionEvents(Base):
             events.append(
                 {
                     "window_start": ts,
-                    "sampling_rate_hz": round(sampling_rate, 4),
-                    "nyquist_hz": round(nyquist, 4),
-                    "dominant_frequency": round(dominant_freq, 6),
+                    "sampling_rate_hz": float(sampling_rate),
+                    "nyquist_hz": float(nyquist),
+                    "dominant_frequency": float(dominant_freq),
                     "aliasing_risk": aliasing_risk,
                 }
             )
@@ -336,11 +336,11 @@ class SamplingResolutionEvents(Base):
             events.append(
                 {
                     "window_start": ts,
-                    "mean_interval_ms": round(mean_ms, 4),
-                    "std_interval_ms": round(std_ms, 4),
-                    "jitter_pct": round(jitter_pct, 4),
-                    "max_gap_ms": round(max_gap, 4),
-                    "regularity_score": round(min(100.0, regularity), 2),
+                    "mean_interval_ms": float(mean_ms),
+                    "std_interval_ms": float(std_ms),
+                    "jitter_pct": float(jitter_pct),
+                    "max_gap_ms": float(max_gap),
+                    "regularity_score": float(min(100.0, regularity)),
                 }
             )
 

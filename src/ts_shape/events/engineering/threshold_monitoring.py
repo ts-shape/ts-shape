@@ -57,7 +57,7 @@ class ThresholdMonitoringEvents(Base):
         levels: dict[str, float],
         direction: str = "above",
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Detect intervals where signal exceeds configurable threshold levels.
 
@@ -65,11 +65,11 @@ class ThresholdMonitoringEvents(Base):
             levels: Dict mapping level names to threshold values.
                     e.g. {'warning': 80, 'alarm': 90, 'critical': 95}
             direction: 'above' or 'below'.
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
-                :func:`ts_shape.utils.intervals.interval_end_times`.
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                next sample (the transition), so the interval spans the time the
+                condition held and change-encoded signals -- one row per change --
+                keep their duration. ``"last_sample"`` ends it at its last flagged
+                sample. See :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -214,19 +214,19 @@ class ThresholdMonitoringEvents(Base):
         threshold: float,
         window: str = "1h",
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Per window: total time and percentage above threshold.
 
         Args:
             threshold: Value threshold.
             window: Resample window.
-            interval_end: ``"last_sample"`` (default) estimates the time as the
-                fraction of *samples* above the threshold times the window
-                length, which is only right for uniform sampling.
-                ``"next_change"`` holds each value until the next sample and
-                measures the real time above the threshold inside each window
-                (``pct_above`` is relative to the window length).
+            interval_end: ``"next_change"`` (default) holds each value until
+                the next sample and measures the real time above the threshold
+                inside each window (``pct_above`` is relative to the window
+                length). ``"last_sample"`` estimates the time as the fraction of
+                *samples* above the threshold times the window length, which is
+                only right for uniform sampling.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, time_above,
@@ -262,12 +262,12 @@ class ThresholdMonitoringEvents(Base):
         for ts, row in resampled.iterrows():
             if row["sample_count"] == 0:
                 continue
-            pct = round(row["above_frac"] * 100, 2)
+            pct = float(row["above_frac"] * 100)
             time_above_seconds = row["above_frac"] * window_td.total_seconds()
             events.append(
                 {
                     "start": ts,
-                    "time_above": round(time_above_seconds, 2),
+                    "time_above": float(time_above_seconds),
                     "pct_above": pct,
                     "exceedance_count": int(row["exceedance_count"]),
                 }

@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import count_resets, counter_quantity
 
 logger = logging.getLogger(__name__)
@@ -129,8 +130,9 @@ class ProductionScheduleAdherenceEvents(Base):
             out[self.schedule_start_column]
         )
         out[self.schedule_end_column] = pd.to_datetime(out[self.schedule_end_column])
-        out[self.planned_qty_column] = pd.to_numeric(
-            out[self.planned_qty_column], errors="coerce"
+        out[self.planned_qty_column] = to_numeric_checked(
+            out[self.planned_qty_column],
+            what=f"schedule column {self.planned_qty_column!r}",
         )
         inverted = out[self.schedule_end_column] < out[self.schedule_start_column]
         if inverted.any():
@@ -147,7 +149,10 @@ class ProductionScheduleAdherenceEvents(Base):
             return pd.DataFrame(columns=[self.time_column, self.value_column])
         out = sel[[self.time_column, self.value_column]].copy()
         out[self.time_column] = pd.to_datetime(out[self.time_column])
-        out[self.value_column] = pd.to_numeric(out[self.value_column], errors="coerce")
+        out[self.value_column] = to_numeric_checked(
+            out[self.value_column],
+            what=f"counter {counter_uuid!r} ({self.value_column!r})",
+        )
         return out.dropna(subset=[self.value_column]).sort_values(self.time_column)
 
     @staticmethod
@@ -277,7 +282,7 @@ class ProductionScheduleAdherenceEvents(Base):
                     "order_id": period.get(self.order_id_column),
                     "planned_qty": planned,
                     "actual_qty": actual,
-                    "schedule_adherence_pct": round(adherence, 2),
+                    "schedule_adherence_pct": adherence,
                     "deviation_units": deviation,
                     "deviation_type": self._classify(
                         adherence,
@@ -286,9 +291,7 @@ class ProductionScheduleAdherenceEvents(Base):
                         critical_pct=critical_pct,
                     ),
                     "recovery_required_rate": (
-                        round(recovery_rate, 4)
-                        if pd.notna(recovery_rate)
-                        else float("nan")
+                        recovery_rate if pd.notna(recovery_rate) else float("nan")
                     ),
                     "remaining_seconds": remaining,
                     "sample_count": int(len(window)),
@@ -478,7 +481,7 @@ class ProductionScheduleAdherenceEvents(Base):
                     "total_planned_qty": total_planned,
                     "total_actual_qty": total_actual,
                     "overall_adherence_pct": (
-                        round(total_actual / total_planned * 100.0, 2)
+                        (total_actual / total_planned * 100.0)
                         if total_planned > 0
                         else float("nan")
                     ),
@@ -488,7 +491,7 @@ class ProductionScheduleAdherenceEvents(Base):
                     "periods_behind": int(counts.get("behind", 0)),
                     "periods_critical_behind": int(counts.get("critical_behind", 0)),
                     "periods_ahead": int(counts.get("ahead", 0)),
-                    "on_plan_rate_pct": round(on_plan / n_periods * 100.0, 2),
+                    "on_plan_rate_pct": on_plan / n_periods * 100.0,
                     "worst_order_id": periods.loc[worst_idx, "order_id"],
                     "worst_adherence_pct": periods.loc[
                         worst_idx, "schedule_adherence_pct"

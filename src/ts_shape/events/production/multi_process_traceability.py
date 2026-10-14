@@ -24,6 +24,7 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 
 logger = logging.getLogger(__name__)
 
@@ -452,8 +453,9 @@ class MultiProcessTraceabilityEvents(Base):
 
             # Find trigger points: value > 0 after being 0 or NaN
             hvals = hdf[[self.time_column, self.handover_value_column]].copy()
-            hvals["val"] = pd.to_numeric(
-                hvals[self.handover_value_column], errors="coerce"
+            hvals["val"] = to_numeric_checked(
+                hvals[self.handover_value_column],
+                what=f"handover {ho_uuid!r} ({self.handover_value_column!r})",
             ).fillna(0)
             hvals["prev"] = hvals["val"].shift(fill_value=0)
             triggers = hvals[(hvals["val"] > 0) & (hvals["prev"] <= 0)]
@@ -574,14 +576,6 @@ class MultiProcessTraceabilityEvents(Base):
             .reset_index()
         )
 
-        for col in [
-            "min_dwell_seconds",
-            "avg_dwell_seconds",
-            "max_dwell_seconds",
-            "total_dwell_seconds",
-        ]:
-            stats[col] = stats[col].round(2)
-
         return stats
 
     # ------------------------------------------------------------------
@@ -625,12 +619,5 @@ class MultiProcessTraceabilityEvents(Base):
             )
             .reset_index()
         )
-
-        for col in [
-            "avg_lead_time_seconds",
-            "min_lead_time_seconds",
-            "max_lead_time_seconds",
-        ]:
-            stats[col] = stats[col].round(2)
 
         return stats.sort_values("item_count", ascending=False).reset_index(drop=True)

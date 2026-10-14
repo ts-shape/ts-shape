@@ -1,4 +1,4 @@
-"""Reset-aware behaviour of OEEEvents.performance / quality."""
+"""Reset-aware behavior of OEEEvents.performance / quality."""
 
 import pandas as pd  # type: ignore
 import pytest
@@ -36,9 +36,9 @@ def reset_oee_data():
     return pd.DataFrame(rows)
 
 
-def test_performance_default_under_reports(reset_oee_data):
+def test_performance_naive_under_reports(reset_oee_data):
     oee = OEEEvents(reset_oee_data)
-    result = oee.performance("part_counter", ideal_cycle_time=60.0)
+    result = oee.performance("part_counter", ideal_cycle_time=60.0, handle_resets=False)
     assert "resets" not in result.columns
     # naive last - first loses the production before the reset
     assert result["actual_parts"].iloc[0] == 120
@@ -52,9 +52,9 @@ def test_performance_handles_resets(reset_oee_data):
     assert result["resets"].iloc[0] == 1
 
 
-def test_quality_default_under_reports(reset_oee_data):
+def test_quality_naive_under_reports(reset_oee_data):
     oee = OEEEvents(reset_oee_data)
-    result = oee.quality("total_counter", "reject_counter")
+    result = oee.quality("total_counter", "reject_counter", handle_resets=False)
     assert "resets" not in result.columns
     assert result["total_parts"].iloc[0] == 120
     assert result["reject_parts"].iloc[0] == 1
@@ -70,3 +70,27 @@ def test_quality_handles_resets(reset_oee_data):
     assert result["good_parts"].iloc[0] == 267
     # one reset in the total counter + one in the reject counter
     assert result["resets"].iloc[0] == 2
+
+
+def test_performance_default_is_reset_aware(reset_oee_data):
+    """The default ``handle_resets=True`` counts post-reset production."""
+    oee = OEEEvents(reset_oee_data)
+
+    def call(**kw):
+        return oee.performance("part_counter", ideal_cycle_time=60.0, **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_quality_default_is_reset_aware(reset_oee_data):
+    """The default ``handle_resets=True`` counts post-reset production."""
+    oee = OEEEvents(reset_oee_data)
+
+    def call(**kw):
+        return oee.quality("total_counter", "reject_counter", **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

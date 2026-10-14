@@ -2,7 +2,7 @@
 
 import pandas as pd  # type: ignore
 
-from ts_shape.events.production.order_traceability import OrderTraceabilityEvents
+from ts_shape.events.production.order_traceability import ValueTraceabilityEvents
 
 
 def _single_arrival_frame():
@@ -29,7 +29,7 @@ def _single_arrival_frame():
 
 def test_build_timeline_dwell_collapses_by_default():
     df = _single_arrival_frame()
-    trace = OrderTraceabilityEvents(
+    trace = ValueTraceabilityEvents(
         df, station_uuids={"stA": "A", "stB": "B", "stC": "C"}
     )
     timeline = trace.build_timeline()
@@ -39,7 +39,7 @@ def test_build_timeline_dwell_collapses_by_default():
 
 def test_build_timeline_infer_dwell_from_next():
     df = _single_arrival_frame()
-    trace = OrderTraceabilityEvents(
+    trace = ValueTraceabilityEvents(
         df, station_uuids={"stA": "A", "stB": "B", "stC": "C"}
     )
     timeline = trace.build_timeline(infer_dwell_from_next=True).sort_values(
@@ -52,7 +52,7 @@ def test_build_timeline_infer_dwell_from_next():
 
 def test_station_dwell_statistics_infer_dwell():
     df = _single_arrival_frame()
-    trace = OrderTraceabilityEvents(
+    trace = ValueTraceabilityEvents(
         df, station_uuids={"stA": "A", "stB": "B", "stC": "C"}
     )
     stats = trace.station_dwell_statistics(infer_dwell_from_next=True)

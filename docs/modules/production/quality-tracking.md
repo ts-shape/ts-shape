@@ -59,14 +59,14 @@ print(by_shift)
 | `nok_by_reason(nok_counter_uuid, defect_reason_uuid)` | Pareto of defect reasons by count | DataFrame with `reason`, `nok_parts`, `pct_of_total` |
 | `daily_quality_summary(ok_counter_uuid, nok_counter_uuid)` | Daily summary with total parts, rejects, and quality rates | DataFrame with `date`, `ok_parts`, `nok_parts`, `total_parts`, `nok_rate_pct`, `first_pass_yield_pct`, `quality_pct` |
 
-All methods accept `handle_resets=True` to count production correctly across counter resets; the result then gains a `resets` column.
+All methods count production across counter resets by default (`handle_resets=True`) and add a `resets` column; pass `handle_resets=False` for the plain `max(0, last - first)` quantity.
 
 ---
 
 ## Tips & Hints
 
 !!! tip "Use monotonic counters, not deltas"
-    Pass cumulative OK and NOK counters — the module computes deltas internally. Pass `handle_resets=True` if the counters can reset. If your PLC provides per-cycle OK/NOK flags instead, convert them to cumulative sums first.
+    Pass cumulative OK and NOK counters — the module computes deltas internally. Counter resets are handled by default. If your PLC provides per-cycle OK/NOK flags instead, convert them to cumulative sums first.
 
 !!! info "Related modules"
     - [OEE Calculator](oee-calculator.md) — uses quality ratio as the third OEE factor

@@ -381,10 +381,7 @@ class TestAlignmentQuality:
         )
         result = aligner2.alignment_quality(window="30min")
         gap_windows = result[(result["start"] >= base) & (result["start"] < gap_end)]
-        assert (
-            gap_windows["has_speed_data"]  # noqa: E712 pandas-series-bool-comparison
-            == False  # noqa: E712 pandas-series-bool-comparison
-        ).any()  # noqa: E712 pandas-series-bool-comparison
+        assert (~gap_windows["has_speed_data"].astype(bool)).any()
 
 
 # ---------------------------------------------------------------------------

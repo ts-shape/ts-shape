@@ -90,7 +90,7 @@ class TimeToThresholdEvents(Base):
         if len(sig) < 2:
             return pd.DataFrame(columns=cols)
 
-        slope, intercept, r_squared = self._fit_trend(sig)
+        slope, _intercept, r_squared = self._fit_trend(sig)
         current_value = float(sig[self.value_column].iloc[-1])
         current_time = sig[self.time_column].iloc[-1]
 
@@ -103,12 +103,12 @@ class TimeToThresholdEvents(Base):
             return pd.DataFrame(
                 [
                     {
-                        "current_value": round(current_value, 4),
+                        "current_value": float(current_value),
                         "slope_per_second": 0.0,
                         "threshold": threshold,
                         "estimated_seconds": None,
                         "estimated_time": None,
-                        "confidence": round(r_squared, 4),
+                        "confidence": float(r_squared),
                         "direction": "flat",
                     }
                 ],
@@ -123,12 +123,12 @@ class TimeToThresholdEvents(Base):
             return pd.DataFrame(
                 [
                     {
-                        "current_value": round(current_value, 4),
-                        "slope_per_second": round(slope, 8),
+                        "current_value": float(current_value),
+                        "slope_per_second": float(slope),
                         "threshold": threshold,
                         "estimated_seconds": None,
                         "estimated_time": None,
-                        "confidence": round(r_squared, 4),
+                        "confidence": float(r_squared),
                         "direction": direction,
                     }
                 ],
@@ -140,12 +140,12 @@ class TimeToThresholdEvents(Base):
         return pd.DataFrame(
             [
                 {
-                    "current_value": round(current_value, 4),
-                    "slope_per_second": round(slope, 8),
+                    "current_value": float(current_value),
+                    "slope_per_second": float(slope),
                     "threshold": threshold,
-                    "estimated_seconds": round(seconds_to_threshold, 1),
+                    "estimated_seconds": float(seconds_to_threshold),
                     "estimated_time": estimated_time,
-                    "confidence": round(r_squared, 4),
+                    "confidence": float(r_squared),
                     "direction": direction,
                 }
             ],
@@ -214,15 +214,15 @@ class TimeToThresholdEvents(Base):
             if slope != 0:
                 secs = (threshold - current_value) / slope
                 if secs > 0:
-                    est_seconds = round(secs, 1)
+                    est_seconds = float(secs)
 
             events.append(
                 {
                     "window_start": ts,
-                    "current_value": round(current_value, 4),
-                    "slope_per_second": round(slope, 8),
+                    "current_value": float(current_value),
+                    "slope_per_second": float(slope),
                     "estimated_seconds": est_seconds,
-                    "confidence": round(r_squared, 4),
+                    "confidence": float(r_squared),
                     "direction": direction,
                 }
             )
@@ -282,13 +282,13 @@ class TimeToThresholdEvents(Base):
             return pd.DataFrame(
                 [
                     {
-                        "current_value": round(current_value, 4),
+                        "current_value": float(current_value),
                         "slope_per_second": 0.0,
                         "nearest_bound": "none",
                         "nearest_bound_value": None,
                         "estimated_seconds": None,
                         "estimated_time": None,
-                        "confidence": round(r_squared, 4),
+                        "confidence": float(r_squared),
                     }
                 ],
                 columns=cols,
@@ -300,13 +300,13 @@ class TimeToThresholdEvents(Base):
             return pd.DataFrame(
                 [
                     {
-                        "current_value": round(current_value, 4),
-                        "slope_per_second": round(slope, 8),
+                        "current_value": float(current_value),
+                        "slope_per_second": float(slope),
                         "nearest_bound": bound_name,
                         "nearest_bound_value": target_bound,
                         "estimated_seconds": 0.0,
                         "estimated_time": current_time,
-                        "confidence": round(r_squared, 4),
+                        "confidence": float(r_squared),
                     }
                 ],
                 columns=cols,
@@ -317,13 +317,13 @@ class TimeToThresholdEvents(Base):
         return pd.DataFrame(
             [
                 {
-                    "current_value": round(current_value, 4),
-                    "slope_per_second": round(slope, 8),
+                    "current_value": float(current_value),
+                    "slope_per_second": float(slope),
                     "nearest_bound": bound_name,
                     "nearest_bound_value": target_bound,
-                    "estimated_seconds": round(seconds_to_bound, 1),
+                    "estimated_seconds": float(seconds_to_bound),
                     "estimated_time": estimated_time,
-                    "confidence": round(r_squared, 4),
+                    "confidence": float(r_squared),
                 }
             ],
             columns=cols,
@@ -384,7 +384,7 @@ class TimeToThresholdEvents(Base):
                 {
                     "threshold_name": name,
                     "threshold_value": value,
-                    "estimated_seconds": round(secs, 1) if reachable else None,
+                    "estimated_seconds": float(secs) if reachable else None,
                     "estimated_time": (
                         current_time + pd.Timedelta(seconds=secs) if reachable else None
                     ),

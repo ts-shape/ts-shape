@@ -341,3 +341,16 @@ class TestCustomEventUuid:
         result = fpe.remaining_useful_life(0.01, 100)
         if not result.empty:
             assert (result["uuid"] == "custom:fail").all()
+
+
+def test_trend_degradation_default_closes_interval_at_next_sample():
+    times = pd.date_range("2024-01-01", periods=60, freq="1min")
+    values = np.r_[np.linspace(100.0, 70.0, 30), np.linspace(70.0, 100.0, 30)]
+    ev = DegradationDetectionEvents(_make_df(times, values), "sig1")
+    default = ev.detect_trend_degradation(window="5min", min_slope=0.001)
+    last = ev.detect_trend_degradation(
+        window="5min", min_slope=0.001, interval_end="last_sample"
+    )
+    assert len(default) == len(last) > 0
+    first_end = last["end"].iloc[0]
+    assert default["end"].iloc[0] == first_end + pd.Timedelta(minutes=1)

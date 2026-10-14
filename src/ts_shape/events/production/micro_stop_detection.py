@@ -33,7 +33,7 @@ class MicroStopEvents(Base):
         event_uuid: str = "prod:micro_stop",
         value_column: str = "value_bool",
         time_column: str = "systime",
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
         data_end: pd.Timestamp | None = None,
     ) -> None:
         """Initialize the micro-stop detector.
@@ -46,13 +46,13 @@ class MicroStopEvents(Base):
             value_column: Column holding the run state. Missing values count
                 as idle.
             time_column: Timestamp column.
-            interval_end: How idle/run intervals are closed. ``"last_sample"``
-                (default) ends each interval at its last sample -- backward
-                compatible, but a change-encoded (``is_delta``) run-state signal
-                logs one row per transition, so every interval collapses to
-                zero duration and no lost time is reported. ``"next_change"``
-                closes each interval at the next transition, correctly
-                measuring change-encoded signals.
+            interval_end: How idle/run intervals are closed.
+                ``"next_change"`` (default) closes each interval at the next
+                transition, which measures both dense and change-encoded
+                (``is_delta``) run-state signals. ``"last_sample"`` ends each
+                interval at its last sample; on a change-encoded signal (one
+                row per transition) every interval then has zero duration and
+                no lost time is reported.
             data_end: Optional bound for the final, still-open interval when
                 ``interval_end="next_change"``.
         """
@@ -197,8 +197,8 @@ class MicroStopEvents(Base):
             total_lost_seconds=("duration_seconds", "sum"),
         )
 
-        resampled["pct_of_window"] = round(
-            resampled["total_lost_seconds"] / window_td.total_seconds() * 100, 2
+        resampled["pct_of_window"] = (
+            resampled["total_lost_seconds"] / window_td.total_seconds() * 100
         )
 
         result = resampled.reset_index()
@@ -269,7 +269,7 @@ class MicroStopEvents(Base):
         total_active = combined["total_run_time"] + combined["total_micro_stop_time"]
         combined["availability_loss_pct"] = np.where(
             total_active > 0,
-            round(combined["total_micro_stop_time"] / total_active * 100, 2),
+            (combined["total_micro_stop_time"] / total_active * 100),
             0.0,
         )
 
@@ -337,8 +337,6 @@ class MicroStopEvents(Base):
                 .rename(columns={"group": "hour"})
             )
 
-            result["avg_count"] = result["avg_count"].round(2)
-            result["avg_lost_time"] = result["avg_lost_time"].round(2)
             return result
         else:
 
@@ -372,6 +370,4 @@ class MicroStopEvents(Base):
                 .rename(columns={"group": "shift"})
             )
 
-            result["avg_count"] = result["avg_count"].round(2)
-            result["avg_lost_time"] = result["avg_lost_time"].round(2)
             return result

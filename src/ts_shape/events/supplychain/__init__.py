@@ -13,7 +13,7 @@ from .inventory_monitoring import InventoryMonitoringEvents
 from .lead_time_analysis import LeadTimeAnalysisEvents
 
 __all__ = [
+    "DemandPatternEvents",
     "InventoryMonitoringEvents",
     "LeadTimeAnalysisEvents",
-    "DemandPatternEvents",
 ]

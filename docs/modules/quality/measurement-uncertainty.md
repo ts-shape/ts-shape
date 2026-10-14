@@ -52,4 +52,4 @@ mu.uncertainty_budget(window="8h", type_b_sources=sources)
 - **Type B:** `u_B = half_width / divisor`. Divisors: `rectangular` √3 (default, also used for unknown names), `triangular` √6, `normal` 2, `u-shaped` √2. Each source dict needs `source` and `half_width`; `distribution` is optional.
 - **Combined:** `u_c = sqrt(u_A² + Σ u_Bi²)`; **expanded:** `U = k · u_c`, with `k = coverage_factor` (2.0 ≈ 95.45 % coverage).
 - **Budget:** Type A is averaged over all windows; `pct_contribution` is each source's share of the total variance (`u²`), so the rows sum to 100.
-- `part_uuid` is deprecated: it has no effect, passing it emits a `DeprecationWarning`, and it will be removed in 1.0.
+- `part_uuid` is deprecated: it has no effect, passing it emits a `DeprecationWarning`, and it will be removed in 2.0.

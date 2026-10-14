@@ -21,7 +21,7 @@ def test_calculate_oee_threads_handle_resets():
     # Counter resets mid-day: 0,100,200,0,100 -> true output 300, naive 100.
     df = _oee_frame([0, 100, 200, 0, 100])
     oee = OEEEvents(df)
-    naive = oee.oee("state", "counter", ideal_cycle_time=30.0)
+    naive = oee.oee("state", "counter", ideal_cycle_time=30.0, handle_resets=False)
     fixed = oee.oee("state", "counter", ideal_cycle_time=30.0, handle_resets=True)
     # Reset handling recovers the lost production -> higher performance -> higher OEE.
     assert fixed["performance_pct"].iloc[0] > naive["performance_pct"].iloc[0]

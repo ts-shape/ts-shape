@@ -78,6 +78,6 @@ def test_datetime_filter_range_and_points():
 
 def test_filter_string_contains_regex_opt_out():
     df = pd.DataFrame({"value_string": ["a.b", "axb", None]})
-    assert len(StringFilter.filter_string_contains(df, "a.b")) == 2
-    out = StringFilter.filter_string_contains(df, "a.b", regex=False)
-    assert out["value_string"].tolist() == ["a.b"]
+    out = StringFilter.filter_string_contains(df, "a.b")
+    assert out["value_string"].tolist() == ["a.b"]  # literal by default
+    assert len(StringFilter.filter_string_contains(df, "a.b", regex=True)) == 2

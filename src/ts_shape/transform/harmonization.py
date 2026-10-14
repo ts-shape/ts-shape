@@ -128,7 +128,9 @@ class DataHarmonizer(Base):
 
         Args:
             strategy: One of 'interpolate', 'ffill', 'bfill', 'constant'.
-            max_gap: Maximum gap size to fill (pandas Timedelta string). Larger gaps remain NaN.
+            max_gap: Maximum gap size to fill (pandas Timedelta string). Larger gaps
+                remain NaN. ``None`` (default) fills every gap the strategy can
+                fill, however long.
             fill_value: Value used when strategy='constant'.
 
         Returns:

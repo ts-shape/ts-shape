@@ -43,7 +43,7 @@ def _make_reset_period_df():
 
 def test_weekly_summary_under_reports_without_reset_handling():
     summary = PeriodSummaryEvents(_make_reset_period_df())
-    result = summary.weekly_summary(counter_uuid="prod_counter")
+    result = summary.weekly_summary(counter_uuid="prod_counter", handle_resets=False)
 
     assert "resets" not in result.columns
     # Both days fall in the same week: 50 (under-reported) + 400 = 450.
@@ -68,7 +68,7 @@ def test_monthly_summary_handles_resets():
     assert result["total_production"].sum() == 750
     assert result["resets"].sum() == 1
 
-    default = summary.monthly_summary(counter_uuid="prod_counter")
+    default = summary.monthly_summary(counter_uuid="prod_counter", handle_resets=False)
     assert "resets" not in default.columns
     assert default["total_production"].sum() == 450
 
@@ -80,6 +80,7 @@ def test_compare_periods_handles_resets():
         counter_uuid="prod_counter",
         period1=("2024-01-01", "2024-01-01"),
         period2=("2024-01-02", "2024-01-02"),
+        handle_resets=False,
     )
     p1_default = default[default["metric"] == "total_production"]["period1_value"].iloc[
         0
@@ -96,3 +97,45 @@ def test_compare_periods_handles_resets():
     p2_aware = aware[aware["metric"] == "total_production"]["period2_value"].iloc[0]
     assert p1_aware == 350
     assert p2_aware == 400
+
+
+def test_weekly_summary_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    summary = PeriodSummaryEvents(_make_reset_period_df())
+
+    def call(**kw):
+        return summary.weekly_summary(counter_uuid="prod_counter", **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_monthly_summary_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    summary = PeriodSummaryEvents(_make_reset_period_df())
+
+    def call(**kw):
+        return summary.monthly_summary(counter_uuid="prod_counter", **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_compare_periods_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    summary = PeriodSummaryEvents(_make_reset_period_df())
+
+    def call(**kw):
+        return summary.compare_periods(
+            counter_uuid="prod_counter",
+            period1=("2024-01-01", "2024-01-01"),
+            period2=("2024-01-02", "2024-01-02"),
+            **kw,
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    total = default[default["metric"] == "total_production"]
+    assert total["period1_value"].iloc[0] == 350

@@ -182,11 +182,12 @@ def _uuid_for(name: str) -> str:
 #: Constructor arguments the harness cannot infer from names alone (one of
 #: several optional parameters must be given).
 INIT_OVERRIDES: dict[str, dict[str, Any]] = {
+    "OutlierDetectionEvents": {"signal_uuids": [CONT]},
     "CapabilityTrendingEvents": {"upper_spec": 60.0, "lower_spec": 40.0},
     "ToleranceDeviationEvents": {
         "tolerance_column": "value_double",
         "actual_column": "value_double",
-        "tolerance_uuid": SETPOINT,
+        "upper_tolerance_uuid": SETPOINT,
         "actual_uuid": CONT,
         "event_uuid": "evt",
     },

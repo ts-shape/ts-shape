@@ -1386,37 +1386,6 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("operator",),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("OrderTraceabilityEvents", "build_timeline"): _r(
-        "production.order.timeline",
-        _PR,
-        I,
-        objs=("asset", "work_order", "station"),
-        standard_attrs={
-            "ts_shape:lifecycle_state": "station_name",
-            "ts_shape:direction": "station_sequence",
-        },
-    ),
-    ("OrderTraceabilityEvents", "current_status"): _r(
-        "production.order.current_status",
-        _PR,
-        ST,
-        objs=("work_order",),
-        standard_attrs={"ts_shape:method": "current_status"},
-    ),
-    ("OrderTraceabilityEvents", "lead_time"): _r(
-        "production.order.lead_time",
-        _PR,
-        I,
-        objs=("work_order",),
-        standard_attrs={"ts_shape:sample_count": None},
-    ),
-    ("OrderTraceabilityEvents", "station_dwell_statistics"): _r(
-        "production.order.station_dwell_statistics",
-        _PR,
-        ST,
-        objs=("station",),
-        standard_attrs={"ts_shape:sample_count": "count"},
-    ),
     ("ValueTraceabilityEvents", "build_timeline"): _r(
         "production.value_trace.timeline",
         _PR,
@@ -2603,6 +2572,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
 CLASS_ALIASES: dict[str, str] = {
     "CycleTimeTracking": "CycleTimeEvents",
     "DowntimeTracking": "DowntimeEvents",
+    "OrderTraceabilityEvents": "ValueTraceabilityEvents",
     "OperatorPerformanceTracking": "OperatorPerformanceEvents",
     "PartProductionTracking": "PartProductionEvents",
     "PerformanceLossTracking": "PerformanceLossEvents",

@@ -87,14 +87,14 @@ class OperatorPerformanceEvents(Base):
         data: pd.DataFrame,
         value_column: str,
         *,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> float:
         """Get quantity from a monotonic counter.
 
-        When ``handle_resets`` is False the quantity is the
-        backward-compatible ``max(0, last - first)``. When True a decreasing
-        counter is treated as a reset and the post-reset production is
-        counted (see :func:`ts_shape.utils.counters.counter_quantity`).
+        When ``handle_resets`` is True (default) a decreasing counter is
+        treated as a reset and the post-reset production is counted (see
+        :func:`ts_shape.utils.counters.counter_quantity`). When False the
+        quantity is ``max(0, last - first)``.
         """
         if data.empty:
             return 0.0
@@ -163,7 +163,7 @@ class OperatorPerformanceEvents(Base):
         *,
         value_column_operator: str = "value_string",
         value_column_counter: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Parts produced per operator.
@@ -173,11 +173,11 @@ class OperatorPerformanceEvents(Base):
             counter_uuid: UUID for production counter signal.
             value_column_operator: Column containing operator names.
             value_column_counter: Column containing counter values.
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the production accumulated after the reset instead
                 of losing it. Production is summed per (date, shift) worked.
                 The result gains a ``resets`` column with the number of resets
-                observed across the operator's shifts. When False (default),
+                observed across the operator's shifts. When False,
                 each shift uses ``max(0, last - first)`` and a shift
                 containing a reset reports too little (often 0).
             production_day: When True, an overnight shift's post-midnight
@@ -224,11 +224,9 @@ class OperatorPerformanceEvents(Base):
 
             row = {
                 "operator": operator,
-                "total_produced": round(total, 0),
+                "total_produced": total,
                 "shifts_worked": shifts_worked,
-                "avg_per_shift": (
-                    round(total / shifts_worked, 1) if shifts_worked > 0 else 0
-                ),
+                "avg_per_shift": (total / shifts_worked) if shifts_worked > 0 else 0,
             }
             if handle_resets:
                 row["resets"] = resets
@@ -274,9 +272,7 @@ class OperatorPerformanceEvents(Base):
             )
 
         prod["target"] = prod["shifts_worked"] * target_per_shift
-        prod["efficiency_pct"] = (
-            (prod["total_produced"] / prod["target"]) * 100
-        ).round(1)
+        prod["efficiency_pct"] = (prod["total_produced"] / prod["target"]) * 100
         prod.loc[prod["target"] == 0, "efficiency_pct"] = 0.0
 
         return prod[
@@ -291,7 +287,7 @@ class OperatorPerformanceEvents(Base):
         *,
         value_column_operator: str = "value_string",
         value_column_counter: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Quality metrics (First Pass Yield) per operator.
 
@@ -301,13 +297,13 @@ class OperatorPerformanceEvents(Base):
             nok_uuid: UUID of the NOK part counter.
             value_column_operator: Column containing operator names.
             value_column_counter: Column containing counter values.
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the OK/NOK parts accumulated after the reset, for
                 both the OK and NOK counters. Because the counts are taken
                 over the whole range, a single reset otherwise wipes out an
                 operator's entire tally. The result gains a ``resets`` column
                 with the number of resets observed across the operator's OK
-                and NOK counters. When False (default), both counters use
+                and NOK counters. When False, both counters use
                 ``max(0, last - first)`` and a reset is lost.
 
         Returns:
@@ -408,9 +404,9 @@ class OperatorPerformanceEvents(Base):
 
             row = {
                 "operator": op,
-                "ok_count": round(ok, 0),
-                "nok_count": round(nok, 0),
-                "first_pass_yield_pct": round(fpy, 1),
+                "ok_count": ok,
+                "nok_count": nok,
+                "first_pass_yield_pct": fpy,
             }
             if handle_resets:
                 row["resets"] = resets_by_operator.get(op, 0)
@@ -455,14 +451,12 @@ class OperatorPerformanceEvents(Base):
         prod["rank"] = range(1, len(prod) + 1)
 
         best = prod["total_produced"].max()
-        prod["pct_of_best"] = (
-            (prod["total_produced"] / best * 100).round(1) if best > 0 else 0
-        )
+        prod["pct_of_best"] = (prod["total_produced"] / best * 100) if best > 0 else 0
 
         return prod[["operator", "total_produced", "rank", "pct_of_best"]]
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in 2.0.
 OperatorPerformanceTracking = deprecated_class(
     OperatorPerformanceEvents, "OperatorPerformanceTracking"
 )

@@ -16,15 +16,17 @@ same behavior and error type.
 
 from __future__ import annotations
 
+import functools
 import logging
 import time
-from collections.abc import Callable
+import warnings
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 import pandas as pd
 
-from ts_shape.errors import LoaderError
+from ts_shape.errors import DataQualityWarning, LoaderError
 
 logger = logging.getLogger(__name__)
 
@@ -137,17 +139,32 @@ def retry_call(
     ) from last_exc
 
 
+def missing_optional(package: str, extra: str) -> ImportError:
+    """Return the ImportError raised when an optional backend is missing.
+
+    Use it where an optional package is imported lazily::
+
+        try:
+            from azure.storage.blob import ContainerClient
+        except ImportError as exc:
+            raise missing_optional("azure-storage-blob", "azure") from exc
+    """
+    return ImportError(
+        f"This feature needs the optional package {package!r}. Install it with "
+        f"`pip install ts-shape[{extra}]` (or `pip install {package}`)."
+    )
+
+
 def require_optional(obj: object, package: str, extra: str) -> None:
     """Raise a clear ImportError when an optional backend is not installed.
 
     ts-shape's core needs only pandas, numpy and scipy; each loader backend
-    lives in an extra (``pip install ts-shape[extra]``).
+    lives in an extra (``pip install ts-shape[extra]``). ``obj`` is the
+    module-level name the optional import bound (``None`` when the import
+    failed).
     """
     if obj is None:
-        raise ImportError(
-            f"This loader needs the optional package {package!r}. Install it with "
-            f"`pip install ts-shape[{extra}]` (or `pip install {package}`)."
-        )
+        raise missing_optional(package, extra)
 
 
 def hourly_slots(
@@ -218,3 +235,94 @@ def trim_to_time_range(
     if end_timestamp is not None:
         mask &= times <= _align_bound(pd.to_datetime(end_timestamp), times)
     return df.loc[mask].reset_index(drop=True)
+
+
+#: How a loader that reads many objects treats one it cannot read: ``"warn"``
+#: skips it and emits a :class:`~ts_shape.errors.DataQualityWarning` naming
+#: every skipped object; ``"raise"`` raises :class:`~ts_shape.errors.LoaderError`.
+ErrorsMode = Literal["warn", "raise"]
+
+
+def check_errors_mode(errors: str) -> None:
+    """Raise ``ValueError`` unless ``errors`` is ``"warn"`` or ``"raise"``."""
+    if errors not in ("warn", "raise"):
+        raise ValueError(f"errors must be 'warn' or 'raise'; got {errors!r}")
+
+
+@functools.cache
+def read_errors() -> tuple[type[Exception], ...]:
+    """Exceptions a single object read can raise without aborting a bulk load.
+
+    * ``OSError`` -- local and network I/O (``pyarrow``'s ``ArrowIOError`` is
+      one).
+    * ``ValueError`` -- unparseable content (``pyarrow``'s ``ArrowInvalid``,
+      ``pandas``' ``ParserError`` / ``EmptyDataError``, ``UnicodeDecodeError``).
+    * ``pyarrow.ArrowException`` -- the remaining parquet engine errors.
+    * ``azure.core.exceptions.AzureError`` -- missing blob, permission,
+      throttling and transport errors from Azure Blob Storage.
+
+    Packages that are not installed are left out.
+    """
+    found: list[type[Exception]] = [OSError, ValueError]
+    try:
+        import pyarrow
+    except ImportError:  # pragma: no cover - pyarrow ships with the loaders
+        pass
+    else:
+        found.append(pyarrow.ArrowException)
+    try:
+        from azure.core.exceptions import AzureError
+    except ImportError:  # pragma: no cover - only without the [azure] extra
+        pass
+    else:
+        found.append(AzureError)
+    return tuple(found)
+
+
+def is_not_found(exc: BaseException) -> bool:
+    """True when ``exc`` says the object does not exist (file or blob)."""
+    if isinstance(exc, FileNotFoundError):
+        return True
+    try:
+        from azure.core.exceptions import ResourceNotFoundError
+    except ImportError:  # pragma: no cover - only without the [azure] extra
+        return False
+    return isinstance(exc, ResourceNotFoundError)
+
+
+def describe_failures(failures: Sequence[tuple[str, BaseException]], what: str) -> str:
+    """One-line summary naming every failed object and the first error."""
+    names = [name for name, _ in failures]
+    shown = ", ".join(names[:20])
+    if len(names) > 20:
+        shown += f" and {len(names) - 20} more"
+    first = failures[0][1]
+    return (
+        f"{len(failures)} {what} could not be read and were skipped: {shown}. "
+        f"First error: {type(first).__name__}: {first}"
+    )
+
+
+def report_failures(
+    failures: Sequence[tuple[str, BaseException]],
+    *,
+    what: str,
+    errors: ErrorsMode,
+    stacklevel: int = 3,
+) -> None:
+    """Warn about (or raise for) objects a bulk load could not read.
+
+    Args:
+        failures: ``(object name, exception)`` pairs; nothing happens when empty.
+        what: Plural noun for the objects, e.g. ``"parquet blob(s)"``.
+        errors: ``"warn"`` emits one :class:`~ts_shape.errors.DataQualityWarning`
+            naming every failed object; ``"raise"`` raises
+            :class:`~ts_shape.errors.LoaderError` from the first error.
+        stacklevel: Passed to :func:`warnings.warn`.
+    """
+    if not failures:
+        return
+    message = describe_failures(failures, what)
+    if errors == "raise":
+        raise LoaderError(message) from failures[0][1]
+    warnings.warn(message, DataQualityWarning, stacklevel=stacklevel)

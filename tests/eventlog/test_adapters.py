@@ -218,3 +218,43 @@ def test_canonical_severity_column_is_bucketed_without_explicit_field():
         "warn",
         "critical",
     }, f"raw numeric leaked through bucketing: {buckets}"
+
+
+def test_object_binding_to_missing_column_warns(outlier_df):
+    from ts_shape.errors import DataQualityWarning
+
+    frame = OutlierDetectionEvents(
+        outlier_df, value_column="value_double"
+    ).detect_outliers_zscore()
+    with pytest.warns(DataQualityWarning, match="'no_such_column'"):
+        log = to_event_log(
+            frame,
+            detector="OutlierDetectionEvents.detect_outliers_zscore",
+            objects={"batch": "no_such_column"},
+        )
+    assert "batch" not in set(log.objects[OCEL_TYPE])
+
+
+def test_non_numeric_value_column_warns(outlier_df):
+    from ts_shape.errors import DataQualityWarning
+
+    frame = OutlierDetectionEvents(
+        outlier_df, value_column="value_double"
+    ).detect_outliers_zscore()
+    frame = frame.astype({"value_double": object})
+    frame.loc[frame.index[0], "value_double"] = "n/a"
+    with pytest.warns(DataQualityWarning, match="1 non-null value"):
+        to_event_log(frame, detector="OutlierDetectionEvents.detect_outliers_zscore")
+
+
+def test_adapt_accepts_deprecated_legacy_keyword(outlier_df):
+    from ts_shape.eventlog.adapters import adapt
+    from ts_shape.eventlog.taxonomy import REGISTRY
+
+    frame = OutlierDetectionEvents(
+        outlier_df, value_column="value_double"
+    ).detect_outliers_zscore()
+    key = ("OutlierDetectionEvents", "detect_outliers_zscore")
+    with pytest.warns(DeprecationWarning, match="'legacy' is deprecated"):
+        log = adapt(legacy=frame, rule=REGISTRY[key], detector=".".join(key))
+    assert len(log.events) == len(frame)

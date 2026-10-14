@@ -59,6 +59,9 @@ breakdown = checker.contribution_breakdown(window="1h")
 !!! tip "Start with contribution_breakdown when imbalance is detected"
     When `balance_check()` fails, use `contribution_breakdown()` to identify which specific input or output stream is responsible. This narrows the investigation to one sensor or pipe instead of chasing the entire process.
 
+!!! note "Flows are averaged by time; missing data stays unknown"
+    Each flow is held until its next sample and averaged by time per window (pass `time_weighted=False` to average samples). A window in which a signal has no data has NaN totals and is not balanced, but `detect_balance_exceedance()` does not report it, so a sensor outage is not read as an imbalance. Pass `missing_as_zero=True` to count missing data as zero flow.
+
 !!! info "Related modules"
     - [Signal Comparison](signal-comparison.md) — compare individual input/output signal pairs
     - [Threshold Monitoring](threshold-monitoring.md) — set alarms on the imbalance metric itself

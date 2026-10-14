@@ -66,16 +66,15 @@ class IdleEnergyDetectionEvents(Base):
         value_column_state: str = "value_bool",
         window: str = "1h",
         idle_threshold: float = 0.1,
-        time_weighted: bool = False,
+        time_weighted: bool = True,
     ) -> pd.DataFrame:
         """Aggregate energy consumed during idle periods per time window.
 
-        The machine-running share is the mean of the boolean state signal within
-        each window, a ratio between 0 and 1. It is reported as
-        ``machine_running_ratio`` and, for backward compatibility, as
-        ``machine_running_pct`` (also a 0-1 ratio despite its name). Windows
-        whose ratio is below ``idle_threshold`` count as fully idle; otherwise
-        the idle fraction is ``1 - machine_running_ratio``.
+        The machine-running share is the share of each window the boolean state
+        signal was True. It is reported as ``machine_running_ratio`` (0-1) and
+        as ``machine_running_pct`` (0-100). Windows whose ratio is below
+        ``idle_threshold`` count as fully idle; otherwise the idle fraction is
+        ``1 - machine_running_ratio``.
 
         Args:
             meter_uuid: Identifier of the energy meter signal.
@@ -85,17 +84,17 @@ class IdleEnergyDetectionEvents(Base):
             window: Resample window (e.g. '1h', '15min').
             idle_threshold: Running ratio (0-1) below which the window is
                 classified as fully idle.
-            time_weighted: Weight the machine state by how long it was held
-                (until the next state change) and keep every energy window. Default
-                ``False`` averages state *samples* and inner-joins, so a change-encoded
-                state signal reads as a sample count and windows without a state row
-                drop their energy.
+            time_weighted: ``True`` (default) weights the machine state by how
+                long it was held (until the next state change) and keeps every
+                energy window. ``False`` averages state *samples* and keeps only
+                windows that contain a state row; that is only right for a
+                densely, uniformly sampled state signal.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,
                        is_delta, total_energy, idle_energy, running_energy,
-                       machine_running_pct (0-1 ratio, kept for backward
-                       compatibility), idle_fraction, machine_running_ratio
+                       machine_running_pct (0-100), idle_fraction,
+                       machine_running_ratio (0-1)
         """
         energy, state = self._filter_two(meter_uuid, state_uuid)
         empty_cols = [
@@ -142,8 +141,8 @@ class IdleEnergyDetectionEvents(Base):
             out = energy_agg.join(state_agg, how="inner").reset_index()
         out = out.rename(columns={self.time_column: "start"})
 
-        out["machine_running_pct"] = out["machine_running_pct"].fillna(0.0)
-        out["machine_running_ratio"] = out["machine_running_pct"]
+        out["machine_running_ratio"] = out["machine_running_pct"].fillna(0.0)
+        out["machine_running_pct"] = out["machine_running_ratio"] * 100.0
         out["idle_fraction"] = self._idle_fraction(
             out["machine_running_ratio"], idle_threshold
         )
@@ -183,8 +182,9 @@ class IdleEnergyDetectionEvents(Base):
             shift_definitions: Dict mapping shift name → (start_time, end_time).
                 Default: three-shift operation (06-14, 14-22, 22-06).
             idle_threshold: Running ratio (0-1) below which a shift counts as
-                fully idle. Default None (no threshold, the previous
-                behavior); 0.1 matches :meth:`idle_energy_by_window`.
+                fully idle. Default None: no threshold, the idle fraction is
+                always ``1 - running ratio``; 0.1 matches
+                :meth:`idle_energy_by_window`.
 
         Returns:
             DataFrame: shift, total_energy, idle_energy, waste_fraction
@@ -261,7 +261,8 @@ class IdleEnergyDetectionEvents(Base):
             value_column_state: Column containing boolean state values.
             window: Aggregation window (default daily).
             trend_window: Number of windows for rolling average.
-            idle_threshold: machine_running_pct below this → idle.
+            idle_threshold: Running ratio (0-1) below which a window counts
+                as fully idle (see :meth:`idle_energy_by_window`).
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,

@@ -5,6 +5,7 @@ import pandas as pd
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_increments, counter_per_window
 from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.time_weighted import time_weighted_resample
@@ -77,7 +78,9 @@ class EnergyEfficiencyEvents(Base):
             out["uuid"] = df[id_column].astype(str)
         else:
             out["uuid"] = series_id
-        out["value_double"] = pd.to_numeric(df[value_column], errors="coerce")
+        out["value_double"] = to_numeric_checked(
+            df[value_column], what=f"column {value_column!r}"
+        )
         out["is_delta"] = True
         return out.sort_values("systime").reset_index(drop=True)
 
@@ -92,7 +95,7 @@ class EnergyEfficiencyEvents(Base):
         value_column_energy: str = "value_double",
         value_column_counter: str = "value_integer",
         window: str = "1h",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         trend_window: int = 24,
     ) -> pd.DataFrame:
         """Rolling energy efficiency trend (units produced per kWh).
@@ -104,10 +107,11 @@ class EnergyEfficiencyEvents(Base):
             value_column_counter: Column with counter readings.
             window: Time window for aggregation.
             trend_window: Number of windows for rolling average.
-            handle_resets: Treat a decreasing production counter as a reset
-                and sum reset-aware increments per window (see
-                :func:`ts_shape.utils.counters.counter_per_window`). Default
-                ``False`` keeps the per-window ``max - min``.
+            handle_resets: ``True`` (default) treats a decreasing production
+                counter as a reset and sums reset-aware increments per window
+                (see :func:`ts_shape.utils.counters.counter_per_window`), so a
+                window with a reset still reports what was produced.
+                ``False`` uses the per-window ``max - min``.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,
@@ -228,7 +232,7 @@ class EnergyEfficiencyEvents(Base):
         value_column_state: str = "value_bool",
         window: str = "15min",
         idle_threshold: float = 0.0,
-        time_weighted: bool = False,
+        time_weighted: bool = True,
     ) -> pd.DataFrame:
         """Detect energy consumed during idle periods (waste).
 
@@ -242,16 +246,18 @@ class EnergyEfficiencyEvents(Base):
             value_column_state: Column with boolean state.
             window: Time window for analysis.
             idle_threshold: Energy above this during idle is waste.
-            time_weighted: Weight the machine state by how long it was held
-                (until the next state change) and keep every energy window.
-                Default ``False`` averages state *samples* and inner-joins, so
-                a change-encoded state signal reads as a sample count and
-                windows without a state row drop their energy.
+            time_weighted: ``True`` (default) weights the machine state by how
+                long it was held (until the next state change) and keeps every
+                energy window. ``False`` averages state *samples* and keeps only
+                windows that contain a state row; that is only right for a
+                densely, uniformly sampled state signal.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,
-                       is_delta, energy_consumed, machine_running_pct, is_idle_waste,
-                       waste_energy
+                       is_delta, energy_consumed, machine_running_pct (0-100),
+                       machine_running_ratio (0-1), is_idle_waste, waste_energy.
+                       A window is idle waste when the machine ran less than
+                       10 % of it and consumed more than ``idle_threshold``.
         """
         energy = (
             self.dataframe[self.dataframe[self._uuid_column] == meter_uuid]
@@ -274,6 +280,7 @@ class EnergyEfficiencyEvents(Base):
                         "is_delta",
                         "energy_consumed",
                         "machine_running_pct",
+                        "machine_running_ratio",
                         "is_idle_waste",
                         "waste_energy",
                     ]
@@ -316,8 +323,10 @@ class EnergyEfficiencyEvents(Base):
             merged = energy_agg.join(state_agg, how="inner").reset_index()
         merged = merged.rename(columns={self.time_column: "start"})
 
-        # Idle waste: machine mostly idle but still consuming energy
-        merged["is_idle_waste"] = (merged["machine_running_pct"] < 0.1) & (
+        merged["machine_running_ratio"] = merged.pop("machine_running_pct")
+        merged["machine_running_pct"] = merged["machine_running_ratio"] * 100.0
+        # Idle waste: machine mostly idle (running < 10 %) but still consuming
+        merged["is_idle_waste"] = (merged["machine_running_ratio"] < 0.1) & (
             merged["energy_consumed"] > idle_threshold
         )
         merged["waste_energy"] = np.where(
@@ -337,6 +346,7 @@ class EnergyEfficiencyEvents(Base):
                     "is_delta",
                     "energy_consumed",
                     "machine_running_pct",
+                    "machine_running_ratio",
                     "is_idle_waste",
                     "waste_energy",
                 ]
@@ -355,7 +365,7 @@ class EnergyEfficiencyEvents(Base):
         value_column_energy: str = "value_double",
         value_column_counter: str = "value_integer",
         window: str = "1D",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Daily/periodic specific energy consumption (SEC = energy / output).
 
@@ -367,10 +377,11 @@ class EnergyEfficiencyEvents(Base):
             value_column_energy: Column with energy readings.
             value_column_counter: Column with counter readings.
             window: Time window (default daily).
-            handle_resets: Treat a decreasing production counter as a reset
-                and sum reset-aware increments per window (see
-                :func:`ts_shape.utils.counters.counter_per_window`). Default
-                ``False`` keeps the per-window ``max - min``.
+            handle_resets: ``True`` (default) treats a decreasing production
+                counter as a reset and sums reset-aware increments per window
+                (see :func:`ts_shape.utils.counters.counter_per_window`), so a
+                window with a reset still reports what was produced.
+                ``False`` uses the per-window ``max - min``.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,

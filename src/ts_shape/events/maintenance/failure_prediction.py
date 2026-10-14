@@ -152,7 +152,7 @@ class FailurePredictionEvents(Base):
                     "current_value": current_val,
                     "rul_seconds": rul_seconds,
                     "rul_hours": rul_hours,
-                    "confidence": round(confidence, 4),
+                    "confidence": float(confidence),
                 }
             )
 

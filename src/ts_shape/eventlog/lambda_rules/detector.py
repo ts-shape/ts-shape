@@ -4,7 +4,8 @@ A LambdaDetector is the lambda-rule counterpart of the 290 built-in
 detector classes under ``ts_shape.events.*``. It does not subclass any
 of them — instead it implements the same conceptual contract:
 
-1. ``evaluate(df)`` returns a legacy-shaped DataFrame.
+1. ``evaluate(df)`` returns a detector frame (the layout a built-in
+   detector returns).
 2. ``to_event_log(df, ...)`` runs the evaluator and hands the result to
    the canonical :func:`~ts_shape.eventlog.to_event_log` dispatcher.
 
@@ -32,13 +33,13 @@ class LambdaDetector:
         self.detector_name = f"{spec.class_name}.{spec.method_name}"
 
     def evaluate(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply the rule to ``df`` and return a legacy-shaped DataFrame.
+        """Apply the rule to ``df`` and return a detector frame.
 
         Args:
             df: Input DataFrame the rule's trigger expression is evaluated on.
 
         Returns:
-            Legacy-shaped DataFrame whose layout depends on the rule's shape
+            Detector frame whose layout depends on the rule's shape
             (see :func:`~ts_shape.eventlog.lambda_rules.evaluator.evaluate`).
         """
         return evaluate(self.spec, df)
@@ -64,9 +65,9 @@ class LambdaDetector:
         Returns:
             The canonical :class:`~ts_shape.eventlog.model.EventLog`.
         """
-        legacy = self.evaluate(df)
+        frame = self.evaluate(df)
         return to_event_log(
-            legacy,
+            frame,
             detector=self.detector_name,
             objects=objects,
             qualifiers=qualifiers,
