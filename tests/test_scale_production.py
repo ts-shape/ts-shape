@@ -12,9 +12,9 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
+from invariants import harness as H
 
 import ts_shape
-from invariants import harness as H
 
 
 def _plant(n: int, start: str, tz: str | None = None) -> pd.DataFrame:

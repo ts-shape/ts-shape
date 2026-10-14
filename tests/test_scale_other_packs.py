@@ -15,9 +15,9 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
+from invariants import harness as H
 
 import ts_shape
-from invariants import harness as H
 
 ROWS_PER_SIGNAL = 10_000  # five dense signals + a setpoint -> ~50k rows
 TOTAL_BUDGET_S = 90.0
