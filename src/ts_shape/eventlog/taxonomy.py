@@ -1981,6 +1981,83 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:sample_count": None,
         },
     ),
+    ("OperatingStateEvents", "infer_states"): _r(
+        "production.operating_state.{state_label}",
+        _PR,
+        I,
+        objs=("asset",),
+        standard_attrs={
+            "ts_shape:method": "quantile_clustering",
+            "ts_shape:lifecycle_state": "complete",
+        },
+    ),
+    ("OperatingStateEvents", "state_duration_stats"): _r(
+        "production.operating_state.duration_stats",
+        _PR,
+        ST,
+        objs=("asset",),
+        standard_attrs={"ts_shape:method": "state_duration_stats"},
+    ),
+    ("OperatingStateEvents", "unusual_state_sequence"): _r(
+        "production.operating_state.transition",
+        _PR,
+        ST,
+        objs=("asset",),
+        standard_attrs={
+            "ts_shape:method": "state_sequence",
+            "ts_shape:outcome": "is_unusual",
+        },
+    ),
+    ("OperatingStateEvents", "dwell_time_violation"): _r(
+        "production.operating_state.dwell_violation",
+        _PR,
+        I,
+        objs=("asset",),
+        standard_attrs={
+            "ts_shape:method": "dwell_time",
+            "ts_shape:lifecycle_state": "complete",
+        },
+    ),
+    ("TimeToThresholdEvents", "time_to_threshold"): _r(
+        "engineering.time_to_threshold.estimate",
+        _E,
+        ST,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "linear_trend",
+            "ts_shape:confidence": "r_squared",
+        },
+    ),
+    ("TimeToThresholdEvents", "time_to_threshold_windows"): _r(
+        "engineering.time_to_threshold.window",
+        _E,
+        ST,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "linear_trend",
+            "ts_shape:confidence": "confidence",
+        },
+    ),
+    ("TimeToThresholdEvents", "remaining_useful_range"): _r(
+        "engineering.time_to_threshold.remaining_range",
+        _E,
+        ST,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "linear_trend",
+            "ts_shape:confidence": "r_squared",
+        },
+    ),
+    ("TimeToThresholdEvents", "crossing_forecast"): _r(
+        "engineering.time_to_threshold.crossing.{threshold_name}",
+        _E,
+        ST,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "linear_trend",
+            "ts_shape:confidence": "r_squared",
+        },
+    ),
     ("GaugeRepeatabilityEvents", "gauge_rr_summary"): _r(
         "quality.gauge_rr.summary",
         _Q,

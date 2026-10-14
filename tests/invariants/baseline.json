@@ -819,6 +819,26 @@
   "extra_uuid": "ok",
   "tz": "ok"
  },
+ "OperatingStateEvents.dwell_time_violation": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "OperatingStateEvents.infer_states": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "OperatingStateEvents.state_duration_stats": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "OperatingStateEvents.unusual_state_sequence": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
  "OperatorPerformanceTracking.operator_comparison": {
   "empty": "ok",
   "extra_uuid": "ok",
@@ -1465,6 +1485,26 @@
   "tz": "ok"
  },
  "ThresholdMonitoringEvents.time_above_threshold": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "TimeToThresholdEvents.crossing_forecast": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "TimeToThresholdEvents.remaining_useful_range": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "TimeToThresholdEvents.time_to_threshold": {
+  "empty": "ok",
+  "extra_uuid": "ok",
+  "tz": "ok"
+ },
+ "TimeToThresholdEvents.time_to_threshold_windows": {
   "empty": "ok",
   "extra_uuid": "ok",
   "tz": "ok"

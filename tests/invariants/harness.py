@@ -195,6 +195,12 @@ METHOD_OVERRIDES: dict[str, dict[str, Any]] = {
         "candidate_uuid": CONT,
     },
     "EnvironmentalCompensationEvents": {"valid_range": (15.0, 25.0)},
+    "OperatingStateEvents": {"state": 1},
+    "TimeToThresholdEvents": {
+        "thresholds": {"warn": 55.0, "alarm": 60.0},
+        "lower_bound": 40.0,
+        "upper_bound": 60.0,
+    },
 }
 
 

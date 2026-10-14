@@ -168,6 +168,12 @@ Performance and Target Tracking:
   - weekly_summary: Roll up daily metrics to weekly.
   - monthly_summary: Roll up daily metrics to monthly.
   - compare_periods: Period-over-period comparison.
+
+- OperatingStateEvents: Infer operating states from continuous signals.
+  - infer_states: Cluster the signal into N operating states.
+  - state_duration_stats: Duration statistics per inferred state.
+  - unusual_state_sequence: Detect unexpected state transitions.
+  - dwell_time_violation: Find intervals exceeding max allowed duration in a state.
 """
 
 # Event Detection Classes
@@ -190,6 +196,9 @@ from .multi_process_traceability import MultiProcessTraceabilityEvents
 
 # OEE and Advanced Analytics
 from .oee_calculator import OEECalculator
+
+# Setup, Rework, and Operator Tracking
+from .operating_state import OperatingStateEvents
 from .operator_performance import OperatorPerformanceTracking
 from .order_traceability import OrderTraceabilityEvents, ValueTraceabilityEvents
 
@@ -204,14 +213,13 @@ from .rework_tracking import ReworkTracking
 from .routing_traceability import RoutingTraceabilityEvents
 from .schedule_adherence import ProductionScheduleAdherenceEvents
 from .scrap_tracking import ScrapTracking
-
-# Setup, Rework, and Operator Tracking
 from .setup_time_tracking import SetupTimeTracking
 from .shift_handover import ShiftHandoverReport
 from .shift_reporting import ShiftReporting
 from .target_tracking import TargetTracking
 
 __all__ = [
+    "OperatingStateEvents",
     # Event Detection
     "MachineStateEvents",
     "LongDowntimeEvents",
