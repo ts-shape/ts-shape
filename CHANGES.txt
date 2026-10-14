@@ -40,6 +40,11 @@ fix: cycles, period cutters and object detection verified against
   readings end a presence, change-encoded ids last to the data end,
   hand-over events link once, pm4py export round-trips. All three are
   10-100x faster.
+feat: severity_level (info/warn/critical) next to every categorical
+  severity, so detectors can be filtered together; detector labels stay.
+fix: lag_profile windows without speed data are NaN (was the lag at
+  min_speed); CriticalParameterRankingEvents needs no long-format frame;
+  TimeWindowedFeatureTable takes window (freq deprecated).
 docs: the site is cut from 139 to 106 pages (14k to 6k lines) and
   rewritten in plain language; every example runs.
 

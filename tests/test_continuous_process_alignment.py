@@ -487,3 +487,23 @@ class TestConfiguredColumns:
             ContinuousProcessAlignmentEvents(
                 df, "speed:line", LINE_CONFIG, ref_uuid="station:a"
             )
+
+
+def test_lag_profile_window_without_speed_has_no_lag():
+    import numpy as np
+
+    from ts_shape.events.production.continuous_process_alignment import (
+        ContinuousProcessAlignmentEvents,
+    )
+
+    t = pd.to_datetime(
+        ["2024-01-01 08:00:00", "2024-01-01 08:00:30", "2024-01-01 08:03:00"]
+    )
+    df = pd.DataFrame({"systime": t, "uuid": "speed", "value_double": 60.0})
+    cpa = ContinuousProcessAlignmentEvents(
+        df, "speed", [{"name": "gauge", "offset": 10.0, "uuids": ["gauge"]}]
+    )
+    out = cpa.lag_profile(window="1min").set_index("start")
+    assert out.loc["2024-01-01 08:00", "lag_seconds"] == 10.0  # 1 m/s
+    assert np.isnan(out.loc["2024-01-01 08:01", "lag_seconds"])  # no speed data
+    assert np.isnan(out.loc["2024-01-01 08:01", "mean_speed_m_s"])

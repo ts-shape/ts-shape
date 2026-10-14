@@ -109,6 +109,20 @@ These were verified against hand-built scenarios; the fixes change results:
   - use `to_event_log_ocel(log, pm4py=True)` for pm4py export.
 - **`production_dates`:** correct after a DST change (it was one day off).
 
+### Severity levels and small fixes
+
+- **`severity_level`.** Every result with a categorical `severity` also has
+  `severity_level` (`info` / `warn` / `critical`), right after `severity`. The
+  `severity` labels are unchanged. Code that selects columns by position sees one
+  more column.
+- **`TimeWindowedFeatureTable`:** `freq` is renamed `window`. `freq` still works and
+  warns.
+- **`CriticalParameterRankingEvents()`:** the long-format frame is optional and
+  `rank()` never used it, so a time column is no longer needed.
+- **`ContinuousProcessAlignmentEvents.lag_profile`:** a window without speed
+  readings has NaN speed and lag. Before, it reported the lag at `min_speed`:
+  thousands of seconds.
+
 ## October 2026, round 5: correct by default
 
 The correct behavior is now the default, and results are returned at full

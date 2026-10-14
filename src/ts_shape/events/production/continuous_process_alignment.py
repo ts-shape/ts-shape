@@ -505,6 +505,7 @@ class ContinuousProcessAlignmentEvents(Base):
         Returns:
             DataFrame with columns ``start``, ``uuid``, ``component``,
                 ``position_offset_m``, ``mean_speed_m_s``, and ``lag_seconds``.
+                Windows without speed readings have NaN speed and lag.
         """
         uuids = station_uuids if station_uuids is not None else self._all_station_uuids
         speed_df = self._get_speed_df()
@@ -520,9 +521,10 @@ class ContinuousProcessAlignmentEvents(Base):
             .reset_index()
             .rename(columns={self.time_column: "start"})
         )
+        # A window without speed readings has no lag (NaN), not the lag of
+        # min_speed (which would be offset / 0.01 m/s, thousands of seconds).
         speed_resampled["mean_speed_m_s"] = (
-            speed_resampled["mean_speed_raw"].fillna(self.min_speed)
-            * self._speed_factor
+            speed_resampled["mean_speed_raw"] * self._speed_factor
         ).clip(lower=self.min_speed)
 
         parts: list[pd.DataFrame] = []

@@ -41,7 +41,7 @@ cut at 08:01:10 finishes piece 2. Readings whose material has not been cut yet h
 |---|---|
 | `align_to_reference(station_uuids, value_column)` | per reading: `material_ref_time`, `systime`, `uuid`, `component`, `position_offset_m`, `lag_seconds`, the value |
 | `segment_by_cut(aligned_df, cut_length_uuid, part_counter_uuid, cut_value_column, handle_resets)` | `aligned_df` plus `piece_id` (nullable integer, from 1), `piece_length_m`, `piece_cut_ref_time` |
-| `lag_profile(station_uuids, window)` | per window and station: `mean_speed_m_s`, `lag_seconds` |
+| `lag_profile(station_uuids, window)` | per window and station: `mean_speed_m_s`, `lag_seconds` (NaN for a window without speed readings) |
 | `alignment_quality(station_uuids, window)` | per window: whether speed and every station have data |
 
 ## Notes
