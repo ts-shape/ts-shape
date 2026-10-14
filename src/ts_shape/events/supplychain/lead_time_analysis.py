@@ -5,14 +5,44 @@ and detects anomalous lead times.
 """
 
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
+from ts_shape.utils.normalize import _caller_stacklevel
 
 logger = logging.getLogger(__name__)
+
+
+def _pair_in_order(
+    order_times: pd.Series, delivery_times: pd.Series
+) -> tuple[list[int], list[int]]:
+    """Positions of FIFO pairs: each order with the next unused delivery >= it.
+
+    Both inputs are sorted. Pairs never cross and a delivery never precedes
+    its order.
+    """
+    orders = order_times.to_numpy()
+    deliveries = delivery_times.to_numpy()
+    order_pos: list[int] = []
+    delivery_pos: list[int] = []
+    j = 0
+    for i, t in enumerate(orders):
+        if j >= len(deliveries):
+            break
+        if pd.isna(t):
+            continue
+        while j < len(deliveries) and (pd.isna(deliveries[j]) or deliveries[j] < t):
+            j += 1
+        if j < len(deliveries):
+            order_pos.append(i)
+            delivery_pos.append(j)
+            j += 1
+    return order_pos, delivery_pos
 
 
 class LeadTimeAnalysisEvents(Base):
@@ -20,8 +50,9 @@ class LeadTimeAnalysisEvents(Base):
 
     Order and delivery events are identified by separate UUIDs. When the
     delivery rows carry the order identifier, each order is matched to the
-    first delivery of the same identifier at or after it; otherwise they are
-    paired sequentially (first order to first delivery, etc.).
+    first delivery of the same identifier at or after it; otherwise each
+    order, in time order, is paired with the first not yet used delivery at
+    or after it.
 
     Example usage:
         analyzer = LeadTimeAnalysisEvents(df)
@@ -62,8 +93,12 @@ class LeadTimeAnalysisEvents(Base):
         The *value_column* is used as an order identifier (e.g. PO number).
         When deliveries carry identifiers that occur among the orders, each
         order is matched to the first delivery with the same identifier at or
-        after the order time (unmatched orders are left out). Otherwise the
-        first order is paired with the first delivery, and so on.
+        after the order time (unmatched orders are left out). Otherwise each
+        order, in time order, is paired with the first delivery at or after
+        it that is not paired yet; orders and deliveries left without a
+        partner are dropped with a
+        :class:`~ts_shape.errors.DataQualityWarning`. A lead time is never
+        negative.
 
         Args:
             order_uuid: UUID of the order placement signal.
@@ -137,14 +172,25 @@ class LeadTimeAnalysisEvents(Base):
             delivery_times = matched["delivery_time"].reset_index(drop=True)
             order_ids = matched["order_id"].reset_index(drop=True)
         else:
-            n_pairs = min(len(orders), len(deliveries))
+            order_pos, delivery_pos = _pair_in_order(
+                orders[self.time_column], deliveries[self.time_column]
+            )
+            n_orphans = len(orders) + len(deliveries) - 2 * len(order_pos)
+            if n_orphans:
+                warnings.warn(
+                    f"lead_times: {len(orders) - len(order_pos)} order(s) without "
+                    f"a later delivery and {len(deliveries) - len(delivery_pos)} "
+                    "delivery(ies) without an earlier open order were dropped",
+                    DataQualityWarning,
+                    stacklevel=_caller_stacklevel(),
+                )
             # Keep Series (not .values) so a tz-aware systime keeps its tz.
-            order_times = orders[self.time_column].iloc[:n_pairs]
-            delivery_times = deliveries[self.time_column].iloc[:n_pairs]
+            order_times = orders[self.time_column].iloc[order_pos]
+            delivery_times = deliveries[self.time_column].iloc[delivery_pos]
             order_ids = (
-                orders[value_column].iloc[:n_pairs]
+                orders[value_column].iloc[order_pos]
                 if value_column in orders.columns
-                else pd.Series([None] * n_pairs)
+                else pd.Series([None] * len(order_pos))
             )
 
         lead_seconds = (
