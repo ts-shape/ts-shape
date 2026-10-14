@@ -30,23 +30,20 @@ All three are blocking in CI.
 
 ### Incremental strict typing
 
-`mypy` runs the whole tree under a modest global baseline. Two override blocks
-in `pyproject.toml` drive an incremental rollout toward full strictness:
+`mypy` runs the whole tree with `disallow_untyped_defs`,
+`disallow_incomplete_defs`, `warn_return_any` and `warn_unused_ignores` on
+globally, so every new function needs full annotations.
 
-- **Strict allowlist** — modules held to `disallow_untyped_defs`,
-  `disallow_incomplete_defs`, `warn_return_any` and `warn_unused_ignores`. New
-  code should land here.
-- **Typing debt** — older modules quarantined with `ignore_errors` so the gate
-  stays green.
+A single **strict exemptions** override block in `pyproject.toml` lists the few
+modules that do not pass those flags yet. To pay one off, delete its entry,
+run `mypy` to see what it needs, and fix the reported errors (per-module
+settings win over command-line flags, so the module must leave the list before
+mypy reports on it).
 
-To chip away at the debt, pick one module, remove it from the debt list, fix the
-reported errors, then (ideally) add it to the strict allowlist:
-
-```bash
-# See what a quarantined module needs:
-mypy src/ts_shape/features/cross_signal.py \
-  --check-untyped-defs --disallow-untyped-defs --warn-return-any --warn-unused-ignores
-```
+pandas ships no type information here, so pandas results are `Any`. Where a
+function returns one under a narrower declared type, annotate a local
+(`out: np.ndarray = ...`) or use `typing.cast` with a comment saying why;
+converting with `float()`/`int()` changes the returned scalar type.
 
 ---
 

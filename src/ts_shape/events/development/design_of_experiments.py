@@ -92,8 +92,9 @@ class DesignOfExperimentsEvents(Base):
         operator drove the factor to a small number of explicit setpoints.
         """
         if n_levels is None:
-            return np.round(values, 6)
-        bins = pd.qcut(values, q=n_levels, labels=False, duplicates="drop")
+            levels: np.ndarray = np.round(values, 6)
+            return levels
+        bins: np.ndarray = pd.qcut(values, q=n_levels, labels=False, duplicates="drop")
         return bins.astype(float)
 
     # ------------------------------------------------------------------

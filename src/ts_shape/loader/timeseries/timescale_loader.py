@@ -67,7 +67,7 @@ class TimescaleDBDataAccess:
             chunksize=10000,
         )
 
-    def fetch_data_as_parquet(self, output_dir: str):
+    def fetch_data_as_parquet(self, output_dir: str) -> None:
         """Retrieve timeseries data from TimescaleDB and save it as Parquet files.
 
         Rows are grouped by the hour of ``systime`` and written to one file per

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,11 @@ NONE: tuple[str, ...] = ()
 
 
 def _r(
-    template: str, pack: str, shape: str = P, objs: tuple[str, ...] = ASSET, **kw
+    template: str,
+    pack: str,
+    shape: str = P,
+    objs: tuple[str, ...] = ASSET,
+    **kw: Any,
 ) -> LabelRule:
     return LabelRule(
         template=template, pack=pack, shape=shape, produces_objects=objs, **kw
@@ -2671,10 +2676,10 @@ def render_activity(rule: LabelRule, row: Mapping[str, object]) -> str:
             parts.append(template[j:])
             break
         field_name = template[j + 1 : k]
-        val = row.get(field_name) if hasattr(row, "get") else None  # type: ignore[arg-type]
+        val = row.get(field_name) if hasattr(row, "get") else None
         if val is None:
             try:
-                val = row[field_name]  # type: ignore[index]
+                val = row[field_name]
             except (KeyError, TypeError):
                 val = "unknown"
         parts.append(str(val))

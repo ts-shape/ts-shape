@@ -1,10 +1,15 @@
 import logging
+from typing import cast
 
 import pandas as pd
 
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
+
+# pandas ships no type information here (no py.typed, pandas-stubs not
+# installed), so every reduction is ``Any``; ``cast`` records the documented
+# scalar type without converting it (the numpy scalar is returned as before).
 
 
 class TimestampStatistics(Base):
@@ -21,7 +26,7 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return dataframe[column_name].isna().sum()
+        return cast(int, dataframe[column_name].isna().sum())
 
     @classmethod
     def count_not_null(
@@ -33,10 +38,12 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return dataframe[column_name].notna().sum()
+        return cast(int, dataframe[column_name].notna().sum())
 
     @classmethod
-    def earliest_timestamp(cls, dataframe: pd.DataFrame, column_name: str = "systime"):
+    def earliest_timestamp(
+        cls, dataframe: pd.DataFrame, column_name: str = "systime"
+    ) -> pd.Timestamp:
         """Returns the earliest timestamp in the column.
 
         Args:
@@ -46,7 +53,9 @@ class TimestampStatistics(Base):
         return dataframe[column_name].min()
 
     @classmethod
-    def latest_timestamp(cls, dataframe: pd.DataFrame, column_name: str = "systime"):
+    def latest_timestamp(
+        cls, dataframe: pd.DataFrame, column_name: str = "systime"
+    ) -> pd.Timestamp:
         """Returns the latest timestamp in the column.
 
         Args:
@@ -56,7 +65,9 @@ class TimestampStatistics(Base):
         return dataframe[column_name].max()
 
     @classmethod
-    def timestamp_range(cls, dataframe: pd.DataFrame, column_name: str = "systime"):
+    def timestamp_range(
+        cls, dataframe: pd.DataFrame, column_name: str = "systime"
+    ) -> pd.Timedelta:
         """Returns the time range (difference) between the earliest and latest timestamps.
 
         Args:
@@ -70,7 +81,7 @@ class TimestampStatistics(Base):
     @classmethod
     def most_frequent_timestamp(
         cls, dataframe: pd.DataFrame, column_name: str = "systime"
-    ):
+    ) -> pd.Timestamp:
         """Returns the most frequent timestamp in the column.
 
         Args:
@@ -90,7 +101,7 @@ class TimestampStatistics(Base):
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
         most_frequent_value = cls.most_frequent_timestamp(dataframe, column_name)
-        return dataframe[column_name].value_counts().loc[most_frequent_value]
+        return cast(int, dataframe[column_name].value_counts().loc[most_frequent_value])
 
     @classmethod
     def year_distribution(
@@ -164,7 +175,7 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return dataframe[column_name].dt.weekday.mode().iloc[0]
+        return cast(int, dataframe[column_name].dt.weekday.mode().iloc[0])
 
     @classmethod
     def most_frequent_hour(
@@ -176,7 +187,7 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return dataframe[column_name].dt.hour.mode().iloc[0]
+        return cast(int, dataframe[column_name].dt.hour.mode().iloc[0])
 
     @classmethod
     def average_time_gap(
@@ -193,7 +204,9 @@ class TimestampStatistics(Base):
         return time_deltas.mean()
 
     @classmethod
-    def median_timestamp(cls, dataframe: pd.DataFrame, column_name: str = "systime"):
+    def median_timestamp(
+        cls, dataframe: pd.DataFrame, column_name: str = "systime"
+    ) -> pd.Timestamp:
         """Returns the median timestamp in the column.
 
         Args:

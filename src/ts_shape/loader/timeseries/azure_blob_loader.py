@@ -371,7 +371,7 @@ class AzureBlobParquetLoader:
     @staticmethod
     def _hourly_slots(
         start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
-    ) -> Iterable[pd.Timestamp]:
+    ) -> pd.DatetimeIndex:
         """Hours overlapping ``[start, end]``; the start is floored to the hour."""
         return hourly_slots(start_timestamp, end_timestamp)
 
@@ -993,7 +993,7 @@ class AzureBlobFlexibleFileLoader:
     @staticmethod
     def _hourly_slots(
         start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
-    ) -> Iterable[pd.Timestamp]:
+    ) -> pd.DatetimeIndex:
         """Hours overlapping ``[start, end]``; the start is floored to the hour."""
         return hourly_slots(start_timestamp, end_timestamp)
 

@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 
@@ -165,7 +167,7 @@ class TimeGroupedStatistics(Base):
         time_column: str,
         value_column: str,
         freq: str,
-        func,
+        func: Callable[[pd.Series], Any],
     ) -> pd.DataFrame:
         """
         Apply a custom aggregation function on the value column over the grouped time intervals.

@@ -258,7 +258,10 @@ class EnergyPerformanceIndicatorEvents(Base):
                 "different production volumes"
             )
         slope, intercept = np.polyfit(x, y, 1)
-        return intercept + slope * base["units_produced"].to_numpy(dtype=float)
+        expected: np.ndarray = intercept + slope * base["units_produced"].to_numpy(
+            dtype=float
+        )
+        return expected
 
     @renamed_kwargs(
         counter_column="value_column_counter", energy_column="value_column_energy"

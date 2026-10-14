@@ -155,7 +155,8 @@ class MultivariateSPCEvents(Base):
         if tz is not None:
             start = start.tz_localize(tz) if start.tzinfo is None else start
             end = end.tz_localize(tz) if end.tzinfo is None else end
-        return ((t >= start) & (t < end)).to_numpy()
+        mask: np.ndarray = ((t >= start) & (t < end)).to_numpy()
+        return mask
 
     def _fit(
         self, reference_period: tuple[TimeLike, TimeLike] | None

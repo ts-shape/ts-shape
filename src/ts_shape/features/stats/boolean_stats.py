@@ -1,10 +1,15 @@
 import logging
+from typing import cast
 
 import pandas as pd
 
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
+
+# pandas ships no type information here (no py.typed, pandas-stubs not
+# installed), so every reduction is ``Any``; ``cast`` records the documented
+# scalar type without converting it (the numpy scalar is returned as before).
 
 
 class BooleanStatistics(Base):
@@ -102,7 +107,7 @@ class BooleanStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the boolean column to analyze.
         """
-        return dataframe[column_name].mode()[0]
+        return cast(bool, dataframe[column_name].mode()[0])
 
     @classmethod
     def is_balanced(cls, dataframe: pd.DataFrame, column_name: str) -> bool:

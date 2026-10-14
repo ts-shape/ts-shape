@@ -798,17 +798,17 @@ class StartupDetectionEvents(Base):
 
         if condition == "threshold":
             min_val = phase.get("min_value", float("-inf"))
-            return value >= min_val
+            return bool(value >= min_val)
 
         elif condition == "range":
             min_val = phase.get("min_value", float("-inf"))
             max_val = phase.get("max_value", float("inf"))
-            return min_val <= value <= max_val
+            return bool(min_val <= value <= max_val)
 
         elif condition == "slope":
             min_slope = phase.get("min_slope", 0)
             slope = row.get("slope", 0)
-            return pd.notna(slope) and slope >= min_slope
+            return bool(pd.notna(slope) and slope >= min_slope)
 
         return False
 

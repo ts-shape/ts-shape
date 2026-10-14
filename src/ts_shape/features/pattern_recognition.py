@@ -65,7 +65,8 @@ class PatternRecognition(Base):
             2 * m * (1 - (QT - m * q_mean * rolling_mean) / (m * q_std * rolling_std))
         )
         dist_sq = np.maximum(dist_sq, 0)
-        return np.sqrt(dist_sq)
+        dist: np.ndarray = np.sqrt(dist_sq)
+        return dist
 
     @classmethod
     def _compute_matrix_profile(

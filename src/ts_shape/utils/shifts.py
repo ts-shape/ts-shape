@@ -86,10 +86,11 @@ def _time_of_day_us(timestamps: pd.Series) -> np.ndarray:
     if not pd.api.types.is_datetime64_any_dtype(times.dtype):
         times = pd.to_datetime(times)
     dt = times.dt
-    return (
+    us: np.ndarray = (
         ((dt.hour.astype("float64") * 60 + dt.minute) * 60 + dt.second) * 1_000_000
         + dt.microsecond
     ).to_numpy(dtype="float64", na_value=np.nan)
+    return us
 
 
 def _assign_shift_series(

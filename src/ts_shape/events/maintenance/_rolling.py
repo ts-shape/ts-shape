@@ -50,7 +50,8 @@ def times_ns(times: pd.Series) -> np.ndarray:
     ser = pd.Series(times)
     if isinstance(ser.dtype, pd.DatetimeTZDtype):
         ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-    return ser.to_numpy(dtype="datetime64[ns]").view(np.int64)
+    ns: np.ndarray = ser.to_numpy(dtype="datetime64[ns]").view(np.int64)
+    return ns
 
 
 def interval_bounds(

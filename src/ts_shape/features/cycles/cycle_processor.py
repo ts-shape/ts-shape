@@ -361,7 +361,7 @@ class CycleDataProcessor(Base):
             return []
 
         scores_df = pd.DataFrame(scores).sort_values("score", ascending=False)
-        golden_cycles = scores_df.head(top_n)["cycle_uuid"].tolist()
+        golden_cycles: list[str] = scores_df.head(top_n)["cycle_uuid"].tolist()
 
         logger.info(
             f"Identified {len(golden_cycles)} golden cycles using method '{method}'."

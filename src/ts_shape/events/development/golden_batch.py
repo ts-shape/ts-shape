@@ -95,7 +95,8 @@ class GoldenBatchDeviationEvents(Base):
             return np.full(self.n_resample, float(values[0]))
         norm = t_sec / total
         grid = np.linspace(0.0, 1.0, self.n_resample)
-        return np.interp(grid, norm, values)
+        resampled: np.ndarray = np.interp(grid, norm, values)
+        return resampled
 
     @staticmethod
     def _dtw_distance(a: np.ndarray, b: np.ndarray, band: int) -> float:

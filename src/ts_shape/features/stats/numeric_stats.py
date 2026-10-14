@@ -1,4 +1,5 @@
 import logging
+from typing import cast
 
 import pandas as pd
 from scipy import stats
@@ -6,6 +7,10 @@ from scipy import stats
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
+
+# pandas ships no type information here (no py.typed, pandas-stubs not
+# installed), so every reduction is ``Any``; ``cast`` records the documented
+# scalar type without converting it (the numpy scalar is returned as before).
 
 
 class NumericStatistics(Base):
@@ -21,7 +26,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].mean()
+        return cast(float, dataframe[column_name].mean())
 
     @classmethod
     def column_median(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -31,7 +36,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].median()
+        return cast(float, dataframe[column_name].median())
 
     @classmethod
     def column_std(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -41,7 +46,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].std()
+        return cast(float, dataframe[column_name].std())
 
     @classmethod
     def column_variance(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -51,7 +56,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].var()
+        return cast(float, dataframe[column_name].var())
 
     @classmethod
     def column_min(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -61,7 +66,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].min()
+        return cast(float, dataframe[column_name].min())
 
     @classmethod
     def column_max(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -71,7 +76,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].max()
+        return cast(float, dataframe[column_name].max())
 
     @classmethod
     def column_sum(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -81,7 +86,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].sum()
+        return cast(float, dataframe[column_name].sum())
 
     @classmethod
     def column_kurtosis(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -91,7 +96,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].kurt()
+        return cast(float, dataframe[column_name].kurt())
 
     @classmethod
     def column_skewness(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -101,7 +106,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].skew()
+        return cast(float, dataframe[column_name].skew())
 
     @classmethod
     def column_quantile(
@@ -114,7 +119,7 @@ class NumericStatistics(Base):
             column_name: Name of the numeric column to analyze.
             quantile: Quantile to compute, between 0 and 1 (0.5 is the median).
         """
-        return dataframe[column_name].quantile(quantile)
+        return cast(float, dataframe[column_name].quantile(quantile))
 
     @classmethod
     def column_iqr(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -124,7 +129,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return stats.iqr(dataframe[column_name])
+        return cast(float, stats.iqr(dataframe[column_name]))
 
     @classmethod
     def column_range(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -147,10 +152,10 @@ class NumericStatistics(Base):
             column_name: Name of the numeric column to analyze.
         """
         series = dataframe[column_name]
-        return (series - series.mean()).abs().mean()
+        return cast(float, (series - series.mean()).abs().mean())
 
     @classmethod
-    def column_mode(cls, dataframe: pd.DataFrame, column_name: str):
+    def column_mode(cls, dataframe: pd.DataFrame, column_name: str) -> float | None:
         """Calculate the mode of a specified column. Returns None if column is empty.
 
         Args:
@@ -158,7 +163,7 @@ class NumericStatistics(Base):
             column_name: Name of the numeric column to analyze.
         """
         modes = dataframe[column_name].mode()
-        return modes.iloc[0] if not modes.empty else None
+        return cast(float, modes.iloc[0]) if not modes.empty else None
 
     @classmethod
     def coefficient_of_variation(
@@ -187,7 +192,7 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return dataframe[column_name].sem()
+        return cast(float, dataframe[column_name].sem())
 
     @classmethod
     def describe(cls, dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -206,7 +211,7 @@ class NumericStatistics(Base):
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
-    ) -> dict[str, float | int]:
+    ) -> dict[str, float | int | None]:
         """Returns a dictionary with comprehensive numeric statistics for the specified column.
 
         Args:
