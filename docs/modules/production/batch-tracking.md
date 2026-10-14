@@ -50,8 +50,8 @@ print(batches)
 |--------|---------|---------|
 | `detect_batches()` | Identify batch start and end times from value changes in the batch-ID signal | DataFrame with `batch_id`, `start`, `end`, `duration_seconds`, `sample_count`, `uuid`, `source_uuid` |
 | `batch_duration_statistics()` | Compute duration statistics (count, min, avg, max, total) grouped by batch type | DataFrame with `batch_id`, `count`, `min_`/`avg_`/`max_`/`total_duration_seconds` |
-| `batch_yield(counter_uuid, handle_resets=False)` | Calculate production quantity per batch from a monotonic counter signal | DataFrame with `batch_id`, `start`, `end`, `duration_seconds`, `quantity` (plus `resets` when `handle_resets=True`) |
-| `batch_transition_matrix()` | Build a matrix showing which batch follows which, useful for scheduling analysis | DataFrame pivot table of from-batch vs to-batch counts, plus a `total` column |
+| `batch_yield(counter_uuid, handle_resets=True)` | Calculate production quantity per batch from a monotonic counter signal | DataFrame with `batch_id`, `start`, `end`, `duration_seconds`, `quantity` (plus `resets` unless `handle_resets=False`) |
+| `batch_transition_matrix(layout='long')` | Count which batch follows which, useful for scheduling analysis | DataFrame with `from_state`, `to_state`, `transition_count`, one row per observed transition (the empty result keeps these columns). `layout='wide'` returns the from-batch by to-batch pivot table with a `total` column |
 
 ---
 

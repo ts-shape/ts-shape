@@ -215,12 +215,11 @@ class MetadataJsonLoader:
             if isinstance(cfg, str):
                 try:
                     parsed = json.loads(cfg)
-                    if isinstance(parsed, dict):
-                        cfg = parsed
-                    else:
-                        cfg = {"value": parsed}
-                except Exception:
+                except json.JSONDecodeError:
+                    # A plain (non-JSON) string is kept verbatim as the value.
                     cfg = {"value": cfg}
+                else:
+                    cfg = parsed if isinstance(parsed, dict) else {"value": parsed}
             else:
                 cfg = {"value": cfg}
         return {

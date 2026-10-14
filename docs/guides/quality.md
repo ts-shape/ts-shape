@@ -38,7 +38,7 @@ Four detection methods, each suited to different signal distributions.
 ```python
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
-detector = OutlierDetectionEvents(df, value_column="value_double", group_by_uuid=True)
+detector = OutlierDetectionEvents(df, value_column="value_double")  # per-signal statistics
 
 # Z-score (values > 3 std from the signal's mean)
 outliers = detector.detect_outliers_zscore(threshold=3.0)

@@ -125,12 +125,7 @@ class TestInterpolationCandidates:
         assert len(cands) == 1
         assert cands.iloc[0]["gap_duration_seconds"] >= 29
         # Smooth sine signal — should be safe to interpolate
-        assert (
-            cands.iloc[0][  # noqa: E712 pandas-series-bool-comparison
-                "safe_to_interpolate"
-            ]  # noqa: E712 pandas-series-bool-comparison
-            == True  # noqa: E712 pandas-series-bool-comparison
-        )  # noqa: E712 pandas-series-bool-comparison
+        assert bool(cands.iloc[0]["safe_to_interpolate"])
 
     def test_large_max_gap_returns_both(self, gapped_df):
         det = DataGapAnalysisEvents(gapped_df, "sensor_1")

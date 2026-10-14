@@ -35,10 +35,10 @@ drifts = classifier.detect_drift(window="1h", min_slope=0.01)
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_flatline(min_duration='1min', tolerance=1e-6)` | Detect stuck/frozen signal segments | DataFrame with `start`, `end`, `duration`, `stuck_value` |
+| `detect_flatline(min_duration='1min', tolerance=1e-6, interval_end='next_change')` | Detect stuck/frozen signal segments; a run ends at the next differing sample, so a deadband historian (one row per change) still reports a stuck sensor (`interval_end='last_sample'` ends it at its own last sample) | DataFrame with `start`, `end`, `duration`, `stuck_value` |
 | `detect_oscillation(window='1min', min_crossings=6)` | Detect excessive oscillation (e.g., control valve hunting) | DataFrame with `start`, `end`, `crossing_count`, `amplitude` |
-| `detect_drift(window='1h', min_slope=0.01, slope_per='sample')` | Detect gradual drift in signal mean; `slope_per='second'` makes `slope`/`min_slope` units per second instead of per sample (independent of the sampling rate) | DataFrame with `start`, `end`, `slope`, `direction` |
-| `classify_anomalies(window='10min', n_sigma=3.0)` | Multi-type classification: spike, drift, oscillation, flatline, level shift | DataFrame with `start`, `end`, `anomaly_type`, `severity`, `details` |
+| `detect_drift(window='1h', min_slope=0.01, slope_per='second')` | Detect gradual drift in signal mean; `slope`/`min_slope` are in units per second, independent of the sampling rate (`slope_per='sample'` makes them units per sample) | DataFrame with `start`, `end`, `slope`, `direction` |
+| `classify_anomalies(window='10min', n_sigma=3.0, slope_per='second')` | Multi-type classification: spike, drift, oscillation, flatline, level shift (the drift slope in `details` is per second) | DataFrame with `start`, `end`, `anomaly_type`, `severity`, `details` |
 
 ---
 

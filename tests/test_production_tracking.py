@@ -269,6 +269,7 @@ def test_production_by_part_loses_production_without_reset_handling(sample_reset
         part_id_uuid="part_number",
         counter_uuid="production_counter",
         window="1h",
+        handle_resets=False,
     )
 
     # The window with the reset (432 -> 50) clamps to 0, losing production.
@@ -667,15 +668,45 @@ def test_best_and_worst_shifts():
     reporter = ShiftReportEvents(df)
     result = reporter.best_and_worst_shifts(counter_uuid="production_counter", days=3)
 
-    assert "best" in result
-    assert "worst" in result
-    assert isinstance(result["best"], pd.DataFrame)
-    assert isinstance(result["worst"], pd.DataFrame)
+    # Default: one DataFrame, best rows first (highest quantity first).
+    assert isinstance(result, pd.DataFrame)
+    assert list(result.columns) == [
+        "start",
+        "end",
+        "duration_seconds",
+        "rank_type",
+        "date",
+        "shift",
+        "quantity",
+    ]
+    best = result[result["rank_type"] == "best"]
+    worst = result[result["rank_type"] == "worst"]
+    assert not best.empty and not worst.empty
+    assert best["quantity"].is_monotonic_decreasing
+    assert worst["quantity"].is_monotonic_increasing
 
-    if not result["best"].empty:
-        assert "date" in result["best"].columns
-        assert "shift" in result["best"].columns
-        assert "quantity" in result["best"].columns
+    # The dict form is deprecated but still available.
+    with pytest.warns(DeprecationWarning, match="as_frame=False"):
+        dict_form = reporter.best_and_worst_shifts(
+            counter_uuid="production_counter", days=3, as_frame=False
+        )
+    assert set(dict_form) == {"best", "worst"}
+    assert list(dict_form["best"].columns) == ["date", "shift", "quantity"]
+    assert dict_form["best"]["quantity"].tolist() == best["quantity"].tolist()
+
+
+def test_best_and_worst_shifts_empty_keeps_schema():
+    df = pd.DataFrame(
+        {
+            "uuid": pd.Series([], dtype=str),
+            "systime": pd.Series([], dtype="datetime64[ns]"),
+            "value_integer": pd.Series([], dtype=float),
+        }
+    )
+    result = ShiftReportEvents(df).best_and_worst_shifts("production_counter")
+    assert isinstance(result, pd.DataFrame)
+    assert result.empty
+    assert "rank_type" in result.columns
 
 
 def test_shift_reporting_empty_data():
@@ -777,3 +808,21 @@ def test_takt_adherence_rising_edges_on_object_bool_column():
     out = LineThroughputEvents(df).takt_adherence("trig", takt_time="20s")
     # rising edges at 10 s and 40 s: one cycle of 30 s, which exceeds takt
     assert list(out["cycle_time_seconds"].dropna()) == [30.0]
+
+
+def test_production_by_part_default_is_reset_aware(sample_reset_data):
+    """The default ``handle_resets=True`` counts post-reset production."""
+    """With reset handling, production after a reset is counted correctly."""
+    tracker = PartProductionEvents(sample_reset_data)
+
+    def call(**kw):
+        return tracker.production_by_part(
+            part_id_uuid="part_number",
+            counter_uuid="production_counter",
+            window="1h",
+            **kw,
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

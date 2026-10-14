@@ -8,7 +8,7 @@ import logging
 from collections.abc import Callable
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,12 @@ class FeatureMatrixExporter:
                 series = grp[vcol].dropna()
                 for agg_name, agg_fn in aggs.items():
                     col_name = f"{sig}__{vcol}__{agg_name}"
-                    value = agg_fn(series) if len(series) else float("nan")
+                    if not len(series):
+                        value = float("nan")
+                    elif isinstance(agg_fn, str):
+                        value = series.agg(agg_fn)
+                    else:
+                        value = agg_fn(series)
                     rows.setdefault(row_key, {})[col_name] = value
 
         if not rows:

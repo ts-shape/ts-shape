@@ -10,7 +10,7 @@ Essential module for daily downtime analysis:
 import logging
 from collections.abc import Mapping
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import (
     add_period_window,
@@ -136,8 +136,10 @@ class DowntimeEvents(Base):
                 the preceding state. Without it, a logger outage between a
                 ``Running`` sample and the next reading is booked as uptime,
                 inflating availability toward 100 % over a period with no data.
-                Defaults to the state signal's spec ``max_gap`` when ``specs``
-                were given.
+                ``None`` (default) uses the state signal's spec ``max_gap``
+                when ``specs`` were given and applies no cap otherwise, so
+                every interval between readings, however long, counts toward
+                the preceding state.
             production_day: Attribute an overnight shift's post-midnight
                 readings to the shift's start date, so a night shift is one
                 ``(date, shift)`` row (default). False groups by raw calendar
@@ -234,10 +236,10 @@ class DowntimeEvents(Base):
                 {
                     "date": date,
                     "shift": shift,
-                    "total_minutes": round(total_minutes, 1),
-                    "downtime_minutes": round(downtime_minutes, 1),
-                    "uptime_minutes": round(uptime_minutes, 1),
-                    "availability_pct": round(availability_pct, 1),
+                    "total_minutes": total_minutes,
+                    "downtime_minutes": downtime_minutes,
+                    "uptime_minutes": uptime_minutes,
+                    "availability_pct": availability_pct,
                 }
             )
 
@@ -375,11 +377,6 @@ class DowntimeEvents(Base):
             else 0
         )
 
-        # Round values
-        reason_stats["total_minutes"] = reason_stats["total_minutes"].round(1)
-        reason_stats["avg_minutes"] = reason_stats["avg_minutes"].round(1)
-        reason_stats["pct_of_total"] = reason_stats["pct_of_total"].round(1)
-
         # Sort by total downtime descending
         reason_stats = reason_stats.sort_values("total_minutes", ascending=False)
 
@@ -432,7 +429,7 @@ class DowntimeEvents(Base):
         top_reasons = reason_stats.head(top_n).copy()
 
         # Calculate cumulative percentage
-        top_reasons["cumulative_pct"] = top_reasons["pct_of_total"].cumsum().round(1)
+        top_reasons["cumulative_pct"] = top_reasons["pct_of_total"].cumsum()
 
         return top_reasons[
             ["reason", "total_minutes", "pct_of_total", "cumulative_pct"]
@@ -457,7 +454,9 @@ class DowntimeEvents(Base):
             max_gap: Optional cap (e.g. "15min"). A gap between consecutive
                 readings longer than this is treated as "no data" and excluded,
                 instead of being attributed to the preceding state (which would
-                inflate availability across a logging outage).
+                inflate availability across a logging outage). ``None``
+                (default) applies no cap: every interval between readings,
+                however long, counts toward the preceding state.
 
         Returns:
             DataFrame with availability trend:
@@ -525,14 +524,14 @@ class DowntimeEvents(Base):
             results.append(
                 {
                     "period": period,
-                    "availability_pct": round(availability, 1),
-                    "uptime_minutes": round(uptime, 1),
-                    "downtime_minutes": round(downtime, 1),
+                    "availability_pct": availability,
+                    "uptime_minutes": uptime,
+                    "downtime_minutes": downtime,
                 }
             )
 
         return add_period_window(pd.DataFrame(results, columns=_TREND_COLS), window)
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in the next major release.
 DowntimeTracking = deprecated_class(DowntimeEvents, "DowntimeTracking")

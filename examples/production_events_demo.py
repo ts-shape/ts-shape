@@ -603,9 +603,9 @@ def demo_shift_reporting(df: pd.DataFrame) -> None:
     _subheader("best_and_worst_shifts(days=3)")
     bw = sr.best_and_worst_shifts(counter_uuid=UUID_PART_COUNTER, days=3)
     print("  Best shifts:")
-    print(bw["best"])
+    print(bw[bw["rank_type"] == "best"])
     print("  Worst shifts:")
-    print(bw["worst"])
+    print(bw[bw["rank_type"] == "worst"])
 
 
 def demo_downtime_tracking(df: pd.DataFrame) -> None:

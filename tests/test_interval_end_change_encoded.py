@@ -1,9 +1,9 @@
 """End-to-end tests: interval_end='next_change' fixes change-encoded signals.
 
-Change-encoded (is_delta=True) signals log one row per transition. With the
-default 'last_sample' interval closing, every interval collapses to zero
-duration and downtime/micro-stop/duty-cycle analyses report nothing. The
-'next_change' option closes each interval at the following transition.
+Change-encoded (is_delta=True) signals log one row per transition. With
+'last_sample' interval closing, every interval collapses to zero duration and
+downtime/micro-stop/duty-cycle analyses report nothing. The default
+'next_change' closes each interval at the following transition.
 """
 
 import pandas as pd  # type: ignore
@@ -43,11 +43,12 @@ def test_machine_state_change_encoded():
     )
     ms = MachineStateEvents(df, "sig")
 
-    # Default: single-row intervals collapse to zero duration.
-    default = ms.detect_run_idle()
-    assert (default["duration_seconds"] == 0).all()
+    # last_sample: single-row intervals collapse to zero duration.
+    naive = ms.detect_run_idle(interval_end="last_sample")
+    assert (naive["duration_seconds"] == 0).all()
 
-    fixed = ms.detect_run_idle(interval_end="next_change")
+    # Default (next_change) measures each interval to the next transition.
+    fixed = ms.detect_run_idle()
     durations = dict(zip(fixed["state"], fixed["duration_seconds"], strict=False))
     # First run 08:00->08:10 = 600s; idle 08:10->08:12 = 120s.
     assert fixed.iloc[0]["duration_seconds"] == 600.0
@@ -55,7 +56,7 @@ def test_machine_state_change_encoded():
     assert durations  # non-empty
 
     # min_duration now actually keeps real intervals under next_change.
-    kept = ms.detect_run_idle(min_duration="60s", interval_end="next_change")
+    kept = ms.detect_run_idle(min_duration="60s")
     assert not kept.empty
 
 
@@ -73,10 +74,10 @@ def test_micro_stop_change_encoded():
             ("2024-01-01 09:03:10", True),
         ],
     )
-    default = MicroStopEvents(df, "sig")
-    assert default.micro_stop_impact()["total_micro_stop_time"].sum() == 0
+    naive = MicroStopEvents(df, "sig", interval_end="last_sample")
+    assert naive.micro_stop_impact()["total_micro_stop_time"].sum() == 0
 
-    fixed = MicroStopEvents(df, "sig", interval_end="next_change")
+    fixed = MicroStopEvents(df, "sig")
     impact = fixed.micro_stop_impact()
     assert impact["total_micro_stop_time"].sum() == 30.0  # 20s + 10s
 
@@ -93,11 +94,11 @@ def test_long_downtime_change_encoded():
             ("2024-01-01 14:00:00", True),
         ],
     )
-    default = LongDowntimeEvents(df, "sig")
-    assert default.detect_long_downtime(min_gap="3h").empty  # missed entirely
+    ev = LongDowntimeEvents(df, "sig")
+    # last_sample misses the stop entirely.
+    assert ev.detect_long_downtime(min_gap="3h", interval_end="last_sample").empty
 
-    fixed = LongDowntimeEvents(df, "sig")
-    result = fixed.detect_long_downtime(min_gap="3h", interval_end="next_change")
+    result = ev.detect_long_downtime(min_gap="3h")
     assert len(result) == 1
     assert result.iloc[0]["duration_seconds"] == 4.5 * 3600
 
@@ -114,10 +115,10 @@ def test_duty_cycle_change_encoded():
             ("2024-01-01 09:15:00", True),
         ],
     )
-    default = DutyCycleEvents(df, "sig")
-    assert (default.on_off_intervals()["duration"] == pd.Timedelta(0)).all()
+    naive = DutyCycleEvents(df, "sig", interval_end="last_sample")
+    assert (naive.on_off_intervals()["duration"] == pd.Timedelta(0)).all()
 
-    fixed = DutyCycleEvents(df, "sig", interval_end="next_change")
+    fixed = DutyCycleEvents(df, "sig")
     intervals = fixed.on_off_intervals()
     # on 09:00->09:10 = 600s, off 09:10->09:15 = 300s.
     assert intervals.iloc[0]["duration"] == pd.Timedelta(seconds=600)

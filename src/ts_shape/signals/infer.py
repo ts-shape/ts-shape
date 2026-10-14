@@ -12,9 +12,9 @@ from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
-from ts_shape.signals.spec import SignalSpec, SignalSpecs
+from ts_shape.signals.spec import Encoding, Kind, SignalSpec, SignalSpecs
 
 __all__ = ["infer_specs", "infer_spec"]
 
@@ -79,7 +79,7 @@ def infer_spec(
     values = g[value_column].dropna() if value_column in g.columns else pd.Series()
     notes["value_column"] = "most populated value_* column"
 
-    kind = "continuous"
+    kind: Kind = "continuous"
     if value_column in ("value_bool", "value_string"):
         kind = "state"
         notes["kind"] = f"{value_column} carries discrete values"
@@ -107,7 +107,7 @@ def infer_spec(
     else:
         change_encoded = cv > 1.0
         notes["encoding"] = f"interval CV {cv:.2f} (deadband/irregular if > 1)"
-    encoding = "change_encoded" if change_encoded else "sampled"
+    encoding: Encoding = "change_encoded" if change_encoded else "sampled"
 
     if encoding == "sampled" and period is not None:
         max_gap = period * MAX_GAP_PERIODS
@@ -121,8 +121,8 @@ def infer_spec(
 
     return SignalSpec(
         uuid=uuid,
-        kind=kind,  # type: ignore[arg-type]
-        encoding=encoding,  # type: ignore[arg-type]
+        kind=kind,
+        encoding=encoding,
         value_column=value_column,
         nominal_period=period,
         max_gap=max_gap,

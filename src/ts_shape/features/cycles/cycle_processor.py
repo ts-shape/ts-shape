@@ -1,7 +1,7 @@
 import logging
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 
@@ -103,32 +103,15 @@ class CycleDataProcessor(Base):
         # Create a copy to avoid modifying the original
         merged_df = self.values_df.copy()
 
-        # Use pd.cut with interval index for vectorized assignment
-        # This is much faster than iterating over cycles
-        try:
-            # Get time values as int64 (nanoseconds) for efficient indexing
-            time_values = merged_df[self.systime_col]
-
-            # Find which interval each timestamp belongs to
-            cycle_assignment = pd.Series(index=merged_df.index, dtype="object")
-
-            for interval, cycle_uuid in self._cycle_intervals.items():
-                mask = (time_values >= interval.left) & (time_values <= interval.right)
-                cycle_assignment.loc[mask] = cycle_uuid
-
-            merged_df[self.cycle_uuid_col] = cycle_assignment
-
-        except Exception as e:
-            logger.error(
-                f"Error in vectorized cycle assignment: {e}. Falling back to iterative method."
-            )
-            # Fallback to original method if vectorization fails
-            merged_df[self.cycle_uuid_col] = None
-            for _, row in self.cycles_df.iterrows():
-                mask = (merged_df[self.systime_col] >= row["cycle_start"]) & (
-                    merged_df[self.systime_col] <= row["cycle_end"]
-                )
-                merged_df.loc[mask, self.cycle_uuid_col] = row[self.cycle_uuid_col]
+        # Assign each sample to the cycle whose [start, end] contains it. A
+        # comparison that cannot be made (e.g. tz-aware cycles against naive
+        # sample times) raises instead of being papered over.
+        time_values = merged_df[self.systime_col]
+        cycle_assignment = pd.Series(index=merged_df.index, dtype="object")
+        for interval, cycle_uuid in self._cycle_intervals.items():
+            mask = (time_values >= interval.left) & (time_values <= interval.right)
+            cycle_assignment.loc[mask] = cycle_uuid
+        merged_df[self.cycle_uuid_col] = cycle_assignment
 
         # Drop rows not assigned to any cycle
         unassigned_count = merged_df[self.cycle_uuid_col].isna().sum()

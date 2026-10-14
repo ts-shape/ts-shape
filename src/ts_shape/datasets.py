@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 _VALUE_COLUMNS = ("value_double", "value_integer", "value_bool")
 
@@ -86,7 +86,7 @@ def make_timeseries(
             }
         )
         if value_column == "value_double":
-            frame["value_double"] = np.round(signal, 6)
+            frame["value_double"] = signal
         elif value_column == "value_integer":
             frame["value_integer"] = signal.round().astype("int64")
         else:  # value_bool

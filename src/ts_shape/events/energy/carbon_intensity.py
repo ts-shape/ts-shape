@@ -1,7 +1,7 @@
 import logging
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
@@ -220,7 +220,7 @@ class CarbonIntensityEvents(Base):
         value_column: str = "value_double",
         value_column_counter: str = "value_integer",
         window: str = "1D",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Carbon intensity per unit produced (kgCO2e / unit).
 
@@ -229,10 +229,11 @@ class CarbonIntensityEvents(Base):
             value_column: Column containing energy/fuel readings.
             value_column_counter: Column containing counter readings.
             window: Aggregation window.
-            handle_resets: Treat a decreasing production counter as a reset
-                and sum reset-aware increments per window (see
-                :func:`ts_shape.utils.counters.counter_per_window`). Default
-                ``False`` keeps the per-window ``max - min``.
+            handle_resets: ``True`` (default) treats a decreasing production
+                counter as a reset and sums reset-aware increments per window
+                (see :func:`ts_shape.utils.counters.counter_per_window`), so a
+                window with a reset still reports what was produced.
+                ``False`` uses the per-window ``max - min``.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, total_kgco2e,

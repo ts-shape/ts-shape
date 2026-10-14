@@ -9,7 +9,7 @@ Track setup durations to support Single-Minute Exchange of Die improvement:
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import add_period_window
 from ts_shape.utils.base import Base
@@ -133,7 +133,7 @@ class SetupTimeEvents(Base):
                     {
                         "start": start,
                         "end": end,
-                        "duration_minutes": round(duration, 1),
+                        "duration_minutes": duration,
                     }
                 )
 
@@ -300,10 +300,6 @@ class SetupTimeEvents(Base):
             .reset_index()
         )
 
-        result["avg_minutes"] = result["avg_minutes"].round(1)
-        result["min_minutes"] = result["min_minutes"].round(1)
-        result["max_minutes"] = result["max_minutes"].round(1)
-
         return result.sort_values("avg_minutes", ascending=False).reset_index(drop=True)
 
     def setup_statistics(
@@ -358,13 +354,11 @@ class SetupTimeEvents(Base):
             [
                 {
                     "total_setups": len(durations),
-                    "total_minutes": round(total_setup, 1),
-                    "avg_minutes": round(durations.mean(), 1),
-                    "median_minutes": round(durations.median(), 1),
-                    "std_minutes": (
-                        round(durations.std(), 1) if len(durations) > 1 else 0.0
-                    ),
-                    "pct_of_available_time": round(pct, 1),
+                    "total_minutes": total_setup,
+                    "avg_minutes": durations.mean(),
+                    "median_minutes": durations.median(),
+                    "std_minutes": durations.std() if len(durations) > 1 else 0.0,
+                    "pct_of_available_time": pct,
                 }
             ]
         )
@@ -411,14 +405,14 @@ class SetupTimeEvents(Base):
             results.append(
                 {
                     "period": period,
-                    "avg_setup_minutes": round(grp["duration_minutes"].mean(), 1),
+                    "avg_setup_minutes": grp["duration_minutes"].mean(),
                     "setup_count": len(grp),
-                    "total_setup_minutes": round(grp["duration_minutes"].sum(), 1),
+                    "total_setup_minutes": grp["duration_minutes"].sum(),
                 }
             )
 
         return add_period_window(pd.DataFrame(results, columns=trend_cols), window)
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in the next major release.
 SetupTimeTracking = deprecated_class(SetupTimeEvents, "SetupTimeTracking")

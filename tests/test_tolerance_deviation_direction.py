@@ -31,16 +31,29 @@ def _df():
 
 
 def _events(df, **kw):
+    """The deprecated single ``tolerance_uuid`` path."""
+    with pytest.warns(DeprecationWarning, match="tolerance_uuid is deprecated"):
+        return ToleranceDeviationEvents(
+            dataframe=df,
+            tolerance_column="value_double",
+            actual_column="value_double",
+            tolerance_uuid="tol",
+            actual_uuid="act",
+            event_uuid="evt",
+            compare_func=operator.ge,
+            time_threshold="5min",
+            **kw,
+        )
+
+
+def _upper_only(df):
     return ToleranceDeviationEvents(
-        dataframe=df,
-        tolerance_column="value_double",
-        actual_column="value_double",
-        tolerance_uuid="tol",
+        df,
+        "value_double",
+        "value_double",
         actual_uuid="act",
         event_uuid="evt",
-        compare_func=operator.ge,
-        time_threshold="5min",
-        **kw,
+        upper_tolerance_uuid="tol",
     )
 
 
@@ -152,3 +165,58 @@ def test_capability_cpm_only_with_target():
     assert res["Pp"] == res["Cp"] and res["Ppk"] == res["Cpk"]
     # On target, Cpm equals Cp.
     assert ev.capability_indices(target_value=12.0)["Cpm"] == res["Cp"]
+
+
+def test_upper_tolerance_alone_is_one_sided():
+    df = _df()
+    out = _upper_only(df).detect_deviations()
+    # 12 > 10 and 16 > 15: the same four rows as the single-tolerance path.
+    assert sorted(out["systime"].dt.strftime("%H:%M")) == [
+        "09:30",
+        "09:31",
+        "10:30",
+        "10:31",
+    ]
+    assert list(out["deviation_abs"]) == pytest.approx([2.0, 2.0, 1.0, 1.0])
+    # Percentages relative to the magnitude of the single limit.
+    assert list(out["deviation_pct"]) == pytest.approx([20.0, 20.0, 100 / 15, 100 / 15])
+
+
+def test_lower_tolerance_alone_is_one_sided():
+    t = pd.date_range("2024-01-01", periods=4, freq="min")
+    df = pd.DataFrame(
+        {
+            "systime": t,
+            "uuid": ["lsl", "act", "act", "act"],
+            "value_double": [10.0, 9.0, 11.0, 12.0],
+            "is_delta": True,
+        }
+    )
+    ev = ToleranceDeviationEvents(
+        df,
+        "value_double",
+        "value_double",
+        actual_uuid="act",
+        lower_tolerance_uuid="lsl",
+    )
+    out = ev.detect_deviations()
+    assert list(out["value_double"]) == [9.0]
+    res = ev.capability_indices()
+    assert np.isnan(res["usl"]) and np.isnan(res["Cp"])
+    sigma = pd.Series([9.0, 11.0, 12.0]).std()
+    assert res["Cpk"] == pytest.approx((32.0 / 3 - 10.0) / (3 * sigma))
+
+
+def test_capability_upper_only_matches_single_tolerance():
+    df = _df()
+    single = _events(df).capability_indices()
+    upper = _upper_only(df).capability_indices()
+    assert upper["Cpk"] == pytest.approx(single["Cpk"])
+    assert np.isnan(upper["Cp"]) and np.isnan(upper["lsl"])
+
+
+def test_no_tolerance_raises():
+    with pytest.raises(ValueError, match="upper_tolerance_uuid"):
+        ToleranceDeviationEvents(
+            _df(), "value_double", "value_double", actual_uuid="act"
+        )

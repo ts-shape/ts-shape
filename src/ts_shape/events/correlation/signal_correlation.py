@@ -1,44 +1,54 @@
 import functools
 import logging
 import numbers
+import warnings
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.deprecation import REMOVAL, renamed_kwargs
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
 
-F = TypeVar("F", bound=Callable[..., Any])
+P = ParamSpec("P")
+R = TypeVar("R")
 
-_OLD_WINDOW_NAMES = {"window": "window_size", "resample": "window"}
 
+def _window_size_from_int_window(func: Callable[P, R]) -> Callable[P, R]:
+    """Route an integer ``window`` (the rolling row count) to ``window_size``.
 
-def _legacy_window_kwargs(func: F) -> F:
-    """Accept the pre-1.0 ``resample`` (grid) / ``window`` (row count) names.
-
-    ``window`` now means the resample grid (an offset string) and the rolling
-    row count is ``window_size``. A call is treated as old-style -- and warns
-    -- when it passes ``resample`` or an integer ``window``.
+    ``window`` is the resample interval (an offset string) and the rolling row
+    count is ``window_size``. Earlier releases used ``window`` as the row count, so an
+    integer ``window`` is moved to ``window_size`` with a
+    ``DeprecationWarning``. Apply it outside ``renamed_kwargs(resample=...)``
+    so a call that also passes ``resample`` keeps its grid.
     """
-    renamed = renamed_kwargs(**_OLD_WINDOW_NAMES)(func)
+    name = func.__qualname__
 
     @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         window = kwargs.get("window")
-        old_window = isinstance(window, numbers.Integral) and not isinstance(
-            window, bool
-        )
-        if "resample" in kwargs or old_window:
-            return renamed(*args, **kwargs)
+        if isinstance(window, numbers.Integral) and not isinstance(window, bool):
+            if "window_size" in kwargs:
+                raise TypeError(
+                    f"{name}() got an integer window and window_size; window "
+                    "is the resample interval (offset string)"
+                )
+            warnings.warn(
+                f"{name}(): an integer window is the rolling row count, pass it "
+                "as window_size (window is the resample interval); the integer "
+                f"form will be removed in {REMOVAL}",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            kwargs["window_size"] = kwargs.pop("window")
         return func(*args, **kwargs)
 
-    wrapper.__deprecated_kwargs__ = dict(_OLD_WINDOW_NAMES)  # type: ignore[attr-defined]
-    return wrapper  # type: ignore[return-value]
+    return wrapper
 
 
 class SignalCorrelationEvents(Base):
@@ -100,7 +110,8 @@ class SignalCorrelationEvents(Base):
             return aligned.loc[aligned.notna().any(axis=1).cummax()]
         return aligned.dropna()
 
-    @_legacy_window_kwargs
+    @_window_size_from_int_window
+    @renamed_kwargs(resample="window")
     def rolling_correlation(
         self,
         uuid_a: str,
@@ -157,7 +168,8 @@ class SignalCorrelationEvents(Base):
 
         return out.reset_index(drop=True)
 
-    @_legacy_window_kwargs
+    @_window_size_from_int_window
+    @renamed_kwargs(resample="window")
     def correlation_breakdown(
         self,
         uuid_a: str,
@@ -166,7 +178,7 @@ class SignalCorrelationEvents(Base):
         window: str = "1min",
         window_size: int = 60,
         threshold: float = 0.5,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Detect periods where correlation drops below a threshold.
 
@@ -179,11 +191,11 @@ class SignalCorrelationEvents(Base):
             window: Resample interval for alignment (offset string).
             window_size: Rolling window size, in resampled periods (rows).
             threshold: Correlation threshold below which to flag.
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
-                :func:`ts_shape.utils.intervals.interval_end_times`.
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                next sample (the transition), so the interval spans the time the
+                condition held and change-encoded signals -- one row per change --
+                keep their duration. ``"last_sample"`` ends it at its last flagged
+                sample. See :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame: start, end, uuid, source_uuid_a, source_uuid_b,

@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.events._output import (
     empty_event_df,
@@ -97,13 +97,12 @@ class ControlLoopHealthEvents(Base):
 
         Args:
             window: Resample window (e.g. '1h', '8h').
-            max_gap: Opt-in. When set, each error is held until the next
-                sample (zero-order hold, i.e. weighted by the time *after*
-                it) and any interval longer than ``max_gap`` contributes
-                nothing, so a communication gap is not integrated as one
-                huge error. Default ``None`` keeps the original weighting:
-                each error times the time since the previous sample, with
-                no gap cap.
+            max_gap: Default ``None`` weights each error by the time since
+                the previous sample, with no gap cap. When set, each error is
+                held until the next sample (zero-order hold, i.e. weighted by
+                the time *after* it) and any interval longer than ``max_gap``
+                contributes nothing, so a communication gap is not integrated
+                as one huge error.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, iae, ise,
@@ -362,8 +361,7 @@ class ControlLoopHealthEvents(Base):
                 shift). Used for the error integrals, the saturation share
                 and to bucket the oscillation episodes.
             oscillation_window: Analysis window passed to
-                :meth:`detect_oscillation` (default '5min', the previous
-                fixed behavior).
+                :meth:`detect_oscillation` (default '5min').
             min_crossings: Minimum zero-crossings per ``oscillation_window``
                 to flag oscillation, passed to :meth:`detect_oscillation`.
 

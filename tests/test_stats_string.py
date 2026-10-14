@@ -31,8 +31,8 @@ def test_string_statistics():
 
 def test_contains_substring_count_regex_opt_out():
     df = pd.DataFrame({"value_string": ["a.b", "axb", None]})
-    # Default: regular expression, "." matches any character.
-    assert StringStatistics.contains_substring_count(df, "a.b") == 2
-    # Literal match.
-    assert StringStatistics.contains_substring_count(df, "a.b", regex=False) == 1
+    # Default: literal match.
+    assert StringStatistics.contains_substring_count(df, "a.b") == 1
+    # Regular expression, "." matches any character.
+    assert StringStatistics.contains_substring_count(df, "a.b", regex=True) == 2
     assert type(StringStatistics.contains_substring_count(df, "a")) is int

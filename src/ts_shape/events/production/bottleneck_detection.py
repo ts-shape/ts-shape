@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
 from ts_shape.utils.base import Base
@@ -42,21 +42,21 @@ class BottleneckDetectionEvents(Base):
         station_uuids: list[str],
         window: str = "1h",
         *,
-        time_weighted: bool = False,
+        time_weighted: bool = True,
     ) -> pd.DataFrame:
         """Per-station uptime percentage per time window.
 
         Args:
             station_uuids: List of UUID strings identifying station run-state signals.
             window: Resample window (e.g. '1h', '30m').
-            time_weighted: When False (default), utilization is the mean of the
-                boolean samples in the window -- correct only under uniform
-                sampling. On change-encoded / irregular signals the result is
-                driven by how many rows land in the window, so a station
-                emitting one ``True`` per hour reads 100 %. When True,
-                utilization is time-weighted: each sample is weighted by the gap
-                to the next sample (as in ``RuntimeAccountingEvents``), so it
-                reflects wall-clock time in the running state.
+            time_weighted: When True (default), utilization is
+                time-weighted: each sample is weighted by the gap to the next
+                sample (as in ``RuntimeAccountingEvents``), so it reflects
+                wall-clock time in the running state on change-encoded and
+                irregularly sampled signals. The trailing sample of a station
+                has no successor and carries no weight. When False,
+                utilization is the mean of the boolean samples in the window,
+                which equals the time share only under uniform sampling.
 
         Returns:
             DataFrame with columns: start, end (start + window),
@@ -106,7 +106,7 @@ class BottleneckDetectionEvents(Base):
                             "duration_seconds": (ts + offset - ts).total_seconds(),
                             "uuid": uid,
                             "source_uuid": uid,
-                            "utilization_pct": round(pct * 100, 2),
+                            "utilization_pct": pct * 100,
                         }
                     )
 
@@ -131,7 +131,7 @@ class BottleneckDetectionEvents(Base):
         station_uuids: list[str],
         window: str = "1h",
         *,
-        time_weighted: bool = False,
+        time_weighted: bool = True,
     ) -> pd.DataFrame:
         """Identify the bottleneck station per window.
 
@@ -141,8 +141,8 @@ class BottleneckDetectionEvents(Base):
         Args:
             station_uuids: List of station run-state UUIDs.
             window: Resample window.
-            time_weighted: Forwarded to :meth:`station_utilization` -- pass True
-                for change-encoded/irregular signals.
+            time_weighted: Forwarded to :meth:`station_utilization`
+                (default True).
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid (the
@@ -190,7 +190,7 @@ class BottleneckDetectionEvents(Base):
         station_uuids: list[str],
         window: str = "1h",
         *,
-        time_weighted: bool = False,
+        time_weighted: bool = True,
     ) -> pd.DataFrame:
         """Track when the bottleneck identity changes between stations.
 
@@ -264,7 +264,7 @@ class BottleneckDetectionEvents(Base):
         station_uuids: list[str],
         window: str = "1h",
         *,
-        time_weighted: bool = False,
+        time_weighted: bool = True,
     ) -> dict[str, Any]:
         """Summary statistics for bottleneck analysis.
 
@@ -294,12 +294,12 @@ class BottleneckDetectionEvents(Base):
 
         counts = bottlenecks["bottleneck_uuid"].value_counts().to_dict()
         total = len(bottlenecks)
-        percentages = {k: round(v / total * 100, 2) for k, v in counts.items()}
+        percentages = {k: (v / total * 100) for k, v in counts.items()}
         most_frequent = bottlenecks["bottleneck_uuid"].value_counts().idxmax()
 
         avg_util = {}
         if not util.empty:
-            avg_util = util.groupby("uuid")["utilization_pct"].mean().round(2).to_dict()
+            avg_util = util.groupby("uuid")["utilization_pct"].mean().to_dict()
 
         return {
             "bottleneck_counts": counts,

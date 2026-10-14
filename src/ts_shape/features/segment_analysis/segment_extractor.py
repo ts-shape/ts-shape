@@ -1,6 +1,6 @@
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.intervals import interval_end_times
@@ -28,7 +28,7 @@ class SegmentExtractor(Base):
         value_column: str = "value_string",
         time_column: str = "systime",
         min_duration: str | None = None,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Detect value transitions and extract time ranges per segment.
 
@@ -43,10 +43,12 @@ class SegmentExtractor(Base):
             time_column: Column containing timestamps.
             min_duration: Optional minimum segment duration (e.g. '10s', '1min').
                 Segments shorter than this are dropped.
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
+            interval_end: ``"next_change"`` (default) ends a segment at the
+                next sample (the transition), so change-encoded signals -- one
+                row per change -- keep their real duration; the last segment
+                ends at its own last sample. ``"last_sample"`` ends a segment at
+                its own last sample, which collapses a single-row segment to
+                zero length. See
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
@@ -87,7 +89,7 @@ class SegmentExtractor(Base):
         group_ids = changed.cumsum()
 
         ends = interval_end_times(signal[time_column], interval_end)
-        rows = []
+        rows: list[dict[str, object]] = []
         for _, group in signal.groupby(group_ids):
             seg_value = group[value_column].iloc[0]
             if pd.isna(seg_value) or (

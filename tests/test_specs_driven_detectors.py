@@ -16,9 +16,15 @@ def _change_encoded_run():
     )
 
 
-def test_machine_state_without_specs_is_unchanged():
+def test_machine_state_without_specs_closes_at_next_change():
     out = MachineStateEvents(_change_encoded_run(), "run").detect_run_idle()
-    assert (out["duration_seconds"] == 0).all()  # legacy: zero-length intervals
+    # Without specs the default interval_end="next_change" applies: every
+    # interval but the final open one has a real duration.
+    assert (out["duration_seconds"].iloc[:-1] > 0).all()
+    naive = MachineStateEvents(_change_encoded_run(), "run").detect_run_idle(
+        interval_end="last_sample"
+    )
+    assert (naive["duration_seconds"] == 0).all()
 
 
 def test_machine_state_with_specs_closes_at_next_change_and_caps_gaps():

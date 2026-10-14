@@ -35,11 +35,12 @@ def test_group_by_uuid_separates_signals():
     pres = 2 + rng.normal(0, 0.05, 50)
     pres[25] = 2.6  # a real pressure spike, invisible next to the temperatures
     df = pd.concat([_signal(temp, "temp"), _signal(pres, "pres", "2024-01-01 00:30")])
-    pooled = OutlierDetectionEvents(df, "value_double").detect_outliers_zscore()
-    assert not (pooled["value_double"] == 2.6).any()
-    per_uuid = OutlierDetectionEvents(
-        df, "value_double", group_by_uuid=True
+    pooled = OutlierDetectionEvents(
+        df, "value_double", group_by_uuid=False
     ).detect_outliers_zscore()
+    assert not (pooled["value_double"] == 2.6).any()
+    # Per-uuid scoring is the default.
+    per_uuid = OutlierDetectionEvents(df, "value_double").detect_outliers_zscore()
     assert (per_uuid["value_double"] == 2.6).any()
     assert set(per_uuid["source_uuid"]) == {"pres"}
 

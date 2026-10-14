@@ -21,12 +21,15 @@ Three association measures are supported, all from ``scipy.stats``:
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 
 logger = logging.getLogger(__name__)
 
@@ -106,18 +109,35 @@ class CriticalParameterRankingEvents(Base):
         if not candidate_columns:
             return pd.DataFrame(columns=cols)
 
-        y_full = pd.to_numeric(per_run_df[outcome_column], errors="coerce")
+        y_full = to_numeric_checked(
+            per_run_df[outcome_column],
+            what=f"outcome column {outcome_column!r}",
+            stacklevel=4,
+        )
         if y_full.dropna().empty:
             return pd.DataFrame(columns=cols)
 
+        if method not in ("pearson", "spearman", "anova_f"):
+            raise ValueError(
+                f"Unknown method {method!r}; "
+                f"choose 'pearson', 'spearman', or 'anova_f'."
+            )
+        missing = [c for c in candidate_columns if c not in per_run_df.columns]
+        if missing:
+            raise ValueError(
+                f"Candidate column(s) {missing!r} missing from per_run_df; "
+                f"available: {list(per_run_df.columns)}"
+            )
+
         rows: list[dict[str, Any]] = []
+        skipped: dict[str, str] = {}
         for col in candidate_columns:
-            if col not in per_run_df.columns:
-                logger.debug("Skipping unknown candidate column %s", col)
-                continue
-            x = pd.to_numeric(per_run_df[col], errors="coerce")
+            x = to_numeric_checked(
+                per_run_df[col], what=f"candidate column {col!r}", stacklevel=4
+            )
             xy = pd.concat([x, y_full], axis=1).dropna()
             if len(xy) < 3:
+                skipped[col] = f"{len(xy)} complete run(s), need at least 3"
                 continue
             x_arr = xy.iloc[:, 0].to_numpy(dtype=float)
             y_arr = xy.iloc[:, 1].to_numpy(dtype=float)
@@ -138,13 +158,15 @@ class CriticalParameterRankingEvents(Base):
                 # Quantile-bin the candidate into `anova_bins` groups.
                 try:
                     bins = pd.qcut(x_arr, q=anova_bins, labels=False, duplicates="drop")
-                except ValueError:
+                except ValueError as exc:
+                    skipped[col] = f"could not be quantile-binned ({exc})"
                     continue
                 groups = [
                     y_arr[bins == b] for b in np.unique(bins) if (bins == b).any()
                 ]
                 groups = [g for g in groups if len(g) >= 2]
                 if len(groups) < 2:
+                    skipped[col] = "fewer than 2 bins with at least 2 runs"
                     continue
                 res = stats.f_oneway(*groups)
                 stat, pval = float(res.statistic), float(res.pvalue)
@@ -155,11 +177,6 @@ class CriticalParameterRankingEvents(Base):
                 )
                 ss_total = float(np.sum((y_arr - grand) ** 2))
                 effect = ss_between / ss_total if ss_total > 0 else 0.0
-            else:
-                raise ValueError(
-                    f"Unknown method {method!r}; "
-                    f"choose 'pearson', 'spearman', or 'anova_f'."
-                )
 
             rows.append(
                 {
@@ -171,6 +188,13 @@ class CriticalParameterRankingEvents(Base):
                 }
             )
 
+        if skipped:
+            detail = "; ".join(f"{c!r}: {why}" for c, why in skipped.items())
+            warnings.warn(
+                f"{len(skipped)} candidate column(s) not ranked: {detail}.",
+                DataQualityWarning,
+                stacklevel=3,
+            )
         if not rows:
             return pd.DataFrame(columns=cols)
 

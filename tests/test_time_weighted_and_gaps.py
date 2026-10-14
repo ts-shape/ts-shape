@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events.energy.efficiency_tracking import EnergyEfficiencyEvents
 from ts_shape.events.energy.idle_energy_detection import IdleEnergyDetectionEvents
 from ts_shape.events.engineering.control_loop_health import ControlLoopHealthEvents
@@ -43,16 +44,23 @@ def _idle_frame():
 
 def test_idle_energy_by_window_keeps_all_energy():
     ev = IdleEnergyDetectionEvents(_idle_frame())
-    assert ev.idle_energy_by_window("m", "s")["total_energy"].sum() == 4.0
-    out = ev.idle_energy_by_window("m", "s", time_weighted=True)
+    # Default: the change-encoded state is held, every energy window is kept.
+    out = ev.idle_energy_by_window("m", "s")
     assert out["total_energy"].sum() == 12.0
-    assert (out["machine_running_pct"] == 1.0).all()
+    assert (out["machine_running_ratio"] == 1.0).all()
+    assert (out["machine_running_pct"] == 100.0).all()
+    by_sample = ev.idle_energy_by_window("m", "s", time_weighted=False)
+    assert by_sample["total_energy"].sum() == 4.0
 
 
 def test_idle_energy_waste_keeps_all_energy():
     ev = EnergyEfficiencyEvents(_idle_frame())
-    out = ev.idle_energy_waste("m", "s", window="1h", time_weighted=True)
+    out = ev.idle_energy_waste("m", "s", window="1h")
     assert out["energy_consumed"].sum() == 12.0
+    assert (out["machine_running_pct"] == 100.0).all()
+    assert not out["is_idle_waste"].any()
+    by_sample = ev.idle_energy_waste("m", "s", window="1h", time_weighted=False)
+    assert by_sample["energy_consumed"].sum() == 4.0
 
 
 def test_error_integrals_max_gap():
@@ -80,7 +88,13 @@ def _balance_frame(include_input=True):
 
 
 def test_zero_input_with_output_is_not_balanced():
-    out = MaterialBalanceEvents(_balance_frame(), ["in"], ["out"]).balance_check()
+    out = MaterialBalanceEvents(
+        _balance_frame(),
+        ["in"],
+        ["out"],
+        time_weighted=False,
+        missing_as_zero=True,
+    ).balance_check()
     second = out.iloc[1]
     assert second["total_input"] == 0.0
     assert np.isinf(second["imbalance_pct"])
@@ -88,11 +102,30 @@ def test_zero_input_with_output_is_not_balanced():
 
 
 def test_missing_input_window_is_unknown_not_imbalanced():
-    ev = MaterialBalanceEvents(_balance_frame(), ["in"], ["out"], missing_as_zero=False)
+    # Default missing_as_zero=False: a window without input data is unknown.
+    ev = MaterialBalanceEvents(_balance_frame(), ["in"], ["out"], time_weighted=False)
     out = ev.balance_check()
     assert out.iloc[0]["balanced"]
     assert np.isnan(out.iloc[1]["total_input"])
     assert not out.iloc[1]["balanced"]
+    # ... and an outage is not reported as a sustained imbalance.
+    assert ev.detect_balance_exceedance(min_duration="1h").empty
+
+
+def test_material_balance_holds_flows_to_the_last_balance_sample():
+    # Default time weighting: "in" reports once and is held for the hour.
+    ev = MaterialBalanceEvents(_balance_frame(), ["in"], ["out"])
+    first = ev.balance_check().iloc[0]
+    assert first["total_input"] == pytest.approx(100.0)
+    assert first["total_output"] == pytest.approx(100.0)
+    assert first["balanced"]
+
+
+def test_material_balance_warns_on_signal_without_rows():
+    ev = MaterialBalanceEvents(_balance_frame(), ["in", "ghost"], ["out"])
+    with pytest.warns(DataQualityWarning, match="ghost"):
+        out = ev.balance_check()
+    assert out["total_input"].isna().all()
 
 
 def test_material_balance_time_weighted():
@@ -102,10 +135,10 @@ def test_material_balance_time_weighted():
     )
     flow_out = pd.DataFrame({"systime": t[:1], "uuid": "out", "value_double": [10.0]})
     df = pd.concat([flow_in, flow_out])
-    sample_mean = MaterialBalanceEvents(df, ["in"], ["out"]).balance_check()
-    weighted = MaterialBalanceEvents(
-        df, ["in"], ["out"], time_weighted=True
+    sample_mean = MaterialBalanceEvents(
+        df, ["in"], ["out"], time_weighted=False
     ).balance_check()
+    weighted = MaterialBalanceEvents(df, ["in"], ["out"]).balance_check()
     assert sample_mean["total_input"].iloc[0] == pytest.approx(110 / 3)
     # 10 held 50 min, 50 held 9 min (series ends at 00:59)
     assert weighted["total_input"].iloc[0] == pytest.approx((10 * 50 + 50 * 9) / 59)

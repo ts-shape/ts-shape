@@ -10,7 +10,7 @@ import logging
 import warnings
 from typing import Literal, overload
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.utils.base import Base
@@ -122,7 +122,7 @@ class ShiftReportEvents(Base):
         value_column_counter: str = "value_integer",
         value_column_part: str = "value_string",
         date: str | None = None,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Production quantity per shift.
@@ -139,10 +139,10 @@ class ShiftReportEvents(Base):
             value_column_counter: Column containing counter values
             value_column_part: Column containing part numbers
             date: Specific date in 'YYYY-MM-DD' format (optional)
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it. The
                 result gains a ``resets`` column with the number of resets
-                observed in each shift. When False (default), the quantity is
+                observed in each shift. When False, the quantity is
                 ``max(0, last_count - first_count)`` and a shift containing a
                 reset reports too little.
             production_day: When True, the post-midnight portion of an overnight
@@ -406,10 +406,8 @@ class ShiftReportEvents(Base):
         # Guard a zero target (unscheduled shift / placeholder) which would
         # otherwise yield inf, matching the guarded sibling in ShiftHandover.
         shift_prod["achievement_pct"] = (
-            (shift_prod["actual"] / shift_prod["target"] * 100)
-            .where(shift_prod["target"] > 0, 0.0)
-            .round(1)
-        )
+            shift_prod["actual"] / shift_prod["target"] * 100
+        ).where(shift_prod["target"] > 0, 0.0)
 
         return shift_prod[
             ["date", "shift", "actual", "target", "variance", "achievement_pct"]
@@ -422,8 +420,8 @@ class ShiftReportEvents(Base):
         *,
         value_column_counter: str = ...,
         days: int = ...,
-        as_frame: Literal[False] = ...,
-    ) -> dict[str, pd.DataFrame]: ...
+        as_frame: Literal[True] = ...,
+    ) -> pd.DataFrame: ...
 
     @overload
     def best_and_worst_shifts(
@@ -432,8 +430,8 @@ class ShiftReportEvents(Base):
         *,
         value_column_counter: str = ...,
         days: int = ...,
-        as_frame: Literal[True],
-    ) -> pd.DataFrame: ...
+        as_frame: Literal[False],
+    ) -> dict[str, pd.DataFrame]: ...
 
     def best_and_worst_shifts(
         self,
@@ -441,7 +439,7 @@ class ShiftReportEvents(Base):
         *,
         value_column_counter: str = "value_integer",
         days: int = 30,
-        as_frame: bool = False,
+        as_frame: bool = True,
     ) -> dict[str, pd.DataFrame] | pd.DataFrame:
         """Identify best and worst performing shifts.
 
@@ -449,17 +447,13 @@ class ShiftReportEvents(Base):
             counter_uuid: Production counter UUID
             value_column_counter: Column containing counter values
             days: Number of recent days to analyze (default: 30)
-            as_frame: When True, return a single DataFrame (see below) instead
-                of the dict. The dict return is deprecated: calling with the
-                default ``as_frame=False`` emits a ``FutureWarning``, and 1.0
-                will return the DataFrame.
+            as_frame: When True (default), return a single DataFrame (see
+                below). ``as_frame=False`` returns the dictionary form; it is
+                deprecated, emits a ``DeprecationWarning`` and will be removed
+                in the next major release.
 
         Returns:
-            With ``as_frame=False`` (default), a dictionary with:
-            - 'best': Top 5 best shifts (columns date, shift, quantity)
-            - 'worst': Top 5 worst shifts (columns date, shift, quantity)
-
-            With ``as_frame=True``, one DataFrame with columns:
+            With ``as_frame=True`` (default), one DataFrame with columns:
             - start, end, duration_seconds: the shift window (``date`` at the
                 shift start time, tz-aware in the data's tz; an overnight
                 shift ends on the next day)
@@ -469,9 +463,14 @@ class ShiftReportEvents(Base):
             rows (lowest quantity first). A shift can appear in both groups
             when there are fewer than ten shifts.
 
+            With ``as_frame=False`` (deprecated), a dictionary with:
+            - 'best': Top 5 best shifts (columns date, shift, quantity)
+            - 'worst': Top 5 worst shifts (columns date, shift, quantity)
+
         Example:
-            >>> results = best_and_worst_shifts('counter')
-            >>> results['best']
+            >>> ranked = reporter.best_and_worst_shifts('counter')
+            >>> best = ranked[ranked["rank_type"] == "best"]
+            >>> best.loc[:, ["date", "shift", "quantity"]]
                 date        shift    quantity
             0   2024-01-15  shift_2  495
             1   2024-01-18  shift_1  490
@@ -479,9 +478,10 @@ class ShiftReportEvents(Base):
         """
         if not as_frame:
             warnings.warn(
-                "best_and_worst_shifts() will return a DataFrame "
-                "(as_frame=True) in 1.0",
-                FutureWarning,
+                "ShiftReportEvents.best_and_worst_shifts(as_frame=False) is "
+                "deprecated: the dict return will be removed in the next major release; "
+                "use the default DataFrame return",
+                DeprecationWarning,
                 stacklevel=2,
             )
 
@@ -522,5 +522,5 @@ class ShiftReportEvents(Base):
         return {"best": best, "worst": worst}
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in the next major release.
 ShiftReporting = deprecated_class(ShiftReportEvents, "ShiftReporting")

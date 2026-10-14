@@ -373,8 +373,8 @@ class TestRecipePhaseAdherenceEvents:
         assert all(len(x) == 0 for x in out["criteria_failed"])
 
     def test_change_encoded_phase_signal_next_change(self):
-        """A change-encoded phase signal gives zero-length phases by default;
-        interval_end='next_change' spans each phase to the next change."""
+        """By default a change-encoded phase signal spans each phase to the
+        next change; interval_end='last_sample' gives zero-length phases."""
         t = pd.date_range("2024-01-01", periods=31, freq="1min")
         temp = np.r_[np.linspace(20.0, 74.0, 10), np.full(21, 80.0)]
         value_df = pd.DataFrame(
@@ -393,18 +393,53 @@ class TestRecipePhaseAdherenceEvents:
         det = RecipePhaseAdherenceEvents(
             df, phase_uuid="phase", value_uuid="temp", spec=spec
         )
-        default = det.evaluate().set_index("phase")
-        assert default.loc["heat_up", "duration_seconds"] == 0.0
-        assert not default.loc["heat_up", "pass"]
+        last_sample = det.evaluate(interval_end="last_sample").set_index("phase")
+        assert last_sample.loc["heat_up", "duration_seconds"] == 0.0
+        assert not last_sample.loc["heat_up", "pass"]
 
-        out = det.evaluate(interval_end="next_change", data_end=t[-1]).set_index(
-            "phase"
-        )
+        out = det.evaluate(data_end=t[-1]).set_index("phase")
         assert out.loc["heat_up", "duration_seconds"] == 600.0
         assert out.loc["heat_up", "pass"]
         # The value sample at the transition belongs to the next phase.
         assert out.loc["heat_up", "max_value"] == 74.0
         assert out.loc["hold", "end"] == t[-1]
+
+
+def test_recipe_malformed_spec_entry_warns():
+    from ts_shape.errors import DataQualityWarning
+
+    t = pd.date_range("2024-01-01", periods=10, freq="1min")
+    df = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "systime": t[[0, 5]],
+                    "uuid": "phase",
+                    "value_string": ["heat_up", "hold"],
+                    "value_double": np.nan,
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "systime": t,
+                    "uuid": "temp",
+                    "value_double": 1.0,
+                    "value_string": None,
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    det = RecipePhaseAdherenceEvents(
+        df,
+        phase_uuid="phase",
+        value_uuid="temp",
+        spec={"heat_up": {"duration_s": 300, "hold_value": (0.0, 2.0)}},
+    )
+    with pytest.warns(DataQualityWarning, match="'duration_s' must be a"):
+        out = det.evaluate().set_index("phase")
+    # The malformed criterion is not checked; the valid one still is.
+    assert out.loc["heat_up", "pass"]
 
 
 # ===========================================================================
@@ -431,7 +466,7 @@ class TestCriticalParameterRankingEvents:
             outcome_column="yield",
             method="pearson",
         )
-        assert list(out["parameter"])[0] == "strong"
+        assert next(iter(out["parameter"])) == "strong"
         assert out.iloc[0]["abs_effect_size"] > out.iloc[1]["abs_effect_size"]
 
     def test_rank_supports_spearman(self):
@@ -443,7 +478,7 @@ class TestCriticalParameterRankingEvents:
             outcome_column="yield",
             method="spearman",
         )
-        assert list(out["parameter"])[0] == "strong"
+        assert next(iter(out["parameter"])) == "strong"
 
     def test_rank_supports_anova_f(self):
         # Distinct groups: outcome jumps by group label.
@@ -475,7 +510,7 @@ class TestCriticalParameterRankingEvents:
             method="anova_f",
             anova_bins=4,
         )
-        assert list(out["parameter"])[0] == "x"
+        assert next(iter(out["parameter"])) == "x"
         assert out.iloc[0]["p_value"] < 0.01
 
     def test_top_drivers_filters_by_alpha(self):
@@ -495,6 +530,23 @@ class TestCriticalParameterRankingEvents:
         det = CriticalParameterRankingEvents(pd.DataFrame())
         with pytest.raises(ValueError):
             det.rank(runs, candidate_columns=["strong"], outcome_column="not-a-column")
+
+    def test_unknown_candidate_column_raises(self):
+        runs = self._per_run_table()
+        det = CriticalParameterRankingEvents(pd.DataFrame())
+        with pytest.raises(ValueError, match="missing from per_run_df"):
+            det.rank(runs, ["strong", "nope"], "yield")
+
+    def test_skipped_candidate_warns(self):
+        from ts_shape.errors import DataQualityWarning
+
+        runs = self._per_run_table()
+        runs["sparse"] = np.nan
+        runs.loc[:1, "sparse"] = 1.0
+        det = CriticalParameterRankingEvents(pd.DataFrame())
+        with pytest.warns(DataQualityWarning, match="'sparse': 2 complete run"):
+            out = det.rank(runs, ["strong", "sparse"], "yield")
+        assert list(out["parameter"]) == ["strong"]
 
     def test_unknown_method_raises(self):
         runs = self._per_run_table()

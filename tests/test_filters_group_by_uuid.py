@@ -29,8 +29,10 @@ def _frame():
 
 def test_falling_edge_not_across_uuids():
     df = _frame()
-    assert len(BooleanFilter.filter_falling_value_bool(df)) == 1  # a:True -> b:False
-    assert BooleanFilter.filter_falling_value_bool(df, group_by_uuid=True).empty
+    # Default: edges are found within each uuid only.
+    assert BooleanFilter.filter_falling_value_bool(df).empty
+    # Pooled: the a:True -> b:False row boundary reads as an edge.
+    assert len(BooleanFilter.filter_falling_value_bool(df, group_by_uuid=False)) == 1
 
 
 def test_raising_edge_per_uuid():
@@ -47,3 +49,15 @@ def test_string_changes_per_uuid():
         ("a", "y"),
         ("b", "y"),
     ]
+
+
+def test_change_and_edge_filters_are_per_uuid_by_default():
+    df = _frame()
+    assert BooleanFilter.filter_raising_value_bool(df).equals(
+        BooleanFilter.filter_raising_value_bool(df, group_by_uuid=True)
+    )
+    default = StringFilter.detect_changes_in_string(df)
+    assert default.equals(StringFilter.detect_changes_in_string(df, group_by_uuid=True))
+    pooled = StringFilter.detect_changes_in_string(df, group_by_uuid=False)
+    # Pooled, b's first "y" follows a's "y" and is not a change.
+    assert len(pooled) == len(default) - 1

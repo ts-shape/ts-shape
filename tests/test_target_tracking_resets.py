@@ -1,4 +1,4 @@
-"""Reset-aware behaviour of TargetEvents comparisons."""
+"""Reset-aware behavior of TargetEvents comparisons."""
 
 import pandas as pd  # type: ignore
 import pytest
@@ -22,9 +22,11 @@ def reset_target_data():
     return pd.DataFrame(rows)
 
 
-def test_compare_to_target_default_under_reports(reset_target_data):
+def test_compare_to_target_naive_under_reports(reset_target_data):
     tracker = TargetEvents(reset_target_data)
-    result = tracker.compare_to_target("target_counter", targets={"shift_1": 300})
+    result = tracker.compare_to_target(
+        "target_counter", targets={"shift_1": 300}, handle_resets=False
+    )
     assert "resets" not in result.columns
     assert result["actual"].iloc[0] == 150
 
@@ -40,9 +42,11 @@ def test_compare_to_target_handles_resets(reset_target_data):
     assert result["status"].iloc[0] == "on_target"
 
 
-def test_achievement_summary_default_under_reports(reset_target_data):
+def test_achievement_summary_naive_under_reports(reset_target_data):
     tracker = TargetEvents(reset_target_data)
-    result = tracker.target_achievement_summary("target_counter", daily_target=300)
+    result = tracker.target_achievement_summary(
+        "target_counter", daily_target=300, handle_resets=False
+    )
     assert "resets" not in result.columns
     assert result["actual"].iloc[0] == 150
 
@@ -55,3 +59,31 @@ def test_achievement_summary_handles_resets(reset_target_data):
     assert "resets" in result.columns
     assert result["actual"].iloc[0] == 350
     assert result["resets"].iloc[0] == 1
+
+
+def test_compare_to_target_default_is_reset_aware(reset_target_data):
+    """The default ``handle_resets=True`` counts post-reset production."""
+    tracker = TargetEvents(reset_target_data)
+
+    def call(**kw):
+        return tracker.compare_to_target(
+            "target_counter", targets={"shift_1": 300}, **kw
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_achievement_summary_default_is_reset_aware(reset_target_data):
+    """The default ``handle_resets=True`` counts post-reset production."""
+    tracker = TargetEvents(reset_target_data)
+
+    def call(**kw):
+        return tracker.target_achievement_summary(
+            "target_counter", daily_target=300, **kw
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

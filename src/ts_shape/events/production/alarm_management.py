@@ -7,7 +7,7 @@ and standing alarm identification from boolean alarm signals.
 import logging
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._output import finalize_interval_df
 from ts_shape.events._windows import window_bounds
@@ -217,10 +217,10 @@ class AlarmManagementEvents(Base):
                 {
                     "source_uuid": self.alarm_uuid,
                     "alarm_count": len(intervals),
-                    "min_duration_seconds": round(durations.min(), 2),
-                    "avg_duration_seconds": round(durations.mean(), 2),
-                    "max_duration_seconds": round(durations.max(), 2),
-                    "total_duration_seconds": round(durations.sum(), 2),
+                    "min_duration_seconds": durations.min(),
+                    "avg_duration_seconds": durations.mean(),
+                    "max_duration_seconds": durations.max(),
+                    "total_duration_seconds": durations.sum(),
                 }
             ]
         )

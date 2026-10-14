@@ -1,12 +1,16 @@
 import json
 import logging
+from typing import TYPE_CHECKING
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
-try:
+if TYPE_CHECKING:
     import requests
-except ImportError:  # optional extra: ts-shape[api]
-    requests = None  # type: ignore[assignment]
+else:
+    try:
+        import requests
+    except ImportError:  # optional extra: ts-shape[api]
+        requests = None
 
 from ts_shape.loader._utils import require_optional
 
@@ -236,12 +240,8 @@ class DatapointAPI:
             metadata_df = pd.DataFrame(metadata)
             if not metadata_df.empty:
                 if self.filter_enabled:
-                    metadata_df = metadata_df[
-                        metadata_df[  # noqa: E712 pandas-series-bool-comparison
-                            "enabled"
-                        ]  # noqa: E712 pandas-series-bool-comparison
-                        == True  # noqa: E712 pandas-series-bool-comparison
-                    ]  # noqa: E712 pandas-series-bool-comparison
+                    # ``eq(True)``: a missing flag does not count as enabled.
+                    metadata_df = metadata_df[metadata_df["enabled"].eq(True)]
 
                 metadata_df = metadata_df[["uuid", "label", "config"]]
 

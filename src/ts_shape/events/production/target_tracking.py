@@ -8,7 +8,7 @@ Generic module for comparing any metric to targets:
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
@@ -84,7 +84,7 @@ class TargetEvents(Base):
         targets: dict[str, float],
         *,
         value_column: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Compare actual metric to per-shift targets.
@@ -93,11 +93,11 @@ class TargetEvents(Base):
             metric_uuid: UUID of the metric signal (counter).
             targets: Dict mapping shift names to target values.
             value_column: Column containing metric values.
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
                 ``actual`` is the reset-aware total. The result gains a
                 ``resets`` column with the number of resets observed in each
-                shift. When False (default), ``actual`` is simply
+                shift. When False, ``actual`` is simply
                 ``max(0, last - first)`` and a shift containing a reset reports
                 too little.
             production_day: When True, the post-midnight portion of an overnight
@@ -166,8 +166,8 @@ class TargetEvents(Base):
                 "shift": shift,
                 "actual": int(actual),
                 "target": target,
-                "variance": round(variance, 1),
-                "achievement_pct": round(achievement, 1),
+                "variance": variance,
+                "achievement_pct": achievement,
                 "status": status,
             }
             if handle_resets:
@@ -182,7 +182,7 @@ class TargetEvents(Base):
         daily_target: float,
         *,
         value_column: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Summarize target achievement over time.
 
@@ -190,11 +190,11 @@ class TargetEvents(Base):
             metric_uuid: UUID of the metric signal (counter).
             daily_target: Daily production target.
             value_column: Column containing metric values.
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
                 ``actual`` is the reset-aware daily total. The result gains a
                 ``resets`` column with the number of resets observed each day.
-                When False (default), ``actual`` is simply
+                When False, ``actual`` is simply
                 ``max(0, last - first)`` and a day containing a reset reports
                 too little.
 
@@ -246,8 +246,8 @@ class TargetEvents(Base):
                 "date": date,
                 "actual": int(actual),
                 "target": daily_target,
-                "variance": round(variance, 1),
-                "achievement_pct": round(achievement, 1),
+                "variance": variance,
+                "achievement_pct": achievement,
                 "status": status,
             }
             if handle_resets:
@@ -296,10 +296,10 @@ class TargetEvents(Base):
         return {
             "total_days": total_days,
             "days_on_target": days_on_target,
-            "hit_rate_pct": round(hit_rate, 1),
-            "avg_achievement_pct": round(avg_achievement, 1),
+            "hit_rate_pct": hit_rate,
+            "avg_achievement_pct": avg_achievement,
         }
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in the next major release.
 TargetTracking = deprecated_class(TargetEvents, "TargetTracking")

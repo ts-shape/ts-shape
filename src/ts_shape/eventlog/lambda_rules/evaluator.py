@@ -1,4 +1,4 @@
-"""Shape-specific evaluators that turn a compiled trigger into a legacy
+"""Shape-specific evaluators that turn a compiled trigger into a detector
 DataFrame in the same format the shape-driven adapter already consumes.
 
 Point and summary rules pass matching rows through; interval rules
@@ -13,8 +13,12 @@ schema validation as built-in detectors. No parallel pipeline.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from typing import Any
+
 import pandas as pd
 
+from ...utils.coerce import to_numeric_checked
 from .expression import compile_expression
 from .spec import RuleSpec
 
@@ -29,7 +33,7 @@ _POINT_TIME_CANDIDATES = (
 
 
 def evaluate(spec: RuleSpec, df: pd.DataFrame) -> pd.DataFrame:
-    """Run ``spec`` against ``df`` and return a legacy-shaped DataFrame.
+    """Run ``spec`` against ``df`` and return a detector frame.
 
     The output column conventions match what the shape adapter expects:
 
@@ -83,9 +87,15 @@ def _evaluate_interval(
         )
     work = df.copy()
     work["_mask"] = mask.astype(bool).to_numpy()
+    # Coerce the carried numeric columns once, so a non-numeric value is
+    # reported once rather than per run.
+    for field in (spec.value_field, spec.severity_field):
+        if field and field in work.columns:
+            work[field] = to_numeric_checked(work[field], what=f"column {field!r}")
 
     rows: list[dict[str, object]] = []
     group_by = list(spec.trigger.group_by)
+    iterator: Iterator[tuple[tuple[Any, ...], pd.DataFrame]]
     if group_by:
         grouped = work.groupby(group_by, sort=False, dropna=False)
         iterator = (
@@ -116,14 +126,10 @@ def _evaluate_interval(
                 row[col_name] = col_val
             # Carry the value column through as the mean of the run, if set.
             if spec.value_field and spec.value_field in run.columns:
-                row[spec.value_field] = pd.to_numeric(
-                    run[spec.value_field], errors="coerce"
-                ).mean()
+                row[spec.value_field] = run[spec.value_field].mean()
             # Carry severity_score as max over the run.
             if spec.severity_field and spec.severity_field in run.columns:
-                row[spec.severity_field] = pd.to_numeric(
-                    run[spec.severity_field], errors="coerce"
-                ).max()
+                row[spec.severity_field] = run[spec.severity_field].max()
             # Pass through source_uuid (asset auto-extract) when grouped on it.
             if "source_uuid" not in row and "source_uuid" in run.columns:
                 row["source_uuid"] = run["source_uuid"].iloc[0]

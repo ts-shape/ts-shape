@@ -8,7 +8,7 @@ Track when machine runs slower than ideal/target speed:
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import (
     add_period_window,
@@ -238,10 +238,10 @@ class PerformanceLossEvents(Base):
                     "date": date,
                     "shift": shift,
                     "actual_parts": actual_parts,
-                    "avg_cycle_time_s": round(avg_ct, 2),
+                    "avg_cycle_time_s": avg_ct,
                     "target_cycle_time_s": target_cycle_time,
-                    "performance_pct": round(min(performance, 100.0), 1),
-                    "loss_minutes": round(loss_seconds / 60, 1),
+                    "performance_pct": min(performance, 100.0),
+                    "loss_minutes": loss_seconds / 60,
                 }
             )
 
@@ -312,9 +312,9 @@ class PerformanceLossEvents(Base):
                         "uuid": self.event_uuid,
                         "source_uuid": cycle_uuid,
                         "actual_parts": actual_parts,
-                        "avg_cycle_time_s": round(avg_ct, 2),
-                        "performance_pct": round(performance, 1),
-                        "loss_minutes": round(loss_seconds / 60, 1),
+                        "avg_cycle_time_s": avg_ct,
+                        "performance_pct": performance,
+                        "loss_minutes": loss_seconds / 60,
                     }
                 )
 
@@ -374,16 +374,16 @@ class PerformanceLossEvents(Base):
                 {
                     "period": period,
                     "actual_parts": actual_parts,
-                    "avg_cycle_time_s": round(avg_ct, 2),
-                    "performance_pct": round(min(performance, 100.0), 1),
-                    "loss_minutes": round(loss_seconds / 60, 1),
+                    "avg_cycle_time_s": avg_ct,
+                    "performance_pct": min(performance, 100.0),
+                    "loss_minutes": loss_seconds / 60,
                 }
             )
 
         return add_period_window(pd.DataFrame(results, columns=_TREND_COLS), window)
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in the next major release.
 PerformanceLossTracking = deprecated_class(
     PerformanceLossEvents, "PerformanceLossTracking"
 )

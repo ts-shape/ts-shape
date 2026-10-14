@@ -31,10 +31,11 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Sequence
+from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import stats  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy import stats
 
 from ts_shape.events._output import (
     empty_event_df,
@@ -125,6 +126,8 @@ class ReliabilityEvents(Base):
                 e.g. ``("BREAKDOWN", "REPAIR")``.
             value_column: Column holding the state.
             max_gap: Longest time a state is held; longer gaps are no data.
+                Default None: every state is held until the next sample, however
+                long the gap.
             data_end: End of the observation (e.g. "now"); the last state
                 holds until then. Default: the last sample.
             event_uuid: ``uuid`` of the emitted events.
@@ -139,7 +142,7 @@ class ReliabilityEvents(Base):
             uuid=state_uuid,
             kind="state",
             value_column=value_column,
-            max_gap=max_gap,  # type: ignore[arg-type]
+            max_gap=None if max_gap is None else pd.Timedelta(max_gap),
         )
         end = pd.Timestamp(data_end) if data_end is not None else None
         timeline = intervals(
@@ -156,9 +159,9 @@ class ReliabilityEvents(Base):
     def _build_episodes(self) -> pd.DataFrame:
         """Failures (merged across data gaps) with TTR and preceding TBF."""
         cols = ["start", "end", "repair_s", "operating_before_s", "first_observed"]
-        rows: list[dict[str, object]] = []
+        rows: list[dict[str, Any]] = []
         operating = 0.0
-        current: dict[str, object] | None = None
+        current: dict[str, Any] | None = None
         seen_repair_end = False
         for iv in self.timeline.itertuples(index=False):
             dur = float(iv.duration_seconds)
@@ -172,7 +175,7 @@ class ReliabilityEvents(Base):
                         "first_observed": not seen_repair_end,
                     }
                 current["end"] = iv.end
-                current["repair_s"] = float(current["repair_s"]) + dur  # type: ignore[arg-type]
+                current["repair_s"] += dur
             else:
                 if current is not None:
                     rows.append(current)
@@ -343,8 +346,8 @@ class ReliabilityEvents(Base):
                     "b10_hours": (
                         eta * (-math.log(0.9)) ** (1 / beta) if ok else np.nan
                     ),
-                    "n_failures": int(len(tbf)),
-                    "n_censored": int(len(right)),
+                    "n_failures": len(tbf),
+                    "n_censored": len(right),
                     "failure_pattern": _pattern(beta) if ok else "unknown",
                 }
             ],

@@ -14,13 +14,14 @@ segment costs O(1).
 
 from __future__ import annotations
 
+import itertools
 import logging
 import warnings
 from collections.abc import Callable
 from typing import Any, Literal
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.events._output import (
     empty_event_df,
@@ -28,6 +29,7 @@ from ts_shape.events._output import (
     finalize_point_df,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
@@ -231,7 +233,11 @@ class ChangePointEvents(Base):
         sig = pd.DataFrame(
             {
                 "t": pd.to_datetime(rows[time_column]),
-                "x": pd.to_numeric(rows[value_column], errors="coerce"),
+                "x": to_numeric_checked(
+                    rows[value_column],
+                    what=f"{value_column!r} of signal {signal_uuid!r}",
+                    stacklevel=4,
+                ),
             }
         ).dropna()
         self.signal = sig.sort_values("t", kind="stable").reset_index(drop=True)
@@ -254,7 +260,7 @@ class ChangePointEvents(Base):
         else:
             raise ValueError(f"method must be 'pelt' or 'binseg', got {method!r}")
         bounds = [0, *found, len(x)]
-        return list(zip(bounds[:-1], bounds[1:], strict=True))
+        return list(itertools.pairwise(bounds))
 
     @keyword_only(1)
     def detect_change_points(
@@ -287,7 +293,7 @@ class ChangePointEvents(Base):
         x = self.signal["x"].to_numpy(dtype=float)
         segs = self._segments(cost, penalty, min_size, method)
         rows = []
-        for (a, b), (c, d) in zip(segs[:-1], segs[1:], strict=True):
+        for (a, b), (c, d) in itertools.pairwise(segs):
             before, after = x[a:b], x[c:d]
             sd_b, sd_a = float(np.std(before, ddof=1)), float(np.std(after, ddof=1))
             pooled = float(np.sqrt((sd_b**2 + sd_a**2) / 2))
@@ -352,7 +358,7 @@ class ChangePointEvents(Base):
                     "segment": i,
                     "mean": float(vals.mean()),
                     "std": float(np.std(vals, ddof=1)) if len(vals) > 1 else 0.0,
-                    "sample_count": int(len(vals)),
+                    "sample_count": len(vals),
                 }
             )
         out = pd.DataFrame(rows)

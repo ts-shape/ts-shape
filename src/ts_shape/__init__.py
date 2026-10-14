@@ -84,8 +84,7 @@ _LAZY: dict[str, str] = {
     "OEEEvents": "ts_shape.events.production.oee_calculator",
     "OperatorPerformanceEvents": "ts_shape.events.production.operator_performance",
     "ValueTraceabilityEvents": "ts_shape.events.production.order_traceability",
-    # OrderTraceabilityEvents is a backwards-compatible alias of the above.
-    "OrderTraceabilityEvents": "ts_shape.events.production.order_traceability",
+    "OrderTraceabilityEvents": "ts_shape.events.production.order_traceability",  # deprecated alias of ValueTraceabilityEvents
     "PartProductionEvents": "ts_shape.events.production.part_tracking",
     "PerformanceLossEvents": "ts_shape.events.production.performance_loss",
     "PeriodSummaryEvents": "ts_shape.events.production.period_summary",

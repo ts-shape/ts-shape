@@ -19,7 +19,7 @@ import datetime as _dt
 from collections.abc import Sequence
 from typing import Any, Literal, TypeAlias
 
-import pandas as pd  # type: ignore
+import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._output import (
@@ -33,16 +33,16 @@ from ts_shape.events._output import (
 
 __all__ = [
     "WINDOW_COLS",
-    "window_bounds",
-    "with_window_bounds",
-    "add_window_bounds",
-    "add_duration_seconds",
-    "window_summary",
-    "finish_events",
-    "data_tz",
-    "add_shift_window",
     "add_day_window",
+    "add_duration_seconds",
     "add_period_window",
+    "add_shift_window",
+    "add_window_bounds",
+    "data_tz",
+    "finish_events",
+    "window_bounds",
+    "window_summary",
+    "with_window_bounds",
 ]
 
 WINDOW_COLS: list[str] = [COL_START, COL_END, COL_DURATION_S]
@@ -187,8 +187,8 @@ def finish_events(
     if not events:
         return empty_event_df(shape, ["uuid", "source_uuid", *full])
     df = pd.DataFrame(events, columns=list(cols))
-    if COL_END not in df.columns:
-        start, end = window_bounds(df[COL_START], window)  # type: ignore[arg-type]
+    if COL_END not in df.columns and window is not None:
+        start, end = window_bounds(df[COL_START], window)
         df[COL_START] = start
         df.insert(df.columns.get_loc(COL_START) + 1, COL_END, end)
     finalize = finalize_interval_df if shape == "interval" else finalize_summary_df

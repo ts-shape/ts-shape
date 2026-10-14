@@ -264,3 +264,24 @@ class TestAdherenceSummary:
         out = det.adherence_summary("counter:missing")
         assert out.empty
         assert "overall_adherence_pct" in out.columns
+
+
+class TestNonNumericValuesWarn:
+    def test_non_numeric_planned_qty_warns(self):
+        from ts_shape.errors import DataQualityWarning
+
+        sched = _shift_schedule()
+        sched["planned_qty"] = ["400", "n/a"]
+        with pytest.warns(DataQualityWarning, match="1 non-null value"):
+            tracker = ProductionScheduleAdherenceEvents(_two_shift_counter(), sched)
+        assert np.isnan(tracker.schedule["planned_qty"].iloc[1])
+
+    def test_non_numeric_counter_values_warn(self):
+        from ts_shape.errors import DataQualityWarning
+
+        df = _two_shift_counter()
+        df["value_double"] = df["value_double"].astype(object)
+        df.loc[3, "value_double"] = "err"
+        tracker = ProductionScheduleAdherenceEvents(df, _shift_schedule())
+        with pytest.warns(DataQualityWarning, match="1 non-null value"):
+            tracker.adherence_by_period(COUNTER)

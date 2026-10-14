@@ -114,6 +114,16 @@ print("Files:",   structure["files"])
 df = loader.load_by_time_range("2024-01-15 08:00", "2024-01-15 12:00")
 ```
 
+Every hour folder that overlaps the range is read, then rows whose `systime`
+falls outside `[start, end]` are dropped (`trim_to_range=True`, the default).
+Pass `trim_to_range=False` to keep whole hour folders.
+
+A blob that cannot be downloaded or parsed (missing, no permission, not valid
+parquet) is skipped, and one `DataQualityWarning` names every skipped blob.
+Pass `errors="raise"` to get a `LoaderError` instead. The same `errors`
+argument exists on every Azure Blob and Databricks Unity Catalog method that
+reads many files.
+
 ### Load by time range and specific UUIDs
 
 ```python

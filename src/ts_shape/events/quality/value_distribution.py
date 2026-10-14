@@ -6,13 +6,15 @@ indices and SPC limits.
 """
 
 import logging
+import warnings
 from collections.abc import Sequence
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import stats as sp_stats  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy import stats as sp_stats
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
@@ -127,9 +129,9 @@ class ValueDistributionEvents(Base):
             events.append(
                 {
                     "start": ts,
-                    "dominant_mode": round(dominant, 4),
+                    "dominant_mode": float(dominant),
                     "n_modes_detected": len(modes),
-                    "mode_values": [round(m, 4) for m in modes],
+                    "mode_values": [float(m) for m in modes],
                     "mode_changed": changed,
                 }
             )
@@ -156,18 +158,45 @@ class ValueDistributionEvents(Base):
 
         Returns:
             Single-row DataFrame with columns: is_bimodal, dip_score,
-            n_samples, mode_1, mode_2, valley.
+            n_samples, mode_1, mode_2, valley (empty when there are fewer
+            than ``min_samples`` values). A constant signal is unimodal with
+            ``mode_1`` at its value.
         """
         cols = ["is_bimodal", "dip_score", "n_samples", "mode_1", "mode_2", "valley"]
         vals = self.signal[self.value_column].dropna().values
         if len(vals) < min_samples:
             return pd.DataFrame(columns=cols)
 
+        def unimodal(mode: float | None) -> pd.DataFrame:
+            return pd.DataFrame(
+                [
+                    {
+                        "is_bimodal": False,
+                        "dip_score": 0.0,
+                        "n_samples": len(vals),
+                        "mode_1": mode,
+                        "mode_2": None,
+                        "valley": None,
+                    }
+                ],
+                columns=cols,
+            )
+
+        # A constant signal has a single mode at its value.
+        if np.ptp(vals) == 0:
+            return unimodal(float(vals[0]))
+
         # Kernel density estimation to find peaks
         try:
             kde = sp_stats.gaussian_kde(vals)
         except np.linalg.LinAlgError:
-            return pd.DataFrame(columns=cols)
+            warnings.warn(
+                f"{self.signal_uuid}: kernel density estimate is singular; "
+                "reporting a single mode at the median",
+                DataQualityWarning,
+                stacklevel=4,
+            )
+            return unimodal(float(np.median(vals)))
 
         x_grid = np.linspace(float(vals.min()), float(vals.max()), 512)
         density = kde(x_grid)
@@ -179,19 +208,7 @@ class ValueDistributionEvents(Base):
                 peaks.append(i)
 
         if len(peaks) < 2:
-            return pd.DataFrame(
-                [
-                    {
-                        "is_bimodal": False,
-                        "dip_score": 0.0,
-                        "n_samples": len(vals),
-                        "mode_1": round(float(x_grid[peaks[0]]), 4) if peaks else None,
-                        "mode_2": None,
-                        "valley": None,
-                    }
-                ],
-                columns=cols,
-            )
+            return unimodal(float(x_grid[peaks[0]]) if peaks else None)
 
         # Take the two tallest peaks
         peak_heights = [(density[p], p) for p in peaks]
@@ -215,11 +232,11 @@ class ValueDistributionEvents(Base):
             [
                 {
                     "is_bimodal": dip_score > 0.5,
-                    "dip_score": round(dip_score, 4),
+                    "dip_score": float(dip_score),
                     "n_samples": len(vals),
-                    "mode_1": round(float(x_grid[p1_idx]), 4),
-                    "mode_2": round(float(x_grid[p2_idx]), 4),
-                    "valley": round(float(x_grid[valley_idx]), 4),
+                    "mode_1": float(x_grid[p1_idx]),
+                    "mode_2": float(x_grid[p2_idx]),
+                    "valley": float(x_grid[valley_idx]),
                 }
             ],
             columns=cols,
@@ -283,9 +300,26 @@ class ValueDistributionEvents(Base):
                 rng = np.random.default_rng(seed=42)
                 sample = rng.choice(sample, size=5000, replace=False)
 
-            try:
-                _, p_value = sp_stats.shapiro(sample)
-            except Exception:
+            # Shapiro-Wilk needs at least three values; scipy either raises
+            # or returns NaN for fewer.
+            reason = None
+            if len(sample) < 3:
+                reason = f"{len(sample)} value(s), the test needs at least 3"
+            else:
+                try:
+                    _, p_value = sp_stats.shapiro(sample)
+                except ValueError as exc:
+                    reason = str(exc)
+                else:
+                    if np.isnan(p_value):
+                        reason = "the test returned NaN"
+            if reason is not None:
+                warnings.warn(
+                    f"{self.signal_uuid}: Shapiro-Wilk test skipped for the "
+                    f"window starting {ts} ({reason})",
+                    DataQualityWarning,
+                    stacklevel=5,
+                )
                 continue
 
             events.append(
@@ -293,9 +327,9 @@ class ValueDistributionEvents(Base):
                     "start": ts,
                     "n_samples": len(vals),
                     "is_normal": p_value >= alpha,
-                    "p_value": round(float(p_value), 6),
-                    "skewness": round(float(sp_stats.skew(vals.values)), 4),
-                    "kurtosis": round(float(sp_stats.kurtosis(vals.values)), 4),
+                    "p_value": float(p_value),
+                    "skewness": float(sp_stats.skew(vals.values)),
+                    "kurtosis": float(sp_stats.kurtosis(vals.values)),
                 }
             )
 
@@ -359,7 +393,7 @@ class ValueDistributionEvents(Base):
             }
             computed = np.percentile(vals.values, list(percentiles))
             for label, val in zip(pct_cols, computed):
-                row[label] = round(float(val), 4)
+                row[label] = float(val)
 
             events.append(row)
 
@@ -384,6 +418,8 @@ class ValueDistributionEvents(Base):
         if len(values) < 5:
             return []
 
+        # A singular KDE means the values are (numerically) constant: one
+        # mode, at the median.
         try:
             kde = sp_stats.gaussian_kde(values)
         except np.linalg.LinAlgError:

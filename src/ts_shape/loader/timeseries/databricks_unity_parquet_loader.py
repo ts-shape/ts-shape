@@ -5,10 +5,18 @@ import warnings
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
-from ts_shape.errors import LoaderConfigWarning
-from ts_shape.loader._utils import hourly_slots, trim_to_time_range
+from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
+from ts_shape.loader._utils import (
+    ErrorsMode,
+    check_errors_mode,
+    describe_failures,
+    hourly_slots,
+    read_errors,
+    report_failures,
+    trim_to_time_range,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +157,14 @@ class DatabricksUnityParquetLoader:
                     if entry.is_file() and entry.name.endswith(".parquet")
                 ]
         except (FileNotFoundError, NotADirectoryError):
-            return []
+            return []  # no folder for this hour: no data, not an error
         except OSError as exc:
-            logger.debug("Failed to list directory '%s': %s", directory, exc)
+            warnings.warn(
+                f"Could not list {str(directory)!r} ({type(exc).__name__}: {exc}); "
+                "its parquet files are skipped.",
+                DataQualityWarning,
+                stacklevel=4,
+            )
             return []
 
     def _walk_parquet(self, root: Path) -> list[Path]:
@@ -169,42 +182,64 @@ class DatabricksUnityParquetLoader:
         path: Path,
         columns: list[str] | None = None,
         filters: list | None = None,
-    ) -> pd.DataFrame | None:
+    ) -> pd.DataFrame:
         """Read one mounted parquet file with column/predicate pushdown.
 
-        Returns ``None`` on failure (missing, unauthorized, or corrupt) so the
-        caller can count and report it rather than aborting the whole load.
+        Raises:
+            One of :func:`~ts_shape.loader._utils.read_errors` when the file is
+            missing, not readable, or not valid parquet.
         """
-        try:
-            return pd.read_parquet(path, columns=columns, filters=filters)
-        except Exception as exc:
-            logger.debug("Failed to read parquet '%s': %s", path, exc)
-            return None
+        return pd.read_parquet(path, columns=columns, filters=filters)
 
     def _read_many(
         self,
         paths: list[Path],
         columns: list[str] | None = None,
         filters: list | None = None,
-    ) -> tuple[list[pd.DataFrame], int, int]:
+    ) -> tuple[list[pd.DataFrame], list[tuple[str, Exception]], int]:
         """Read a set of parquet files sequentially.
 
-        Returns ``(frames, n_failed, n_empty)`` where ``frames`` are the
-        non-empty DataFrames, ``n_failed`` counts files that could not be read
-        or parsed, and ``n_empty`` counts files that parsed but had no rows.
+        Returns ``(frames, failures, n_empty)`` where ``frames`` are the
+        non-empty DataFrames, ``failures`` lists ``(path, error)`` for files
+        that could not be read or parsed, and ``n_empty`` counts files that
+        parsed but had no rows.
         """
         frames: list[pd.DataFrame] = []
-        n_failed = 0
+        failures: list[tuple[str, Exception]] = []
         n_empty = 0
         for path in paths:
-            df = self._read_parquet(path, columns, filters)
-            if df is None:
-                n_failed += 1
-            elif df.empty:
+            try:
+                df = self._read_parquet(path, columns, filters)
+            except read_errors() as exc:
+                failures.append((str(path), exc))
+                continue
+            if df.empty:
                 n_empty += 1
             else:
                 frames.append(df)
-        return frames, n_failed, n_empty
+        return frames, failures, n_empty
+
+    def _stream_paths(
+        self,
+        paths: Iterable[Path],
+        columns: list[str] | None,
+        filters: list | None,
+        *,
+        failures: list[tuple[str, Exception]],
+        errors: ErrorsMode,
+    ) -> Iterator[tuple[str, pd.DataFrame]]:
+        """Read ``paths`` one at a time; record (or raise for) unreadable ones."""
+        for path in paths:
+            try:
+                df = self._read_parquet(path, columns, filters)
+            except read_errors() as exc:
+                if errors == "raise":
+                    raise LoaderError(
+                        describe_failures([(str(path), exc)], "parquet file(s)")
+                    ) from exc
+                failures.append((str(path), exc))
+                continue
+            yield (str(path), df)
 
     def _warn_empty(
         self, method: str, detail: str, filters: list | None = None
@@ -240,6 +275,8 @@ class DatabricksUnityParquetLoader:
         self,
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
         Load every parquet file under the Volume root (optionally below ``prefix``).
@@ -251,7 +288,13 @@ class DatabricksUnityParquetLoader:
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            errors: ``"warn"`` (default) skips a file that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
         """
+        check_errors_mode(errors)
         paths = self._walk_parquet(self.base_path)
         base_repr = repr(str(self.base_path))
         if not paths:
@@ -263,12 +306,13 @@ class DatabricksUnityParquetLoader:
             )
             return pd.DataFrame()
 
-        frames, n_failed, n_empty = self._read_many(paths, columns, filters)
+        frames, failures, n_empty = self._read_many(paths, columns, filters)
+        report_failures(failures, what="parquet file(s)", errors=errors)
         if not frames:
             self._warn_empty(
                 "load_all_files",
                 f"Found {len(paths)} .parquet file(s) under base_path={base_repr} "
-                f"but none yielded rows ({n_failed} failed to read/parse, "
+                f"but none yielded rows ({len(failures)} failed to read/parse, "
                 f"{n_empty} had no rows). Check read permission on the Volume and "
                 "that the files are valid parquet.",
                 filters=filters,
@@ -283,7 +327,8 @@ class DatabricksUnityParquetLoader:
         columns: list[str] | None = None,
         filters: list | None = None,
         *,
-        trim_to_range: bool = False,
+        trim_to_range: bool = True,
+        errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
         Load parquet files under the hourly folders within ``[start, end]``.
@@ -300,11 +345,17 @@ class DatabricksUnityParquetLoader:
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
-            trim_to_range: If True, drop rows whose ``systime`` falls outside
-                ``[start, end]`` (both bounds inclusive). Frames without a
-                ``systime`` column are left as read. Default False keeps
+            trim_to_range: If True (default), drop rows whose ``systime``
+                falls outside ``[start, end]`` (both bounds inclusive). Frames
+                without a ``systime`` column are left as read. False keeps
                 whole hour folders.
+            errors: ``"warn"`` (default) skips a file that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
         """
+        check_errors_mode(errors)
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
         paths: list[Path] = []
         for ts in slots:
@@ -320,12 +371,13 @@ class DatabricksUnityParquetLoader:
             )
             return pd.DataFrame()
 
-        frames, n_failed, n_empty = self._read_many(paths, columns, filters)
+        frames, failures, n_empty = self._read_many(paths, columns, filters)
+        report_failures(failures, what="parquet file(s)", errors=errors)
         if not frames:
             self._warn_empty(
                 "load_by_time_range",
                 f"Found {len(paths)} .parquet file(s) but none yielded rows "
-                f"({n_failed} failed to read/parse, {n_empty} had no rows). "
+                f"({len(failures)} failed to read/parse, {n_empty} had no rows). "
                 f"{search}. Check read permission and file validity.",
                 filters=filters,
             )
@@ -342,7 +394,8 @@ class DatabricksUnityParquetLoader:
         columns: list[str] | None = None,
         filters: list | None = None,
         *,
-        trim_to_range: bool = False,
+        trim_to_range: bool = True,
+        errors: ErrorsMode = "warn",
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream parquet frames under the hourly folders within ``[start, end]``.
@@ -360,21 +413,32 @@ class DatabricksUnityParquetLoader:
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
-            trim_to_range: If True, drop rows whose ``systime`` falls outside
-                ``[start, end]`` (both bounds inclusive). Frames without a
-                ``systime`` column are left as read. Default False keeps
+            trim_to_range: If True (default), drop rows whose ``systime``
+                falls outside ``[start, end]`` (both bounds inclusive). Frames
+                without a ``systime`` column are left as read. False keeps
                 whole hour folders.
+            errors: ``"warn"`` (default) skips a file that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
         """
+        check_errors_mode(errors)
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        paths = (
+            path for ts in slots for path in self._list_parquet_in(self._hour_dir(ts))
+        )
+        failures: list[tuple[str, Exception]] = []
         yielded = 0
-        for ts in slots:
-            for path in self._list_parquet_in(self._hour_dir(ts)):
-                df = self._read_parquet(path, columns, filters)
-                if df is not None and trim_to_range:
-                    df = trim_to_time_range(df, start_timestamp, end_timestamp)
-                if df is not None and not df.empty:
-                    yielded += 1
-                    yield (str(path), df)
+        for name, df in self._stream_paths(
+            paths, columns, filters, failures=failures, errors=errors
+        ):
+            if trim_to_range:
+                df = trim_to_time_range(df, start_timestamp, end_timestamp)
+            if not df.empty:
+                yielded += 1
+                yield (name, df)
+        report_failures(failures, what="parquet file(s)", errors=errors)
 
         if yielded == 0:
             self._warn_empty(
@@ -393,7 +457,8 @@ class DatabricksUnityParquetLoader:
         columns: list[str] | None = None,
         filters: list | None = None,
         *,
-        trim_to_range: bool = False,
+        trim_to_range: bool = True,
+        errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
         Load parquet files for the given UUIDs within ``[start, end]`` hours.
@@ -412,11 +477,17 @@ class DatabricksUnityParquetLoader:
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
-            trim_to_range: If True, drop rows whose ``systime`` falls outside
-                ``[start, end]`` (both bounds inclusive). Frames without a
-                ``systime`` column are left as read. Default False keeps
+            trim_to_range: If True (default), drop rows whose ``systime``
+                falls outside ``[start, end]`` (both bounds inclusive). Frames
+                without a ``systime`` column are left as read. False keeps
                 whole hour folders.
+            errors: ``"warn"`` (default) skips a file that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
         """
+        check_errors_mode(errors)
         if not uuid_list:
             return pd.DataFrame()
 
@@ -438,12 +509,13 @@ class DatabricksUnityParquetLoader:
             )
             return pd.DataFrame()
 
-        frames, n_failed, n_empty = self._read_many(paths, columns, filters)
+        frames, failures, n_empty = self._read_many(paths, columns, filters)
+        report_failures(failures, what="parquet file(s)", errors=errors)
         if not frames:
             self._warn_empty(
                 "load_files_by_time_range_and_uuids",
                 f"Resolved {len(paths)} file(s) but none yielded rows "
-                f"({n_failed} failed to read/parse, {n_empty} had no rows). "
+                f"({len(failures)} failed to read/parse, {n_empty} had no rows). "
                 f"{search}, {uuid_note}. Check read permission and file validity.",
                 filters=filters,
             )
@@ -461,7 +533,8 @@ class DatabricksUnityParquetLoader:
         columns: list[str] | None = None,
         filters: list | None = None,
         *,
-        trim_to_range: bool = False,
+        trim_to_range: bool = True,
+        errors: ErrorsMode = "warn",
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream parquet frames for the given UUIDs within ``[start, end]`` hours.
@@ -479,27 +552,39 @@ class DatabricksUnityParquetLoader:
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
-            trim_to_range: If True, drop rows whose ``systime`` falls outside
-                ``[start, end]`` (both bounds inclusive). Frames without a
-                ``systime`` column are left as read. Default False keeps
+            trim_to_range: If True (default), drop rows whose ``systime``
+                falls outside ``[start, end]`` (both bounds inclusive). Frames
+                without a ``systime`` column are left as read. False keeps
                 whole hour folders.
+            errors: ``"warn"`` (default) skips a file that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
         """
+        check_errors_mode(errors)
         if not uuid_list:
             return
 
         variants = self._uuid_basenames(uuid_list)
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        paths = (
+            path
+            for ts in slots
+            for path in self._list_parquet_in(self._hour_dir(ts))
+            if path.name.lower() in variants
+        )
+        failures: list[tuple[str, Exception]] = []
         yielded = 0
-        for ts in slots:
-            for path in self._list_parquet_in(self._hour_dir(ts)):
-                if path.name.lower() not in variants:
-                    continue
-                df = self._read_parquet(path, columns, filters)
-                if df is not None and trim_to_range:
-                    df = trim_to_time_range(df, start_timestamp, end_timestamp)
-                if df is not None and not df.empty:
-                    yielded += 1
-                    yield (str(path), df)
+        for name, df in self._stream_paths(
+            paths, columns, filters, failures=failures, errors=errors
+        ):
+            if trim_to_range:
+                df = trim_to_time_range(df, start_timestamp, end_timestamp)
+            if not df.empty:
+                yielded += 1
+                yield (name, df)
+        report_failures(failures, what="parquet file(s)", errors=errors)
 
         if yielded == 0:
             self._warn_empty(
@@ -586,6 +671,9 @@ class DatabricksUnityParquetLoader:
         end_timestamp: str | pd.Timestamp | None,
         columns: list[str] | None,
         filters: list | None,
+        *,
+        trim_to_range: bool,
+        errors: ErrorsMode,
     ) -> pd.DataFrame:
         """Load the hour folders on or after ``start`` / on or before ``end``."""
         lo = (
@@ -615,17 +703,21 @@ class DatabricksUnityParquetLoader:
                 f"base_path={base_repr}, hour_pattern={self.hour_pattern!r}.",
             )
             return pd.DataFrame()
-        frames, n_failed, n_empty = self._read_many(paths, columns, filters)
+        frames, failures, n_empty = self._read_many(paths, columns, filters)
+        report_failures(failures, what="parquet file(s)", errors=errors)
         if not frames:
             self._warn_empty(
                 "fetch_data_as_dataframe",
                 f"Found {len(paths)} .parquet file(s) within {bound} but none "
-                f"yielded rows ({n_failed} failed to read/parse, {n_empty} had "
+                f"yielded rows ({len(failures)} failed to read/parse, {n_empty} had "
                 "no rows).",
                 filters=filters,
             )
             return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
+        out = pd.concat(frames, ignore_index=True)
+        if trim_to_range:
+            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+        return out
 
     def fetch_data_as_dataframe(
         self,
@@ -633,6 +725,9 @@ class DatabricksUnityParquetLoader:
         end_timestamp: str | pd.Timestamp | None = None,
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = True,
+        errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
         Return a combined DataFrame, for ``Pipeline`` / ``DataIntegratorHybrid``.
@@ -646,18 +741,37 @@ class DatabricksUnityParquetLoader:
         Args:
             start_timestamp: Start of the range; None leaves the start open.
                 Bounds select whole hour folders (the start is floored to the
-                hour); rows are not trimmed.
+                hour); see ``trim_to_range``.
             end_timestamp: End of the range, inclusive; None leaves the end open.
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True (default), drop rows whose ``systime`` falls
+                outside the given bounds (both inclusive). False keeps whole
+                hour folders.
+            errors: ``"warn"`` (default) skips a file that cannot be read or
+                parsed and emits one
+                :class:`~ts_shape.errors.DataQualityWarning` naming every
+                skipped file; ``"raise"`` raises
+                :class:`~ts_shape.errors.LoaderError` instead.
         """
         if start_timestamp is not None and end_timestamp is not None:
             return self.load_by_time_range(
-                start_timestamp, end_timestamp, columns=columns, filters=filters
+                start_timestamp,
+                end_timestamp,
+                columns=columns,
+                filters=filters,
+                trim_to_range=trim_to_range,
+                errors=errors,
             )
         if start_timestamp is not None or end_timestamp is not None:
+            check_errors_mode(errors)
             return self._load_open_range(
-                start_timestamp, end_timestamp, columns, filters
+                start_timestamp,
+                end_timestamp,
+                columns,
+                filters,
+                trim_to_range=trim_to_range,
+                errors=errors,
             )
-        return self.load_all_files(columns=columns, filters=filters)
+        return self.load_all_files(columns=columns, filters=filters, errors=errors)

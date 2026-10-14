@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 from scipy.stats import zscore
 
 from ts_shape.events._output import empty_event_df, finalize_point_df
@@ -32,7 +32,9 @@ class OutlierDetectionEvents(Base):
         value_column: str,
         event_uuid: str = "quality:outlier",
         time_threshold: str = "5min",
-        group_by_uuid: bool = False,
+        group_by_uuid: bool = True,
+        *,
+        signal_uuids: list[str] | None = None,
     ) -> None:
         """
         Initializes the OutlierDetectionEvents with specific attributes for outlier detection.
@@ -43,11 +45,15 @@ class OutlierDetectionEvents(Base):
             event_uuid (str): A UUID or identifier for detected outlier events.
             time_threshold (str): The time threshold to group close events together.
             group_by_uuid (bool): Compute the statistics (mean/std, quartiles,
-                median/MAD, forest) and group events per ``uuid``. Default
-                ``False`` pools every row, so a frame holding e.g. a
-                temperature (~80) and a pressure (~2) shares one mean/std.
+                median/MAD, forest) and group events per ``uuid`` (default
+                ``True``), so a frame holding e.g. a temperature (~80) and a
+                pressure (~2) is scored per signal. ``False`` pools every row
+                into one population (one mean/std across all signals).
+            signal_uuids: Signals to analyze. ``None`` (default) analyzes
+                every ``uuid`` in the frame.
         """
         super().__init__(dataframe)
+        self.signal_uuids = list(signal_uuids) if signal_uuids is not None else None
         self.value_column = value_column
         self.event_uuid = event_uuid
         self.time_threshold = time_threshold
@@ -132,7 +138,10 @@ class OutlierDetectionEvents(Base):
         ``scorer`` maps a value Series to an index-aligned boolean outlier
         mask and a severity Series.
         """
-        df = self.dataframe.copy()
+        df = self.dataframe
+        if self.signal_uuids is not None:
+            df = df[df["uuid"].isin(self.signal_uuids)]
+        df = df.copy()
 
         # Convert 'systime' to datetime and sort the DataFrame by 'systime'
         df["systime"] = pd.to_datetime(df["systime"])

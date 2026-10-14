@@ -25,14 +25,33 @@ This module correlates both signals to reconstruct the full routing path.
 """
 
 import logging
+import math
+import numbers
+import re
 import warnings
 from typing import Any
 
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
+
+_NUMBER_RE = re.compile(r"\s*[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?\s*")
+
+
+def _as_number(value: Any) -> float | None:
+    """Return ``value`` as a finite float, or None when it is not a number.
+
+    Accepts real numbers (booleans count as 0/1) and numeric strings such
+    as ``"10"``.
+    """
+    is_numeric_string = isinstance(value, str) and bool(_NUMBER_RE.fullmatch(value))
+    if not (isinstance(value, numbers.Real | np.bool_) or is_numeric_string):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 class RoutingTraceabilityEvents(Base):
@@ -100,10 +119,10 @@ class RoutingTraceabilityEvents(Base):
                        or {1: 'Welding', 2: 'Painting', 3: 'Assembly'}
                        Values can be int, float, or str keys.
                        If not provided, raw signal values are used as labels.
-            station_map: Deprecated alias for state_map (for backwards
-                         compatibility). Use state_map instead. When both
-                         are passed, state_map wins and a UserWarning is
-                         emitted.
+            station_map: Deprecated alias for ``state_map``; passing it
+                         emits a :class:`DeprecationWarning` and it will be
+                         removed in the next major release. When both are passed,
+                         ``state_map`` wins and a UserWarning is emitted.
             event_uuid: UUID to tag derived events with.
             id_value_column: Column holding the item ID string.
             routing_value_column: Column holding the state/routing value.
@@ -112,7 +131,14 @@ class RoutingTraceabilityEvents(Base):
         super().__init__(dataframe, time_column=time_column)
         self.id_uuid = id_uuid
         self.routing_uuid = routing_uuid
-        # state_map takes priority; fall back to station_map for backwards compat
+        if station_map is not None:
+            warnings.warn(
+                "RoutingTraceabilityEvents(): 'station_map' is deprecated, use "
+                "'state_map'; the old name will be removed in the next major release",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        # state_map takes priority over the deprecated station_map.
         if state_map is not None and station_map is not None:
             warnings.warn(
                 "Both state_map and station_map were passed; station_map is "
@@ -149,29 +175,25 @@ class RoutingTraceabilityEvents(Base):
 
         Lookup order:
         1. Try the value as-is in state_map.
-        2. Try converting to int.
-        3. Try converting to str.
-        4. Fall back to "State {value}".
+        2. Try the value as an integer (``10.0`` and ``"10"`` match key ``10``).
+        3. Try the value as a string.
+        4. Fall back to "State {value}" (``5.0`` -> "State 5").
         """
         if value in self.state_map:
             return self.state_map[value]
-        try:
-            v = int(value)
-            if v in self.state_map:
-                return self.state_map[v]
-        except (ValueError, TypeError):
-            pass
+        number = _as_number(value)
+        if number is not None and number.is_integer():
+            as_int = int(number)
+            if as_int in self.state_map:
+                return self.state_map[as_int]
         s = str(value)
         if s in self.state_map:
             return self.state_map[s]
-        # Format cleanly: 5.0 -> "State 5", 3.14 -> "State 3.14"
-        try:
-            v_float = float(value)
-            if v_float == int(v_float):
-                return f"State {int(v_float)}"
-            return f"State {v_float}"
-        except (ValueError, TypeError):
+        if number is None:
             return f"State {value}"
+        if number.is_integer():
+            return f"State {int(number)}"
+        return f"State {number}"
 
     # ------------------------------------------------------------------
     # build_routing_timeline
@@ -428,14 +450,6 @@ class RoutingTraceabilityEvents(Base):
             .reset_index()
         )
 
-        for col in [
-            "min_dwell_seconds",
-            "avg_dwell_seconds",
-            "max_dwell_seconds",
-            "total_dwell_seconds",
-        ]:
-            stats[col] = stats[col].round(2)
-
         return stats
 
     # ------------------------------------------------------------------
@@ -476,12 +490,5 @@ class RoutingTraceabilityEvents(Base):
             )
             .reset_index()
         )
-
-        for col in [
-            "avg_lead_time_seconds",
-            "min_lead_time_seconds",
-            "max_lead_time_seconds",
-        ]:
-            stats[col] = stats[col].round(2)
 
         return stats.sort_values("item_count", ascending=False).reset_index(drop=True)

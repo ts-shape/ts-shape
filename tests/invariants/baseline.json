@@ -113,7 +113,7 @@
  },
  "BatchTrackingEvents.batch_transition_matrix": {
   "empty": "ok",
-  "empty_schema": "fail: empty result lacks ['Running', 'Stopped']",
+  "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
@@ -454,14 +454,14 @@
   "shape": "ok",
   "tz": "ok"
  },
- "DesignOfExperimentsEvents.effects": {
+ "DesignOfExperimentsEvents.detect_runs": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "DesignOfExperimentsEvents.detect_runs": {
+ "DesignOfExperimentsEvents.effects": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -839,13 +839,6 @@
   "shape": "ok",
   "tz": "ok"
  },
- "LeadTimeAnalysisEvents.lead_times": {
-  "empty": "ok",
-  "empty_schema": "ok",
-  "extra_uuid": "ok",
-  "shape": "ok",
-  "tz": "ok"
- },
  "LeadTimeAnalysisEvents.detect_lead_time_anomalies": {
   "empty": "ok",
   "empty_schema": "ok",
@@ -854,6 +847,13 @@
   "tz": "ok"
  },
  "LeadTimeAnalysisEvents.lead_time_statistics": {
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "shape": "ok",
+  "tz": "ok"
+ },
+ "LeadTimeAnalysisEvents.lead_times": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1238,34 +1238,6 @@
   "shape": "ok",
   "tz": "ok"
  },
- "OrderTraceabilityEvents.build_timeline": {
-  "empty": "ok",
-  "empty_schema": "ok",
-  "extra_uuid": "ok",
-  "shape": "ok",
-  "tz": "ok"
- },
- "OrderTraceabilityEvents.current_status": {
-  "empty": "ok",
-  "empty_schema": "ok",
-  "extra_uuid": "ok",
-  "shape": "ok",
-  "tz": "ok"
- },
- "OrderTraceabilityEvents.lead_time": {
-  "empty": "ok",
-  "empty_schema": "ok",
-  "extra_uuid": "ok",
-  "shape": "ok",
-  "tz": "ok"
- },
- "OrderTraceabilityEvents.station_dwell_statistics": {
-  "empty": "ok",
-  "empty_schema": "ok",
-  "extra_uuid": "ok",
-  "shape": "ok",
-  "tz": "ok"
- },
  "OutlierDetectionEvents.detect_outliers_iqr": {
   "empty": "ok",
   "empty_schema": "ok",
@@ -1276,14 +1248,14 @@
  "OutlierDetectionEvents.detect_outliers_isolation_forest": {
   "empty": "ok",
   "empty_schema": "ok",
-  "extra_uuid": "fail: result changed",
+  "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
  "OutlierDetectionEvents.detect_outliers_mad": {
   "empty": "ok",
   "empty_schema": "ok",
-  "extra_uuid": "fail: result changed",
+  "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
@@ -1835,9 +1807,9 @@
  },
  "ShiftReportEvents.best_and_worst_shifts": {
   "empty": "ok",
-  "empty_schema": "fail: not a DataFrame",
+  "empty_schema": "ok",
   "extra_uuid": "ok",
-  "shape": "fail: returns dict, not a DataFrame",
+  "shape": "ok",
   "tz": "ok"
  },
  "ShiftReportEvents.shift_comparison": {
@@ -1987,21 +1959,7 @@
   "shape": "n/a: no rule for mapping parameter 'phases'",
   "tz": "n/a: no rule for mapping parameter 'phases'"
  },
- "StatisticalProcessControlEvents.detect_rule_violations": {
-  "empty": "ok",
-  "empty_schema": "ok",
-  "extra_uuid": "ok",
-  "shape": "ok",
-  "tz": "ok"
- },
  "StatisticalProcessControlEvents.control_limits": {
-  "empty": "ok",
-  "empty_schema": "ok",
-  "extra_uuid": "ok",
-  "shape": "ok",
-  "tz": "ok"
- },
- "StatisticalProcessControlEvents.dynamic_control_limits": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -2015,12 +1973,12 @@
   "shape": "ok",
   "tz": "ok"
  },
- "StatisticalProcessControlEvents.interpret_violations": {
-  "empty": "n/a: no rule for required parameter 'violations_df'",
-  "empty_schema": "n/a: no rule for required parameter 'violations_df'",
-  "extra_uuid": "n/a: no rule for required parameter 'violations_df'",
-  "shape": "n/a: no rule for required parameter 'violations_df'",
-  "tz": "n/a: no rule for required parameter 'violations_df'"
+ "StatisticalProcessControlEvents.detect_rule_violations": {
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "shape": "ok",
+  "tz": "ok"
  },
  "StatisticalProcessControlEvents.detect_violations": {
   "empty": "ok",
@@ -2028,6 +1986,20 @@
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
+ },
+ "StatisticalProcessControlEvents.dynamic_control_limits": {
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "shape": "ok",
+  "tz": "ok"
+ },
+ "StatisticalProcessControlEvents.interpret_violations": {
+  "empty": "n/a: no rule for required parameter 'violations_df'",
+  "empty_schema": "n/a: no rule for required parameter 'violations_df'",
+  "extra_uuid": "n/a: no rule for required parameter 'violations_df'",
+  "shape": "n/a: no rule for required parameter 'violations_df'",
+  "tz": "n/a: no rule for required parameter 'violations_df'"
  },
  "StatisticalProcessControlEvents.rule_1": {
   "empty": "n/a: dataframe handled by caller",

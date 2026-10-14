@@ -58,7 +58,10 @@ def test_coverage_auto_min_gap_ignores_duplicates():
 def test_flatline_starts_at_first_stuck_sample():
     t = pd.date_range("2024-01-01", periods=6, freq="1min")
     df = _sig(t, [1.0, 5.0, 5.0, 5.0, 5.0, 9.0])
-    out = AnomalyClassificationEvents(df, "s").detect_flatline(min_duration="1min")
+    # Dense sampling: end the run at its own last sample.
+    out = AnomalyClassificationEvents(df, "s").detect_flatline(
+        min_duration="1min", interval_end="last_sample"
+    )
     assert out["start"].iloc[0] == t[1]
     assert out["duration"].iloc[0] == pd.Timedelta(minutes=3)
 
@@ -67,8 +70,8 @@ def test_flatline_deadband_single_row():
     t = pd.to_datetime(["2024-01-01 00:00", "2024-01-01 00:01", "2024-01-01 03:00"])
     df = _sig(t, [1.0, 5.0, 9.0])  # stuck at 5 for ~3 h, logged once
     ev = AnomalyClassificationEvents(df, "s")
-    assert ev.detect_flatline(min_duration="1h").empty
-    out = ev.detect_flatline(min_duration="1h", interval_end="next_change")
+    assert ev.detect_flatline(min_duration="1h", interval_end="last_sample").empty
+    out = ev.detect_flatline(min_duration="1h")
     assert out["stuck_value"].tolist() == [5.0]
 
 

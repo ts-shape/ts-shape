@@ -34,7 +34,9 @@ def _make_reset_shift_df():
 
 def test_shift_production_under_reports_without_reset_handling():
     reporter = ShiftReportEvents(_make_reset_shift_df())
-    result = reporter.shift_production(counter_uuid="production_counter")
+    result = reporter.shift_production(
+        counter_uuid="production_counter", handle_resets=False
+    )
 
     assert list(result.columns) == [
         "start",
@@ -87,3 +89,15 @@ def test_shift_production_resets_column_with_parts():
     row = result.iloc[0]
     assert row["quantity"] == 350
     assert row["resets"] == 1
+
+
+def test_shift_production_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    reporter = ShiftReportEvents(_make_reset_shift_df())
+
+    def call(**kw):
+        return reporter.shift_production(counter_uuid="production_counter", **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

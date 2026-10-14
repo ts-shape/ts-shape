@@ -1,9 +1,11 @@
 import logging
+import warnings
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
@@ -53,7 +55,7 @@ class AnomalyClassificationEvents(Base):
         min_duration: str = "1min",
         tolerance: float = 1e-6,
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Detect intervals where the signal is stuck at a constant value.
 
@@ -64,11 +66,13 @@ class AnomalyClassificationEvents(Base):
         Args:
             min_duration: Minimum duration to qualify as a flatline.
             tolerance: Maximum step between consecutive samples to count as flat.
-            interval_end: ``"last_sample"`` (default) ends a run at its last
-                sample and needs at least two samples. ``"next_change"`` ends
-                it at the next differing sample, so a historian with a
-                deadband -- one row, then nothing until the value moves --
-                still reports a stuck sensor.
+            interval_end: ``"next_change"`` (default) ends a run at the
+                next differing sample, so a historian with a deadband -- one
+                row, then nothing until the value moves -- still reports a
+                stuck sensor. A single-sample run counts only when the gap
+                after it is longer than the signal's median sampling
+                interval. ``"last_sample"`` ends a run at its own last
+                sample and needs at least two samples.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid, source_uuid,
@@ -95,6 +99,13 @@ class AnomalyClassificationEvents(Base):
         new_run = ~(values.diff().abs() <= tolerance)
         groups = new_run.cumsum()
 
+        # A one-sample run is only a flatline when the silence after it is
+        # longer than the signal's usual sampling interval (a deadband
+        # historian); otherwise every sample of a slow signal would qualify.
+        # Two samples give no sampling interval to compare against.
+        steps = sig[self.time_column].diff().dropna()
+        typical_step = steps.median() if len(steps) >= 2 else pd.Timedelta(0)
+
         events: list[dict[str, Any]] = []
         for _, run in sig.groupby(groups):
             stuck = run[self.value_column].iloc[0]
@@ -104,6 +115,8 @@ class AnomalyClassificationEvents(Base):
                 continue
             start = run[self.time_column].iloc[0]
             end = ends.loc[run.index[-1]]
+            if len(run) < 2 and not end - start > typical_step:
+                continue
             duration = end - start
             if duration >= min_td:
                 events.append(
@@ -194,26 +207,53 @@ class AnomalyClassificationEvents(Base):
             return np.asarray((times - times[0]).total_seconds(), dtype=float)
         return np.arange(len(index), dtype=float)
 
+    def _fit_slope(
+        self, win: pd.Series, slope_per: str, stacklevel: int
+    ) -> float | None:
+        """Least-squares slope of ``win`` (NaN values left out).
+
+        Returns ``None`` -- after a :class:`DataQualityWarning` -- when the
+        window cannot be fitted.
+        """
+        x = self._slope_x(win.index, slope_per)
+        y = win.to_numpy(dtype=float)
+        finite = np.isfinite(y)
+        if finite.sum() < 3:
+            return None
+        try:
+            return float(np.polyfit(x[finite], y[finite], 1)[0])
+        except (np.linalg.LinAlgError, ValueError) as exc:
+            warnings.warn(
+                f"{self.signal_uuid}: slope fit failed for the window starting "
+                f"{win.index[0]} ({exc}); window skipped",
+                DataQualityWarning,
+                stacklevel=stacklevel,
+            )
+            return None
+
     @keyword_only(1)
     def detect_drift(
-        self, window: str = "1h", min_slope: float = 0.01, slope_per: str = "sample"
+        self, window: str = "1h", min_slope: float = 0.01, slope_per: str = "second"
     ) -> pd.DataFrame:
         """Detect windows where the rolling slope exceeds a threshold.
 
         A least-squares line is fitted to each non-overlapping window. With
-        the default ``slope_per="sample"`` the x-axis is the sample index,
-        so ``slope`` is in signal units per *sample* and the meaning of
-        ``min_slope`` depends on the sampling rate. With
-        ``slope_per="second"`` the x-axis is elapsed time, so ``slope`` and
-        ``min_slope`` are in signal units per second regardless of the
-        sampling rate (and irregular sampling is handled correctly).
+        the default ``slope_per="second"`` the x-axis is elapsed time, so
+        ``slope`` and ``min_slope`` are in signal units per second regardless
+        of the sampling rate (and irregular sampling is handled correctly).
+        With ``slope_per="sample"`` the x-axis is the sample index, so
+        ``slope`` is in signal units per *sample* and the meaning of
+        ``min_slope`` depends on the sampling rate.
+
+        NaN values are left out of the fit. A window whose fit fails (e.g.
+        all of its samples share one timestamp) is skipped with a
+        :class:`~ts_shape.errors.DataQualityWarning`.
 
         Args:
             window: Window size for slope computation.
             min_slope: Minimum absolute slope to flag, in signal units per
                 sample or per second (see ``slope_per``).
-            slope_per: ``"sample"`` (default, previous behavior) or
-                ``"second"``.
+            slope_per: ``"second"`` (default) or ``"sample"``.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -242,22 +282,16 @@ class AnomalyClassificationEvents(Base):
         while current + window_td <= end_time:
             win_end = current + window_td
             win = sig.loc[current:win_end, self.value_column]
-            if len(win) >= 3:
-                x = self._slope_x(win.index, slope_per)
-                try:
-                    slope = float(np.polyfit(x, win.values, 1)[0])
-                except (np.linalg.LinAlgError, ValueError):
-                    slope = 0.0
-
-                if abs(slope) >= min_slope:
-                    events.append(
-                        {
-                            "start": current,
-                            "end": win_end,
-                            "slope": slope,
-                            "direction": "increasing" if slope > 0 else "decreasing",
-                        }
-                    )
+            slope = self._fit_slope(win, slope_per, 5) if len(win) >= 3 else None
+            if slope is not None and abs(slope) >= min_slope:
+                events.append(
+                    {
+                        "start": current,
+                        "end": win_end,
+                        "slope": slope,
+                        "direction": "increasing" if slope > 0 else "decreasing",
+                    }
+                )
             current = win_end
 
         return finish_events(
@@ -267,7 +301,7 @@ class AnomalyClassificationEvents(Base):
     @keyword_only(1)
     @renamed_kwargs(z_threshold="n_sigma")
     def classify_anomalies(
-        self, window: str = "10min", n_sigma: float = 3.0, slope_per: str = "sample"
+        self, window: str = "10min", n_sigma: float = 3.0, slope_per: str = "second"
     ) -> pd.DataFrame:
         """Detect anomalous windows and classify by type.
 
@@ -275,19 +309,18 @@ class AnomalyClassificationEvents(Base):
 
         A window is a drift when its least-squares slope exceeds 0.1 × the
         signal's overall std per sample. With the default
+        ``slope_per="second"`` the slope is fitted against elapsed time and
+        compared with 0.1 × std divided by the signal's median sampling
+        interval (seconds): irregular sampling is handled correctly and the
+        ``slope`` reported in ``details`` is in signal units per second. With
         ``slope_per="sample"`` the slope is fitted against the sample index,
-        so the test depends on the sampling rate. With
-        ``slope_per="second"`` it is fitted against elapsed time and compared
-        with 0.1 × std divided by the signal's median sampling interval
-        (seconds): on regularly sampled data the same windows are flagged,
-        irregular sampling is handled correctly, and the ``slope`` reported
-        in ``details`` is in signal units per second.
+        so the test depends on the sampling rate; on regularly sampled data
+        both settings flag the same windows.
 
         Args:
             window: Window size for analysis.
             n_sigma: Z-score threshold for spike detection.
-            slope_per: ``"sample"`` (default, previous behavior) or
-                ``"second"``.
+            slope_per: ``"second"`` (default) or ``"sample"``.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -387,13 +420,10 @@ class AnomalyClassificationEvents(Base):
                 continue
 
             # Check drift
-            x = self._slope_x(win.index, slope_per)
-            try:
-                slope = float(np.polyfit(x, values, 1)[0])
-            except (np.linalg.LinAlgError, ValueError):
-                slope = 0.0
+            fitted = self._fit_slope(win, slope_per, 6)
+            slope = 0.0 if fitted is None else fitted
 
-            if abs(slope) > drift_threshold:
+            if fitted is not None and abs(slope) > drift_threshold:
                 events.append(
                     {
                         "start": current,

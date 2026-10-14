@@ -1,9 +1,11 @@
 import logging
+import warnings
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
@@ -39,8 +41,8 @@ class MaterialBalanceEvents(Base):
         event_uuid: str = "eng:material_balance",
         value_column: str = "value_double",
         time_column: str = "systime",
-        time_weighted: bool = False,
-        missing_as_zero: bool = True,
+        time_weighted: bool = True,
+        missing_as_zero: bool = False,
     ) -> None:
         """
         Args:
@@ -50,14 +52,16 @@ class MaterialBalanceEvents(Base):
             event_uuid: UUID assigned to generated events.
             value_column: Column holding the flow values.
             time_column: Timestamp column.
-            time_weighted: Average each flow by time (value held until the
-                next sample) instead of by sample count. Default ``False``
-                keeps ``resample().mean()``, which is biased on irregular or
-                change-encoded flow signals.
-            missing_as_zero: Default ``True`` treats a window without data for
-                a signal as zero flow (backward compatible). ``False`` leaves
-                the window's totals NaN and marks it not balanced, so a sensor
-                outage is not read as a real imbalance.
+            time_weighted: ``True`` (default) averages each flow by time
+                (value held until the next sample). ``False`` uses
+                ``resample().mean()`` over the samples, which is biased on
+                irregular or change-encoded flow signals.
+            missing_as_zero: ``False`` (default) leaves a window's totals NaN
+                when a signal has no data in it; the window is marked not
+                balanced but is not reported by
+                :meth:`detect_balance_exceedance`, so a sensor outage is not
+                read as a real imbalance. ``True`` treats a window without data
+                for a signal as zero flow.
         """
         super().__init__(dataframe, time_column=time_column)
         self.time_weighted = time_weighted
@@ -75,24 +79,42 @@ class MaterialBalanceEvents(Base):
     def _resample_signals(self, uuids: list[str], window: str) -> pd.DataFrame:
         """Resample each UUID to window and return sum per window."""
         frames: list[pd.Series] = []
+        missing: list[str] = []
+        # Hold every flow until the last sample of any balance signal, so a
+        # signal that stops reporting earlier keeps its last value.
+        balance = self.dataframe["uuid"].isin([*self.input_uuids, *self.output_uuids])
+        data_end = self.dataframe.loc[balance, self.time_column].max()
         for uid in uuids:
             sig = self.dataframe[self.dataframe["uuid"] == uid]
             if sig.empty:
+                missing.append(uid)
                 continue
             values = sig.set_index(self.time_column)[self.value_column]
             if self.time_weighted:
-                s = time_weighted_resample(values, window)
+                s = time_weighted_resample(values, window, data_end=data_end)
             else:
                 s = values.resample(window).mean()
             if self.missing_as_zero:
                 s = s.fillna(0.0)
             frames.append(s.rename(uid))
 
+        if missing:
+            treated = "zero flow" if self.missing_as_zero else "missing (NaN totals)"
+            warnings.warn(
+                f"Material balance signal(s) {missing!r} have no rows; "
+                f"treated as {treated}.",
+                DataQualityWarning,
+                stacklevel=5,
+            )
         if not frames:
             return pd.DataFrame()
 
         combined = pd.concat(frames, axis=1)
-        return combined.fillna(0.0) if self.missing_as_zero else combined
+        if self.missing_as_zero:
+            return combined.fillna(0.0)
+        for uid in missing:
+            combined[uid] = np.nan
+        return combined
 
     @keyword_only(1)
     def balance_check(
@@ -224,6 +246,7 @@ class MaterialBalanceEvents(Base):
             tolerance_pct: Maximum acceptable imbalance percentage per window.
             min_duration: Minimum length of a run of consecutive unbalanced
                 windows to report it as an event (pandas offset string).
+                Windows whose totals are NaN (missing data) end a run.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -244,7 +267,9 @@ class MaterialBalanceEvents(Base):
         if bc.empty:
             return empty_event_df("interval", cols)
 
-        unbalanced = ~bc["balanced"]
+        # Windows with unknown totals (a signal without data) are not
+        # exceedances; ``imbalance_pct`` is NaN there.
+        unbalanced = bc["imbalance_pct"] > tolerance_pct
         if not unbalanced.any():
             return empty_event_df("interval", cols)
 

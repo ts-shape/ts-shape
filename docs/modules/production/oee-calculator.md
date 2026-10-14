@@ -56,8 +56,8 @@ print(daily[["start", "availability_pct", "performance_pct", "quality_pct", "oee
 | Method | Purpose | Returns |
 |--------|---------|---------|
 | `availability(run_state_uuid, planned_time_hours=None, max_gap=None)` | Compute daily availability from a boolean run-state signal (planned time defaults to the data span per day) | DataFrame per day with `start`, `end`, `duration_seconds`, `run_seconds`, `planned_seconds`, `availability_pct` |
-| `performance(counter_uuid, ideal_cycle_time, run_state_uuid=None, handle_resets=False)` | Compute daily performance: actual output vs theoretical maximum at the ideal cycle time (seconds per part) | DataFrame per day with `actual_parts`, `ideal_parts`, `run_seconds`, `performance_pct` |
-| `quality(total_uuid, reject_uuid, handle_resets=False)` | Compute daily quality: good parts divided by total parts produced | DataFrame per day with `total_parts`, `reject_parts`, `good_parts`, `quality_pct` |
+| `performance(counter_uuid, ideal_cycle_time, run_state_uuid=None, handle_resets=True)` | Compute daily performance: actual output vs theoretical maximum at the ideal cycle time (seconds per part) | DataFrame per day with `actual_parts`, `ideal_parts`, `run_seconds`, `performance_pct` |
+| `quality(total_uuid, reject_uuid, handle_resets=True)` | Compute daily quality: good parts divided by total parts produced | DataFrame per day with `total_parts`, `reject_parts`, `good_parts`, `quality_pct` |
 | `oee(run_state_uuid, counter_uuid, ideal_cycle_time, total_uuid=None, reject_uuid=None, planned_time_hours=None)` | Compute daily OEE as Availability x Performance x Quality (quality is 100% without `total_uuid`/`reject_uuid`) | DataFrame per day with `start`, `end`, `duration_seconds`, `availability_pct`, `performance_pct`, `quality_pct`, `oee_pct` |
 
 ---

@@ -1,6 +1,6 @@
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 
@@ -68,18 +68,18 @@ class StringFilter(Base):
         substring: str,
         column_name: str = "value_string",
         *,
-        regex: bool = True,
+        regex: bool = False,
     ) -> pd.DataFrame:
         """Filters rows where the specified string column contains the provided substring.
 
         Args:
             dataframe: Input DataFrame.
-            substring: Pattern to look for. It is a regular expression unless
-                ``regex=False``, so characters such as ``.``, ``(`` or ``+`` are
-                special by default. NA rows are dropped.
+            substring: Text to look for, matched literally by default, so
+                characters such as ``.``, ``(`` or ``+`` have no special
+                meaning. NA rows are dropped.
             column_name: Name of the column to filter on. Default ``"value_string"``.
-            regex: If True (default), treat ``substring`` as a regular
-                expression; if False, match it literally.
+            regex: If False (default), match ``substring`` literally; if True,
+                treat it as a regular expression.
         """
         Base._validate_column(dataframe, column_name)
         mask = dataframe[column_name].str.contains(substring, na=False, regex=regex)
@@ -121,17 +121,18 @@ class StringFilter(Base):
         dataframe: pd.DataFrame,
         column_name: str = "value_string",
         *,
-        group_by_uuid: bool = False,
+        group_by_uuid: bool = True,
     ) -> pd.DataFrame:
         """Detects changes from row to row in the specified string column.
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the column to filter on. Default ``"value_string"``.
-            group_by_uuid: Compare each row with the previous row of the same
-                ``uuid``. Default ``False`` compares with the previous row of
-                the frame, so on a multi-signal frame the last row of one uuid
-                and the first of the next produce a false edge.
+            group_by_uuid: When ``True`` (default) each row is compared with
+                the previous row of the same ``uuid`` (when the frame has a
+                ``uuid`` column), so a multi-signal frame produces no change
+                between the last row of one uuid and the first of the next.
+                ``False`` compares with the previous row of the frame.
 
         Returns:
             The rows whose value differs from the previous row; the first row (or first

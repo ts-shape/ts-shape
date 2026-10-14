@@ -1,3 +1,37 @@
+# October 14, 2026 (round 5)
+Correct by default. Results change wherever data has counter resets,
+change-encoded signals, uneven sampling or several signals per frame; the
+old behavior stays one argument away. Full list: docs/migration.md
+("Correct by default").
+change: correct defaults: handle_resets=True, interval_end="next_change",
+  time_weighted=True, group_by_uuid=True, slope_per="second",
+  missing_as_zero=False, handle_refills=True, SPC include_severity=True,
+  regex=False for substring filters, trim_to_range=True in loaders,
+  best_and_worst_shifts returns a DataFrame, batch_transition_matrix
+  returns a long from/to/count table (layout="wide" for the matrix).
+change: full precision: detectors no longer round results.
+fix: machine_running_pct is 0-100 (was a 0-1 ratio; see
+  machine_running_ratio).
+fix: nothing is skipped silently: loaders take errors="warn"|"raise" and
+  name unreadable objects; non-numeric values, malformed specs, failed
+  fits and untestable windows warn with DataQualityWarning; a missing value
+  column raises ColumnNotFoundError naming it.
+fix: flatline detection ignores single samples of regularly sampled signals.
+change: deprecated (removed in a future major release): OrderTraceabilityEvents, a single
+  tolerance_uuid (upper/lower limits now work one-sided), station_map,
+  adapt(legacy=), integer window in correlation, as_frame=False. Every
+  deprecation message says "removed in the next major release".
+feat: OutlierDetectionEvents(signal_uuids=...); parquet extra; [all]
+  installs every optional feature.
+build: setuptools-scm reads its config (builds were versioned 0.0.0);
+  releases publish after the full CI suite, choose their version with a
+  Release-Bump / Release-As commit trailer, and are tagged only after the
+  upload succeeded; CI builds and checks the package; Python 3.14 is
+  fully supported; Development Status: Beta.
+types: the mypy quarantine is empty; every module is type-checked.
+policy: every merge publishes the next patch version; renamed names keep
+  working with a warning and are removed only in a major release.
+
 # October 14, 2026 (round 4)
 fix: SPC rules follow Nelson (1984) / Western Electric: rule 8 = 8 in a row
   with none within 1 sigma (was within), rule 3 = 6 points, rule 4 = 14
@@ -39,7 +73,7 @@ change: one name per concept (docs/naming.md). Detector classes end in
   classes); event classes drop calculate_/compute_/process_ verbs (14
   methods, e.g. calculate_oee -> oee, find_gaps -> detect_gaps) and use
   _statistics / _by_window suffixes. Old names are deprecated aliases that
-  warn and are removed in 1.0; the event log resolves them
+  warn and are removed only in a future major release; the event log resolves them
   (taxonomy.resolve). See docs/migration.md.
 fix: every detector output now carries the canonical columns of its shape
   (intervals start/end/duration_seconds/uuid/source_uuid, summaries

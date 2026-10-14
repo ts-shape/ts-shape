@@ -1,8 +1,8 @@
 import logging
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy.fft import fft, ifft  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy.fft import fft, ifft
 
 from ts_shape.utils.base import Base
 
@@ -137,25 +137,25 @@ class PatternRecognition(Base):
 
         # Find top-k motifs (smallest MP values)
         sorted_indices = np.argsort(mp)
-        results = []
-        used = set()
+        results: list[dict[str, object]] = []
+        used: set[tuple[int, int]] = set()
 
         for idx in sorted_indices:
             if len(results) >= top_k:
                 break
-            partner = mpi[idx]
-            pair = (min(idx, partner), max(idx, partner))
+            partner = int(mpi[idx])
+            pair = (min(int(idx), partner), max(int(idx), partner))
             if pair in used:
                 continue
             if abs(idx - partner) <= exclusion_zone:
                 continue
             used.add(pair)
 
-            row = {
+            row: dict[str, object] = {
                 "motif_rank": len(results) + 1,
                 "index_a": pair[0],
                 "index_b": pair[1],
-                "distance": mp[idx],
+                "distance": float(mp[idx]),
             }
             if time_column in dataframe.columns:
                 times = dataframe[time_column].values
@@ -197,8 +197,8 @@ class PatternRecognition(Base):
 
         # Find top-k discords (largest MP values)
         sorted_indices = np.argsort(mp)[::-1]
-        results = []
-        used_zones = []
+        results: list[dict[str, object]] = []
+        used_zones: list[int] = []
 
         for idx in sorted_indices:
             if len(results) >= top_k:
@@ -206,9 +206,9 @@ class PatternRecognition(Base):
             # Check exclusion zone against already selected discords
             if any(abs(idx - u) <= exclusion_zone for u in used_zones):
                 continue
-            used_zones.append(idx)
+            used_zones.append(int(idx))
 
-            row = {
+            row: dict[str, object] = {
                 "discord_rank": len(results) + 1,
                 "start_index": int(idx),
                 "distance": float(mp[idx]),

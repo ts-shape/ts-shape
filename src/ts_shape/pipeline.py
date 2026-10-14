@@ -73,7 +73,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ def _split_kwargs(
     Returns ``(init_keys, method_keys)``. A kwarg may match both. Raises
     ``ValueError`` if a kwarg matches neither.
     """
-    init_params = _param_names(target.__init__)
+    init_params = _param_names(target)
     method_params = _param_names(getattr(target, method))
     init_keys: set[str] = set()
     method_keys: set[str] = set()
@@ -218,7 +218,7 @@ def _resolve(
         return _call_static, None
 
     # -- instance method: instantiate, then call ---------------------------
-    df_param = _first_param_name(target.__init__)
+    df_param = _first_param_name(target)
     init_keys, method_keys = _split_kwargs(target, method, kwargs)
 
     def _call_instance(

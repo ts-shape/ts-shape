@@ -1,6 +1,7 @@
 import logging
+from typing import Literal
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 
@@ -36,7 +37,10 @@ class DateTimeFilter(Base):
 
     @classmethod
     def filter_after_date(
-        cls, dataframe: pd.DataFrame, column_name: str = "systime", date: str = None
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "systime",
+        date: str | None = None,
     ) -> pd.DataFrame:
         """
         Filters the DataFrame to include only rows after the specified date.
@@ -63,7 +67,10 @@ class DateTimeFilter(Base):
 
     @classmethod
     def filter_before_date(
-        cls, dataframe: pd.DataFrame, column_name: str = "systime", date: str = None
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "systime",
+        date: str | None = None,
     ) -> pd.DataFrame:
         """
         Filters the DataFrame to include only rows before the specified date.
@@ -93,9 +100,9 @@ class DateTimeFilter(Base):
         cls,
         dataframe: pd.DataFrame,
         column_name: str = "systime",
-        start_date: str = None,
-        end_date: str = None,
-        inclusive: str = "neither",
+        start_date: str | None = None,
+        end_date: str | None = None,
+        inclusive: Literal["both", "neither", "left", "right"] = "neither",
     ) -> pd.DataFrame:
         """
         Filters the DataFrame to include only rows between the specified start and end dates.
@@ -127,7 +134,10 @@ class DateTimeFilter(Base):
 
     @classmethod
     def filter_after_datetime(
-        cls, dataframe: pd.DataFrame, column_name: str = "systime", datetime: str = None
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "systime",
+        datetime: str | None = None,
     ) -> pd.DataFrame:
         """
         Filters the DataFrame to include only rows after the specified datetime.
@@ -154,7 +164,10 @@ class DateTimeFilter(Base):
 
     @classmethod
     def filter_before_datetime(
-        cls, dataframe: pd.DataFrame, column_name: str = "systime", datetime: str = None
+        cls,
+        dataframe: pd.DataFrame,
+        column_name: str = "systime",
+        datetime: str | None = None,
     ) -> pd.DataFrame:
         """
         Filters the DataFrame to include only rows before the specified datetime.
@@ -184,9 +197,9 @@ class DateTimeFilter(Base):
         cls,
         dataframe: pd.DataFrame,
         column_name: str = "systime",
-        start_datetime: str = None,
-        end_datetime: str = None,
-        inclusive: str = "neither",
+        start_datetime: str | None = None,
+        end_datetime: str | None = None,
+        inclusive: Literal["both", "neither", "left", "right"] = "neither",
     ) -> pd.DataFrame:
         """
         Filters the DataFrame to include only rows between the specified start and end datetimes.

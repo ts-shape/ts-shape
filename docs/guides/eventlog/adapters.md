@@ -9,7 +9,7 @@ attribute rules).
 
 ## Adapter anatomy
 
-An **adapter** is the function that turns one detector's legacy DataFrame
+An **adapter** is the function that turns one detector's output DataFrame (its *detector frame*)
 into a canonical [`EventLog`](index.md#the-canonical-schema). ts-shape ships
 *one* generic adapter (`adapters.adapt`) plus a registry of per-method
 [`LabelRule`](#the-labelrule-fields) entries that parameterize it. In
@@ -19,7 +19,7 @@ to the registry and the generic adapter does the rest.
 ### The four shapes
 
 Every detector method is classified into one of four shapes. The shape
-tells the generic adapter which legacy columns to look for and how to
+tells the generic adapter which detector-frame columns to look for and how to
 populate `ocel:timestamp` / `ts_shape:start_timestamp` /
 `ts_shape:duration_s`.
 
@@ -38,13 +38,13 @@ shape live in `src/ts_shape/eventlog/adapters.py` (function `adapt`).
 
 | Field | Type | Default | What it controls |
 |---|---|---|---|
-| `template` | `str` | required | The `ocel:activity` value. May contain `{column}` placeholders that get substituted from the legacy row at adapter time. Example: `"production.machine_state.{state}"`. |
+| `template` | `str` | required | The `ocel:activity` value. May contain `{column}` placeholders that get substituted from the detector-frame row at adapter time. Example: `"production.machine_state.{state}"`. |
 | `pack` | `str` | required | One of `quality`, `production`, `engineering`, `maintenance`, `supplychain`, `energy`, `correlation`. Stored as `ts_shape:pack` and used as the prefix for detector-specific attributes. |
 | `shape` | `str` | `"point"` | One of `point`, `interval`, `summary`, `static` — see above. |
-| `produces_objects` | `tuple[str, ...]` | `("asset",)` | Object types the adapter auto-extracts from standard legacy columns (e.g. `source_uuid → asset`). Empty tuple = events only, no auto-extracted objects. Caller-supplied bindings via `objects=` are honored regardless. |
+| `produces_objects` | `tuple[str, ...]` | `("asset",)` | Object types the adapter auto-extracts from standard detector-frame columns (e.g. `source_uuid → asset`). Empty tuple = events only, no auto-extracted objects. Caller-supplied bindings via `objects=` are honored regardless. |
 | `severity_field` | `str \| None` | `None` | Name of a numeric column to bucket into `ts_shape:severity`. Falls back to a `severity` column (passed through verbatim) when omitted. |
 | `value_field` | `str \| None` | `None` | Name of the numeric column to expose as `ts_shape:value`. Falls back to `value` / `value_double` / `value_integer` when omitted. |
-| `drop_fields` | `tuple[str, ...]` | `()` | Legacy columns to *not* promote to attributes (e.g. internal helper columns). |
+| `drop_fields` | `tuple[str, ...]` | `()` | Detector-frame columns to *not* promote to attributes (e.g. internal helper columns). |
 
 ### What `to_event_log()` does, step by step
 
@@ -54,14 +54,14 @@ shape live in `src/ts_shape/eventlog/adapters.py` (function `adapt`).
    (the coverage test prevents this from ever shipping).
 2. Check the `_OVERRIDES` table for a function registered with
    `@register_adapter("ClassName", "method_name")`. If one is
-   registered, call it with `(legacy_df, *, rule, detector,
+   registered, call it with `(detector_frame, *, rule, detector,
    objects, qualifiers)` and use its return value directly.
-3. Otherwise call `adapters.adapt(legacy_df, rule=…, detector=…,
+3. Otherwise call `adapters.adapt(detector_frame, rule=…, detector=…,
    objects=…, qualifiers=…)`:
     - **Resolve timestamps** based on `rule.shape` (see the four-shapes
       table above).
     - **Render `ocel:activity`** per row by substituting `{column}`
-      placeholders in `rule.template` with values from the legacy row.
+      placeholders in `rule.template` with values from the detector-frame row.
       Missing columns render as `unknown` (never raise).
     - **Generate stable `ocel:eid`** as
       `"e-" + uuid5(namespace, f"{detector}|{ts.isoformat()}|{i}|{activity}")`.
@@ -72,7 +72,7 @@ shape live in `src/ts_shape/eventlog/adapters.py` (function `adapt`).
     - **Pull value**: if `rule.value_field` is set, coerce to float and
       expose as `ts_shape:value`. Falls back to `value` /
       `value_double` / `value_integer`.
-    - **Prefix attributes**: every legacy column not consumed above is
+    - **Prefix attributes**: every detector-frame column not consumed above is
       added as `<pack>:<col>` so it's namespaced and never clashes with
       OCEL/XES columns.
     - **Trim empty extras**: any non-core column (a `<pack>:<col>`
@@ -89,19 +89,19 @@ shape live in `src/ts_shape/eventlog/adapters.py` (function `adapt`).
 
 ### Concrete walkthrough — `MachineStateEvents.detect_run_idle`
 
-The legacy DataFrame returned by `detect_run_idle()` looks like this:
+The detector frame returned by `detect_run_idle()` looks like this:
 
 | `start` | `end` | `uuid` | `source_uuid` | `is_delta` | `state` | `duration_seconds` |
 |---|---|---|---|---|---|---|
 | `2026-05-07 08:00:00+00:00` | `2026-05-07 08:04:30+00:00` | `prod:run_idle` | `asset-A` | `False` | `run` | `270.0` |
 
-`to_event_log(legacy_df, detector="MachineStateEvents.detect_run_idle")`
+`to_event_log(detector_frame, detector="MachineStateEvents.detect_run_idle")`
 applies the registry entry
 `LabelRule(template="production.machine_state.{state}",
 pack="production", shape="interval", produces_objects=("asset",))`
 and produces:
 
-| Legacy column | Lands in… | Why |
+| Detector-frame column | Lands in… | Why |
 |---|---|---|
 | `start` | `ts_shape:start_timestamp` | Interval-shape start probe matched. |
 | `end` | `ocel:timestamp` | Interval-shape end probe matched. |
@@ -125,9 +125,9 @@ If the caller had passed `objects={"batch": "batch_id"}`, an additional
 Reach for `@register_adapter` only when the generic adapter cannot
 express what your detector returns:
 
-- The legacy DataFrame is irregular (no time column, multiple
+- The detector frame is irregular (no time column, multiple
   sub-frames, nested dict columns).
-- You need to emit **multiple events per legacy row** — e.g. one row
+- You need to emit **multiple events per detector-frame row** — e.g. one row
   describes a batch with five sub-stage transitions and you want one
   event per transition.
 - You want `produces_objects` to depend on **runtime data** rather than
@@ -152,7 +152,7 @@ the same way.
 
 ```python
 def my_adapter(
-    legacy_df: pd.DataFrame,
+    detector_frame: pd.DataFrame,
     *,
     rule: LabelRule,            # the registry entry for this method
     detector: str,              # "MyDetector.weird_method"
@@ -189,14 +189,14 @@ REGISTRY[("MyDetector", "weird_method")] = LabelRule(
     produces_objects=("asset",),
 )
 
-# 2. Register an override that emits TWO events per legacy row
+# 2. Register an override that emits TWO events per detector-frame row
 #    (one "raised", one "cleared") — something the generic adapter
 #    cannot express.
 @register_adapter("MyDetector", "weird_method")
-def expand_pairs(legacy_df, *, rule, detector, objects, qualifiers):
+def expand_pairs(detector_frame, *, rule, detector, objects, qualifiers):
     rows: list[dict] = []
     relations: list[dict] = []
-    for i, row in legacy_df.iterrows():
+    for i, row in detector_frame.iterrows():
         for kind in ("raised", "cleared"):
             eid = f"e-{detector}-{i}-{kind}"
             rows.append({
@@ -215,7 +215,7 @@ def expand_pairs(legacy_df, *, rule, detector, objects, qualifiers):
     events = pd.concat([S.empty_events(), pd.DataFrame(rows)], ignore_index=True)
     rels = pd.concat([S.empty_relations(), pd.DataFrame(relations)], ignore_index=True)
     objs = pd.DataFrame({
-        S.OCEL_OID: legacy_df["asset_id"].astype("string").unique(),
+        S.OCEL_OID: detector_frame["asset_id"].astype("string").unique(),
         S.OCEL_TYPE: "asset",
     })
     return EventLog(events=events, objects=objs, relations=rels)

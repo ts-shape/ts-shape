@@ -1,14 +1,15 @@
-"""Reset-aware behaviour tests for QualityEvents.
+"""Reset-aware behavior tests for QualityEvents.
 
 Quality counters (OK / NOK) can reset back to a lower value at a shift
-change or a controller restart. Without ``handle_resets`` a window
-containing a reset under-reports; with it, the post-reset parts are counted
+change or a controller restart. With ``handle_resets=False`` a window
+containing a reset under-reports; by default (``handle_resets=True``), the post-reset parts are counted
 and a ``resets`` column is added. This file also covers the interleaving
 correctness of ``quality_by_part`` and the zero-total-day division guard in
 ``daily_quality_summary``.
 """
 
 import pandas as pd
+import pytest
 
 from ts_shape.events.production.quality_tracking import QualityEvents
 
@@ -37,11 +38,13 @@ def _make_reset_quality_df():
     return pd.DataFrame(rows)
 
 
-def test_nok_by_shift_default_underreports():
+def test_nok_by_shift_naive_under_reports():
     df = _make_reset_quality_df()
     tracker = QualityEvents(df)
     result = tracker.nok_by_shift(
-        ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"
+        ok_counter_uuid="ok_counter",
+        nok_counter_uuid="nok_counter",
+        handle_resets=False,
     )
 
     assert "resets" not in result.columns
@@ -68,17 +71,18 @@ def test_nok_by_shift_handles_resets():
     assert row["nok_parts"] == 10
     assert row["total_parts"] == 95
     # 85 / 95 * 100 = 89.5
-    assert row["first_pass_yield_pct"] == 89.5
+    assert row["first_pass_yield_pct"] == pytest.approx(85 / 95 * 100)
     assert row["resets"] == 1
 
 
-def test_quality_by_part_default_underreports():
+def test_quality_by_part_naive_under_reports():
     df = _make_reset_quality_df()
     tracker = QualityEvents(df)
     result = tracker.quality_by_part(
         ok_counter_uuid="ok_counter",
         nok_counter_uuid="nok_counter",
         part_id_uuid="part_number",
+        handle_resets=False,
     )
 
     assert "resets" not in result.columns
@@ -126,6 +130,7 @@ def test_quality_by_part_fixes_interleaving_over_count():
         ok_counter_uuid="ok_counter",
         nok_counter_uuid="missing_nok",
         part_id_uuid="part_number",
+        handle_resets=False,
     )
     # last - first per non-contiguous group over-counts: A = 170-100 = 70.
     assert default[default["part_number"] == "PART_A"]["ok_parts"].iloc[0] == 70
@@ -147,7 +152,9 @@ def test_nok_by_reason_handles_resets():
     tracker = QualityEvents(df)
 
     default = tracker.nok_by_reason(
-        nok_counter_uuid="ok_counter", defect_reason_uuid="defect_reason"
+        nok_counter_uuid="ok_counter",
+        defect_reason_uuid="defect_reason",
+        handle_resets=False,
     )
     assert "resets" not in default.columns
     assert default["nok_parts"].sum() == 30
@@ -167,7 +174,9 @@ def test_daily_quality_summary_handles_resets():
     tracker = QualityEvents(df)
 
     default = tracker.daily_quality_summary(
-        ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"
+        ok_counter_uuid="ok_counter",
+        nok_counter_uuid="nok_counter",
+        handle_resets=False,
     )
     assert "resets" not in default.columns
     assert default["ok_parts"].iloc[0] == 30
@@ -228,3 +237,80 @@ def test_quality_docstrings_list_every_returned_column():
         assert not missing, f"{name} docstring omits {missing}"
         if "quality_pct" in out.columns:
             assert "quality_pct" in doc
+
+
+def test_nok_by_shift_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_quality_df()
+    tracker = QualityEvents(df)
+
+    def call(**kw):
+        return tracker.nok_by_shift(
+            ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter", **kw
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_quality_by_part_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_quality_df()
+    tracker = QualityEvents(df)
+
+    def call(**kw):
+        return tracker.quality_by_part(
+            ok_counter_uuid="ok_counter",
+            nok_counter_uuid="nok_counter",
+            part_id_uuid="part_number",
+            **kw,
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_nok_by_reason_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_quality_df()
+    tracker = QualityEvents(df)
+    default = tracker.nok_by_reason(
+        nok_counter_uuid="ok_counter",
+        defect_reason_uuid="defect_reason",
+        handle_resets=False,
+    )
+    assert "resets" not in default.columns
+    assert default["nok_parts"].sum() == 30
+
+    def call(**kw):
+        return tracker.nok_by_reason(
+            nok_counter_uuid="ok_counter", defect_reason_uuid="defect_reason", **kw
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_daily_quality_summary_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_quality_df()
+    tracker = QualityEvents(df)
+    default = tracker.daily_quality_summary(
+        ok_counter_uuid="ok_counter",
+        nok_counter_uuid="nok_counter",
+        handle_resets=False,
+    )
+    assert "resets" not in default.columns
+    assert default["ok_parts"].iloc[0] == 30
+
+    def call(**kw):
+        return tracker.daily_quality_summary(
+            ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter", **kw
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

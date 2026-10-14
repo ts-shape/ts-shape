@@ -1,12 +1,16 @@
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
-try:
+if TYPE_CHECKING:
     from sqlalchemy import create_engine, text
-except ImportError:  # optional extra: ts-shape[sql]
-    create_engine = text = None  # type: ignore[assignment]
+else:
+    try:
+        from sqlalchemy import create_engine, text
+    except ImportError:  # optional extra: ts-shape[sql]
+        create_engine = text = None
 
 from ts_shape.loader._utils import require_optional
 

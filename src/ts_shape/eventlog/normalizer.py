@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from typing import TypeAlias
 
 import pandas as pd
 
 from . import adapters, schema, taxonomy
 from .model import EventLog
 
-TableInput = pd.DataFrame | Iterable[Mapping[str, object]] | None
+TableInput: TypeAlias = pd.DataFrame | Iterable[Mapping[str, object]] | None
 
 
-def _coerce_table(data: object, empty: pd.DataFrame) -> pd.DataFrame:
+def _coerce_table(data: TableInput, empty: pd.DataFrame) -> pd.DataFrame:
     """Coerce a DataFrame or iterable-of-mappings onto a canonical table.
 
     Reindexes to the canonical columns (extra columns dropped, missing filled
@@ -37,21 +38,24 @@ def to_event_log(
     object_changes: TableInput = None,
     validate: bool = True,
 ) -> EventLog:
-    """Normalize a legacy detector DataFrame into the canonical event log.
+    """Normalize a detector frame (a detector's output DataFrame) into the
+    canonical event log.
 
     ``detector`` is ``"ClassName.method_name"`` — the same key used in the
     taxonomy registry and the value written to ``ts_shape:detector``.
 
     ``objects`` binds OCEL object types to either:
 
-    * a string column name in ``df`` (e.g. ``{"asset": "source_uuid"}``),
+    * a string column name in ``df`` (e.g. ``{"asset": "source_uuid"}``); a
+      name that is not a column of ``df`` binds nothing and emits a
+      :class:`~ts_shape.errors.DataQualityWarning`,
     * a callable taking a row dict and returning an oid,
     * a ``pd.Series`` aligned with ``df`` rows,
     * a scalar broadcast to every row.
 
     Caller-supplied bindings are always honored. Types listed in the
     adapter's ``LabelRule.produces_objects`` are *also* auto-extracted from
-    standard legacy columns (e.g. ``source_uuid -> asset``) when no explicit
+    standard detector-frame columns (e.g. ``source_uuid -> asset``) when no explicit
     binding is given.
 
     ``o2o`` and ``object_changes`` optionally attach the OCEL 2.0

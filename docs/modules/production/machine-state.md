@@ -27,9 +27,9 @@ df = pd.DataFrame({
 })
 
 events = MachineStateEvents(df, run_state_uuid="line1:running")
-intervals = events.detect_run_idle(min_duration="1min", interval_end="next_change")
+intervals = events.detect_run_idle(min_duration="1min")
 transitions = events.transition_events()
-quality = events.state_quality_metrics(interval_end="next_change")
+quality = events.state_quality_metrics()
 print(intervals.head())
 ```
 
@@ -52,7 +52,7 @@ print(intervals.head())
     Use `min_duration` in `detect_run_idle()` to ignore brief sensor glitches — a 2-5 second threshold works well for most PLCs.
 
 !!! tip "Change-encoded signals"
-    If the PLC only logs a row on each state change, pass `interval_end="next_change"` so intervals end at the next transition instead of collapsing to zero duration.
+    Intervals end at the next transition by default (`interval_end=None` resolves to `"next_change"` without specs), so a PLC that only logs a row on each state change is measured correctly. `interval_end="last_sample"` ends each interval at its own last sample instead.
 
 !!! info "Related modules"
     - [Downtime Tracking](downtime.md) — categorizes idle intervals by reason code

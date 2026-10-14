@@ -9,7 +9,11 @@ its signal arguments are checked the same way, whichever pack it is in:
   instead of silently returning an empty result;
 * a frame without the uuid column raises
   :class:`~ts_shape.errors.ColumnNotFoundError` (a ``ValueError``) instead of
-  a bare ``KeyError`` deep inside the method.
+  a bare ``KeyError`` deep inside the method;
+* a column argument (``value_column``, ``value_column_<role>``,
+  ``<role>_column``) that names a column the frame does not have raises
+  :class:`~ts_shape.errors.ColumnNotFoundError` listing the columns, when the
+  method looks it up.
 
 The checks never change a result.
 """
@@ -22,7 +26,7 @@ import warnings
 from collections.abc import Callable, Mapping
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 
@@ -30,6 +34,13 @@ from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 _NOT_SIGNALS = {"event_uuid", "uuid_column"}
 
 _CHECKING = "_ts_shape_checking"
+# Set on every wrapped method so ``Base`` can tell which methods are checked.
+_CHECKED_MARKER = "__ts_shape_checked__"
+
+
+def _mark_checked(wrapper: Callable[..., Any]) -> None:
+    """Flag ``wrapper`` as signal-checked (read back with ``getattr``)."""
+    setattr(wrapper, _CHECKED_MARKER, True)
 
 
 def _signal_values(name: str, value: Any) -> list[str]:
@@ -85,6 +96,49 @@ def check_signals(obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict) -
         )
 
 
+def _column_arguments(obj: Any, bound: Mapping[str, Any]) -> set[str]:
+    """Column names the caller passed or the detector stored."""
+    named = {**vars(obj), **bound} if hasattr(obj, "__dict__") else dict(bound)
+    return {
+        v
+        for n, v in named.items()
+        if isinstance(v, str)
+        and isinstance(n, str)
+        and "column" in n
+        and not n.startswith("_ts_shape")
+    }
+
+
+def _missing_column(
+    obj: Any, frame: Any, bound: Mapping[str, Any], err: KeyError
+) -> ColumnNotFoundError | None:
+    """A ColumnNotFoundError for ``err`` if it is a missing column argument."""
+    key = err.args[0] if len(err.args) == 1 else None
+    if not isinstance(key, str) or not isinstance(frame, pd.DataFrame) or frame.empty:
+        return None
+    # pandas reports ``df["x"]`` as KeyError('x') and ``df[["x"]]`` as
+    # KeyError("['x'] not in index").
+    absent = sorted(c for c in _column_arguments(obj, bound) if c not in frame.columns)
+    named = [c for c in absent if key == c or repr(c) in key]
+    if not named:
+        return None
+    return ColumnNotFoundError(
+        f"{type(obj).__name__}: the data has no {named[0]!r} column. "
+        f"Columns: {list(frame.columns)}"
+    )
+
+
+def _bound_arguments(
+    fn: Callable[..., Any], obj: Any, args: tuple, kwargs: dict
+) -> dict[str, Any]:
+    try:
+        bound = inspect.signature(fn).bind_partial(obj, *args, **kwargs)
+    except TypeError:
+        return dict(kwargs)
+    bound.apply_defaults()
+    return dict(bound.arguments)
+
+
 def checked(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Wrap a detector method with :func:`check_signals` (outermost call only)."""
 
@@ -96,10 +150,17 @@ def checked(fn: Callable[..., Any]) -> Callable[..., Any]:
         object.__setattr__(self, _CHECKING, True)
         try:
             return fn(self, *args, **kwargs)
+        except KeyError as err:
+            bound = _bound_arguments(fn, self, args, kwargs)
+            frame, _ = _frame_uuids(self)
+            error = _missing_column(self, frame, bound, err)
+            if error is None:
+                raise
+            raise error from err
         finally:
             object.__setattr__(self, _CHECKING, False)
 
-    wrapper.__ts_shape_checked__ = True  # type: ignore[attr-defined]
+    _mark_checked(wrapper)
     return wrapper
 
 
@@ -127,9 +188,16 @@ def checked_init(fn: Callable[..., Any]) -> Callable[..., Any]:
                     f"{type(self).__name__}: the data has no {column!r} column. "
                     f"Columns: {list(frame.columns)}"
                 )
-        fn(self, *args, **kwargs)
+        try:
+            fn(self, *args, **kwargs)
+        except KeyError as err:
+            arguments = _bound_arguments(fn, self, args, kwargs)
+            error = _missing_column(self, arguments.get("dataframe"), arguments, err)
+            if error is None:
+                raise
+            raise error from err
         if type(self).__init__ is wrapper or not getattr(self, _CHECKING, False):
             check_signals(self, fn, args, kwargs)
 
-    wrapper.__ts_shape_checked__ = True  # type: ignore[attr-defined]
+    _mark_checked(wrapper)
     return wrapper

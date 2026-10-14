@@ -12,7 +12,7 @@ Two modes of operation:
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import add_day_window, data_tz
 from ts_shape.utils.base import Base
@@ -62,7 +62,7 @@ class PeriodSummaryEvents(Base):
         uuid: str,
         value_column: str = "value_integer",
         *,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Get daily counter deltas.
 
@@ -199,14 +199,12 @@ class PeriodSummaryEvents(Base):
 
             for col in avg_cols:
                 if col in grp.columns:
-                    row[col] = round(grp[col].mean(), 1)
+                    row[col] = grp[col].mean()
             for col in sum_cols:
                 if col in grp.columns:
                     val = grp[col].sum()
                     row[col] = (
-                        int(val)
-                        if pd.api.types.is_integer_dtype(grp[col])
-                        else round(val, 1)
+                        int(val) if pd.api.types.is_integer_dtype(grp[col]) else val
                     )
 
             results.append(row)
@@ -225,7 +223,7 @@ class PeriodSummaryEvents(Base):
         nok_counter_uuid: str | None = None,
         *,
         value_column: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Roll up daily production to weekly summaries from raw signals.
 
@@ -237,7 +235,7 @@ class PeriodSummaryEvents(Base):
             ok_counter_uuid: UUID of good parts counter (optional).
             nok_counter_uuid: UUID of the NOK part counter (optional).
             value_column: Column containing counter values.
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it (a
                 daily boundary is a common reset point). The result gains a
                 ``resets`` column with the number of resets observed each week.
@@ -305,7 +303,7 @@ class PeriodSummaryEvents(Base):
                 "week_start": week_start.date(),
                 "week_end": week_end.date(),
                 "total_production": int(total_prod),
-                "daily_avg": round(daily_avg, 1),
+                "daily_avg": daily_avg,
                 "production_days": days,
             }
 
@@ -327,8 +325,8 @@ class PeriodSummaryEvents(Base):
 
             if "ok_parts" in row and "nok_parts" in row:
                 total_q = row["ok_parts"] + row["nok_parts"]
-                row["quality_pct"] = round(
-                    row["ok_parts"] / total_q * 100 if total_q > 0 else 0, 1
+                row["quality_pct"] = (
+                    row["ok_parts"] / total_q * 100 if total_q > 0 else 0
                 )
 
             if handle_resets:
@@ -351,7 +349,7 @@ class PeriodSummaryEvents(Base):
         nok_counter_uuid: str | None = None,
         *,
         value_column: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Roll up daily production to monthly summaries from raw signals.
 
@@ -363,7 +361,7 @@ class PeriodSummaryEvents(Base):
             ok_counter_uuid: UUID of good parts counter (optional).
             nok_counter_uuid: UUID of the NOK part counter (optional).
             value_column: Column containing counter values.
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it. The
                 result gains a ``resets`` column with the number of resets
                 observed each month.
@@ -423,7 +421,7 @@ class PeriodSummaryEvents(Base):
                 "year": month_start.year,
                 "month": month_start.month,
                 "total_production": int(total_prod),
-                "daily_avg": round(daily_avg, 1),
+                "daily_avg": daily_avg,
                 "production_days": days,
             }
 
@@ -446,8 +444,8 @@ class PeriodSummaryEvents(Base):
 
             if "ok_parts" in row and "nok_parts" in row:
                 total_q = row["ok_parts"] + row["nok_parts"]
-                row["quality_pct"] = round(
-                    row["ok_parts"] / total_q * 100 if total_q > 0 else 0, 1
+                row["quality_pct"] = (
+                    row["ok_parts"] / total_q * 100 if total_q > 0 else 0
                 )
 
             if handle_resets:
@@ -474,7 +472,7 @@ class PeriodSummaryEvents(Base):
         period2: tuple[str, str],
         *,
         value_column: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Compare production between two time periods.
 
@@ -483,7 +481,7 @@ class PeriodSummaryEvents(Base):
             period1: Tuple of (start_date, end_date) for first period.
             period2: Tuple of (start_date, end_date) for second period.
             value_column: Column containing counter values.
-            handle_resets: When True, treat a decreasing counter as a reset and
+            handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so the
                 compared metrics are not understated for days containing a reset.
 
@@ -526,7 +524,7 @@ class PeriodSummaryEvents(Base):
                 }
             return {
                 "total_production": int(data["quantity"].sum()),
-                "daily_avg": round(data["quantity"].mean(), 1),
+                "daily_avg": data["quantity"].mean(),
                 "production_days": len(data),
                 "min_daily": int(data["quantity"].min()),
                 "max_daily": int(data["quantity"].max()),
@@ -547,13 +545,13 @@ class PeriodSummaryEvents(Base):
                     "metric": metric,
                     "period1_value": v1,
                     "period2_value": v2,
-                    "change": round(change, 1),
-                    "change_pct": round(change_pct, 1),
+                    "change": change,
+                    "change_pct": change_pct,
                 }
             )
 
         return pd.DataFrame(rows)
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in the next major release.
 PeriodSummary = deprecated_class(PeriodSummaryEvents, "PeriodSummary")

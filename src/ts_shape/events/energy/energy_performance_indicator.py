@@ -1,7 +1,7 @@
 import logging
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
@@ -59,7 +59,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         value_column_energy: str = "value_double",
         value_column_counter: str = "value_integer",
         window: str = "1D",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Calculate energy per unit produced (EnPI) for each time window.
 
@@ -69,10 +69,11 @@ class EnergyPerformanceIndicatorEvents(Base):
             value_column_energy: Column containing energy readings.
             value_column_counter: Column containing counter readings.
             window: Aggregation window (e.g. '1D', '1h', '1W').
-            handle_resets: Treat a decreasing production counter as a reset
-                and sum reset-aware increments per window (see
-                :func:`ts_shape.utils.counters.counter_per_window`). Default
-                ``False`` keeps the per-window ``max - min``.
+            handle_resets: ``True`` (default) treats a decreasing production
+                counter as a reset and sums reset-aware increments per window
+                (see :func:`ts_shape.utils.counters.counter_per_window`), so a
+                window with a reset still reports what was produced.
+                ``False`` uses the per-window ``max - min``.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,
@@ -122,7 +123,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         value_column_energy: str = "value_double",
         value_column_counter: str = "value_integer",
         window: str = "1D",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         baseline_window: int = 30,
         deviation_threshold: float = 0.1,
         baseline: str = "rolling",
@@ -157,10 +158,11 @@ class EnergyPerformanceIndicatorEvents(Base):
             baseline_period: ``(start, end)`` of the regression baseline
                 period, end exclusive. Default: the first
                 ``baseline_window`` windows.
-            handle_resets: Treat a decreasing production counter as a reset
-                and sum reset-aware increments per window (see
-                :func:`ts_shape.utils.counters.counter_per_window`). Default
-                ``False`` keeps the per-window ``max - min``.
+            handle_resets: ``True`` (default) treats a decreasing production
+                counter as a reset and sums reset-aware increments per window
+                (see :func:`ts_shape.utils.counters.counter_per_window`), so a
+                window with a reset still reports what was produced.
+                ``False`` uses the per-window ``max - min``.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid, enpi,
@@ -269,7 +271,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         value_column_energy: str = "value_double",
         value_column_counter: str = "value_integer",
         window: str = "1D",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Calculate EnPI per meter for cross-area comparison.
 
@@ -283,10 +285,11 @@ class EnergyPerformanceIndicatorEvents(Base):
             value_column_energy: Column containing energy readings.
             value_column_counter: Column containing counter readings.
             window: Aggregation window.
-            handle_resets: Treat a decreasing production counter as a reset
-                and sum reset-aware increments per window (see
-                :func:`ts_shape.utils.counters.counter_per_window`). Default
-                ``False`` keeps the per-window ``max - min``.
+            handle_resets: ``True`` (default) treats a decreasing production
+                counter as a reset and sums reset-aware increments per window
+                (see :func:`ts_shape.utils.counters.counter_per_window`), so a
+                window with a reset still reports what was produced.
+                ``False`` uses the per-window ``max - min``.
 
         Returns:
             DataFrame: start, end, duration_seconds, meter_uuid, energy_kwh,
@@ -347,7 +350,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         value_column_energy: str,
         value_column_counter: str,
         window: str,
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> "tuple[pd.DataFrame, pd.DataFrame]":
         """Resample energy and counter to window, return as two indexed DataFrames."""
         energy_raw = (

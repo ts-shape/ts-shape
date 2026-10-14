@@ -19,11 +19,16 @@ Example::
 
     # A shift where the counter reset once: 100, 300, 500, 0, 150
     values = pd.Series([100, 300, 500, 0, 150])
-    counter_quantity(values)                       # 50   (naive last - first)
-    counter_quantity(values, handle_resets=True)   # 550  (400 + 150)
+    counter_quantity(values)                        # 550  (400 + 150)
+    counter_quantity(values, handle_resets=False)   # 50   (plain last - first)
+
+Non-numeric readings are treated as gaps; a
+:class:`~ts_shape.errors.DataQualityWarning` reports how many there were.
 """
 
-import pandas as pd  # type: ignore
+import pandas as pd
+
+from ts_shape.utils.coerce import to_numeric_checked
 
 __all__ = [
     "counter_increments",
@@ -44,13 +49,14 @@ def counter_increments(values: pd.Series) -> pd.Series:
 
     Args:
         values: Counter readings, ordered in time. Non-numeric entries are
-            coerced to NaN and treated as gaps.
+            coerced to NaN and treated as gaps (with a
+            :class:`~ts_shape.errors.DataQualityWarning`).
 
     Returns:
         A float Series, index-aligned with ``values``, of the parts produced
         since the previous reading.
     """
-    numeric = pd.to_numeric(values, errors="coerce")
+    numeric = to_numeric_checked(values, what="counter readings")
     prev = numeric.shift(1)
     delta = numeric - prev
     is_reset = delta < 0
@@ -59,21 +65,23 @@ def counter_increments(values: pd.Series) -> pd.Series:
     return increment.fillna(0.0)
 
 
-def counter_quantity(values: pd.Series, *, handle_resets: bool = False) -> float:
+def counter_quantity(values: pd.Series, *, handle_resets: bool = True) -> float:
     """Total production represented by a counter series.
 
     Args:
         values: Counter readings, ordered in time.
-        handle_resets: When ``False`` (default) the quantity is the
-            backward-compatible ``max(0, last - first)``, so a window
-            containing a reset reports too little (often ``0``). When
-            ``True`` the quantity is the sum of reset-aware per-reading
-            increments (see :func:`counter_increments`).
+        handle_resets: When ``True`` (default) the quantity is the sum of
+            reset-aware per-reading increments (see
+            :func:`counter_increments`), so production before and after a
+            reset is both counted. When ``False`` the quantity is
+            ``max(0, last - first)``; use it only for counters known never to
+            reset, because a window containing a reset then reports too
+            little (often ``0``).
 
     Returns:
         The total quantity as a float. Empty input returns ``0.0``.
     """
-    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    numeric = to_numeric_checked(values, what="counter readings").dropna()
     if numeric.empty:
         return 0.0
     if handle_resets:
@@ -90,27 +98,27 @@ def count_resets(values: pd.Series) -> int:
     Returns:
         The count of readings that are lower than their predecessor.
     """
-    numeric = pd.to_numeric(values, errors="coerce")
+    numeric = to_numeric_checked(values, what="counter readings")
     return int((numeric.diff() < 0).sum())
 
 
 def counter_per_window(
-    values: pd.Series, window: str, *, handle_resets: bool = False
+    values: pd.Series, window: str, *, handle_resets: bool = True
 ) -> pd.Series:
     """Counter quantity per time window.
 
     Args:
         values: Counter readings with a ``DatetimeIndex``, ordered in time.
         window: Resample frequency (e.g. ``'1h'``, ``'1D'``).
-        handle_resets: When ``False`` (default) each window reports the
-            backward-compatible ``max - min`` of the readings inside it (``0``
-            for a window with fewer than two readings). That loses the
-            production between the last reading of one window and the first
-            of the next, counts nothing for a single-reading window, and
-            mis-counts a reset. When ``True`` the reset-aware per-reading
+        handle_resets: When ``True`` (default) the reset-aware per-reading
             increments (see :func:`counter_increments`) are computed on the
             whole series and summed per window, so every increment is booked
-            exactly once, in the window of the reading that reports it.
+            exactly once, in the window of the reading that reports it. When
+            ``False`` each window reports the ``max - min`` of the readings
+            inside it (``0`` for a window with fewer than two readings). That
+            loses the production between the last reading of one window and
+            the first of the next, counts nothing for a single-reading window,
+            and mis-counts a reset.
 
     Returns:
         A Series indexed by window start, clipped at ``0`` (float when
@@ -119,7 +127,7 @@ def counter_per_window(
     if handle_resets:
         increments = counter_increments(values)
         return increments.resample(window).sum().clip(lower=0).astype(float)
-    numeric = pd.to_numeric(values, errors="coerce")
+    numeric = to_numeric_checked(values, what="counter readings")
     return (
         numeric.resample(window)
         .agg(lambda x: x.max() - x.min() if len(x) > 1 else 0)

@@ -33,12 +33,12 @@ __all__ = [
 F = TypeVar("F", bound=Callable[..., Any])
 C = TypeVar("C", bound=type)
 
-REMOVAL = "1.0"
+REMOVAL = "the next major release"
 
 
 def _warn(message: str, stacklevel: int = 3) -> None:
     warnings.warn(
-        f"{message}; the old name will be removed in ts-shape {REMOVAL}",
+        f"{message}; the old name will be removed in {REMOVAL}",
         DeprecationWarning,
         stacklevel=stacklevel,
     )

@@ -1,8 +1,8 @@
 import warnings
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
@@ -30,7 +30,7 @@ class MeasurementUncertaintyEvents(Base):
     - uncertainty_budget: Contribution breakdown by source.
 
     ``part_uuid`` is deprecated: it has no effect (no method groups by
-    part) and will be removed in 1.0; passing it emits a
+    part) and will be removed in the next major release; passing it emits a
     ``DeprecationWarning``.
     """
 
@@ -58,23 +58,14 @@ class MeasurementUncertaintyEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
-        # part_uuid is kept for backward compatibility only; nothing uses it.
+        # Nothing groups by part; the parameter only warns.
         if self.part_uuid is not None:
             warnings.warn(
-                "part_uuid has no effect and will be removed in 1.0",
+                "MeasurementUncertaintyEvents(): part_uuid has no effect and "
+                "will be removed in the next major release",
                 DeprecationWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
-            self._parts = (
-                self.dataframe[self.dataframe["uuid"] == self.part_uuid]
-                .copy()
-                .sort_values(self.time_column)
-            )
-            self._parts[self.time_column] = pd.to_datetime(
-                self._parts[self.time_column]
-            )
-        else:
-            self._parts = None
 
     @keyword_only(1)
     def type_a_uncertainty(self, window: str = "8h") -> pd.DataFrame:
@@ -110,10 +101,10 @@ class MeasurementUncertaintyEvents(Base):
             events.append(
                 {
                     "window_start": ts,
-                    "mean": round(mean, 6),
-                    "std": round(std, 6),
+                    "mean": float(mean),
+                    "std": float(std),
                     "n_samples": n,
-                    "type_a_uncertainty": round(u_a, 8),
+                    "type_a_uncertainty": float(u_a),
                 }
             )
 
@@ -152,8 +143,8 @@ class MeasurementUncertaintyEvents(Base):
                     "source": s["source"],
                     "distribution": dist,
                     "half_width": half_width,
-                    "divisor": round(divisor, 6),
-                    "type_b_uncertainty": round(u_b, 8),
+                    "divisor": float(divisor),
+                    "type_b_uncertainty": float(u_b),
                 }
             )
 
@@ -211,10 +202,10 @@ class MeasurementUncertaintyEvents(Base):
             events.append(
                 {
                     "window_start": row["window_start"],
-                    "type_a": round(u_a, 8),
-                    "type_b_combined": round(type_b_combined, 8),
-                    "combined_uncertainty": round(u_c, 8),
-                    "expanded_uncertainty": round(u_expanded, 8),
+                    "type_a": float(u_a),
+                    "type_b_combined": float(type_b_combined),
+                    "combined_uncertainty": float(u_c),
+                    "expanded_uncertainty": float(u_expanded),
                     "coverage_factor": coverage_factor,
                 }
             )
@@ -270,9 +261,9 @@ class MeasurementUncertaintyEvents(Base):
             return pd.DataFrame(columns=cols)
 
         for e in entries:
-            e["pct_contribution"] = round(
-                (e["uncertainty"] ** 2 / total_variance) * 100, 2
+            e["pct_contribution"] = float(
+                (e["uncertainty"] ** 2 / total_variance) * 100
             )
-            e["uncertainty"] = round(e["uncertainty"], 8)
+            e["uncertainty"] = float(e["uncertainty"])
 
         return pd.DataFrame(entries, columns=cols)

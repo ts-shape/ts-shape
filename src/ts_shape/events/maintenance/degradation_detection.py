@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
@@ -50,7 +50,7 @@ class DegradationDetectionEvents(Base):
         min_slope: float = 0.0,
         direction: str = "decreasing",
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """
         Detect intervals where a rolling linear regression slope exceeds min_slope
@@ -60,11 +60,11 @@ class DegradationDetectionEvents(Base):
             window: Rolling window size (e.g. '1h', '30min').
             min_slope: Minimum absolute slope to consider degradation.
             direction: 'decreasing' (negative slope) or 'increasing' (positive slope).
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
-                :func:`ts_shape.utils.intervals.interval_end_times`.
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                next sample (the transition), so the interval spans the time the
+                condition held and change-encoded signals -- one row per change --
+                keep their duration. ``"last_sample"`` ends it at its last flagged
+                sample. See :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
@@ -166,7 +166,7 @@ class DegradationDetectionEvents(Base):
         window: str = "1h",
         threshold_factor: float = 2.0,
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """
         Compare rolling variance against a baseline (first window) and flag
@@ -175,11 +175,11 @@ class DegradationDetectionEvents(Base):
         Args:
             window: Rolling window size.
             threshold_factor: Minimum variance ratio to flag.
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
-                :func:`ts_shape.utils.intervals.interval_end_times`.
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                next sample (the transition), so the interval spans the time the
+                condition held and change-encoded signals -- one row per change --
+                keep their duration. ``"last_sample"`` ends it at its last flagged
+                sample. See :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
@@ -413,12 +413,10 @@ class DegradationDetectionEvents(Base):
 
         baseline_mean = float(baseline_data.mean())
         baseline_var = float(baseline_data.var())
+        eps = float(np.finfo(float).eps)
         if baseline_var == 0:
-            baseline_var = np.finfo(float).eps
-        if baseline_mean == 0:
-            baseline_mean_for_pct = np.finfo(float).eps
-        else:
-            baseline_mean_for_pct = baseline_mean
+            baseline_var = eps
+        baseline_mean_for_pct = eps if baseline_mean == 0 else baseline_mean
 
         # Compute rolling metrics
         rows: list[dict[str, Any]] = []
@@ -480,10 +478,10 @@ class DegradationDetectionEvents(Base):
                     "uuid": self.event_uuid,
                     "source_uuid": self.signal_uuid,
                     "is_delta": True,
-                    "health_score": round(score, 2),
-                    "mean_drift_pct": round(mean_drift_pct, 4),
-                    "variance_ratio": round(variance_ratio, 4),
-                    "trend_slope": round(trend_slope, 8),
+                    "health_score": float(score),
+                    "mean_drift_pct": float(mean_drift_pct),
+                    "variance_ratio": float(variance_ratio),
+                    "trend_slope": float(trend_slope),
                 }
             )
 

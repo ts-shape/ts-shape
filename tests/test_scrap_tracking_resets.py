@@ -1,8 +1,8 @@
-"""Reset-aware behaviour tests for ScrapEvents.
+"""Reset-aware behavior tests for ScrapEvents.
 
 A scrap counter can reset back to a lower value at a shift change or a
-controller restart. Without ``handle_resets`` a window containing a reset
-under-reports; with it, the post-reset scrap is counted and a ``resets``
+controller restart. With ``handle_resets=False`` a window containing a reset
+under-reports; by default (``handle_resets=True``), the post-reset scrap is counted and a ``resets``
 column is added.
 """
 
@@ -33,10 +33,10 @@ def _make_reset_scrap_df():
     return pd.DataFrame(rows)
 
 
-def test_scrap_by_shift_default_underreports():
+def test_scrap_by_shift_naive_under_reports():
     df = _make_reset_scrap_df()
     tracker = ScrapEvents(df)
-    result = tracker.scrap_by_shift(scrap_uuid="scrap_weight")
+    result = tracker.scrap_by_shift(scrap_uuid="scrap_weight", handle_resets=False)
 
     # Default clamps to last - first = 30, losing the pre-reset production.
     assert list(result.columns) == [
@@ -66,7 +66,7 @@ def test_scrap_by_reason_handles_resets():
     tracker = ScrapEvents(df)
 
     default = tracker.scrap_by_reason(
-        scrap_uuid="scrap_weight", reason_uuid="scrap_reason"
+        scrap_uuid="scrap_weight", reason_uuid="scrap_reason", handle_resets=False
     )
     assert "resets" not in default.columns
     assert default["scrap_quantity"].sum() == 30.0
@@ -87,6 +87,7 @@ def test_scrap_cost_handles_resets():
         scrap_uuid="scrap_weight",
         part_id_uuid="part_number",
         material_costs={"PART_A": 2.0},
+        handle_resets=False,
     )
     assert "resets" not in default.columns
     assert default["scrap_quantity"].iloc[0] == 30.0
@@ -108,7 +109,9 @@ def test_scrap_trend_handles_resets():
     df = _make_reset_scrap_df()
     tracker = ScrapEvents(df)
 
-    default = tracker.scrap_trend(scrap_uuid="scrap_weight", window="1D")
+    default = tracker.scrap_trend(
+        scrap_uuid="scrap_weight", window="1D", handle_resets=False
+    )
     assert "resets" not in default.columns
     assert default["scrap_quantity"].sum() == 30.0
 
@@ -118,3 +121,81 @@ def test_scrap_trend_handles_resets():
     assert "resets" in aware.columns
     assert aware["scrap_quantity"].sum() == 85.0
     assert aware["resets"].sum() == 1
+
+
+def test_scrap_by_shift_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_scrap_df()
+    tracker = ScrapEvents(df)
+
+    def call(**kw):
+        return tracker.scrap_by_shift(scrap_uuid="scrap_weight", **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_scrap_by_reason_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_scrap_df()
+    tracker = ScrapEvents(df)
+    default = tracker.scrap_by_reason(
+        scrap_uuid="scrap_weight", reason_uuid="scrap_reason", handle_resets=False
+    )
+    assert "resets" not in default.columns
+    assert default["scrap_quantity"].sum() == 30.0
+
+    def call(**kw):
+        return tracker.scrap_by_reason(
+            scrap_uuid="scrap_weight", reason_uuid="scrap_reason", **kw
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_scrap_cost_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_scrap_df()
+    tracker = ScrapEvents(df)
+    default = tracker.scrap_cost(
+        scrap_uuid="scrap_weight",
+        part_id_uuid="part_number",
+        material_costs={"PART_A": 2.0},
+        handle_resets=False,
+    )
+    assert "resets" not in default.columns
+    assert default["scrap_quantity"].iloc[0] == 30.0
+    assert default["total_cost"].iloc[0] == 60.0
+
+    def call(**kw):
+        return tracker.scrap_cost(
+            scrap_uuid="scrap_weight",
+            part_id_uuid="part_number",
+            material_costs={"PART_A": 2.0},
+            **kw,
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_scrap_trend_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_scrap_df()
+    tracker = ScrapEvents(df)
+    default = tracker.scrap_trend(
+        scrap_uuid="scrap_weight", window="1D", handle_resets=False
+    )
+    assert "resets" not in default.columns
+    assert default["scrap_quantity"].sum() == 30.0
+
+    def call(**kw):
+        return tracker.scrap_trend(scrap_uuid="scrap_weight", window="1D", **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

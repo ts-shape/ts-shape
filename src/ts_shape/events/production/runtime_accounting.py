@@ -16,7 +16,7 @@ counts): here the focus is *absolute* run time and an hour-meter reading.
 import logging
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.utils.base import Base
@@ -130,6 +130,8 @@ class RuntimeAccountingEvents(Base):
                 longer than this is treated as a logging outage and excluded, so
                 it does not inflate run/idle time or utilization. Without it, a
                 gap while the last state was ``running`` is booked as run time.
+                ``None`` (default) applies no cap: every interval between
+                readings, however long, counts toward the preceding state.
 
         Returns:
             Summary-shape DataFrame (one row) with columns: start, end,
@@ -157,23 +159,17 @@ class RuntimeAccountingEvents(Base):
         row = {
             "start": samples[self.time_column].iloc[0],
             "end": samples[self.time_column].iloc[-1],
-            "run_seconds": round(run_seconds, 2),
-            "run_hours": round(run_seconds / 3600.0, 3),
-            "idle_seconds": round(idle_seconds, 2),
+            "run_seconds": run_seconds,
+            "run_hours": run_seconds / 3600.0,
+            "idle_seconds": idle_seconds,
             "start_count": int(len(runs)),
             "longest_run_seconds": (
-                round(float(runs["duration_seconds"].max()), 2)
-                if not runs.empty
-                else 0.0
+                float(runs["duration_seconds"].max()) if not runs.empty else 0.0
             ),
             "mean_run_seconds": (
-                round(float(runs["duration_seconds"].mean()), 2)
-                if not runs.empty
-                else 0.0
+                float(runs["duration_seconds"].mean()) if not runs.empty else 0.0
             ),
-            "utilization_pct": (
-                round(run_seconds / total * 100.0, 2) if total > 0 else 0.0
-            ),
+            "utilization_pct": (run_seconds / total * 100.0) if total > 0 else 0.0,
         }
         return finalize_summary_df(pd.DataFrame([row]))
 
@@ -189,6 +185,7 @@ class RuntimeAccountingEvents(Base):
             window: Resample window (e.g. ``"1D"``, ``"8h"``).
             max_gap: Optional cap (e.g. "15min") excluding a logging gap from
                 run time and utilization (see :meth:`runtime_summary`).
+                ``None`` (default) applies no cap.
 
         Returns:
             Summary-shape DataFrame with columns: start, end, duration_seconds,
@@ -209,11 +206,11 @@ class RuntimeAccountingEvents(Base):
                 {
                     "start": win,
                     "end": win + pd.Timedelta(window),
-                    "run_seconds": round(run_s, 2),
-                    "run_hours": round(run_s / 3600.0, 3),
+                    "run_seconds": run_s,
+                    "run_hours": run_s / 3600.0,
                     "start_count": int(grp["is_start"].sum()),
                     "utilization_pct": (
-                        round(run_s / covered * 100.0, 2) if covered > 0 else 0.0
+                        (run_s / covered * 100.0) if covered > 0 else 0.0
                     ),
                 }
             )
@@ -232,6 +229,7 @@ class RuntimeAccountingEvents(Base):
             window: Resample window for the meter readings.
             max_gap: Optional cap (e.g. "15min") excluding a logging gap from
                 run time so the meter does not advance across an outage.
+                ``None`` (default) applies no cap.
 
         Returns:
             Summary-shape DataFrame with columns: start, end, duration_seconds,
@@ -254,7 +252,6 @@ class RuntimeAccountingEvents(Base):
         )
         out = run_per.reset_index()
         out.columns = ["start", "run_seconds"]
-        out["cumulative_run_hours"] = (out["run_seconds"].cumsum() / 3600.0).round(3)
-        out["run_seconds"] = out["run_seconds"].round(2)
+        out["cumulative_run_hours"] = out["run_seconds"].cumsum() / 3600.0
         out["end"] = out["start"] + pd.Timedelta(window)
         return finalize_summary_df(out)

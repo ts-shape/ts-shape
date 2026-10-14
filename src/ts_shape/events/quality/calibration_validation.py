@@ -1,8 +1,8 @@
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import stats  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy import stats
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
@@ -112,9 +112,9 @@ class CalibrationValidationEvents(Base):
             events.append(
                 {
                     "reference": ref,
-                    "measured_mean": round(measured_mean, 6),
-                    "measured_std": round(measured_std, 6),
-                    "bias": round(bias, 6),
+                    "measured_mean": float(measured_mean),
+                    "measured_std": float(measured_std),
+                    "bias": float(bias),
                     "linearity_error": 0.0,  # placeholder, computed below
                 }
             )
@@ -133,7 +133,7 @@ class CalibrationValidationEvents(Base):
         for i, e in enumerate(events):
             predicted = slope * ref_arr[i] + intercept
             linearity_error = mean_arr[i] - predicted
-            e["linearity_error"] = round(linearity_error, 6)
+            e["linearity_error"] = float(linearity_error)
 
         return pd.DataFrame(events, columns=cols)
 
@@ -180,9 +180,9 @@ class CalibrationValidationEvents(Base):
             events.append(
                 {
                     "coefficient_index": i,
-                    "coefficient_value": round(float(c), 8),
-                    "r_squared": round(r_squared, 6),
-                    "max_residual": round(max_residual, 8),
+                    "coefficient_value": float(c),
+                    "r_squared": float(r_squared),
+                    "max_residual": float(max_residual),
                 }
             )
 
@@ -245,8 +245,8 @@ class CalibrationValidationEvents(Base):
             events.append(
                 {
                     "window_start": ts,
-                    "bias": round(bias, 6),
-                    "drift_rate": round(drift_rate, 6),
+                    "bias": float(bias),
+                    "drift_rate": float(drift_rate),
                     "recalibration_needed": recal_needed,
                     "reason": "; ".join(reasons) if reasons else "",
                 }
@@ -332,10 +332,10 @@ class CalibrationValidationEvents(Base):
             events.append(
                 {
                     "window_start": ts,
-                    "bias_mean": round(bias_mean, 6),
-                    "bias_std": round(bias_std, 6),
-                    "bias_trend": round(bias_trend, 8),
-                    "stability_score": round(score, 2),
+                    "bias_mean": float(bias_mean),
+                    "bias_std": float(bias_std),
+                    "bias_trend": float(bias_trend),
+                    "stability_score": float(score),
                 }
             )
 

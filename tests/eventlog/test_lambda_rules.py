@@ -500,3 +500,33 @@ def test_to_event_log_resolves_lambda_via_registry(torque_df):
         assert len(log.events) == 3
     finally:
         unregister_lambda_rule(spec.class_name, spec.method_name)
+
+
+def test_interval_rule_non_numeric_value_warns_once(bearing_df):
+    from ts_shape.errors import DataQualityWarning
+
+    df = bearing_df.astype({"bearing_temp_c": object})
+    df["flag"] = df["bearing_temp_c"].astype(float) > 85
+    df.loc[df.index[3], "bearing_temp_c"] = "sensor fault"
+    spec = RuleSpec(
+        id="bearing_flag",
+        class_name="LambdaCoerce",
+        method_name="hot_window",
+        pack="maintenance",
+        shape="interval",
+        archetype="interval",
+        template="maintenance.bearing.hot",
+        trigger=TriggerSpec(expression="flag", group_by=("source_uuid",)),
+        produces_objects=("asset",),
+        value_field="bearing_temp_c",
+        standard_attrs={"ts_shape:lifecycle_state": "hot"},
+    )
+    try:
+        det = register_lambda_rule(spec)
+        with pytest.warns(DataQualityWarning) as caught:
+            det.evaluate(df)
+        relevant = [w for w in caught if "bearing_temp_c" in str(w.message)]
+        assert len(relevant) == 1
+        assert "1 non-null value" in str(relevant[0].message)
+    finally:
+        unregister_lambda_rule(spec.class_name, spec.method_name)

@@ -133,3 +133,20 @@ def test_empty_short_and_validation():
     tiny = _long(t, {"a": np.arange(3.0), "b": np.arange(3.0) ** 2})
     with pytest.raises(ValueError, match="reference period"):
         MultivariateSPCEvents(tiny, ["a", "b"]).hotelling_t2()
+
+
+def test_non_numeric_values_warn():
+    from ts_shape.errors import DataQualityWarning
+
+    t = pd.date_range("2024-01-01", periods=4, freq="1min")
+    df = pd.DataFrame(
+        {
+            "systime": list(t) * 2,
+            "uuid": ["a"] * 4 + ["b"] * 4,
+            "value_double": [1.0, "x", 2.0, 3.0, 1.0, 2.0, 3.0, 4.0],
+        },
+        dtype=object,
+    )
+    with pytest.warns(DataQualityWarning, match="signal 'a'"):
+        ev = MultivariateSPCEvents(df, ["a", "b"])
+    assert len(ev.matrix) == 3

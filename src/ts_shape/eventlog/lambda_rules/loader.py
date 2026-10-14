@@ -21,6 +21,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from ...loader._utils import missing_optional
 from ..archetypes import ARCHETYPE_BY_METHOD
 from ..schema import STANDARD_ATTR_KEYS
 from ..taxonomy import REGISTRY, LabelRule
@@ -138,15 +139,16 @@ def load_yaml(path: str | Path) -> list[LambdaDetector]:
 
     YAML is imported lazily so :mod:`ts_shape.eventlog` does not gain a
     hard runtime dependency on PyYAML for users who only use built-in
-    detectors. Install ``pyyaml`` to enable this loader.
+    detectors. Install ``ts-shape[yaml]`` to enable this loader, or use
+    :func:`load_dicts` with a hand-built list.
+
+    Raises:
+        ImportError: When PyYAML is not installed.
     """
     try:
-        import yaml  # type: ignore[import-not-found]
-    except ModuleNotFoundError as exc:  # pragma: no cover - import error path
-        raise RuntimeError(
-            "load_yaml requires PyYAML. Install with `pip install pyyaml` "
-            "or use load_dicts(...) with a hand-built list."
-        ) from exc
+        import yaml
+    except ImportError as exc:  # pragma: no cover - import error path
+        raise missing_optional("pyyaml", "yaml") from exc
     raw = yaml.safe_load(Path(path).read_text())
     if not isinstance(raw, Mapping) or "rules" not in raw:
         raise ValueError(f"YAML file {path!s} must define a top-level 'rules:' list")

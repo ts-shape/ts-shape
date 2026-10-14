@@ -26,7 +26,7 @@ from .root_cause_correlation import RootCauseCorrelationEvents
 from .signal_correlation import SignalCorrelationEvents
 
 __all__ = [
-    "SignalCorrelationEvents",
     "AnomalyCorrelationEvents",
     "RootCauseCorrelationEvents",
+    "SignalCorrelationEvents",
 ]

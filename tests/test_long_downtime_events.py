@@ -54,7 +54,9 @@ class TestDetectLongDowntime:
 
         assert len(result) == 2
         assert list(result["downtime_index"]) == [0, 1]
-        assert result.iloc[0]["duration_seconds"] == pytest.approx(4 * 3600)
+        # Default interval_end="next_change": gap 1 closes at the 04:01
+        # transition; the still-open gap 2 ends at its last sample.
+        assert result.iloc[0]["duration_seconds"] == pytest.approx(4 * 3600 + 60)
         assert result.iloc[1]["duration_seconds"] == pytest.approx(4.5 * 3600 - 60)
         assert set(result.columns) >= {
             "start",
@@ -83,7 +85,8 @@ class TestDetectLongDowntime:
         result = lde.detect_long_downtime(min_gap="3h")
 
         assert len(result) == 1
-        assert result.iloc[0]["duration_seconds"] == pytest.approx(5 * 3600)
+        # Closed at the 05:01 transition (default interval_end="next_change").
+        assert result.iloc[0]["duration_seconds"] == pytest.approx(5 * 3600 + 60)
 
     def test_short_gaps_filtered_out(self):
         """1 h gap must NOT be returned; 4 h gap must be returned."""
@@ -304,8 +307,9 @@ class TestInitGuards:
 
 class TestCountEventsBetweenGapsIntervalEnd:
     def test_change_encoded_state_with_next_change(self):
-        """Change-encoded state: one row per transition. With the default
-        ``last_sample`` every stop is zero-length; ``next_change`` finds them."""
+        """Change-encoded state: one row per transition. With
+        ``last_sample`` every stop is zero-length; the default
+        ``next_change`` finds them."""
         state = _make_state_df(
             [
                 "2024-01-01 00:00",  # down
@@ -321,8 +325,10 @@ class TestCountEventsBetweenGapsIntervalEnd:
         )
         df = pd.concat([state, prod], ignore_index=True)
         ev = LongDowntimeEvents(df, "machine")
-        assert ev.count_events_between_gaps(df, "prod").empty
-        out = ev.count_events_between_gaps(df, "prod", interval_end="next_change")
+        assert ev.count_events_between_gaps(
+            df, "prod", interval_end="last_sample"
+        ).empty
+        out = ev.count_events_between_gaps(df, "prod")
         assert len(out) == 1
         assert out.iloc[0]["event_count"] == 3
         assert out.iloc[0]["start"] == pd.Timestamp("2024-01-01 04:00")

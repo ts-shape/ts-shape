@@ -16,7 +16,7 @@ production that happened in a window where a reset occurred. Pass
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import add_day_window, data_tz, window_bounds
 from ts_shape.utils.base import Base
@@ -183,7 +183,7 @@ class PartProductionEvents(Base):
         window: str = "1h",
         value_column_part: str = "value_string",
         value_column_counter: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Calculate production quantity per part number.
 
@@ -193,10 +193,10 @@ class PartProductionEvents(Base):
             window: Time window for aggregation (e.g., '1h', '8h', '1d')
             value_column_part: Column containing part numbers
             value_column_counter: Column containing counter values
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the production after the reset instead of losing
                 it. The result gains a ``resets`` column with the number of
-                resets observed in each window. When False (default), the
+                resets observed in each window. When False, the
                 quantity is simply ``max(0, last_count - first_count)`` and a
                 window containing a reset reports 0.
 
@@ -360,7 +360,7 @@ class PartProductionEvents(Base):
         *,
         value_column_part: str = "value_string",
         value_column_counter: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Daily production summary by part number.
 
@@ -431,7 +431,7 @@ class PartProductionEvents(Base):
         end_date: str | None = None,
         value_column_part: str = "value_string",
         value_column_counter: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Total production by part number for a date range.
 
@@ -490,7 +490,7 @@ class PartProductionEvents(Base):
         return totals
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in the next major release.
 PartProductionTracking = deprecated_class(
     PartProductionEvents, "PartProductionTracking"
 )

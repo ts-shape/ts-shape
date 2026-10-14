@@ -186,17 +186,16 @@ totals = tracker.production_totals(
 
 ### Handling counter resets
 
-Production counters are assumed to increase as parts are produced. Many counters reset back to zero (or a lower value) at a shift change, a part change, or a controller restart. By default the quantity is `max(0, last_count - first_count)`, so **any window where the counter drops reports 0 and silently loses that window's production**.
+Production counters are assumed to increase as parts are produced. Many counters reset back to zero (or a lower value) at a shift change, a part change, or a controller restart. By default (`handle_resets=True`) the quantity is the sum of per-reading increments, where a drop is treated as a reset that contributes the new counter value. The result has a `resets` column counting resets per window/day/range. The same flag is available on `daily_production_summary` and `production_totals`.
 
-Pass `handle_resets=True` to count production correctly across resets. The quantity becomes the sum of per-reading increments, where a drop is treated as a reset that contributes the new counter value. The result gains a `resets` column counting resets per window/day/range. The same flag is available on `daily_production_summary` and `production_totals`.
+With `handle_resets=False` the quantity is `max(0, last_count - first_count)`, so a window where the counter drops reports 0 and loses that window's production.
 
 ```python
-# Reset-aware hourly production (adds a `resets` column)
+# Reset-aware hourly production (includes a `resets` column)
 hourly = tracker.production_by_part(
     part_id_uuid='part_number_signal',
     counter_uuid='counter_signal',
     window='1h',
-    handle_resets=True,
 )
 
 # Inspect exactly when and how far the counter reset
@@ -210,7 +209,7 @@ resets = tracker.detect_resets(
 ```
 
 !!! tip "Confirm reset behavior first"
-    Use `detect_resets()` to check whether and when your counter resets. If it never resets, the default (`handle_resets=False`) and the reset-aware result are identical; enable the flag whenever resets are expected.
+    Use `detect_resets()` to check whether and when your counter resets. If it never resets, `handle_resets=False` and the default reset-aware result give the same quantities.
 
 ---
 
@@ -340,7 +339,8 @@ targets = reporter.shift_targets(
 )
 
 # Best and worst shifts
-results = reporter.best_and_worst_shifts(counter_uuid='counter_signal')
+ranked = reporter.best_and_worst_shifts(counter_uuid='counter_signal')
+best = ranked[ranked['rank_type'] == 'best']
 ```
 
 ---

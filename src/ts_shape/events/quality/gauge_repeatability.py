@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
@@ -135,7 +135,7 @@ class GaugeRepeatabilityEvents(Base):
                     continue
                 part_range = float(np.mean([c.max() - c.min() for c in cells]))
                 part_std = float(np.sqrt(np.mean([c.var() for c in cells])))
-                cell_trials = int(round(np.mean([len(c) for c in cells])))
+                cell_trials = round(np.mean([len(c) for c in cells]))
                 trials = n_trials if n_trials else cell_trials
             else:
                 part_range = float(vals.max() - vals.min())
@@ -150,10 +150,10 @@ class GaugeRepeatabilityEvents(Base):
             events.append(
                 {
                     "part": part,
-                    "mean": round(part_mean, 6),
-                    "range": round(part_range, 6),
-                    "repeatability_std": round(part_std, 6),
-                    "EV": round(ev, 6),
+                    "mean": float(part_mean),
+                    "range": float(part_range),
+                    "repeatability_std": float(part_std),
+                    "EV": float(ev),
                 }
             )
 
@@ -196,7 +196,7 @@ class GaugeRepeatabilityEvents(Base):
             events.append(
                 {
                     "operator": op,
-                    "mean": round(op_mean, 6),
+                    "mean": float(op_mean),
                     "reproducibility_std": 0.0,
                     "AV": 0.0,
                 }
@@ -225,8 +225,8 @@ class GaugeRepeatabilityEvents(Base):
         repro_std = float(np.std(op_means, ddof=1))
 
         for e in events:
-            e["reproducibility_std"] = round(repro_std, 6)
-            e["AV"] = round(av, 6)
+            e["reproducibility_std"] = float(repro_std)
+            e["AV"] = float(av)
 
         return (
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
@@ -289,18 +289,18 @@ class GaugeRepeatabilityEvents(Base):
         ndc = int(np.floor(1.41 * (pv / grr))) if grr > 0 else 0
 
         result = {
-            "EV": round(ev, 6),
-            "AV": round(av, 6),
-            "GRR": round(grr, 6),
-            "PV": round(pv, 6),
-            "TV": round(tv, 6),
-            "pct_GRR": round(pct_grr, 2),
-            "pct_PV": round(pct_pv, 2),
+            "EV": float(ev),
+            "AV": float(av),
+            "GRR": float(grr),
+            "PV": float(pv),
+            "TV": float(tv),
+            "pct_GRR": float(pct_grr),
+            "pct_PV": float(pct_pv),
             "ndc": ndc,
         }
 
         if tolerance_range is not None and tolerance_range > 0:
-            result["pct_GRR_tolerance"] = round(grr / tolerance_range * 100, 2)
+            result["pct_GRR_tolerance"] = float(grr / tolerance_range * 100)
 
         return pd.DataFrame([result])
 
@@ -335,10 +335,10 @@ class GaugeRepeatabilityEvents(Base):
             events.append(
                 {
                     "part": part,
-                    "measured_mean": round(measured_mean, 6),
+                    "measured_mean": float(measured_mean),
                     "reference": ref,
-                    "bias": round(bias, 6),
-                    "bias_pct": round(bias_pct, 4),
+                    "bias": float(bias),
+                    "bias_pct": float(bias_pct),
                 }
             )
 

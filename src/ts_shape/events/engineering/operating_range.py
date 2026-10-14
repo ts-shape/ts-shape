@@ -1,12 +1,13 @@
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.events._output import empty_event_df, finalize_interval_df
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 from ts_shape.utils.time_weighted import time_weighted_resample
 
@@ -199,22 +200,22 @@ class OperatingRangeEvents(Base):
         lower_limit: float,
         upper_limit: float,
         window: str = "1h",
-        time_weighted: bool = False,
+        time_weighted: bool = True,
     ) -> pd.DataFrame:
         """Share of each window spent within, below and above a range.
 
-        By default the ``*_pct`` columns are percentages of the *samples* in
-        each window (equal to the share of time only for evenly spaced
-        data). With ``time_weighted=True`` they are percentages of *time*:
-        each value is held until the next sample (zero-order hold), so a
-        window without samples that holds an earlier value is reported too.
+        By default the ``*_pct`` columns are percentages of *time*: each value
+        is held until the next sample (zero-order hold), so a window without
+        samples that holds an earlier value is reported too. With
+        ``time_weighted=False`` they are percentages of the *samples* in each
+        window (equal to the share of time only for evenly spaced data).
 
         Args:
             lower_limit: Lower bound of the range (inclusive), in signal units.
             upper_limit: Upper bound of the range (inclusive), in signal units.
             window: Resample window (pandas offset string).
-            time_weighted: Weight each value by how long it was held instead
-                of counting samples (default False, the previous behavior).
+            time_weighted: ``True`` (default) weights each value by how long it
+                was held; ``False`` counts samples.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -228,7 +229,9 @@ class OperatingRangeEvents(Base):
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         events: list[dict[str, Any]] = []
         if time_weighted:
-            vals = pd.to_numeric(indexed, errors="coerce").dropna()
+            vals = to_numeric_checked(
+                indexed, what=f"signal {self.signal_uuid!r}"
+            ).dropna()
             shares = {
                 name: time_weighted_resample(mask.astype(float), window)
                 for name, mask in (

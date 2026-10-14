@@ -1,8 +1,7 @@
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import stats  # type: ignore
+import pandas as pd
+from scipy import stats
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
@@ -125,8 +124,8 @@ class EnvironmentalCompensationEvents(Base):
             events.append(
                 {
                     "window_start": ts,
-                    "correlation": round(float(r), 6),
-                    "p_value": round(float(p), 8),
+                    "correlation": float(r),
+                    "p_value": float(p),
                     "significant": bool(p < 0.05),
                 }
             )
@@ -174,10 +173,10 @@ class EnvironmentalCompensationEvents(Base):
             events.append(
                 {
                     "window_start": ts,
-                    "coefficient": round(float(slope), 8),
-                    "intercept": round(float(intercept), 6),
-                    "r_squared": round(float(r_value**2), 6),
-                    "unit_change_per_degree": round(float(slope), 8),
+                    "coefficient": float(slope),
+                    "intercept": float(intercept),
+                    "r_squared": float(r_value**2),
+                    "unit_change_per_degree": float(slope),
                 }
             )
 
@@ -237,8 +236,8 @@ class EnvironmentalCompensationEvents(Base):
                 "systime": aligned.index,
                 "uuid": self.event_uuid,
                 "value_double": aligned["signal"].values,
-                "compensated_value": np.round(compensated.values, 8),
-                "correction_applied": np.round(correction.values, 8),
+                "compensated_value": compensated.values,
+                "correction_applied": correction.values,
                 "source_uuid": self.signal_uuid,
             }
         )
@@ -326,9 +325,9 @@ class EnvironmentalCompensationEvents(Base):
                 {
                     "window_start": ts,
                     "window_end": window_end,
-                    "env_mean": round(env_mean, 4),
-                    "env_min": round(env_min, 4),
-                    "env_max": round(env_max, 4),
+                    "env_mean": float(env_mean),
+                    "env_min": float(env_min),
+                    "env_max": float(env_max),
                     "exceedance_type": exceedance_type,
                     "severity": severity,
                 }

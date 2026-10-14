@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pandas as pd  # type: ignore
 import pytest
 
-from ts_shape.errors import LoaderConfigWarning
+from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
 from ts_shape.loader.timeseries.azure_blob_loader import (
     AzureBlobFlexibleFileLoader,
     AzureBlobParquetLoader,
@@ -185,10 +185,68 @@ def test_load_all_files_all_downloads_fail_warns(monkeypatch):
         "parquet/2024/01/01/10/u2.parquet",
     ]
     loader = _make_loader_without_init(prefix="parquet/", files=files)
-    monkeypatch.setattr(loader, "_download_parquet", lambda name, *a, **k: None)
+
+    def broken(name, *a, **k):
+        raise OSError(f"cannot read {name}")
+
+    monkeypatch.setattr(loader, "_download_parquet", broken)
     with pytest.warns(LoaderConfigWarning, match="failed to download"):
-        df = loader.load_all_files()
+        with pytest.warns(DataQualityWarning) as caught:
+            df = loader.load_all_files()
     assert df.empty
+    # The failure warning names every skipped blob.
+    message = str(caught[0].message)
+    assert "2 parquet blob(s) could not be read" in message
+    assert files[0] in message and files[1] in message
+
+
+def test_load_all_files_partial_failure_warns_and_keeps_rest(monkeypatch):
+    files = [
+        "parquet/2024/01/01/09/u1.parquet",
+        "parquet/2024/01/01/10/u2.parquet",
+    ]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+
+    def flaky(name, *a, **k):
+        if name.endswith("u2.parquet"):
+            raise ValueError("not a parquet file")
+        return pd.DataFrame({"uuid": ["u1"]})
+
+    monkeypatch.setattr(loader, "_download_parquet", flaky)
+    with pytest.warns(DataQualityWarning, match="u2.parquet"):
+        df = loader.load_all_files()
+    assert list(df["uuid"]) == ["u1"]
+
+    with pytest.raises(LoaderError, match="u2.parquet"):
+        loader.load_all_files(errors="raise")
+    with pytest.raises(ValueError, match="errors must be"):
+        loader.load_all_files(errors="ignore")
+
+
+def test_stream_failure_warns_or_raises(monkeypatch):
+    files = [
+        "parquet/2024/01/01/09/u1.parquet",
+        "parquet/2024/01/01/09/u2.parquet",
+    ]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+
+    def flaky(name, *a, **k):
+        if name.endswith("u2.parquet"):
+            raise OSError("connection reset")
+        return pd.DataFrame({"uuid": ["u1"]})
+
+    monkeypatch.setattr(loader, "_download_parquet", flaky)
+    with pytest.warns(DataQualityWarning, match="u2.parquet"):
+        got = list(
+            loader.stream_by_time_range("2024-01-01 09:00:00", "2024-01-01 09:00:00")
+        )
+    assert [name for name, _ in got] == [files[0]]
+    with pytest.raises(LoaderError, match="u2.parquet"):
+        list(
+            loader.stream_by_time_range(
+                "2024-01-01 09:00:00", "2024-01-01 09:00:00", errors="raise"
+            )
+        )
 
 
 def test_load_all_files_happy_emits_no_warning(monkeypatch):
@@ -234,7 +292,7 @@ def test_load_files_by_uuids_falls_back_when_listing_fails(monkeypatch):
     loader = _make_loader_without_init(prefix="parquet/", files=[])
 
     def boom(name_starts_with=None):
-        raise RuntimeError("no list permission")
+        raise PermissionError("no list permission")
 
     loader.container_client.list_blobs = boom
 
@@ -244,14 +302,16 @@ def test_load_files_by_uuids_falls_back_when_listing_fails(monkeypatch):
         calls.append(name)
         if name == "parquet/2024/01/01/09/u1.parquet":
             return pd.DataFrame({"uuid": ["u1"]})
-        return None
+        raise FileNotFoundError(name)
 
     monkeypatch.setattr(loader, "_download_parquet", fake_download)
     with warnings.catch_warnings():
-        warnings.simplefilter("error", LoaderConfigWarning)
-        df = loader.load_files_by_time_range_and_uuids(
-            "2024-01-01 09:00:00", "2024-01-01 09:00:00", ["u1"]
-        )
+        # Guessed names that do not exist are expected, not data-quality issues.
+        warnings.simplefilter("error", DataQualityWarning)
+        with pytest.warns(LoaderConfigWarning, match="listing the hour folders"):
+            df = loader.load_files_by_time_range_and_uuids(
+                "2024-01-01 09:00:00", "2024-01-01 09:00:00", ["u1"]
+            )
     # Listing failed, so direct blob names were downloaded blindly.
     assert set(df["uuid"]) == {"u1"}
     assert "parquet/2024/01/01/09/u1.parquet" in calls
@@ -349,20 +409,52 @@ def test_load_by_time_range_mid_hour_start_reads_last_hour(monkeypatch):
         )
 
     monkeypatch.setattr(loader, "_download_parquet", fake_download)
-    df = loader.load_by_time_range("2024-01-01 09:30", "2024-01-01 11:00")
-    assert set(df["uuid"]) == {"u1", "u2"}
-    assert len(df) == 6  # whole hour folders by default
-
-    trimmed = loader.load_by_time_range(
-        "2024-01-01 09:30", "2024-01-01 11:00", trim_to_range=True
+    whole = loader.load_by_time_range(
+        "2024-01-01 09:30", "2024-01-01 11:00", trim_to_range=False
     )
+    assert set(whole["uuid"]) == {"u1", "u2"}
+    assert len(whole) == 6  # whole hour folders
+
+    # Default: rows outside the requested range are dropped.
+    trimmed = loader.load_by_time_range("2024-01-01 09:30", "2024-01-01 11:00")
     assert trimmed["systime"].min() == pd.Timestamp("2024-01-01 09:45")
     assert trimmed["systime"].max() == pd.Timestamp("2024-01-01 11:00")
     assert len(trimmed) == 4
 
-    streamed = list(
-        loader.stream_by_time_range(
-            "2024-01-01 09:30", "2024-01-01 11:00", trim_to_range=True
-        )
-    )
+    streamed = list(loader.stream_by_time_range("2024-01-01 09:30", "2024-01-01 11:00"))
     assert sum(len(f) for _, f in streamed) == 4
+
+
+def test_flexible_fetch_reports_failed_downloads_and_parse_errors(monkeypatch):
+    files = [
+        "raw/2024/01/01/09/a.json",
+        "raw/2024/01/01/09/b.json",
+        "raw/2024/01/01/09/c.json",
+    ]
+    flex = _make_flexible_without_init(prefix="raw/", files=files)
+    contents = {files[0]: b'{"ok": 1}', files[2]: b"not json"}
+
+    def download(name):
+        if name not in contents:
+            raise OSError(f"cannot read {name}")
+        return contents[name]
+
+    monkeypatch.setattr(flex, "_download_bytes", download)
+    flex._enable_builtin_parsers()
+    with pytest.warns(DataQualityWarning) as caught:
+        out = flex.fetch_files_by_time_range(
+            "2024-01-01 09:00:00", "2024-01-01 09:00:00", parse=True
+        )
+    messages = " ".join(str(w.message) for w in caught)
+    assert "b.json" in messages  # download failure
+    assert "Could not parse blob 'raw/2024/01/01/09/c.json'" in messages
+    assert out[files[0]] == {"ok": 1}
+    assert out[files[2]] == b"not json"
+    assert files[1] not in out
+
+    with pytest.raises(LoaderError, match="b.json"):
+        list(
+            flex.stream_files_by_time_range(
+                "2024-01-01 09:00:00", "2024-01-01 09:00:00", errors="raise"
+            )
+        )

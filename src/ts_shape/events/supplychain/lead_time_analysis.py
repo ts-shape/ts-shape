@@ -7,7 +7,7 @@ and detects anomalous lead times.
 import logging
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
@@ -210,7 +210,7 @@ class LeadTimeAnalysisEvents(Base):
                     "min_hours": float(hours.min()),
                     "max_hours": float(hours.max()),
                     "p95_hours": float(hours.quantile(0.95)),
-                    "count": int(len(hours)),
+                    "count": len(hours),
                 }
             ]
         )

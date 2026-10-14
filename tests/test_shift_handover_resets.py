@@ -42,6 +42,7 @@ def test_generate_report_under_reports_without_reset_handling():
         ok_counter_uuid="ok_counter",
         nok_counter_uuid="nok_counter",
         state_uuid="machine_state",
+        handle_resets=False,
     )
     assert list(result.columns) == [
         "start",
@@ -71,3 +72,21 @@ def test_generate_report_handles_resets():
     assert row["ok_parts"] == 360  # monotonic ok counter unaffected
     assert row["nok_parts"] == 8
     assert row["resets"] == 1
+
+
+def test_generate_report_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    report = ShiftHandoverEvents(_make_reset_handover_df())
+
+    def call(**kw):
+        return report.generate_report(
+            counter_uuid="prod_counter",
+            ok_counter_uuid="ok_counter",
+            nok_counter_uuid="nok_counter",
+            state_uuid="machine_state",
+            **kw,
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

@@ -1,6 +1,7 @@
 import operator
 
-import pandas as pd  # type: ignore
+import pandas as pd
+import pytest
 
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 
@@ -27,16 +28,17 @@ def test_tolerance_deviation_events_grouping():
         }
     )
 
-    tde = ToleranceDeviationEvents(
-        dataframe=df.copy(),
-        tolerance_column="value_double",
-        actual_column="value_double",
-        tolerance_uuid=tol_uuid,
-        actual_uuid=act_uuid,
-        event_uuid=evt_uuid,
-        compare_func=operator.ge,  # actual >= tolerance
-        time_threshold="5min",
-    )
+    with pytest.warns(DeprecationWarning, match="tolerance_uuid is deprecated"):
+        tde = ToleranceDeviationEvents(
+            dataframe=df.copy(),
+            tolerance_column="value_double",
+            actual_column="value_double",
+            tolerance_uuid=tol_uuid,
+            actual_uuid=act_uuid,
+            event_uuid=evt_uuid,
+            compare_func=operator.ge,  # actual >= tolerance
+            time_threshold="5min",
+        )
 
     out = tde.detect_deviations()
     assert "uuid" in out.columns

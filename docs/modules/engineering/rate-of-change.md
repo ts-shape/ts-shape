@@ -39,7 +39,7 @@ steps = detector.detect_step_changes(min_delta=20.0, max_duration="5s")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_rapid_change(threshold)` | Intervals where \|rate\| (units/second) reaches `threshold` (`window` is deprecated and has no effect) | DataFrame: `start`, `end`, `max_rate`, `direction` |
+| `detect_rapid_change(threshold)` | Intervals where \|rate\| (units/second) reaches `threshold` (the rate is taken between consecutive samples; passing the deprecated `window` warns) | DataFrame: `start`, `end`, `max_rate`, `direction` |
 | `rate_statistics(window='1h')` | Rate statistics per window | DataFrame: `start`, `mean_rate`, `std_rate`, `max_rate`, `min_rate` |
 | `detect_step_changes(min_delta, max_duration='5s')` | Sudden value jumps | DataFrame: `time`, `value_before`, `value_after`, `delta`, `duration` |
 

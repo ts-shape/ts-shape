@@ -468,6 +468,23 @@ class TestBatchTrackingEvents:
         tracker = BatchTrackingEvents(batch_data, batch_uuid="batch_signal")
         result = tracker.batch_transition_matrix()
 
+        # Default long layout: one row per observed transition.
+        assert list(result.columns) == ["from_state", "to_state", "transition_count"]
+        pairs = {
+            (r.from_state, r.to_state): r.transition_count
+            for r in result.itertuples(index=False)
+        }
+        assert pairs == {
+            ("BATCH_A", "BATCH_B"): 1,
+            ("BATCH_A", "BATCH_C"): 1,
+            ("BATCH_B", "BATCH_A"): 1,
+        }
+        assert result["transition_count"].dtype == "int64"
+
+    def test_batch_transition_matrix_wide(self, batch_data):
+        tracker = BatchTrackingEvents(batch_data, batch_uuid="batch_signal")
+        result = tracker.batch_transition_matrix(layout="wide")
+
         assert not result.empty
         # A->B, B->A, A->C transitions
         assert "total" in result.columns
@@ -497,3 +514,12 @@ class TestBatchTrackingEvents:
         tracker = BatchTrackingEvents(df, batch_uuid="batch_signal")
         result = tracker.batch_transition_matrix()
         assert result.empty
+        # The long layout keeps its schema when empty.
+        assert list(result.columns) == ["from_state", "to_state", "transition_count"]
+        assert result["transition_count"].dtype == "int64"
+        assert tracker.batch_transition_matrix(layout="wide").empty
+
+    def test_batch_transition_matrix_rejects_unknown_layout(self, batch_data):
+        tracker = BatchTrackingEvents(batch_data, batch_uuid="batch_signal")
+        with pytest.raises(ValueError, match="layout must be"):
+            tracker.batch_transition_matrix(layout="square")

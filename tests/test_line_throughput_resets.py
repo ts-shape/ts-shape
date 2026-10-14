@@ -1,4 +1,4 @@
-"""Reset-aware behaviour of LineThroughputEvents.count_parts."""
+"""Reset-aware behavior of LineThroughputEvents.count_parts."""
 
 import pandas as pd  # type: ignore
 import pytest
@@ -30,9 +30,9 @@ def reset_counter_data():
     return pd.DataFrame(rows)
 
 
-def test_count_parts_default_under_reports(reset_counter_data):
+def test_count_parts_naive_under_reports(reset_counter_data):
     lt = LineThroughputEvents(reset_counter_data)
-    result = lt.count_parts("line_counter", window="5min")
+    result = lt.count_parts("line_counter", window="5min", handle_resets=False)
     assert list(result.columns) == [
         "start",
         "end",
@@ -55,3 +55,15 @@ def test_count_parts_handles_resets(reset_counter_data):
     assert result["count"].sum() == 800
     assert result["count"].tolist() == [400, 400]
     assert result["resets"].sum() == 1
+
+
+def test_count_parts_default_is_reset_aware(reset_counter_data):
+    """The default ``handle_resets=True`` counts post-reset production."""
+    lt = LineThroughputEvents(reset_counter_data)
+
+    def call(**kw):
+        return lt.count_parts("line_counter", window="5min", **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

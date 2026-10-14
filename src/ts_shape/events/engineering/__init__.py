@@ -117,19 +117,19 @@ from .time_to_threshold import TimeToThresholdEvents  # re-export
 from .warmup_analysis import WarmUpCoolDownEvents  # re-export
 
 __all__ = [
-    "SetpointChangeEvents",
-    "StartupDetectionEvents",
-    "ThresholdMonitoringEvents",
-    "RateOfChangeEvents",
-    "SteadyStateDetectionEvents",
-    "SignalComparisonEvents",
-    "OperatingRangeEvents",
-    "WarmUpCoolDownEvents",
-    "ProcessWindowEvents",
     "ControlLoopHealthEvents",
     "DisturbanceRecoveryEvents",
     "MaterialBalanceEvents",
-    "ProcessStabilityIndexEvents",
+    "OperatingRangeEvents",
     "ProcessStabilityIndex",  # deprecated alias
+    "ProcessStabilityIndexEvents",
+    "ProcessWindowEvents",
+    "RateOfChangeEvents",
+    "SetpointChangeEvents",
+    "SignalComparisonEvents",
+    "StartupDetectionEvents",
+    "SteadyStateDetectionEvents",
+    "ThresholdMonitoringEvents",
     "TimeToThresholdEvents",
+    "WarmUpCoolDownEvents",
 ]

@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._windows import finish_events
@@ -67,8 +67,8 @@ class DataGapAnalysisEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, gap_duration_seconds, samples_before_gap,
-            samples_after_gap. ``gap_duration_seconds`` is rounded to
-            milliseconds; ``duration_seconds`` is exact.
+            samples_after_gap. ``gap_duration_seconds`` equals
+            ``duration_seconds``.
         """
         cols = [
             "start",
@@ -94,7 +94,7 @@ class DataGapAnalysisEvents(Base):
                     {
                         "start": pd.Timestamp(times[i]),
                         "end": pd.Timestamp(times[i + 1]),
-                        "gap_duration_seconds": round(gap.total_seconds(), 3),
+                        "gap_duration_seconds": float(gap.total_seconds()),
                         "samples_before_gap": i + 1,
                         "samples_after_gap": len(times) - (i + 1),
                     }
@@ -146,12 +146,12 @@ class DataGapAnalysisEvents(Base):
             [
                 {
                     "total_gaps": len(gaps),
-                    "total_missing_seconds": round(total_missing, 3),
-                    "longest_gap_seconds": round(float(durations.max()), 3),
-                    "shortest_gap_seconds": round(float(durations.min()), 3),
-                    "mean_gap_seconds": round(float(durations.mean()), 3),
-                    "data_span_seconds": round(span, 3),
-                    "gap_fraction": round(total_missing / span, 4) if span > 0 else 0.0,
+                    "total_missing_seconds": float(total_missing),
+                    "longest_gap_seconds": float(durations.max()),
+                    "shortest_gap_seconds": float(durations.min()),
+                    "mean_gap_seconds": float(durations.mean()),
+                    "data_span_seconds": float(span),
+                    "gap_fraction": float(total_missing / span) if span > 0 else 0.0,
                 }
             ],
             columns=cols,
@@ -239,9 +239,9 @@ class DataGapAnalysisEvents(Base):
                 {
                     "start": ts,
                     "sample_count": int(count),
-                    "coverage_pct": round(coverage, 2),
+                    "coverage_pct": float(coverage),
                     "gap_count": gap_count,
-                    "gap_seconds": round(gap_secs, 3),
+                    "gap_seconds": float(gap_secs),
                 }
             )
 
@@ -314,10 +314,10 @@ class DataGapAnalysisEvents(Base):
                 {
                     "start": pd.Timestamp(times[i]),
                     "end": pd.Timestamp(times[i + 1]),
-                    "gap_duration_seconds": round(gap.total_seconds(), 3),
+                    "gap_duration_seconds": float(gap.total_seconds()),
                     "value_before": val_before,
                     "value_after": val_after,
-                    "value_jump": round(jump, 6) if not np.isnan(jump) else None,
+                    "value_jump": float(jump) if not np.isnan(jump) else None,
                     "safe_to_interpolate": safe,
                 }
             )

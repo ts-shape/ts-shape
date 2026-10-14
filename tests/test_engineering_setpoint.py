@@ -168,3 +168,33 @@ def test_settle_pct_and_tol_both_passed_warns():
     pd.testing.assert_frame_equal(a, b)
     with pytest.warns(UserWarning, match="settle_pct wins"):
         sce.control_quality_metrics("pv", tol=100.0, settle_pct=0.01)
+
+
+def test_decay_rate_failed_fit_warns_and_keeps_the_row(monkeypatch):
+    import numpy as np
+    import pytest
+
+    import ts_shape.events.engineering.setpoint_events as mod
+    from ts_shape.errors import DataQualityWarning
+
+    t = _times("2024-01-01 00:00:00", 20, "30s")
+    sp = pd.DataFrame(
+        {"uuid": "sp", "systime": t[[0, 2]], "value_double": [10.0, 20.0]}
+    )
+    pv = pd.DataFrame(
+        {
+            "uuid": "pv",
+            "systime": t,
+            "value_double": 20.0 - 10.0 * np.exp(-np.arange(20) / 4.0),
+        }
+    )
+    ev = SetpointChangeEvents(pd.concat([sp, pv], ignore_index=True), "sp")
+
+    def boom(*args, **kwargs):
+        raise np.linalg.LinAlgError("singular")
+
+    monkeypatch.setattr(mod.np, "polyfit", boom)
+    with pytest.warns(DataQualityWarning, match="decay fit failed"):
+        out = ev.decay_rate("pv", lookahead="10min", min_points=3)
+    assert len(out) == 1
+    assert out["decay_rate_lambda"].isna().all()

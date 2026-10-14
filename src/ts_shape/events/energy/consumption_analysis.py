@@ -1,10 +1,11 @@
 import logging
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
+import numpy as np
+import pandas as pd
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_per_window
 from ts_shape.utils.deprecation import renamed_kwargs
 
@@ -88,7 +89,9 @@ class EnergyConsumptionEvents(Base):
             out["uuid"] = df[id_column].astype(str)
         else:
             out["uuid"] = series_id
-        out["value_double"] = pd.to_numeric(df[value_column], errors="coerce")
+        out["value_double"] = to_numeric_checked(
+            df[value_column], what=f"column {value_column!r}"
+        )
         out["is_delta"] = True
         return out.sort_values("systime").reset_index(drop=True)
 
@@ -302,7 +305,7 @@ class EnergyConsumptionEvents(Base):
         value_column_energy: str = "value_double",
         value_column_counter: str = "value_integer",
         window: str = "1h",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Calculate energy consumption per production unit.
 
@@ -312,10 +315,11 @@ class EnergyConsumptionEvents(Base):
             value_column_energy: Column with energy readings.
             value_column_counter: Column with counter readings.
             window: Time window for aggregation.
-            handle_resets: Treat a decreasing production counter as a reset
-                and sum reset-aware increments per window (see
-                :func:`ts_shape.utils.counters.counter_per_window`). Default
-                ``False`` keeps the per-window ``max - min``.
+            handle_resets: ``True`` (default) treats a decreasing production
+                counter as a reset and sums reset-aware increments per window
+                (see :func:`ts_shape.utils.counters.counter_per_window`), so a
+                window with a reset still reports what was produced.
+                ``False`` uses the per-window ``max - min``.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,

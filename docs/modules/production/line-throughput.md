@@ -33,7 +33,7 @@ df = pd.concat([
 ], ignore_index=True)
 
 tp = LineThroughputEvents(df)
-parts = tp.count_parts(counter_uuid="line1:part_counter", window="5min", handle_resets=True)
+parts = tp.count_parts(counter_uuid="line1:part_counter", window="5min")
 takt = tp.takt_adherence(cycle_uuid="line1:cycle_trigger", takt_time="60s")
 oee = tp.throughput_oee(counter_uuid="line1:part_counter", window="15min", target_rate=60)
 print(parts.head())
@@ -46,7 +46,7 @@ print(takt[takt["violation"]].head())
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `count_parts(counter_uuid, window='1min', handle_resets=False)` | Count produced parts per time window from a monotonic counter signal | DataFrame with `start`, `uuid`, `source_uuid`, `is_delta`, `count` (plus `resets` when `handle_resets=True`) |
+| `count_parts(counter_uuid, window='1min', handle_resets=True)` | Count produced parts per time window from a monotonic counter signal | DataFrame with `start`, `uuid`, `source_uuid`, `is_delta`, `count` (plus `resets` unless `handle_resets=False`) |
 | `takt_adherence(cycle_uuid, takt_time='60s', min_violation='0s')` | Measure each cycle (rising edges of a boolean trigger, or increases of a numeric counter -- a reset is not a cycle) against the takt time; `violation` = cycle strictly longer than `takt_time + min_violation` | DataFrame with `systime`, `uuid`, `source_uuid`, `is_delta`, `cycle_time_seconds`, `violation` |
 | `throughput_oee(counter_uuid, window='1h', target_rate=None, availability_threshold=0.0)` | Counter-only OEE estimate per window (quality assumed 1.0; `target_rate` defaults to the 95th percentile of counts) | DataFrame with `start`, `actual_count`, `target_count`, `availability`, `performance`, `oee_score` |
 | `throughput_trends(counter_uuid, window='1h', trend_window=24)` | Analyze throughput trends with moving averages and degradation detection | DataFrame with `start`, `count`, `moving_avg`, `trend_direction`, `degradation_detected` |
@@ -57,7 +57,7 @@ print(takt[takt["violation"]].head())
 ## Tips & Hints
 
 !!! tip "Handle counter resets"
-    Monotonic counters may reset at shift boundaries or after a PLC restart. By default `count_parts` clips negative window deltas to zero, which loses the production around a reset. Pass `handle_resets=True` to treat a decreasing counter as a reset, count the post-reset value as new production, and get a `resets` column per window.
+    Monotonic counters may reset at shift boundaries or after a PLC restart. By default (`handle_resets=True`) `count_parts` treats a decreasing counter as a reset, counts the post-reset value as new production, and adds a `resets` column per window. With `handle_resets=False` it clips negative window deltas to zero, which loses the production around a reset.
 
 !!! info "Related modules"
     - [Cycle Time Tracking](cycle-time.md) — per-part cycle time analysis

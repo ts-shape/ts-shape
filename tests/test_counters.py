@@ -1,7 +1,9 @@
 """Tests for the shared reset-aware counter helpers."""
 
 import pandas as pd  # type: ignore
+import pytest
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.counters import (
     count_resets,
     counter_increments,
@@ -15,18 +17,24 @@ def test_counter_quantity_monotonic():
     assert counter_quantity(values, handle_resets=True) == 200.0
 
 
-def test_counter_quantity_reset_naive_underreports():
+def test_counter_quantity_handles_reset_by_default():
     # Counter resets mid-window: 400 produced, then 150 after the reset.
     values = pd.Series([100, 300, 500, 0, 150])
-    assert counter_quantity(values) == 50.0  # naive last - first
-    assert counter_quantity(values, handle_resets=True) == 550.0  # 400 + 150
+    assert counter_quantity(values) == 550.0  # 400 + 150
+    assert counter_quantity(values, handle_resets=False) == 50.0  # last - first
 
 
-def test_counter_quantity_reset_below_first_clamps_to_zero_naive():
-    # Ends below where it started -> naive clamps a productive window to 0.
+def test_counter_quantity_reset_below_first_clamps_to_zero_without_resets():
+    # Ends below where it started -> last - first clamps a productive window to 0.
     values = pd.Series([500, 700, 0, 100])
-    assert counter_quantity(values) == 0.0
-    assert counter_quantity(values, handle_resets=True) == 300.0  # 200 + 100
+    assert counter_quantity(values) == 300.0  # 200 + 100
+    assert counter_quantity(values, handle_resets=False) == 0.0
+
+
+def test_counter_non_numeric_values_warn():
+    values = pd.Series([100, "n/a", 300, "oops"], dtype=object)
+    with pytest.warns(DataQualityWarning, match="2 non-null value"):
+        assert counter_quantity(values) == 200.0
 
 
 def test_counter_quantity_empty():

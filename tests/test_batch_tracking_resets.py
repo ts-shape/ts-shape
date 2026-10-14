@@ -1,4 +1,4 @@
-"""Reset-aware behaviour of BatchTrackingEvents.batch_yield."""
+"""Reset-aware behavior of BatchTrackingEvents.batch_yield."""
 
 import pandas as pd  # type: ignore
 import pytest
@@ -38,9 +38,9 @@ def reset_batch_data():
     return pd.DataFrame(rows)
 
 
-def test_batch_yield_default_under_reports(reset_batch_data):
+def test_batch_yield_naive_under_reports(reset_batch_data):
     tracker = BatchTrackingEvents(reset_batch_data, batch_uuid="batch_signal")
-    result = tracker.batch_yield("batch_counter")
+    result = tracker.batch_yield("batch_counter", handle_resets=False)
     assert "resets" not in result.columns
     assert len(result) == 1
     assert result["quantity"].iloc[0] == 150
@@ -52,3 +52,15 @@ def test_batch_yield_handles_resets(reset_batch_data):
     assert "resets" in result.columns
     assert result["quantity"].iloc[0] == 350
     assert result["resets"].iloc[0] == 1
+
+
+def test_batch_yield_default_is_reset_aware(reset_batch_data):
+    """The default ``handle_resets=True`` counts post-reset production."""
+    tracker = BatchTrackingEvents(reset_batch_data, batch_uuid="batch_signal")
+
+    def call(**kw):
+        return tracker.batch_yield("batch_counter", **kw)
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

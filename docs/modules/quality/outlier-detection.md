@@ -48,6 +48,9 @@ outliers_if = detector.detect_outliers_isolation_forest(contamination=0.1)
 !!! tip "Choose the right method for your distribution"
     Z-score assumes normality and works best for Gaussian signals. For process data with occasional spikes or skew, prefer IQR or MAD. Use Isolation Forest when you suspect multivariate interactions between features.
 
+!!! note "Statistics per signal"
+    Each `uuid` in the frame is scored against its own statistics (`group_by_uuid=True`, the default), so a temperature around 80 and a pressure around 2 in one frame do not share one mean and standard deviation. Pass `group_by_uuid=False` to score all rows as one population.
+
 !!! info "Related modules"
     - [Anomaly Classification](anomaly-classification.md) — classify detected outliers by type (spike, drift, oscillation)
     - [Signal Quality](signal-quality.md) — check data completeness before running outlier detection

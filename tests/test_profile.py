@@ -87,3 +87,17 @@ def test_profile_repeated_access_stays_callable():
     ts_shape.profile(df)
     assert callable(ts_shape.profile)
     assert ts_shape.profile(df).issues().empty
+
+
+def test_profile_reports_non_numeric_values():
+    df = pd.DataFrame(
+        {
+            "systime": pd.date_range("2024-01-01", periods=4, freq="1min"),
+            "uuid": "x",
+            "value_double": pd.Series([1.0, "n/a", 3.0, "bad"], dtype=object),
+        }
+    )
+    issues = ts_shape.profile(df).issues()
+    row = issues[issues["issue"] == "non-numeric values"]
+    assert len(row) == 1
+    assert "2 value(s)" in row["detail"].iloc[0]

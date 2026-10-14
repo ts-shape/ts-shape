@@ -50,7 +50,7 @@ class ContinuousProcessAlignmentEvents(Base):
         line_config: Physical layout description — list of dicts with keys
             ``name`` (str), ``offset`` (float, meters from reference), and
             ``uuids`` (list[str]).
-        ref_uuid: Deprecated; has no effect and will be removed in 1.0
+        ref_uuid: Deprecated; has no effect and will be removed in the next major release
             (passing it emits a DeprecationWarning). Put a reference-point
             signal into ``line_config`` with ``offset`` 0 instead.
         cut_uuid: Optional UUID whose values carry the cut piece length in
@@ -91,7 +91,7 @@ class ContinuousProcessAlignmentEvents(Base):
         self.line_config = line_config
         if ref_uuid is not None:
             warnings.warn(
-                "ref_uuid has no effect and will be removed in 1.0",
+                "ref_uuid has no effect and will be removed in the next major release",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -241,7 +241,7 @@ class ContinuousProcessAlignmentEvents(Base):
         cut_length_uuid: str | None = None,
         part_counter_uuid: str | None = None,
         cut_value_column: str = "value_double",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Add piece columns to the output of `align_to_reference`.
 
@@ -265,13 +265,12 @@ class ContinuousProcessAlignmentEvents(Base):
                 monotonically increasing integer).
             cut_value_column: Column holding the length value in
                 ``cut_length_uuid`` rows.
-            handle_resets: When True and a numeric ``part_counter_uuid`` is
+            handle_resets: When True (default) and a numeric ``part_counter_uuid`` is
                 used, a decreasing counter (a reset at a shift/part change or
                 PLC restart) is treated as new production: the post-reset
                 counter value is emitted as that many cut events instead of
-                being skipped. When False (default), a reset's negative delta is
-                ignored and its post-reset pieces are lost, matching the
-                previous behavior.
+                being skipped. When False, a reset's negative delta is
+                ignored and its post-reset pieces are not counted.
 
         Returns:
             ``aligned_df`` augmented with ``piece_id`` (int, 1-based),

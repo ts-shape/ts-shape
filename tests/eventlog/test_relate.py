@@ -75,7 +75,9 @@ def test_containment_links_all_overlapping_objects(events, intervals):
     rel = link_events_to_objects(events, intervals)
     # e1->{B1,S1}, e2->{B1,S2}, e3->{B2} = 5 relations.
     assert len(rel) == 5
-    by_eid = rel.groupby(schema.OCEL_EID)[schema.OCEL_OID].agg(set).to_dict()
+    by_eid = {
+        eid: set(oids) for eid, oids in rel.groupby(schema.OCEL_EID)[schema.OCEL_OID]
+    }
     assert by_eid["e1"] == {"B1", "S1"}
     assert by_eid["e2"] == {"B1", "S2"}
     assert by_eid["e3"] == {"B2"}

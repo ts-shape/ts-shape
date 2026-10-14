@@ -7,9 +7,9 @@ tracks the drift trend per window, and scores overall calibration health.
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import stats  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy import stats
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
@@ -171,8 +171,8 @@ class SensorDriftEvents(Base):
             event = {
                 "start": ts,
                 "end": end,
-                "mean_offset": round(mean_offset, 6),
-                "drift_rate": round(drift_rate, 6),
+                "mean_offset": float(mean_offset),
+                "drift_rate": float(drift_rate),
                 "severity": severity,
                 "_raw_mean": raw_mean,
             }
@@ -249,8 +249,8 @@ class SensorDriftEvents(Base):
             events.append(
                 {
                     "start": ts,
-                    "sensitivity": round(sensitivity, 6),
-                    "sensitivity_change_pct": round(change_pct, 4),
+                    "sensitivity": float(sensitivity),
+                    "sensitivity_change_pct": float(change_pct),
                 }
             )
 
@@ -316,7 +316,7 @@ class SensorDriftEvents(Base):
         values = np.array([wv[1] for wv in window_values])
         x = np.arange(len(values), dtype=float)
 
-        slope, intercept, r_value, _, _ = stats.linregress(x, values)
+        slope, _intercept, r_value, _, _ = stats.linregress(x, values)
         r_squared = r_value**2
 
         # Direction is "stable" unless there is both a meaningful slope
@@ -334,9 +334,9 @@ class SensorDriftEvents(Base):
             events.append(
                 {
                     "start": ts,
-                    "value": round(v, 6),
-                    "slope": round(slope, 8),
-                    "r_squared": round(r_squared, 4),
+                    "value": float(v),
+                    "slope": float(slope),
+                    "r_squared": float(r_squared),
                     "direction": direction,
                 }
             )
@@ -412,9 +412,9 @@ class SensorDriftEvents(Base):
             events.append(
                 {
                     "start": ts,
-                    "bias": round(bias, 6),
-                    "precision": round(precision, 6),
-                    "health_score": round(health_score, 2),
+                    "bias": float(bias),
+                    "precision": float(precision),
+                    "health_score": float(health_score),
                 }
             )
 

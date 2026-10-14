@@ -126,9 +126,7 @@ class TestDetectCapabilityDrop:
         result = ct.detect_capability_drop(window="2h", min_cpk=1.33)
         assert len(result) > 0
         # Later windows should trigger alerts
-        alerts = result[
-            result["alert"] == True  # noqa: E712 pandas-series-bool-comparison
-        ]  # noqa: E712 pandas-series-bool-comparison
+        alerts = result[result["alert"].astype(bool)]
         assert len(alerts) > 0
 
     def test_stable_no_alerts(self, stable_process_df):
@@ -141,9 +139,7 @@ class TestDetectCapabilityDrop:
         result = ct.detect_capability_drop(window="4h", min_cpk=0.5)
         if len(result) > 0:
             # A very stable process with low threshold should have no alerts
-            alerts = result[
-                result["alert"] == True  # noqa: E712 pandas-series-bool-comparison
-            ]  # noqa: E712 pandas-series-bool-comparison
+            alerts = result[result["alert"].astype(bool)]
             assert len(alerts) == 0
 
 

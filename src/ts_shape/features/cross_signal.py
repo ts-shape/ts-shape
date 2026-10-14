@@ -1,10 +1,10 @@
 import logging
 from typing import Any
 
-import numpy as np  # type: ignore
-import pandas as pd  # type: ignore
-from scipy import signal as scipy_signal  # type: ignore
-from scipy import stats as scipy_stats  # type: ignore
+import numpy as np
+import pandas as pd
+from scipy import signal as scipy_signal
+from scipy import stats as scipy_stats
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +173,7 @@ class CrossSignalAnalytics:
         joint_3d, _ = np.histogramdd(
             np.column_stack([yf_d, yp_d, x_d]),
             bins=[bins, bins, bins],
-            range=[[0, bins], [0, bins], [0, bins]],
+            range=[(0.0, float(bins))] * 3,
         )
         joint_3d = joint_3d / joint_3d.sum()
 

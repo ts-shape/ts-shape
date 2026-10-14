@@ -25,7 +25,9 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-import pandas as pd  # type: ignore
+import pandas as pd
+
+from ts_shape.loader._utils import missing_optional
 
 __all__ = ["SignalSpec", "SignalSpecs", "KINDS", "ENCODINGS"]
 
@@ -237,11 +239,9 @@ class SignalSpecs(Mapping[str, SignalSpec]):
                 empty file gives empty specs.
         """
         try:
-            import yaml  # type: ignore[import-untyped]
+            import yaml
         except ImportError as exc:  # pragma: no cover - depends on env
-            raise ImportError(
-                "Reading specs from YAML needs PyYAML: pip install pyyaml"
-            ) from exc
+            raise missing_optional("pyyaml", "yaml") from exc
         with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
         return cls.from_dict(data)

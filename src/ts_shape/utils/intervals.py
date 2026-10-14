@@ -13,12 +13,13 @@ actual transition. Two problems follow:
   ``start == end`` and the duration collapses to **zero**. Downtime, micro-stop
   and duty-cycle analyses then silently report nothing.
 
-:func:`state_intervals` closes each interval at the *next* transition instead,
-which is correct for both dense and change-encoded data. The behavior is
-opt-in via ``interval_end`` so existing callers are unaffected by default.
+:func:`state_intervals` closes each interval at the *next* transition by
+default (``interval_end="next_change"``), which is correct for both dense and
+change-encoded data. ``interval_end="last_sample"`` closes it at the last
+sample that carries the state instead.
 """
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 __all__ = ["state_intervals", "interval_end_times", "INTERVAL_END_MODES"]
 
@@ -35,7 +36,7 @@ def _check_mode(interval_end: str) -> None:
 
 
 def interval_end_times(
-    times: pd.Series, interval_end: str = "last_sample"
+    times: pd.Series, interval_end: str = "next_change"
 ) -> pd.Series:
     """Per-row closing time for a segment that ends at that row.
 
@@ -44,10 +45,10 @@ def interval_end_times(
 
     Args:
         times: Timestamps of one signal, ordered in time.
-        interval_end: ``"last_sample"`` (default) returns ``times`` unchanged,
-            so a segment ends at its own last sample. ``"next_change"``
-            returns the *next* row's timestamp, i.e. the instant the following
-            segment starts; the final row keeps its own timestamp.
+        interval_end: ``"next_change"`` (default) returns the *next* row's
+            timestamp, i.e. the instant the following segment starts; the
+            final row keeps its own timestamp. ``"last_sample"`` returns
+            ``times`` unchanged, so a segment ends at its own last sample.
 
     Returns:
         A Series aligned with ``times``.
@@ -63,7 +64,7 @@ def state_intervals(
     *,
     time_column: str,
     state_column: str,
-    interval_end: str = "last_sample",
+    interval_end: str = "next_change",
     data_end: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     """Collapse consecutive equal-state rows into intervals.
@@ -77,14 +78,14 @@ def state_intervals(
             identifier at a station.
         interval_end: How to close each interval.
 
-            - ``"last_sample"`` (default): ``end`` is the last sample that
-              carries the state. Backward compatible; undercounts by one
-              sample on dense data and collapses to zero-length intervals on
-              change-encoded signals.
-            - ``"next_change"``: ``end`` is the timestamp of the next state
-              change (the transition instant), so the interval spans the real
-              time the state was held. The final, still-open interval is closed
-              at ``data_end`` when provided, otherwise at its own last sample.
+            - ``"next_change"`` (default): ``end`` is the timestamp of the
+              next state change (the transition instant), so the interval
+              spans the real time the state was held. The final, still-open
+              interval is closed at ``data_end`` when provided, otherwise at
+              its own last sample.
+            - ``"last_sample"``: ``end`` is the last sample that carries the
+              state. This undercounts by one sample on dense data and
+              collapses to zero-length intervals on change-encoded signals.
         data_end: Optional bound for the final open interval when
             ``interval_end="next_change"`` (e.g. the end of the data window or
             "now"). Ignored in ``"last_sample"`` mode.

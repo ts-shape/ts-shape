@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
+from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
 from ts_shape.loader.timeseries.azure_blob_energy_loader import AzureBlobEnergyLoader
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
@@ -115,12 +116,22 @@ class TestLoadSeriesMetadata:
         assert df.iloc[0]["unit"] == "kWh"
 
     def test_empty_when_blob_missing(self):
+        exc = pytest.importorskip("azure.core.exceptions")
         client = MagicMock()
-        client.download_blob.side_effect = Exception("BlobNotFound")
+        client.download_blob.side_effect = exc.ResourceNotFoundError("BlobNotFound")
         loader = _make_loader(client)
-        df = loader.load_series_metadata()
+        with pytest.warns(LoaderConfigWarning, match="does not exist"):
+            df = loader.load_series_metadata()
         assert df.empty
         assert "id" in df.columns
+
+    def test_unreadable_metadata_raises(self):
+        exc = pytest.importorskip("azure.core.exceptions")
+        client = MagicMock()
+        client.download_blob.side_effect = exc.ClientAuthenticationError("denied")
+        loader = _make_loader(client)
+        with pytest.raises(LoaderError, match="denied"):
+            loader.load_series_metadata()
 
 
 # ── load_by_time_range ────────────────────────────────────────────────────────
@@ -245,13 +256,38 @@ class TestNormalizeDf:
         raw = pd.DataFrame(
             {"time": ["2026-01-13T00:00:00Z"], "value": ["not_a_number"]}
         )
-        out = AzureBlobEnergyLoader._normalize_df(raw, "s1")
+        with pytest.warns(DataQualityWarning, match="1 non-null value"):
+            out = AzureBlobEnergyLoader._normalize_df(raw, "s1")
         assert pd.isna(out["value_double"].iloc[0])
 
-    def test_missing_value_column(self):
+    def test_missing_value_column_raises(self):
         raw = pd.DataFrame({"time": ["2026-01-13T00:00:00Z"]})
-        out = AzureBlobEnergyLoader._normalize_df(raw, "s1")
-        assert out.empty
+        with pytest.raises(ValueError, match="value"):
+            AzureBlobEnergyLoader._normalize_df(raw, "s1")
+
+    def test_unreadable_csv_is_reported(self):
+        client = _make_container_client(
+            list_names=[
+                "csv/2026/01/13/sensor_001.csv",
+                "csv/2026/01/13/sensor_002.csv",
+            ]
+        )
+        good = MagicMock()
+        good.readall.return_value = _CSV_BYTES
+        bad = MagicMock()
+        bad.readall.return_value = b"wrong,header\n1,2\n"
+        client.download_blob.side_effect = lambda name: (
+            bad if name.endswith("sensor_002.csv") else good
+        )
+        loader = _make_loader(client)
+        with pytest.warns(DataQualityWarning, match="sensor_002.csv"):
+            df = loader.load_by_time_range("2026-01-13", "2026-01-13")
+        assert set(df["uuid"]) == {"sensor_001"}
+        with pytest.raises(LoaderError, match="sensor_002.csv"):
+            loader.load_by_time_range("2026-01-13", "2026-01-13", errors="raise")
+        with pytest.warns(DataQualityWarning, match="sensor_002.csv"):
+            streamed = list(loader.stream_by_time_range("2026-01-13", "2026-01-13"))
+        assert [sid for sid, _ in streamed] == ["sensor_001"]
 
     def test_sorted_by_systime(self):
         raw = pd.DataFrame(

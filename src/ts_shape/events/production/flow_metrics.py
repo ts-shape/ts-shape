@@ -14,7 +14,7 @@ Entry and exit are boolean signals; each rising edge is one unit.
 
 import logging
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._output import (
     empty_event_df,
@@ -142,7 +142,7 @@ class FlowMetricsEvents(Base):
             wip_max=("wip", "max"),
             wip_min=("wip", "min"),
         ).reset_index()
-        out["wip_mean"] = (out["weighted"] / out["dur"]).round(3)
+        out["wip_mean"] = out["weighted"] / out["dur"]
         return out[["start", "wip_mean", "wip_max", "wip_min"]]
 
     # ------------------------------------------------------------------
@@ -188,7 +188,7 @@ class FlowMetricsEvents(Base):
         out = counts.reset_index()
         out.columns = ["start", "units_out"]
         out["end"] = out["start"] + pd.Timedelta(window)
-        out["throughput_per_hour"] = (out["units_out"] / window_hours).round(3)
+        out["throughput_per_hour"] = out["units_out"] / window_hours
         return finalize_summary_df(out)
 
     def lead_time(self) -> pd.DataFrame:
@@ -213,7 +213,7 @@ class FlowMetricsEvents(Base):
         out = pd.DataFrame(
             {
                 "systime": exits.iloc[:n].to_numpy(),
-                "lead_time_seconds": lead.round(3),
+                "lead_time_seconds": lead,
                 "unit_index": range(n),
             }
         )
@@ -279,20 +279,17 @@ class FlowMetricsEvents(Base):
         # Little's Law: L (seconds) = WIP / throughput_per_second.
         tput_per_sec = merged["throughput_per_hour"] / 3600.0
         merged["littles_law_lead_time_seconds"] = (
-            (merged["wip_mean"] / tput_per_sec).where(tput_per_sec > 0).round(3)
-        )
+            merged["wip_mean"] / tput_per_sec
+        ).where(tput_per_sec > 0)
         merged["consistency_ratio"] = (
             merged["lead_time_mean_seconds"] / merged["littles_law_lead_time_seconds"]
-        ).round(3)
-        merged["lead_time_mean_seconds"] = merged["lead_time_mean_seconds"].round(3)
+        )
 
         if value_add_seconds is not None:
             va = _to_seconds(value_add_seconds)
             merged["process_cycle_efficiency_pct"] = (
-                (va / merged["lead_time_mean_seconds"] * 100.0)
-                .where(merged["lead_time_mean_seconds"] > 0)
-                .round(2)
-            )
+                va / merged["lead_time_mean_seconds"] * 100.0
+            ).where(merged["lead_time_mean_seconds"] > 0)
 
         merged["end"] = merged["start"] + pd.Timedelta(window)
         return finalize_summary_df(merged)

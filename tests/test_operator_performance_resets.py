@@ -1,12 +1,13 @@
-"""Reset-aware behaviour tests for OperatorPerformanceEvents.
+"""Reset-aware behavior tests for OperatorPerformanceEvents.
 
 Production and quality counters can reset back to a lower value at a shift
-change or a controller restart. Without ``handle_resets`` the affected
-window under-reports; with it, the post-reset production is counted and a
+change or a controller restart. With ``handle_resets=False`` the affected
+window under-reports; by default (``handle_resets=True``), the post-reset production is counted and a
 ``resets`` column is added.
 """
 
 import pandas as pd
+import pytest
 
 from ts_shape.events.production.operator_performance import OperatorPerformanceEvents
 
@@ -35,11 +36,11 @@ def _make_reset_operator_df():
     return pd.DataFrame(rows)
 
 
-def test_production_by_operator_default_underreports():
+def test_production_by_operator_naive_under_reports():
     df = _make_reset_operator_df()
     tracker = OperatorPerformanceEvents(df)
     result = tracker.production_by_operator(
-        operator_uuid="operator_id", counter_uuid="part_counter"
+        operator_uuid="operator_id", counter_uuid="part_counter", handle_resets=False
     )
 
     assert list(result.columns) == [
@@ -65,11 +66,14 @@ def test_production_by_operator_handles_resets():
     assert row["resets"] == 1
 
 
-def test_quality_by_operator_default_underreports():
+def test_quality_by_operator_naive_under_reports():
     df = _make_reset_operator_df()
     tracker = OperatorPerformanceEvents(df)
     result = tracker.quality_by_operator(
-        operator_uuid="operator_id", ok_uuid="ok_parts", nok_uuid="nok_parts"
+        operator_uuid="operator_id",
+        ok_uuid="ok_parts",
+        nok_uuid="nok_parts",
+        handle_resets=False,
     )
 
     assert list(result.columns) == [
@@ -101,6 +105,36 @@ def test_quality_by_operator_handles_resets():
     assert row["ok_count"] == 85
     assert row["nok_count"] == 10
     # 85 / 95 * 100 = 89.5
-    assert row["first_pass_yield_pct"] == 89.5
+    assert row["first_pass_yield_pct"] == pytest.approx(85 / 95 * 100)
     # One reset in the OK counter, none in the NOK counter.
     assert row["resets"] == 1
+
+
+def test_production_by_operator_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_operator_df()
+    tracker = OperatorPerformanceEvents(df)
+
+    def call(**kw):
+        return tracker.production_by_operator(
+            operator_uuid="operator_id", counter_uuid="part_counter", **kw
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0
+
+
+def test_quality_by_operator_default_is_reset_aware():
+    """The default ``handle_resets=True`` counts post-reset production."""
+    df = _make_reset_operator_df()
+    tracker = OperatorPerformanceEvents(df)
+
+    def call(**kw):
+        return tracker.quality_by_operator(
+            operator_uuid="operator_id", ok_uuid="ok_parts", nok_uuid="nok_parts", **kw
+        )
+
+    default = call()
+    pd.testing.assert_frame_equal(default, call(handle_resets=True))
+    assert default["resets"].sum() > 0

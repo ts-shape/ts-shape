@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+import numpy as np
 import pandas as pd  # type: ignore
 import pytest
 
@@ -185,15 +186,16 @@ class TestValueTraceabilityEvents:
         assert lead.iloc[0]["stations_visited"] == 1
 
     def test_backwards_compat_alias(self, value_trace_data):
-        """OrderTraceabilityEvents should work as an alias."""
-        tracer = OrderTraceabilityEvents(
-            value_trace_data,
-            station_uuids={
-                "station_a": "Station A",
-                "station_b": "Station B",
-                "station_c": "Station C",
-            },
-        )
+        """OrderTraceabilityEvents still works, with a DeprecationWarning."""
+        with pytest.warns(DeprecationWarning, match="ValueTraceabilityEvents"):
+            tracer = OrderTraceabilityEvents(
+                value_trace_data,
+                station_uuids={
+                    "station_a": "Station A",
+                    "station_b": "Station B",
+                    "station_c": "Station C",
+                },
+            )
         timeline = tracer.build_timeline()
         assert len(timeline) == 6
         assert "identifier" in timeline.columns
@@ -394,21 +396,25 @@ class TestRoutingTraceabilityEvents:
         assert len(timeline) == 1
         assert timeline.iloc[0]["station_name"] == "State 5"
 
-    def test_backwards_compat_station_map(self, routing_trace_data):
-        """Old station_map parameter should still work."""
-        tracer = RoutingTraceabilityEvents(
-            routing_trace_data,
-            id_uuid="id_signal",
-            routing_uuid="state_signal",
-            station_map={10: "Heating", 20: "Holding", 30: "Cooling"},
-        )
+    def test_deprecated_station_map(self, routing_trace_data):
+        """Old station_map parameter still works and warns."""
+        with pytest.warns(DeprecationWarning, match="'station_map' is deprecated"):
+            tracer = RoutingTraceabilityEvents(
+                routing_trace_data,
+                id_uuid="id_signal",
+                routing_uuid="state_signal",
+                station_map={10: "Heating", 20: "Holding", 30: "Cooling"},
+            )
         timeline = tracer.build_routing_timeline()
         assert len(timeline) == 5
         assert timeline.iloc[0]["station_name"] == "Heating"
 
     def test_state_map_and_station_map_warns(self, routing_trace_data):
         """Passing both maps warns; state_map wins."""
-        with pytest.warns(UserWarning, match="station_map is ignored"):
+        with (
+            pytest.warns(UserWarning, match="station_map is ignored"),
+            pytest.warns(DeprecationWarning, match="'station_map' is deprecated"),
+        ):
             tracer = RoutingTraceabilityEvents(
                 routing_trace_data,
                 id_uuid="id_signal",
@@ -425,3 +431,28 @@ class TestRoutingTraceabilityEvents:
         for item_id in ["SN-AAA", "SN-BBB"]:
             seqs = timeline[timeline["item_id"] == item_id]["station_sequence"].tolist()
             assert seqs == list(range(1, len(seqs) + 1))
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (10, "Heating"),
+        (10.0, "Heating"),
+        ("10", "Heating"),
+        (np.int64(10), "Heating"),
+        (5.0, "State 5"),
+        (3.25, "State 3.25"),
+        ("3.5", "State 3.5"),
+        ("abc", "State abc"),
+        (None, "State None"),
+        (float("nan"), "State nan"),
+    ],
+)
+def test_routing_resolve_state_lookup(routing_trace_data, value, expected):
+    tracer = RoutingTraceabilityEvents(
+        routing_trace_data,
+        id_uuid="id_signal",
+        routing_uuid="state_signal",
+        state_map={10: "Heating"},
+    )
+    assert tracer._resolve_state(value) == expected

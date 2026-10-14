@@ -8,7 +8,7 @@ import logging
 from typing import Any
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
@@ -74,7 +74,7 @@ class InventoryMonitoringEvents(Base):
         min_level: float,
         hold: str = "0s",
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Flag intervals where inventory stays below *min_level* for at least *hold*.
 
@@ -82,11 +82,11 @@ class InventoryMonitoringEvents(Base):
             min_level: Threshold below which stock is considered low.
             hold: Minimum duration the level must stay below threshold
                   (e.g. ``'0s'``, ``'5min'``, ``'1h'``).
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
-                :func:`ts_shape.utils.intervals.interval_end_times`.
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                next sample (the transition), so the interval spans the time the
+                condition held and change-encoded signals -- one row per change --
+                keep their duration. ``"last_sample"`` ends it at its last flagged
+                sample. See :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
@@ -146,7 +146,7 @@ class InventoryMonitoringEvents(Base):
         self,
         window: str = "1h",
         *,
-        handle_refills: bool = False,
+        handle_refills: bool = True,
     ) -> pd.DataFrame:
         """Calculate rolling consumption rate from inventory level decreases.
 
@@ -154,12 +154,12 @@ class InventoryMonitoringEvents(Base):
 
         Args:
             window: Time-based window for grouping (e.g. ``'1h'``, ``'30min'``).
-            handle_refills: When ``False`` (default) consumption is
-                ``first - last`` level of the window, so a refill inside the
-                window cancels out the consumption (100 -> 40 -> 100 -> 40
-                reads as 0). When ``True`` only level decreases are summed
-                (a refill is treated like a counter reset), booked in the
-                window of the reading that reports them.
+            handle_refills: When ``True`` (default) only level decreases are
+                summed (a refill is treated like a counter reset), booked in
+                the window of the reading that reports them. When ``False``
+                consumption is ``first - last`` level of the window, so a
+                refill inside the window cancels out the consumption
+                (100 -> 40 -> 100 -> 40 reads as 0).
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,

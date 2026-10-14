@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd  # type: ignore
 import pytest
 
-from ts_shape.errors import LoaderConfigWarning
+from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
 from ts_shape.loader.timeseries.databricks_unity_parquet_loader import (
     DatabricksUnityParquetLoader,
 )
@@ -250,9 +250,12 @@ def test_trim_to_range_drops_rows_outside_bounds(tmp_path, monkeypatch):
         )
 
     monkeypatch.setattr(pd, "read_parquet", fake_read)
-    df = loader.load_by_time_range(
-        "2024-01-01 09:30", "2024-01-01 11:00", trim_to_range=True
+    whole = loader.load_by_time_range(
+        "2024-01-01 09:30", "2024-01-01 11:00", trim_to_range=False
     )
+    assert len(whole) == 6
+    # Trimming is the default.
+    df = loader.load_by_time_range("2024-01-01 09:30", "2024-01-01 11:00")
     assert df["systime"].tolist() == [
         pd.Timestamp("2024-01-01 09:45"),
         pd.Timestamp("2024-01-01 10:00"),
@@ -261,10 +264,33 @@ def test_trim_to_range_drops_rows_outside_bounds(tmp_path, monkeypatch):
     ]
     streamed = list(
         loader.stream_files_by_time_range_and_uuids(
-            "2024-01-01 09:30", "2024-01-01 11:00", ["u2"], trim_to_range=True
+            "2024-01-01 09:30", "2024-01-01 11:00", ["u2"]
         )
     )
     assert [len(f) for _, f in streamed] == [1]
+
+
+def test_unreadable_file_is_reported(tmp_path, monkeypatch):
+    loader, _ = _loader(tmp_path)
+
+    def flaky(p, columns=None, filters=None):
+        if Path(p).parent.name == "10":
+            raise OSError("permission denied")
+        return pd.DataFrame({"uuid": [Path(p).stem]})
+
+    monkeypatch.setattr(pd, "read_parquet", flaky)
+    with pytest.warns(DataQualityWarning, match="10/u1.parquet"):
+        df = loader.load_by_time_range("2024-01-01 09:00", "2024-01-01 11:00")
+    assert sorted(df["uuid"]) == ["u1", "u2"]  # hours 9 and 11
+    with pytest.raises(LoaderError, match="permission denied"):
+        loader.load_by_time_range(
+            "2024-01-01 09:00", "2024-01-01 11:00", errors="raise"
+        )
+    with pytest.warns(DataQualityWarning, match="10/u1.parquet"):
+        streamed = list(
+            loader.stream_by_time_range("2024-01-01 09:00", "2024-01-01 11:00")
+        )
+    assert len(streamed) == 2
 
 
 def test_fetch_data_as_dataframe_start_only(tmp_path, monkeypatch):

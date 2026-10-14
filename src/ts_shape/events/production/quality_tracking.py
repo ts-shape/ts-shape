@@ -8,8 +8,9 @@ Essential module for daily quality analysis:
 """
 
 import logging
+from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events._windows import (
     add_day_window,
@@ -121,7 +122,7 @@ class QualityEvents(Base):
         nok_counter_uuid: str,
         *,
         value_column: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Calculate NOK (defective) parts per shift.
@@ -130,11 +131,11 @@ class QualityEvents(Base):
             ok_counter_uuid: UUID for good parts counter
             nok_counter_uuid: UUID of the NOK part counter
             value_column: Column containing counter values
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the parts accumulated after the reset, for both the
                 OK and NOK counters. The result gains a ``resets`` column with
                 the number of resets observed in each shift (across both
-                counters). When False (default), each counter uses
+                counters). When False, each counter uses
                 ``max(0, last - first)`` and a shift containing a reset
                 reports too little (often 0).
             production_day: Attribute an overnight shift's post-midnight
@@ -220,15 +221,15 @@ class QualityEvents(Base):
         results = []
 
         # Get all unique date/shift combinations
-        date_shifts = set()
+        date_shifts: set[tuple[Any, Any]] = set()
         if ok_processed is not None:
             date_shifts.update(zip(ok_processed["date"], ok_processed["shift"]))
         if nok_processed is not None:
             date_shifts.update(zip(nok_processed["date"], nok_processed["shift"]))
 
         for date, shift in sorted(date_shifts):
-            ok_parts = 0
-            nok_parts = 0
+            ok_parts: float = 0
+            nok_parts: float = 0
             resets = 0
 
             # Calculate OK parts for this shift
@@ -270,9 +271,9 @@ class QualityEvents(Base):
                 "ok_parts": ok_parts,
                 "nok_parts": nok_parts,
                 "total_parts": total_parts,
-                "nok_rate_pct": round(nok_rate, 1),
-                "first_pass_yield_pct": round(fpy, 1),
-                "quality_pct": round(fpy, 1),
+                "nok_rate_pct": nok_rate,
+                "first_pass_yield_pct": fpy,
+                "quality_pct": fpy,
             }
             if handle_resets:
                 row["resets"] = int(resets)
@@ -292,7 +293,7 @@ class QualityEvents(Base):
         *,
         value_column_counter: str = "value_integer",
         value_column_part: str = "value_string",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Calculate quality metrics by part number.
 
@@ -302,7 +303,7 @@ class QualityEvents(Base):
             part_id_uuid: UUID for part number signal
             value_column_counter: Column containing counter values
             value_column_part: Column containing part numbers
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the parts accumulated after the reset. The part
                 number is attached to a single global counter, so the
                 reset-aware quantity is the sum of per-reading increments over
@@ -310,8 +311,7 @@ class QualityEvents(Base):
                 corrects the over-count that ``last - first`` produces when
                 parts alternate over a non-contiguous group. The result gains
                 a ``resets`` column with the number of resets attributed to
-                each part (across the OK and NOK counters). When False
-                (default), the quantity is ``max(0, last - first)`` per part
+                each part (across the OK and NOK counters). When False, the quantity is ``max(0, last - first)`` per part
                 group and a reset is lost.
 
         Returns:
@@ -460,9 +460,9 @@ class QualityEvents(Base):
                 "ok_parts": ok_parts,
                 "nok_parts": nok_parts,
                 "total_parts": total_parts,
-                "nok_rate_pct": round(nok_rate, 1),
-                "first_pass_yield_pct": round(fpy, 1),
-                "quality_pct": round(fpy, 1),
+                "nok_rate_pct": nok_rate,
+                "first_pass_yield_pct": fpy,
+                "quality_pct": fpy,
             }
             if handle_resets:
                 row["resets"] = resets_by_part.get(part_num, 0)
@@ -477,7 +477,7 @@ class QualityEvents(Base):
         *,
         value_column_counter: str = "value_integer",
         value_column_reason: str = "value_string",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Analyze NOK parts by defect reason.
 
@@ -486,7 +486,7 @@ class QualityEvents(Base):
             defect_reason_uuid: UUID for defect reason signal
             value_column_counter: Column containing counter values
             value_column_reason: Column containing reason codes
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the parts accumulated after the reset. The reason is
                 attached to a single global counter, so the reset-aware
                 quantity is the sum of per-reading increments over the full
@@ -494,7 +494,7 @@ class QualityEvents(Base):
                 the over-count that ``last - first`` produces when reasons
                 alternate over a non-contiguous group. The result gains a
                 ``resets`` column with the number of resets attributed to each
-                reason. When False (default), the quantity is
+                reason. When False, the quantity is
                 ``max(0, last - first)`` per reason group and a reset is lost.
 
         Returns:
@@ -584,8 +584,6 @@ class QualityEvents(Base):
             (result_df["nok_parts"] / total_nok * 100) if total_nok > 0 else 0
         )
 
-        result_df["pct_of_total"] = result_df["pct_of_total"].round(1)
-
         # Sort by NOK parts descending
         result_df = result_df.sort_values("nok_parts", ascending=False)
 
@@ -597,7 +595,7 @@ class QualityEvents(Base):
         nok_counter_uuid: str,
         *,
         value_column: str = "value_integer",
-        handle_resets: bool = False,
+        handle_resets: bool = True,
         production_day: bool = True,
     ) -> pd.DataFrame:
         """Daily quality summary.
@@ -606,11 +604,10 @@ class QualityEvents(Base):
             ok_counter_uuid: UUID for good parts counter
             nok_counter_uuid: UUID of the NOK part counter
             value_column: Column containing counter values
-            handle_resets: When True, treat a decreasing counter as a reset
+            handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the parts accumulated after the reset (see
                 :meth:`nok_by_shift`). The result gains a ``resets`` column
-                with the number of resets observed that day. When False
-                (default), a shift containing a reset reports too little.
+                with the number of resets observed that day. When False, a shift containing a reset reports too little.
             production_day: Forwarded to :meth:`nok_by_shift`; attributes an
                 overnight shift's post-midnight readings to the shift's start
                 date. Default True; False groups by raw calendar date, which splits a night shift across two rows.
@@ -672,20 +669,16 @@ class QualityEvents(Base):
         daily = shift_quality.groupby("date").agg(agg).reset_index()
 
         # Recalculate percentages. Guard against zero-total days (0/0 = NaN).
-        daily["nok_rate_pct"] = (
-            (daily["nok_parts"] / daily["total_parts"] * 100)
-            .where(daily["total_parts"] > 0, 0.0)
-            .round(1)
+        daily["nok_rate_pct"] = (daily["nok_parts"] / daily["total_parts"] * 100).where(
+            daily["total_parts"] > 0, 0.0
         )
         daily["first_pass_yield_pct"] = (
-            (daily["ok_parts"] / daily["total_parts"] * 100)
-            .where(daily["total_parts"] > 0, 0.0)
-            .round(1)
-        )
+            daily["ok_parts"] / daily["total_parts"] * 100
+        ).where(daily["total_parts"] > 0, 0.0)
         daily["quality_pct"] = daily["first_pass_yield_pct"]
 
         return add_day_window(daily, data_tz(self.dataframe[self.time_column]))
 
 
-#: Deprecated name, removed in 1.0.
+#: Deprecated name, removed in the next major release.
 QualityTracking = deprecated_class(QualityEvents, "QualityTracking")

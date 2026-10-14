@@ -47,7 +47,7 @@ print(duty.head())
 | Method | Purpose | Returns |
 |--------|---------|---------|
 | `on_off_intervals()` | List all on and off intervals with start, end, and duration | DataFrame with `start`, `end`, `state` (`on`/`off`), `duration` (Timedelta) |
-| `duty_cycle_by_window(window='1h', time_weighted=False)` | Compute percentage of time the signal is ON per time window | DataFrame with `start`, `on_time`, `off_time`, `duty_cycle_pct` |
+| `duty_cycle_by_window(window='1h', time_weighted=True)` | Compute percentage of time the signal is ON per time window | DataFrame with `start`, `on_time`, `off_time`, `duty_cycle_pct` |
 | `cycle_count(window='1h')` | Count the number of on-to-off or off-to-on transitions per window | DataFrame with `start`, `on_count`, `off_count`, `total_transitions` |
 | `excessive_cycling(max_transitions=20, window='1h')` | Flag windows where the transition count exceeds a threshold | DataFrame with `start`, `transition_count`, `avg_on_duration`, `avg_off_duration` (seconds) |
 
@@ -56,7 +56,7 @@ print(duty.head())
 ## Tips & Hints
 
 !!! tip "Change-encoded signals"
-    If the signal only logs a row on each transition, construct with `interval_end="next_change"` and use `duty_cycle_by_window(time_weighted=True)`; the defaults assume uniformly sampled data.
+    The defaults handle signals that only log a row on each transition: intervals close at the next change (`interval_end="next_change"`) and `duty_cycle_by_window` weights each sample by the time to the next one (`time_weighted=True`). `interval_end="last_sample"` and `time_weighted=False` give the per-sample results, which match the time share only for uniformly sampled data.
 
 !!! tip "Set thresholds based on equipment specs"
     Motor contactors and relay-driven heaters have rated cycle counts. Use `excessive_cycling` with the manufacturer's limit to detect wear before failure — for example, many contactors are rated for 100,000 mechanical cycles.

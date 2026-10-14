@@ -127,7 +127,7 @@ _OBJECT_TYPES: set[str] = set(STANDARD_OBJECT_TYPES)
 # ---- Standard attribute extension ------------------------------------------
 #
 # Every detector method's LabelRule may declare a ``standard_attrs`` mapping
-# from these fixed keys to either a legacy column name (string) or a literal
+# from these fixed keys to either a detector-frame column name (string) or a literal
 # scalar value. The adapter renames / broadcasts and coerces to the type
 # below. Adding a new standard key requires updating this tuple AND the
 # corresponding entry in ``STANDARD_ATTR_TYPES``.

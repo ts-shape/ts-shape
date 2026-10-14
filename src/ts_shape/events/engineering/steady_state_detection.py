@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
@@ -60,7 +60,7 @@ class SteadyStateDetectionEvents(Base):
         self,
         mask: pd.Series,
         min_duration: str = "0s",
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> list[dict[str, Any]]:
         """Convert a boolean mask (indexed by timestamp) into intervals."""
         if mask.empty or not mask.any():
@@ -89,7 +89,7 @@ class SteadyStateDetectionEvents(Base):
         std_threshold: float = 1.0,
         min_duration: str = "10min",
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Detect intervals where signal is in steady state.
 
@@ -97,11 +97,11 @@ class SteadyStateDetectionEvents(Base):
             window: Rolling window for std computation.
             std_threshold: Maximum rolling std to consider steady.
             min_duration: Minimum duration of a steady interval.
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
-                :func:`ts_shape.utils.intervals.interval_end_times`.
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                next sample (the transition), so the interval spans the time the
+                condition held and change-encoded signals -- one row per change --
+                keep their duration. ``"last_sample"`` ends it at its last flagged
+                sample. See :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
@@ -154,18 +154,18 @@ class SteadyStateDetectionEvents(Base):
         window: str = "5min",
         std_threshold: float = 1.0,
         *,
-        interval_end: str = "last_sample",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Detect intervals where signal is in transient/dynamic state.
 
         Args:
             window: Rolling window for std computation.
             std_threshold: Minimum rolling std to consider transient.
-            interval_end: ``"last_sample"`` (default) ends an interval at its
-                last flagged sample. ``"next_change"`` ends it at the next sample
-                (the transition), so change-encoded signals -- one row per change --
-                no longer collapse to zero-length intervals. See
-                :func:`ts_shape.utils.intervals.interval_end_times`.
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                next sample (the transition), so the interval spans the time the
+                condition held and change-encoded signals -- one row per change --
+                keep their duration. ``"last_sample"`` ends it at its last flagged
+                sample. See :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
