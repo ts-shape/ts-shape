@@ -18,7 +18,12 @@ class StringFilter(Base):
     def filter_na_value_string(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> pd.DataFrame:
-        """Filters out rows where the specified string column is NA."""
+        """Filters out rows where the specified string column is NA.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"value_string"``.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[dataframe[column_name].notna()]
 
@@ -29,7 +34,13 @@ class StringFilter(Base):
         string_value: str,
         column_name: str = "value_string",
     ) -> pd.DataFrame:
-        """Filters rows where the specified string column matches the provided string."""
+        """Filters rows where the specified string column matches the provided string.
+
+        Args:
+            dataframe: Input DataFrame.
+            string_value: Exact value to keep.
+            column_name: Name of the column to filter on. Default ``"value_string"``.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[dataframe[column_name] == string_value]
 
@@ -40,17 +51,39 @@ class StringFilter(Base):
         string_value: str,
         column_name: str = "value_string",
     ) -> pd.DataFrame:
-        """Filters rows where the specified string column does not match the provided string."""
+        """Filters rows where the specified string column does not match the provided string.
+
+        Args:
+            dataframe: Input DataFrame.
+            string_value: Exact value to drop.
+            column_name: Name of the column to filter on. Default ``"value_string"``.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[dataframe[column_name] != string_value]
 
     @classmethod
     def filter_string_contains(
-        cls, dataframe: pd.DataFrame, substring: str, column_name: str = "value_string"
+        cls,
+        dataframe: pd.DataFrame,
+        substring: str,
+        column_name: str = "value_string",
+        *,
+        regex: bool = True,
     ) -> pd.DataFrame:
-        """Filters rows where the specified string column contains the provided substring."""
+        """Filters rows where the specified string column contains the provided substring.
+
+        Args:
+            dataframe: Input DataFrame.
+            substring: Pattern to look for. It is a regular expression unless
+                ``regex=False``, so characters such as ``.``, ``(`` or ``+`` are
+                special by default. NA rows are dropped.
+            column_name: Name of the column to filter on. Default ``"value_string"``.
+            regex: If True (default), treat ``substring`` as a regular
+                expression; if False, match it literally.
+        """
         Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name].str.contains(substring, na=False)]
+        mask = dataframe[column_name].str.contains(substring, na=False, regex=regex)
+        return dataframe[mask]
 
     @classmethod
     def regex_clean_value_string(
@@ -61,7 +94,20 @@ class StringFilter(Base):
         replacement: str = "",
         regex: bool = True,
     ) -> pd.DataFrame:
-        """Applies a regex pattern to clean the specified string column."""
+        """Applies a regex pattern to clean the specified string column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to clean. Default ``"value_string"``.
+            regex_pattern: Pattern to replace. The default matches a number followed by
+                optional whitespace and letters (a value with its unit).
+            replacement: Text substituted for each match. Default ``""``.
+            regex: If True (default), treat ``regex_pattern`` as a regular expression;
+                if False, as a literal string.
+
+        Returns:
+            A copy of ``dataframe`` with the column cleaned.
+        """
         Base._validate_column(dataframe, column_name)
         dataframe = dataframe.copy()
         dataframe[column_name] = dataframe[column_name].str.replace(
@@ -80,10 +126,16 @@ class StringFilter(Base):
         """Detects changes from row to row in the specified string column.
 
         Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"value_string"``.
             group_by_uuid: Compare each row with the previous row of the same
                 ``uuid``. Default ``False`` compares with the previous row of
                 the frame, so on a multi-signal frame the last row of one uuid
                 and the first of the next produce a false edge.
+
+        Returns:
+            The rows whose value differs from the previous row; the first row (or first
+                row of each uuid) is always included.
         """
         Base._validate_column(dataframe, column_name)
         if group_by_uuid and "uuid" in dataframe.columns:

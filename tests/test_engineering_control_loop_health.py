@@ -139,3 +139,20 @@ def test_empty_dataframe():
     assert clh.detect_oscillation().empty
     assert clh.output_saturation().empty
     assert clh.loop_health_summary().empty
+
+
+def test_loop_health_summary_oscillation_window_is_configurable():
+    """Slow oscillation (20 min period) is invisible in 5-min analysis windows
+    but counted when the summary is asked to analyze longer windows."""
+    t = _times("2024-01-01", 480, "1min")  # 8 h
+    sp = [50.0] * len(t)
+    pv = [50 + 5 * np.sin(2 * np.pi * (i + 0.5) / 20) for i in range(len(t))]
+    df = _make_loop_df(t, sp, pv)
+    clh = ControlLoopHealthEvents(df, "sp", "pv")
+
+    default = clh.loop_health_summary(window="8h")
+    assert default["oscillation_count"].sum() == 0
+
+    slow = clh.loop_health_summary(window="8h", oscillation_window="1h")
+    assert slow["oscillation_count"].sum() >= 1
+    assert (slow["health_grade"] != "good").all()

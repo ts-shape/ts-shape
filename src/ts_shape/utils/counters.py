@@ -1,6 +1,6 @@
 """Reset-aware helpers for monotonic production counters.
 
-Many industrial counters -- parts produced, scrap, rejects, cumulative
+Many industrial counters -- parts produced, scrap, NOK parts, cumulative
 energy -- are expected to increase monotonically. In the field they
 frequently reset back to zero (or to a lower value) at a shift change, a
 part change, or a controller (PLC) restart. A naive ``last - first``
@@ -9,9 +9,9 @@ window where the reset happened.
 
 These helpers treat any decrease in the counter as a reset and count the
 post-reset value as new production, mirroring the approach in
-:class:`ts_shape.events.production.part_tracking.PartProductionTracking`.
+:class:`ts_shape.events.production.part_tracking.PartProductionEvents`.
 Use them wherever a quantity is derived from a cumulative counter so the
-behaviour is consistent across the library.
+behavior is consistent across the library.
 
 Example::
 

@@ -33,6 +33,7 @@ from ts_shape.events._output import (
     finalize_point_df,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class MultivariateSPCEvents(Base):
                 held to align it with the first signal; ``None`` = no cap.
             time_column: Timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         if len(signal_uuids) < 2:
             raise ValueError("multivariate SPC needs at least two signal_uuids")
         self.signal_uuids = list(signal_uuids)
@@ -168,6 +169,7 @@ class MultivariateSPCEvents(Base):
             )
         return x, ref, mean, inv
 
+    @keyword_only(1)
     def hotelling_t2(
         self,
         reference_period: tuple[object, object] | None = None,
@@ -206,6 +208,7 @@ class MultivariateSPCEvents(Base):
         )
         return finalize_point_df(out, uuid=self.event_uuid, source_uuid=self._source)
 
+    @keyword_only(1)
     def contributions(
         self,
         reference_period: tuple[object, object] | None = None,
@@ -220,12 +223,18 @@ class MultivariateSPCEvents(Base):
         broken relationship) behind the signal. ``z_score`` is the plain
         univariate deviation, for comparison.
 
+        Args:
+            reference_period: As in :meth:`hotelling_t2`.
+            alpha: As in :meth:`hotelling_t2`.
+            only_out_of_control: Keep only observations flagged out of control by
+                :meth:`hotelling_t2` (default). False returns every observation.
+
         Returns:
             Point events, one row per (observation, variable): ``systime``,
             ``uuid``, ``source_uuid`` (the variable), ``t2``,
             ``contribution``, ``contribution_pct`` and ``z_score``.
         """
-        t2 = self.hotelling_t2(reference_period, alpha)
+        t2 = self.hotelling_t2(reference_period=reference_period, alpha=alpha)
         if t2.empty:
             return empty_event_df("point", _CONTRIB_COLS)
         x, ref, mean, inv = self._fit(reference_period)
@@ -260,6 +269,7 @@ class MultivariateSPCEvents(Base):
             out.reset_index(drop=True), uuid=self.event_uuid, source_uuid=None
         )
 
+    @keyword_only(1)
     def detect_out_of_control(
         self,
         reference_period: tuple[object, object] | None = None,
@@ -280,7 +290,7 @@ class MultivariateSPCEvents(Base):
             ``sample_count`` and ``top_contributor`` (the variable with the
             largest summed contribution over the run).
         """
-        t2 = self.hotelling_t2(reference_period, alpha)
+        t2 = self.hotelling_t2(reference_period=reference_period, alpha=alpha)
         if t2.empty or not t2["out_of_control"].any():
             return empty_event_df("interval", _OOC_COLS)
         x, _, mean, inv = self._fit(reference_period)

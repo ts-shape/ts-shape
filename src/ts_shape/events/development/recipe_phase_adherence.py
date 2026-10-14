@@ -8,7 +8,7 @@ emits one event per phase carrying pass/fail plus which criterion failed.
 
 The spec format is intentionally a plain dict so it can be authored by a
 process engineer (or loaded from YAML/JSON) without inventing a new
-schema class -- see :meth:`evaluate` for the recognised keys.
+schema class -- see :meth:`evaluate` for the recognized keys.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 class RecipePhaseAdherenceEvents(Base):
     """Evaluate batch recipe phases against a declarative spec.
 
-    The spec is a mapping ``{phase_name: criteria_dict}``. Recognised
+    The spec is a mapping ``{phase_name: criteria_dict}``. Recognized
     criteria keys (all optional) per phase:
 
     * ``duration_s``        -- ``(min, max)`` seconds.
@@ -54,7 +55,7 @@ class RecipePhaseAdherenceEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.phase_uuid = phase_uuid
         self.value_uuid = value_uuid
         self.event_uuid = event_uuid
@@ -68,7 +69,11 @@ class RecipePhaseAdherenceEvents(Base):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _phase_intervals(self) -> pd.DataFrame:
+    def _phase_intervals(
+        self,
+        interval_end: str = "last_sample",
+        data_end: pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
         """Return contiguous phase intervals from the phase signal."""
         sel = self.dataframe[self.dataframe["uuid"] == self.phase_uuid].copy()
         if sel.empty:
@@ -85,17 +90,14 @@ class RecipePhaseAdherenceEvents(Base):
         sel = sel.dropna(subset=[phase_col])
         if sel.empty:
             return pd.DataFrame(columns=["start", "end", "phase"])
-        sel["_chg"] = (sel[phase_col] != sel[phase_col].shift()).cumsum()
-        out = (
-            sel.groupby("_chg")
-            .agg(
-                start=(self.time_column, "first"),
-                end=(self.time_column, "last"),
-                phase=(phase_col, "first"),
-            )
-            .reset_index(drop=True)
+        ivl = state_intervals(
+            sel,
+            time_column=self.time_column,
+            state_column=phase_col,
+            interval_end=interval_end,
+            data_end=data_end,
         )
-        return out
+        return ivl.rename(columns={"state": "phase"})[["start", "end", "phase"]]
 
     @staticmethod
     def _check_range(value: float, bounds: Any) -> bool:
@@ -109,8 +111,27 @@ class RecipePhaseAdherenceEvents(Base):
     # Public API
     # ------------------------------------------------------------------
 
-    def evaluate(self) -> pd.DataFrame:
+    def evaluate(
+        self,
+        *,
+        interval_end: str = "last_sample",
+        data_end: pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
         """Evaluate every observed phase interval against the spec.
+
+        Args:
+            interval_end: How each phase interval is closed.
+                ``"last_sample"`` (default) spans the first to the last
+                phase-signal sample carrying the phase -- backward
+                compatible, but a change-encoded (``is_delta``) phase signal
+                logs one row per transition, so every phase is zero-length.
+                ``"next_change"`` closes a phase at the next phase change;
+                value samples are then taken from ``[start, end)`` (the
+                sample at the transition belongs to the next phase), and the
+                final phase is closed at ``data_end`` when given, otherwise
+                at its own last sample.
+            data_end: Optional bound for the final phase when
+                ``interval_end="next_change"`` (e.g. the batch end).
 
         Returns:
             Interval-shape DataFrame, one row per phase occurrence,
@@ -132,7 +153,7 @@ class RecipePhaseAdherenceEvents(Base):
             "criteria_failed",
             "pass",
         ]
-        intervals = self._phase_intervals()
+        intervals = self._phase_intervals(interval_end=interval_end, data_end=data_end)
         if intervals.empty:
             return pd.DataFrame(columns=cols)
 
@@ -149,11 +170,15 @@ class RecipePhaseAdherenceEvents(Base):
             return pd.DataFrame(columns=cols)
         vals[self.time_column] = pd.to_datetime(vals[self.time_column])
 
+        half_open = interval_end == "next_change"
+        last_pos = len(intervals) - 1
         rows: list[dict[str, Any]] = []
-        for _, ivl in intervals.iterrows():
-            mask = (vals[self.time_column] >= ivl["start"]) & (
-                vals[self.time_column] <= ivl["end"]
-            )
+        for pos, (_, ivl) in enumerate(intervals.iterrows()):
+            if half_open and pos < last_pos:
+                upper = vals[self.time_column] < ivl["end"]
+            else:
+                upper = vals[self.time_column] <= ivl["end"]
+            mask = (vals[self.time_column] >= ivl["start"]) & upper
             window = vals.loc[mask]
             if window.empty:
                 continue

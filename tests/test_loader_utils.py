@@ -130,3 +130,44 @@ def test_retry_call_does_not_retry_unlisted_exception():
 def test_retry_call_rejects_invalid_attempts():
     with pytest.raises(ValueError, match="attempts must be >= 1"):
         retry_call(lambda: None, attempts=0)
+
+
+# ---- hourly_slots / trim_to_time_range ----------------------------------------
+
+
+def test_hourly_slots_floors_start_and_includes_end_hour():
+    import pandas as pd
+
+    from ts_shape.loader._utils import hourly_slots
+
+    slots = list(hourly_slots("2024-01-01 09:30", "2024-01-01 11:00"))
+    assert [ts.hour for ts in slots] == [9, 10, 11]
+    slots = list(hourly_slots("2024-01-01 09:30", "2024-01-01 10:15"))
+    assert [ts.hour for ts in slots] == [9, 10]
+    assert list(hourly_slots("2024-01-01 11:00", "2024-01-01 09:00")) == []
+    aware = list(
+        hourly_slots(
+            pd.Timestamp("2024-01-01 09:30", tz="UTC"), "2024-01-01 10:00+00:00"
+        )
+    )
+    assert [ts.hour for ts in aware] == [9, 10]
+
+
+def test_trim_to_time_range_inclusive_and_open_bounds():
+    import pandas as pd
+
+    from ts_shape.loader._utils import trim_to_time_range
+
+    df = pd.DataFrame(
+        {
+            "systime": pd.date_range(
+                "2024-01-01 09:00", periods=4, freq="30min", tz="UTC"
+            )
+        }
+    )
+    out = trim_to_time_range(df, "2024-01-01 09:30", "2024-01-01 10:30")
+    assert len(out) == 3  # 09:30, 10:00, 10:30 (both ends inclusive)
+    assert len(trim_to_time_range(df, "2024-01-01 10:00", None)) == 2
+    assert len(trim_to_time_range(df, None, "2024-01-01 09:00")) == 1
+    no_time = pd.DataFrame({"uuid": ["a"]})
+    assert trim_to_time_range(no_time, "2024", "2025") is no_time

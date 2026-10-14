@@ -17,6 +17,7 @@ class ChangeoverEvents(Base):
     Methods:
     - detect_changeover: point events when product/recipe changes.
     - changeover_window: derive an end time via fixed window or 'stable_band' metrics.
+    - changeover_quality_metrics: per-product changeover counts and time between changeovers.
     """
 
     def __init__(
@@ -26,7 +27,7 @@ class ChangeoverEvents(Base):
         event_uuid: str = "prod:changeover",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
 
@@ -95,20 +96,49 @@ class ChangeoverEvents(Base):
     ) -> pd.DataFrame:
         """Compute changeover windows per product change with enhanced configurability.
 
-        until:
-          - fixed_window: end = start + config['duration'] (e.g., '10min')
-          - stable_band: end when all metrics stabilize within band for hold:
-                config = {
-                  'metrics': [
-                    {'uuid': 'm1', 'value_column': 'value_double', 'band': 0.2, 'hold': '2min'},
-                    ...
-                  ],
-                  'reference_method': 'expanding_median' | 'rolling_mean' | 'ewma' | 'target_value',
-                  'rolling_window': 5,  # for rolling_mean (number of points)
-                  'ewma_span': 10,  # for ewma
-                  'target_values': {'m1': 100.0, ...}  # for target_value
-                }
-        fallback: {'default_duration': '10min', 'completed': False}
+        Args:
+            product_uuid: UUID of the product/recipe signal.
+            value_column: Column containing the product value.
+            start_time: Only changes at or after this timestamp are used. None
+                uses all changes.
+            until: How each window's end is found:
+
+                - ``"fixed_window"``: end = start + ``config['duration']``
+                  (default ``'10min'``).
+                - ``"stable_band"``: end when every metric in
+                  ``config['metrics']`` stays within its band of a reference
+                  for its ``hold``; the window ends at the latest metric's
+                  stable start.
+
+                Any other value, or a stable band that is never reached, uses
+                ``fallback``.
+            config: Method settings. Keys: ``'min_hold'`` (minimum hold of a
+                new product, passed to :meth:`detect_changeover`, default
+                ``'0s'``), ``'duration'`` (for ``fixed_window``), and for
+                ``stable_band``::
+
+                    {
+                      'metrics': [
+                        {'uuid': 'm1', 'value_column': 'value_double',
+                         'band': 0.2, 'hold': '2min'},
+                        ...
+                      ],
+                      'reference_method': 'expanding_median' | 'rolling_mean'
+                                          | 'ewma' | 'target_value',
+                      'rolling_window': 5,  # for rolling_mean (number of points)
+                      'ewma_span': 10,  # for ewma
+                      'target_values': {'m1': 100.0, ...}  # for target_value
+                    }
+
+                None means an empty dict.
+            fallback: Used when the window end cannot be determined:
+                ``{'default_duration': '10min', 'completed': False}`` (also the
+                default when None). ``completed`` is copied to the output.
+
+        Returns:
+            DataFrame with columns: start, end, duration_seconds (float
+            seconds, end - start), uuid, source_uuid, is_delta, method,
+            completed.
         """
         config = config or {}
         fallback = fallback or {"default_duration": "10min", "completed": False}
@@ -125,6 +155,7 @@ class ChangeoverEvents(Base):
                 columns=[
                     "start",
                     "end",
+                    "duration_seconds",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -182,7 +213,11 @@ class ChangeoverEvents(Base):
                 }
             )
 
-        return pd.DataFrame(rows)
+        out = pd.DataFrame(rows)
+        out.insert(
+            2, "duration_seconds", (out["end"] - out["start"]).dt.total_seconds()
+        )
+        return out
 
     def _compute_stable_band_end(
         self, t0: pd.Timestamp, config: dict[str, Any]
@@ -270,13 +305,24 @@ class ChangeoverEvents(Base):
         *,
         value_column: str = "value_string",
     ) -> pd.DataFrame:
-        """Compute quality metrics for changeovers.
+        """Per-product changeover frequency: how often, and how far apart.
 
-        Returns metrics including:
-        - changeover duration patterns
-        - frequency statistics
-        - time between changeovers
-        - product-specific metrics
+        For each product, counts the changeovers *to* that product and
+        summarizes the time between consecutive ones. Changeover durations
+        are not measured here (a product-signal change is a point, not an
+        interval); use :meth:`changeover_window` for when the process is
+        stable again after a changeover.
+
+        Args:
+            product_uuid: UUID of the product/recipe signal.
+            value_column: Column containing the product value.
+
+        Returns:
+            DataFrame with one row per product: product, changeover_count,
+            avg_time_between_seconds, min_time_between_seconds,
+            max_time_between_seconds, std_time_between_seconds (time between
+            consecutive changeovers to that product; None with fewer than
+            two). Empty when there are fewer than two changeovers.
         """
         changes = self.detect_changeover(product_uuid, value_column=value_column)
 

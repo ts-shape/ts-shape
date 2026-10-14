@@ -20,6 +20,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class, deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ def _daily_summary(
     return df[leading + [c for c in df.columns if c not in leading]]
 
 
-class OEECalculator(Base):
+class OEEEvents(Base):
     """Calculate Overall Equipment Effectiveness from timeseries signals.
 
     Combines availability (from run/idle state), performance (from part counters
@@ -60,15 +61,15 @@ class OEECalculator(Base):
     real day length: 86400, or 23 h / 25 h on DST days with tz-aware data).
 
     Example usage:
-        oee = OEECalculator(df)
+        oee = OEEEvents(df)
 
         # Individual components
-        avail = oee.calculate_availability('machine_state')
-        perf = oee.calculate_performance('part_counter', ideal_cycle_time=30.0, run_state_uuid='machine_state')
-        qual = oee.calculate_quality('total_counter', 'reject_counter')
+        avail = oee.availability('machine_state')
+        perf = oee.performance('part_counter', ideal_cycle_time=30.0, run_state_uuid='machine_state')
+        qual = oee.quality('total_counter', 'reject_counter')
 
         # Combined daily OEE
-        daily = oee.calculate_oee(
+        daily = oee.oee(
             run_state_uuid='machine_state',
             counter_uuid='part_counter',
             ideal_cycle_time=30.0,
@@ -89,7 +90,7 @@ class OEECalculator(Base):
             dataframe: Input DataFrame with timeseries data.
             time_column: Name of timestamp column (default: 'systime').
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         times = self.dataframe.get(time_column)
         self._tz = (
@@ -102,7 +103,10 @@ class OEECalculator(Base):
     # Availability
     # ------------------------------------------------------------------
 
-    def calculate_availability(
+    calculate_availability = deprecated_method("availability")
+
+    @keyword_only(2)
+    def availability(
         self,
         run_state_uuid: str,
         planned_time_hours: float | None = None,
@@ -196,7 +200,10 @@ class OEECalculator(Base):
     # Performance
     # ------------------------------------------------------------------
 
-    def calculate_performance(
+    calculate_performance = deprecated_method("performance")
+
+    @keyword_only(3)
+    def performance(
         self,
         counter_uuid: str,
         ideal_cycle_time: float,
@@ -226,7 +233,7 @@ class OEECalculator(Base):
                 When False (default), ``actual_parts`` is simply
                 ``max(0, last - first)`` and a day containing a reset reports
                 too little.
-            max_gap: Optional cap forwarded to :meth:`calculate_availability`
+            max_gap: Optional cap forwarded to :meth:`availability`
                 when ``run_state_uuid`` is given, so a logging gap does not
                 inflate the run time used as the performance denominator.
 
@@ -257,7 +264,7 @@ class OEECalculator(Base):
         # Compute run_seconds per day
         run_per_day = {}
         if run_state_uuid is not None:
-            avail_df = self.calculate_availability(
+            avail_df = self.availability(
                 run_state_uuid, value_column=run_value_column, max_gap=max_gap
             )
             for _, row in avail_df.iterrows():
@@ -305,7 +312,9 @@ class OEECalculator(Base):
     # Quality
     # ------------------------------------------------------------------
 
-    def calculate_quality(
+    calculate_quality = deprecated_method("quality")
+
+    def quality(
         self,
         total_uuid: str,
         reject_uuid: str,
@@ -406,7 +415,10 @@ class OEECalculator(Base):
     # Combined OEE
     # ------------------------------------------------------------------
 
-    def calculate_oee(
+    calculate_oee = deprecated_method("oee")
+
+    @keyword_only(4)
+    def oee(
         self,
         run_state_uuid: str,
         counter_uuid: str,
@@ -431,8 +443,8 @@ class OEECalculator(Base):
             reject_uuid: Optional UUID of reject-parts counter (for quality).
             planned_time_hours: Fixed planned production hours per day.
             handle_resets: When True, the part / total / reject counters are
-                treated as reset-aware (see :meth:`calculate_performance` and
-                :meth:`calculate_quality`), so a day where a counter resets does
+                treated as reset-aware (see :meth:`performance` and
+                :meth:`quality`), so a day where a counter resets does
                 not silently drag OEE toward zero. Forwarded to the performance
                 and quality components. Default False.
             max_gap: Optional cap (e.g. "15min") forwarded to the availability
@@ -454,10 +466,10 @@ class OEECalculator(Base):
             "quality_pct",
             "oee_pct",
         ]
-        avail_df = self.calculate_availability(
+        avail_df = self.availability(
             run_state_uuid, planned_time_hours=planned_time_hours, max_gap=max_gap
         )
-        perf_df = self.calculate_performance(
+        perf_df = self.performance(
             counter_uuid,
             ideal_cycle_time,
             run_state_uuid=run_state_uuid,
@@ -466,9 +478,7 @@ class OEECalculator(Base):
         )
 
         if total_uuid is not None and reject_uuid is not None:
-            qual_df = self.calculate_quality(
-                total_uuid, reject_uuid, handle_resets=handle_resets
-            )
+            qual_df = self.quality(total_uuid, reject_uuid, handle_resets=handle_resets)
         else:
             qual_df = None
 
@@ -504,3 +514,7 @@ class OEECalculator(Base):
         return (
             merged[key_cols + oee_extra].sort_values(COL_START).reset_index(drop=True)
         )
+
+
+#: Deprecated name, removed in 1.0.
+OEECalculator = deprecated_class(OEEEvents, "OEECalculator")

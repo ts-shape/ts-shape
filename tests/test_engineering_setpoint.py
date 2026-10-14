@@ -113,3 +113,58 @@ def test_setpoint_time_to_settle_and_overshoot():
     assert {"overshoot_abs", "overshoot_pct", "t_peak_seconds"}.issubset(overs.columns)
     # Expect a positive overshoot on at least one change
     assert overs["overshoot_abs"].fillna(0).max() >= 0.4
+
+
+def _same_instant_changes():
+    import numpy as np
+
+    t0 = pd.Timestamp("2024-01-01")
+    sp = pd.DataFrame(
+        {
+            "systime": [t0, t0 + pd.Timedelta("1min"), t0 + pd.Timedelta("1min")],
+            "uuid": "sp",
+            "value_double": [0.0, 5.0, 10.0],
+            "is_delta": True,
+        }
+    )
+    tt = pd.date_range(t0, periods=60, freq="10s")
+    pv = pd.DataFrame(
+        {
+            "systime": tt,
+            "uuid": "pv",
+            "value_double": np.where(tt >= t0 + pd.Timedelta("2min"), 10.0, 0.0),
+            "is_delta": True,
+        }
+    )
+    return pd.concat([sp, pv], ignore_index=True)
+
+
+def test_control_quality_metrics_same_instant_changes_not_duplicated():
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # duplicate-timestamp data warning
+        sce = SetpointChangeEvents(_same_instant_changes(), "sp")
+    settle = sce.time_to_settle("pv", tol=0.5)
+    out = sce.control_quality_metrics("pv", tol=0.5)
+    assert len(out) == len(settle) == 2
+    # Rows stay paired with their own change: the 5.0 step never settles
+    # within 0.5, the 10.0 step settles after 60 s.
+    assert out["t_settle_seconds"].isna().iloc[0]
+    assert out["t_settle_seconds"].iloc[1] == 60.0
+
+
+def test_settle_pct_and_tol_both_passed_warns():
+    import warnings
+
+    import pytest
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # duplicate-timestamp data warning
+        sce = SetpointChangeEvents(_same_instant_changes(), "sp")
+    with pytest.warns(UserWarning, match="settle_pct wins"):
+        a = sce.time_to_settle("pv", tol=100.0, settle_pct=0.01)
+    b = sce.time_to_settle("pv", settle_pct=0.01)
+    pd.testing.assert_frame_equal(a, b)
+    with pytest.warns(UserWarning, match="settle_pct wins"):
+        sce.control_quality_metrics("pv", tol=100.0, settle_pct=0.01)

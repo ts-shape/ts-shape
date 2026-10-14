@@ -3,7 +3,7 @@
 A DOE campaign sweeps one or more factor signals through discrete levels
 while a response signal is measured. This detector recovers the run
 structure from continuous process data: contiguous time intervals where
-every factor signal is stationary at a recognisable level. Each run is
+every factor signal is stationary at a recognizable level. Each run is
 tagged with its factor-level combination, and a follow-up method
 aggregates the response per factor level to expose main effects.
 
@@ -22,6 +22,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class DesignOfExperimentsEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         if not factor_uuids:
             raise ValueError("factor_uuids must contain at least one signal UUID")
         self.factor_uuids = list(factor_uuids)
@@ -120,11 +121,19 @@ class DesignOfExperimentsEvents(Base):
 
         Returns:
             Interval-shape DataFrame with columns: ``start``, ``end``,
-            ``duration_seconds``, ``uuid``, ``run_id``, and one
-            ``factor__<uuid>_level`` column per factor.
+            ``duration_seconds``, ``uuid``, ``source_uuid`` (the comma-joined
+            factor UUIDs), ``run_id``, and one ``factor__<uuid>_level`` column
+            per factor.
         """
         n_levels = n_levels or {}
-        base_cols = ["start", "end", "duration_seconds", "uuid", "run_id"]
+        base_cols = [
+            "start",
+            "end",
+            "duration_seconds",
+            "uuid",
+            "source_uuid",
+            "run_id",
+        ]
         level_cols = [f"factor__{u}_level" for u in self.factor_uuids]
         all_cols = base_cols + level_cols
 
@@ -160,6 +169,7 @@ class DesignOfExperimentsEvents(Base):
                 "end": end_t,
                 "duration_seconds": (end_t - start_t).total_seconds(),
                 "uuid": self.event_uuid,
+                "source_uuid": ",".join(self.factor_uuids),
                 "run_id": int(gid),
             }
             for u in self.factor_uuids:
@@ -187,7 +197,9 @@ class DesignOfExperimentsEvents(Base):
 
         return out
 
-    def compute_effects(
+    compute_effects = deprecated_method("effects")
+
+    def effects(
         self,
         response_uuid: str,
         *,

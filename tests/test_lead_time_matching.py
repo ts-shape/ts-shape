@@ -20,21 +20,21 @@ def _df(delivery_ids=("PO1", "PO2")):
 
 
 def test_matches_by_order_id():
-    out = LeadTimeAnalysisEvents(_df()).calculate_lead_times("order", "delivery")
+    out = LeadTimeAnalysisEvents(_df()).lead_times("order", "delivery")
     hours = dict(zip(out["order_id"], out["lead_time_hours"]))
     assert hours["PO2"] == pytest.approx(47.0)
     assert hours["PO1"] == pytest.approx(23.0)
 
 
 def test_keeps_timezone():
-    out = LeadTimeAnalysisEvents(_df()).calculate_lead_times("order", "delivery")
+    out = LeadTimeAnalysisEvents(_df()).lead_times("order", "delivery")
     assert str(out["order_time"].dt.tz) == TZ
     first = out.sort_values("order_time")["order_time"].iloc[0]
     assert first.hour == 8
 
 
 def test_without_ids_falls_back_to_sequential_pairing():
-    out = LeadTimeAnalysisEvents(_df(delivery_ids=(None, None))).calculate_lead_times(
+    out = LeadTimeAnalysisEvents(_df(delivery_ids=(None, None))).lead_times(
         "order", "delivery"
     )
     assert list(out["lead_time_hours"]) == pytest.approx([24.0, 46.0])

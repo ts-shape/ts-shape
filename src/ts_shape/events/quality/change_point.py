@@ -28,6 +28,7 @@ from ts_shape.events._output import (
     finalize_point_df,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +99,9 @@ def pelt(
     penalty: float | None = None,
     min_size: int = 2,
 ) -> list[int]:
-    """Optimal change points of ``x`` under a penalised Gaussian cost (PELT).
+    """Optimal change points of ``x`` under a penalized Gaussian cost (PELT).
 
-    Exact: returns the segmentation minimising total cost plus ``penalty``
+    Exact: returns the segmentation minimizing total cost plus ``penalty``
     per change. Runtime is near-linear when changes are frequent and
     quadratic when they are rare; for long series with few changes use
     :func:`binseg` or resample first.
@@ -221,7 +222,7 @@ class ChangePointEvents(Base):
         event_uuid: str = "quality:change_point",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.value_column = value_column
         self.event_uuid = event_uuid
@@ -255,6 +256,7 @@ class ChangePointEvents(Base):
         bounds = [0, *found, len(x)]
         return list(zip(bounds[:-1], bounds[1:], strict=True))
 
+    @keyword_only(1)
     def detect_change_points(
         self,
         cost: Cost = "normal_mean",
@@ -308,6 +310,7 @@ class ChangePointEvents(Base):
             pd.DataFrame(rows), uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def segment_statistics(
         self,
         cost: Cost = "normal_mean",

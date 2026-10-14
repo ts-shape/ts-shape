@@ -67,7 +67,7 @@ class CycleDataProcessor(Base):
         Splits the values DataFrame by cycles defined in the cycles DataFrame.
         Uses optimized interval-based assignment.
 
-        Return:
+        Returns:
             Dictionary where keys are cycle_uuids and values are DataFrames with the corresponding cycle data.
         """
         if self._cycle_intervals is None or self.values_df.empty:
@@ -91,7 +91,7 @@ class CycleDataProcessor(Base):
         Merges the values DataFrame with the cycles DataFrame based on the cycle time intervals.
         Uses optimized interval-based assignment instead of nested loops.
 
-        Return:
+        Returns:
             DataFrame with an added 'cycle_uuid' column.
         """
         if self._cycle_intervals is None or self.values_df.empty:
@@ -149,7 +149,7 @@ class CycleDataProcessor(Base):
         Args:
             data: DataFrame containing the data to be grouped by cycle_uuid. If None, uses the internal values_df.
 
-        Return:
+        Returns:
             List of DataFrames, each containing data for a unique cycle_uuid.
         """
         if data is None:
@@ -176,7 +176,7 @@ class CycleDataProcessor(Base):
             dfs: List of DataFrames to be split.
             column: Column name to group by.
 
-        Return:
+        Returns:
             List of DataFrames, each corresponding to a group in the original DataFrames.
         """
         split_dfs = []
@@ -203,7 +203,7 @@ class CycleDataProcessor(Base):
             start_time: Start of the time range.
             end_time: End of the time range.
 
-        Return:
+        Returns:
             Filtered DataFrame containing rows within the time range.
         """
         mask = (self.values_df[self.systime_col] >= start_time) & (

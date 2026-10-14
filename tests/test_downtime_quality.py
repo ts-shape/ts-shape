@@ -1,7 +1,7 @@
 import pandas as pd  # type: ignore
 import pytest
 
-from ts_shape.events.production import DowntimeTracking, QualityTracking
+from ts_shape.events.production import DowntimeEvents, QualityEvents
 
 # ============================================================================
 # Test Fixtures
@@ -159,13 +159,13 @@ def sample_quality_data():
 
 
 # ============================================================================
-# DowntimeTracking Tests
+# DowntimeEvents Tests
 # ============================================================================
 
 
 def test_downtime_by_shift_basic(sample_downtime_data):
     """Test basic downtime calculation by shift."""
-    tracker = DowntimeTracking(sample_downtime_data)
+    tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.downtime_by_shift(
         state_uuid="machine_state", running_value="Running"
     )
@@ -191,7 +191,7 @@ def test_downtime_by_shift_basic(sample_downtime_data):
 
 def test_downtime_by_shift_values(sample_downtime_data):
     """Test that downtime values are reasonable."""
-    tracker = DowntimeTracking(sample_downtime_data)
+    tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.downtime_by_shift(
         state_uuid="machine_state", running_value="Running"
     )
@@ -213,7 +213,7 @@ def test_downtime_by_shift_values(sample_downtime_data):
 
 def test_downtime_by_reason(sample_downtime_data):
     """Test downtime analysis by reason code."""
-    tracker = DowntimeTracking(sample_downtime_data)
+    tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.downtime_by_reason(
         state_uuid="machine_state",
         reason_uuid="downtime_reason",
@@ -248,7 +248,7 @@ def test_downtime_by_reason(sample_downtime_data):
 
 def test_top_downtime_reasons(sample_downtime_data):
     """Test Pareto analysis of top downtime reasons."""
-    tracker = DowntimeTracking(sample_downtime_data)
+    tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.top_downtime_reasons(
         state_uuid="machine_state",
         reason_uuid="downtime_reason",
@@ -278,7 +278,7 @@ def test_top_downtime_reasons(sample_downtime_data):
 
 def test_availability_trend(sample_downtime_data):
     """Test availability trend calculation."""
-    tracker = DowntimeTracking(sample_downtime_data)
+    tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.availability_trend(
         state_uuid="machine_state", running_value="Running", window="1D"
     )
@@ -297,7 +297,7 @@ def test_availability_trend(sample_downtime_data):
 def test_downtime_empty_data():
     """Test downtime tracking with empty data."""
     df_empty = pd.DataFrame(columns=["uuid", "systime", "value_string", "is_delta"])
-    tracker = DowntimeTracking(df_empty)
+    tracker = DowntimeEvents(df_empty)
 
     result = tracker.downtime_by_shift(state_uuid="machine_state")
     assert result.empty
@@ -321,7 +321,7 @@ def test_downtime_custom_shifts():
         "night": ("14:00", "06:00"),
     }
 
-    tracker = DowntimeTracking(df, shift_definitions=custom_shifts)
+    tracker = DowntimeEvents(df, shift_definitions=custom_shifts)
     result = tracker.downtime_by_shift(
         state_uuid="machine_state", running_value="Running"
     )
@@ -331,13 +331,13 @@ def test_downtime_custom_shifts():
 
 
 # ============================================================================
-# QualityTracking Tests
+# QualityEvents Tests
 # ============================================================================
 
 
 def test_nok_by_shift_basic(sample_quality_data):
     """Test basic NOK calculation by shift."""
-    tracker = QualityTracking(sample_quality_data)
+    tracker = QualityEvents(sample_quality_data)
     result = tracker.nok_by_shift(
         ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"
     )
@@ -362,7 +362,7 @@ def test_nok_by_shift_basic(sample_quality_data):
 
 def test_nok_by_shift_calculations(sample_quality_data):
     """Test that NOK calculations are correct."""
-    tracker = QualityTracking(sample_quality_data)
+    tracker = QualityEvents(sample_quality_data)
     result = tracker.nok_by_shift(
         ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"
     )
@@ -383,7 +383,7 @@ def test_nok_by_shift_calculations(sample_quality_data):
 
 def test_quality_by_part(sample_quality_data):
     """Test quality metrics by part number."""
-    tracker = QualityTracking(sample_quality_data)
+    tracker = QualityEvents(sample_quality_data)
     result = tracker.quality_by_part(
         ok_counter_uuid="ok_counter",
         nok_counter_uuid="nok_counter",
@@ -407,7 +407,7 @@ def test_quality_by_part(sample_quality_data):
 
 def test_nok_by_reason(sample_quality_data):
     """Test NOK analysis by defect reason."""
-    tracker = QualityTracking(sample_quality_data)
+    tracker = QualityEvents(sample_quality_data)
     result = tracker.nok_by_reason(
         nok_counter_uuid="nok_counter", defect_reason_uuid="defect_reason"
     )
@@ -428,7 +428,7 @@ def test_nok_by_reason(sample_quality_data):
 
 def test_daily_quality_summary(sample_quality_data):
     """Test daily quality summary."""
-    tracker = QualityTracking(sample_quality_data)
+    tracker = QualityEvents(sample_quality_data)
     result = tracker.daily_quality_summary(
         ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"
     )
@@ -453,7 +453,7 @@ def test_daily_quality_summary(sample_quality_data):
 def test_quality_empty_data():
     """Test quality tracking with empty data."""
     df_empty = pd.DataFrame(columns=["uuid", "systime", "value_integer", "is_delta"])
-    tracker = QualityTracking(df_empty)
+    tracker = QualityEvents(df_empty)
 
     result = tracker.nok_by_shift(
         ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"
@@ -491,7 +491,7 @@ def test_quality_custom_shifts():
         "night": ("18:00", "06:00"),
     }
 
-    tracker = QualityTracking(df, shift_definitions=custom_shifts)
+    tracker = QualityEvents(df, shift_definitions=custom_shifts)
     result = tracker.nok_by_shift(
         ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"
     )
@@ -514,7 +514,7 @@ def test_quality_only_ok_counter():
         }
     )
 
-    tracker = QualityTracking(df)
+    tracker = QualityEvents(df)
     result = tracker.nok_by_shift(
         ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"  # Doesn't exist
     )
@@ -538,7 +538,7 @@ def test_quality_only_nok_counter():
         }
     )
 
-    tracker = QualityTracking(df)
+    tracker = QualityEvents(df)
     result = tracker.nok_by_shift(
         ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"  # Doesn't exist
     )
@@ -562,14 +562,14 @@ def test_downtime_quality_integration(sample_downtime_data, sample_quality_data)
     )
 
     # Test downtime tracking
-    downtime_tracker = DowntimeTracking(combined_df)
+    downtime_tracker = DowntimeEvents(combined_df)
     downtime_result = downtime_tracker.downtime_by_shift(
         state_uuid="machine_state", running_value="Running"
     )
     assert not downtime_result.empty
 
     # Test quality tracking
-    quality_tracker = QualityTracking(combined_df)
+    quality_tracker = QualityEvents(combined_df)
     quality_result = quality_tracker.nok_by_shift(
         ok_counter_uuid="ok_counter", nok_counter_uuid="nok_counter"
     )
@@ -582,7 +582,7 @@ def test_downtime_quality_integration(sample_downtime_data, sample_quality_data)
 
 def test_module_imports():
     """Test that all modules can be imported correctly."""
-    from ts_shape.events.production import DowntimeTracking, QualityTracking
+    from ts_shape.events.production import DowntimeEvents, QualityEvents
 
-    assert DowntimeTracking is not None
-    assert QualityTracking is not None
+    assert DowntimeEvents is not None
+    assert QualityEvents is not None

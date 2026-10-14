@@ -4,7 +4,9 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ class AnomalyClassificationEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -45,6 +47,7 @@ class AnomalyClassificationEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(1)
     def detect_flatline(
         self,
         min_duration: str = "1min",
@@ -68,11 +71,15 @@ class AnomalyClassificationEvents(Base):
                 still reports a stuck sensor.
 
         Returns:
-            DataFrame with columns: start_time, end_time, duration, stuck_value.
+            DataFrame with columns: start, end, duration_seconds, uuid, source_uuid,
+                duration, stuck_value. ``duration`` is a Timedelta;
+                ``duration_seconds`` is the same span in float seconds.
         """
         cols = ["start", "end", "duration", "stuck_value"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -108,10 +115,11 @@ class AnomalyClassificationEvents(Base):
                     }
                 )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def detect_oscillation(
         self, window: str = "1min", min_crossings: int = 6
     ) -> pd.DataFrame:
@@ -122,11 +130,14 @@ class AnomalyClassificationEvents(Base):
             min_crossings: Minimum zero-crossings to flag oscillation.
 
         Returns:
-            DataFrame with columns: start_time, end_time, crossing_count, amplitude.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+                source_uuid, crossing_count, amplitude.
         """
         cols = ["start", "end", "crossing_count", "amplitude"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -164,23 +175,56 @@ class AnomalyClassificationEvents(Base):
                     )
             current = win_end
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
-    def detect_drift(self, window: str = "1h", min_slope: float = 0.01) -> pd.DataFrame:
+    @staticmethod
+    def _check_slope_per(slope_per: str) -> None:
+        if slope_per not in ("sample", "second"):
+            raise ValueError(
+                f"slope_per must be 'sample' or 'second', got {slope_per!r}"
+            )
+
+    @staticmethod
+    def _slope_x(index: pd.Index, slope_per: str) -> np.ndarray:
+        """x-axis for a slope fit: sample index or elapsed seconds."""
+        if slope_per == "second":
+            times = pd.DatetimeIndex(index)
+            return np.asarray((times - times[0]).total_seconds(), dtype=float)
+        return np.arange(len(index), dtype=float)
+
+    @keyword_only(1)
+    def detect_drift(
+        self, window: str = "1h", min_slope: float = 0.01, slope_per: str = "sample"
+    ) -> pd.DataFrame:
         """Detect windows where the rolling slope exceeds a threshold.
+
+        A least-squares line is fitted to each non-overlapping window. With
+        the default ``slope_per="sample"`` the x-axis is the sample index,
+        so ``slope`` is in signal units per *sample* and the meaning of
+        ``min_slope`` depends on the sampling rate. With
+        ``slope_per="second"`` the x-axis is elapsed time, so ``slope`` and
+        ``min_slope`` are in signal units per second regardless of the
+        sampling rate (and irregular sampling is handled correctly).
 
         Args:
             window: Window size for slope computation.
-            min_slope: Minimum absolute slope to flag.
+            min_slope: Minimum absolute slope to flag, in signal units per
+                sample or per second (see ``slope_per``).
+            slope_per: ``"sample"`` (default, previous behavior) or
+                ``"second"``.
 
         Returns:
-            DataFrame with columns: start_time, end_time, slope, direction.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+                source_uuid, slope, direction.
         """
+        self._check_slope_per(slope_per)
         cols = ["start", "end", "slope", "direction"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -199,7 +243,7 @@ class AnomalyClassificationEvents(Base):
             win_end = current + window_td
             win = sig.loc[current:win_end, self.value_column]
             if len(win) >= 3:
-                x = np.arange(len(win), dtype=float)
+                x = self._slope_x(win.index, slope_per)
                 try:
                     slope = float(np.polyfit(x, win.values, 1)[0])
                 except (np.linalg.LinAlgError, ValueError):
@@ -216,27 +260,45 @@ class AnomalyClassificationEvents(Base):
                     )
             current = win_end
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(z_threshold="n_sigma")
     def classify_anomalies(
-        self, window: str = "10min", z_threshold: float = 3.0
+        self, window: str = "10min", n_sigma: float = 3.0, slope_per: str = "sample"
     ) -> pd.DataFrame:
         """Detect anomalous windows and classify by type.
 
         Types: spike, drift, oscillation, flatline, level_shift.
 
+        A window is a drift when its least-squares slope exceeds 0.1 × the
+        signal's overall std per sample. With the default
+        ``slope_per="sample"`` the slope is fitted against the sample index,
+        so the test depends on the sampling rate. With
+        ``slope_per="second"`` it is fitted against elapsed time and compared
+        with 0.1 × std divided by the signal's median sampling interval
+        (seconds): on regularly sampled data the same windows are flagged,
+        irregular sampling is handled correctly, and the ``slope`` reported
+        in ``details`` is in signal units per second.
+
         Args:
             window: Window size for analysis.
-            z_threshold: Z-score threshold for spike detection.
+            n_sigma: Z-score threshold for spike detection.
+            slope_per: ``"sample"`` (default, previous behavior) or
+                ``"second"``.
 
         Returns:
-            DataFrame with columns: start_time, end_time, anomaly_type, severity, details.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+                source_uuid, anomaly_type, severity, details.
         """
+        self._check_slope_per(slope_per)
         cols = ["start", "end", "anomaly_type", "severity", "details"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -250,6 +312,13 @@ class AnomalyClassificationEvents(Base):
         global_std = sig[self.value_column].std()
         if global_std == 0 or np.isnan(global_std):
             global_std = 1e-10
+        drift_threshold = global_std * 0.1
+        if slope_per == "second":
+            dt = pd.Series(sig.index).diff().dt.total_seconds()
+            median_dt = float(dt[dt > 0].median()) if (dt > 0).any() else np.nan
+            drift_threshold = (
+                drift_threshold / median_dt if median_dt > 0 else drift_threshold
+            )
 
         events: list[dict[str, Any]] = []
         start_time = sig.index[0]
@@ -283,10 +352,10 @@ class AnomalyClassificationEvents(Base):
 
             # Check spikes
             z_scores = np.abs((values - global_mean) / global_std)
-            spike_count = int(np.sum(z_scores > z_threshold))
+            spike_count = int(np.sum(z_scores > n_sigma))
             if spike_count > 0 and spike_count <= max(3, len(values) * 0.1):
                 max_z = float(np.max(z_scores))
-                severity = "critical" if max_z > z_threshold * 2 else "warning"
+                severity = "critical" if max_z > n_sigma * 2 else "warning"
                 events.append(
                     {
                         "start": current,
@@ -318,13 +387,13 @@ class AnomalyClassificationEvents(Base):
                 continue
 
             # Check drift
-            x = np.arange(len(values), dtype=float)
+            x = self._slope_x(win.index, slope_per)
             try:
                 slope = float(np.polyfit(x, values, 1)[0])
             except (np.linalg.LinAlgError, ValueError):
                 slope = 0.0
 
-            if abs(slope) > global_std * 0.1:
+            if abs(slope) > drift_threshold:
                 events.append(
                     {
                         "start": current,
@@ -356,6 +425,6 @@ class AnomalyClassificationEvents(Base):
 
             current = win_end
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )

@@ -11,24 +11,24 @@ These classes sit at the top of the production analytics stack — they consume 
 ```mermaid
 flowchart TB
     subgraph TRACKING["<b>Tracking Classes</b><br/><i>(see Production Monitoring guide)</i>"]
-        DT["DowntimeTracking"]
-        PT["PartProductionTracking"]
-        QT["QualityTracking"]
-        CT["CycleTimeTracking"]
+        DT["DowntimeEvents"]
+        PT["PartProductionEvents"]
+        QT["QualityEvents"]
+        CT["CycleTimeEvents"]
     end
 
     subgraph KPI["<b>KPI & Loss Classes</b>"]
-        PL["PerformanceLossTracking<br/><i>speed loss vs target</i>"]
-        SC["ScrapTracking<br/><i>waste by reason & cost</i>"]
-        TT["TargetTracking<br/><i>actual vs plan</i>"]
-        ST["SetupTimeTracking<br/><i>SMED analysis</i>"]
-        OP["OperatorPerformanceTracking<br/><i>operator comparison</i>"]
-        RW["ReworkTracking<br/><i>rework rates & cost</i>"]
+        PL["PerformanceLossEvents<br/><i>speed loss vs target</i>"]
+        SC["ScrapEvents<br/><i>waste by reason & cost</i>"]
+        TT["TargetEvents<br/><i>actual vs plan</i>"]
+        ST["SetupTimeEvents<br/><i>SMED analysis</i>"]
+        OP["OperatorPerformanceEvents<br/><i>operator comparison</i>"]
+        RW["ReworkEvents<br/><i>rework rates & cost</i>"]
     end
 
     subgraph REPORT["<b>Reports</b>"]
-        SH["ShiftHandoverReport<br/><i>auto-generated</i>"]
-        PS["PeriodSummary<br/><i>weekly / monthly</i>"]
+        SH["ShiftHandoverEvents<br/><i>auto-generated</i>"]
+        PS["PeriodSummaryEvents<br/><i>weekly / monthly</i>"]
     end
 
     DT --> PL
@@ -54,9 +54,9 @@ flowchart TB
 Identify when actual cycle times fall below the target — the "Performance" factor in OEE.
 
 ```python
-from ts_shape.events.production.performance_loss import PerformanceLossTracking
+from ts_shape.events.production.performance_loss import PerformanceLossEvents
 
-perf = PerformanceLossTracking(df, shift_definitions={
+perf = PerformanceLossEvents(df, shift_definitions={
     "day": ("06:00", "14:00"),
     "afternoon": ("14:00", "22:00"),
     "night": ("22:00", "06:00"),
@@ -86,9 +86,9 @@ trend = perf.performance_trend(
 Track material waste by shift, reason code, and monetary cost.
 
 ```python
-from ts_shape.events.production.scrap_tracking import ScrapTracking
+from ts_shape.events.production.scrap_tracking import ScrapEvents
 
-scrap = ScrapTracking(df, shift_definitions={
+scrap = ScrapEvents(df, shift_definitions={
     "day": ("06:00", "14:00"),
     "afternoon": ("14:00", "22:00"),
     "night": ("22:00", "06:00"),
@@ -120,9 +120,9 @@ trend = scrap.scrap_trend(scrap_uuid='scrap_counter', window='1D')
 Compare actual production metrics against shift or daily targets.
 
 ```python
-from ts_shape.events.production.target_tracking import TargetTracking
+from ts_shape.events.production.target_tracking import TargetEvents
 
-targets = TargetTracking(df, shift_definitions={
+targets = TargetEvents(df, shift_definitions={
     "day": ("06:00", "14:00"),
     "afternoon": ("14:00", "22:00"),
     "night": ("22:00", "06:00"),
@@ -152,9 +152,9 @@ hit_rate = targets.target_hit_rate(
 Analyze changeover/setup durations for SMED (Single-Minute Exchange of Die) improvement.
 
 ```python
-from ts_shape.events.production.setup_time_tracking import SetupTimeTracking
+from ts_shape.events.production.setup_time_tracking import SetupTimeEvents
 
-setup = SetupTimeTracking(df, shift_definitions={
+setup = SetupTimeEvents(df, shift_definitions={
     "day": ("06:00", "14:00"),
     "afternoon": ("14:00", "22:00"),
     "night": ("22:00", "06:00"),
@@ -182,9 +182,9 @@ trend = setup.setup_trend(state_uuid='machine_state', window='1W')
 Compare production output and quality across operators or teams.
 
 ```python
-from ts_shape.events.production.operator_performance import OperatorPerformanceTracking
+from ts_shape.events.production.operator_performance import OperatorPerformanceEvents
 
-ops = OperatorPerformanceTracking(df, shift_definitions={
+ops = OperatorPerformanceEvents(df, shift_definitions={
     "day": ("06:00", "14:00"),
     "afternoon": ("14:00", "22:00"),
     "night": ("22:00", "06:00"),
@@ -221,9 +221,9 @@ ranking = ops.operator_comparison(
 Track parts that require rework — re-processing through a station.
 
 ```python
-from ts_shape.events.production.rework_tracking import ReworkTracking
+from ts_shape.events.production.rework_tracking import ReworkEvents
 
-rework = ReworkTracking(df, shift_definitions={
+rework = ReworkEvents(df, shift_definitions={
     "day": ("06:00", "14:00"),
     "afternoon": ("14:00", "22:00"),
     "night": ("22:00", "06:00"),
@@ -261,9 +261,9 @@ trend = rework.rework_trend(rework_uuid='rework_counter', window='1D')
 Auto-generate shift handover reports from raw signals — production, quality, downtime, and issues.
 
 ```python
-from ts_shape.events.production.shift_handover import ShiftHandoverReport
+from ts_shape.events.production.shift_handover import ShiftHandoverEvents
 
-handover = ShiftHandoverReport(df, shift_definitions={
+handover = ShiftHandoverEvents(df, shift_definitions={
     "day": ("06:00", "14:00"),
     "afternoon": ("14:00", "22:00"),
     "night": ("22:00", "06:00"),
@@ -294,7 +294,7 @@ issues = handover.highlight_issues(
 ### Build from pre-computed data
 
 ```python
-report = ShiftHandoverReport.from_shift_data(
+report = ShiftHandoverEvents.from_shift_data(
     production_df=production_by_shift,
     quality_df=quality_by_shift,
     downtime_df=downtime_by_shift,
@@ -310,9 +310,9 @@ report = ShiftHandoverReport.from_shift_data(
 Roll up daily data to weekly or monthly aggregations.
 
 ```python
-from ts_shape.events.production.period_summary import PeriodSummary
+from ts_shape.events.production.period_summary import PeriodSummaryEvents
 
-summary = PeriodSummary(df)
+summary = PeriodSummaryEvents(df)
 
 # Weekly summary
 weekly = summary.weekly_summary(
@@ -339,8 +339,8 @@ comparison = summary.compare_periods(
 ### Roll up from pre-computed daily data
 
 ```python
-monthly = PeriodSummary.from_daily_data(
-    daily_df=daily_production, freq='M', date_column='date'
+monthly = PeriodSummaryEvents.from_daily_data(
+    daily_df=daily_production, window='M', date_column='date'
 )
 ```
 

@@ -10,7 +10,7 @@ hide:
 
 <p class="ts-map-hint">
   Click any ring to zoom into that branch and load its details below.
-  Click the centre to zoom out. Type in the search box to fade non-matching
+  Click the center to zoom out. Type in the search box to fade non-matching
   arcs. Touch-friendly — no hover required.
   <a href="../architecture/">Back to the prose overview →</a>
 </p>

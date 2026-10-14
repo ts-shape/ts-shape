@@ -12,7 +12,7 @@ def test_base_sorts_by_given_time_column():
             "value_integer": [3, 1, 2],
         }
     )
-    base = Base(df, column_name="systime")
+    base = Base(df, time_column="systime")
     out = base.get_dataframe()
     assert list(out["systime"]) == sorted(df["systime"].tolist())
 
@@ -60,3 +60,12 @@ def test_repr_reports_rows_and_class():
     df = pd.DataFrame({"systime": pd.to_datetime(["2024-01-01"]), "value_integer": [1]})
     r = repr(Base(df))
     assert r.startswith("Base(") and "rows=1" in r
+
+
+def test_base_old_column_name_keyword_still_works():
+    import pytest
+
+    df = pd.DataFrame({"systime": ["2024-01-02", "2024-01-01"], "uuid": ["a", "a"]})
+    with pytest.warns(DeprecationWarning, match="'column_name' is deprecated"):
+        base = Base(df, column_name="systime")
+    assert base.dataframe["systime"].is_monotonic_increasing

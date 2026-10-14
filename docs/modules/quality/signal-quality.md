@@ -18,7 +18,7 @@ Use to validate data quality before analysis. Check for gaps in historian data, 
 ```python
 from ts_shape.events.quality.signal_quality import SignalQualityEvents
 
-sq = SignalQualityEvents(df, value_column="value_double")
+sq = SignalQualityEvents(df, signal_uuid="tank_level")
 
 # Find gaps where expected samples are missing
 gaps = sq.detect_missing_data(expected_freq="1s", tolerance_factor=2.0)
@@ -39,10 +39,10 @@ completeness = sq.data_completeness(window="1h", expected_freq="1s")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_missing_data(expected_freq='1s', tolerance_factor=2.0)` | Find gaps exceeding expected sampling interval | DataFrame with gap start/end and duration |
-| `sampling_regularity(window='1h')` | Compute inter-sample interval statistics per window | DataFrame with mean, std, min, max intervals |
-| `detect_out_of_range(min_value, max_value)` | Flag values outside physical or expected range | DataFrame with out-of-range flags |
-| `data_completeness(window='1h', expected_freq='1s')` | Calculate percentage of expected samples received | DataFrame with completeness percentages |
+| `detect_missing_data(expected_freq='1s', tolerance_factor=2.0)` | Find gaps exceeding expected sampling interval | DataFrame with `start`, `end`, `gap_duration`, `expected_samples_missing` |
+| `sampling_regularity(window='1h')` | Compute inter-sample interval statistics per window | DataFrame with `start`, `mean_interval`, `std_interval`, `min_interval`, `max_interval`, `regularity_score` |
+| `detect_out_of_range(min_value, max_value)` | Flag intervals outside physical or expected range | DataFrame with `start`, `end`, `duration`, `min_observed`, `max_observed`, `direction` |
+| `data_completeness(window='1h', expected_freq='1s')` | Calculate percentage of expected samples received | DataFrame with `start`, `expected_count`, `actual_count`, `completeness_pct` |
 
 ---
 

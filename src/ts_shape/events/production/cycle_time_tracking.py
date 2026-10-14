@@ -13,11 +13,12 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_class
 
 logger = logging.getLogger(__name__)
 
 
-class CycleTimeTracking(Base):
+class CycleTimeEvents(Base):
     """Track cycle times by part number.
 
     Each UUID represents one signal:
@@ -25,7 +26,7 @@ class CycleTimeTracking(Base):
     - cycle_trigger_uuid: boolean/integer signal for cycle completion
 
     Example usage:
-        tracker = CycleTimeTracking(df)
+        tracker = CycleTimeEvents(df)
 
         # Get cycle times by part
         cycles = tracker.cycle_time_by_part(
@@ -45,15 +46,19 @@ class CycleTimeTracking(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
+        event_uuid: str = "prod:cycle_time",
     ) -> None:
         """Initialize cycle time tracker.
 
         Args:
             dataframe: Input DataFrame with timeseries data
             time_column: Name of timestamp column (default: 'systime')
+            event_uuid: UUID tagged on derived cycle events (the ``uuid``
+                column of point outputs; default: 'prod:cycle_time')
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
+        self.event_uuid = event_uuid
 
     def cycle_time_by_part(
         self,
@@ -81,6 +86,8 @@ class CycleTimeTracking(Base):
         Returns:
             DataFrame with columns:
             - systime: Cycle completion time
+            - uuid: Event UUID of this tracker
+            - source_uuid: The cycle trigger UUID
             - part_number: Part number/ID
             - cycle_time_seconds: Cycle time in seconds
 
@@ -100,17 +107,25 @@ class CycleTimeTracking(Base):
 
         if cycles.empty:
             return pd.DataFrame(
-                columns=["systime", "part_number", "cycle_time_seconds"]
+                columns=[
+                    "systime",
+                    "uuid",
+                    "source_uuid",
+                    "part_number",
+                    "cycle_time_seconds",
+                ]
             )
 
         cycles[self.time_column] = pd.to_datetime(cycles[self.time_column])
 
         # Detect rising edges (cycle completion)
         if value_column_trigger == "value_bool":
-            cycles["prev"] = cycles[value_column_trigger].shift(fill_value=False)
-            cycle_ends = cycles[
-                (~cycles["prev"]) & (cycles[value_column_trigger].fillna(False))
-            ]
+            # Cast first: on an object column of Python bools, ``~True`` is -2
+            # (truthy), which made every True sample a "rising edge".
+            trigger = cycles[value_column_trigger].astype("boolean").fillna(False)
+            trigger = trigger.astype(bool)
+            prev = trigger.shift(fill_value=False)
+            cycle_ends = cycles[trigger & ~prev]
             times = cycle_ends[self.time_column].reset_index(drop=True)
         else:
             # For integer/counter-based cycles, use value changes
@@ -120,7 +135,13 @@ class CycleTimeTracking(Base):
 
         if len(times) < 2:
             return pd.DataFrame(
-                columns=["systime", "part_number", "cycle_time_seconds"]
+                columns=[
+                    "systime",
+                    "uuid",
+                    "source_uuid",
+                    "part_number",
+                    "cycle_time_seconds",
+                ]
             )
 
         # Calculate cycle times
@@ -152,6 +173,8 @@ class CycleTimeTracking(Base):
                 no_part = no_part[
                     no_part["cycle_time_seconds"] <= cap_seconds
                 ].reset_index(drop=True)
+            no_part.insert(1, "uuid", self.event_uuid)
+            no_part.insert(2, "source_uuid", cycle_trigger_uuid)
             return no_part
 
         part_data[self.time_column] = pd.to_datetime(part_data[self.time_column])
@@ -182,7 +205,10 @@ class CycleTimeTracking(Base):
                 result_df["cycle_time_seconds"] <= cap_seconds
             ].reset_index(drop=True)
 
-        return result_df[["systime", "part_number", "cycle_time_seconds"]]
+        result_df = result_df[["systime", "part_number", "cycle_time_seconds"]].copy()
+        result_df.insert(1, "uuid", self.event_uuid)
+        result_df.insert(2, "source_uuid", cycle_trigger_uuid)
+        return result_df
 
     def cycle_time_statistics(
         self,
@@ -191,6 +217,7 @@ class CycleTimeTracking(Base):
         *,
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate statistics: min, avg, max, std cycle time by part.
 
@@ -199,6 +226,10 @@ class CycleTimeTracking(Base):
             cycle_trigger_uuid: UUID for cycle completion trigger
             value_column_part: Column containing part numbers
             value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap (e.g. "5min") forwarded to
+                :meth:`cycle_time_by_part`: intervals between consecutive
+                completions longer than this are dropped as inter-cycle
+                downtime. Default None keeps every interval.
 
         Returns:
             DataFrame with statistics per part:
@@ -221,6 +252,7 @@ class CycleTimeTracking(Base):
             cycle_trigger_uuid,
             value_column_part=value_column_part,
             value_column_trigger=value_column_trigger,
+            max_cycle_gap=max_cycle_gap,
         )
 
         if cycle_data.empty:
@@ -261,6 +293,7 @@ class CycleTimeTracking(Base):
         threshold_factor: float = 1.5,
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Identify cycles that exceed normal time by threshold factor.
 
@@ -270,10 +303,16 @@ class CycleTimeTracking(Base):
             threshold_factor: Cycles slower than median * factor are flagged (default: 1.5)
             value_column_part: Column containing part numbers
             value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap (e.g. "5min") forwarded to
+                :meth:`cycle_time_by_part`: intervals between consecutive
+                completions longer than this are dropped as inter-cycle
+                downtime. Default None keeps every interval.
 
         Returns:
             DataFrame with slow cycles:
             - systime: Cycle completion time
+            - uuid: Event UUID of this tracker
+            - source_uuid: The cycle trigger UUID
             - part_number: Part number/ID
             - cycle_time_seconds: Actual cycle time
             - median_seconds: Expected (median) cycle time
@@ -291,12 +330,15 @@ class CycleTimeTracking(Base):
             cycle_trigger_uuid,
             value_column_part=value_column_part,
             value_column_trigger=value_column_trigger,
+            max_cycle_gap=max_cycle_gap,
         )
 
         if cycle_data.empty:
             return pd.DataFrame(
                 columns=[
                     "systime",
+                    "uuid",
+                    "source_uuid",
                     "part_number",
                     "cycle_time_seconds",
                     "median_seconds",
@@ -329,6 +371,7 @@ class CycleTimeTracking(Base):
         window_size: int = 20,
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Analyze cycle time trends for a specific part.
 
@@ -339,6 +382,10 @@ class CycleTimeTracking(Base):
             window_size: Number of cycles for moving average (default: 20)
             value_column_part: Column containing part numbers
             value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap (e.g. "5min") forwarded to
+                :meth:`cycle_time_by_part`: intervals between consecutive
+                completions longer than this are dropped as inter-cycle
+                downtime. Default None keeps every interval.
 
         Returns:
             DataFrame with trend data:
@@ -359,6 +406,7 @@ class CycleTimeTracking(Base):
             cycle_trigger_uuid,
             value_column_part=value_column_part,
             value_column_trigger=value_column_trigger,
+            max_cycle_gap=max_cycle_gap,
         )
 
         if cycle_data.empty:
@@ -400,6 +448,7 @@ class CycleTimeTracking(Base):
         *,
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Hourly summary of cycle times by part.
 
@@ -408,6 +457,10 @@ class CycleTimeTracking(Base):
             cycle_trigger_uuid: UUID for cycle completion trigger
             value_column_part: Column containing part numbers
             value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap (e.g. "5min") forwarded to
+                :meth:`cycle_time_by_part`: intervals between consecutive
+                completions longer than this are dropped as inter-cycle
+                downtime. Default None keeps every interval.
 
         Returns:
             DataFrame with hourly statistics:
@@ -429,6 +482,7 @@ class CycleTimeTracking(Base):
             cycle_trigger_uuid,
             value_column_part=value_column_part,
             value_column_trigger=value_column_trigger,
+            max_cycle_gap=max_cycle_gap,
         )
 
         if cycle_data.empty:
@@ -461,3 +515,7 @@ class CycleTimeTracking(Base):
         )
 
         return hourly
+
+
+#: Deprecated name, removed in 1.0.
+CycleTimeTracking = deprecated_class(CycleTimeEvents, "CycleTimeTracking")

@@ -300,3 +300,30 @@ class TestInitGuards:
 
         with pytest.raises(ValueError, match="not found in dataframe"):
             LongDowntimeEvents(df, "nonexistent_uuid")
+
+
+class TestCountEventsBetweenGapsIntervalEnd:
+    def test_change_encoded_state_with_next_change(self):
+        """Change-encoded state: one row per transition. With the default
+        ``last_sample`` every stop is zero-length; ``next_change`` finds them."""
+        state = _make_state_df(
+            [
+                "2024-01-01 00:00",  # down
+                "2024-01-01 04:00",  # up
+                "2024-01-01 08:00",  # down
+                "2024-01-01 12:00",  # up
+            ],
+            [False, True, False, True],
+        )
+        prod = _make_prod_df(
+            ["2024-01-01 05:00", "2024-01-01 06:00", "2024-01-01 07:00"],
+            [1, 1, 1],
+        )
+        df = pd.concat([state, prod], ignore_index=True)
+        ev = LongDowntimeEvents(df, "machine")
+        assert ev.count_events_between_gaps(df, "prod").empty
+        out = ev.count_events_between_gaps(df, "prod", interval_end="next_change")
+        assert len(out) == 1
+        assert out.iloc[0]["event_count"] == 3
+        assert out.iloc[0]["start"] == pd.Timestamp("2024-01-01 04:00")
+        assert out.iloc[0]["end"] == pd.Timestamp("2024-01-01 08:00")

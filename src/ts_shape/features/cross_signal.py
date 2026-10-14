@@ -211,6 +211,11 @@ class CrossSignalAnalytics:
     ) -> pd.DataFrame:
         """Compute transfer entropy for all directed signal pairs.
 
+        Args:
+            lag: Number of samples between the past values and the future value of the
+                target (see `transfer_entropy`). Default 1.
+            bins: Number of equal-width bins used to discretize each signal. Default 10.
+
         Returns:
             Square DataFrame where result.loc[A, B] is TE(A -> B).
         """
@@ -264,6 +269,10 @@ class CrossSignalAnalytics:
 
     def pairwise_synchronization(self, method: str = "phase") -> pd.DataFrame:
         """Compute synchronization index for all signal pairs.
+
+        Args:
+            method: ``'phase'`` for the phase-locking value or ``'amplitude'`` for
+                envelope correlation (see `synchronization_index`). Default ``'phase'``.
 
         Returns:
             Symmetric DataFrame (like a correlation matrix).
@@ -347,6 +356,9 @@ class CrossSignalAnalytics:
 
     def lead_lag_matrix(self, max_lag: int = 50) -> pd.DataFrame:
         """Compute lead-lag for all signal pairs.
+
+        Args:
+            max_lag: Largest lag, in samples, tested in either direction. Default 50.
 
         Returns:
             DataFrame where result.loc[A, B] is the optimal lag (positive = A leads B).

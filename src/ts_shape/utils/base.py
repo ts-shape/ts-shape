@@ -21,7 +21,7 @@ the right one based on the complexity of the operation:
 - The domain workflow has a natural setup phase before analysis
   (e.g. compute control limits, then apply SPC rules).
 - Examples: ``DataHarmonizer``, ``OutlierDetectionEvents``,
-  ``MachineStateEvents``, ``OEECalculator``, all event classes.
+  ``MachineStateEvents``, ``OEEEvents``, all event classes.
 
 **Pipeline** — use when chaining multiple steps:
 
@@ -39,11 +39,36 @@ import warnings
 import pandas as pd  # type: ignore
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
+from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.signal_checks import checked, checked_init
 
 logger = logging.getLogger(__name__)
 
 
 class Base:
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Give every detector in ``ts_shape.events`` the same input checks.
+
+        Public methods and the constructor are wrapped by
+        :mod:`ts_shape.utils.signal_checks`: an unknown signal uuid warns
+        (:class:`~ts_shape.errors.DataQualityWarning`) and a missing uuid
+        column raises :class:`~ts_shape.errors.ColumnNotFoundError`.
+        """
+        super().__init_subclass__(**kwargs)
+        if not cls.__module__.startswith("ts_shape.events."):
+            return
+        for name, member in list(vars(cls).items()):
+            if name == "__init__" and callable(member):
+                setattr(cls, name, checked_init(member))
+            elif (
+                not name.startswith("_")
+                and callable(member)
+                and not isinstance(member, (staticmethod, classmethod, type))
+                and type(member).__name__ != "_Forward"
+                and not getattr(member, "__ts_shape_checked__", False)
+            ):
+                setattr(cls, name, checked(member))
+
     @staticmethod
     def _validate_column(dataframe: pd.DataFrame, column_name: str) -> None:
         """Validate that a column exists in the DataFrame.
@@ -80,18 +105,22 @@ class Base:
                 f"Available UUIDs: {available}"
             )
 
-    def __init__(self, dataframe: pd.DataFrame, column_name: str = "systime") -> None:
-        """
-        Initializes the Base with a DataFrame, detects time columns, converts them to datetime,
-        and sorts the DataFrame by the specified column (or the detected time column if applicable).
+    @renamed_kwargs(column_name="time_column")
+    def __init__(self, dataframe: pd.DataFrame, time_column: str = "systime") -> None:
+        """Keep a sorted copy of ``dataframe`` with a datetime time column.
 
         Args:
-            dataframe (pd.DataFrame): The DataFrame to be processed.
-            column_name (str): The column to sort by. Default is 'systime'. If the column is not found or is not a time column, the class will attempt to detect other time columns.
+            dataframe: Long-format input (``systime``, ``uuid``, ``value_*``).
+            time_column: Timestamp column to convert and sort by. When it is
+                missing, every column whose name contains "time" or "date"
+                is converted instead.
 
         Raises:
-            TypeError: If dataframe is not a pandas DataFrame.
+            TypeError: If ``dataframe`` is not a pandas DataFrame.
+            ColumnNotFoundError: For a detector (``ts_shape.events``), if a
+                non-empty ``dataframe`` has no ``time_column``.
         """
+        column_name = time_column
         if not isinstance(dataframe, pd.DataFrame):
             raise TypeError(
                 f"Expected pandas DataFrame, got {type(dataframe).__name__}"
@@ -99,6 +128,14 @@ class Base:
         self.dataframe = dataframe.copy()
         if self.dataframe.empty:
             return
+        if (
+            type(self).__module__.startswith("ts_shape.events.")
+            and column_name not in self.dataframe.columns
+        ):
+            raise ColumnNotFoundError(
+                f"{type(self).__name__}: time column {column_name!r} not found. "
+                f"Columns: {list(self.dataframe.columns)}; pass time_column=..."
+            )
 
         # Attempt to convert the specified column_name to datetime if it exists
         if column_name in self.dataframe.columns:

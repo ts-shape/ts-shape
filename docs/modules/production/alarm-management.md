@@ -20,15 +20,17 @@ from ts_shape.events.production.alarm_management import AlarmManagementEvents
 import pandas as pd
 import numpy as np
 
+# Long format: one boolean alarm signal (True = active)
 np.random.seed(42)
 df = pd.DataFrame({
-    "timestamp": pd.date_range("2024-01-01 06:00", periods=500, freq="30s"),
-    "high_temp_alarm": np.random.choice([True, False], size=500, p=[0.15, 0.85]),
-    "low_pressure_alarm": np.random.choice([True, False], size=500, p=[0.05, 0.95]),
+    "systime": pd.date_range("2024-01-01 06:00", periods=500, freq="30s"),
+    "uuid": "line1:temp_high_alarm",
+    "value_bool": np.random.choice([True, False], size=500, p=[0.15, 0.85]),
 })
 
-alarms = AlarmManagementEvents(df, timestamp_column="timestamp")
+alarms = AlarmManagementEvents(df, alarm_uuid="line1:temp_high_alarm")
 freq = alarms.alarm_frequency(window="1h")
+stats = alarms.alarm_duration_statistics()
 chattering = alarms.chattering_detection(min_transitions=5, window="10min")
 standing = alarms.standing_alarms(min_duration="1h")
 print(freq.head())
@@ -40,10 +42,10 @@ print(freq.head())
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `alarm_frequency(window='1h')` | Count alarm activations per time window to identify alarm flood periods | DataFrame with window and activation count per alarm |
-| `alarm_duration_stats()` | Compute statistics on how long each alarm stays active (ON duration) | DataFrame with min, mean, max, and percentile durations |
-| `chattering_detection(min_transitions=5, window='10min')` | Detect chattering alarms that toggle rapidly within a short window | DataFrame of chattering alarm instances with transition count |
-| `standing_alarms(min_duration='1h')` | Find alarms that remain active beyond a threshold, indicating stale or ignored alarms | DataFrame of standing alarm intervals |
+| `alarm_frequency(window='1h')` | Count alarm activations per time window to identify alarm flood periods | DataFrame with `start`, `alarm_count`, `uuid`, `source_uuid` |
+| `alarm_duration_statistics()` | Compute statistics on how long the alarm stays active (ON duration) | DataFrame with `alarm_count` and `min_`/`avg_`/`max_`/`total_duration_seconds` |
+| `chattering_detection(min_transitions=5, window='10min')` | Detect chattering alarms that toggle rapidly within a short window | DataFrame with `start`, `end`, `transition_count`, `uuid`, `source_uuid` |
+| `standing_alarms(min_duration='1h')` | Find alarms that remain active beyond a threshold, indicating stale or ignored alarms | DataFrame with `start`, `end`, `duration_seconds`, `uuid`, `source_uuid` |
 
 ---
 

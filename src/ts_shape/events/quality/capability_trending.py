@@ -5,7 +5,9 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 from scipy import stats  # type: ignore
 
+from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,7 @@ class CapabilityTrendingEvents(Base):
         event_uuid: str = "quality:capability_trend",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -97,6 +99,7 @@ class CapabilityTrendingEvents(Base):
 
         return float(usl), float(lsl)
 
+    @keyword_only(1)
     def capability_over_time(self, window: str = "8h") -> pd.DataFrame:
         """Compute Cp, Cpk, Pp, Ppk per time window.
 
@@ -104,12 +107,20 @@ class CapabilityTrendingEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: start, cp, cpk, pp, ppk,
-            mean, std, n_samples.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, cp, cpk, pp, ppk, mean, std, n_samples.
+            ``end`` is ``start`` plus one ``window``.
         """
         cols = ["start", "cp", "cpk", "pp", "ppk", "mean", "std", "n_samples"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -164,10 +175,16 @@ class CapabilityTrendingEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
+    @keyword_only(1)
     def detect_capability_drop(
         self,
         window: str = "8h",
@@ -182,12 +199,21 @@ class CapabilityTrendingEvents(Base):
             lookback: Number of previous windows for rolling average comparison.
 
         Returns:
-            DataFrame with columns: start, cpk, prev_avg_cpk, drop_pct, alert.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, cpk, prev_avg_cpk, drop_pct, alert.
+            ``end`` is ``start`` plus one ``window``.
         """
         cols = ["start", "cpk", "prev_avg_cpk", "drop_pct", "alert"]
-        cap = self.capability_over_time(window)
+        cap = self.capability_over_time(window=window)
         if cap.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "interval",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         cpk_vals = cap["cpk"].values
         events: list[dict[str, Any]] = []
@@ -222,10 +248,16 @@ class CapabilityTrendingEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "interval",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
+    @keyword_only(1)
     def capability_forecast(
         self,
         window: str = "8h",
@@ -240,8 +272,9 @@ class CapabilityTrendingEvents(Base):
             threshold: Cpk threshold to predict breach for.
 
         Returns:
-            DataFrame with columns: start, cpk, trend_slope,
-            forecast_cpk, windows_to_threshold.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, cpk, trend_slope, forecast_cpk,
+            windows_to_threshold. ``end`` is ``start`` plus one ``window``.
         """
         cols = [
             "start",
@@ -250,14 +283,28 @@ class CapabilityTrendingEvents(Base):
             "forecast_cpk",
             "windows_to_threshold",
         ]
-        cap = self.capability_over_time(window)
+        cap = self.capability_over_time(window=window)
         if cap.empty or len(cap) < 2:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         cpk_vals = cap["cpk"].values
         valid_mask = ~np.isnan(cpk_vals)
         if valid_mask.sum() < 2:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         x = np.arange(len(cpk_vals))[valid_mask].astype(float)
         y = cpk_vals[valid_mask]
@@ -273,8 +320,10 @@ class CapabilityTrendingEvents(Base):
 
             # Windows until threshold breach
             if slope < 0:
-                windows_to = (threshold - intercept - slope * i) / slope
-                windows_to = max(0, round(windows_to - i, 1))
+                # The fitted line crosses the threshold at window index
+                # (threshold - intercept) / slope; count windows from i.
+                breach_at = (threshold - intercept) / slope
+                windows_to = max(0, round(breach_at - i, 1))
             else:
                 windows_to = np.nan  # Not degrading
 
@@ -288,10 +337,16 @@ class CapabilityTrendingEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
+    @keyword_only(1)
     def yield_estimate(self, window: str = "8h") -> pd.DataFrame:
         """Estimate yield, DPMO, and sigma level per window.
 
@@ -301,12 +356,20 @@ class CapabilityTrendingEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: start, estimated_yield_pct,
-            dpmo, sigma_level.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, estimated_yield_pct, dpmo, sigma_level.
+            ``end`` is ``start`` plus one ``window``.
         """
         cols = ["start", "estimated_yield_pct", "dpmo", "sigma_level"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -345,6 +408,11 @@ class CapabilityTrendingEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )

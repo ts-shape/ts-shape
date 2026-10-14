@@ -19,14 +19,14 @@ Use as a building block for shift-level process monitoring. Answers "how is my p
 from ts_shape.events.engineering.process_window import ProcessWindowEvents
 
 analyzer = ProcessWindowEvents(
-    df=process_data,
-    uuid="mixer_torque_01"
+    dataframe=process_data,
+    signal_uuid="mixer_torque_01",
 )
 
 # Descriptive statistics per 1-hour window
 stats = analyzer.windowed_statistics(window="1h")
 
-# Detect windows where the mean has shifted
+# Detect windows where the mean has shifted vs. the previous window
 shifts = analyzer.detect_mean_shift(window="1h", sensitivity=2.0)
 
 # Detect windows where variance has changed
@@ -35,7 +35,7 @@ var_changes = analyzer.detect_variance_change(
     ratio_threshold=2.0
 )
 
-# Compare each window to the overall baseline
+# Compare each window mean to the overall baseline
 comparison = analyzer.window_comparison(window="1h")
 ```
 
@@ -45,10 +45,10 @@ comparison = analyzer.window_comparison(window="1h")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `windowed_statistics(window='1h')` | Per-window descriptive stats | DataFrame with mean, std, min, max |
-| `detect_mean_shift(window='1h', sensitivity=2.0)` | Mean shift detection | DataFrame of shift events |
-| `detect_variance_change(window='1h', ratio_threshold=2.0)` | Variance change detection | DataFrame of variance events |
-| `window_comparison(window='1h')` | Compare windows to baseline | DataFrame with comparison metrics |
+| `windowed_statistics(window='1h')` | Per-window descriptive stats | DataFrame: `start`, `count`, `mean`, `std`, `min`, `max`, `median`, `p25`, `p75`, `range` |
+| `detect_mean_shift(window='1h', sensitivity=2.0)` | Mean shift detection | DataFrame of shift events (`start`, `end`, `prev_mean`, `current_mean`, `shift_sigma`) |
+| `detect_variance_change(window='1h', ratio_threshold=2.0)` | Variance change detection | DataFrame of variance events (`start`, `end`, `prev_std`, `current_std`, `variance_ratio`) |
+| `window_comparison(window='1h')` | Compare windows to baseline | DataFrame: `start`, `mean`, `z_score_vs_global`, `is_anomalous` |
 
 ---
 

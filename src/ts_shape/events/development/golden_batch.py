@@ -8,7 +8,7 @@ chemicals.
 
 This detector supports three comparison modes:
 
-* ``pointwise`` -- resample both batches to a common normalised batch
+* ``pointwise`` -- resample both batches to a common normalized batch
   time and report the maximum signed residual.
 * ``area``      -- numerical integral of the absolute residual using the
   trapezoid rule. Captures cumulative deviation.
@@ -43,7 +43,7 @@ class GoldenBatchDeviationEvents(Base):
         time_column: str = "systime",
         n_resample: int = 256,
     ) -> None:
-        super().__init__(reference_df, column_name=time_column)
+        super().__init__(reference_df, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -68,6 +68,12 @@ class GoldenBatchDeviationEvents(Base):
         self._ref_resampled = self._resample_to_grid(
             ref[self.time_column], ref[self.value_column].to_numpy(dtype=float)
         )
+        # Raw golden trace on normalized batch time, for slicing by phase.
+        ref_t = pd.to_datetime(ref[self.time_column]).to_numpy()
+        ref_sec = (ref_t - ref_t[0]) / np.timedelta64(1, "s")
+        ref_total = float(ref_sec[-1]) if len(ref_sec) else 0.0
+        self._ref_norm_time = ref_sec / ref_total if ref_total > 0 else ref_sec * 0.0
+        self._ref_values = ref[self.value_column].to_numpy(dtype=float)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -76,7 +82,7 @@ class GoldenBatchDeviationEvents(Base):
     def _resample_to_grid(self, times: pd.Series, values: np.ndarray) -> np.ndarray:
         """Resample a batch trace to ``n_resample`` evenly-spaced batch-time points.
 
-        Batch time is normalised to [0, 1]; the trace is linearly
+        Batch time is normalized to [0, 1]; the trace is linearly
         interpolated onto an evenly spaced grid so two batches of
         different wall-clock durations are directly comparable.
         """
@@ -95,7 +101,7 @@ class GoldenBatchDeviationEvents(Base):
     def _dtw_distance(a: np.ndarray, b: np.ndarray, band: int) -> float:
         """Dynamic time warping distance with a Sakoe-Chiba band.
 
-        Pure-numpy O(n * band) implementation. Returns the *normalised*
+        Pure-numpy O(n * band) implementation. Returns the *normalized*
         DTW distance (total cost divided by warping-path length).
         """
         n, m = len(a), len(b)
@@ -176,7 +182,7 @@ class GoldenBatchDeviationEvents(Base):
         if mode == "pointwise":
             score = max_abs
         elif mode == "area":
-            # Trapezoid integral of |residual| on the normalised grid (0..1).
+            # Trapezoid integral of |residual| on the normalized grid (0..1).
             grid = np.linspace(0.0, 1.0, self.n_resample)
             score = float(np.trapezoid(np.abs(residual), grid))
         elif mode == "dtw":
@@ -211,9 +217,14 @@ class GoldenBatchDeviationEvents(Base):
         """Per-phase deviation of a batch against the golden reference.
 
         The reference batch is sliced into phases by the same boundaries
-        applied to the candidate batch -- this assumes the phase sequence
-        is consistent across runs, which is true for recipes that are
-        executed phase-by-phase under recipe control.
+        applied to the candidate batch, expressed in normalized batch time
+        (the same 0..1 axis `compare` uses): a phase spanning the fraction
+        ``[a, b]`` of the candidate batch (first to last candidate sample)
+        is compared against the fraction ``[a, b]`` of the golden batch.
+        Both slices are resampled to ``n_resample`` points. This assumes the
+        phase sequence and relative phase lengths are consistent across
+        runs, which is true for recipes that are executed phase-by-phase
+        under recipe control.
 
         Args:
             batch_df: Long-form signal DataFrame for the candidate batch.
@@ -275,6 +286,11 @@ class GoldenBatchDeviationEvents(Base):
             return pd.DataFrame(columns=cols)
         sel[self.time_column] = pd.to_datetime(sel[self.time_column])
 
+        c_start = sel[self.time_column].iloc[0]
+        c_total = (sel[self.time_column].iloc[-1] - c_start).total_seconds()
+        if c_total <= 0:
+            return pd.DataFrame(columns=cols)
+
         rows: list[dict[str, Any]] = []
         for _, ivl in intervals.iterrows():
             mask = (sel[self.time_column] >= ivl["start"]) & (
@@ -287,7 +303,15 @@ class GoldenBatchDeviationEvents(Base):
                 window[self.time_column],
                 window[self.value_column].to_numpy(dtype=float),
             )
-            residual = candidate - self._ref_resampled
+            # Golden slice over the same fraction of batch time.
+            a = (window[self.time_column].iloc[0] - c_start).total_seconds() / c_total
+            b = (window[self.time_column].iloc[-1] - c_start).total_seconds() / c_total
+            golden = np.interp(
+                np.linspace(a, b, self.n_resample),
+                self._ref_norm_time,
+                self._ref_values,
+            )
+            residual = candidate - golden
             grid = np.linspace(0.0, 1.0, self.n_resample)
             rows.append(
                 {

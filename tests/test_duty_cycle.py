@@ -41,13 +41,13 @@ def high_cycling_df():
 class TestDutyCyclePerWindow:
     def test_fifty_percent(self, fifty_pct_df):
         detector = DutyCycleEvents(fifty_pct_df, "motor_1")
-        result = detector.duty_cycle_per_window(window="1h")
+        result = detector.duty_cycle_by_window(window="1h")
         assert len(result) > 0
         assert abs(result.iloc[0]["duty_cycle_pct"] - 50.0) < 5
 
     def test_columns(self, fifty_pct_df):
         detector = DutyCycleEvents(fifty_pct_df, "motor_1")
-        result = detector.duty_cycle_per_window(window="1h")
+        result = detector.duty_cycle_by_window(window="1h")
         assert "on_time" in result.columns
         assert "off_time" in result.columns
         assert "duty_cycle_pct" in result.columns
@@ -104,5 +104,5 @@ class TestEmptyData:
         df = pd.DataFrame(columns=["systime", "uuid", "value_bool"])
         detector = DutyCycleEvents(df, "motor_1")
         assert len(detector.on_off_intervals()) == 0
-        assert len(detector.duty_cycle_per_window()) == 0
+        assert len(detector.duty_cycle_by_window()) == 0
         assert len(detector.cycle_count()) == 0

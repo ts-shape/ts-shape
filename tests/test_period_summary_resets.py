@@ -1,8 +1,8 @@
-"""Counter-reset handling for PeriodSummary roll-ups."""
+"""Counter-reset handling for PeriodSummaryEvents roll-ups."""
 
 import pandas as pd
 
-from ts_shape.events.production.period_summary import PeriodSummary
+from ts_shape.events.production.period_summary import PeriodSummaryEvents
 
 
 def _make_reset_period_df():
@@ -42,7 +42,7 @@ def _make_reset_period_df():
 
 
 def test_weekly_summary_under_reports_without_reset_handling():
-    summary = PeriodSummary(_make_reset_period_df())
+    summary = PeriodSummaryEvents(_make_reset_period_df())
     result = summary.weekly_summary(counter_uuid="prod_counter")
 
     assert "resets" not in result.columns
@@ -51,7 +51,7 @@ def test_weekly_summary_under_reports_without_reset_handling():
 
 
 def test_weekly_summary_handles_resets():
-    summary = PeriodSummary(_make_reset_period_df())
+    summary = PeriodSummaryEvents(_make_reset_period_df())
     result = summary.weekly_summary(counter_uuid="prod_counter", handle_resets=True)
 
     assert "resets" in result.columns
@@ -61,7 +61,7 @@ def test_weekly_summary_handles_resets():
 
 
 def test_monthly_summary_handles_resets():
-    summary = PeriodSummary(_make_reset_period_df())
+    summary = PeriodSummaryEvents(_make_reset_period_df())
     result = summary.monthly_summary(counter_uuid="prod_counter", handle_resets=True)
 
     assert "resets" in result.columns
@@ -74,7 +74,7 @@ def test_monthly_summary_handles_resets():
 
 
 def test_compare_periods_handles_resets():
-    summary = PeriodSummary(_make_reset_period_df())
+    summary = PeriodSummaryEvents(_make_reset_period_df())
 
     default = summary.compare_periods(
         counter_uuid="prod_counter",

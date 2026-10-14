@@ -4,7 +4,14 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_interval_df,
+    finalize_summary_df,
+)
+from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
@@ -52,7 +59,7 @@ class MaterialBalanceEvents(Base):
                 the window's totals NaN and marks it not balanced, so a sensor
                 outage is not read as a real imbalance.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_weighted = time_weighted
         self.missing_as_zero = missing_as_zero
         self.input_uuids = input_uuids
@@ -87,6 +94,7 @@ class MaterialBalanceEvents(Base):
         combined = pd.concat(frames, axis=1)
         return combined.fillna(0.0) if self.missing_as_zero else combined
 
+    @keyword_only(1)
     def balance_check(
         self,
         window: str = "1h",
@@ -99,8 +107,9 @@ class MaterialBalanceEvents(Base):
             tolerance_pct: Maximum acceptable imbalance percentage.
 
         Returns:
-            DataFrame with columns: start, total_input,
-            total_output, imbalance, imbalance_pct, balanced.
+            DataFrame with columns: start, end, duration_seconds,
+            total_input, total_output, imbalance, imbalance_pct, balanced.
+            ``end`` is ``start`` + ``window``.
         """
         cols = [
             "start",
@@ -114,7 +123,7 @@ class MaterialBalanceEvents(Base):
         outputs = self._resample_signals(self.output_uuids, window)
 
         if inputs.empty and outputs.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", cols[1:])
 
         # Align indices
         all_idx = (
@@ -160,26 +169,36 @@ class MaterialBalanceEvents(Base):
             }
         )
 
-        return result[cols].reset_index(drop=True)
+        return finalize_summary_df(
+            add_window_bounds(result[cols].reset_index(drop=True), window)
+        )
 
+    @keyword_only(1)
     def imbalance_trend(self, window: str = "1h") -> pd.DataFrame:
         """Track whether imbalance is growing, shrinking, or stable.
 
+        Args:
+            window: Resample window passed to :meth:`balance_check`. The rolling
+                average spans the last three windows.
+
         Returns:
-            DataFrame with columns: start, imbalance_pct,
-            rolling_avg_imbalance, trend_direction.
+            DataFrame with columns: start, end, duration_seconds,
+            imbalance_pct, rolling_avg_imbalance, trend_direction. ``end`` is
+            ``start`` + ``window``.
         """
         cols = [
             "start",
+            "end",
+            "duration_seconds",
             "imbalance_pct",
             "rolling_avg_imbalance",
             "trend_direction",
         ]
-        bc = self.balance_check(window)
+        bc = self.balance_check(window=window)
         if bc.empty or len(bc) < 2:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", cols)
 
-        result = bc[["start", "imbalance_pct"]].copy()
+        result = bc[["start", "end", "duration_seconds", "imbalance_pct"]].copy()
         result["rolling_avg_imbalance"] = (
             result["imbalance_pct"].rolling(3, min_periods=1).mean()
         )
@@ -191,6 +210,7 @@ class MaterialBalanceEvents(Base):
 
         return result[cols].reset_index(drop=True)
 
+    @keyword_only(1)
     def detect_balance_exceedance(
         self,
         window: str = "1h",
@@ -199,10 +219,16 @@ class MaterialBalanceEvents(Base):
     ) -> pd.DataFrame:
         """Detect sustained imbalance events.
 
+        Args:
+            window: Resample window passed to :meth:`balance_check`.
+            tolerance_pct: Maximum acceptable imbalance percentage per window.
+            min_duration: Minimum length of a run of consecutive unbalanced
+                windows to report it as an event (pandas offset string).
+
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
-            avg_imbalance_pct, max_imbalance_pct, duration_seconds,
-            likely_cause.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid (input and output uuids, comma-joined), is_delta,
+            avg_imbalance_pct, max_imbalance_pct, likely_cause.
         """
         cols = [
             "start",
@@ -214,13 +240,13 @@ class MaterialBalanceEvents(Base):
             "duration_seconds",
             "likely_cause",
         ]
-        bc = self.balance_check(window, tolerance_pct)
+        bc = self.balance_check(window=window, tolerance_pct=tolerance_pct)
         if bc.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         unbalanced = ~bc["balanced"]
         if not unbalanced.any():
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         window_td = pd.Timedelta(window)
         min_td = pd.Timedelta(min_duration)
@@ -263,21 +289,33 @@ class MaterialBalanceEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=",".join([*self.input_uuids, *self.output_uuids]),
+        )
 
+    @keyword_only(1)
     def contribution_breakdown(self, window: str = "1h") -> pd.DataFrame:
         """Each signal's contribution to total input/output per window.
 
+        Args:
+            window: Resample window (pandas offset string).
+
         Returns:
-            DataFrame with columns: start, uuid, role, value,
-            pct_of_total.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, role, value, pct_of_total. ``uuid`` and
+            ``source_uuid`` both hold the contributing signal's uuid; ``end``
+            is ``start`` + ``window``.
         """
         cols = ["start", "uuid", "role", "value", "pct_of_total"]
         inputs = self._resample_signals(self.input_uuids, window)
         outputs = self._resample_signals(self.output_uuids, window)
 
         if inputs.empty and outputs.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", ["uuid", "source_uuid", *cols[2:]])
 
         events: list[dict[str, Any]] = []
 
@@ -311,4 +349,8 @@ class MaterialBalanceEvents(Base):
                         }
                     )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("summary", ["uuid", "source_uuid", *cols[2:]])
+        result = pd.DataFrame(events, columns=cols)
+        result["source_uuid"] = result["uuid"]
+        return finalize_summary_df(add_window_bounds(result, window))

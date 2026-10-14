@@ -25,6 +25,7 @@ This module correlates both signals to reconstruct the full routing path.
 """
 
 import logging
+import warnings
 from typing import Any
 
 import pandas as pd  # type: ignore
@@ -100,17 +101,27 @@ class RoutingTraceabilityEvents(Base):
                        Values can be int, float, or str keys.
                        If not provided, raw signal values are used as labels.
             station_map: Deprecated alias for state_map (for backwards
-                         compatibility). Use state_map instead.
+                         compatibility). Use state_map instead. When both
+                         are passed, state_map wins and a UserWarning is
+                         emitted.
             event_uuid: UUID to tag derived events with.
             id_value_column: Column holding the item ID string.
             routing_value_column: Column holding the state/routing value.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.id_uuid = id_uuid
         self.routing_uuid = routing_uuid
         # state_map takes priority; fall back to station_map for backwards compat
-        self.state_map: dict[int | float | str, str] = state_map or station_map or {}
+        if state_map is not None and station_map is not None:
+            warnings.warn(
+                "Both state_map and station_map were passed; station_map is "
+                "ignored and state_map is used.",
+                UserWarning,
+                stacklevel=2,
+            )
+        chosen = state_map if state_map is not None else station_map
+        self.state_map: dict[int | float | str, str] = chosen or {}
         self.event_uuid = event_uuid
         self.id_value_column = id_value_column
         self.routing_value_column = routing_value_column
@@ -166,6 +177,10 @@ class RoutingTraceabilityEvents(Base):
     # build_routing_timeline
     # ------------------------------------------------------------------
 
+    @property
+    def _source_uuid(self) -> str:
+        return f"{self.id_uuid},{self.routing_uuid}"
+
     def build_routing_timeline(
         self, *, infer_dwell_from_next: bool = False
     ) -> pd.DataFrame:
@@ -196,6 +211,8 @@ class RoutingTraceabilityEvents(Base):
             - sample_count: Number of routing samples in interval.
             - station_sequence: Visit order per item (1-based).
             - uuid: Event UUID.
+            - source_uuid: ``"<id_uuid>,<routing_uuid>"`` (the two
+                correlated input signals).
         """
         if self.routing_data.empty or self.id_data.empty:
             return pd.DataFrame(
@@ -209,6 +226,7 @@ class RoutingTraceabilityEvents(Base):
                     "sample_count",
                     "station_sequence",
                     "uuid",
+                    "source_uuid",
                 ]
             )
 
@@ -246,6 +264,7 @@ class RoutingTraceabilityEvents(Base):
                     "sample_count",
                     "station_sequence",
                     "uuid",
+                    "source_uuid",
                 ]
             )
 
@@ -275,6 +294,7 @@ class RoutingTraceabilityEvents(Base):
         timeline = timeline.sort_values(["item_id", "start"]).reset_index(drop=True)
         timeline["station_sequence"] = timeline.groupby("item_id").cumcount() + 1
         timeline["uuid"] = self.event_uuid
+        timeline["source_uuid"] = self._source_uuid
 
         if infer_dwell_from_next:
             next_start = timeline.groupby("item_id")["start"].shift(-1)
@@ -303,6 +323,10 @@ class RoutingTraceabilityEvents(Base):
             - stations_visited: Number of distinct stations/steps.
             - routing_path: Ordered station names joined by " -> ".
             - uuid: Event UUID.
+            - start: Same as first_seen.
+            - end: Same as last_seen.
+            - duration_seconds: Same as lead_time_seconds (float seconds).
+            - source_uuid: ``"<id_uuid>,<routing_uuid>"``.
         """
         timeline = self.build_routing_timeline()
 
@@ -318,6 +342,10 @@ class RoutingTraceabilityEvents(Base):
                     "stations_visited",
                     "routing_path",
                     "uuid",
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "source_uuid",
                 ]
             )
 
@@ -338,6 +366,10 @@ class RoutingTraceabilityEvents(Base):
                     "stations_visited": grp["station_name"].nunique(),
                     "routing_path": routing_path,
                     "uuid": self.event_uuid,
+                    "start": first_seen,
+                    "end": last_seen,
+                    "duration_seconds": float((last_seen - first_seen).total_seconds()),
+                    "source_uuid": self._source_uuid,
                 }
             )
 

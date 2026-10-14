@@ -129,7 +129,18 @@ class CycleExtractor(Base):
         return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
 
     def process_step_sequence(self, start_step: int, end_step: int) -> pd.DataFrame:
-        """Processes cycles based on a step sequence, where specific integer values denote cycle start and end."""
+        """Processes cycles based on a step sequence, where specific integer values denote cycle start and end.
+
+        Args:
+            start_step: ``value_integer`` step that opens a cycle when the signal enters
+                it.
+            end_step: ``value_integer`` step that closes the open cycle when the signal
+                enters it.
+
+        Returns:
+            DataFrame with columns ``cycle_start``, ``cycle_end``, ``cycle_uuid`` and
+                ``is_complete``; ``cycle_end`` is NaT for a cycle that never closes.
+        """
         # A step held over several samples is entered once: only the first
         # sample of each run opens (or closes) a cycle.
         frame = self._signal_frame()
@@ -155,34 +166,26 @@ class CycleExtractor(Base):
 
         Uses the value_change_threshold to determine if a numeric change is significant.
         """
-        # Assuming dataframe is pre-filtered
+        # Assuming dataframe is pre-filtered. Work on a copy so the NaN
+        # defaults filled in below never leak into the stored frame.
+        df = self.df.copy()
 
         # Fill NaN or None values with appropriate defaults for diff() to work
-        self.df["value_double"] = self.df["value_double"].fillna(
-            0
-        )  # Assuming numeric column
-        self.df["value_bool"] = self.df["value_bool"].fillna(
-            False
-        )  # Assuming boolean column
-        self.df["value_string"] = self.df["value_string"].fillna(
-            ""
-        )  # Assuming string column
-        self.df["value_integer"] = self.df["value_integer"].fillna(
-            0
-        )  # Assuming integer column
+        df["value_double"] = df["value_double"].fillna(0)
+        df["value_bool"] = df["value_bool"].fillna(False)
+        df["value_string"] = df["value_string"].fillna("")
+        df["value_integer"] = df["value_integer"].fillna(0)
 
         # Detect changes across the relevant columns using diff() with threshold
-        self.df["value_change"] = (
-            (self.df["value_double"].diff().abs() > self.value_change_threshold)
-            | (self.df["value_bool"].diff().ne(0))
-            | (self.df["value_string"].shift().ne(self.df["value_string"]))
-            | (self.df["value_integer"].diff().abs() > self.value_change_threshold)
+        value_change = (
+            (df["value_double"].diff().abs() > self.value_change_threshold)
+            | (df["value_bool"].diff().ne(0))
+            | (df["value_string"].shift().ne(df["value_string"]))
+            | (df["value_integer"].diff().abs() > self.value_change_threshold)
         )
 
         # Define cycle starts and ends based on changes
-        cycle_starts = self.df[
-            self.df["value_change"] == True  # noqa: E712 pandas-series-bool-comparison
-        ]  # noqa: E712 pandas-series-bool-comparison
+        cycle_starts = df[value_change]
 
         # Each change closes at the next change (strictly later), never at itself.
         return self._generate_cycle_dataframe(

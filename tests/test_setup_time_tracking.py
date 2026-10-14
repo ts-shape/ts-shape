@@ -1,8 +1,8 @@
-"""Tests for SetupTimeTracking module."""
+"""Tests for SetupTimeEvents module."""
 
 import pandas as pd
 
-from ts_shape.events.production.setup_time_tracking import SetupTimeTracking
+from ts_shape.events.production.setup_time_tracking import SetupTimeEvents
 
 
 def _make_setup_df():
@@ -32,7 +32,7 @@ class TestSetupTimeTracking:
 
     def test_setup_durations(self):
         df = _make_setup_df()
-        tracker = SetupTimeTracking(df)
+        tracker = SetupTimeEvents(df)
         result = tracker.setup_durations(state_uuid="machine_state")
         assert not result.empty
         assert "duration_minutes" in result.columns
@@ -42,7 +42,7 @@ class TestSetupTimeTracking:
 
     def test_setup_by_product(self):
         df = _make_setup_df()
-        tracker = SetupTimeTracking(df)
+        tracker = SetupTimeEvents(df)
         result = tracker.setup_by_product(
             state_uuid="machine_state",
             part_id_uuid="part_number",
@@ -55,7 +55,7 @@ class TestSetupTimeTracking:
 
     def test_setup_statistics(self):
         df = _make_setup_df()
-        tracker = SetupTimeTracking(df)
+        tracker = SetupTimeEvents(df)
         result = tracker.setup_statistics(state_uuid="machine_state")
         assert not result.empty
         assert len(result) == 1
@@ -66,7 +66,7 @@ class TestSetupTimeTracking:
 
     def test_setup_trend(self):
         df = _make_setup_df()
-        tracker = SetupTimeTracking(df)
+        tracker = SetupTimeEvents(df)
         result = tracker.setup_trend(state_uuid="machine_state", window="1D")
         assert not result.empty
         assert "period" in result.columns
@@ -75,7 +75,7 @@ class TestSetupTimeTracking:
 
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_string"])
-        tracker = SetupTimeTracking(df)
+        tracker = SetupTimeEvents(df)
         assert tracker.setup_durations(state_uuid="x").empty
         assert tracker.setup_by_product(state_uuid="x", part_id_uuid="y").empty
         assert tracker.setup_statistics(state_uuid="x").empty
@@ -88,5 +88,5 @@ class TestSetupTimeTracking:
             {"systime": t, "uuid": "state", "value_string": "Running"} for t in times
         ]
         df = pd.DataFrame(rows)
-        tracker = SetupTimeTracking(df)
+        tracker = SetupTimeEvents(df)
         assert tracker.setup_durations(state_uuid="state").empty

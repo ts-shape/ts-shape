@@ -10,14 +10,20 @@ import logging
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import (
+    add_period_window,
+    add_shift_window,
+    data_tz,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class ScrapTracking(Base):
+class ScrapEvents(Base):
     """Track material scrap and waste.
 
     Each UUID represents one signal:
@@ -30,15 +36,15 @@ class ScrapTracking(Base):
 
     Pipeline example::
 
-        scrap = ScrapTracking(df)
+        scrap = ScrapEvents(df)
         shift_scrap = scrap.scrap_by_shift('scrap_weight')
-        # → merge with ShiftReporting.shift_production() on [date, shift]
-        # → merge with QualityTracking.nok_by_shift() on [date, shift]
+        # → merge with ShiftReportEvents.shift_production() on [date, shift]
+        # → merge with QualityEvents.nok_by_shift() on [date, shift]
         cost = scrap.scrap_cost('scrap_weight', 'part_id', {'A': 12.5})
-        # → merge with QualityTracking.quality_by_part() on [part_number]
+        # → merge with QualityEvents.quality_by_part() on [part_number]
 
     Example usage:
-        tracker = ScrapTracking(df)
+        tracker = ScrapEvents(df)
 
         # Scrap per shift
         shift_scrap = tracker.scrap_by_shift(scrap_uuid='scrap_weight')
@@ -64,7 +70,7 @@ class ScrapTracking(Base):
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.shift_definitions = shift_definitions or {
             "shift_1": ("06:00", "14:00"),
@@ -109,7 +115,7 @@ class ScrapTracking(Base):
         *,
         value_column: str = "value_double",
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Scrap quantity per shift.
 
@@ -124,11 +130,16 @@ class ScrapTracking(Base):
                 containing a reset reports too little (often 0).
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night
-                shift is one contiguous ``(date, shift)`` group. Default False
-                (raw calendar date). Only affects overnight schedules.
+                shift is one contiguous ``(date, shift)`` group. Default True;
+                False groups by raw calendar date, which splits a night shift
+                across two rows. Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
+            - start, end, duration_seconds: the shift window from
+                ``shift_definitions`` (``date`` at the shift start time,
+                tz-aware in the data's tz; an overnight shift ends on the
+                next day)
             - date, shift, scrap_quantity
             - resets: Number of counter resets in the shift (only when
                 ``handle_resets=True``)
@@ -143,7 +154,9 @@ class ScrapTracking(Base):
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=columns)
+            return add_shift_window(
+                pd.DataFrame(columns=columns), self.shift_definitions, None
+            )
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
@@ -168,7 +181,11 @@ class ScrapTracking(Base):
                 row["resets"] = count_resets(grp[value_column])
             results.append(row)
 
-        return pd.DataFrame(results, columns=columns)
+        return add_shift_window(
+            pd.DataFrame(results, columns=columns),
+            self.shift_definitions,
+            data_tz(data[self.time_column]),
+        )
 
     def scrap_by_reason(
         self,
@@ -381,6 +398,7 @@ class ScrapTracking(Base):
 
         Returns:
             DataFrame with columns:
+            - start, end (start + window), duration_seconds
             - period, scrap_quantity
             - resets: Number of counter resets in the period (only when
                 ``handle_resets=True``)
@@ -395,7 +413,7 @@ class ScrapTracking(Base):
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=columns)
+            return add_period_window(pd.DataFrame(columns=columns), window)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data = data.set_index(self.time_column)
@@ -416,4 +434,8 @@ class ScrapTracking(Base):
                 row["resets"] = count_resets(grp[value_column])
             results.append(row)
 
-        return pd.DataFrame(results, columns=columns)
+        return add_period_window(pd.DataFrame(results, columns=columns), window)
+
+
+#: Deprecated name, removed in 1.0.
+ScrapTracking = deprecated_class(ScrapEvents, "ScrapTracking")

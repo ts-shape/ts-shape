@@ -1,4 +1,4 @@
-"""Reset-aware behaviour tests for ScrapTracking.
+"""Reset-aware behaviour tests for ScrapEvents.
 
 A scrap counter can reset back to a lower value at a shift change or a
 controller restart. Without ``handle_resets`` a window containing a reset
@@ -8,7 +8,7 @@ column is added.
 
 import pandas as pd
 
-from ts_shape.events.production.scrap_tracking import ScrapTracking
+from ts_shape.events.production.scrap_tracking import ScrapEvents
 
 
 def _make_reset_scrap_df():
@@ -35,18 +35,25 @@ def _make_reset_scrap_df():
 
 def test_scrap_by_shift_default_underreports():
     df = _make_reset_scrap_df()
-    tracker = ScrapTracking(df)
+    tracker = ScrapEvents(df)
     result = tracker.scrap_by_shift(scrap_uuid="scrap_weight")
 
     # Default clamps to last - first = 30, losing the pre-reset production.
-    assert list(result.columns) == ["date", "shift", "scrap_quantity"]
+    assert list(result.columns) == [
+        "start",
+        "end",
+        "duration_seconds",
+        "date",
+        "shift",
+        "scrap_quantity",
+    ]
     assert "resets" not in result.columns
     assert result["scrap_quantity"].sum() == 30.0
 
 
 def test_scrap_by_shift_handles_resets():
     df = _make_reset_scrap_df()
-    tracker = ScrapTracking(df)
+    tracker = ScrapEvents(df)
     result = tracker.scrap_by_shift(scrap_uuid="scrap_weight", handle_resets=True)
 
     assert "resets" in result.columns
@@ -56,7 +63,7 @@ def test_scrap_by_shift_handles_resets():
 
 def test_scrap_by_reason_handles_resets():
     df = _make_reset_scrap_df()
-    tracker = ScrapTracking(df)
+    tracker = ScrapEvents(df)
 
     default = tracker.scrap_by_reason(
         scrap_uuid="scrap_weight", reason_uuid="scrap_reason"
@@ -74,7 +81,7 @@ def test_scrap_by_reason_handles_resets():
 
 def test_scrap_cost_handles_resets():
     df = _make_reset_scrap_df()
-    tracker = ScrapTracking(df)
+    tracker = ScrapEvents(df)
 
     default = tracker.scrap_cost(
         scrap_uuid="scrap_weight",
@@ -99,7 +106,7 @@ def test_scrap_cost_handles_resets():
 
 def test_scrap_trend_handles_resets():
     df = _make_reset_scrap_df()
-    tracker = ScrapTracking(df)
+    tracker = ScrapEvents(df)
 
     default = tracker.scrap_trend(scrap_uuid="scrap_weight", window="1D")
     assert "resets" not in default.columns

@@ -1,10 +1,11 @@
-"""Tests for ShiftHandoverReport module."""
+"""Tests for ShiftHandoverEvents module."""
 
 from datetime import date
 
 import pandas as pd
+import pytest
 
-from ts_shape.events.production.shift_handover import ShiftHandoverReport
+from ts_shape.events.production.shift_handover import ShiftHandoverEvents
 
 
 def _make_handover_df():
@@ -44,7 +45,7 @@ class TestShiftHandoverReport:
 
     def test_generate_report(self):
         df = _make_handover_df()
-        report = ShiftHandoverReport(df)
+        report = ShiftHandoverEvents(df)
         result = report.generate_report(
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
@@ -59,7 +60,7 @@ class TestShiftHandoverReport:
 
     def test_generate_report_specific_date(self):
         df = _make_handover_df()
-        report = ShiftHandoverReport(df)
+        report = ShiftHandoverEvents(df)
         result = report.generate_report(
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
@@ -71,7 +72,7 @@ class TestShiftHandoverReport:
 
     def test_highlight_issues(self):
         df = _make_handover_df()
-        report = ShiftHandoverReport(df)
+        report = ShiftHandoverEvents(df)
         issues = report.highlight_issues(
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
@@ -93,7 +94,7 @@ class TestShiftHandoverReport:
     def test_highlight_issues_from_report_df(self):
         """Test highlight_issues with a pre-built report DataFrame."""
         df = _make_handover_df()
-        report = ShiftHandoverReport(df)
+        report = ShiftHandoverEvents(df)
         report_df = report.generate_report(
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
@@ -151,7 +152,7 @@ class TestShiftHandoverReport:
             ]
         )
 
-        result = ShiftHandoverReport.from_shift_data(
+        result = ShiftHandoverEvents.from_shift_data(
             production_df=production_df,
             quality_df=quality_df,
             downtime_df=downtime_df,
@@ -160,7 +161,7 @@ class TestShiftHandoverReport:
 
         assert not result.empty
         assert len(result) == 2
-        assert list(result.columns) == ShiftHandoverReport.OUTPUT_COLUMNS
+        assert list(result.columns) == ShiftHandoverEvents.OUTPUT_COLUMNS
         assert result["production"].tolist() == [400, 380]
         assert result["quality_pct"].tolist() == [97.5, 96.1]
         assert result["availability_pct"].tolist() == [92.0, 85.0]
@@ -173,7 +174,7 @@ class TestShiftHandoverReport:
                 {"date": date(2024, 1, 1), "shift": "shift_1", "quantity": 400},
             ]
         )
-        result = ShiftHandoverReport.from_shift_data(production_df=production_df)
+        result = ShiftHandoverEvents.from_shift_data(production_df=production_df)
         assert not result.empty
         assert result["production"].iloc[0] == 400
         assert result["quality_pct"].iloc[0] == 0.0
@@ -181,14 +182,14 @@ class TestShiftHandoverReport:
 
     def test_from_shift_data_empty(self):
         """Test from_shift_data with empty data."""
-        result = ShiftHandoverReport.from_shift_data(
+        result = ShiftHandoverEvents.from_shift_data(
             production_df=pd.DataFrame(columns=["date", "shift", "quantity"])
         )
         assert result.empty
 
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer", "value_string"])
-        report = ShiftHandoverReport(df)
+        report = ShiftHandoverEvents(df)
         result = report.generate_report(
             counter_uuid="x",
             ok_counter_uuid="y",
@@ -199,7 +200,7 @@ class TestShiftHandoverReport:
 
     def test_highlight_issues_empty(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer", "value_string"])
-        report = ShiftHandoverReport(df)
+        report = ShiftHandoverEvents(df)
         issues = report.highlight_issues(
             counter_uuid="x",
             ok_counter_uuid="y",
@@ -207,3 +208,17 @@ class TestShiftHandoverReport:
             state_uuid="w",
         )
         assert issues == []
+
+
+def test_highlight_issues_without_report_or_uuids_raises():
+    df = pd.DataFrame(columns=["systime", "uuid", "value_integer", "value_string"])
+    report = ShiftHandoverEvents(df)
+    with pytest.raises(ValueError, match="state_uuid"):
+        report.highlight_issues(
+            counter_uuid="x",
+            ok_counter_uuid="y",
+            nok_counter_uuid="z",
+            thresholds={"quality_pct": 99.0},
+        )
+    with pytest.raises(ValueError, match="report_df"):
+        report.highlight_issues(thresholds={"quality_pct": 99.0})

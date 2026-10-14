@@ -17,7 +17,7 @@ flowchart TB
         L2[Transforms · Features · Statistics]
     end
     subgraph DETECT["Detection Layer"]
-        D1["Built-in detectors<br/>(290+ methods, 70+ classes)"]
+        D1["Built-in detectors<br/>(80+ detector classes, 300+ methods)"]
         D2["Lambda rules<br/>(YAML / DSL)"]
         D3["Gen-AI authoring<br/><i>roadmap</i>"]
     end
@@ -84,7 +84,7 @@ full-screen graph of every package, class, and detector method see
 
 ## Detector & module reference
 
-The full, always-current catalogue of loaders, transforms, features, and
+The full, always-current catalog of loaders, transforms, features, and
 every detector class lives in the dedicated reference docs rather than
 being duplicated here:
 
@@ -94,7 +94,7 @@ being duplicated here:
 - **[Architecture Map](guides/architecture-map.md)** — interactive graph of every class and method.
 
 From a REPL, `ts_shape.list_detectors("events.quality")` lists the same
-catalogue programmatically.
+catalog programmatically.
 
 ## Pipeline Pattern
 

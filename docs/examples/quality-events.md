@@ -4,7 +4,7 @@ Demonstrates outlier detection, SPC rules, and tolerance deviation analysis for 
 
 **Run it:** `python examples/quality_events_demo.py`
 
-**Modules demonstrated:** `OutlierDetectionEvents`, `StatisticalProcessControlRuleBased`, `ToleranceDeviationEvents`
+**Modules demonstrated:** `OutlierDetectionEvents`, `StatisticalProcessControlEvents`, `ToleranceDeviationEvents`
 
 **Related guides:** [Quality Control & SPC](../guides/quality.md)
 

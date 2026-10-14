@@ -66,7 +66,7 @@ def test_time_in_range():
     df = _make_df("sensor", t, vals)
 
     det = OperatingRangeEvents(df, "sensor")
-    result = det.time_in_range(lower=40.0, upper=60.0, window="10min")
+    result = det.time_in_range(lower_limit=40.0, upper_limit=60.0, window="10min")
     assert not result.empty
     assert all(abs(r - 100.0) < 0.01 for r in result["time_in_range_pct"])
 
@@ -78,7 +78,7 @@ def test_time_in_range_partial():
     df = _make_df("sensor", t, vals)
 
     det = OperatingRangeEvents(df, "sensor")
-    result = det.time_in_range(lower=40.0, upper=60.0, window="20min")
+    result = det.time_in_range(lower_limit=40.0, upper_limit=60.0, window="20min")
     assert not result.empty
     # At least one window should have < 100% in range
     assert any(r < 100.0 for r in result["time_in_range_pct"])
@@ -104,3 +104,25 @@ def test_empty_dataframe():
     assert det.detect_regime_change().empty
     assert det.time_in_range(0, 100).empty
     assert det.value_distribution().empty
+
+
+def test_time_in_range_time_weighted():
+    # In range for 50 min, then one sample out of range held for 10 min,
+    # then a final in-range sample. Samples: 2 in, 1 out (+1 in at the end).
+    t = pd.to_datetime(
+        ["2024-01-01 00:00", "2024-01-01 00:49", "2024-01-01 00:50", "2024-01-01 01:00"]
+    )
+    df = _make_df("sensor", t, [5.0, 5.0, 20.0, 5.0])
+    det = OperatingRangeEvents(df, "sensor")
+
+    by_sample = det.time_in_range(lower_limit=0.0, upper_limit=10.0, window="1h")
+    assert abs(by_sample["time_in_range_pct"].iloc[0] - 200 / 3) < 1e-9
+
+    by_time = det.time_in_range(
+        lower_limit=0.0, upper_limit=10.0, window="1h", time_weighted=True
+    )
+    row = by_time.iloc[0]
+    assert abs(row["time_in_range_pct"] - 50 / 60 * 100) < 1e-9
+    assert abs(row["time_above_pct"] - 10 / 60 * 100) < 1e-9
+    assert row["time_below_pct"] == 0.0
+    assert list(by_time.columns) == list(by_sample.columns)

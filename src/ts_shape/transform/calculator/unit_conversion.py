@@ -35,7 +35,7 @@ _INSTALL_HINT = (
     "Install it with: pip install ts-shape[units]"
 )
 
-# Input-shorthand normalisation ONLY -- this is not conversion data. pint reads
+# Input-shorthand normalization ONLY -- this is not conversion data. pint reads
 # "C" as coulomb and "F" as farad, so the everyday temperature shorthands are
 # mapped to pint's unambiguous names. Every actual conversion stays pint's job.
 _ALIASES = {

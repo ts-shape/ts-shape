@@ -3,7 +3,7 @@
 import pandas as pd  # type: ignore
 
 from ts_shape.events.production.line_throughput import LineThroughputEvents
-from ts_shape.events.production.oee_calculator import OEECalculator
+from ts_shape.events.production.oee_calculator import OEEEvents
 from ts_shape.events.production.runtime_accounting import RuntimeAccountingEvents
 
 
@@ -20,11 +20,9 @@ def _oee_frame(counter_values):
 def test_calculate_oee_threads_handle_resets():
     # Counter resets mid-day: 0,100,200,0,100 -> true output 300, naive 100.
     df = _oee_frame([0, 100, 200, 0, 100])
-    oee = OEECalculator(df)
-    naive = oee.calculate_oee("state", "counter", ideal_cycle_time=30.0)
-    fixed = oee.calculate_oee(
-        "state", "counter", ideal_cycle_time=30.0, handle_resets=True
-    )
+    oee = OEEEvents(df)
+    naive = oee.oee("state", "counter", ideal_cycle_time=30.0)
+    fixed = oee.oee("state", "counter", ideal_cycle_time=30.0, handle_resets=True)
     # Reset handling recovers the lost production -> higher performance -> higher OEE.
     assert fixed["performance_pct"].iloc[0] > naive["performance_pct"].iloc[0]
     assert fixed["oee_pct"].iloc[0] > naive["oee_pct"].iloc[0]
@@ -41,9 +39,9 @@ def test_calculate_availability_max_gap_excludes_outage():
     df = pd.DataFrame(
         {"uuid": "state", "systime": times, "value_bool": [True, True, True, True]}
     )
-    oee = OEECalculator(df)
-    naive = oee.calculate_availability("state")
-    capped = oee.calculate_availability("state", max_gap="15min")
+    oee = OEEEvents(df)
+    naive = oee.availability("state")
+    capped = oee.availability("state", max_gap="15min")
     # The 6h gap is booked as run time by default; max_gap excludes it.
     assert naive["run_seconds"].iloc[0] > capped["run_seconds"].iloc[0]
     assert capped["run_seconds"].iloc[0] < 15 * 60
@@ -74,7 +72,7 @@ def test_runtime_summary_max_gap():
     df = pd.DataFrame(
         {"uuid": "run", "systime": times, "value_bool": [True, True, True, True]}
     )
-    rt = RuntimeAccountingEvents(df, run_uuid="run")
+    rt = RuntimeAccountingEvents(df, run_state_uuid="run")
     naive = rt.runtime_summary()
     capped = rt.runtime_summary(max_gap="15min")
     assert naive["run_seconds"].iloc[0] > capped["run_seconds"].iloc[0]

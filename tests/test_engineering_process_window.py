@@ -104,3 +104,25 @@ def test_empty_dataframe():
     assert pw.detect_mean_shift().empty
     assert pw.detect_variance_change().empty
     assert pw.window_comparison().empty
+
+
+def test_mean_shift_and_variance_change_thresholds_are_strict():
+    """Documented as '>': a value exactly at the threshold is not flagged."""
+    t = _times("2024-01-01", 4, "30min")
+    df = _make_df("sensor", t, [1.0, 3.0, 5.0, 9.0])
+    pw = ProcessWindowEvents(df, "sensor")
+    stats = pw.windowed_statistics(window="1h")
+    prev, curr = stats.iloc[0], stats.iloc[1]
+    shift = abs(curr["mean"] - prev["mean"]) / prev["std"]
+    ratio = curr["std"] / prev["std"]
+
+    assert pw.detect_mean_shift(window="1h", sensitivity=shift).empty
+    assert len(pw.detect_mean_shift(window="1h", sensitivity=shift * 0.999)) == 1
+    assert pw.detect_variance_change(window="1h", ratio_threshold=ratio).empty
+    assert (
+        len(pw.detect_variance_change(window="1h", ratio_threshold=ratio * 0.999)) == 1
+    )
+    # Shrinking variance: exactly 1/ratio_threshold is not flagged either.
+    df2 = _make_df("sensor", t, [5.0, 9.0, 1.0, 3.0])
+    pw2 = ProcessWindowEvents(df2, "sensor")
+    assert pw2.detect_variance_change(window="1h", ratio_threshold=ratio).empty

@@ -13,7 +13,9 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 from scipy import stats as sp_stats  # type: ignore
 
+from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,7 @@ class ValueDistributionEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -57,6 +59,7 @@ class ValueDistributionEvents(Base):
     # Public methods
     # ------------------------------------------------------------------
 
+    @keyword_only(1)
     def detect_mode_changes(
         self,
         window: str = "1h",
@@ -75,8 +78,9 @@ class ValueDistributionEvents(Base):
                 the signal's standard deviation to count as distinct.
 
         Returns:
-            DataFrame with columns: start, dominant_mode,
-            n_modes_detected, mode_values, mode_changed.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, dominant_mode, n_modes_detected, mode_values,
+            mode_changed. ``end`` is ``start`` plus one ``window``.
         """
         cols = [
             "start",
@@ -86,7 +90,14 @@ class ValueDistributionEvents(Base):
             "mode_changed",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "interval",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -123,10 +134,16 @@ class ValueDistributionEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "interval",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
+    @keyword_only(1)
     def detect_bimodal(self, min_samples: int = 30) -> pd.DataFrame:
         """Test whether the overall signal distribution is bimodal.
 
@@ -208,9 +225,11 @@ class ValueDistributionEvents(Base):
             columns=cols,
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(freq="window")
     def normality_windows(
         self,
-        freq: str = "1h",
+        window: str = "1h",
         alpha: float = 0.05,
         min_samples: int = 20,
     ) -> pd.DataFrame:
@@ -219,13 +238,14 @@ class ValueDistributionEvents(Base):
         Uses the Shapiro-Wilk test per window.
 
         Args:
-            freq: Resample frequency.
+            window: Resample window.
             alpha: Significance level for the normality test.
             min_samples: Minimum samples per window to run the test.
 
         Returns:
-            DataFrame with columns: start, n_samples, is_normal,
-            p_value, skewness, kurtosis.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, n_samples, is_normal, p_value, skewness, kurtosis.
+            ``end`` is ``start`` plus one ``window``.
         """
         cols = [
             "start",
@@ -236,7 +256,14 @@ class ValueDistributionEvents(Base):
             "kurtosis",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -245,7 +272,7 @@ class ValueDistributionEvents(Base):
         )
 
         events: list[dict[str, Any]] = []
-        for ts, group in sig.resample(freq):
+        for ts, group in sig.resample(window):
             vals = group[self.value_column].dropna()
             if len(vals) < min_samples:
                 continue
@@ -272,14 +299,21 @@ class ValueDistributionEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(freq="window")
     def percentile_tracking(
         self,
         percentiles: Sequence[float] = (5, 25, 50, 75, 95),
-        freq: str = "1h",
+        window: str = "1h",
     ) -> pd.DataFrame:
         """Track selected percentiles over time windows.
 
@@ -288,16 +322,24 @@ class ValueDistributionEvents(Base):
 
         Args:
             percentiles: Percentile values to track (0-100).
-            freq: Resample frequency.
+            window: Resample window.
 
         Returns:
-            DataFrame with columns: start, n_samples, plus one
-            column per percentile (e.g. ``p5``, ``p95``).
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, n_samples, plus one column per percentile (e.g.
+            ``p5``, ``p95``). ``end`` is ``start`` plus one ``window``.
         """
         pct_cols = [f"p{int(p)}" for p in percentiles]
         cols = ["start", "n_samples"] + pct_cols
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -306,7 +348,7 @@ class ValueDistributionEvents(Base):
         )
 
         events: list[dict[str, Any]] = []
-        for ts, group in sig.resample(freq):
+        for ts, group in sig.resample(window):
             vals = group[self.value_column].dropna()
             if len(vals) < 2:
                 continue
@@ -321,8 +363,13 @@ class ValueDistributionEvents(Base):
 
             events.append(row)
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
     # ------------------------------------------------------------------

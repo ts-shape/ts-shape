@@ -61,8 +61,8 @@ def test_duty_cycle_per_window_time_weighted():
         ]
     )
     dc = DutyCycleEvents(df, "sig")
-    naive = dc.duty_cycle_per_window(window="1h")
-    weighted = dc.duty_cycle_per_window(window="1h", time_weighted=True)
+    naive = dc.duty_cycle_by_window(window="1h")
+    weighted = dc.duty_cycle_by_window(window="1h", time_weighted=True)
     assert naive["duty_cycle_pct"].iloc[0] == 50.0
     assert weighted["duty_cycle_pct"].iloc[0] > 95.0
 

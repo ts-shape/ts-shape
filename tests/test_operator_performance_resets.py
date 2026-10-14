@@ -1,4 +1,4 @@
-"""Reset-aware behaviour tests for OperatorPerformanceTracking.
+"""Reset-aware behaviour tests for OperatorPerformanceEvents.
 
 Production and quality counters can reset back to a lower value at a shift
 change or a controller restart. Without ``handle_resets`` the affected
@@ -8,7 +8,7 @@ window under-reports; with it, the post-reset production is counted and a
 
 import pandas as pd
 
-from ts_shape.events.production.operator_performance import OperatorPerformanceTracking
+from ts_shape.events.production.operator_performance import OperatorPerformanceEvents
 
 
 def _make_reset_operator_df():
@@ -37,7 +37,7 @@ def _make_reset_operator_df():
 
 def test_production_by_operator_default_underreports():
     df = _make_reset_operator_df()
-    tracker = OperatorPerformanceTracking(df)
+    tracker = OperatorPerformanceEvents(df)
     result = tracker.production_by_operator(
         operator_uuid="operator_id", counter_uuid="part_counter"
     )
@@ -54,7 +54,7 @@ def test_production_by_operator_default_underreports():
 
 def test_production_by_operator_handles_resets():
     df = _make_reset_operator_df()
-    tracker = OperatorPerformanceTracking(df)
+    tracker = OperatorPerformanceEvents(df)
     result = tracker.production_by_operator(
         operator_uuid="operator_id", counter_uuid="part_counter", handle_resets=True
     )
@@ -67,7 +67,7 @@ def test_production_by_operator_handles_resets():
 
 def test_quality_by_operator_default_underreports():
     df = _make_reset_operator_df()
-    tracker = OperatorPerformanceTracking(df)
+    tracker = OperatorPerformanceEvents(df)
     result = tracker.quality_by_operator(
         operator_uuid="operator_id", ok_uuid="ok_parts", nok_uuid="nok_parts"
     )
@@ -88,7 +88,7 @@ def test_quality_by_operator_default_underreports():
 
 def test_quality_by_operator_handles_resets():
     df = _make_reset_operator_df()
-    tracker = OperatorPerformanceTracking(df)
+    tracker = OperatorPerformanceEvents(df)
     result = tracker.quality_by_operator(
         operator_uuid="operator_id",
         ok_uuid="ok_parts",

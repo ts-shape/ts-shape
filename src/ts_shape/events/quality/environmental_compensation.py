@@ -5,6 +5,7 @@ import pandas as pd  # type: ignore
 from scipy import stats  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method, keyword_only
 
 
 class EnvironmentalCompensationEvents(Base):
@@ -17,9 +18,13 @@ class EnvironmentalCompensationEvents(Base):
 
     Methods:
     - detect_correlation: Pearson correlation per window.
-    - estimate_sensitivity: Linear regression coefficient per window.
+    - sensitivity: Linear regression coefficient per window.
     - compensated_signal: Apply compensation model to signal.
     - detect_env_exceedance: Flag out-of-range environmental conditions.
+
+    ``env_uuid`` (the environment signal) is required; the constructor
+    raises ``ValueError`` without it. ``env_value`` is optional and only
+    sets the nominal environment value used by ``compensated_signal``.
     """
 
     def __init__(
@@ -33,7 +38,7 @@ class EnvironmentalCompensationEvents(Base):
         event_uuid: str = "quality:env_compensation",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.env_uuid = env_uuid
         self.env_value = env_value
@@ -41,8 +46,14 @@ class EnvironmentalCompensationEvents(Base):
         self.event_uuid = event_uuid
         self.time_column = time_column
 
-        if env_uuid is None and env_value is None:
-            raise ValueError("Either env_uuid or env_value must be provided")
+        if env_uuid is None:
+            # Every method reads the environment signal; env_value is only
+            # the nominal (reference) value used by compensated_signal().
+            raise ValueError(
+                "env_uuid is required: every method reads the environment "
+                "signal. env_value only sets the nominal environment value "
+                "used by compensated_signal()."
+            )
 
         # Extract signal data
         self.signal = (
@@ -87,6 +98,7 @@ class EnvironmentalCompensationEvents(Base):
         )
         return aligned.dropna()
 
+    @keyword_only(1)
     def detect_correlation(self, window: str = "4h") -> pd.DataFrame:
         """Pearson correlation between measurement and env signal per window.
 
@@ -123,7 +135,10 @@ class EnvironmentalCompensationEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
-    def estimate_sensitivity(self, window: str = "8h") -> pd.DataFrame:
+    estimate_sensitivity = deprecated_method("sensitivity")
+
+    @keyword_only(1)
+    def sensitivity(self, window: str = "8h") -> pd.DataFrame:
         """Estimate environmental sensitivity coefficient per window.
 
         Fits measurement = a × env + b per window.
@@ -170,6 +185,7 @@ class EnvironmentalCompensationEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def compensated_signal(self, coefficient: float | None = None) -> pd.DataFrame:
         """Apply linear compensation to the measurement signal.
 
@@ -184,7 +200,8 @@ class EnvironmentalCompensationEvents(Base):
 
         Returns:
             DataFrame with columns: systime, uuid, value_double,
-            compensated_value, correction_applied.
+            compensated_value, correction_applied, source_uuid. ``uuid``
+            is the event uuid and ``source_uuid`` the measured signal's uuid.
         """
         cols = [
             "systime",
@@ -192,6 +209,7 @@ class EnvironmentalCompensationEvents(Base):
             "value_double",
             "compensated_value",
             "correction_applied",
+            "source_uuid",
         ]
         aligned = self._build_aligned()
         if aligned.empty:
@@ -217,15 +235,17 @@ class EnvironmentalCompensationEvents(Base):
         result = pd.DataFrame(
             {
                 "systime": aligned.index,
-                "uuid": self.signal_uuid,
+                "uuid": self.event_uuid,
                 "value_double": aligned["signal"].values,
                 "compensated_value": np.round(compensated.values, 8),
                 "correction_applied": np.round(correction.values, 8),
+                "source_uuid": self.signal_uuid,
             }
         )
 
         return result
 
+    @keyword_only(2)
     def detect_env_exceedance(
         self, valid_range: tuple[float, float], window: str = "1h"
     ) -> pd.DataFrame:

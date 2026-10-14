@@ -90,6 +90,7 @@ class SignalSpec:
 
     @property
     def is_change_encoded(self) -> bool:
+        """Whether rows are emitted only when the value changes."""
         return self.encoding == "change_encoded"
 
     @property
@@ -112,7 +113,7 @@ class SignalSpec:
         return replace(self, **changes)
 
     def to_dict(self) -> dict[str, Any]:
-        """Plain, serialisable mapping (Timedeltas as strings)."""
+        """Plain, serializable mapping (Timedeltas as strings)."""
         out = asdict(self)
         for name in ("nominal_period", "max_gap"):
             if out[name] is not None:
@@ -123,6 +124,19 @@ class SignalSpec:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> SignalSpec:
+        """Build a spec from a plain mapping of field names to values.
+
+        Args:
+            data: Mapping of `SignalSpec` field names to values, e.g. the
+                output of `to_dict`.
+
+        Returns:
+            The validated SignalSpec.
+
+        Raises:
+            ValueError: If ``data`` contains unknown field names or invalid
+                field values.
+        """
         known = {f for f in cls.__dataclass_fields__}
         unknown = set(data) - known
         if unknown:
@@ -164,6 +178,10 @@ class SignalSpecs(Mapping[str, SignalSpec]):
         """Return new specs with per-uuid field overrides applied.
 
         A uuid not yet present is added with the given fields.
+
+        Args:
+            changes: Mapping of uuid to ``{field: value}``; the fields replace those of
+                the existing spec (see `SignalSpec.with_`).
         """
         merged = dict(self._specs)
         for uuid, fields in changes.items():
@@ -182,6 +200,14 @@ class SignalSpecs(Mapping[str, SignalSpec]):
         return pd.DataFrame(rows, columns=cols)
 
     def to_dict(self) -> dict[str, dict[str, Any]]:
+        """Serialize to ``{uuid: {field: value}}`` (the YAML/JSON layout).
+
+        The ``uuid`` key is omitted from each inner mapping and ``notes`` are
+        excluded.
+
+        Returns:
+            Mapping of uuid to that signal's spec fields.
+        """
         out = {}
         for uuid, spec in self._specs.items():
             data = spec.to_dict()
@@ -192,14 +218,24 @@ class SignalSpecs(Mapping[str, SignalSpec]):
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Mapping[str, Any]]) -> SignalSpecs:
-        """Build from ``{uuid: {field: value}}`` (the YAML/JSON layout)."""
+        """Build from ``{uuid: {field: value}}`` (the YAML/JSON layout).
+
+        Args:
+            data: Mapping of uuid to ``{field: value}``, e.g. the output of `to_dict`.
+                Field names must be `SignalSpec` fields.
+        """
         return cls(
             {u: SignalSpec.from_dict({**dict(f), "uuid": u}) for u, f in data.items()}
         )
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> SignalSpecs:
-        """Load ``{uuid: {field: value}}`` from a YAML file (needs PyYAML)."""
+        """Load ``{uuid: {field: value}}`` from a YAML file (needs PyYAML).
+
+        Args:
+            path: Path to a YAML file with the ``{uuid: {field: value}}`` layout; an
+                empty file gives empty specs.
+        """
         try:
             import yaml  # type: ignore[import-untyped]
         except ImportError as exc:  # pragma: no cover - depends on env

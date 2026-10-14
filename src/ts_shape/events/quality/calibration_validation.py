@@ -5,6 +5,7 @@ import pandas as pd  # type: ignore
 from scipy import stats  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 
 class CalibrationValidationEvents(Base):
@@ -32,7 +33,7 @@ class CalibrationValidationEvents(Base):
         event_uuid: str = "quality:calibration",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.reference_uuid = reference_uuid
         self.reference_value = reference_value
@@ -137,6 +138,7 @@ class CalibrationValidationEvents(Base):
         return pd.DataFrame(events, columns=cols)
 
     @staticmethod
+    @keyword_only(1)
     def calibration_curve(
         calibration_points: dict[float, list[float]],
         degree: int = 1,
@@ -186,6 +188,7 @@ class CalibrationValidationEvents(Base):
 
         return pd.DataFrame(events, columns=cols)
 
+    @keyword_only(1)
     def detect_recalibration_need(
         self,
         window: str = "1D",
@@ -253,6 +256,7 @@ class CalibrationValidationEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def calibration_stability(
         self, window: str = "8h", lookback: int = 10
     ) -> pd.DataFrame:

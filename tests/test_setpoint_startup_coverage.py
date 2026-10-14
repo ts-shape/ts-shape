@@ -102,7 +102,7 @@ def test_multi_signal_all_logic(startup):
             "speed": {"method": "threshold", "threshold": 10},
             "current": {"method": "threshold", "threshold": 5},
         },
-        "all",
+        logic="all",
     )
     assert len(out) == 2
     assert all(set(x) == {"speed", "current"} for x in out["signals_triggered"])

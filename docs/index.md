@@ -17,7 +17,7 @@ From raw industrial timeseries to OEE, SPC, and process-mining-ready event logs 
 </div>
 
 <p class="tx-hero__subtext">
-A composable Python toolkit for loading, shaping, and analysing manufacturing &amp; IoT signals.
+A composable Python toolkit for loading, shaping, and analyzing manufacturing &amp; IoT signals.
 <strong>DataFrame in, DataFrame out</strong> — across loaders, transforms, features, and 290+ event detectors.
 </p>
 
@@ -66,7 +66,7 @@ pip install ts-shape
 
     ---
 
-    Parquet, S3, Azure Blob, TimescaleDB behind one interface. Vectorised,
+    Parquet, S3, Azure Blob, TimescaleDB behind one interface. Vectorized,
     chunked, concurrent.
 
 -   :material-sitemap:{ .lg .middle } **Process-Mining Native**

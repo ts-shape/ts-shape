@@ -13,31 +13,32 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class OperatorPerformanceTracking(Base):
+class OperatorPerformanceEvents(Base):
     """Track and compare operator performance.
 
     Each UUID represents one signal:
     - operator_uuid: operator or team identifier signal
     - counter_uuid: production counter signal
-    - ok_uuid / nok_uuid: good/bad parts counters (optional, for quality)
+    - ok_uuid / nok_uuid: OK/NOK part counters (optional, for quality)
 
     Merge keys: [operator] for operator-level, [date, shift] for shift-level.
 
     Pipeline example::
 
-        ops = OperatorPerformanceTracking(df)
+        ops = OperatorPerformanceEvents(df)
         by_op = ops.production_by_operator('operator_id', 'part_counter')
         # → standalone KPI report
         quality = ops.quality_by_operator('operator_id', 'good_parts', 'bad_parts')
-        # → merge with QualityTracking outputs on [date, shift]
+        # → merge with QualityEvents outputs on [date, shift]
 
     Example usage:
-        tracker = OperatorPerformanceTracking(df)
+        tracker = OperatorPerformanceEvents(df)
 
         # Parts per operator
         prod = tracker.production_by_operator(
@@ -60,7 +61,7 @@ class OperatorPerformanceTracking(Base):
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.shift_definitions = shift_definitions or {
             "shift_1": ("06:00", "14:00"),
@@ -106,7 +107,7 @@ class OperatorPerformanceTracking(Base):
         value_column_operator: str,
         value_column_counter: str,
         *,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Merge operator signal with counter signal by timestamp."""
         operator_data = (
@@ -163,7 +164,7 @@ class OperatorPerformanceTracking(Base):
         value_column_operator: str = "value_string",
         value_column_counter: str = "value_integer",
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Parts produced per operator.
 
@@ -181,8 +182,8 @@ class OperatorPerformanceTracking(Base):
                 containing a reset reports too little (often 0).
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night
-                shift counts as one worked shift. Default False (raw calendar
-                date). Only affects overnight schedules.
+                shift counts as one worked shift. Default True; False groups by
+                raw calendar date. Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
@@ -297,11 +298,11 @@ class OperatorPerformanceTracking(Base):
         Args:
             operator_uuid: UUID for operator/team identifier signal.
             ok_uuid: UUID for good parts counter.
-            nok_uuid: UUID for bad parts counter.
+            nok_uuid: UUID of the NOK part counter.
             value_column_operator: Column containing operator names.
             value_column_counter: Column containing counter values.
             handle_resets: When True, treat a decreasing counter as a reset
-                and count the good/bad parts accumulated after the reset, for
+                and count the OK/NOK parts accumulated after the reset, for
                 both the OK and NOK counters. Because the counts are taken
                 over the whole range, a single reset otherwise wipes out an
                 operator's entire tally. The result gains a ``resets`` column
@@ -459,3 +460,9 @@ class OperatorPerformanceTracking(Base):
         )
 
         return prod[["operator", "total_produced", "rank", "pct_of_best"]]
+
+
+#: Deprecated name, removed in 1.0.
+OperatorPerformanceTracking = deprecated_class(
+    OperatorPerformanceEvents, "OperatorPerformanceTracking"
+)

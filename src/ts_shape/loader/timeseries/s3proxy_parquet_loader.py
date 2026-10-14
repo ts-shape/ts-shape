@@ -37,12 +37,17 @@ class S3ProxyDataAccess:
         uuids: list[str],
         s3_config: dict[str, str],
     ):
-        """
-        Initialize the S3ProxyDataAccess object.
-        :param start_timestamp: Start timestamp in "Year-Month-Day Hour:Minute:Second" format.
-        :param end_timestamp: End timestamp in "Year-Month-Day Hour:Minute:Second" format.
-        :param uuids: List of UUIDs to retrieve data for.
-        :param s3_config: Configuration dictionary for S3 connection.
+        """Initialize the S3ProxyDataAccess object.
+
+        Args:
+            start_timestamp: Start timestamp in "Year-Month-Day Hour:Minute:Second"
+                format.
+            end_timestamp: End timestamp in "Year-Month-Day Hour:Minute:Second"
+                format.
+            uuids: List of UUIDs to retrieve data for.
+            s3_config: Configuration dictionary for the S3 connection. Must contain
+                ``endpoint_url``, ``key``, ``secret``, ``use_ssl``,
+                ``version_aware`` and ``s3_path_base``.
         """
         require_optional(s3fs, "s3fs", "s3")
         require_config(s3_config, _REQUIRED_S3_KEYS, name="s3_config")
@@ -62,10 +67,12 @@ class S3ProxyDataAccess:
         self.s3_path_base = s3_config["s3_path_base"]
 
     def _generate_timeslot_paths(self) -> Iterator[Path]:
-        """
-        Generates a sequence of time-based directory paths for each hour in the range
-        between start_timestamp and end_timestamp.
-        :return: A generator yielding paths in the format year/month/day/hour.
+        """Generate time-based directory paths for each hour in the range.
+
+        The range spans ``start_timestamp`` to ``end_timestamp``.
+
+        Returns:
+            A generator yielding paths in the format year/month/day/hour.
         """
         for timeslot in pd.date_range(
             start=self.start_timestamp, end=self.end_timestamp, freq="h"
@@ -79,11 +86,14 @@ class S3ProxyDataAccess:
             yield timeslot_dir
 
     def _fetch_parquet(self, uuid: str, timeslot_dir: Path) -> "pd.DataFrame | None":
-        """
-        Fetches a Parquet file from S3 for a specific UUID and time slot.
-        :param uuid: The UUID for which data is being retrieved.
-        :param timeslot_dir: Directory path for the specific time slot.
-        :return: DataFrame if the file is found, else None.
+        """Fetch a Parquet file from S3 for a specific UUID and time slot.
+
+        Args:
+            uuid: The UUID for which data is being retrieved.
+            timeslot_dir: Directory path for the specific time slot.
+
+        Returns:
+            DataFrame if the file is found, else None.
         """
         s3_path = f"{self.s3_path_base}{timeslot_dir}/{uuid}.parquet"
 
@@ -104,10 +114,12 @@ class S3ProxyDataAccess:
             return None
 
     def fetch_data_as_parquet(self, output_dir: str) -> None:
-        """
-        Retrieves timeseries data from S3 and saves it as Parquet files.
-        Each file is saved in a directory structure of UUID/year/month/day/hour.
-        :param output_dir: Base directory to save the Parquet files.
+        """Retrieve timeseries data from S3 and save it as Parquet files.
+
+        Each file is saved as ``<output_dir>/year/month/day/hour/<uuid>.parquet``.
+
+        Args:
+            output_dir: Base directory to save the Parquet files.
         """
         for timeslot_dir in self._generate_timeslot_paths():
             for uuid in set(self.uuids):
@@ -118,9 +130,10 @@ class S3ProxyDataAccess:
                     df.to_parquet(output_path / f"{uuid}.parquet")
 
     def fetch_data_as_dataframe(self) -> pd.DataFrame:
-        """
-        Retrieves timeseries data from S3 and returns it as a single DataFrame.
-        :return: A combined DataFrame with data for all specified UUIDs and time slots.
+        """Retrieve timeseries data from S3 and return it as a single DataFrame.
+
+        Returns:
+            A combined DataFrame with data for all specified UUIDs and time slots.
         """
         data_frames = [
             self._fetch_parquet(uuid, timeslot_dir)

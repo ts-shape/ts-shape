@@ -19,14 +19,17 @@ Use as the foundational production module — machine state drives downtime, OEE
 from ts_shape.events.production.machine_state import MachineStateEvents
 import pandas as pd
 
+# Long format: a boolean run signal (True = running)
 df = pd.DataFrame({
-    "timestamp": pd.date_range("2024-01-01 06:00", periods=120, freq="30s"),
-    "machine_running": [True]*20 + [False]*5 + [True]*40 + [False]*10 + [True]*45,
+    "systime": pd.date_range("2024-01-01 06:00", periods=120, freq="30s"),
+    "uuid": "line1:running",
+    "value_bool": [True] * 20 + [False] * 5 + [True] * 40 + [False] * 10 + [True] * 45,
 })
 
-events = MachineStateEvents(df, state_column="machine_running")
-intervals = events.detect_run_idle(min_duration="0s")
+events = MachineStateEvents(df, run_state_uuid="line1:running")
+intervals = events.detect_run_idle(min_duration="1min", interval_end="next_change")
 transitions = events.transition_events()
+quality = events.state_quality_metrics(interval_end="next_change")
 print(intervals.head())
 ```
 
@@ -36,10 +39,10 @@ print(intervals.head())
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_run_idle(min_duration='0s')` | Identify contiguous run and idle intervals, optionally filtering by minimum duration | DataFrame of intervals with start, end, duration, and state |
-| `transition_events()` | Generate point events at each run-to-idle or idle-to-run transition | DataFrame of transition timestamps and direction |
-| `detect_rapid_transitions(threshold='5s', min_count=3)` | Flag suspicious rapid state changes that may indicate sensor noise or PLC faults | DataFrame of rapid-transition windows |
-| `state_quality_metrics()` | Compute data quality metrics such as gap count, coverage, and signal stability | Dict of quality metric values |
+| `detect_run_idle(min_duration='0s', interval_end=None, data_end=None)` | Identify contiguous run and idle intervals, optionally filtering by minimum duration | DataFrame with `start`, `end`, `uuid`, `source_uuid`, `is_delta`, `state` (`run`/`idle`), `duration_seconds` |
+| `transition_events()` | Generate point events at each run-to-idle or idle-to-run transition | DataFrame with `systime`, `uuid`, `source_uuid`, `is_delta`, `transition` (`idle_to_run`/`run_to_idle`), `time_since_last_transition_seconds` |
+| `detect_rapid_transitions(threshold='5s', min_count=3)` | Flag suspicious rapid state changes that may indicate sensor noise or PLC faults | DataFrame with `start`, `end`, `transition_count`, `duration_seconds` |
+| `state_quality_metrics(interval_end=None)` | Compute state-data quality metrics: transitions, average run/idle durations, gaps, rapid transitions (`interval_end=None` resolves as in `detect_run_idle`; `run_idle_ratio` is NaN when there is no idle time) | Dict with `total_transitions`, `avg_run_duration`, `avg_idle_duration`, `run_idle_ratio`, `data_gaps_detected`, `rapid_transitions_detected` |
 
 ---
 
@@ -47,6 +50,9 @@ print(intervals.head())
 
 !!! tip "Filter short idle gaps"
     Use `min_duration` in `detect_run_idle()` to ignore brief sensor glitches — a 2-5 second threshold works well for most PLCs.
+
+!!! tip "Change-encoded signals"
+    If the PLC only logs a row on each state change, pass `interval_end="next_change"` so intervals end at the next transition instead of collapsing to zero duration.
 
 !!! info "Related modules"
     - [Downtime Tracking](downtime.md) — categorizes idle intervals by reason code

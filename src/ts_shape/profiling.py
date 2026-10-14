@@ -83,7 +83,16 @@ class ProfileReport:
         return self.table.copy()
 
     def issues(self, severity: str | None = None) -> pd.DataFrame:
-        """Findings, optionally filtered to one severity."""
+        """Findings, optionally filtered to one severity.
+
+        Args:
+            severity: ``"error"``, ``"warning"`` or ``"info"`` to keep only that
+                severity. None returns every finding.
+
+        Returns:
+            DataFrame with columns ``uuid``, ``severity``, ``issue`` and ``detail``,
+                most severe first.
+        """
         out = self.issue_table
         if severity is not None:
             out = out[out["severity"] == severity]

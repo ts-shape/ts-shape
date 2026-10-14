@@ -48,11 +48,13 @@ def _walk_detector_methods() -> Iterator[tuple[str, str]]:
         except Exception:
             continue
         for cname, cls in inspect.getmembers(mod, inspect.isclass):
-            if cls.__module__ != m.name:
-                continue
+            if cls.__module__ != m.name or "__deprecated_alias_of__" in vars(cls):
+                continue  # deprecated class aliases resolve to the real class
             for mname, fn in inspect.getmembers(cls, predicate=inspect.isfunction):
                 if mname.startswith("_") or mname in _BASE_METHODS:
                     continue
+                if hasattr(fn, "__deprecated_alias_of__"):
+                    continue  # deprecated method alias
                 try:
                     sig = inspect.signature(fn)
                 except (TypeError, ValueError):

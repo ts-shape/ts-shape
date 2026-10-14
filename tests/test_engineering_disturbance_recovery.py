@@ -26,7 +26,7 @@ def test_detect_disturbance_spike():
 
     det = DisturbanceRecoveryEvents(df, "sensor")
     result = det.detect_disturbances(
-        baseline_window="5m", threshold_sigma=2.0, min_duration="30s"
+        baseline_window="5m", n_sigma=2.0, min_duration="30s"
     )
     assert not result.empty
     assert result["direction"].iloc[0] == "above"
@@ -40,7 +40,7 @@ def test_no_disturbance_flat():
     df = _make_df("sensor", t, vals)
 
     det = DisturbanceRecoveryEvents(df, "sensor")
-    result = det.detect_disturbances(baseline_window="5m", threshold_sigma=3.0)
+    result = det.detect_disturbances(baseline_window="5m", n_sigma=3.0)
     assert result.empty
 
 
@@ -51,7 +51,7 @@ def test_recovery_time_quick_recovery():
     df = _make_df("sensor", t, vals)
 
     det = DisturbanceRecoveryEvents(df, "sensor")
-    result = det.recovery_time(baseline_window="5m", threshold_sigma=2.0)
+    result = det.recovery_time(baseline_window="5m", n_sigma=2.0)
     if not result.empty:
         assert (
             result["recovered"].iloc[0] is True
@@ -68,7 +68,7 @@ def test_disturbance_frequency():
 
     det = DisturbanceRecoveryEvents(df, "sensor")
     result = det.disturbance_frequency(
-        window="20min", baseline_window="5m", threshold_sigma=2.0
+        window="20min", baseline_window="5m", n_sigma=2.0
     )
     assert not result.empty
     assert "disturbance_count" in result.columns
@@ -82,7 +82,7 @@ def test_before_after_comparison():
 
     det = DisturbanceRecoveryEvents(df, "sensor")
     result = det.before_after_comparison(
-        baseline_window="5m", threshold_sigma=2.0, comparison_window="3m"
+        baseline_window="5m", n_sigma=2.0, comparison_window="3m"
     )
     if not result.empty:
         assert "mean_shift" in result.columns
@@ -114,7 +114,7 @@ def test_with_setpoint():
 
     det = DisturbanceRecoveryEvents(df, "pv", setpoint_uuid="sp")
     result = det.detect_disturbances(
-        baseline_window="5m", threshold_sigma=2.0, min_duration="30s"
+        baseline_window="5m", n_sigma=2.0, min_duration="30s"
     )
     assert not result.empty
 

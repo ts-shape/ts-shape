@@ -16,37 +16,65 @@ class BooleanStatistics(Base):
     def count_true(
         cls, dataframe: pd.DataFrame, column_name: str = "value_bool"
     ) -> int:
-        """Returns the count of True values in the boolean column."""
-        return dataframe[column_name].sum()
+        """Returns the count of True values in the boolean column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze. Default
+                ``"value_bool"``.
+        """
+        return int(dataframe[column_name].sum())
 
     @classmethod
     def count_false(
         cls, dataframe: pd.DataFrame, column_name: str = "value_bool"
     ) -> int:
-        """Returns the count of False values in the boolean column."""
-        return (
-            dataframe[column_name] == False  # noqa: E712 pandas-series-bool-comparison
-        ).sum()  # noqa: E712 pandas-series-bool-comparison
+        """Returns the count of False values in the boolean column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze. Default
+                ``"value_bool"``.
+        """
+        return int(dataframe[column_name].eq(False).sum())
 
     @classmethod
     def count_null(
         cls, dataframe: pd.DataFrame, column_name: str = "value_bool"
     ) -> int:
-        """Returns the count of null (NaN) values in the boolean column."""
-        return dataframe[column_name].isna().sum()
+        """Returns the count of null (NaN) values in the boolean column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze. Default
+                ``"value_bool"``.
+        """
+        return int(dataframe[column_name].isna().sum())
 
     @classmethod
     def count_not_null(
         cls, dataframe: pd.DataFrame, column_name: str = "value_bool"
     ) -> int:
-        """Returns the count of non-null (True or False) values in the boolean column."""
-        return dataframe[column_name].notna().sum()
+        """Returns the count of non-null (True or False) values in the boolean column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze. Default
+                ``"value_bool"``.
+        """
+        return int(dataframe[column_name].notna().sum())
 
     @classmethod
     def true_percentage(
         cls, dataframe: pd.DataFrame, column_name: str = "value_bool"
     ) -> float:
-        """Returns the percentage of True values in the boolean column."""
+        """Returns the percentage of True values in the boolean column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze. Default
+                ``"value_bool"``.
+        """
         true_count = cls.count_true(dataframe, column_name)
         total_count = cls.count_not_null(dataframe, column_name)
         return (true_count / total_count) * 100 if total_count > 0 else 0.0
@@ -55,27 +83,56 @@ class BooleanStatistics(Base):
     def false_percentage(
         cls, dataframe: pd.DataFrame, column_name: str = "value_bool"
     ) -> float:
-        """Returns the percentage of False values in the boolean column."""
+        """Returns the percentage of False values in the boolean column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze. Default
+                ``"value_bool"``.
+        """
         false_count = cls.count_false(dataframe, column_name)
         total_count = cls.count_not_null(dataframe, column_name)
         return (false_count / total_count) * 100 if total_count > 0 else 0.0
 
     @classmethod
     def mode(cls, dataframe: pd.DataFrame, column_name: str) -> bool:
-        """Returns the mode (most common value) of the specified boolean column."""
+        """Returns the mode (most common value) of the specified boolean column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze.
+        """
         return dataframe[column_name].mode()[0]
 
     @classmethod
     def is_balanced(cls, dataframe: pd.DataFrame, column_name: str) -> bool:
-        """Indicates if the distribution is balanced (50% True and False) in the specified boolean column."""
-        true_percentage = dataframe[column_name].mean()
-        return true_percentage == 0.5
+        """Indicates if the distribution is balanced (50% True and False) in the specified boolean column.
+
+        The check is exact on counts: the column is balanced when twice the
+        number of True values equals the number of non-null values. Nulls are
+        ignored, and an empty (or all-null) column is not balanced.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze.
+        """
+        n = cls.count_not_null(dataframe, column_name)
+        return n > 0 and cls.count_true(dataframe, column_name) * 2 == n
 
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
     ) -> dict[str, int | float | bool]:
-        """Returns a summary of boolean statistics for the specified column as a dictionary."""
+        """Returns a summary of boolean statistics for the specified column as a dictionary.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze.
+
+        Returns:
+            Dict with keys ``true_count``, ``false_count``, ``true_percentage``,
+                ``false_percentage``, ``mode`` and ``is_balanced``.
+        """
         return {
             "true_count": cls.count_true(dataframe, column_name),
             "false_count": cls.count_false(dataframe, column_name),
@@ -89,6 +146,14 @@ class BooleanStatistics(Base):
     def summary_as_dataframe(
         cls, dataframe: pd.DataFrame, column_name: str
     ) -> pd.DataFrame:
-        """Returns a summary of boolean statistics for the specified column as a DataFrame."""
+        """Returns a summary of boolean statistics for the specified column as a DataFrame.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the boolean column to analyze.
+
+        Returns:
+            One-row DataFrame with the keys of `summary_as_dict` as columns.
+        """
         summary_data = cls.summary_as_dict(dataframe, column_name)
         return pd.DataFrame([summary_data])

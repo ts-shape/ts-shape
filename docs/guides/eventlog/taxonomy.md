@@ -1,4 +1,4 @@
-# Event Log: labelling standard & taxonomy
+# Event Log: labeling standard & taxonomy
 
 This page documents the rules that fill `ocel:activity` and the standard
 attributes every detector emits. It is the reference companion to the
@@ -9,12 +9,12 @@ attributes every detector emits. It is the reference companion to the
 
 ## Activity-name taxonomy
 
-The full set of rules is codified in [Event labelling standard](#event-labelling-standard). At a glance:
+The full set of rules is codified in [Event labeling standard](#event-labeling-standard). At a glance:
 
 | Detector method | `ocel:activity` |
 |---|---|
 | `OutlierDetectionEvents.detect_outliers_zscore` | `quality.outlier.zscore` |
-| `StatisticalProcessControlRuleBased.process` | `quality.spc.rule_violation` |
+| `StatisticalProcessControlEvents.process` | `quality.spc.rule_violation` |
 | `MachineStateEvents.detect_run_idle` | `production.machine_state.{state}` |
 | `MachineStateEvents.transition_events` | `production.machine_state.transition_{transition}` |
 | `SetpointChangeEvents.detect_setpoint_steps` | `engineering.setpoint.step_{change_type}` |
@@ -24,7 +24,7 @@ The full registry lives in `ts_shape.eventlog.taxonomy.REGISTRY` and is enforced
 
 ---
 
-## Event labelling standard
+## Event labeling standard
 
 These are the rules every `LabelRule` in
 `ts_shape.eventlog.taxonomy.REGISTRY` follows. Adhering to them keeps
@@ -218,7 +218,7 @@ LabelRule(
 )
 ```
 
-And for an aggregate KPI like `CycleTimeTracking.cycle_time_statistics`:
+And for an aggregate KPI like `CycleTimeEvents.cycle_time_statistics`:
 
 ```python
 LabelRule(

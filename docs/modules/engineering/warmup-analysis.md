@@ -19,8 +19,8 @@ Use for thermal equipment (ovens, extruders, molds) where warm-up and cool-down 
 from ts_shape.events.engineering.warmup_analysis import WarmUpCoolDownEvents
 
 analyzer = WarmUpCoolDownEvents(
-    df=oven_data,
-    uuid="oven_temperature_zone1"
+    dataframe=oven_data,
+    signal_uuid="oven_temperature_zone1",
 )
 
 # Detect warm-up intervals (rising at least 50 deg over 1+ min)
@@ -35,7 +35,7 @@ consistency = analyzer.warmup_consistency(
     min_duration="1min"
 )
 
-# Time to reach 180C operating temperature
+# Time from each rising ramp start to 180 °C operating temperature
 time_to_temp = analyzer.time_to_target(
     target_value=180.0,
     direction="rising"
@@ -48,10 +48,10 @@ time_to_temp = analyzer.time_to_target(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_warmup(min_rise, min_duration='1min')` | Warm-up interval detection | DataFrame of warm-up events |
-| `detect_cooldown(min_fall, min_duration='1min')` | Cool-down interval detection | DataFrame of cool-down events |
-| `warmup_consistency(min_rise, min_duration='1min')` | Warm-up curve consistency | DataFrame with consistency metrics |
-| `time_to_target(target_value, direction='rising')` | Time to reach a target value | DataFrame with time-to-target |
+| `detect_warmup(min_rise, min_duration='1min', max_pause=0)` | Warm-up interval detection | DataFrame: `start`, `end`, `start_value`, `end_value`, `rise`, `duration_seconds`, `avg_rate`, ... |
+| `detect_cooldown(min_fall, min_duration='1min', max_pause=0)` | Cool-down interval detection | DataFrame: `start`, `end`, `start_value`, `end_value`, `fall`, `duration_seconds`, `avg_rate`, ... |
+| `warmup_consistency(min_rise, min_duration='1min')` | Warm-up curve consistency | DataFrame: `warmup_index`, `start`, `duration_seconds`, `avg_rate`, `deviation_from_median_duration` |
+| `time_to_target(target_value, direction='rising')` | Time to reach a target value | DataFrame: `start`, `target_reached_at`, `time_to_target_seconds`, `overshoot` |
 
 ---
 

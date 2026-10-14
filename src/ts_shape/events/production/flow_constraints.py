@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -11,8 +12,18 @@ logger = logging.getLogger(__name__)
 class FlowConstraintEvents(Base):
     """Production: Flow Constraints
 
-    - blocked_events: upstream running while downstream not consuming.
-    - starved_events: downstream idle due to lack of upstream supply.
+    Both detectors work on two boolean run signals only (no buffer level or
+    part-presence signal), so they flag the run-state pattern, not its cause:
+
+    - blocked_events: upstream running while downstream is stopped -- the
+      upstream station keeps producing into a stopped consumer and its
+      output buffer fills.
+    - starved_events: downstream running while upstream is stopped -- the
+      downstream station keeps consuming with no upstream supply and drains
+      its input buffer. This is the onset of starvation, not the common
+      "station idle for lack of input" state: once the downstream station
+      actually runs dry and stops, both are stopped and the interval is no
+      longer reported.
     """
 
     def __init__(
@@ -22,7 +33,7 @@ class FlowConstraintEvents(Base):
         time_column: str = "systime",
         event_uuid: str = "prod:flow",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid
 
@@ -46,6 +57,9 @@ class FlowConstraintEvents(Base):
         min_duration: str = "0s",
     ) -> pd.DataFrame:
         """Blocked: upstream_run=True while downstream_run=False.
+
+        Flags intervals where the upstream station runs while its downstream
+        consumer is stopped, so the buffer between them fills.
 
         Args:
             roles: Dictionary mapping role names to UUIDs.
@@ -93,6 +107,7 @@ class FlowConstraintEvents(Base):
         max_tol = max(tol_before, tol_after)
 
         # Merge with maximum tolerance and track time differences
+        dn = dn.assign(**{self.time_column + "_dn": dn[self.time_column]})
         merged = pd.merge_asof(
             up,
             dn,
@@ -112,7 +127,7 @@ class FlowConstraintEvents(Base):
             valid_mask = (
                 (time_diff <= pd.Timedelta(0)) & (time_diff.abs() <= tol_before)
             ) | ((time_diff >= pd.Timedelta(0)) & (time_diff <= tol_after))
-            merged.loc[~valid_mask, "state_dn"] = pd.NA
+            merged["state_dn"] = merged["state_dn"].astype("boolean").where(valid_mask)
 
         # Calculate alignment quality (percentage of records with matches)
         alignment_quality = (
@@ -162,6 +177,13 @@ class FlowConstraintEvents(Base):
     ) -> pd.DataFrame:
         """Starved: downstream_run=True while upstream_run=False.
 
+        Flags intervals where the downstream station runs while its upstream
+        supplier is stopped, i.e. downstream is consuming its input buffer
+        with no resupply. A downstream station that has already stopped for
+        lack of input (both stations stopped) is not reported; with run
+        signals alone that state cannot be told apart from any other joint
+        stop.
+
         Args:
             roles: Dictionary mapping role names to UUIDs.
                    Expected keys: 'upstream_run', 'downstream_run'
@@ -208,6 +230,7 @@ class FlowConstraintEvents(Base):
         max_tol = max(tol_before, tol_after)
 
         # Merge with maximum tolerance and track time differences
+        up = up.assign(**{self.time_column + "_up": up[self.time_column]})
         merged = pd.merge_asof(
             dn,
             up,
@@ -227,7 +250,7 @@ class FlowConstraintEvents(Base):
             valid_mask = (
                 (time_diff <= pd.Timedelta(0)) & (time_diff.abs() <= tol_before)
             ) | ((time_diff >= pd.Timedelta(0)) & (time_diff <= tol_after))
-            merged.loc[~valid_mask, "state_up"] = pd.NA
+            merged["state_up"] = merged["state_up"].astype("boolean").where(valid_mask)
 
         # Calculate alignment quality (percentage of records with matches)
         alignment_quality = (
@@ -269,21 +292,22 @@ class FlowConstraintEvents(Base):
     def _calculate_severity(
         self,
         duration: pd.Timedelta,
-        minor_threshold: str = "5s",
-        moderate_threshold: str = "30s",
+        warning_threshold: str = "5s",
+        critical_threshold: str = "30s",
     ) -> str:
         """Calculate severity level based on duration thresholds.
 
         Args:
             duration: Event duration as a Timedelta
-            minor_threshold: Threshold below which events are classified as minor
-            moderate_threshold: Threshold below which events are classified as moderate
+            warning_threshold: Duration below which an event is 'minor'.
+            critical_threshold: Duration below which an event is 'moderate'
+                (at or above it, 'severe').
 
         Returns:
             Severity classification: 'minor', 'moderate', or 'severe'
         """
-        minor_td = pd.to_timedelta(minor_threshold)
-        moderate_td = pd.to_timedelta(moderate_threshold)
+        minor_td = pd.to_timedelta(warning_threshold)
+        moderate_td = pd.to_timedelta(critical_threshold)
 
         if duration < minor_td:
             return "minor"
@@ -292,6 +316,9 @@ class FlowConstraintEvents(Base):
         else:
             return "severe"
 
+    @renamed_kwargs(
+        minor_threshold="warning_threshold", moderate_threshold="critical_threshold"
+    )
     def flow_constraint_analytics(
         self,
         *,
@@ -300,8 +327,8 @@ class FlowConstraintEvents(Base):
         tolerance_before: str | None = None,
         tolerance_after: str | None = None,
         min_duration: str = "0s",
-        minor_threshold: str = "5s",
-        moderate_threshold: str = "30s",
+        warning_threshold: str = "5s",
+        critical_threshold: str = "30s",
     ) -> dict[str, Any]:
         """Generate comprehensive analytics for flow constraints (blockages and starvations).
 
@@ -312,8 +339,9 @@ class FlowConstraintEvents(Base):
             tolerance_before: Tolerance for looking backward in time during alignment
             tolerance_after: Tolerance for looking forward in time during alignment
             min_duration: Minimum duration for an event to be included
-            minor_threshold: Duration threshold for minor severity classification
-            moderate_threshold: Duration threshold for moderate severity classification
+            warning_threshold: Duration below which an event is 'minor'.
+            critical_threshold: Duration below which an event is 'moderate'
+                (at or above it, 'severe').
 
         Returns:
             Dictionary containing analytics for both blocked and starved events:

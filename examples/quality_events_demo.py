@@ -17,13 +17,15 @@ import numpy as np
 from datetime import datetime, timedelta
 
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
-from ts_shape.events.quality.statistical_process_control import StatisticalProcessControlRuleBased
+from ts_shape.events.quality.statistical_process_control import (
+    StatisticalProcessControlRuleBased,
+)
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
-
 
 # ---------------------------------------------------------------------------
 # Helper: build a realistic manufacturing timeseries DataFrame
 # ---------------------------------------------------------------------------
+
 
 def create_bore_diameter_data(n_points: int = 960) -> pd.DataFrame:
     """
@@ -51,15 +53,17 @@ def create_bore_diameter_data(n_points: int = 960) -> pd.DataFrame:
     for idx in spike_indices:
         values[idx] += np.random.choice([-1, 1]) * np.random.uniform(0.025, 0.040)
 
-    df = pd.DataFrame({
-        "systime": pd.to_datetime(times),
-        "uuid": "bore_diameter_sensor",
-        "value_bool": None,
-        "value_integer": None,
-        "value_double": np.round(values, 6),
-        "value_string": None,
-        "is_delta": True,
-    })
+    df = pd.DataFrame(
+        {
+            "systime": pd.to_datetime(times),
+            "uuid": "bore_diameter_sensor",
+            "value_bool": None,
+            "value_integer": None,
+            "value_double": np.round(values, 6),
+            "value_string": None,
+            "is_delta": True,
+        }
+    )
     return df
 
 
@@ -79,15 +83,17 @@ def create_spc_data() -> pd.DataFrame:
     tol_times = [start + timedelta(seconds=30 * i) for i in range(n_tol)]
     tol_values = 25.000 + np.random.normal(0, 0.002, n_tol)
 
-    tol_df = pd.DataFrame({
-        "systime": pd.to_datetime(tol_times),
-        "uuid": "bore_tolerance",
-        "value_bool": None,
-        "value_integer": None,
-        "value_double": np.round(tol_values, 6),
-        "value_string": None,
-        "is_delta": True,
-    })
+    tol_df = pd.DataFrame(
+        {
+            "systime": pd.to_datetime(tol_times),
+            "uuid": "bore_tolerance",
+            "value_bool": None,
+            "value_integer": None,
+            "value_double": np.round(tol_values, 6),
+            "value_string": None,
+            "is_delta": True,
+        }
+    )
 
     # Actual production measurements (500 samples)
     n_act = 500
@@ -103,15 +109,17 @@ def create_spc_data() -> pd.DataFrame:
     # Inject a point beyond 3-sigma (rule 1)
     act_values[450] = 25.035
 
-    act_df = pd.DataFrame({
-        "systime": pd.to_datetime(act_times),
-        "uuid": "bore_actual",
-        "value_bool": None,
-        "value_integer": None,
-        "value_double": np.round(act_values, 6),
-        "value_string": None,
-        "is_delta": True,
-    })
+    act_df = pd.DataFrame(
+        {
+            "systime": pd.to_datetime(act_times),
+            "uuid": "bore_actual",
+            "value_bool": None,
+            "value_integer": None,
+            "value_double": np.round(act_values, 6),
+            "value_string": None,
+            "is_delta": True,
+        }
+    )
 
     return pd.concat([tol_df, act_df], ignore_index=True)
 
@@ -131,26 +139,30 @@ def create_tolerance_data() -> pd.DataFrame:
     rows = []
 
     # Upper tolerance setting event
-    rows.append({
-        "systime": start,
-        "uuid": "upper_spec_limit",
-        "value_bool": None,
-        "value_integer": None,
-        "value_double": 25.010,
-        "value_string": None,
-        "is_delta": True,
-    })
+    rows.append(
+        {
+            "systime": start,
+            "uuid": "upper_spec_limit",
+            "value_bool": None,
+            "value_integer": None,
+            "value_double": 25.010,
+            "value_string": None,
+            "is_delta": True,
+        }
+    )
 
     # Lower tolerance setting event
-    rows.append({
-        "systime": start,
-        "uuid": "lower_spec_limit",
-        "value_bool": None,
-        "value_integer": None,
-        "value_double": 24.990,
-        "value_string": None,
-        "is_delta": True,
-    })
+    rows.append(
+        {
+            "systime": start,
+            "uuid": "lower_spec_limit",
+            "value_bool": None,
+            "value_integer": None,
+            "value_double": 24.990,
+            "value_string": None,
+            "is_delta": True,
+        }
+    )
 
     # Actual measurements (300 samples, some outside tolerance)
     n_meas = 300
@@ -163,15 +175,17 @@ def create_tolerance_data() -> pd.DataFrame:
         # Another group around 250-252
         if 250 <= i <= 252:
             val = 24.983 - np.random.uniform(0, 0.003)
-        rows.append({
-            "systime": t,
-            "uuid": "bore_measurement",
-            "value_bool": None,
-            "value_integer": None,
-            "value_double": round(val, 6),
-            "value_string": None,
-            "is_delta": True,
-        })
+        rows.append(
+            {
+                "systime": t,
+                "uuid": "bore_measurement",
+                "value_bool": None,
+                "value_integer": None,
+                "value_double": round(val, 6),
+                "value_string": None,
+                "is_delta": True,
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -179,6 +193,7 @@ def create_tolerance_data() -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Demo functions
 # ---------------------------------------------------------------------------
+
 
 def demo_outlier_detection():
     """Demonstrate all outlier detection methods."""
@@ -188,12 +203,14 @@ def demo_outlier_detection():
 
     df = create_bore_diameter_data()
     print(f"\nInput data: {len(df)} bore-diameter readings over 8 hours")
-    print(f"Value range: {df['value_double'].min():.4f} - {df['value_double'].max():.4f} mm\n")
+    print(
+        f"Value range: {df['value_double'].min():.4f} - {df['value_double'].max():.4f} mm\n"
+    )
 
     detector = OutlierDetectionEvents(
         dataframe=df,
         value_column="value_double",
-        event_uuid="outlier_event",
+        event_uuid="quality:outlier",
         time_threshold="5min",
     )
 
@@ -202,7 +219,11 @@ def demo_outlier_detection():
     zscore_events = detector.detect_outliers_zscore(threshold=3.0)
     print(f"  Detected {len(zscore_events)} outlier event rows")
     if not zscore_events.empty:
-        print(zscore_events[["systime", "value_double", "severity"]].to_string(index=False))
+        print(
+            zscore_events[["systime", "value_double", "severity"]].to_string(
+                index=False
+            )
+        )
     print()
 
     # --- IQR method ---
@@ -210,7 +231,11 @@ def demo_outlier_detection():
     iqr_events = detector.detect_outliers_iqr(threshold=(1.5, 1.5))
     print(f"  Detected {len(iqr_events)} outlier event rows")
     if not iqr_events.empty:
-        print(iqr_events[["systime", "value_double", "severity"]].head(10).to_string(index=False))
+        print(
+            iqr_events[["systime", "value_double", "severity"]]
+            .head(10)
+            .to_string(index=False)
+        )
     print()
 
     # --- MAD method ---
@@ -218,7 +243,11 @@ def demo_outlier_detection():
     mad_events = detector.detect_outliers_mad(threshold=3.5)
     print(f"  Detected {len(mad_events)} outlier event rows")
     if not mad_events.empty:
-        print(mad_events[["systime", "value_double", "severity"]].head(10).to_string(index=False))
+        print(
+            mad_events[["systime", "value_double", "severity"]]
+            .head(10)
+            .to_string(index=False)
+        )
     print()
 
     # --- Isolation Forest method ---
@@ -227,7 +256,11 @@ def demo_outlier_detection():
         iforest_events = detector.detect_outliers_isolation_forest(contamination=0.05)
         print(f"  Detected {len(iforest_events)} outlier event rows")
         if not iforest_events.empty:
-            print(iforest_events[["systime", "value_double", "severity"]].head(10).to_string(index=False))
+            print(
+                iforest_events[["systime", "value_double", "severity"]]
+                .head(10)
+                .to_string(index=False)
+            )
     except ImportError:
         print("  scikit-learn not installed -- skipping Isolation Forest demo")
     print()
@@ -252,13 +285,13 @@ def demo_spc():
 
     # --- Control limits ---
     print("\n--- Static control limits (from tolerance data) ---")
-    limits = spc.calculate_control_limits()
+    limits = spc.control_limits()
     for col in limits.columns:
         print(f"  {col}: {limits[col].values[0]:.6f}")
 
     # --- Dynamic control limits ---
     print("\n--- Dynamic control limits (EWMA, window=20) ---")
-    dynamic_limits = spc.calculate_dynamic_control_limits(method="ewma", window=20)
+    dynamic_limits = spc.dynamic_control_limits(method="ewma", window_size=20)
     print(f"  Generated {len(dynamic_limits)} rows of dynamic limits")
     print(dynamic_limits.tail(5).to_string(index=False))
 
@@ -273,7 +306,9 @@ def demo_spc():
 
     # --- Vectorized rule application (selected rules) ---
     print("\n--- Vectorized rules: rule_1, rule_2, rule_3 ---")
-    vec_violations = spc.apply_rules_vectorized(selected_rules=["rule_1", "rule_2", "rule_3"])
+    vec_violations = spc.apply_rules_vectorized(
+        selected_rules=["rule_1", "rule_2", "rule_3"]
+    )
     if not vec_violations.empty:
         print(f"  Found {len(vec_violations)} violations")
         print(vec_violations.head(10).to_string(index=False))
@@ -329,11 +364,17 @@ def demo_tolerance_deviation():
     events = tol.process_and_group_data_with_events()
     if not events.empty:
         print(f"  Generated {len(events)} event rows")
-        display_cols = [c for c in ["systime", "uuid", "deviation_abs", "deviation_pct", "severity"] if c in events.columns]
+        display_cols = [
+            c
+            for c in ["systime", "uuid", "deviation_abs", "deviation_pct", "severity"]
+            if c in events.columns
+        ]
         if display_cols:
             print(events[display_cols].head(10).to_string(index=False))
     else:
-        print("  No grouped tolerance deviation events (individual deviations may exist)")
+        print(
+            "  No grouped tolerance deviation events (individual deviations may exist)"
+        )
 
     # --- Process capability indices ---
     print("\n--- Process capability indices ---")
@@ -347,10 +388,12 @@ def demo_tolerance_deviation():
         print(f"  LSL = {capability['lsl']:.4f} mm")
         print(f"  Process mean = {capability['mean']:.4f} mm")
         print(f"  Process std  = {capability['std']:.6f} mm")
-        if capability['Cpk'] >= 1.33:
+        if capability["Cpk"] >= 1.33:
             print("  --> Process is CAPABLE (Cpk >= 1.33)")
         else:
-            print("  --> Process is NOT capable (Cpk < 1.33) -- investigate variation sources")
+            print(
+                "  --> Process is NOT capable (Cpk < 1.33) -- investigate variation sources"
+            )
     except Exception as e:
         print(f"  Could not compute capability indices: {e}")
     print()

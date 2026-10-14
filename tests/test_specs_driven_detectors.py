@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from ts_shape.events.production.downtime_tracking import DowntimeTracking
+from ts_shape.events.production.downtime_tracking import DowntimeEvents
 from ts_shape.events.production.machine_state import MachineStateEvents
 from ts_shape.signals import infer_specs
 
@@ -37,14 +37,35 @@ def test_machine_state_with_specs_closes_at_next_change_and_caps_gaps():
     assert (legacy["duration_seconds"] == 0).all()
 
 
+def test_state_quality_metrics_follows_spec_like_detect_run_idle():
+    df = _change_encoded_run()
+    specs = infer_specs(df, overrides={"run": {"max_gap": "1h"}})
+    ev = MachineStateEvents(df, "run", specs=specs)
+    metrics = ev.state_quality_metrics()
+    # Same spec-derived intervals as detect_run_idle(): run 600 s, idle 3000 s.
+    assert metrics["avg_idle_duration"] == 1500.0
+    assert metrics["run_idle_ratio"] == 600.0 / 3000.0
+
+
+def test_state_quality_metrics_run_idle_ratio_nan_without_idle_time():
+    import math
+
+    t = pd.date_range("2024-01-01", periods=4, freq="1min")
+    df = pd.DataFrame({"systime": t, "uuid": "run", "value_bool": [True] * 4})
+    metrics = MachineStateEvents(df, "run").state_quality_metrics()
+    assert math.isnan(metrics["run_idle_ratio"])
+    empty = MachineStateEvents(df.iloc[:0], "run").state_quality_metrics()
+    assert math.isnan(empty["run_idle_ratio"])
+
+
 def test_downtime_by_shift_takes_max_gap_from_spec():
     t = pd.to_datetime(["2024-01-01 07:00", "2024-01-01 07:30", "2024-01-01 11:00"])
     df = pd.DataFrame(
         {"systime": t, "uuid": "st", "value_string": ["Running", "Running", "Stopped"]}
     )
-    plain = DowntimeTracking(df).downtime_by_shift("st")
+    plain = DowntimeEvents(df).downtime_by_shift("st")
     specs = infer_specs(df, overrides={"st": {"max_gap": "1h"}})
-    capped = DowntimeTracking(df, specs=specs).downtime_by_shift("st")
+    capped = DowntimeEvents(df, specs=specs).downtime_by_shift("st")
     # Without a cap the 3.5 h outage after 07:30 counts as uptime.
     assert plain["uptime_minutes"].iloc[0] > capped["uptime_minutes"].iloc[0]
     assert capped["uptime_minutes"].iloc[0] == 30.0

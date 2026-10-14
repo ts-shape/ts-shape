@@ -9,7 +9,7 @@
 
 ## When to Use
 
-Use for trending process capability over time. Detects capability degradation before it results in quality escapes. Set up as a daily dashboard to track Cpk trends and predict when intervention is needed. Requires process data with defined specification limits and sufficient sample sizes per window.
+Use for trending process capability over time. Detects capability degradation before it results in quality escapes. Set up as a daily dashboard to track Cpk trends and predict when intervention is needed. Requires process data with specification limits (fixed `upper_spec`/`lower_spec`, or spec signals via `upper_spec_uuid`/`lower_spec_uuid`) and sufficient sample sizes per window.
 
 ---
 
@@ -20,9 +20,9 @@ from ts_shape.events.quality.capability_trending import CapabilityTrendingEvents
 
 cap = CapabilityTrendingEvents(
     df,
-    value_column="value_double",
-    usl=105.0,
-    lsl=95.0,
+    signal_uuid="bore_diameter",
+    upper_spec=105.0,
+    lower_spec=95.0,
 )
 
 # Compute capability indices per 8-hour window
@@ -33,7 +33,7 @@ drops = cap.detect_capability_drop(window="8h", min_cpk=1.33)
 
 # Forecast when Cpk will breach the threshold
 forecast = cap.capability_forecast(window="8h", horizon=5, threshold=1.33)
-print(f"Predicted breach in {forecast['windows_to_breach']} windows")
+print(forecast[["start", "cpk", "forecast_cpk", "windows_to_threshold"]].tail(1))
 
 # Estimate yield, DPMO, and sigma level
 yield_stats = cap.yield_estimate(window="8h")
@@ -45,10 +45,10 @@ yield_stats = cap.yield_estimate(window="8h")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `capability_over_time(window='8h')` | Compute Cp, Cpk, Pp, Ppk per rolling window | DataFrame with capability indices per window |
-| `detect_capability_drop(window='8h', min_cpk=1.33)` | Flag windows where Cpk falls below threshold | DataFrame with drop events |
-| `capability_forecast(window='8h', horizon=5, threshold=1.33)` | Predict future Cpk breach based on trend | Dictionary with forecast metrics |
-| `yield_estimate(window='8h')` | Estimate yield percentage, DPMO, and sigma level | DataFrame with yield metrics per window |
+| `capability_over_time(window='8h')` | Compute Cp, Cpk, Pp, Ppk per window | DataFrame with `start`, `cp`, `cpk`, `pp`, `ppk`, `mean`, `std`, `n_samples` |
+| `detect_capability_drop(window='8h', min_cpk=1.33, lookback=5)` | Flag windows where Cpk falls below threshold or degrades vs. the previous windows | DataFrame with `start`, `cpk`, `prev_avg_cpk`, `drop_pct`, `alert` |
+| `capability_forecast(window='8h', horizon=5, threshold=1.33)` | Predict future Cpk breach based on trend | DataFrame with `start`, `cpk`, `trend_slope`, `forecast_cpk`, `windows_to_threshold` |
+| `yield_estimate(window='8h')` | Estimate yield percentage, DPMO, and sigma level | DataFrame with `start`, `estimated_yield_pct`, `dpmo`, `sigma_level` |
 
 ---
 

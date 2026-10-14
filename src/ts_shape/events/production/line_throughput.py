@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
 
@@ -15,6 +16,9 @@ class LineThroughputEvents(Base):
     Methods:
     - count_parts: Part counts per fixed window from a monotonically increasing counter.
     - takt_adherence: Cycle time violations against a takt time from step/boolean triggers.
+    - cycle_quality_check: Cycles from a trigger signal, flagged when outside the expected range.
+    - throughput_oee: Availability, performance and OEE ratios (0-1) per window.
+    - throughput_trends: Throughput trend with moving averages and degradation flags.
     """
 
     def __init__(
@@ -24,7 +28,7 @@ class LineThroughputEvents(Base):
         event_uuid: str = "prod:throughput",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
 
@@ -46,10 +50,27 @@ class LineThroughputEvents(Base):
         post-reset value counted as new production) and summed into each window,
         and a ``resets`` column reports the number of resets per window.
 
-        Returns columns: start, uuid, source_uuid, is_delta, count
-        (plus ``resets`` when ``handle_resets=True``)
+        Args:
+            counter_uuid: UUID of the part counter signal.
+            value_column: Column holding the counter value.
+            window: Count window (pandas offset string, e.g. '1min', '1h').
+            handle_resets: Count production across counter resets (see
+                above) and add a ``resets`` column. Default False.
+
+        Returns:
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, is_delta, count (plus
+            ``resets`` when ``handle_resets=True``).
         """
-        base_columns = ["start", "uuid", "source_uuid", "is_delta", "count"]
+        base_columns = [
+            "start",
+            "end",
+            "duration_seconds",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "count",
+        ]
         if handle_resets:
             base_columns.append("resets")
         c = (
@@ -82,6 +103,8 @@ class LineThroughputEvents(Base):
                 .reset_index()
                 .rename(columns={self.time_column: "start"})
             )
+        out["start"], out["end"] = window_bounds(out["start"], window)
+        out["duration_seconds"] = (out["end"] - out["start"]).dt.total_seconds()
         out["uuid"] = self.event_uuid
         out["source_uuid"] = counter_uuid
         out["is_delta"] = True
@@ -98,9 +121,28 @@ class LineThroughputEvents(Base):
         """Flag cycles whose durations exceed the takt_time.
 
         For boolean triggers: detect True rising edges as cycle boundaries.
-        For integer steps: detect increments as cycle boundaries.
+        For numeric counters/steps: detect increments as cycle boundaries; a
+        decrease (a counter reset) is not a cycle boundary.
 
-        Returns: systime (at boundary), uuid, source_uuid, is_delta, cycle_time_seconds, violation
+        Args:
+            cycle_uuid: UUID of the cycle trigger signal.
+            value_column: Column holding the trigger. ``"value_bool"`` uses
+                rising edges as cycle boundaries; a numeric column uses every
+                increase of the value (a reset or other decrease is not a
+                boundary, so the cycle spanning it runs to the next
+                increase); a non-numeric column (e.g. a string step name)
+                uses every change of value.
+            takt_time: Takt time (pandas offset string, e.g. '60s').
+            min_violation: How far a cycle must exceed ``takt_time`` to be a
+                violation: a cycle is a violation when it is strictly longer
+                than ``takt_time + min_violation``. Default ``"0s"``: any
+                cycle longer than the takt time counts; a cycle exactly equal
+                to the takt time does not.
+
+        Returns:
+            DataFrame with columns: systime (at the boundary that closes the
+            cycle), uuid, source_uuid, is_delta, cycle_time_seconds,
+            violation.
         """
         s = (
             self.dataframe[self.dataframe["uuid"] == cycle_uuid]
@@ -120,8 +162,15 @@ class LineThroughputEvents(Base):
             )
         s[self.time_column] = pd.to_datetime(s[self.time_column])
         if value_column == "value_bool":
-            s["prev"] = s[value_column].shift(fill_value=False)
-            edges = s[(~s["prev"]) & (s[value_column].fillna(False))]
+            # Cast first: ``~`` on an object column of Python bools is -2/-1.
+            state = s[value_column].astype("boolean").fillna(False).astype(bool)
+            edges = s[state & ~state.shift(fill_value=False)]
+            times = edges[self.time_column].reset_index(drop=True)
+        elif pd.api.types.is_numeric_dtype(s[value_column]):
+            # Counter/step: a boundary is an increase; a reset is not a cycle.
+            cur = s[value_column].fillna(0)
+            prev = s[value_column].shift(1).fillna(0)
+            edges = s[cur > prev]
             times = edges[self.time_column].reset_index(drop=True)
         else:
             s["prev"] = s[value_column].shift(1)
@@ -141,7 +190,7 @@ class LineThroughputEvents(Base):
         cycle_times = (times.diff().dt.total_seconds()).iloc[1:].reset_index(drop=True)
         min_td = pd.to_timedelta(min_violation).total_seconds()
         target = pd.to_timedelta(takt_time).total_seconds()
-        viol = (cycle_times - target) >= min_td
+        viol = (cycle_times - target) > min_td
         out = pd.DataFrame(
             {
                 "systime": times.iloc[1:].reset_index(drop=True),
@@ -181,15 +230,15 @@ class LineThroughputEvents(Base):
                 the 95th percentile of observed counts
             availability_threshold: Fraction of ``target_rate`` a window must
                 reach to count as available (0.0-1.0). The default ``0.0`` keeps
-                the historical behaviour -- any window with at least one part is
+                the historical behavior -- any window with at least one part is
                 available. (Previously this argument was accepted but ignored.)
             handle_resets: When True, the part counter is treated as reset-aware
                 (see :meth:`count_parts`), so a window where the counter resets
                 is not dropped. Default False.
 
         Returns:
-            DataFrame with columns: start, uuid, source_uuid, is_delta,
-            actual_count, target_count, availability, performance, oee_score
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, is_delta, actual_count, target_count, availability, performance, oee_score
         """
         parts_df = self.count_parts(
             counter_uuid,
@@ -202,6 +251,8 @@ class LineThroughputEvents(Base):
             return pd.DataFrame(
                 columns=[
                     "start",
+                    "end",
+                    "duration_seconds",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -223,7 +274,7 @@ class LineThroughputEvents(Base):
         # Availability proxy: a window is available when it produced something
         # AND reached at least availability_threshold of the target rate. With
         # the default threshold of 0.0 this reduces to "produced anything",
-        # matching the historical behaviour.
+        # matching the historical behavior.
         min_count = availability_threshold * (target_rate or 0.0)
         parts_df["availability"] = np.where(
             (parts_df["count"] > 0) & (parts_df["count"] >= min_count), 1.0, 0.0
@@ -243,6 +294,8 @@ class LineThroughputEvents(Base):
         return parts_df[
             [
                 "start",
+                "end",
+                "duration_seconds",
                 "uuid",
                 "source_uuid",
                 "is_delta",
@@ -271,7 +324,9 @@ class LineThroughputEvents(Base):
             trend_window: Number of windows for trend calculation
 
         Returns:
-            DataFrame with throughput, moving average, trend direction, and degradation flag
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, is_delta, count, moving_avg,
+            trend_direction, degradation_detected
         """
         parts_df = self.count_parts(
             counter_uuid, value_column=value_column, window=window
@@ -281,6 +336,8 @@ class LineThroughputEvents(Base):
             return pd.DataFrame(
                 columns=[
                     "start",
+                    "end",
+                    "duration_seconds",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -312,6 +369,8 @@ class LineThroughputEvents(Base):
         return parts_df[
             [
                 "start",
+                "end",
+                "duration_seconds",
                 "uuid",
                 "source_uuid",
                 "is_delta",
@@ -365,8 +424,15 @@ class LineThroughputEvents(Base):
 
         # Detect cycle boundaries
         if value_column == "value_bool":
-            s["prev"] = s[value_column].shift(fill_value=False)
-            edges = s[(~s["prev"]) & (s[value_column].fillna(False))]
+            # Cast first: ``~`` on an object column of Python bools is -2/-1.
+            state = s[value_column].astype("boolean").fillna(False).astype(bool)
+            edges = s[state & ~state.shift(fill_value=False)]
+            times = edges[self.time_column].reset_index(drop=True)
+        elif pd.api.types.is_numeric_dtype(s[value_column]):
+            # Counter/step: a boundary is an increase; a reset is not a cycle.
+            cur = s[value_column].fillna(0)
+            prev = s[value_column].shift(1).fillna(0)
+            edges = s[cur > prev]
             times = edges[self.time_column].reset_index(drop=True)
         else:
             s["prev"] = s[value_column].shift(1)

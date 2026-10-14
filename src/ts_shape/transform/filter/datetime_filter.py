@@ -42,6 +42,8 @@ class DateTimeFilter(Base):
         Filters the DataFrame to include only rows after the specified date.
 
         Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"systime"``.
             date (str): The cutoff date in 'YYYY-MM-DD' format.
 
         Returns:
@@ -67,6 +69,8 @@ class DateTimeFilter(Base):
         Filters the DataFrame to include only rows before the specified date.
 
         Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"systime"``.
             date (str): The cutoff date in 'YYYY-MM-DD' format.
 
         Returns:
@@ -97,6 +101,8 @@ class DateTimeFilter(Base):
         Filters the DataFrame to include only rows between the specified start and end dates.
 
         Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"systime"``.
             start_date (str): The start date of the interval in 'YYYY-MM-DD' format.
             end_date (str): The end date of the interval in 'YYYY-MM-DD' format.
             inclusive (str): Which bounds to include: 'neither' (default),
@@ -127,6 +133,8 @@ class DateTimeFilter(Base):
         Filters the DataFrame to include only rows after the specified datetime.
 
         Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"systime"``.
             datetime (str): The cutoff datetime in 'YYYY-MM-DD HH:MM:SS' format.
 
         Returns:
@@ -152,6 +160,8 @@ class DateTimeFilter(Base):
         Filters the DataFrame to include only rows before the specified datetime.
 
         Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"systime"``.
             datetime (str): The cutoff datetime in 'YYYY-MM-DD HH:MM:SS' format.
 
         Returns:
@@ -182,6 +192,8 @@ class DateTimeFilter(Base):
         Filters the DataFrame to include only rows between the specified start and end datetimes.
 
         Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"systime"``.
             start_datetime (str): The start datetime of the interval in 'YYYY-MM-DD HH:MM:SS' format.
             end_datetime (str): The end datetime of the interval in 'YYYY-MM-DD HH:MM:SS' format.
             inclusive (str): Which bounds to include: 'neither' (default),

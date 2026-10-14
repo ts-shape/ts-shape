@@ -3,7 +3,10 @@ from typing import Any
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import empty_event_df
+from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method, keyword_only
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -16,7 +19,7 @@ class DutyCycleEvents(Base):
     interval listing, transition counts, and excessive cycling detection.
 
     Methods:
-    - duty_cycle_per_window: On-time percentage per time window.
+    - duty_cycle_by_window: On-time percentage per time window.
     - on_off_intervals: List every on and off interval with duration.
     - cycle_count: Number of on/off transitions per window.
     - excessive_cycling: Flag windows with too many transitions.
@@ -36,6 +39,12 @@ class DutyCycleEvents(Base):
         """Initialize the duty-cycle analyzer.
 
         Args:
+            dataframe: Long-format input data.
+            signal_uuid: UUID of the boolean on/off signal (True = on).
+            event_uuid: UUID assigned to generated events.
+            value_column: Column holding the on/off state. Missing values
+                count as off.
+            time_column: Timestamp column.
             interval_end: How on/off intervals are closed. ``"last_sample"``
                 (default) ends each interval at its last sample -- backward
                 compatible, but a change-encoded (``is_delta``) signal logs one
@@ -45,7 +54,7 @@ class DutyCycleEvents(Base):
             data_end: Optional bound for the final, still-open interval when
                 ``interval_end="next_change"``.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -64,11 +73,13 @@ class DutyCycleEvents(Base):
         """List every on and off interval with duration.
 
         Returns:
-            DataFrame with columns: start_time, end_time, state (on/off), duration.
+            DataFrame with columns: start, end, duration_seconds (float),
+            uuid (event uuid), source_uuid (signal uuid), state (on/off),
+            duration (Timedelta).
         """
-        cols = ["start", "end", "state", "duration"]
+        cols = ["state", "duration"]
         if self.series.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = s[self.value_column].fillna(False).astype(bool)
@@ -80,9 +91,9 @@ class DutyCycleEvents(Base):
             data_end=self.data_end,
         )
         if intervals.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
-        return pd.DataFrame(
+        out = pd.DataFrame(
             {
                 "start": intervals["start"].to_numpy(),
                 "end": intervals["end"].to_numpy(),
@@ -90,8 +101,21 @@ class DutyCycleEvents(Base):
                 "duration": pd.to_timedelta(intervals["duration_seconds"], unit="s"),
             }
         )
+        out.insert(
+            2,
+            "duration_seconds",
+            (
+                pd.to_datetime(out["end"]) - pd.to_datetime(out["start"])
+            ).dt.total_seconds(),
+        )
+        out.insert(3, "uuid", self.event_uuid)
+        out.insert(4, "source_uuid", self.signal_uuid)
+        return out
 
-    def duty_cycle_per_window(
+    duty_cycle_per_window = deprecated_method("duty_cycle_by_window")
+
+    @keyword_only(1)
+    def duty_cycle_by_window(
         self, window: str = "1h", *, time_weighted: bool = False
     ) -> pd.DataFrame:
         """Percentage of time the signal is True per window.
@@ -107,11 +131,13 @@ class DutyCycleEvents(Base):
                 ``off_time`` are then the actual covered seconds in the window.
 
         Returns:
-            DataFrame with columns: start, on_time, off_time, duty_cycle_pct.
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, on_time, off_time,
+            duty_cycle_pct.
         """
         cols = ["start", "on_time", "off_time", "duty_cycle_pct"]
         if self.series.empty:
-            return pd.DataFrame(columns=cols)
+            return self._with_window(pd.DataFrame(columns=cols), window)
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s[self.time_column] = pd.to_datetime(s[self.time_column])
@@ -125,7 +151,7 @@ class DutyCycleEvents(Base):
             ).dt.total_seconds()
             s = s[s["dur"].notna()]
             if s.empty:
-                return pd.DataFrame(columns=cols)
+                return self._with_window(pd.DataFrame(columns=cols), window)
             s["win"] = s[self.time_column].dt.floor(window)
             s["on_dur"] = s["state"] * s["dur"]
             grouped = s.groupby("win").agg(on=("on_dur", "sum"), total=("dur", "sum"))
@@ -158,10 +184,9 @@ class DutyCycleEvents(Base):
                     }
                 )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return self._with_window(pd.DataFrame(events, columns=cols), window)
 
+    @keyword_only(1)
     def cycle_count(self, window: str = "1h") -> pd.DataFrame:
         """Number of on/off transitions per window.
 
@@ -169,11 +194,13 @@ class DutyCycleEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: start, on_count, off_count, total_transitions.
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, on_count, off_count,
+            total_transitions.
         """
         cols = ["start", "on_count", "off_count", "total_transitions"]
         if self.series.empty:
-            return pd.DataFrame(columns=cols)
+            return self._with_window(pd.DataFrame(columns=cols), window)
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = s[self.value_column].fillna(False).astype(bool)
@@ -193,8 +220,9 @@ class DutyCycleEvents(Base):
         result["off_count"] = result["off_count"].astype(int)
         result["total_transitions"] = result["total_transitions"].astype(int)
 
-        return result[cols]
+        return self._with_window(result[cols], window)
 
+    @keyword_only(1)
     def excessive_cycling(
         self, max_transitions: int = 20, window: str = "1h"
     ) -> pd.DataFrame:
@@ -207,7 +235,8 @@ class DutyCycleEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: start, transition_count,
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, transition_count,
             avg_on_duration, avg_off_duration.
         """
         cols = [
@@ -217,13 +246,13 @@ class DutyCycleEvents(Base):
             "avg_off_duration",
         ]
 
-        counts = self.cycle_count(window)
+        counts = self.cycle_count(window=window)
         if counts.empty:
-            return pd.DataFrame(columns=cols)
+            return self._with_window(pd.DataFrame(columns=cols), window)
 
         excessive = counts[counts["total_transitions"] >= max_transitions].copy()
         if excessive.empty:
-            return pd.DataFrame(columns=cols)
+            return self._with_window(pd.DataFrame(columns=cols), window)
 
         intervals = self.on_off_intervals()
         window_td = pd.to_timedelta(window)
@@ -260,6 +289,19 @@ class DutyCycleEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return self._with_window(pd.DataFrame(events, columns=cols), window)
+
+    def _with_window(self, df: pd.DataFrame, window: str) -> pd.DataFrame:
+        """Insert end (start + window), duration_seconds, uuid and source_uuid."""
+        out = df.copy()
+        if out.empty:
+            out.insert(1, "end", pd.Series(dtype="object"))
+            out.insert(2, "duration_seconds", pd.Series(dtype="float64"))
+        else:
+            start, end = window_bounds(out["start"], window)
+            out["start"] = start
+            out.insert(1, "end", end)
+            out.insert(2, "duration_seconds", (out["end"] - start).dt.total_seconds())
+        out.insert(3, "uuid", self.event_uuid)
+        out.insert(4, "source_uuid", self.signal_uuid)
+        return out

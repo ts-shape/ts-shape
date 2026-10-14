@@ -9,10 +9,20 @@ Classes:
   - detect_setpoint_changes: Unified table of steps and ramps with standardized columns.
   - time_to_settle: Time until |actual − setpoint| ≤ tol for a hold duration within a window.
   - overshoot_metrics: Peak overshoot magnitude/percent and time-to-peak after a change.
+  - control_quality_metrics: Rise time, overshoot, settling and decay per setpoint change.
+  - decay_rate: Estimate exponential decay rate of the settling behavior.
+  - oscillation_frequency: Estimate the frequency of oscillations during settling.
+  - rise_time: Time for the actual value to go from 10 % to 90 % of a step.
+  - time_to_settle_derivative: Settling time from the rate of change falling below a threshold.
 
 - StartupDetectionEvents: Detect startup intervals from thresholds or slope.
   - detect_startup_by_threshold: Rising threshold crossing with minimum dwell above threshold.
   - detect_startup_by_slope: Intervals with sustained positive slope ≥ min_slope for min_duration.
+  - assess_startup_quality: Assess the quality of detected startup events.
+  - detect_failed_startups: Detect failed or aborted startup attempts.
+  - detect_startup_adaptive: Startups against an adaptive threshold from the recent baseline.
+  - detect_startup_multi_signal: Startups from several signals combined with AND / OR logic.
+  - track_startup_phases: Track progression through defined startup phases.
 
 - ThresholdMonitoringEvents: Multi-level threshold monitoring with hysteresis.
   - multi_level_threshold: Intervals exceeding warning/alarm/critical levels.
@@ -73,7 +83,7 @@ Classes:
   - detect_balance_exceedance: Sustained imbalance events.
   - contribution_breakdown: Each signal's share of total input/output.
 
-- ProcessStabilityIndex: Single 0-100 stability score per shift/day.
+- ProcessStabilityIndexEvents: Single 0-100 stability score per shift/day.
   - stability_score: Composite 0-100 score per window.
   - score_trend: Is stability improving or degrading?
   - worst_periods: N worst-scoring windows.
@@ -92,7 +102,10 @@ from .control_loop_health import ControlLoopHealthEvents  # re-export
 from .disturbance_recovery import DisturbanceRecoveryEvents  # re-export
 from .material_balance import MaterialBalanceEvents  # re-export
 from .operating_range import OperatingRangeEvents  # re-export
-from .process_stability_index import ProcessStabilityIndex  # re-export
+from .process_stability_index import (
+    ProcessStabilityIndex,  # deprecated alias
+    ProcessStabilityIndexEvents,  # re-export
+)
 from .process_window import ProcessWindowEvents  # re-export
 from .rate_of_change import RateOfChangeEvents  # re-export
 from .setpoint_events import SetpointChangeEvents  # re-export
@@ -116,6 +129,7 @@ __all__ = [
     "ControlLoopHealthEvents",
     "DisturbanceRecoveryEvents",
     "MaterialBalanceEvents",
-    "ProcessStabilityIndex",
+    "ProcessStabilityIndexEvents",
+    "ProcessStabilityIndex",  # deprecated alias
     "TimeToThresholdEvents",
 ]

@@ -68,7 +68,7 @@ class ProductionScheduleAdherenceEvents(Base):
         planned_qty_column: str = "planned_qty",
         order_id_column: str = "order_id",
     ) -> None:
-        """Initialise the adherence tracker.
+        """Initialize the adherence tracker.
 
         Args:
             dataframe: Timeseries frame holding the production counter.
@@ -88,7 +88,7 @@ class ProductionScheduleAdherenceEvents(Base):
             ValueError: If ``schedule`` lacks a required column, or a period
                 ends before it starts.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         if not isinstance(schedule, pd.DataFrame):
             raise TypeError(
                 f"schedule must be a pandas DataFrame, got {type(schedule).__name__}"
@@ -109,7 +109,7 @@ class ProductionScheduleAdherenceEvents(Base):
     # ------------------------------------------------------------------
 
     def _prepare_schedule(self, schedule: pd.DataFrame) -> pd.DataFrame:
-        """Validate and normalise the planned-schedule frame."""
+        """Validate and normalize the planned-schedule frame."""
         required = (
             self.schedule_start_column,
             self.schedule_end_column,

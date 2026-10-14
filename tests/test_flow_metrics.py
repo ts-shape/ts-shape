@@ -49,7 +49,7 @@ def test_lead_time_is_fifo_matched():
 def test_throughput_counts_units_per_window():
     df = _make_flow(exit_period=60)
     flow = FlowMetricsEvents(df, entry_uuid="in", exit_uuid="out")
-    tp = flow.throughput("1h")
+    tp = flow.throughput(window="1h")
     full_hours = tp[tp["units_out"] == 60]
     assert not full_hours.empty
     assert (full_hours["throughput_per_hour"] == 60.0).all()
@@ -59,7 +59,7 @@ def test_wip_reaches_expected_steady_state():
     # entry & exit both every 60 s, exit lagged 300 s -> steady-state WIP = 5.
     df = _make_flow(entry_period=60, exit_period=60, lag=300, n=300)
     flow = FlowMetricsEvents(df, entry_uuid="in", exit_uuid="out")
-    wip = flow.wip_over_time("1h")
+    wip = flow.wip_over_time(window="1h")
     interior = wip.iloc[1]  # 07:00-08:00, fully steady
     assert abs(interior["wip_mean"] - 5.0) < 0.3
     assert interior["wip_max"] == 5.0
@@ -88,8 +88,8 @@ def test_flow_summary_emits_canonical_summary_columns():
 
 def test_empty_input_returns_empty(empty_df):
     flow = FlowMetricsEvents(empty_df, entry_uuid="in", exit_uuid="out")
-    assert flow.wip_over_time("1h").empty
-    assert flow.throughput("1h").empty
+    assert flow.wip_over_time(window="1h").empty
+    assert flow.throughput(window="1h").empty
     assert flow.lead_time().empty
 
 

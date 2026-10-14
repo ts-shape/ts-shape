@@ -113,9 +113,9 @@ def test_correlation_breakdown_next_change():
         ]
     )
     ev = SignalCorrelationEvents(df)
-    legacy = ev.correlation_breakdown("a", "b", window=5, threshold=0.0)
+    legacy = ev.correlation_breakdown("a", "b", window_size=5, threshold=0.0)
     fixed = ev.correlation_breakdown(
-        "a", "b", window=5, threshold=0.0, interval_end="next_change"
+        "a", "b", window_size=5, threshold=0.0, interval_end="next_change"
     )
     assert len(fixed) == len(legacy) > 0
     assert (fixed["duration_seconds"] >= legacy["duration_seconds"]).all()

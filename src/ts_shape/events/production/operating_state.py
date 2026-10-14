@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class OperatingStateEvents(Base):
 
     Methods:
     - infer_states: Cluster the signal into N operating states.
-    - state_duration_stats: How long does each state typically last?
+    - state_duration_statistics: How long does each state typically last?
     - unusual_state_sequence: Did states occur in an unexpected order?
     - dwell_time_violation: Did the machine stay in a state too long?
     """
@@ -36,7 +37,7 @@ class OperatingStateEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -53,6 +54,7 @@ class OperatingStateEvents(Base):
     # Public methods
     # ------------------------------------------------------------------
 
+    @keyword_only(1)
     def infer_states(
         self,
         n_states: int = 2,
@@ -70,7 +72,8 @@ class OperatingStateEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, state, state_label,
-            mean_value, duration_seconds.
+            mean_value, duration_seconds, uuid (event uuid), source_uuid
+            (signal uuid).
         """
         cols = [
             "start",
@@ -79,6 +82,8 @@ class OperatingStateEvents(Base):
             "state_label",
             "mean_value",
             "duration_seconds",
+            "uuid",
+            "source_uuid",
         ]
         if self.signal.empty or len(self.signal) < n_states:
             return pd.DataFrame(columns=cols)
@@ -118,6 +123,8 @@ class OperatingStateEvents(Base):
                     "state_label": labels[state_id],
                     "mean_value": round(float(seg[self.value_column].mean()), 4),
                     "duration_seconds": round(duration.total_seconds(), 3),
+                    "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                 }
             )
 
@@ -125,7 +132,10 @@ class OperatingStateEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
-    def state_duration_stats(self, n_states: int = 2) -> pd.DataFrame:
+    state_duration_stats = deprecated_method("state_duration_statistics")
+
+    @keyword_only(1)
+    def state_duration_statistics(self, n_states: int = 2) -> pd.DataFrame:
         """How long does each inferred state typically last?
 
         Args:
@@ -172,6 +182,7 @@ class OperatingStateEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def unusual_state_sequence(
         self, n_states: int = 2, expected_order: list[int] | None = None
     ) -> pd.DataFrame:
@@ -252,6 +263,7 @@ class OperatingStateEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(3)
     def dwell_time_violation(
         self,
         state: int,
@@ -267,7 +279,8 @@ class OperatingStateEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, state_label,
-            duration_seconds, excess_seconds.
+            duration_seconds, excess_seconds, uuid (event uuid), source_uuid
+            (signal uuid).
         """
         cols = [
             "start",
@@ -275,6 +288,8 @@ class OperatingStateEvents(Base):
             "state_label",
             "duration_seconds",
             "excess_seconds",
+            "uuid",
+            "source_uuid",
         ]
         intervals = self.infer_states(n_states=n_states)
         if intervals.empty:
@@ -294,6 +309,8 @@ class OperatingStateEvents(Base):
                         "state_label": row["state_label"],
                         "duration_seconds": dur,
                         "excess_seconds": round(dur - max_td, 3),
+                        "uuid": self.event_uuid,
+                        "source_uuid": self.signal_uuid,
                     }
                 )
 

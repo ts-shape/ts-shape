@@ -1,10 +1,19 @@
 import logging
+import warnings
 from typing import Any
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_interval_df,
+    finalize_point_df,
+    finalize_summary_df,
+)
+from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +38,7 @@ class RateOfChangeEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -57,26 +66,41 @@ class RateOfChangeEvents(Base):
         sig["rate"] = value_diff / time_diff.replace(0, np.nan)
         return sig.dropna(subset=["rate"])
 
+    @keyword_only(2)
     def detect_rapid_change(
         self, threshold: float, window: str = "1min"
     ) -> pd.DataFrame:
         """Flag intervals where rate of change exceeds threshold.
 
+        Each run of consecutive samples whose absolute rate is at or above
+        ``threshold`` becomes one interval.
+
         Args:
             threshold: Minimum absolute rate (units/second) to flag.
-            window: Minimum duration to group rapid change intervals.
+            window: Deprecated; has no effect and will be removed in 1.0.
+                Passing a value other than '1min' emits a
+                ``DeprecationWarning``. Filter the result on
+                ``duration_seconds`` to drop short intervals.
 
         Returns:
-            DataFrame with columns: start_time, end_time, max_rate, direction.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, max_rate, direction.
         """
+        if window != "1min":
+            warnings.warn(
+                "window has no effect and will be removed in 1.0",
+                DeprecationWarning,
+                stacklevel=3,
+            )
         cols = ["start", "end", "max_rate", "direction"]
+        empty = empty_event_df("interval", ["max_rate", "direction"])
         rate_df = self._compute_rate()
         if rate_df.empty:
-            return pd.DataFrame(columns=cols)
+            return empty
 
         rapid = rate_df["rate"].abs() >= threshold
         if not rapid.any():
-            return pd.DataFrame(columns=cols)
+            return empty
 
         groups = (rapid != rapid.shift()).cumsum()
         events: list[dict[str, Any]] = []
@@ -99,10 +123,15 @@ class RateOfChangeEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        if not events:
+            return empty
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
         )
 
+    @keyword_only(1)
     def rate_statistics(self, window: str = "1h") -> pd.DataFrame:
         """Per-window rate of change statistics.
 
@@ -110,13 +139,13 @@ class RateOfChangeEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: start, mean_rate, std_rate,
-            max_rate, min_rate.
+            DataFrame with columns: start, end, duration_seconds, mean_rate,
+            std_rate, max_rate, min_rate. ``end`` is ``start`` + ``window``.
         """
         cols = ["start", "mean_rate", "std_rate", "max_rate", "min_rate"]
         rate_df = self._compute_rate()
         if rate_df.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", cols[1:])
 
         rate_indexed = rate_df.set_index(self.time_column)
         abs_rate = rate_indexed["rate"].abs()
@@ -136,8 +165,9 @@ class RateOfChangeEvents(Base):
         for col in ["mean_rate", "std_rate", "max_rate", "min_rate"]:
             result[col] = result[col].round(6)
 
-        return result[cols]
+        return finalize_summary_df(add_window_bounds(result[cols], window))
 
+    @keyword_only(2)
     def detect_step_changes(
         self, min_delta: float, max_duration: str = "5s"
     ) -> pd.DataFrame:
@@ -148,11 +178,14 @@ class RateOfChangeEvents(Base):
             max_duration: Maximum time window for the step to occur.
 
         Returns:
-            DataFrame with columns: time, value_before, value_after, delta, duration.
+            DataFrame with columns: systime, uuid, source_uuid, time,
+            value_before, value_after, delta, duration. ``systime`` equals
+            ``time`` (the instant after the jump).
         """
         cols = ["time", "value_before", "value_after", "delta", "duration"]
+        empty = empty_event_df("point", cols)
         if self.signal.empty or len(self.signal) < 2:
-            return pd.DataFrame(columns=cols)
+            return empty
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -180,6 +213,10 @@ class RateOfChangeEvents(Base):
                     }
                 )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        if not events:
+            return empty
+        out = pd.DataFrame(events, columns=cols)
+        out["systime"] = out["time"]
+        return finalize_point_df(
+            out, uuid=self.event_uuid, source_uuid=self.signal_uuid
         )

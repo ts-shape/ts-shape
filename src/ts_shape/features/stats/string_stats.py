@@ -16,21 +16,39 @@ class StringStatistics(Base):
     def count_unique(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> int:
-        """Returns the number of unique strings in the column."""
+        """Returns the number of unique strings in the column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         return dataframe[column_name].nunique()
 
     @classmethod
     def most_frequent(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> str:
-        """Returns the most frequent string in the column."""
+        """Returns the most frequent string in the column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         return dataframe[column_name].mode().iloc[0]
 
     @classmethod
     def count_most_frequent(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> int:
-        """Returns the count of the most frequent string in the column."""
+        """Returns the count of the most frequent string in the column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         most_frequent_value = cls.most_frequent(dataframe, column_name)
         return dataframe[column_name].value_counts().loc[most_frequent_value]
 
@@ -38,21 +56,39 @@ class StringStatistics(Base):
     def count_null(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> int:
-        """Returns the number of null (NaN) values in the column."""
+        """Returns the number of null (NaN) values in the column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         return dataframe[column_name].isna().sum()
 
     @classmethod
     def average_string_length(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> float:
-        """Returns the average length of strings in the column, excluding null values."""
+        """Returns the average length of strings in the column, excluding null values.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         return dataframe[column_name].dropna().str.len().mean()
 
     @classmethod
     def longest_string(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> str:
-        """Returns the longest string in the column."""
+        """Returns the longest string in the column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         return (
             dataframe[column_name]
             .dropna()
@@ -63,7 +99,13 @@ class StringStatistics(Base):
     def shortest_string(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> str:
-        """Returns the shortest string in the column."""
+        """Returns the shortest string in the column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         return (
             dataframe[column_name]
             .dropna()
@@ -74,7 +116,17 @@ class StringStatistics(Base):
     def string_length_summary(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> pd.DataFrame:
-        """Returns a summary of string lengths, including min, max, and average lengths."""
+        """Returns a summary of string lengths, including min, max, and average lengths.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+
+        Returns:
+            One-row DataFrame with columns ``Min Length``, ``Max Length`` and ``Average
+                Length`` (null values excluded).
+        """
         lengths = dataframe[column_name].dropna().str.len()
         return pd.DataFrame(
             {
@@ -88,35 +140,83 @@ class StringStatistics(Base):
     def most_common_n_strings(
         cls, dataframe: pd.DataFrame, n: int, column_name: str = "value_string"
     ) -> pd.Series:
-        """Returns the top N most frequent strings in the column."""
+        """Returns the top N most frequent strings in the column.
+
+        Args:
+            dataframe: Input DataFrame.
+            n: Number of strings to return.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+
+        Returns:
+            Series of counts indexed by string, most frequent first.
+        """
         return dataframe[column_name].value_counts().head(n)
 
     @classmethod
     def contains_substring_count(
-        cls, dataframe: pd.DataFrame, substring: str, column_name: str = "value_string"
+        cls,
+        dataframe: pd.DataFrame,
+        substring: str,
+        column_name: str = "value_string",
+        *,
+        regex: bool = True,
     ) -> int:
-        """Counts how many strings contain the specified substring."""
-        return dataframe[column_name].dropna().str.contains(substring).sum()
+        """Counts how many strings contain the specified substring.
+
+        Args:
+            dataframe: Input DataFrame.
+            substring: Pattern to look for. It is a regular expression unless
+                ``regex=False``, so characters such as ``.``, ``(`` or ``+`` are
+                special by default.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+            regex: If True (default), treat ``substring`` as a regular
+                expression; if False, match it literally.
+        """
+        return int(
+            dataframe[column_name].dropna().str.contains(substring, regex=regex).sum()
+        )
 
     @classmethod
     def starts_with_count(
         cls, dataframe: pd.DataFrame, prefix: str, column_name: str = "value_string"
     ) -> int:
-        """Counts how many strings start with the specified prefix."""
+        """Counts how many strings start with the specified prefix.
+
+        Args:
+            dataframe: Input DataFrame.
+            prefix: Prefix to match.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         return dataframe[column_name].dropna().str.startswith(prefix).sum()
 
     @classmethod
     def ends_with_count(
         cls, dataframe: pd.DataFrame, suffix: str, column_name: str = "value_string"
     ) -> int:
-        """Counts how many strings end with the specified suffix."""
+        """Counts how many strings end with the specified suffix.
+
+        Args:
+            dataframe: Input DataFrame.
+            suffix: Suffix to match.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         return dataframe[column_name].dropna().str.endswith(suffix).sum()
 
     @classmethod
     def uppercase_percentage(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> float:
-        """Returns the percentage of strings that are fully uppercase."""
+        """Returns the percentage of strings that are fully uppercase.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         total_non_null = dataframe[column_name].notna().sum()
         if total_non_null == 0:
             return 0.0
@@ -127,7 +227,13 @@ class StringStatistics(Base):
     def lowercase_percentage(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> float:
-        """Returns the percentage of strings that are fully lowercase."""
+        """Returns the percentage of strings that are fully lowercase.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         total_non_null = dataframe[column_name].notna().sum()
         if total_non_null == 0:
             return 0.0
@@ -138,14 +244,32 @@ class StringStatistics(Base):
     def contains_digit_count(
         cls, dataframe: pd.DataFrame, column_name: str = "value_string"
     ) -> int:
-        """Counts how many strings contain digits."""
+        """Counts how many strings contain digits.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze. Default
+                ``"value_string"``.
+        """
         return dataframe[column_name].dropna().str.contains(r"\d").sum()
 
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
     ) -> dict[str, int | str | float]:
-        """Returns a dictionary with comprehensive string statistics for the specified column."""
+        """Returns a dictionary with comprehensive string statistics for the specified column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze.
+
+        Returns:
+            Dict with keys ``unique_values``, ``most_frequent``,
+                ``count_most_frequent``, ``count_null``, ``average_string_length``,
+                ``longest_string``, ``shortest_string``, ``uppercase_percentage``,
+                ``lowercase_percentage``, ``contains_digit_count``, ``least_common`` and
+                ``frequency_least_common``.
+        """
         most_frequent = cls.most_frequent(dataframe, column_name)
         value_counts = dataframe[column_name].value_counts()
 
@@ -170,6 +294,14 @@ class StringStatistics(Base):
     def summary_as_dataframe(
         cls, dataframe: pd.DataFrame, column_name: str
     ) -> pd.DataFrame:
-        """Returns a DataFrame with comprehensive string statistics for the specified column."""
+        """Returns a DataFrame with comprehensive string statistics for the specified column.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the string column to analyze.
+
+        Returns:
+            One-row DataFrame with the keys of `summary_as_dict` as columns.
+        """
         summary_data = cls.summary_as_dict(dataframe, column_name)
         return pd.DataFrame([summary_data])

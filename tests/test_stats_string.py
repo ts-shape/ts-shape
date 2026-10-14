@@ -27,3 +27,12 @@ def test_string_statistics():
     assert StringStatistics.uppercase_percentage(df) >= 0.0
     assert StringStatistics.lowercase_percentage(df) >= 0.0
     assert StringStatistics.contains_digit_count(df) == 1
+
+
+def test_contains_substring_count_regex_opt_out():
+    df = pd.DataFrame({"value_string": ["a.b", "axb", None]})
+    # Default: regular expression, "." matches any character.
+    assert StringStatistics.contains_substring_count(df, "a.b") == 2
+    # Literal match.
+    assert StringStatistics.contains_substring_count(df, "a.b", regex=False) == 1
+    assert type(StringStatistics.contains_substring_count(df, "a")) is int

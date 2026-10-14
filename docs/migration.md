@@ -6,6 +6,121 @@ while you migrate. Deprecated names still function but emit a
 authoritative, dated record is the [Changelog](changelog.md) — this page is the
 quick old → new lookup.
 
+## Renamed parameters (old keywords deprecated, removed in 1.0)
+
+Parameter names follow [Naming & Output Conventions](naming.md). The old keyword still works, but emits a `DeprecationWarning`.
+
+| Old | New | Where |
+|---|---|---|
+| `column_name` (the time column) | `time_column` | every detector constructor (`Base`) |
+| `freq`, `period`, `resample` | `window` | data-gap coverage, value distribution, demand patterns, period summary, correlation and root-cause methods |
+| integer `window` (a row count) | `window_size` | `SignalCorrelationEvents.rolling_correlation` / `correlation_breakdown`, `StatisticalProcessControlEvents.dynamic_control_limits` |
+| `z_threshold`, `threshold_sigma` | `n_sigma` | anomaly classification, anomaly correlation, disturbance recovery |
+| `low`/`high`, `lower`/`upper`, `low_limit`/`high_limit`, `lower_bound`/`upper_bound` | `lower_limit` / `upper_limit` | threshold hysteresis, operating range, control-loop saturation, time-to-threshold |
+| `minor_threshold` / `moderate_threshold` | `warning_threshold` / `critical_threshold` | `FlowConstraintEvents.flow_constraint_analytics` |
+| `include_first`, `count_initial_active` | `include_initial` | reliability (Weibull), alarm frequency |
+| `significant_only`, `on_crossing_only` | `only_significant`, `only_crossings` | root-cause ranking, asset-health events |
+| `sensor_uuids` | `signal_uuids` | `MultiSensorValidationEvents` |
+| `run_uuid` | `run_state_uuid` | `RuntimeAccountingEvents` |
+| `counter_column`, `energy_column`, `state_column` | `value_column_counter`, `value_column_energy`, `value_column_state` | energy pack |
+
+Optional arguments are keyword-only. Passing them positionally still works, but warns, for example `detect_outliers_zscore(3.0)` instead of `detect_outliers_zscore(threshold=3.0)`.
+
+The default `event_uuid` values now all follow `"<pack>:<name>"`:
+- `outlier_event` → `quality:outlier`
+- `startup_event` → `eng:startup`
+- `setpoint_change_event` → `eng:setpoint_change`
+- `FlowMetricsEvents`: `prod:flow` → `prod:flow_metrics` (it used to collide with `FlowConstraintEvents`)
+
+If you filter results by these values, update the filters.
+
+## Renamed classes and methods (old names deprecated, removed in 1.0)
+
+Detector classes all end in `Events`. Event classes no longer use `calculate_` / `compute_` / `process_`: methods that find events start with `detect_`, and metrics are nouns (see [Naming & Output Conventions](naming.md)).
+
+The old names still work. They emit a `DeprecationWarning`, and the event log accepts them too: for example, `to_event_log(df, "OEECalculator.calculate_oee")` is resolved to `OEEEvents.oee`.
+
+| Old | New |
+|---|---|
+| `CycleTimeTracking` | `CycleTimeEvents` |
+| `DowntimeTracking` | `DowntimeEvents` |
+| `OperatorPerformanceTracking` | `OperatorPerformanceEvents` |
+| `PartProductionTracking` | `PartProductionEvents` |
+| `PerformanceLossTracking` | `PerformanceLossEvents` |
+| `QualityTracking` | `QualityEvents` |
+| `ReworkTracking` | `ReworkEvents` |
+| `ScrapTracking` | `ScrapEvents` |
+| `SetupTimeTracking` | `SetupTimeEvents` |
+| `TargetTracking` | `TargetEvents` |
+| `OEECalculator` (`calculate_availability`, `calculate_performance`, `calculate_quality`, `calculate_oee`) | `OEEEvents` (`availability`, `performance`, `quality`, `oee`) |
+| `PeriodSummary` | `PeriodSummaryEvents` |
+| `ShiftReporting` | `ShiftReportEvents` |
+| `ShiftHandoverReport` | `ShiftHandoverEvents` |
+| `ProcessStabilityIndex` | `ProcessStabilityIndexEvents` |
+| `StatisticalProcessControlRuleBased` (`process`, `apply_rules_vectorized`, `calculate_control_limits`, `calculate_dynamic_control_limits`) | `StatisticalProcessControlEvents` (`detect_violations`, `detect_rule_violations`, `control_limits`, `dynamic_control_limits`) |
+| `ToleranceDeviationEvents.process_and_group_data_with_events` / `.compute_capability_indices` | `.detect_deviations` / `.capability_indices` |
+| `DataGapAnalysisEvents.find_gaps` | `.detect_gaps` |
+| `MultiSensorValidationEvents.identify_outlier_sensor` | `.detect_outlier_sensor` |
+| `LeadTimeAnalysisEvents.calculate_lead_times` | `.lead_times` |
+| `EnvironmentalCompensationEvents.estimate_sensitivity` | `.sensitivity` |
+| `DesignOfExperimentsEvents.compute_effects` | `.effects` |
+| `*.alarm_duration_stats`, `*.batch_duration_stats`, `*.state_duration_stats` | `*_statistics` |
+| `DutyCycleEvents.duty_cycle_per_window`, `RuntimeAccountingEvents.runtime_per_window` | `*_by_window` |
+
+To find every remaining old name in your code, run your tests with `-W error::DeprecationWarning`.
+
+## Behavior fixes that change results
+
+These change output because the old output was wrong or contradicted the documentation. Each one has a regression test.
+
+- **SPC rules now follow Nelson (1984) / Western Electric** (`StatisticalProcessControlEvents`):
+  - rule 8 flags 8 points in a row with **none** within 1σ (it used to flag 8 points *within* 1σ);
+  - rule 3 is 6 points steadily rising or falling (was 7), and rule 4 is 14 points alternating up and down (was 15);
+  - rules 5 and 6 count points beyond the next zone too, per side;
+  - rule 2 measures sides against the chart center line;
+  - the rules no longer add columns to your frame, and the vectorized and per-rule paths flag the same points.
+- **`ToleranceDeviationEvents.detect_deviations`** keeps the measured value and reports single-sample deviations. A missing `actual_uuid` raises instead of returning nothing. `capability_indices` adds `Cpm` when `target_value` is given.
+- **`LineThroughputEvents.takt_adherence`:**
+  - a cycle exactly equal to takt is no longer a violation;
+  - a decrease in a numeric counter (a reset) is no longer a cycle.
+- **`MachineStateEvents.state_quality_metrics`:**
+  - follows the signal's spec like `detect_run_idle`;
+  - `run_idle_ratio` is NaN, not 0.0, when there is no idle time.
+- **`ShiftHandoverEvents.highlight_issues`** without `report_df` or the four uuids raises instead of returning `[]`.
+- **`PeriodSummaryEvents.from_daily_data`** honors anchored weeks (`'W-FRI'` …).
+- **`GoldenBatchDeviationEvents.phase_breakdown`** compares each phase with the same phase of the golden batch.
+- **`EnvironmentalCompensationEvents`:**
+  - constructing without `env_uuid` raises;
+  - `compensated_signal`'s `uuid` is the event uuid.
+- **`SetpointChangeEvents`:** two setpoint changes at the same instant no longer multiply the KPI rows.
+- **`ProcessWindowEvents`** uses the strict `>` its docstrings describe.
+- **Hour-folder loaders** no longer drop the hour that contains the range end. Databricks loaders apply a single `start` or `end` bound.
+
+Parameters that had no effect now warn when passed: `RateOfChangeEvents.detect_rapid_change(window=...)`, `MeasurementUncertaintyEvents(part_uuid=...)`, `ContinuousProcessAlignmentEvents(ref_uuid=...)`. When both `settle_pct` and `tol` are passed to a setpoint KPI, a warning says `settle_pct` wins. When both `state_map` and `station_map` are passed, a warning says `state_map` wins.
+
+## Every detector output carries its time bounds
+
+Each detector returns the canonical columns of its shape (see [Naming & Output Conventions](naming.md)):
+- **intervals:** `start`, `end`, `duration_seconds`, `uuid`, `source_uuid`;
+- **summaries:** `start`, `end`, `duration_seconds`, also when they are keyed by `date`, `(date, shift)` or `period`;
+- **points:** `systime`, `uuid`, `source_uuid`.
+
+The new columns were added next to the old ones; none was removed or renamed. Two consequences:
+
+- **Merging two summaries on `date` or `(date, shift)`** now finds `start`, `end` and `duration_seconds` on both sides, and pandas suffixes them `_x` / `_y`. Merge on the window instead, or select your columns first:
+
+```python
+quality = QualityTracking(df).daily_quality_summary("line1:ok", "line1:nok")
+production = PartProductionTracking(df).daily_production_summary("line1:part", "line1:count")
+daily = quality.merge(production, on=["start", "end", "duration_seconds"])
+```
+
+- **Night shifts are one row.** An overnight shift (e.g. 22:00 to 06:00) is attributed to the day it starts (`production_day=True` is now the default). Before, grouping by calendar date split one night across two rows, and each row mixed two different nights. Pass `production_day=False` to get the old grouping.
+
+## `ShiftReporting.best_and_worst_shifts` will return a DataFrame
+
+It still returns `{"best": DataFrame, "worst": DataFrame}`, but now emits a `FutureWarning`. Pass `as_frame=True` to get the 1.0 behavior already: one frame with a `rank_type` column (`best` / `worst`).
+
 ## Removed exporter aliases
 
 The event-log exporters were renamed into a consistent `to_event_log_*` family.

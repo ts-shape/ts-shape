@@ -114,7 +114,7 @@ class TestDesignOfExperimentsEvents:
     def test_compute_effects_ranks_factor_impact(self):
         df = self._build_doe_dataset()
         det = DesignOfExperimentsEvents(df, factor_uuids=["factor:F1", "factor:F2"])
-        effects = det.compute_effects(
+        effects = det.effects(
             response_uuid="response:Y",
             statistic="mean",
             min_duration="2min",
@@ -268,6 +268,34 @@ class TestGoldenBatchDeviationEvents:
         with pytest.raises(ValueError):
             det.compare(ref, mode="not-a-mode")
 
+    def test_phase_breakdown_compares_against_same_golden_phase(self):
+        """Each phase is compared with the golden's same phase, not the whole
+        golden trajectory: an identical batch scores zero in every phase."""
+        ref = self._golden_trace()
+        det = GoldenBatchDeviationEvents(ref, signal_uuid="sig:temp", n_resample=64)
+        t = pd.date_range("2024-02-01", periods=128, freq="1min")
+        v = np.concatenate([np.linspace(20.0, 80.0, 64), np.full(64, 80.0)])
+        v_hold_off = v.copy()
+        v_hold_off[64:] += 4.0
+        phases = pd.DataFrame(
+            {
+                "systime": t,
+                "uuid": "phase",
+                "value_string": ["ramp"] * 64 + ["hold"] * 64,
+            }
+        )
+        same = det.phase_breakdown(
+            _make_long_df(t, v, "sig:temp"), phases, phase_uuid="phase"
+        )
+        assert same["phase"].tolist() == ["ramp", "hold"]
+        assert np.allclose(same["max_abs_residual"], 0.0, atol=1e-9)
+
+        off = det.phase_breakdown(
+            _make_long_df(t, v_hold_off, "sig:temp"), phases, phase_uuid="phase"
+        ).set_index("phase")
+        assert off.loc["ramp", "max_abs_residual"] == pytest.approx(0.0, abs=1e-9)
+        assert off.loc["hold", "max_abs_residual"] == pytest.approx(4.0, abs=1e-9)
+
 
 # ===========================================================================
 # RecipePhaseAdherenceEvents
@@ -343,6 +371,40 @@ class TestRecipePhaseAdherenceEvents:
         # All phases are observed but unconstrained → pass with empty failed list.
         assert (out["pass"]).all()
         assert all(len(x) == 0 for x in out["criteria_failed"])
+
+    def test_change_encoded_phase_signal_next_change(self):
+        """A change-encoded phase signal gives zero-length phases by default;
+        interval_end='next_change' spans each phase to the next change."""
+        t = pd.date_range("2024-01-01", periods=31, freq="1min")
+        temp = np.r_[np.linspace(20.0, 74.0, 10), np.full(21, 80.0)]
+        value_df = pd.DataFrame(
+            {"systime": t, "uuid": "temp", "value_double": temp, "value_string": None}
+        )
+        phase_df = pd.DataFrame(
+            {
+                "systime": [t[0], t[10]],
+                "uuid": "phase",
+                "value_string": ["heat_up", "hold"],
+                "value_double": np.nan,
+            }
+        )
+        df = pd.concat([phase_df, value_df], ignore_index=True)
+        spec = {"heat_up": {"duration_s": (500.0, 700.0)}}
+        det = RecipePhaseAdherenceEvents(
+            df, phase_uuid="phase", value_uuid="temp", spec=spec
+        )
+        default = det.evaluate().set_index("phase")
+        assert default.loc["heat_up", "duration_seconds"] == 0.0
+        assert not default.loc["heat_up", "pass"]
+
+        out = det.evaluate(interval_end="next_change", data_end=t[-1]).set_index(
+            "phase"
+        )
+        assert out.loc["heat_up", "duration_seconds"] == 600.0
+        assert out.loc["heat_up", "pass"]
+        # The value sample at the transition belongs to the next phase.
+        assert out.loc["heat_up", "max_value"] == 74.0
+        assert out.loc["hold", "end"] == t[-1]
 
 
 # ===========================================================================

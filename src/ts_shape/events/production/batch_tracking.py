@@ -11,6 +11,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class BatchTrackingEvents(Base):
         batches = BatchTrackingEvents(df, batch_uuid='batch_id_signal')
 
         detected = batches.detect_batches()
-        stats = batches.batch_duration_stats()
+        stats = batches.batch_duration_statistics()
         yields = batches.batch_yield('part_counter')
         transitions = batches.batch_transition_matrix()
     """
@@ -48,7 +49,7 @@ class BatchTrackingEvents(Base):
             value_column: Column holding the batch ID string.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.batch_uuid = batch_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -121,7 +122,9 @@ class BatchTrackingEvents(Base):
     # Duration statistics
     # ------------------------------------------------------------------
 
-    def batch_duration_stats(self) -> pd.DataFrame:
+    batch_duration_stats = deprecated_method("batch_duration_statistics")
+
+    def batch_duration_statistics(self) -> pd.DataFrame:
         """Compute duration statistics grouped by batch type (batch_id).
 
         Returns:
@@ -276,11 +279,16 @@ class BatchTrackingEvents(Base):
         Returns:
             DataFrame (pivot table) where index = from_batch, columns = to_batch,
             values = transition count.  An extra ``total`` column is appended.
+            The batch columns depend on the data, so with fewer than two
+            batches the result is an empty frame with only the ``total``
+            column (index named ``from_batch``).
         """
         batches = self.detect_batches()
 
         if batches.empty or len(batches) < 2:
-            return pd.DataFrame()
+            return pd.DataFrame(
+                columns=["total"], index=pd.Index([], name="from_batch")
+            )
 
         from_batch = batches["batch_id"].iloc[:-1].values
         to_batch = batches["batch_id"].iloc[1:].values

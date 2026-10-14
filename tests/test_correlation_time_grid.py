@@ -36,7 +36,7 @@ def test_rolling_window_does_not_span_a_gap():
     t = t1.append(t2)
     a = rng.normal(size=60)
     df = _pair(t, a, a + rng.normal(scale=0.1, size=60))
-    out = SignalCorrelationEvents(df).rolling_correlation("a", "b", window=10)
+    out = SignalCorrelationEvents(df).rolling_correlation("a", "b", window_size=10)
     after_gap = out[(out["systime"] >= t2[0]) & (out["systime"] < t2[4])]
     # min_periods = 5: the first 4 post-gap minutes have too few samples in
     # their 10-minute window (pre-gap rows must not count).

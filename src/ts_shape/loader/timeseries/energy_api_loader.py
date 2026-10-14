@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class EnergyAPILoader:
     """Load energy timeseries data from REST APIs.
 
-    Fetches JSON data from energy REST endpoints and normalises the
+    Fetches JSON data from energy REST endpoints and normalizes the
     response into the standard ts_shape DataFrame columns.
 
     Example usage::
@@ -52,7 +52,7 @@ class EnergyAPILoader:
         headers: dict[str, str] | None = None,
         timeout: int = 30,
     ) -> None:
-        """Initialise the loader.
+        """Initialize the loader.
 
         Args:
             base_url: Root URL of the energy API (no trailing slash).

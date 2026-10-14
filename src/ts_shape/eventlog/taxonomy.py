@@ -31,6 +31,16 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class LabelRule:
+    """How one detector method's output maps onto OCEL events.
+
+    See the module docstring for the meaning of ``template``, ``pack``,
+    ``shape``, and ``produces_objects``. ``severity_field`` and
+    ``value_field`` name legacy columns read into the severity and value
+    attributes, ``drop_fields`` lists legacy columns to discard, and
+    ``standard_attrs`` maps standard attribute keys to a legacy column name
+    or a literal value.
+    """
+
     template: str
     pack: str
     shape: str = "point"
@@ -165,7 +175,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("SignalCorrelationEvents", "rolling_correlation"): _r(
         "correlation.signal.rolling",
         _CO,
-        S,
+        P,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "rolling_correlation",
@@ -187,7 +197,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("signal",),
         standard_attrs={"ts_shape:method": "method"},
     ),
-    ("DesignOfExperimentsEvents", "compute_effects"): _r(
+    ("DesignOfExperimentsEvents", "effects"): _r(
         "development.doe.effects",
         _DV,
         ST,
@@ -246,7 +256,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("CarbonIntensityEvents", "emission_factor_audit"): _r(
         "energy.carbon.factor_audit",
         _EN,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("CarbonIntensityEvents", "emissions_by_window"): _r(
@@ -293,7 +303,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("EnergyConsumptionEvents", "peak_demand_detection"): _r(
         "energy.consumption.peak_demand",
         _EN,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "peak_demand",
             "ts_shape:direction": "above",
@@ -303,7 +313,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("EnergyEfficiencyEvents", "efficiency_comparison"): _r(
         "energy.efficiency.comparison",
         _EN,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("EnergyEfficiencyEvents", "efficiency_trend"): _r(
@@ -353,7 +363,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("IdleEnergyDetectionEvents", "idle_energy_by_shift"): _r(
         "energy.idle.by_shift",
         _EN,
-        S,
+        ST,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
@@ -400,7 +410,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("DisturbanceRecoveryEvents", "detect_disturbances"): _r(
         "engineering.disturbance.detected",
         _E,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "disturbance",
             "ts_shape:direction": "direction",
@@ -437,7 +447,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("MaterialBalanceEvents", "detect_balance_exceedance"): _r(
         "engineering.material_balance.exceedance",
         _E,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "balance_exceedance",
             "ts_shape:direction": "outside",
@@ -453,7 +463,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("OperatingRangeEvents", "detect_regime_change"): _r(
         "engineering.operating_range.regime_change",
         _E,
-        P,
+        I,
         standard_attrs={
             "ts_shape:outcome": "regime_change",
             "ts_shape:baseline": "prev_mean",
@@ -479,16 +489,16 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("OperatingRangeEvents", "value_distribution"): _r(
         "engineering.operating_range.distribution",
         _E,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
-    ("ProcessStabilityIndex", "score_trend"): _r(
+    ("ProcessStabilityIndexEvents", "score_trend"): _r(
         "engineering.stability.score_trend",
         _E,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("ProcessStabilityIndex", "stability_comparison"): _r(
+    ("ProcessStabilityIndexEvents", "stability_comparison"): _r(
         "engineering.stability.comparison",
         _E,
         S,
@@ -497,13 +507,13 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:baseline": "best_score",
         },
     ),
-    ("ProcessStabilityIndex", "stability_score"): _r(
+    ("ProcessStabilityIndexEvents", "stability_score"): _r(
         "engineering.stability.score",
         _E,
         S,
         standard_attrs={"ts_shape:sample_count": None, "ts_shape:outcome": "grade"},
     ),
-    ("ProcessStabilityIndex", "worst_periods"): _r(
+    ("ProcessStabilityIndexEvents", "worst_periods"): _r(
         "engineering.stability.worst_periods",
         _E,
         S,
@@ -515,7 +525,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("ProcessWindowEvents", "detect_mean_shift"): _r(
         "engineering.process_window.mean_shift",
         _E,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "mean_shift",
             "ts_shape:direction": "shift",
@@ -526,7 +536,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("ProcessWindowEvents", "detect_variance_change"): _r(
         "engineering.process_window.variance_change",
         _E,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "variance_change",
             "ts_shape:direction": "change",
@@ -551,7 +561,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("RateOfChangeEvents", "detect_rapid_change"): _r(
         "engineering.rate_of_change.rapid",
         _E,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "rapid_change",
             "ts_shape:direction": "direction",
@@ -588,7 +598,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("SetpointChangeEvents", "detect_setpoint_changes"): _r(
         "engineering.setpoint.change",
         _E,
-        P,
+        I,
         standard_attrs={"ts_shape:outcome": "change_type"},
     ),
     ("SetpointChangeEvents", "detect_setpoint_ramps"): _r(
@@ -735,7 +745,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("ThresholdMonitoringEvents", "multi_level_threshold"): _r(
         "engineering.threshold.multi_level",
         _E,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "multi_level_threshold",
             "ts_shape:direction": "above",
@@ -750,7 +760,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("ThresholdMonitoringEvents", "threshold_with_hysteresis"): _r(
         "engineering.threshold.hysteresis",
         _E,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "hysteresis",
             "ts_shape:direction": "outside",
@@ -858,7 +868,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("DegradationDetectionEvents", "health_score"): _r(
         "maintenance.health.score_window",
         _M,
-        S,
+        P,
         standard_attrs={
             "ts_shape:sample_count": None,  # health_score has no count column
         },
@@ -866,7 +876,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("FailurePredictionEvents", "detect_exceedance_pattern"): _r(
         "maintenance.failure.exceedance_pattern",
         _M,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "exceedance_pattern",
             "ts_shape:direction": "above",
@@ -876,7 +886,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("FailurePredictionEvents", "remaining_useful_life"): _r(
         "maintenance.failure.remaining_useful_life",
         _M,
-        S,
+        P,
         standard_attrs={
             "ts_shape:method": "remaining_useful_life",
             "ts_shape:confidence": "confidence",
@@ -886,7 +896,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("FailurePredictionEvents", "time_to_threshold"): _r(
         "maintenance.failure.time_to_threshold",
         _M,
-        S,
+        P,
         standard_attrs={
             "ts_shape:method": "time_to_threshold",
             "ts_shape:confidence": 1.0,
@@ -904,7 +914,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("VibrationAnalysisEvents", "detect_amplitude_growth"): _r(
         "maintenance.vibration.amplitude_growth",
         _M,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "amplitude_growth",
             "ts_shape:direction": "up",
@@ -923,10 +933,10 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         },
     ),
     # ---- production --------------------------------------------------------
-    ("AlarmManagementEvents", "alarm_duration_stats"): _r(
+    ("AlarmManagementEvents", "alarm_duration_statistics"): _r(
         "production.alarm.duration_stats",
         _PR,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
     ("AlarmManagementEvents", "alarm_frequency"): _r(
@@ -947,10 +957,10 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         I,
         standard_attrs={"ts_shape:lifecycle_state": "standing"},
     ),
-    ("BatchTrackingEvents", "batch_duration_stats"): _r(
+    ("BatchTrackingEvents", "batch_duration_statistics"): _r(
         "production.batch.duration_stats",
         _PR,
-        S,
+        ST,
         objs=("asset", "batch"),
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
@@ -978,14 +988,14 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("BottleneckDetectionEvents", "detect_bottleneck"): _r(
         "production.bottleneck.detected",
         _PR,
-        P,
+        I,
         objs=("asset", "station"),
         standard_attrs={"ts_shape:outcome": "bottleneck_station"},
     ),
     ("BottleneckDetectionEvents", "shifting_bottleneck"): _r(
         "production.bottleneck.shifting",
         _PR,
-        S,
+        P,
         objs=("asset", "station"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
@@ -999,7 +1009,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("ChangeoverEvents", "changeover_quality_metrics"): _r(
         "production.changeover.quality_metrics",
         _PR,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("ChangeoverEvents", "changeover_window"): _r(
@@ -1011,7 +1021,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("ChangeoverEvents", "detect_changeover"): _r(
         "production.changeover.detected",
         _PR,
-        I,
+        P,
         standard_attrs={"ts_shape:lifecycle_state": "changeover"},
     ),
     ("ContinuousProcessAlignmentEvents", "align_to_reference"): _r(
@@ -1042,26 +1052,26 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("asset", "station"),
         standard_attrs={"ts_shape:lifecycle_state": "segment"},
     ),
-    ("CycleTimeTracking", "cycle_time_by_part"): _r(
+    ("CycleTimeEvents", "cycle_time_by_part"): _r(
         "production.cycle_time.by_part",
         _PR,
-        S,
+        P,
         objs=("asset", "part"),
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
-    ("CycleTimeTracking", "cycle_time_statistics"): _r(
+    ("CycleTimeEvents", "cycle_time_statistics"): _r(
         "production.cycle_time.statistics",
         _PR,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
-    ("CycleTimeTracking", "cycle_time_trend"): _r(
+    ("CycleTimeEvents", "cycle_time_trend"): _r(
         "production.cycle_time.trend",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("CycleTimeTracking", "detect_slow_cycles"): _r(
+    ("CycleTimeEvents", "detect_slow_cycles"): _r(
         "production.cycle_time.slow",
         _PR,
         P,
@@ -1071,35 +1081,35 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "above",
         },
     ),
-    ("CycleTimeTracking", "hourly_cycle_time_summary"): _r(
+    ("CycleTimeEvents", "hourly_cycle_time_summary"): _r(
         "production.cycle_time.hourly_summary",
         _PR,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("DowntimeTracking", "availability_trend"): _r(
+    ("DowntimeEvents", "availability_trend"): _r(
         "production.downtime.availability_trend",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("DowntimeTracking", "downtime_by_reason"): _r(
+    ("DowntimeEvents", "downtime_by_reason"): _r(
         "production.downtime.by_reason",
         _PR,
-        S,
+        ST,
         standard_attrs={
             "ts_shape:outcome": "reason",
             "ts_shape:sample_count": "occurrences",
         },
     ),
-    ("DowntimeTracking", "downtime_by_shift"): _r(
+    ("DowntimeEvents", "downtime_by_shift"): _r(
         "production.downtime.by_shift",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("DowntimeTracking", "top_downtime_reasons"): _r(
+    ("DowntimeEvents", "top_downtime_reasons"): _r(
         "production.downtime.top_reasons",
         _PR,
         ST,
@@ -1111,7 +1121,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         S,
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
-    ("DutyCycleEvents", "duty_cycle_per_window"): _r(
+    ("DutyCycleEvents", "duty_cycle_by_window"): _r(
         "production.duty_cycle.per_window",
         _PR,
         S,
@@ -1120,7 +1130,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("DutyCycleEvents", "excessive_cycling"): _r(
         "production.duty_cycle.excessive",
         _PR,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "excessive_cycling",
             "ts_shape:direction": "above",
@@ -1207,7 +1217,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("LineThroughputEvents", "takt_adherence"): _r(
         "production.throughput.takt_adherence",
         _PR,
-        S,
+        P,
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("LineThroughputEvents", "throughput_oee"): _r(
@@ -1276,7 +1286,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("MicroStopEvents", "micro_stop_patterns"): _r(
         "production.micro_stop.patterns",
         _PR,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("MultiProcessTraceabilityEvents", "build_timeline"): _r(
@@ -1330,56 +1340,56 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("station",),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("OEECalculator", "calculate_availability"): _r(
+    ("OEEEvents", "availability"): _r(
         "production.oee.availability",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("OEECalculator", "calculate_oee"): _r(
+    ("OEEEvents", "oee"): _r(
         "production.oee.total", _PR, S, standard_attrs={"ts_shape:sample_count": None}
     ),
-    ("OEECalculator", "calculate_performance"): _r(
+    ("OEEEvents", "performance"): _r(
         "production.oee.performance",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("OEECalculator", "calculate_quality"): _r(
+    ("OEEEvents", "quality"): _r(
         "production.oee.quality", _PR, S, standard_attrs={"ts_shape:sample_count": None}
     ),
-    ("OperatorPerformanceTracking", "operator_comparison"): _r(
+    ("OperatorPerformanceEvents", "operator_comparison"): _r(
         "production.operator.comparison",
         _PR,
-        S,
+        ST,
         objs=("operator",),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("OperatorPerformanceTracking", "operator_efficiency"): _r(
+    ("OperatorPerformanceEvents", "operator_efficiency"): _r(
         "production.operator.efficiency",
         _PR,
         S,
         objs=("operator",),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("OperatorPerformanceTracking", "production_by_operator"): _r(
+    ("OperatorPerformanceEvents", "production_by_operator"): _r(
         "production.operator.production",
         _PR,
-        S,
+        ST,
         objs=("operator",),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("OperatorPerformanceTracking", "quality_by_operator"): _r(
+    ("OperatorPerformanceEvents", "quality_by_operator"): _r(
         "production.operator.quality",
         _PR,
-        S,
+        ST,
         objs=("operator",),
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("OrderTraceabilityEvents", "build_timeline"): _r(
         "production.order.timeline",
         _PR,
-        P,
+        I,
         objs=("asset", "work_order", "station"),
         standard_attrs={
             "ts_shape:lifecycle_state": "station_name",
@@ -1396,21 +1406,21 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("OrderTraceabilityEvents", "lead_time"): _r(
         "production.order.lead_time",
         _PR,
-        S,
+        I,
         objs=("work_order",),
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("OrderTraceabilityEvents", "station_dwell_statistics"): _r(
         "production.order.station_dwell_statistics",
         _PR,
-        S,
+        ST,
         objs=("station",),
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
     ("ValueTraceabilityEvents", "build_timeline"): _r(
         "production.value_trace.timeline",
         _PR,
-        P,
+        I,
         objs=("asset", "serial", "station"),
         standard_attrs={
             "ts_shape:lifecycle_state": "station_name",
@@ -1427,39 +1437,39 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("ValueTraceabilityEvents", "lead_time"): _r(
         "production.value_trace.lead_time",
         _PR,
-        S,
+        I,
         objs=("serial",),
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("ValueTraceabilityEvents", "station_dwell_statistics"): _r(
         "production.value_trace.station_dwell_statistics",
         _PR,
-        S,
+        ST,
         objs=("station",),
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
-    ("PartProductionTracking", "daily_production_summary"): _r(
+    ("PartProductionEvents", "daily_production_summary"): _r(
         "production.part.daily_summary",
         _PR,
         S,
         objs=("asset", "part"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("PartProductionTracking", "production_by_part"): _r(
+    ("PartProductionEvents", "production_by_part"): _r(
         "production.part.production",
         _PR,
         S,
         objs=("asset", "part"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("PartProductionTracking", "production_totals"): _r(
+    ("PartProductionEvents", "production_totals"): _r(
         "production.part.totals",
         _PR,
-        S,
+        ST,
         objs=("asset", "part"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("PartProductionTracking", "detect_resets"): _r(
+    ("PartProductionEvents", "detect_resets"): _r(
         "production.part.counter_reset",
         _PR,
         P,
@@ -1469,44 +1479,44 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "decrease",
         },
     ),
-    ("PerformanceLossTracking", "performance_by_shift"): _r(
+    ("PerformanceLossEvents", "performance_by_shift"): _r(
         "production.performance.by_shift",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("PerformanceLossTracking", "performance_trend"): _r(
+    ("PerformanceLossEvents", "performance_trend"): _r(
         "production.performance.trend",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("PerformanceLossTracking", "slow_periods"): _r(
+    ("PerformanceLossEvents", "slow_periods"): _r(
         "production.performance.slow_period",
         _PR,
         I,
         standard_attrs={"ts_shape:lifecycle_state": "slow"},
     ),
-    ("PeriodSummary", "compare_periods"): _r(
+    ("PeriodSummaryEvents", "compare_periods"): _r(
         "production.period.compare",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("PeriodSummary", "from_daily_data"): _r(
+    ("PeriodSummaryEvents", "from_daily_data"): _r(
         "production.period.from_daily",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("PeriodSummary", "monthly_summary"): _r(
+    ("PeriodSummaryEvents", "monthly_summary"): _r(
         "production.period.monthly_summary",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("PeriodSummary", "weekly_summary"): _r(
+    ("PeriodSummaryEvents", "weekly_summary"): _r(
         "production.period.weekly_summary",
         _PR,
         S,
@@ -1549,52 +1559,52 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:threshold_low": "threshold",
         },
     ),
-    ("QualityTracking", "daily_quality_summary"): _r(
+    ("QualityEvents", "daily_quality_summary"): _r(
         "production.quality.daily_summary",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("QualityTracking", "nok_by_reason"): _r(
+    ("QualityEvents", "nok_by_reason"): _r(
         "production.quality.nok_by_reason",
         _PR,
-        S,
+        ST,
         standard_attrs={"ts_shape:outcome": "reason", "ts_shape:sample_count": "count"},
     ),
-    ("QualityTracking", "nok_by_shift"): _r(
+    ("QualityEvents", "nok_by_shift"): _r(
         "production.quality.nok_by_shift",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("QualityTracking", "quality_by_part"): _r(
+    ("QualityEvents", "quality_by_part"): _r(
         "production.quality.by_part",
         _PR,
-        S,
+        ST,
         objs=("asset", "part"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("ReworkTracking", "rework_by_reason"): _r(
+    ("ReworkEvents", "rework_by_reason"): _r(
         "production.rework.by_reason",
         _PR,
-        S,
+        ST,
         standard_attrs={"ts_shape:outcome": "reason", "ts_shape:sample_count": "count"},
     ),
-    ("ReworkTracking", "rework_by_shift"): _r(
+    ("ReworkEvents", "rework_by_shift"): _r(
         "production.rework.by_shift",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("ReworkTracking", "rework_cost"): _r(
+    ("ReworkEvents", "rework_cost"): _r(
         "production.rework.cost", _PR, S, standard_attrs={"ts_shape:sample_count": None}
     ),
-    ("ReworkTracking", "rework_rate"): _r(
+    ("ReworkEvents", "rework_rate"): _r(
         "production.rework.rate", _PR, S, standard_attrs={"ts_shape:sample_count": None}
     ),
-    ("ReworkTracking", "rework_trend"): _r(
+    ("ReworkEvents", "rework_trend"): _r(
         "production.rework.trend",
         _PR,
         S,
@@ -1603,7 +1613,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("RoutingTraceabilityEvents", "build_routing_timeline"): _r(
         "production.routing.timeline",
         _PR,
-        P,
+        I,
         objs=("asset", "serial", "station"),
         standard_attrs={
             "ts_shape:lifecycle_state": "station_name",
@@ -1613,7 +1623,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("RoutingTraceabilityEvents", "lead_time"): _r(
         "production.routing.lead_time",
         _PR,
-        S,
+        I,
         objs=("serial",),
         standard_attrs={"ts_shape:sample_count": None},
     ),
@@ -1627,7 +1637,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("RoutingTraceabilityEvents", "station_statistics"): _r(
         "production.routing.station_statistics",
         _PR,
-        S,
+        ST,
         objs=("station",),
         standard_attrs={"ts_shape:sample_count": "sample_count"},
     ),
@@ -1637,7 +1647,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("RuntimeAccountingEvents", "runtime_per_window"): _r(
+    ("RuntimeAccountingEvents", "runtime_by_window"): _r(
         "production.runtime.per_window",
         _PR,
         S,
@@ -1649,96 +1659,96 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         S,
         standard_attrs={"ts_shape:sample_count": "start_count"},
     ),
-    ("ScrapTracking", "scrap_by_reason"): _r(
+    ("ScrapEvents", "scrap_by_reason"): _r(
         "production.scrap.by_reason",
         _PR,
-        S,
+        ST,
         standard_attrs={"ts_shape:outcome": "reason", "ts_shape:sample_count": "count"},
     ),
-    ("ScrapTracking", "scrap_by_shift"): _r(
+    ("ScrapEvents", "scrap_by_shift"): _r(
         "production.scrap.by_shift",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("ScrapTracking", "scrap_cost"): _r(
+    ("ScrapEvents", "scrap_cost"): _r(
         "production.scrap.cost", _PR, S, standard_attrs={"ts_shape:sample_count": None}
     ),
-    ("ScrapTracking", "scrap_trend"): _r(
+    ("ScrapEvents", "scrap_trend"): _r(
         "production.scrap.trend", _PR, S, standard_attrs={"ts_shape:sample_count": None}
     ),
-    ("SetupTimeTracking", "setup_by_product"): _r(
+    ("SetupTimeEvents", "setup_by_product"): _r(
         "production.setup.by_product",
         _PR,
-        S,
+        ST,
         objs=("asset", "part"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("SetupTimeTracking", "setup_durations"): _r(
+    ("SetupTimeEvents", "setup_durations"): _r(
         "production.setup.durations",
         _PR,
         I,
         standard_attrs={"ts_shape:lifecycle_state": "setup"},
     ),
-    ("SetupTimeTracking", "setup_statistics"): _r(
+    ("SetupTimeEvents", "setup_statistics"): _r(
         "production.setup.statistics",
         _PR,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
-    ("SetupTimeTracking", "setup_trend"): _r(
+    ("SetupTimeEvents", "setup_trend"): _r(
         "production.setup.trend", _PR, S, standard_attrs={"ts_shape:sample_count": None}
     ),
-    ("ShiftHandoverReport", "from_shift_data"): _r(
+    ("ShiftHandoverEvents", "from_shift_data"): _r(
         "production.shift.handover_from_data",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("ShiftHandoverReport", "generate_report"): _r(
+    ("ShiftHandoverEvents", "generate_report"): _r(
         "production.shift.handover_report",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("ShiftReporting", "best_and_worst_shifts"): _r(
+    ("ShiftReportEvents", "best_and_worst_shifts"): _r(
         "production.shift.best_and_worst",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("ShiftReporting", "shift_comparison"): _r(
+    ("ShiftReportEvents", "shift_comparison"): _r(
         "production.shift.comparison",
         _PR,
-        S,
+        ST,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("ShiftReporting", "shift_production"): _r(
+    ("ShiftReportEvents", "shift_production"): _r(
         "production.shift.production",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("ShiftReporting", "shift_targets"): _r(
+    ("ShiftReportEvents", "shift_targets"): _r(
         "production.shift.targets",
         _PR,
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("TargetTracking", "compare_to_target"): _r(
+    ("TargetEvents", "compare_to_target"): _r(
         "production.target.compare",
         _PR,
         S,
         standard_attrs={"ts_shape:sample_count": None},
     ),
-    ("TargetTracking", "target_achievement_summary"): _r(
+    ("TargetEvents", "target_achievement_summary"): _r(
         "production.target.achievement_summary",
         _PR,
         S,
@@ -1748,13 +1758,13 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("AnomalyClassificationEvents", "classify_anomalies"): _r(
         "quality.anomaly.classified_{anomaly_class}",
         _Q,
-        P,
+        I,
         standard_attrs={"ts_shape:outcome": "anomaly_type"},
     ),
     ("AnomalyClassificationEvents", "detect_drift"): _r(
         "quality.anomaly.drift",
         _Q,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "drift",
             "ts_shape:direction": "direction",
@@ -1791,7 +1801,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("CapabilityTrendingEvents", "detect_capability_drop"): _r(
         "quality.capability.drop",
         _Q,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "capability_drop",
             "ts_shape:direction": "down",
@@ -1815,7 +1825,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("signal",),
         standard_attrs={"ts_shape:sample_count": "sample_count"},
     ),
-    ("DataGapAnalysisEvents", "find_gaps"): _r(
+    ("DataGapAnalysisEvents", "detect_gaps"): _r(
         "quality.data_gap.gap",
         _Q,
         I,
@@ -1825,14 +1835,14 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("DataGapAnalysisEvents", "gap_summary"): _r(
         "quality.data_gap.summary",
         _Q,
-        S,
+        ST,
         objs=("signal",),
         standard_attrs={"ts_shape:sample_count": "total_gaps"},
     ),
     ("DataGapAnalysisEvents", "interpolation_candidates"): _r(
         "quality.data_gap.interpolation_candidate",
         _Q,
-        P,
+        I,
         objs=("signal",),
         standard_attrs={"ts_shape:outcome": "safe_to_interpolate"},
     ),
@@ -1877,7 +1887,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("signal",),
         standard_attrs={"ts_shape:method": "env_correlation"},
     ),
-    ("EnvironmentalCompensationEvents", "estimate_sensitivity"): _r(
+    ("EnvironmentalCompensationEvents", "sensitivity"): _r(
         "quality.env_compensation.sensitivity",
         _Q,
         ST,
@@ -1991,12 +2001,12 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:lifecycle_state": "complete",
         },
     ),
-    ("OperatingStateEvents", "state_duration_stats"): _r(
+    ("OperatingStateEvents", "state_duration_statistics"): _r(
         "production.operating_state.duration_stats",
         _PR,
         ST,
         objs=("asset",),
-        standard_attrs={"ts_shape:method": "state_duration_stats"},
+        standard_attrs={"ts_shape:method": "state_duration_statistics"},
     ),
     ("OperatingStateEvents", "unusual_state_sequence"): _r(
         "production.operating_state.transition",
@@ -2104,6 +2114,40 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:threshold_high": "ucl",
         },
     ),
+    ("ReliabilityEvents", "failure_events"): _r(
+        "maintenance.reliability.failure",
+        _M,
+        I,
+        objs=("asset",),
+        standard_attrs={
+            "ts_shape:method": "failure_state",
+            "ts_shape:lifecycle_state": "complete",
+        },
+    ),
+    ("ReliabilityEvents", "mtbf_mttr"): _r(
+        "maintenance.reliability.mtbf_mttr",
+        _M,
+        S,
+        objs=("asset",),
+        standard_attrs={
+            "ts_shape:method": "mtbf_mttr",
+            "ts_shape:sample_count": "failures",
+        },
+    ),
+    ("ReliabilityEvents", "weibull_fit"): _r(
+        "maintenance.reliability.weibull",
+        _M,
+        ST,
+        objs=("asset",),
+        standard_attrs={"ts_shape:method": "weibull_mle"},
+    ),
+    ("ReliabilityEvents", "reliability_at"): _r(
+        "maintenance.reliability.curve",
+        _M,
+        ST,
+        objs=("asset",),
+        standard_attrs={"ts_shape:method": "weibull_reliability"},
+    ),
     ("GaugeRepeatabilityEvents", "gauge_rr_summary"): _r(
         "quality.gauge_rr.summary",
         _Q,
@@ -2145,7 +2189,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("MultiSensorValidationEvents", "detect_disagreement"): _r(
         "quality.multi_sensor.disagreement",
         _Q,
-        P,
+        I,
         objs=("sensor",),
         standard_attrs={
             "ts_shape:method": "disagreement",
@@ -2153,7 +2197,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:deviation": "max_spread",
         },
     ),
-    ("MultiSensorValidationEvents", "identify_outlier_sensor"): _r(
+    ("MultiSensorValidationEvents", "detect_outlier_sensor"): _r(
         "quality.multi_sensor.outlier_sensor",
         _Q,
         ST,
@@ -2218,7 +2262,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("SensorDriftEvents", "detect_span_drift"): _r(
         "quality.sensor_drift.span_drift",
         _Q,
-        P,
+        I,
         objs=("sensor",),
         standard_attrs={
             "ts_shape:method": "span_drift",
@@ -2229,7 +2273,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("SensorDriftEvents", "detect_zero_drift"): _r(
         "quality.sensor_drift.zero_drift",
         _Q,
-        P,
+        I,
         objs=("sensor",),
         standard_attrs={
             "ts_shape:method": "zero_drift",
@@ -2264,7 +2308,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("SignalQualityEvents", "detect_out_of_range"): _r(
         "quality.signal.out_of_range",
         _Q,
-        P,
+        I,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "out_of_range",
@@ -2283,7 +2327,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:confidence": "regularity_score",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "apply_rules_vectorized"): _r(
+    ("StatisticalProcessControlEvents", "detect_rule_violations"): _r(
         "quality.spc.rule_violation",
         _Q,
         P,
@@ -2292,7 +2336,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "calculate_control_limits"): _r(
+    ("StatisticalProcessControlEvents", "control_limits"): _r(
         "quality.spc.control_limits",
         _Q,
         ST,
@@ -2303,10 +2347,10 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:threshold_high": "3sigma_upper",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "calculate_dynamic_control_limits"): _r(
+    ("StatisticalProcessControlEvents", "dynamic_control_limits"): _r(
         "quality.spc.control_limits_dynamic",
         _Q,
-        S,
+        P,
         standard_attrs={
             "ts_shape:sample_count": None,
             "ts_shape:baseline": "mean",
@@ -2314,7 +2358,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:threshold_high": "3sigma_upper",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "detect_cusum_shifts"): _r(
+    ("StatisticalProcessControlEvents", "detect_cusum_shifts"): _r(
         "quality.spc.cusum_shift",
         _Q,
         P,
@@ -2323,13 +2367,13 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "shift",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "interpret_violations"): _r(
+    ("StatisticalProcessControlEvents", "interpret_violations"): _r(
         "quality.spc.violation_interpretation",
         _Q,
         P,
         standard_attrs={"ts_shape:outcome": "rule"},
     ),
-    ("StatisticalProcessControlRuleBased", "process"): _r(
+    ("StatisticalProcessControlEvents", "detect_violations"): _r(
         "quality.spc.rule_violation",
         _Q,
         P,
@@ -2338,7 +2382,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "rule_1"): _r(
+    ("StatisticalProcessControlEvents", "rule_1"): _r(
         "quality.spc.rule_1",
         _Q,
         P,
@@ -2347,7 +2391,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "rule_2"): _r(
+    ("StatisticalProcessControlEvents", "rule_2"): _r(
         "quality.spc.rule_2",
         _Q,
         P,
@@ -2356,7 +2400,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "rule_3"): _r(
+    ("StatisticalProcessControlEvents", "rule_3"): _r(
         "quality.spc.rule_3",
         _Q,
         P,
@@ -2365,7 +2409,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "rule_4"): _r(
+    ("StatisticalProcessControlEvents", "rule_4"): _r(
         "quality.spc.rule_4",
         _Q,
         P,
@@ -2374,7 +2418,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "rule_5"): _r(
+    ("StatisticalProcessControlEvents", "rule_5"): _r(
         "quality.spc.rule_5",
         _Q,
         P,
@@ -2383,7 +2427,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "rule_6"): _r(
+    ("StatisticalProcessControlEvents", "rule_6"): _r(
         "quality.spc.rule_6",
         _Q,
         P,
@@ -2392,7 +2436,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "rule_7"): _r(
+    ("StatisticalProcessControlEvents", "rule_7"): _r(
         "quality.spc.rule_7",
         _Q,
         P,
@@ -2401,7 +2445,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("StatisticalProcessControlRuleBased", "rule_8"): _r(
+    ("StatisticalProcessControlEvents", "rule_8"): _r(
         "quality.spc.rule_8",
         _Q,
         P,
@@ -2410,7 +2454,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:direction": "outside",
         },
     ),
-    ("ToleranceDeviationEvents", "process_and_group_data_with_events"): _r(
+    ("ToleranceDeviationEvents", "detect_deviations"): _r(
         "quality.tolerance.deviation",
         _Q,
         P,
@@ -2427,13 +2471,13 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("ValueDistributionEvents", "detect_bimodal"): _r(
         "quality.distribution.bimodal",
         _Q,
-        S,
+        ST,
         standard_attrs={"ts_shape:sample_count": "n_samples"},
     ),
     ("ValueDistributionEvents", "detect_mode_changes"): _r(
         "quality.distribution.mode_change",
         _Q,
-        P,
+        I,
         standard_attrs={
             "ts_shape:method": "mode_change",
             "ts_shape:direction": "shift",
@@ -2465,7 +2509,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("DemandPatternEvents", "detect_demand_spikes"): _r(
         "supplychain.demand.spike",
         _SC,
-        P,
+        I,
         objs=("material",),
         standard_attrs={
             "ts_shape:method": "spike",
@@ -2491,7 +2535,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("InventoryMonitoringEvents", "detect_low_stock"): _r(
         "supplychain.inventory.low_stock",
         _SC,
-        P,
+        I,
         objs=("material",),
         standard_attrs={
             "ts_shape:method": "low_stock",
@@ -2513,7 +2557,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("InventoryMonitoringEvents", "stockout_prediction"): _r(
         "supplychain.inventory.stockout_prediction",
         _SC,
-        S,
+        P,
         objs=("material",),
         standard_attrs={
             "ts_shape:method": "stockout_prediction",
@@ -2521,7 +2565,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:threshold_low": "estimated_stockout_time_hours",
         },
     ),
-    ("LeadTimeAnalysisEvents", "calculate_lead_times"): _r(
+    ("LeadTimeAnalysisEvents", "lead_times"): _r(
         "supplychain.lead_time.calculated",
         _SC,
         I,
@@ -2542,7 +2586,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("LeadTimeAnalysisEvents", "lead_time_statistics"): _r(
         "supplychain.lead_time.statistics",
         _SC,
-        S,
+        ST,
         objs=("work_order",),
         standard_attrs={"ts_shape:sample_count": "count"},
     ),
@@ -2554,8 +2598,84 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
 # ----------------------------------------------------------------------------
 
 
+#: Deprecated class names -> current names (the old names still import and
+#: warn; see ``docs/naming.md``).
+CLASS_ALIASES: dict[str, str] = {
+    "CycleTimeTracking": "CycleTimeEvents",
+    "DowntimeTracking": "DowntimeEvents",
+    "OperatorPerformanceTracking": "OperatorPerformanceEvents",
+    "PartProductionTracking": "PartProductionEvents",
+    "PerformanceLossTracking": "PerformanceLossEvents",
+    "QualityTracking": "QualityEvents",
+    "ReworkTracking": "ReworkEvents",
+    "ScrapTracking": "ScrapEvents",
+    "SetupTimeTracking": "SetupTimeEvents",
+    "TargetTracking": "TargetEvents",
+    "OEECalculator": "OEEEvents",
+    "PeriodSummary": "PeriodSummaryEvents",
+    "ShiftReporting": "ShiftReportEvents",
+    "ShiftHandoverReport": "ShiftHandoverEvents",
+    "ProcessStabilityIndex": "ProcessStabilityIndexEvents",
+    "StatisticalProcessControlRuleBased": "StatisticalProcessControlEvents",
+}
+
+#: Deprecated method names, per current class name.
+METHOD_ALIASES: dict[tuple[str, str], str] = {
+    ("DataGapAnalysisEvents", "find_gaps"): "detect_gaps",
+    ("DesignOfExperimentsEvents", "compute_effects"): "effects",
+    ("EnvironmentalCompensationEvents", "estimate_sensitivity"): "sensitivity",
+    ("LeadTimeAnalysisEvents", "calculate_lead_times"): "lead_times",
+    ("MultiSensorValidationEvents", "identify_outlier_sensor"): "detect_outlier_sensor",
+    ("OEEEvents", "calculate_availability"): "availability",
+    ("OEEEvents", "calculate_performance"): "performance",
+    ("OEEEvents", "calculate_quality"): "quality",
+    ("OEEEvents", "calculate_oee"): "oee",
+    (
+        "StatisticalProcessControlEvents",
+        "apply_rules_vectorized",
+    ): "detect_rule_violations",
+    ("StatisticalProcessControlEvents", "calculate_control_limits"): "control_limits",
+    (
+        "StatisticalProcessControlEvents",
+        "calculate_dynamic_control_limits",
+    ): "dynamic_control_limits",
+    ("StatisticalProcessControlEvents", "process"): "detect_violations",
+    (
+        "ToleranceDeviationEvents",
+        "process_and_group_data_with_events",
+    ): "detect_deviations",
+    ("ToleranceDeviationEvents", "compute_capability_indices"): "capability_indices",
+    ("AlarmManagementEvents", "alarm_duration_stats"): "alarm_duration_statistics",
+    ("BatchTrackingEvents", "batch_duration_stats"): "batch_duration_statistics",
+    ("OperatingStateEvents", "state_duration_stats"): "state_duration_statistics",
+    ("DutyCycleEvents", "duty_cycle_per_window"): "duty_cycle_by_window",
+    ("RuntimeAccountingEvents", "runtime_per_window"): "runtime_by_window",
+}
+
+
+def resolve(class_name: str, method_name: str) -> tuple[str, str]:
+    """Map a deprecated class / method name to its current name.
+
+    Current names pass through unchanged, so callers can always resolve
+    before looking up the registry.
+    """
+    cls = CLASS_ALIASES.get(class_name, class_name)
+    return cls, METHOD_ALIASES.get((cls, method_name), method_name)
+
+
 def get(class_name: str, method_name: str) -> LabelRule | None:
-    return REGISTRY.get((class_name, method_name))
+    """Look up the label rule registered for a detector method.
+
+    Deprecated class and method names resolve to their current names.
+
+    Args:
+        class_name: Name of the detector class, e.g. ``"LeadTimeAnalysisEvents"``.
+        method_name: Name of the method on that class.
+
+    Returns:
+        The matching LabelRule, or None if no rule is registered.
+    """
+    return REGISTRY.get(resolve(class_name, method_name))
 
 
 def render_activity(rule: LabelRule, row: Mapping[str, object]) -> str:

@@ -252,3 +252,23 @@ def test_normalize_df_missing_value_column():
     raw = pd.DataFrame({"time": ["2026-01-13T00:00:00Z"]})
     out = DatabricksUnityEnergyLoader._normalize_df(raw, "s1")
     assert out.empty
+
+
+def test_fetch_data_as_dataframe_start_only(tmp_path):
+    loader, _ = _loader(tmp_path)
+    df = loader.fetch_data_as_dataframe(start="2026-01-14")
+    assert set(df["uuid"]) == {"sensor_001"}
+    assert len(df) == 3  # only the 2026-01-14 day folder
+
+
+def test_fetch_data_as_dataframe_end_only(tmp_path):
+    loader, _ = _loader(tmp_path)
+    df = loader.fetch_data_as_dataframe(end="2026-01-13")
+    assert set(df["uuid"]) == {"sensor_001", "sensor_002"}
+    assert len(df) == 6  # only the 2026-01-13 day folder
+
+
+def test_load_by_series_ids_single_bound(tmp_path):
+    loader, _ = _loader(tmp_path)
+    df = loader.load_by_series_ids(["sensor_001"], start="2026-01-14")
+    assert len(df) == 3

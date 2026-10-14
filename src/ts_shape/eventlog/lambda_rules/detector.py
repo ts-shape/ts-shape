@@ -32,7 +32,15 @@ class LambdaDetector:
         self.detector_name = f"{spec.class_name}.{spec.method_name}"
 
     def evaluate(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply the rule to ``df`` and return a legacy-shaped DataFrame."""
+        """Apply the rule to ``df`` and return a legacy-shaped DataFrame.
+
+        Args:
+            df: Input DataFrame the rule's trigger expression is evaluated on.
+
+        Returns:
+            Legacy-shaped DataFrame whose layout depends on the rule's shape
+            (see :func:`~ts_shape.eventlog.lambda_rules.evaluator.evaluate`).
+        """
         return evaluate(self.spec, df)
 
     def to_event_log(
@@ -42,6 +50,20 @@ class LambdaDetector:
         objects: Mapping[str, object] | None = None,
         qualifiers: Mapping[str, str] | None = None,
     ) -> EventLog:
+        """Evaluate the rule on ``df`` and normalize the result to an event log.
+
+        Args:
+            df: Input DataFrame the rule is evaluated on.
+            objects: Optional OCEL object bindings, mapping an object type to a
+                column name, callable, Series or scalar; passed through to
+                :func:`~ts_shape.eventlog.to_event_log`. None uses only the
+                auto-extracted objects.
+            qualifiers: Optional mapping of object type to the relation
+                qualifier written for that type. None leaves qualifiers empty.
+
+        Returns:
+            The canonical :class:`~ts_shape.eventlog.model.EventLog`.
+        """
         legacy = self.evaluate(df)
         return to_event_log(
             legacy,

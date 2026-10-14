@@ -4,7 +4,9 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,13 @@ class MicroStopEvents(Base):
         """Initialize the micro-stop detector.
 
         Args:
+            dataframe: Long-format input data.
+            run_state_uuid: UUID of the boolean run-state signal (True = running,
+                False = idle).
+            event_uuid: UUID assigned to generated events.
+            value_column: Column holding the run state. Missing values count
+                as idle.
+            time_column: Timestamp column.
             interval_end: How idle/run intervals are closed. ``"last_sample"``
                 (default) ends each interval at its last sample -- backward
                 compatible, but a change-encoded (``is_delta``) run-state signal
@@ -47,7 +56,7 @@ class MicroStopEvents(Base):
             data_end: Optional bound for the final, still-open interval when
                 ``interval_end="next_change"``.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.run_state_uuid = run_state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -93,6 +102,7 @@ class MicroStopEvents(Base):
             }
         )
 
+    @keyword_only(1)
     def detect_micro_stops(
         self,
         max_duration: str = "30s",
@@ -105,10 +115,19 @@ class MicroStopEvents(Base):
             min_duration: Minimum duration to include (filter very short glitches).
 
         Returns:
-            DataFrame with columns: start_time, end_time, duration,
-            preceding_run_duration.
+            DataFrame with columns: start, end, duration_seconds (float),
+            uuid (event uuid), source_uuid (run-state uuid), duration
+            (Timedelta), preceding_run_duration.
         """
-        cols = ["start", "end", "duration", "preceding_run_duration"]
+        cols = [
+            "start",
+            "end",
+            "duration_seconds",
+            "uuid",
+            "source_uuid",
+            "duration",
+            "preceding_run_duration",
+        ]
         intervals = self._intervalize()
         if intervals.empty:
             return pd.DataFrame(columns=cols)
@@ -135,6 +154,9 @@ class MicroStopEvents(Base):
                 {
                     "start": row["start"],
                     "end": row["end"],
+                    "duration_seconds": (row["end"] - row["start"]).total_seconds(),
+                    "uuid": self.event_uuid,
+                    "source_uuid": self.run_state_uuid,
                     "duration": dur,
                     "preceding_run_duration": preceding_run,
                 }
@@ -144,6 +166,7 @@ class MicroStopEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def micro_stop_frequency(
         self, window: str = "1h", max_duration: str = "30s"
     ) -> pd.DataFrame:
@@ -154,17 +177,20 @@ class MicroStopEvents(Base):
             max_duration: Maximum idle duration to qualify as micro-stop.
 
         Returns:
-            DataFrame with columns: start, count, total_lost_time,
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, count, total_lost_time,
             pct_of_window.
         """
         cols = ["start", "count", "total_lost_time", "pct_of_window"]
         stops = self.detect_micro_stops(max_duration=max_duration)
         if stops.empty:
-            return pd.DataFrame(columns=cols)
+            return self._with_window(pd.DataFrame(columns=cols), window)
 
         window_td = pd.to_timedelta(window)
         stops["duration_seconds"] = stops["duration"].dt.total_seconds()
-        stops_indexed = stops.set_index("start")
+        stops_indexed = stops.drop(columns=["end", "uuid", "source_uuid"]).set_index(
+            "start"
+        )
 
         resampled = stops_indexed.resample(window).agg(
             count=("duration_seconds", "count"),
@@ -183,8 +209,9 @@ class MicroStopEvents(Base):
             }
         )
 
-        return result[cols]
+        return self._with_window(result[cols], window)
 
+    @keyword_only(1)
     def micro_stop_impact(
         self, window: str = "1h", max_duration: str = "30s"
     ) -> pd.DataFrame:
@@ -195,7 +222,8 @@ class MicroStopEvents(Base):
             max_duration: Maximum idle duration to qualify as micro-stop.
 
         Returns:
-            DataFrame with columns: start, total_run_time,
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, total_run_time,
             total_micro_stop_time, availability_loss_pct.
         """
         cols = [
@@ -207,7 +235,7 @@ class MicroStopEvents(Base):
 
         intervals = self._intervalize()
         if intervals.empty:
-            return pd.DataFrame(columns=cols)
+            return self._with_window(pd.DataFrame(columns=cols), window)
 
         max_td = pd.to_timedelta(max_duration)
         _window_td = pd.to_timedelta(window)
@@ -247,8 +275,24 @@ class MicroStopEvents(Base):
 
         result = combined.reset_index()
         result = result.rename(columns={"start": "start"})
-        return result[cols]
+        return self._with_window(result[cols], window)
 
+    def _with_window(self, df: pd.DataFrame, window: str) -> pd.DataFrame:
+        """Insert end (start + window), duration_seconds, uuid and source_uuid."""
+        out = df.copy()
+        if out.empty:
+            out.insert(1, "end", pd.Series(dtype="object"))
+            out.insert(2, "duration_seconds", pd.Series(dtype="float64"))
+        else:
+            start, end = window_bounds(out["start"], window)
+            out["start"] = start
+            out.insert(1, "end", end)
+            out.insert(2, "duration_seconds", (out["end"] - start).dt.total_seconds())
+        out.insert(3, "uuid", self.event_uuid)
+        out.insert(4, "source_uuid", self.run_state_uuid)
+        return out
+
+    @keyword_only(1)
     def micro_stop_patterns(
         self, hour_grouping: bool = True, max_duration: str = "30s"
     ) -> pd.DataFrame:

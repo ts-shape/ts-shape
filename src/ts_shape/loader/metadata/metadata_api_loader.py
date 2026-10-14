@@ -44,15 +44,18 @@ class DatapointAPI:
         filter_enabled: bool = True,
         timeout: int = 30,
     ):
-        """
-        :param device_names: Device names to collect datapoints for.
-        :param base_url: API host, e.g. ``"https://datadash.example.com"``.
-        :param api_token: JWT bearer token for ``Authorization: Bearer <token>``.
-        :param output_path: Directory to write per-device JSON exports.
-        :param required_uuid_list: Optional allowlist; only matching UUIDs are kept.
-        :param filter_enabled: When True, only datapoints with ``enabled=True`` are kept.
-        :param timeout: Per-request timeout in seconds; prevents an unresponsive
-            server from hanging the loader indefinitely.
+        """Initialize the loader and fetch metadata for all requested devices.
+
+        Args:
+            device_names: Device names to collect datapoints for.
+            base_url: API host, e.g. ``"https://datadash.example.com"``.
+            api_token: JWT bearer token for ``Authorization: Bearer <token>``.
+            output_path: Directory to write per-device JSON exports.
+            required_uuid_list: Optional allowlist; only matching UUIDs are kept.
+            filter_enabled: When True, only datapoints with ``enabled=True`` are
+                kept.
+            timeout: Per-request timeout in seconds; prevents an unresponsive
+                server from hanging the loader indefinitely.
         """
         require_optional(requests, "requests", "api")
         self.device_names = device_names
@@ -97,11 +100,23 @@ class DatapointAPI:
         return self._get(self._DATATRONS_PATH)
 
     def get_devices(self, datatron_id) -> list[dict]:
-        """GET /api/datatrons/{datatron_id}/devices — return all devices for a datatron."""
+        """GET /api/datatrons/{datatron_id}/devices — return all devices for a datatron.
+
+        Args:
+            datatron_id (int | str): Id of the datatron (the ``id`` field of
+                a `get_datatrons` record).
+        """
         return self._get(self._DEVICES_PATH.format(datatron_id=datatron_id))
 
     def get_datapoints(self, datatron_id, device_id) -> list[dict]:
-        """GET /api/datatrons/{datatron_id}/devices/{device_id}/data_points."""
+        """GET /api/datatrons/{datatron_id}/devices/{device_id}/data_points.
+
+        Args:
+            datatron_id (int | str): Id of the datatron (the ``id`` field of
+                a `get_datatrons` record).
+            device_id (int | str): Id of the device (the ``id`` field of a
+                `get_devices` record).
+        """
         return self._get(
             self._DATAPOINTS_PATH.format(datatron_id=datatron_id, device_id=device_id)
         )
@@ -113,21 +128,45 @@ class DatapointAPI:
     def search_datatrons(
         self, query: str, fields: list[str] | None = None
     ) -> list[dict]:
-        """Filter datatrons whose fields contain *query* (case-insensitive)."""
+        """Filter datatrons whose fields contain *query* (case-insensitive).
+
+        Args:
+            query: Text to look for; matched as a case-insensitive substring.
+            fields: Record fields to search. None searches ``name``, ``serialNumber``,
+                ``deviceUUID``, ``model``.
+        """
         fields = fields or ["name", "serialNumber", "deviceUUID", "model"]
         return self._filter_by_query(self.get_datatrons(), query, fields)
 
     def search_devices(
         self, datatron_id, query: str, fields: list[str] | None = None
     ) -> list[dict]:
-        """Filter devices for a datatron whose fields contain *query*."""
+        """Filter devices for a datatron whose fields contain *query*.
+
+        Args:
+            datatron_id (int | str): Id of the datatron (the ``id`` field of
+                a `get_datatrons` record).
+            query: Text to look for; matched as a case-insensitive substring.
+            fields: Record fields to search. None searches ``name``, ``serialNumber``,
+                ``deviceUUID``.
+        """
         fields = fields or ["name", "serialNumber", "deviceUUID"]
         return self._filter_by_query(self.get_devices(datatron_id), query, fields)
 
     def search_datapoints(
         self, datatron_id, device_id, query: str, fields: list[str] | None = None
     ) -> list[dict]:
-        """Filter datapoints for a device whose fields contain *query*."""
+        """Filter datapoints for a device whose fields contain *query*.
+
+        Args:
+            datatron_id (int | str): Id of the datatron (the ``id`` field of
+                a `get_datatrons` record).
+            device_id (int | str): Id of the device (the ``id`` field of a
+                `get_devices` record).
+            query: Text to look for; matched as a case-insensitive substring.
+            fields: Record fields to search. None searches ``label``, ``uuid``,
+                ``unit``.
+        """
         fields = fields or ["label", "uuid", "unit"]
         return self._filter_by_query(
             self.get_datapoints(datatron_id, device_id), query, fields
@@ -141,6 +180,11 @@ class DatapointAPI:
         """Search all devices across all datatrons.
 
         Each result dict includes an extra ``datatron_id`` key.
+
+        Args:
+            query: Text to look for; matched as a case-insensitive substring.
+            fields: Record fields to search. None searches ``name``, ``serialNumber``,
+                ``deviceUUID``.
         """
         fields = fields or ["name", "serialNumber", "deviceUUID"]
         results = []
@@ -155,6 +199,11 @@ class DatapointAPI:
         """Search all datapoints across all datatrons and devices.
 
         Each result dict includes extra ``datatron_id`` and ``device_id`` keys.
+
+        Args:
+            query: Text to look for; matched as a case-insensitive substring.
+            fields: Record fields to search. None searches ``label``, ``uuid``,
+                ``unit``.
         """
         fields = fields or ["label", "uuid", "unit"]
         results = []
@@ -229,7 +278,12 @@ class DatapointAPI:
         }
 
     def display_dataframe(self, device_name: str | None = None) -> None:
-        """Log the metadata DataFrame for one device or all devices."""
+        """Log the metadata DataFrame for one device or all devices.
+
+        Args:
+            device_name: Device to log. None logs every device loaded at init; an
+                unknown name logs a warning.
+        """
         if device_name:
             if device_name in self.device_metadata:
                 logger.info("Metadata for device: %s", device_name)

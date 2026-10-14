@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class TimeToThresholdEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -50,6 +51,7 @@ class TimeToThresholdEvents(Base):
     # Public methods
     # ------------------------------------------------------------------
 
+    @keyword_only(2)
     def time_to_threshold(
         self,
         threshold: float,
@@ -150,6 +152,7 @@ class TimeToThresholdEvents(Base):
             columns=cols,
         )
 
+    @keyword_only(2)
     def time_to_threshold_windows(
         self,
         threshold: float,
@@ -228,17 +231,19 @@ class TimeToThresholdEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(3)
+    @renamed_kwargs(lower_bound="lower_limit", upper_bound="upper_limit")
     def remaining_useful_range(
         self,
-        lower_bound: float,
-        upper_bound: float,
+        lower_limit: float,
+        upper_limit: float,
         lookback: str = "1h",
     ) -> pd.DataFrame:
         """Estimate time until the signal leaves an acceptable operating band.
 
         Args:
-            lower_bound: Lower acceptable limit.
-            upper_bound: Upper acceptable limit.
+            lower_limit: Lower acceptable limit.
+            upper_limit: Upper acceptable limit.
             lookback: Lookback period for trend estimation.
 
         Returns:
@@ -268,10 +273,10 @@ class TimeToThresholdEvents(Base):
 
         # Determine which bound the signal is heading toward
         if slope > 0:
-            target_bound = upper_bound
+            target_bound = upper_limit
             bound_name = "upper"
         elif slope < 0:
-            target_bound = lower_bound
+            target_bound = lower_limit
             bound_name = "lower"
         else:
             return pd.DataFrame(
@@ -324,6 +329,7 @@ class TimeToThresholdEvents(Base):
             columns=cols,
         )
 
+    @keyword_only(2)
     def crossing_forecast(
         self,
         thresholds: dict[str, float],

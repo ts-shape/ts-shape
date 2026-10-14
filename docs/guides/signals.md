@@ -109,7 +109,7 @@ Where a detector accepts `specs=`, its defaults follow the signal:
 
 ```python
 ts_shape.MachineStateEvents(df, "line1:state", specs=specs).detect_run_idle()
-ts_shape.DowntimeTracking(df, specs=specs).downtime_by_shift("line1:state")
+ts_shape.DowntimeEvents(df, specs=specs).downtime_by_shift("line1:state")
 ```
 
 An explicit argument always wins over the spec.

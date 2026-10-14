@@ -37,3 +37,14 @@ def test_include_initial_false_only_real_changes():
     changes = co.detect_changeover("prod", include_initial=False)
     # Only the real changeover to PART_B.
     assert list(changes["new_value"]) == ["PART_B"]
+
+
+def test_changeover_quality_metrics_docstring_matches_output():
+    """The docstring must not promise duration patterns it does not return."""
+    co = ChangeoverEvents(_frame())
+    out = co.changeover_quality_metrics("prod")
+    doc = ChangeoverEvents.changeover_quality_metrics.__doc__ or ""
+    assert "duration patterns" not in doc
+    assert not any("duration" in c for c in out.columns)
+    for col in ("product", "changeover_count"):
+        assert col in out.columns and col in doc

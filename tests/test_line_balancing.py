@@ -55,7 +55,7 @@ def test_unbalanced_line_identifies_bottleneck():
 def test_balance_metrics_emits_canonical_summary_columns():
     df = _make_line({"a": 50, "b": 60})
     lb = LineBalancingEvents(df, station_uuids={"a": "A", "b": "B"})
-    for out in (lb.station_cycle_times("1h"), lb.balance_metrics(window="1h")):
+    for out in (lb.station_cycle_times(window="1h"), lb.balance_metrics(window="1h")):
         for col in ("start", "end", "duration_seconds"):
             assert col in out.columns
 

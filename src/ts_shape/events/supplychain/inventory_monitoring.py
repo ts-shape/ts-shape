@@ -10,7 +10,9 @@ from typing import Any
 import numpy as np
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -48,7 +50,7 @@ class InventoryMonitoringEvents(Base):
             value_column: Column containing numeric inventory levels.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.level_uuid = level_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -66,6 +68,7 @@ class InventoryMonitoringEvents(Base):
                 self.levels[self.time_column]
             )
 
+    @keyword_only(2)
     def detect_low_stock(
         self,
         min_level: float,
@@ -138,6 +141,7 @@ class InventoryMonitoringEvents(Base):
             return pd.DataFrame(columns=empty_cols)
         return pd.DataFrame(rows)
 
+    @keyword_only(1)
     def consumption_rate(
         self,
         window: str = "1h",
@@ -158,19 +162,21 @@ class InventoryMonitoringEvents(Base):
                 window of the reading that reports them.
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta,
-            consumption_rate, level_start, level_end.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, consumption_rate, level_start, level_end.
+            ``end`` is ``start`` plus ``window``.
         """
         empty_cols = [
             "start",
             "uuid",
+            "source_uuid",
             "is_delta",
             "consumption_rate",
             "level_start",
             "level_end",
         ]
         if self.levels.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         lv = self.levels[[self.time_column, self.value_column]].copy()
         lv = lv.set_index(self.time_column)
@@ -192,7 +198,7 @@ class InventoryMonitoringEvents(Base):
         result = result.dropna(subset=["level_start", "level_end"]).copy()
 
         if result.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         # Consumption is positive when level decreases
         window_td = pd.to_timedelta(window)
@@ -209,10 +215,12 @@ class InventoryMonitoringEvents(Base):
                 result["level_start"] - result["level_end"]
             ) / window_hours
         result["uuid"] = self.event_uuid
+        result["source_uuid"] = self.level_uuid
         result["is_delta"] = True
 
-        return result[empty_cols].reset_index(drop=True)
+        return with_window_bounds(result[empty_cols].reset_index(drop=True), window)
 
+    @keyword_only(2)
     def reorder_point_breach(
         self,
         reorder_level: float,
@@ -225,12 +233,14 @@ class InventoryMonitoringEvents(Base):
             safety_stock: Safety stock threshold (must be <= reorder_level).
 
         Returns:
-            DataFrame with columns: systime, uuid, is_delta, current_level,
+            DataFrame with columns: systime, uuid, source_uuid, is_delta,
+            current_level,
             breach_type ('reorder' or 'safety_stock'), deficit.
         """
         empty_cols = [
             "systime",
             "uuid",
+            "source_uuid",
             "is_delta",
             "current_level",
             "breach_type",
@@ -263,6 +273,7 @@ class InventoryMonitoringEvents(Base):
                 {
                     "systime": row[self.time_column],
                     "uuid": self.event_uuid,
+                    "source_uuid": self.level_uuid,
                     "is_delta": True,
                     "current_level": float(row[self.value_column]),
                     "breach_type": breach_type,
@@ -280,6 +291,7 @@ class InventoryMonitoringEvents(Base):
                 {
                     "systime": row[self.time_column],
                     "uuid": self.event_uuid,
+                    "source_uuid": self.level_uuid,
                     "is_delta": True,
                     "current_level": float(row[self.value_column]),
                     "breach_type": "safety_stock",
@@ -291,6 +303,7 @@ class InventoryMonitoringEvents(Base):
             return pd.DataFrame(columns=empty_cols)
         return pd.DataFrame(rows)
 
+    @keyword_only(1)
     def stockout_prediction(
         self,
         consumption_rate_window: str = "4h",
@@ -306,12 +319,14 @@ class InventoryMonitoringEvents(Base):
                 consumption rate (e.g. ``'4h'``).
 
         Returns:
-            DataFrame with columns: systime, uuid, is_delta, current_level,
+            DataFrame with columns: systime, uuid, source_uuid, is_delta,
+            current_level,
             consumption_rate, estimated_stockout_time_hours.
         """
         empty_cols = [
             "systime",
             "uuid",
+            "source_uuid",
             "is_delta",
             "current_level",
             "consumption_rate",
@@ -341,6 +356,7 @@ class InventoryMonitoringEvents(Base):
                     {
                         "systime": pd.Timestamp(current_time),
                         "uuid": self.event_uuid,
+                        "source_uuid": self.level_uuid,
                         "is_delta": True,
                         "current_level": current_level,
                         "consumption_rate": 0.0,
@@ -370,6 +386,7 @@ class InventoryMonitoringEvents(Base):
                 {
                     "systime": pd.Timestamp(current_time),
                     "uuid": self.event_uuid,
+                    "source_uuid": self.level_uuid,
                     "is_delta": True,
                     "current_level": current_level,
                     "consumption_rate": float(rate),

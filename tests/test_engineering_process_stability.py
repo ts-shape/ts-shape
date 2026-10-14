@@ -1,7 +1,9 @@
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
-from ts_shape.events.engineering.process_stability_index import ProcessStabilityIndex
+from ts_shape.events.engineering.process_stability_index import (
+    ProcessStabilityIndexEvents,
+)
 
 
 def _times(start: str, count: int, freq: str) -> pd.DatetimeIndex:
@@ -25,7 +27,7 @@ def test_stability_score_stable_signal():
     vals = [50.0] * len(t)
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(
+    psi = ProcessStabilityIndexEvents(
         df, "sensor", target=50.0, lower_spec=40.0, upper_spec=60.0
     )
     result = psi.stability_score(window="8h")
@@ -41,7 +43,7 @@ def test_stability_score_noisy_signal():
     vals = 50 + rng.normal(0, 15, len(t))  # high noise
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(
+    psi = ProcessStabilityIndexEvents(
         df, "sensor", target=50.0, lower_spec=40.0, upper_spec=60.0
     )
     result = psi.stability_score(window="8h")
@@ -55,7 +57,7 @@ def test_stability_score_subscores():
     vals = [50.0] * len(t)
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(df, "sensor")
+    psi = ProcessStabilityIndexEvents(df, "sensor")
     result = psi.stability_score(window="8h")
     assert not result.empty
     sub = (
@@ -73,7 +75,7 @@ def test_score_trend():
     vals = [50.0] * len(t)
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(df, "sensor")
+    psi = ProcessStabilityIndexEvents(df, "sensor")
     result = psi.score_trend(window="4h")
     assert not result.empty
     assert "trend_direction" in result.columns
@@ -89,7 +91,7 @@ def test_worst_periods():
     vals = 50 + rng.normal(0, 5, len(t))
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(
+    psi = ProcessStabilityIndexEvents(
         df, "sensor", target=50.0, lower_spec=40.0, upper_spec=60.0
     )
     result = psi.worst_periods(window="1h", n=3)
@@ -104,7 +106,7 @@ def test_stability_comparison():
     vals = [50.0] * len(t)
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(df, "sensor")
+    psi = ProcessStabilityIndexEvents(df, "sensor")
     result = psi.stability_comparison(window="4h")
     assert not result.empty
     assert "gap_to_best" in result.columns
@@ -118,7 +120,7 @@ def test_auto_derived_specs():
     vals = [50.0] * len(t)
     df = _make_df("sensor", t, vals)
 
-    psi = ProcessStabilityIndex(df, "sensor")
+    psi = ProcessStabilityIndexEvents(df, "sensor")
     assert psi.target is not None
     assert psi.lower_spec is not None
     assert psi.upper_spec is not None
@@ -128,7 +130,7 @@ def test_auto_derived_specs():
 
 def test_empty_dataframe():
     df = pd.DataFrame(columns=["uuid", "systime", "value_double", "is_delta"])
-    psi = ProcessStabilityIndex(df, "sensor")
+    psi = ProcessStabilityIndexEvents(df, "sensor")
     assert psi.stability_score().empty
     assert psi.score_trend().empty
     assert psi.worst_periods().empty

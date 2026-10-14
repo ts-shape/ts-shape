@@ -74,3 +74,36 @@ Classes:
   - align_asof: Align two UUID signals using merge_asof.
   - merge_multi_signals: End-to-end harmonization pipeline.
 """
+
+import importlib as _importlib
+
+# The classes listed above, importable from the pack. They are imported on
+# first access, so a class whose optional dependency is missing only fails
+# when it is used.
+_CLASSES = {
+    "BooleanFilter": "ts_shape.transform.filter.boolean_filter",
+    "CustomFilter": "ts_shape.transform.filter.custom_filter",
+    "DataHarmonizer": "ts_shape.transform.harmonization",
+    "DateTimeFilter": "ts_shape.transform.filter.datetime_filter",
+    "DoubleFilter": "ts_shape.transform.filter.numeric_filter",
+    "IntegerCalc": "ts_shape.transform.calculator.numeric_calc",
+    "IntegerFilter": "ts_shape.transform.filter.numeric_filter",
+    "IsDeltaFilter": "ts_shape.transform.filter.boolean_filter",
+    "LambdaProcessor": "ts_shape.transform.functions.lambda_func",
+    "PowerIntegrator": "ts_shape.transform.calculator.power_integration",
+    "StringFilter": "ts_shape.transform.filter.string_filter",
+    "TimestampConverter": "ts_shape.transform.time_functions.timestamp_converter",
+    "TimezoneShift": "ts_shape.transform.time_functions.timezone_shift",
+}
+
+__all__ = sorted(_CLASSES)
+
+
+def __getattr__(name: str) -> object:
+    if name in _CLASSES:
+        return getattr(_importlib.import_module(_CLASSES[name]), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_CLASSES))

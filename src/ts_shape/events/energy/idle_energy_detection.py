@@ -1,9 +1,12 @@
 import logging
+from typing import Any
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
@@ -46,34 +49,42 @@ class IdleEnergyDetectionEvents(Base):
         time_column: str = "systime",
         uuid_column: str = "uuid",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
         self._uuid_column = uuid_column
 
+    @renamed_kwargs(
+        energy_column="value_column_energy", state_column="value_column_state"
+    )
     def idle_energy_by_window(
         self,
         meter_uuid: str,
         state_uuid: str,
         *,
-        energy_column: str = "value_double",
-        state_column: str = "value_bool",
+        value_column_energy: str = "value_double",
+        value_column_state: str = "value_bool",
         window: str = "1h",
         idle_threshold: float = 0.1,
         time_weighted: bool = False,
     ) -> pd.DataFrame:
         """Aggregate energy consumed during idle periods per time window.
 
-        Machine-running percentage is the mean of the boolean state signal within
-        each window. Windows below ``idle_threshold`` are classified as idle.
+        The machine-running share is the mean of the boolean state signal within
+        each window, a ratio between 0 and 1. It is reported as
+        ``machine_running_ratio`` and, for backward compatibility, as
+        ``machine_running_pct`` (also a 0-1 ratio despite its name). Windows
+        whose ratio is below ``idle_threshold`` count as fully idle; otherwise
+        the idle fraction is ``1 - machine_running_ratio``.
 
         Args:
             meter_uuid: Identifier of the energy meter signal.
             state_uuid: Identifier of the boolean machine-state signal (True=running).
-            energy_column: Column containing energy readings.
-            state_column: Column containing boolean state values.
+            value_column_energy: Column containing energy readings.
+            value_column_state: Column containing boolean state values.
             window: Resample window (e.g. '1h', '15min').
-            idle_threshold: machine_running_pct below this classifies the window as idle.
+            idle_threshold: Running ratio (0-1) below which the window is
+                classified as fully idle.
             time_weighted: Weight the machine state by how long it was held
                 (until the next state change) and keep every energy window. Default
                 ``False`` averages state *samples* and inner-joins, so a change-encoded
@@ -81,9 +92,10 @@ class IdleEnergyDetectionEvents(Base):
                 drop their energy.
 
         Returns:
-            DataFrame: start, uuid, source_uuid, is_delta,
-                       total_energy, idle_energy, running_energy,
-                       machine_running_pct, idle_fraction
+            DataFrame: start, end, duration_seconds, uuid, source_uuid,
+                       is_delta, total_energy, idle_energy, running_energy,
+                       machine_running_pct (0-1 ratio, kept for backward
+                       compatibility), idle_fraction, machine_running_ratio
         """
         energy, state = self._filter_two(meter_uuid, state_uuid)
         empty_cols = [
@@ -96,20 +108,21 @@ class IdleEnergyDetectionEvents(Base):
             "running_energy",
             "machine_running_pct",
             "idle_fraction",
+            "machine_running_ratio",
         ]
         if energy.empty or state.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         energy = energy.set_index(self.time_column)
         state = state.set_index(self.time_column)
 
         energy_agg = (
-            energy[energy_column].resample(window).sum().to_frame("total_energy")
+            energy[value_column_energy].resample(window).sum().to_frame("total_energy")
         )
         if time_weighted:
             state_agg = (
                 time_weighted_resample(
-                    state[state_column].astype("boolean").astype(float),
+                    state[value_column_state].astype("boolean").astype(float),
                     window,
                     data_end=energy.index.max(),
                 )
@@ -119,7 +132,7 @@ class IdleEnergyDetectionEvents(Base):
             out = energy_agg.join(state_agg, how="left").reset_index()
         else:
             state_agg = (
-                state[state_column]
+                state[value_column_state]
                 .fillna(False)
                 .astype(float)
                 .resample(window)
@@ -130,10 +143,9 @@ class IdleEnergyDetectionEvents(Base):
         out = out.rename(columns={self.time_column: "start"})
 
         out["machine_running_pct"] = out["machine_running_pct"].fillna(0.0)
-        out["idle_fraction"] = np.where(
-            out["machine_running_pct"] < idle_threshold,
-            1.0,
-            1.0 - out["machine_running_pct"],
+        out["machine_running_ratio"] = out["machine_running_pct"]
+        out["idle_fraction"] = self._idle_fraction(
+            out["machine_running_ratio"], idle_threshold
         )
         out["idle_energy"] = out["total_energy"] * out["idle_fraction"]
         out["running_energy"] = out["total_energy"] - out["idle_energy"]
@@ -141,26 +153,38 @@ class IdleEnergyDetectionEvents(Base):
         out["source_uuid"] = meter_uuid
         out["is_delta"] = True
 
-        return out[empty_cols]
+        return with_window_bounds(out[empty_cols], window)
 
+    @renamed_kwargs(
+        energy_column="value_column_energy", state_column="value_column_state"
+    )
     def idle_energy_by_shift(
         self,
         meter_uuid: str,
         state_uuid: str,
         *,
-        energy_column: str = "value_double",
-        state_column: str = "value_bool",
+        value_column_energy: str = "value_double",
+        value_column_state: str = "value_bool",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
+        idle_threshold: float | None = None,
     ) -> pd.DataFrame:
         """Aggregate idle energy waste per shift across all dates.
+
+        The idle fraction of a shift is ``1 - running ratio`` (the mean of
+        the state samples in that shift). Pass ``idle_threshold`` to apply
+        the same rule as :meth:`idle_energy_by_window`: a shift whose running
+        ratio is below the threshold counts as fully idle.
 
         Args:
             meter_uuid: Identifier of the energy meter signal.
             state_uuid: Identifier of the boolean machine-state signal.
-            energy_column: Column containing energy readings.
-            state_column: Column containing boolean state values.
+            value_column_energy: Column containing energy readings.
+            value_column_state: Column containing boolean state values.
             shift_definitions: Dict mapping shift name → (start_time, end_time).
                 Default: three-shift operation (06-14, 14-22, 22-06).
+            idle_threshold: Running ratio (0-1) below which a shift counts as
+                fully idle. Default None (no threshold, the previous
+                behavior); 0.1 matches :meth:`idle_energy_by_window`.
 
         Returns:
             DataFrame: shift, total_energy, idle_energy, waste_fraction
@@ -189,10 +213,10 @@ class IdleEnergyDetectionEvents(Base):
         state["_shift"] = state[self.time_column].apply(_assign_shift)
 
         energy_by_shift = (
-            energy.groupby("_shift")[energy_column].sum().rename("total_energy")
+            energy.groupby("_shift")[value_column_energy].sum().rename("total_energy")
         )
         running_by_shift = (
-            state[state_column]
+            state[value_column_state]
             .fillna(False)
             .astype(float)
             .groupby(state["_shift"])
@@ -203,7 +227,9 @@ class IdleEnergyDetectionEvents(Base):
         out = pd.concat([energy_by_shift, running_by_shift], axis=1).reset_index()
         out = out.rename(columns={"_shift": "shift"})
         out["machine_running_pct"] = out["machine_running_pct"].fillna(0.0)
-        out["idle_fraction"] = (1.0 - out["machine_running_pct"]).clip(lower=0.0)
+        out["idle_fraction"] = self._idle_fraction(
+            out["machine_running_pct"], idle_threshold
+        )
         out["idle_energy"] = out["total_energy"] * out["idle_fraction"]
         out["waste_fraction"] = np.where(
             out["total_energy"] > 0,
@@ -212,13 +238,16 @@ class IdleEnergyDetectionEvents(Base):
         )
         return out[empty_cols]
 
+    @renamed_kwargs(
+        energy_column="value_column_energy", state_column="value_column_state"
+    )
     def idle_energy_trend(
         self,
         meter_uuid: str,
         state_uuid: str,
         *,
-        energy_column: str = "value_double",
-        state_column: str = "value_bool",
+        value_column_energy: str = "value_double",
+        value_column_state: str = "value_bool",
         window: str = "1D",
         trend_window: int = 7,
         idle_threshold: float = 0.1,
@@ -228,21 +257,21 @@ class IdleEnergyDetectionEvents(Base):
         Args:
             meter_uuid: Identifier of the energy meter signal.
             state_uuid: Identifier of the boolean machine-state signal.
-            energy_column: Column containing energy readings.
-            state_column: Column containing boolean state values.
+            value_column_energy: Column containing energy readings.
+            value_column_state: Column containing boolean state values.
             window: Aggregation window (default daily).
             trend_window: Number of windows for rolling average.
             idle_threshold: machine_running_pct below this → idle.
 
         Returns:
-            DataFrame: start, uuid, source_uuid, idle_energy,
-                       rolling_avg_idle_energy, trend_direction
+            DataFrame: start, end, duration_seconds, uuid, source_uuid,
+                       idle_energy, rolling_avg_idle_energy, trend_direction
         """
         by_window = self.idle_energy_by_window(
             meter_uuid,
             state_uuid,
-            energy_column=energy_column,
-            state_column=state_column,
+            value_column_energy=value_column_energy,
+            value_column_state=value_column_state,
             window=window,
             idle_threshold=idle_threshold,
         )
@@ -255,7 +284,7 @@ class IdleEnergyDetectionEvents(Base):
             "trend_direction",
         ]
         if by_window.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         by_window["rolling_avg_idle_energy"] = (
             by_window["idle_energy"].rolling(window=trend_window, min_periods=1).mean()
@@ -266,9 +295,17 @@ class IdleEnergyDetectionEvents(Base):
             bins=[-np.inf, -0.01, 0.01, np.inf],
             labels=["improving", "stable", "worsening"],
         )
-        return by_window[empty_cols]
+        return with_window_bounds(by_window[empty_cols], window)
 
     # ── Internal helpers ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _idle_fraction(running_ratio: pd.Series, idle_threshold: float | None) -> Any:
+        """Idle share from a 0-1 running ratio; fully idle below the threshold."""
+        base = (1.0 - running_ratio).clip(lower=0.0)
+        if idle_threshold is None:
+            return base
+        return np.where(running_ratio < idle_threshold, 1.0, base)
 
     def _filter_two(
         self, uuid_a: str, uuid_b: str

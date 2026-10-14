@@ -60,7 +60,7 @@ def continuous_df():
 class TestFindGaps:
     def test_finds_two_gaps(self, gapped_df):
         det = DataGapAnalysisEvents(gapped_df, "sensor_1")
-        gaps = det.find_gaps(min_gap="5s")
+        gaps = det.detect_gaps(min_gap="5s")
         assert len(gaps) == 2
         durations = gaps["gap_duration_seconds"].tolist()
         assert any(d >= 29 for d in durations)
@@ -68,19 +68,19 @@ class TestFindGaps:
 
     def test_min_gap_filters(self, gapped_df):
         det = DataGapAnalysisEvents(gapped_df, "sensor_1")
-        gaps = det.find_gaps(min_gap="60s")
+        gaps = det.detect_gaps(min_gap="60s")
         assert len(gaps) == 1
         assert gaps.iloc[0]["gap_duration_seconds"] >= 119
 
     def test_no_gaps(self, continuous_df):
         det = DataGapAnalysisEvents(continuous_df, "sensor_1")
-        gaps = det.find_gaps(min_gap="5s")
+        gaps = det.detect_gaps(min_gap="5s")
         assert len(gaps) == 0
 
     def test_empty_signal(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_double"])
         det = DataGapAnalysisEvents(df, "sensor_1")
-        assert len(det.find_gaps()) == 0
+        assert len(det.detect_gaps()) == 0
 
 
 class TestGapSummary:
@@ -104,14 +104,14 @@ class TestGapSummary:
 class TestCoverageByPeriod:
     def test_coverage_below_100(self, gapped_df):
         det = DataGapAnalysisEvents(gapped_df, "sensor_1")
-        cov = det.coverage_by_period(freq="5min")
+        cov = det.coverage_by_period(window="5min")
         assert len(cov) > 0
         # At least one window should have gaps
         assert any(cov["gap_count"] > 0)
 
     def test_full_coverage(self, continuous_df):
         det = DataGapAnalysisEvents(continuous_df, "sensor_1")
-        cov = det.coverage_by_period(freq="5min")
+        cov = det.coverage_by_period(window="5min")
         assert len(cov) > 0
         # Continuous 1 Hz signal should have ~100% coverage
         assert all(cov["coverage_pct"] > 99.0)

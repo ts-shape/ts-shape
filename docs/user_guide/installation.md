@@ -2,9 +2,10 @@
 
 ## Requirements
 
-- Python 3.10 or higher
-- pandas >= 2.0.0
-- numpy >= 1.24.0
+- Python 3.11 or higher
+- pandas >= 2.1.0
+- numpy >= 1.26.4
+- scipy >= 1.13.1
 
 ## Install from PyPI
 
@@ -45,7 +46,9 @@ pip install ts-shape[api]       # REST metadata / energy APIs (requests)
 pip install ts-shape[sql]       # TimescaleDB / SQL metadata (sqlalchemy)
 pip install ts-shape[postgres]  # sql + psycopg2 driver
 pip install ts-shape[yaml]      # SignalSpecs.from_yaml
-pip install ts-shape[all]       # everything above
+pip install ts-shape[all]       # s3 + azure + api + sql + yaml (no psycopg2)
+pip install ts-shape[units]     # UnitConverter (pint)
+pip install ts-shape[ml]        # Isolation Forest outlier detection (scikit-learn)
 ```
 
 ## Development Installation

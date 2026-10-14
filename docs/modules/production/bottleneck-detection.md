@@ -20,19 +20,22 @@ from ts_shape.events.production.bottleneck_detection import BottleneckDetectionE
 import pandas as pd
 import numpy as np
 
+# Long format: one boolean run-state signal per station (True = running)
 np.random.seed(42)
-df = pd.DataFrame({
-    "timestamp": pd.date_range("2024-01-01 06:00", periods=360, freq="1min"),
-    "station_A": np.random.choice([True, False], size=360, p=[0.92, 0.08]),
-    "station_B": np.random.choice([True, False], size=360, p=[0.98, 0.02]),
-    "station_C": np.random.choice([True, False], size=360, p=[0.85, 0.15]),
-})
+times = pd.date_range("2024-01-01 06:00", periods=360, freq="1min")
+p_run = {"line1:station_a:run": 0.92, "line1:station_b:run": 0.98, "line1:station_c:run": 0.85}
+df = pd.concat([
+    pd.DataFrame({"systime": times, "uuid": uuid,
+                  "value_bool": np.random.rand(len(times)) < p})
+    for uuid, p in p_run.items()
+], ignore_index=True)
 
-bd = BottleneckDetectionEvents(df, timestamp_column="timestamp")
-station_uuids = ["station_A", "station_B", "station_C"]
+bd = BottleneckDetectionEvents(df)
+station_uuids = list(p_run)
 utilization = bd.station_utilization(station_uuids, window="1h")
 bottleneck = bd.detect_bottleneck(station_uuids, window="1h")
 shifts = bd.shifting_bottleneck(station_uuids, window="1h")
+summary = bd.throughput_constraint_summary(station_uuids, window="1h")
 print(bottleneck)
 ```
 
@@ -42,10 +45,10 @@ print(bottleneck)
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `station_utilization(station_uuids, window='1h')` | Compute per-station uptime percentage per window | DataFrame with station, window, and utilization ratio |
-| `detect_bottleneck(station_uuids, window='1h')` | Identify the bottleneck station (highest utilization) per window | DataFrame with window and bottleneck station identifier |
-| `shifting_bottleneck(station_uuids, window='1h')` | Detect when the bottleneck shifts from one station to another | DataFrame of shift events with before/after station |
-| `throughput_constraint_summary(station_uuids)` | Aggregate summary of how often each station is the bottleneck | DataFrame with station and percentage of time as bottleneck |
+| `station_utilization(station_uuids, window='1h', time_weighted=False)` | Compute per-station uptime percentage per window | DataFrame with `start`, `uuid`, `utilization_pct` |
+| `detect_bottleneck(station_uuids, window='1h', time_weighted=False)` | Identify the bottleneck station (highest utilization) per window | DataFrame with `start`, `end`, `bottleneck_uuid`, `utilization_pct` |
+| `shifting_bottleneck(station_uuids, window='1h', time_weighted=False)` | Detect when the bottleneck shifts from one station to another | DataFrame with `systime`, `from_uuid`, `to_uuid`, `previous_utilization`, `new_utilization` |
+| `throughput_constraint_summary(station_uuids, window='1h', time_weighted=False)` | Aggregate summary of how often each station is the bottleneck | Dict with `bottleneck_counts`, `bottleneck_percentages`, `most_frequent_bottleneck`, `avg_utilization_per_station` |
 
 ---
 

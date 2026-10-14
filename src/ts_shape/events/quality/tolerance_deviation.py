@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +24,15 @@ class ToleranceDeviationEvents(Base):
     - Time-lagged tolerance application
     """
 
+    @keyword_only(4)
     def __init__(
         self,
         dataframe: pd.DataFrame,
         tolerance_column: str,
         actual_column: str,
         tolerance_uuid: str | None = None,
-        actual_uuid: str = None,
-        event_uuid: str = None,
+        actual_uuid: str | None = None,
+        event_uuid: str | None = None,
         compare_func: Callable[[pd.Series, pd.Series], pd.Series] = operator.ge,
         time_threshold: str = "5min",
         upper_tolerance_uuid: str | None = None,
@@ -47,8 +49,9 @@ class ToleranceDeviationEvents(Base):
             tolerance_column: Column name containing tolerance values
             actual_column: Column name containing actual measurement values
             tolerance_uuid: UUID for tolerance (backward compatibility, used if upper/lower not specified)
-            actual_uuid: UUID for actual measurements
-            event_uuid: UUID for generated events
+            actual_uuid: UUID for actual measurements. Required: a
+                ``ValueError`` is raised when it is missing.
+            event_uuid: UUID for generated events (default None)
             compare_func: Comparison function (default: operator.ge for greater-than-or-equal)
             time_threshold: Time window for grouping events (default: '5min')
             upper_tolerance_uuid: UUID for upper tolerance limit (optional)
@@ -56,12 +59,17 @@ class ToleranceDeviationEvents(Base):
             warning_threshold: Threshold ratio for warning zone (default: 0.8 = 80% of tolerance)
             tolerance_lag: Time lag for tolerance application (default: '0s')
         """
+        if actual_uuid is None:
+            raise ValueError(
+                "actual_uuid is required: it names the measurement signal "
+                "that is checked against the tolerances"
+            )
         super().__init__(dataframe)  # Inherit and initialize Base class
 
         self.tolerance_column: str = tolerance_column
         self.actual_column: str = actual_column
         self.actual_uuid: str = actual_uuid
-        self.event_uuid: str = event_uuid
+        self.event_uuid: str | None = event_uuid
         self.compare_func: Callable[[pd.Series, pd.Series], pd.Series] = compare_func
         self.time_threshold: str = time_threshold
         self.warning_threshold: float = warning_threshold
@@ -146,7 +154,9 @@ class ToleranceDeviationEvents(Base):
 
         return "minor"
 
-    def process_and_group_data_with_events(self) -> pd.DataFrame:
+    process_and_group_data_with_events = deprecated_method("detect_deviations")
+
+    def detect_deviations(self) -> pd.DataFrame:
         """
         Processes DataFrame to apply tolerance checks, group events by time, and generate an events DataFrame.
 
@@ -157,8 +167,16 @@ class ToleranceDeviationEvents(Base):
         - Severity level classification
         - Time-lagged tolerance application
 
+        Out-of-tolerance samples of the actual signal closer than
+        ``time_threshold`` form one event, reported as its first and last
+        row; an event of a single sample is reported as that one row.
+
         Returns:
             pd.DataFrame: A DataFrame of processed and grouped event data with enhanced metrics.
+            Columns: systime, uuid (the event uuid), source_uuid (the actual
+            measurement signal's uuid), the value columns (``actual_column``
+            holds the measured value), is_delta, deviation_abs,
+            deviation_pct and severity.
         """
         df = self.dataframe.copy()  # Inherited from Base class
 
@@ -179,6 +197,8 @@ class ToleranceDeviationEvents(Base):
         if self.tolerance_lag != "0s":
             df = self._apply_tolerance_lag(df, "tolerance_value")
 
+        # Every event row is about the actual measurement signal.
+        df["source_uuid"] = self.actual_uuid
         return df
 
     def _process_single_tolerance(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -256,11 +276,13 @@ class ToleranceDeviationEvents(Base):
 
         for group_id in filtered_df["group_id"].unique():
             group_data = filtered_df[filtered_df["group_id"] == group_id]
-            if group_data.shape[0] > 1:  # Ensure there's more than one row to work with
-                first_row = group_data.nsmallest(1, "systime")
-                last_row = group_data.nlargest(1, "systime")
-                combined_rows = pd.concat([first_row, last_row])
-                events_data.append(combined_rows)
+            if group_data.shape[0] == 1:
+                # A single out-of-tolerance sample is an event too: one row.
+                events_data.append(group_data)
+                continue
+            first_row = group_data.nsmallest(1, "systime")
+            last_row = group_data.nlargest(1, "systime")
+            events_data.append(pd.concat([first_row, last_row]))
 
         # Convert list of DataFrame slices to a single DataFrame
         if events_data:
@@ -281,7 +303,6 @@ class ToleranceDeviationEvents(Base):
         cols_to_drop = [col for col in cols_to_drop if col in events_df.columns]
         events_df = events_df.drop(cols_to_drop, axis=1)
 
-        events_df[self.actual_column] = np.nan
         events_df["is_delta"] = True
 
         return events_df
@@ -391,11 +412,13 @@ class ToleranceDeviationEvents(Base):
 
         for group_id in filtered_df["group_id"].unique():
             group_data = filtered_df[filtered_df["group_id"] == group_id]
-            if group_data.shape[0] > 1:  # Ensure there's more than one row to work with
-                first_row = group_data.nsmallest(1, "systime")
-                last_row = group_data.nlargest(1, "systime")
-                combined_rows = pd.concat([first_row, last_row])
-                events_data.append(combined_rows)
+            if group_data.shape[0] == 1:
+                # A single out-of-tolerance sample is an event too: one row.
+                events_data.append(group_data)
+                continue
+            first_row = group_data.nsmallest(1, "systime")
+            last_row = group_data.nlargest(1, "systime")
+            events_data.append(pd.concat([first_row, last_row]))
 
         # Convert list of DataFrame slices to a single DataFrame
         if events_data:
@@ -417,32 +440,43 @@ class ToleranceDeviationEvents(Base):
         cols_to_drop = [col for col in cols_to_drop if col in events_df.columns]
         events_df = events_df.drop(cols_to_drop, axis=1)
 
-        events_df[self.actual_column] = np.nan
         events_df["is_delta"] = True
 
         return events_df
 
-    def compute_capability_indices(
-        self, target_value: float | None = None
-    ) -> dict[str, float]:
+    compute_capability_indices = deprecated_method("capability_indices")
+
+    @keyword_only(1)
+    def capability_indices(self, target_value: float | None = None) -> dict[str, float]:
         """
-        Calculate process capability indices (Cp, Cpk, Pp, Ppk).
+        Calculate process capability indices (Cp, Cpk, Pp, Ppk and Cpm).
 
         Process capability indices measure how well a process meets specification limits:
-        - Cp: Process capability (potential capability assuming perfect centering)
-        - Cpk: Process capability index (accounts for process centering)
-        - Pp: Process performance (overall variability)
-        - Ppk: Process performance index (accounts for centering)
+        - Cp = (USL - LSL) / 6σ: potential capability assuming perfect centering
+        - Cpk = min(USL - mean, mean - LSL) / 3σ: accounts for centering
+        - Pp / Ppk: the same formulas
+        - Cpm (only when ``target_value`` is given): the Taguchi index
+          Cp / sqrt(1 + ((mean - T) / σ)²), which penalizes distance from
+          the target T
+
+        σ is the overall sample standard deviation (ddof=1) of all actual
+        measurements. The data carries no rational subgroups, so no
+        within-subgroup (short-term) σ can be estimated: Cp/Cpk are computed
+        from the overall σ and are therefore equal to Pp/Ppk.
 
         Args:
-            target_value: Target/nominal value for the process. If None, uses midpoint of tolerances.
+            target_value: Target/nominal value for the process. If None, the
+                midpoint of the tolerances is reported as ``target`` and no
+                ``Cpm`` is computed.
 
         Returns:
             Dictionary containing:
                 - 'Cp': Process capability
                 - 'Cpk': Process capability index
-                - 'Pp': Process performance
-                - 'Ppk': Process performance index
+                - 'Pp': Process performance (equal to Cp, see above)
+                - 'Ppk': Process performance index (equal to Cpk)
+                - 'Cpm': Taguchi capability index; only present when
+                  ``target_value`` is given (NaN for a one-sided spec)
                 - 'mean': Process mean
                 - 'std': Process standard deviation
                 - 'usl': Upper specification limit
@@ -450,8 +484,6 @@ class ToleranceDeviationEvents(Base):
                 - 'target': Target value used
 
         Note:
-            - Cp/Cpk use short-term variation (within-subgroup)
-            - Pp/Ppk use long-term variation (overall)
             - Values > 1.33 are generally considered acceptable
             - Values > 1.67 are considered good
         """
@@ -511,6 +543,7 @@ class ToleranceDeviationEvents(Base):
             )
 
         # Determine target value
+        target_given = target_value is not None
         if target_value is None:
             target_value = usl if pd.isna(lsl) else (usl + lsl) / 2
 
@@ -522,12 +555,11 @@ class ToleranceDeviationEvents(Base):
         cpl = (process_mean - lsl) / (3 * process_std)
         cpk = cpu if pd.isna(cpl) else min(cpu, cpl)
 
-        # For Pp and Ppk, we use the same formulas as Cp and Cpk
-        # In practice, Pp/Ppk would use long-term std dev, but without subgroups, we use overall std
-        pp = cp  # Using overall variation
+        # Without subgroups there is no short-term sigma: Pp/Ppk equal Cp/Cpk.
+        pp = cp
         ppk = cpk
 
-        return {
+        result = {
             "Cp": round(cp, 4),
             "Cpk": round(cpk, 4),
             "Pp": round(pp, 4),
@@ -538,3 +570,8 @@ class ToleranceDeviationEvents(Base):
             "lsl": round(lsl, 4),
             "target": round(target_value, 4),
         }
+        if target_given:
+            # Taguchi index (Chan, Cheng & Spiring 1988, JQT 20(3)).
+            cpm = cp / np.sqrt(1 + ((process_mean - target_value) / process_std) ** 2)
+            result["Cpm"] = round(cpm, 4)
+        return result

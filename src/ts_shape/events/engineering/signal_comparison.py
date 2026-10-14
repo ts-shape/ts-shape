@@ -4,7 +4,10 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import empty_event_df, finalize_interval_df
+from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ class SignalComparisonEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.reference_uuid = reference_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -75,6 +78,7 @@ class SignalComparisonEvents(Base):
         merged["abs_deviation"] = merged["deviation"].abs()
         return merged.dropna(subset=["ref", "act"])
 
+    @keyword_only(3)
     def detect_divergence(
         self,
         actual_uuid: str,
@@ -89,7 +93,8 @@ class SignalComparisonEvents(Base):
             min_duration: Minimum duration of divergence interval.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid (reference and actual uuids, comma-joined), is_delta,
             max_deviation, mean_deviation, direction.
         """
         cols = [
@@ -103,11 +108,11 @@ class SignalComparisonEvents(Base):
         ]
         merged = self._align(actual_uuid)
         if merged.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         exceeded = merged["abs_deviation"] > tolerance
         if not exceeded.any():
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         min_td = pd.Timedelta(min_duration)
         groups = (exceeded != exceeded.shift()).cumsum()
@@ -134,8 +139,15 @@ class SignalComparisonEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=f"{self.reference_uuid},{actual_uuid}",
+        )
 
+    @keyword_only(2)
     def deviation_statistics(
         self,
         actual_uuid: str,
@@ -143,13 +155,19 @@ class SignalComparisonEvents(Base):
     ) -> pd.DataFrame:
         """Per-window deviation statistics.
 
+        Args:
+            actual_uuid: UUID of the actual signal compared with the reference
+                signal. Deviation is actual minus reference.
+            window: Resample window (pandas offset string, e.g. '1h').
+
         Returns:
-            DataFrame with columns: start, mae, max_error, rmse, bias.
+            DataFrame with columns: start, end, duration_seconds, mae,
+            max_error, rmse, bias. ``end`` is ``start`` + ``window``.
         """
         cols = ["start", "mae", "max_error", "rmse", "bias"]
         merged = self._align(actual_uuid)
         if merged.empty:
-            return pd.DataFrame(columns=cols)
+            return window_summary([], cols, window)
 
         indexed = merged.set_index(self.time_column)
         groups = indexed.resample(window)
@@ -169,8 +187,9 @@ class SignalComparisonEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return window_summary(events, cols, window)
 
+    @keyword_only(2)
     def tracking_error_trend(
         self,
         actual_uuid: str,
@@ -178,14 +197,19 @@ class SignalComparisonEvents(Base):
     ) -> pd.DataFrame:
         """Track whether deviation is growing or shrinking over time.
 
+        Args:
+            actual_uuid: UUID of the actual signal compared with the reference
+                signal.
+            window: Resample window passed to :meth:`deviation_statistics`.
+
         Returns:
-            DataFrame with columns: start, mae, trend_slope,
-            trend_direction.
+            DataFrame with columns: start, end, duration_seconds, mae,
+            trend_slope, trend_direction. ``end`` is ``start`` + ``window``.
         """
         cols = ["start", "mae", "trend_slope", "trend_direction"]
-        stats = self.deviation_statistics(actual_uuid, window)
+        stats = self.deviation_statistics(actual_uuid, window=window)
         if stats.empty or len(stats) < 2:
-            return pd.DataFrame(columns=cols)
+            return window_summary([], cols, window)
 
         result = stats[["start", "mae"]].copy()
         # Slope of MAE over consecutive windows
@@ -196,8 +220,11 @@ class SignalComparisonEvents(Base):
             "worsening",
             np.where(mae_diff < -0.01, "improving", "stable"),
         )
-        return result[cols].dropna().reset_index(drop=True)
+        return window_summary(
+            result[cols].dropna().reset_index(drop=True), cols, window
+        )
 
+    @keyword_only(2)
     def correlation_windows(
         self,
         actual_uuid: str,
@@ -205,13 +232,20 @@ class SignalComparisonEvents(Base):
     ) -> pd.DataFrame:
         """Per-window Pearson correlation between reference and actual.
 
+        Args:
+            actual_uuid: UUID of the actual signal compared with the reference
+                signal.
+            window: Resample window (pandas offset string). Windows with fewer than
+                two aligned samples are skipped.
+
         Returns:
-            DataFrame with columns: start, correlation, sample_count.
+            DataFrame with columns: start, end, duration_seconds,
+            correlation, sample_count. ``end`` is ``start`` + ``window``.
         """
         cols = ["start", "correlation", "sample_count"]
         merged = self._align(actual_uuid)
         if merged.empty:
-            return pd.DataFrame(columns=cols)
+            return window_summary([], cols, window)
 
         indexed = merged.set_index(self.time_column)
         groups = indexed.resample(window)
@@ -229,4 +263,4 @@ class SignalComparisonEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return window_summary(events, cols, window)

@@ -19,8 +19,9 @@ Use as a fundamental daily engineering check for any process. Validates conserva
 from ts_shape.events.engineering.material_balance import MaterialBalanceEvents
 
 checker = MaterialBalanceEvents(
-    df=flow_data,
-    uuid="input_flow_total"
+    dataframe=flow_data,
+    input_uuids=["feed_flow_01", "feed_flow_02"],
+    output_uuids=["product_flow_01", "waste_flow_01"],
 )
 
 # Check balance within 5% tolerance per hour
@@ -29,10 +30,11 @@ balance = checker.balance_check(window="1h", tolerance_pct=5.0)
 # Track imbalance trend over time
 trend = checker.imbalance_trend(window="1h")
 
-# Detect sustained imbalance periods
+# Detect sustained imbalance periods (at least 2 hours)
 exceedances = checker.detect_balance_exceedance(
     window="1h",
-    tolerance_pct=5.0
+    tolerance_pct=5.0,
+    min_duration="2h",
 )
 
 # Break down each signal's contribution to the imbalance
@@ -45,10 +47,10 @@ breakdown = checker.contribution_breakdown(window="1h")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `balance_check(window='1h', tolerance_pct=5.0)` | Balance pass/fail per window | DataFrame with balance status |
-| `imbalance_trend(window='1h')` | Imbalance trend over time | DataFrame with imbalance values |
-| `detect_balance_exceedance(window='1h', tolerance_pct=5.0)` | Sustained imbalance intervals | DataFrame of exceedance events |
-| `contribution_breakdown(window='1h')` | Signal-level contributions | DataFrame with per-signal breakdown |
+| `balance_check(window='1h', tolerance_pct=5.0)` | Balance pass/fail per window | DataFrame: `start`, `total_input`, `total_output`, `imbalance`, `imbalance_pct`, `balanced` |
+| `imbalance_trend(window='1h')` | Imbalance trend over time | DataFrame: `start`, `imbalance_pct`, `rolling_avg_imbalance`, `trend_direction` |
+| `detect_balance_exceedance(window='1h', tolerance_pct=5.0, min_duration='2h')` | Sustained imbalance intervals | DataFrame of exceedance intervals (`start`, `end`, `avg_imbalance_pct`, `duration_seconds`, ...) |
+| `contribution_breakdown(window='1h')` | Signal-level contributions | DataFrame: `start`, `uuid`, `role`, `value`, `pct_of_total` |
 
 ---
 

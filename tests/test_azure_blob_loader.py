@@ -314,3 +314,55 @@ def test_filters_too_strict_warning_hint(monkeypatch):
     with pytest.warns(LoaderConfigWarning, match="filters argument may be too strict"):
         df = loader.load_all_files(filters=[("value_double", ">", 1e9)])
     assert df.empty
+
+
+def test_hourly_slots_include_hour_containing_end():
+    loader = _make_loader_without_init(prefix="parquet/")
+    slots = list(loader._hourly_slots("2024-01-01 09:30", "2024-01-01 11:00"))
+    assert [loader._hour_prefix(ts) for ts in slots] == [
+        "parquet/2024/01/01/09/",
+        "parquet/2024/01/01/10/",
+        "parquet/2024/01/01/11/",
+    ]
+    flex = _make_flexible_without_init(prefix="parquet/")
+    assert len(list(flex._hourly_slots("2024-01-01 09:30", "2024-01-01 11:00"))) == 3
+
+
+def test_load_by_time_range_mid_hour_start_reads_last_hour(monkeypatch):
+    files = [
+        "parquet/2024/01/01/09/u1.parquet",
+        "parquet/2024/01/01/10/u1.parquet",
+        "parquet/2024/01/01/11/u2.parquet",
+    ]
+    loader = _make_loader_without_init(prefix="parquet/", files=files)
+
+    def fake_download(name, *a, **k):
+        hour = int(name.split("/")[-2])
+        return pd.DataFrame(
+            {
+                "systime": [
+                    pd.Timestamp(2024, 1, 1, hour, 0),
+                    pd.Timestamp(2024, 1, 1, hour, 45),
+                ],
+                "uuid": [name.split("/")[-1].split(".")[0]] * 2,
+            }
+        )
+
+    monkeypatch.setattr(loader, "_download_parquet", fake_download)
+    df = loader.load_by_time_range("2024-01-01 09:30", "2024-01-01 11:00")
+    assert set(df["uuid"]) == {"u1", "u2"}
+    assert len(df) == 6  # whole hour folders by default
+
+    trimmed = loader.load_by_time_range(
+        "2024-01-01 09:30", "2024-01-01 11:00", trim_to_range=True
+    )
+    assert trimmed["systime"].min() == pd.Timestamp("2024-01-01 09:45")
+    assert trimmed["systime"].max() == pd.Timestamp("2024-01-01 11:00")
+    assert len(trimmed) == 4
+
+    streamed = list(
+        loader.stream_by_time_range(
+            "2024-01-01 09:30", "2024-01-01 11:00", trim_to_range=True
+        )
+    )
+    assert sum(len(f) for _, f in streamed) == 4

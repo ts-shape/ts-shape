@@ -74,3 +74,10 @@ def test_datetime_filter_range_and_points():
     )
     assert between_dt["systime"].min() > pd.Timestamp("2023-01-02 01:00:00")
     assert between_dt["systime"].max() < pd.Timestamp("2023-01-04 12:00:00")
+
+
+def test_filter_string_contains_regex_opt_out():
+    df = pd.DataFrame({"value_string": ["a.b", "axb", None]})
+    assert len(StringFilter.filter_string_contains(df, "a.b")) == 2
+    out = StringFilter.filter_string_contains(df, "a.b", regex=False)
+    assert out["value_string"].tolist() == ["a.b"]

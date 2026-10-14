@@ -4,7 +4,11 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import empty_event_df, finalize_interval_df
+from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
+from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ class OperatingRangeEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -44,12 +48,17 @@ class OperatingRangeEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(1)
     def operating_envelope(self, window: str = "1h") -> pd.DataFrame:
         """Per-window operating envelope statistics.
 
+        Args:
+            window: Resample window (pandas offset string, e.g. '1h').
+
         Returns:
-            DataFrame with columns: start, min_value, p5,
-            mean_value, p95, max_value, range_width.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, min_value, p5, mean_value, p95, max_value,
+            range_width. ``end`` is ``start`` + ``window``.
         """
         cols = [
             "start",
@@ -61,7 +70,7 @@ class OperatingRangeEvents(Base):
             "range_width",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
@@ -87,8 +96,20 @@ class OperatingRangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._summary(events, cols, window)
 
+    def _summary(
+        self, events: list[dict[str, Any]], cols: list[str], window: str
+    ) -> pd.DataFrame:
+        return window_summary(
+            events,
+            cols,
+            window,
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+        )
+
+    @keyword_only(1)
     def detect_regime_change(
         self,
         window: str = "1h",
@@ -99,9 +120,17 @@ class OperatingRangeEvents(Base):
         A regime change is flagged when the window mean differs from the
         previous window mean by more than shift_threshold * pooled std.
 
+        Args:
+            window: Resample window (pandas offset string). Windows with fewer than
+                two samples are skipped.
+            shift_threshold: Minimum shift between consecutive window means, in
+                multiples of the two windows' average std, to flag a regime change.
+
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
-            prev_mean, new_mean, shift_magnitude.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, prev_mean, new_mean, shift_magnitude.
+            ``start`` is the previous window's start and ``end`` the new
+            window's start.
         """
         cols = [
             "start",
@@ -113,7 +142,7 @@ class OperatingRangeEvents(Base):
             "shift_magnitude",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
@@ -132,7 +161,7 @@ class OperatingRangeEvents(Base):
             )
 
         if len(window_stats) < 2:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         events: list[dict[str, Any]] = []
         for i in range(1, len(window_stats)):
@@ -155,36 +184,76 @@ class OperatingRangeEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+        )
 
+    @keyword_only(3)
+    @renamed_kwargs(lower="lower_limit", upper="upper_limit")
     def time_in_range(
         self,
-        lower: float,
-        upper: float,
+        lower_limit: float,
+        upper_limit: float,
         window: str = "1h",
+        time_weighted: bool = False,
     ) -> pd.DataFrame:
-        """Percentage of time within a defined range per window.
+        """Share of each window spent within, below and above a range.
+
+        By default the ``*_pct`` columns are percentages of the *samples* in
+        each window (equal to the share of time only for evenly spaced
+        data). With ``time_weighted=True`` they are percentages of *time*:
+        each value is held until the next sample (zero-order hold), so a
+        window without samples that holds an earlier value is reported too.
+
+        Args:
+            lower_limit: Lower bound of the range (inclusive), in signal units.
+            upper_limit: Upper bound of the range (inclusive), in signal units.
+            window: Resample window (pandas offset string).
+            time_weighted: Weight each value by how long it was held instead
+                of counting samples (default False, the previous behavior).
 
         Returns:
-            DataFrame with columns: start, time_in_range_pct,
-            time_below_pct, time_above_pct.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, time_in_range_pct, time_below_pct, time_above_pct.
+            ``end`` is ``start`` + ``window``.
         """
         cols = ["start", "time_in_range_pct", "time_below_pct", "time_above_pct"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         indexed = self.signal.set_index(self.time_column)[self.value_column]
-        groups = indexed.resample(window)
-
         events: list[dict[str, Any]] = []
+        if time_weighted:
+            vals = pd.to_numeric(indexed, errors="coerce").dropna()
+            shares = {
+                name: time_weighted_resample(mask.astype(float), window)
+                for name, mask in (
+                    (
+                        "time_in_range_pct",
+                        (vals >= lower_limit) & (vals <= upper_limit),
+                    ),
+                    ("time_below_pct", vals < lower_limit),
+                    ("time_above_pct", vals > upper_limit),
+                )
+            }
+            frame = pd.DataFrame(shares).dropna() * 100
+            for start, row in frame.iterrows():
+                events.append({"start": start, **row.astype(float).to_dict()})
+            return self._summary(events, cols, window)
+
+        groups = indexed.resample(window)
         for start, group in groups:
             vals = group.dropna()
             if vals.empty:
                 continue
             n = len(vals)
-            in_range = ((vals >= lower) & (vals <= upper)).sum()
-            below = (vals < lower).sum()
-            above = (vals > upper).sum()
+            in_range = ((vals >= lower_limit) & (vals <= upper_limit)).sum()
+            below = (vals < lower_limit).sum()
+            above = (vals > upper_limit).sum()
             events.append(
                 {
                     "start": start,
@@ -194,10 +263,15 @@ class OperatingRangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._summary(events, cols, window)
 
+    @keyword_only(1)
     def value_distribution(self, n_bins: int = 10) -> pd.DataFrame:
         """Histogram of signal values.
+
+        Args:
+            n_bins: Number of equal-width histogram bins between the signal's
+                minimum and maximum.
 
         Returns:
             DataFrame with columns: bin_lower, bin_upper, count, pct,

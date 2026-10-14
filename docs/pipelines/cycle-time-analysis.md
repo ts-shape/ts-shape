@@ -10,7 +10,7 @@
 | Part number | `part_number_signal` | `value_string` | Current part type being produced |
 | Machine state | `machine_run_state` | `value_bool` | True = running (optional, for filtering) |
 
-**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [CycleTimeTracking](../reference/ts_shape/events/production/cycle_time_tracking.md) | [CycleExtractor](../reference/ts_shape/features/cycles/cycles_extractor.md) | [CycleDataProcessor](../reference/ts_shape/features/cycles/cycle_processor.md)
+**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [CycleTimeEvents](../reference/ts_shape/events/production/cycle_time_tracking.md) | [CycleExtractor](../reference/ts_shape/features/cycles/cycles_extractor.md) | [CycleDataProcessor](../reference/ts_shape/features/cycles/cycle_processor.md)
 
 ---
 
@@ -75,7 +75,7 @@ print(f"Loaded {len(df):,} rows, {df['uuid'].nunique()} signals")
 
 ## Step 2: Build the pipeline
 
-The pipeline runs in two stages on one signal. The `CycleTimeTracking`
+The pipeline runs in two stages on one signal. The `CycleTimeEvents`
 detectors run first against the enriched raw signal. Then `extract_cycles` —
 a `.transform` — reshapes the working signal into a validated cycle table,
 which the final `compare_cycles` step consumes.
@@ -87,7 +87,7 @@ same extractor instance both builds and validates the cycles.
 from ts_shape import Pipeline
 from ts_shape.loader.context.context_enricher import ContextEnricher
 from ts_shape.transform.harmonization import DataHarmonizer
-from ts_shape.events.production.cycle_time_tracking import CycleTimeTracking
+from ts_shape.events.production.cycle_time_tracking import CycleTimeEvents
 from ts_shape.features.cycles.cycles_extractor import CycleExtractor
 from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
 
@@ -112,14 +112,14 @@ pipe = (
     .detect(DataHarmonizer, "detect_gaps", name="gaps", threshold="30s")
 
     # -- cycle time analysis on the raw signal --
-    .detect(CycleTimeTracking, "cycle_time_by_part", name="cycles",
+    .detect(CycleTimeEvents, "cycle_time_by_part", name="cycles",
             part_id_uuid=PART_UUID, cycle_trigger_uuid=TRIGGER_UUID)
-    .detect(CycleTimeTracking, "cycle_time_statistics", name="stats",
+    .detect(CycleTimeEvents, "cycle_time_statistics", name="stats",
             part_id_uuid=PART_UUID, cycle_trigger_uuid=TRIGGER_UUID)
-    .detect(CycleTimeTracking, "detect_slow_cycles", name="slow_cycles",
+    .detect(CycleTimeEvents, "detect_slow_cycles", name="slow_cycles",
             part_id_uuid=PART_UUID, cycle_trigger_uuid=TRIGGER_UUID,
             threshold_factor=1.5)
-    .detect(CycleTimeTracking, "cycle_time_trend", name="trend",
+    .detect(CycleTimeEvents, "cycle_time_trend", name="trend",
             part_id_uuid=PART_UUID, cycle_trigger_uuid=TRIGGER_UUID,
             part_number=TREND_PART, window_size=20)
 

@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 from scipy.stats import kurtosis  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class VibrationAnalysisEvents(Base):
     """
-    Analyse vibration signals from industrial equipment: RMS exceedance,
+    Analyze vibration signals from industrial equipment: RMS exceedance,
     amplitude growth, and bearing health indicators (kurtosis, crest factor).
     """
 
@@ -26,7 +27,7 @@ class VibrationAnalysisEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -41,6 +42,7 @@ class VibrationAnalysisEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(2)
     def detect_rms_exceedance(
         self,
         baseline_rms: float,
@@ -63,13 +65,14 @@ class VibrationAnalysisEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             rms_value, baseline_rms, ratio, duration_seconds.
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "rms_value",
             "baseline_rms",
@@ -121,6 +124,7 @@ class VibrationAnalysisEvents(Base):
                     "start": start_time,
                     "end": end_time,
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "rms_value": avg_rms,
                     "baseline_rms": baseline_rms,
@@ -133,6 +137,7 @@ class VibrationAnalysisEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
+    @keyword_only(1)
     def detect_amplitude_growth(
         self,
         window: str = "1h",
@@ -147,12 +152,16 @@ class VibrationAnalysisEvents(Base):
             growth_threshold: Minimum fractional growth (e.g. 0.1 = 10%) to flag.
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta,
-            amplitude, baseline_amplitude, growth_pct.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, amplitude, baseline_amplitude, growth_pct.
+            ``end`` is ``start`` plus ``window``.
         """
         cols = [
             "start",
+            "end",
+            "duration_seconds",
             "uuid",
+            "source_uuid",
             "is_delta",
             "amplitude",
             "baseline_amplitude",
@@ -181,7 +190,7 @@ class VibrationAnalysisEvents(Base):
             if len(win) < 2:
                 continue
             amp = float(win.max() - win.min())
-            amplitudes.append({"start": ws, "amplitude": amp})
+            amplitudes.append({"start": ws, "end": we, "amplitude": amp})
 
         if not amplitudes:
             return pd.DataFrame(columns=cols)
@@ -197,7 +206,10 @@ class VibrationAnalysisEvents(Base):
             rows.append(
                 {
                     "start": a["start"],
+                    "end": a["end"],
+                    "duration_seconds": (a["end"] - a["start"]).total_seconds(),
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "amplitude": a["amplitude"],
                     "baseline_amplitude": amplitudes[0]["amplitude"],
@@ -207,6 +219,7 @@ class VibrationAnalysisEvents(Base):
 
         return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
 
+    @keyword_only(1)
     def bearing_health_indicators(
         self,
         window: str = "5min",
@@ -219,12 +232,16 @@ class VibrationAnalysisEvents(Base):
             window: Window size for indicator computation.
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta,
-            rms, peak, crest_factor, kurtosis.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, rms, peak, crest_factor, kurtosis.
+            ``end`` is ``start`` plus ``window``.
         """
         cols = [
             "start",
+            "end",
+            "duration_seconds",
             "uuid",
+            "source_uuid",
             "is_delta",
             "rms",
             "peak",
@@ -263,7 +280,10 @@ class VibrationAnalysisEvents(Base):
             rows.append(
                 {
                     "start": ws,
+                    "end": we,
+                    "duration_seconds": (we - ws).total_seconds(),
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "rms": round(rms_val, 6),
                     "peak": round(peak_val, 6),

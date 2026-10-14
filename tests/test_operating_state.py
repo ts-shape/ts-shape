@@ -108,7 +108,7 @@ class TestInferStates:
 class TestStateDurationStats:
     def test_stats_per_state(self, two_state_df):
         det = OperatingStateEvents(two_state_df, "sensor_1")
-        stats = det.state_duration_stats(n_states=2)
+        stats = det.state_duration_statistics(n_states=2)
         assert len(stats) >= 1
         assert "mean_duration" in stats.columns
         assert "count" in stats.columns
@@ -117,7 +117,7 @@ class TestStateDurationStats:
     def test_empty_signal(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_double"])
         det = OperatingStateEvents(df, "sensor_1")
-        assert len(det.state_duration_stats()) == 0
+        assert len(det.state_duration_statistics()) == 0
 
 
 class TestUnusualStateSequence:

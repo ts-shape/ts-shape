@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import warnings
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import pandas as pd  # type: ignore
 
 from ts_shape.errors import LoaderConfigWarning
+from ts_shape.loader._utils import hourly_slots, trim_to_time_range
 
 logger = logging.getLogger(__name__)
 
@@ -119,10 +121,8 @@ class DatabricksUnityParquetLoader:
     def _hourly_slots(
         start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
     ) -> Iterable[pd.Timestamp]:
-        start = pd.to_datetime(start_timestamp)
-        end = pd.to_datetime(end_timestamp)
-        # Inclusive hourly range
-        return pd.date_range(start=start, end=end, freq="h")
+        """Hours overlapping ``[start, end]``; the start is floored to the hour."""
+        return hourly_slots(start_timestamp, end_timestamp)
 
     def _hour_dir(self, ts: pd.Timestamp) -> Path:
         """Return the directory for a given hour, e.g. <base>/2024/01/31/09."""
@@ -282,6 +282,8 @@ class DatabricksUnityParquetLoader:
         end_timestamp: str | pd.Timestamp,
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> pd.DataFrame:
         """
         Load parquet files under the hourly folders within ``[start, end]``.
@@ -290,9 +292,18 @@ class DatabricksUnityParquetLoader:
         Volume is never scanned.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
         paths: list[Path] = []
@@ -319,7 +330,10 @@ class DatabricksUnityParquetLoader:
                 filters=filters,
             )
             return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
+        out = pd.concat(frames, ignore_index=True)
+        if trim_to_range:
+            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+        return out
 
     def stream_by_time_range(
         self,
@@ -327,6 +341,8 @@ class DatabricksUnityParquetLoader:
         end_timestamp: str | pd.Timestamp,
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream parquet frames under the hourly folders within ``[start, end]``.
@@ -336,15 +352,26 @@ class DatabricksUnityParquetLoader:
         Databricks pipelines.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
         yielded = 0
         for ts in slots:
             for path in self._list_parquet_in(self._hour_dir(ts)):
                 df = self._read_parquet(path, columns, filters)
+                if df is not None and trim_to_range:
+                    df = trim_to_time_range(df, start_timestamp, end_timestamp)
                 if df is not None and not df.empty:
                     yielded += 1
                     yield (str(path), df)
@@ -365,6 +392,8 @@ class DatabricksUnityParquetLoader:
         uuid_list: list[str],
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> pd.DataFrame:
         """
         Load parquet files for the given UUIDs within ``[start, end]`` hours.
@@ -373,9 +402,20 @@ class DatabricksUnityParquetLoader:
         requested UUID (``<uuid>.parquet``, case-insensitive) are read.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file
+                name, case-insensitively.
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         if not uuid_list:
             return pd.DataFrame()
@@ -408,7 +448,10 @@ class DatabricksUnityParquetLoader:
                 filters=filters,
             )
             return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
+        out = pd.concat(frames, ignore_index=True)
+        if trim_to_range:
+            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+        return out
 
     def stream_files_by_time_range_and_uuids(
         self,
@@ -417,6 +460,8 @@ class DatabricksUnityParquetLoader:
         uuid_list: list[str],
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream parquet frames for the given UUIDs within ``[start, end]`` hours.
@@ -424,9 +469,20 @@ class DatabricksUnityParquetLoader:
         Yields ``(file_path, DataFrame)`` as they are read, keeping memory flat.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file
+                name, case-insensitively.
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         if not uuid_list:
             return
@@ -439,6 +495,8 @@ class DatabricksUnityParquetLoader:
                 if path.name.lower() not in variants:
                     continue
                 df = self._read_parquet(path, columns, filters)
+                if df is not None and trim_to_range:
+                    df = trim_to_time_range(df, start_timestamp, end_timestamp)
                 if df is not None and not df.empty:
                     yielded += 1
                     yield (str(path), df)
@@ -494,6 +552,81 @@ class DatabricksUnityParquetLoader:
 
         return {"folders": sorted(folders), "files": sorted(files)}
 
+    def _hour_of_path(self, path: Path) -> pd.Timestamp | None:
+        """Return the hour folder a file lives in, or None if it is outside the layout."""
+        try:
+            rel = path.relative_to(self.base_path).parent.as_posix() + "/"
+        except ValueError:
+            return None
+        regex = re.escape(self.hour_pattern.strip("/") + "/")
+        for token, group in (
+            ("Y", r"(?P<Y>\d{4})"),
+            ("m", r"(?P<m>\d{2})"),
+            ("d", r"(?P<d>\d{2})"),
+            ("H", r"(?P<H>\d{2})"),
+        ):
+            regex = regex.replace(re.escape("{" + token + "}"), group, 1)
+        match = re.fullmatch(regex, rel)
+        if match is None:
+            return None
+        parts = match.groupdict()
+        try:
+            return pd.Timestamp(
+                year=int(parts.get("Y") or 1970),
+                month=int(parts.get("m") or 1),
+                day=int(parts.get("d") or 1),
+                hour=int(parts.get("H") or 0),
+            )
+        except ValueError:
+            return None
+
+    def _load_open_range(
+        self,
+        start_timestamp: str | pd.Timestamp | None,
+        end_timestamp: str | pd.Timestamp | None,
+        columns: list[str] | None,
+        filters: list | None,
+    ) -> pd.DataFrame:
+        """Load the hour folders on or after ``start`` / on or before ``end``."""
+        lo = (
+            None
+            if start_timestamp is None
+            else pd.to_datetime(start_timestamp).floor("h").tz_localize(None)
+        )
+        hi = (
+            None
+            if end_timestamp is None
+            else pd.to_datetime(end_timestamp).floor("h").tz_localize(None)
+        )
+        paths = []
+        for path in self._walk_parquet(self.base_path):
+            hour = self._hour_of_path(path)
+            if hour is None:
+                continue
+            if (lo is None or hour >= lo) and (hi is None or hour <= hi):
+                paths.append(path)
+
+        bound = f"start={start_timestamp!r}, end={end_timestamp!r}"
+        base_repr = repr(str(self.base_path))
+        if not paths:
+            self._warn_empty(
+                "fetch_data_as_dataframe",
+                f"No .parquet files found in hour folders within {bound} under "
+                f"base_path={base_repr}, hour_pattern={self.hour_pattern!r}.",
+            )
+            return pd.DataFrame()
+        frames, n_failed, n_empty = self._read_many(paths, columns, filters)
+        if not frames:
+            self._warn_empty(
+                "fetch_data_as_dataframe",
+                f"Found {len(paths)} .parquet file(s) within {bound} but none "
+                f"yielded rows ({n_failed} failed to read/parse, {n_empty} had "
+                "no rows).",
+                filters=filters,
+            )
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
+
     def fetch_data_as_dataframe(
         self,
         start_timestamp: str | pd.Timestamp | None = None,
@@ -505,11 +638,26 @@ class DatabricksUnityParquetLoader:
         Return a combined DataFrame, for ``Pipeline`` / ``DataIntegratorHybrid``.
 
         With a ``start``/``end`` pair this delegates to :meth:`load_by_time_range`
-        (visiting only the in-range hour folders); with no bounds it falls back to
-        :meth:`load_all_files`.
+        (visiting only the in-range hour folders). With only one bound, the
+        range is open on the other side: every hour folder at or after the
+        start hour (or at or before the end hour) is read. With no bounds it
+        falls back to :meth:`load_all_files`.
+
+        Args:
+            start_timestamp: Start of the range; None leaves the start open.
+                Bounds select whole hour folders (the start is floored to the
+                hour); rows are not trimmed.
+            end_timestamp: End of the range, inclusive; None leaves the end open.
+            columns: Subset of parquet columns to read; None reads all columns.
+            filters: pyarrow-style predicate pushdown in DNF form, e.g.
+                ``[("value_double", ">", 0.0)]``; None reads all rows.
         """
         if start_timestamp is not None and end_timestamp is not None:
             return self.load_by_time_range(
                 start_timestamp, end_timestamp, columns=columns, filters=filters
+            )
+        if start_timestamp is not None or end_timestamp is not None:
+            return self._load_open_range(
+                start_timestamp, end_timestamp, columns, filters
             )
         return self.load_all_files(columns=columns, filters=filters)

@@ -5,7 +5,9 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 from pandas.tseries.frequencies import to_offset
 
+from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -13,14 +15,14 @@ logger = logging.getLogger(__name__)
 class DataGapAnalysisEvents(Base):
     """Quality: Data Gap Analysis
 
-    Answer the question "where are the holes in my data?" by analysing
+    Answer the question "where are the holes in my data?" by analyzing
     gaps in a numeric signal's timestamps.  Complements
     :class:`SignalQualityEvents` (which detects individual missing-data
     events) with pattern-level analysis: gap summaries, per-period
     coverage, and interpolation-candidate identification.
 
     Methods:
-    - find_gaps: Locate all gaps longer than a threshold.
+    - detect_gaps: Locate all gaps longer than a threshold.
     - gap_summary: Aggregate statistics across all gaps.
     - coverage_by_period: Data coverage percentage per time window.
     - interpolation_candidates: Gaps small enough to interpolate safely.
@@ -35,7 +37,7 @@ class DataGapAnalysisEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -52,7 +54,10 @@ class DataGapAnalysisEvents(Base):
     # Public methods
     # ------------------------------------------------------------------
 
-    def find_gaps(self, min_gap: str = "5s") -> pd.DataFrame:
+    find_gaps = deprecated_method("detect_gaps")
+
+    @keyword_only(1)
+    def detect_gaps(self, min_gap: str = "5s") -> pd.DataFrame:
         """Locate all gaps longer than *min_gap*.
 
         Args:
@@ -60,8 +65,10 @@ class DataGapAnalysisEvents(Base):
                 ``'1min'``, ``'1h'``).
 
         Returns:
-            DataFrame with columns: start, end, gap_duration_seconds,
-            samples_before_gap, samples_after_gap.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, gap_duration_seconds, samples_before_gap,
+            samples_after_gap. ``gap_duration_seconds`` is rounded to
+            milliseconds; ``duration_seconds`` is exact.
         """
         cols = [
             "start",
@@ -71,7 +78,9 @@ class DataGapAnalysisEvents(Base):
             "samples_after_gap",
         ]
         if self.signal.empty or len(self.signal) < 2:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         threshold = pd.to_timedelta(min_gap)
         times = self.signal[self.time_column].array
@@ -91,10 +100,11 @@ class DataGapAnalysisEvents(Base):
                     }
                 )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def gap_summary(self, min_gap: str = "5s") -> pd.DataFrame:
         """Aggregate statistics across all gaps.
 
@@ -115,7 +125,7 @@ class DataGapAnalysisEvents(Base):
             "data_span_seconds",
             "gap_fraction",
         ]
-        gaps = self.find_gaps(min_gap=min_gap)
+        gaps = self.detect_gaps(min_gap=min_gap)
         if gaps.empty:
             return pd.DataFrame(
                 [{c: 0 if c != "gap_fraction" else 0.0 for c in cols}],
@@ -147,8 +157,10 @@ class DataGapAnalysisEvents(Base):
             columns=cols,
         )
 
+    @keyword_only(1)
+    @renamed_kwargs(freq="window")
     def coverage_by_period(
-        self, freq: str = "1h", min_gap: str | None = None
+        self, window: str = "1h", min_gap: str | None = None
     ) -> pd.DataFrame:
         """Data coverage percentage per time window.
 
@@ -157,13 +169,14 @@ class DataGapAnalysisEvents(Base):
         gaps).
 
         Args:
-            freq: Resample frequency (e.g. ``'1h'``, ``'1D'``, ``'15min'``).
+            window: Resample window (e.g. ``'1h'``, ``'1D'``, ``'15min'``).
             min_gap: Minimum inter-sample interval to count as a gap.
                 Defaults to 2x the median sampling interval (auto-detected).
 
         Returns:
-            DataFrame with columns: start, sample_count,
-            coverage_pct, gap_count, gap_seconds.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, sample_count, coverage_pct, gap_count,
+            gap_seconds. ``end`` is the next period start.
         """
         cols = [
             "start",
@@ -173,14 +186,21 @@ class DataGapAnalysisEvents(Base):
             "gap_seconds",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
             .copy()
             .set_index(self.time_column)
         )
-        offset = to_offset(freq)
+        offset = to_offset(window)
 
         # Auto-detect a sensible min_gap if not provided. Duplicate timestamps
         # (zero intervals) are ignored: a zero median made every interval a gap.
@@ -191,9 +211,9 @@ class DataGapAnalysisEvents(Base):
             min_gap = str(positive.median() * 2) if len(positive) else "1s"
 
         # Get gaps for context
-        all_gaps = self.find_gaps(min_gap=min_gap)
+        all_gaps = self.detect_gaps(min_gap=min_gap)
 
-        counts = sig[self.value_column].resample(freq).count()
+        counts = sig[self.value_column].resample(window).count()
 
         events: list[dict[str, Any]] = []
         for ts, count in counts.items():
@@ -225,10 +245,16 @@ class DataGapAnalysisEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
+    @keyword_only(1)
     def interpolation_candidates(
         self, max_gap: str = "10s", min_gap: str = "0s"
     ) -> pd.DataFrame:
@@ -239,8 +265,9 @@ class DataGapAnalysisEvents(Base):
             min_gap: Minimum gap duration (ignore trivially small gaps).
 
         Returns:
-            DataFrame with columns: start, end, gap_duration_seconds,
-            value_before, value_after, value_jump, safe_to_interpolate.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, gap_duration_seconds, value_before, value_after,
+            value_jump, safe_to_interpolate.
             ``safe_to_interpolate`` is True when the value jump across the
             gap is within 2 standard deviations of the signal.
         """
@@ -254,7 +281,9 @@ class DataGapAnalysisEvents(Base):
             "safe_to_interpolate",
         ]
         if self.signal.empty or len(self.signal) < 2:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         max_td = pd.to_timedelta(max_gap)
         min_td = pd.to_timedelta(min_gap)
@@ -293,6 +322,6 @@ class DataGapAnalysisEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )

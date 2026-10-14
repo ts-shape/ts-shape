@@ -18,27 +18,29 @@ Use for energy management and ISO 50001 compliance. Tracks consumption patterns,
 ```python
 from ts_shape.events.energy.consumption_analysis import EnergyConsumptionEvents
 
-energy = EnergyConsumptionEvents(
-    df=meter_df,
-    timestamp_col="timestamp",
-    value_col="power_kw"
-)
+# df: systime | uuid | value_double (kWh deltas) | value_integer (counter)
+energy = EnergyConsumptionEvents(df)
 
 # Aggregate consumption per shift
-consumption = energy.consumption_by_window(window="8H", agg="sum")
+consumption = energy.consumption_by_window("meter:main", window="8h", agg="sum")
 
-# Find peak demand periods
-peaks = energy.peak_demand_detection(window="15T", top_n=10)
-print(f"Highest peak: {peaks.iloc[0]['peak_kw']:.1f} kW")
+# Flag peak demand windows (above the 95th percentile by default)
+peaks = energy.peak_demand_detection("meter:main", window="15min")
+print(peaks[peaks["is_peak"]].nlargest(1, "demand"))
 
-# Compare actual vs baseline consumption
+# Compare actual vs a rolling baseline (flag >15% deviation)
 deviations = energy.consumption_baseline_deviation(
-    baseline_col="expected_kw", threshold_pct=15.0
+    "meter:main", baseline_periods=24, deviation_threshold=0.15
 )
 
-# Energy per production unit (requires production count column)
-epu = energy.energy_per_unit(production_col="units_produced", window="1D")
+# Energy per production unit (pairs the meter with a part counter)
+epu = energy.energy_per_unit("meter:main", "counter:parts", window="1D")
 ```
+
+!!! warning "Values must be kWh deltas"
+    Methods sum `value_double` per window, so readings must be energy *deltas*
+    (kWh since the previous sample). For an instantaneous kW signal, integrate it
+    first with [`PowerIntegrator`](power-integration.md).
 
 ---
 
@@ -46,17 +48,17 @@ epu = energy.energy_per_unit(production_col="units_produced", window="1D")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `consumption_by_window()` | Aggregate consumption per time window | DataFrame with total/mean consumption per window |
-| `peak_demand_detection()` | Identify peak demand periods | DataFrame of top-N peak demand windows |
-| `consumption_baseline_deviation()` | Actual vs baseline comparison | DataFrame of periods exceeding deviation threshold |
-| `energy_per_unit()` | Energy per production unit | DataFrame with specific energy consumption per window |
+| `consumption_by_window(meter_uuid)` | Aggregate consumption per time window (`agg`: sum/mean/max) | `start`, `uuid`, `source_uuid`, `is_delta`, `consumption` |
+| `peak_demand_detection(meter_uuid)` | Flag windows above `threshold` (or the `percentile`, default 0.95) | `start`, `uuid`, `source_uuid`, `is_delta`, `demand`, `threshold`, `is_peak` |
+| `consumption_baseline_deviation(meter_uuid)` | Actual vs rolling baseline (`deviation_threshold` is a fraction, default 0.2) | `start`, `uuid`, `source_uuid`, `is_delta`, `consumption`, `baseline`, `deviation_pct`, `is_anomaly` |
+| `energy_per_unit(meter_uuid, counter_uuid)` | Energy per production unit | `start`, `uuid`, `source_uuid`, `is_delta`, `energy`, `units_produced`, `energy_per_unit` |
 
 ---
 
 ## Tips & Hints
 
 !!! tip "Align windows with shift boundaries"
-    Use window sizes that match your operational shifts (e.g., `"8H"` for 8-hour shifts). Misaligned windows split consumption across shifts and obscure real patterns.
+    Use window sizes that match your operational shifts (e.g., `"8h"` for 8-hour shifts). Misaligned windows split consumption across shifts and obscure real patterns.
 
 !!! info "Related modules"
     - [`EnergyEfficiencyEvents`](efficiency-tracking.md) - Track efficiency trends and idle energy waste

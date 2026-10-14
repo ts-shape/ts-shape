@@ -26,7 +26,7 @@ flowchart TB
     subgraph CONTEXT["context"]
         CX["value_mapping"]
     end
-    subgraph EVENTS["events — detector library (290+ methods, 70+ classes)"]
+    subgraph EVENTS["events — detector library (80+ detector classes, 300+ methods)"]
         EV["quality · production · engineering · maintenance · energy · correlation · supplychain · development"]
     end
     subgraph EVENTLOG["eventlog — OCEL 2.0 canonical layer"]
@@ -76,8 +76,8 @@ the next docs build.
 | `loader` | Acquire raw timeseries from external stores | Parquet / S3 / Azure / TimescaleDB | long-format DataFrame (`uuid`, `systime`, `value_*`) | yes — skip if you already have a DataFrame | `ParquetLoader`, `AzureBlobParquetLoader` |
 | `transform` | Condition signals (filter, resample, harmonise) | long DataFrame | conditioned long DataFrame | yes | `RangeFilter`, `DataHarmonizer` |
 | `features` | Derive analytics (stats, cycles, segments) | long DataFrame | wide feature table | yes | `WindowedStats`, `CycleExtractor` |
-| `events` | Detect events | DataFrame (raw or feature-enriched) | canonical event DataFrame — `point` / `interval` / `summary` per `src/ts_shape/events/_output.py` | yes | `OEECalculator`, `OutlierDetectionEvents` |
-| `eventlog` | Normalise detector output to OCEL 2.0 | canonical event DataFrame | `EventLog(events, objects, relations)` | yes — only needed for XES/OCEL/process-mining | `to_event_log(df, detector=...)` |
+| `events` | Detect events | DataFrame (raw or feature-enriched) | canonical event DataFrame — `point` / `interval` / `summary` per `src/ts_shape/events/_output.py` | yes | `OEEEvents`, `OutlierDetectionEvents` |
+| `eventlog` | Normalize detector output to OCEL 2.0 | canonical event DataFrame | `EventLog(events, objects, relations)` | yes — only needed for XES/OCEL/process-mining | `to_event_log(df, detector=...)` |
 
 ## Three ways to enter the pipeline
 

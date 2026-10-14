@@ -29,7 +29,7 @@ def _assert_berlin(series):
 def test_find_gaps_keeps_local_time(berlin_signal):
     df = berlin_signal([1.0, 2.0, 3.0], start="2024-01-01 00:00", freq="1min")
     df.loc[2, "systime"] = df.loc[1, "systime"] + pd.Timedelta(hours=1)
-    out = DataGapAnalysisEvents(df, "sig").find_gaps(min_gap="10min")
+    out = DataGapAnalysisEvents(df, "sig").detect_gaps(min_gap="10min")
     _assert_berlin(out["start"])
     assert out["start"].iloc[0] == pd.Timestamp("2024-01-01 00:01", tz=BERLIN)
 
@@ -37,7 +37,7 @@ def test_find_gaps_keeps_local_time(berlin_signal):
 def test_coverage_by_period_no_type_error(berlin_signal):
     df = berlin_signal([1.0] * 12, freq="10min")
     out = DataGapAnalysisEvents(df, "sig").coverage_by_period(
-        freq="1h", min_gap="10min"
+        window="1h", min_gap="10min"
     )
     assert not out.empty
 
@@ -91,7 +91,9 @@ def test_stockout_prediction_keeps_tz(start):
     df = pd.DataFrame(
         {"systime": t, "uuid": "lvl", "value_double": [100.0, 90, 80, 70, 60]}
     )
-    out = InventoryMonitoringEvents(df, "lvl").stockout_prediction("2h")
+    out = InventoryMonitoringEvents(df, "lvl").stockout_prediction(
+        consumption_rate_window="2h"
+    )
     _assert_berlin(out["systime"])
 
 

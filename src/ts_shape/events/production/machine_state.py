@@ -8,6 +8,7 @@ import pandas as pd  # type: ignore
 from ts_shape.signals.primitives import intervals as spec_intervals
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class MachineStateEvents(Base):
         value_range: tuple[float | None, float | None] | None = None,
         specs: Mapping[str, SignalSpec] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.run_state_uuid = run_state_uuid
         # Optional signal semantics (see ts_shape.signals). When the run-state
         # signal has a spec, interval closing and gap handling follow it.
@@ -79,6 +80,7 @@ class MachineStateEvents(Base):
             return mask
         return col.fillna(False).astype(bool)
 
+    @keyword_only(1)
     def detect_run_idle(
         self,
         min_duration: str = "0s",
@@ -214,6 +216,7 @@ class MachineStateEvents(Base):
         s["state"] = self._as_state(s[self.value_column])
         self._state_groups = (s["state"] != s["state"].shift()).cumsum()
 
+    @keyword_only(1)
     def detect_rapid_transitions(
         self, threshold: str = "5s", min_count: int = 3
     ) -> pd.DataFrame:
@@ -221,18 +224,22 @@ class MachineStateEvents(Base):
 
         - threshold: time window to look for rapid transitions
         - min_count: minimum number of transitions within threshold to be considered rapid
-        Returns: DataFrame with start_time, end_time, transition_count, duration_seconds
+        Returns: DataFrame with systime (= start, the first transition of the
+        burst), uuid (event uuid), source_uuid (run-state uuid), start, end,
+        transition_count, duration_seconds
         """
+        cols = [
+            "systime",
+            "uuid",
+            "source_uuid",
+            "start",
+            "end",
+            "transition_count",
+            "duration_seconds",
+        ]
         transitions = self.transition_events()
         if transitions.empty or len(transitions) < min_count:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "transition_count",
-                    "duration_seconds",
-                ]
-            )
+            return pd.DataFrame(columns=cols)
 
         threshold_td = pd.to_timedelta(threshold)
         rapid_events: list[dict[str, Any]] = []
@@ -255,7 +262,13 @@ class MachineStateEvents(Base):
                 else:
                     break
 
-        return pd.DataFrame(rapid_events)
+        if not rapid_events:
+            return pd.DataFrame(columns=cols)
+        out = pd.DataFrame(rapid_events)
+        out.insert(0, "systime", out["start"])
+        out.insert(1, "uuid", self.event_uuid)
+        out.insert(2, "source_uuid", self.run_state_uuid)
+        return out
 
     def _detect_data_gaps(self, max_gap: str = "5min") -> int:
         """Detect missing data gaps in the time series.
@@ -274,23 +287,32 @@ class MachineStateEvents(Base):
     def state_quality_metrics(
         self,
         *,
-        interval_end: str = "last_sample",
+        interval_end: str | None = None,
         data_end: pd.Timestamp | None = None,
     ) -> dict[str, Any]:
         """Return quality metrics for the state data.
 
-        - interval_end / data_end: forwarded to :meth:`detect_run_idle`. Pass
-          ``interval_end="next_change"`` for change-encoded signals so the
-          run/idle durations are measured to the next transition rather than
-          collapsing to zero.
+        Args:
+            interval_end: Forwarded to :meth:`detect_run_idle`. Pass
+                ``"next_change"`` for change-encoded signals so the run/idle
+                durations are measured to the next transition rather than
+                collapsing to zero. Default ``None`` resolves exactly as in
+                :meth:`detect_run_idle`: follow the signal's spec when
+                ``specs=`` was given, otherwise ``"last_sample"``.
+            data_end: Forwarded to :meth:`detect_run_idle`; optional bound for
+                the final, still-open interval.
 
-        Returns dictionary with:
-        - total_transitions: total number of state transitions
-        - avg_run_duration: average duration of run states in seconds
-        - avg_idle_duration: average duration of idle states in seconds
-        - run_idle_ratio: ratio of run time to idle time
-        - data_gaps_detected: number of data gaps found
-        - rapid_transitions_detected: number of rapid transition events
+        Returns:
+            Dictionary with:
+
+            - total_transitions: total number of state transitions
+            - avg_run_duration: average duration of run states in seconds
+            - avg_idle_duration: average duration of idle states in seconds
+            - run_idle_ratio: ratio of total run time to total idle time;
+                NaN when there is no idle time (including no intervals at all),
+                since the ratio is undefined
+            - data_gaps_detected: number of data gaps found
+            - rapid_transitions_detected: number of rapid transition events
         """
         transitions = self.transition_events()
         intervals = self.detect_run_idle(interval_end=interval_end, data_end=data_end)
@@ -300,7 +322,7 @@ class MachineStateEvents(Base):
         if intervals.empty:
             avg_run_duration = 0.0
             avg_idle_duration = 0.0
-            run_idle_ratio = 0.0
+            run_idle_ratio = float("nan")
         else:
             run_intervals = intervals[intervals["state"] == "run"]
             idle_intervals = intervals[intervals["state"] == "idle"]
@@ -327,7 +349,9 @@ class MachineStateEvents(Base):
                 else 0.0
             )
             run_idle_ratio = (
-                total_run_time / total_idle_time if total_idle_time > 0 else 0.0
+                total_run_time / total_idle_time
+                if total_idle_time > 0
+                else float("nan")
             )
 
         data_gaps_detected = self._detect_data_gaps()
@@ -341,9 +365,7 @@ class MachineStateEvents(Base):
             "avg_idle_duration": (
                 float(avg_idle_duration) if not np.isnan(avg_idle_duration) else 0.0
             ),
-            "run_idle_ratio": (
-                float(run_idle_ratio) if not np.isnan(run_idle_ratio) else 0.0
-            ),
+            "run_idle_ratio": float(run_idle_ratio),
             "data_gaps_detected": data_gaps_detected,
             "rapid_transitions_detected": rapid_transitions_detected,
         }

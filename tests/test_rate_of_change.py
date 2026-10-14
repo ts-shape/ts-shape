@@ -81,6 +81,18 @@ class TestDetectRapidChange:
         if len(result) > 0:
             assert result.iloc[0]["direction"] == "increasing"
 
+    def test_window_is_deprecated_no_op(self, step_df):
+        import warnings
+
+        detector = RateOfChangeEvents(step_df, "pressure")
+        base = detector.detect_rapid_change(threshold=10.0)
+        with pytest.warns(DeprecationWarning, match="window has no effect"):
+            other = detector.detect_rapid_change(threshold=10.0, window="1h")
+        pd.testing.assert_frame_equal(base, other)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            detector.detect_rapid_change(threshold=10.0, window="1min")
+
 
 class TestRateStatistics:
     def test_statistics_columns(self, ramp_df):

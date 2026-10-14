@@ -4,12 +4,14 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_class, keyword_only
 
 logger = logging.getLogger(__name__)
 
 
-class ProcessStabilityIndex(Base):
+class ProcessStabilityIndexEvents(Base):
     """Engineering: Process Stability Index
 
     Generate a single 0-100 stability score per shift/day for a signal.
@@ -34,7 +36,7 @@ class ProcessStabilityIndex(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.target = target
         self.lower_spec = lower_spec
@@ -66,6 +68,7 @@ class ProcessStabilityIndex(Base):
         if self.upper_spec is None:
             self.upper_spec = self._global_mean + 3 * self._global_std
 
+    @keyword_only(1)
     def stability_score(self, window: str = "8h") -> pd.DataFrame:
         """Composite 0-100 stability score per window.
 
@@ -75,8 +78,13 @@ class ProcessStabilityIndex(Base):
         - excursion_score: in-spec = high score
         - smoothness_score: low point-to-point jitter = high score
 
+        Args:
+            window: Scoring window (pandas offset string, e.g. '8h' per shift).
+                Windows with fewer than two samples are skipped.
+
         Returns:
-            DataFrame with columns: start, stability_score,
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, stability_score,
             variance_score, bias_score, excursion_score, smoothness_score,
             grade.
         """
@@ -90,7 +98,7 @@ class ProcessStabilityIndex(Base):
             "grade",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
@@ -153,8 +161,16 @@ class ProcessStabilityIndex(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._summary(events, cols, window)
 
+    def _summary(
+        self, rows: pd.DataFrame | list[dict[str, Any]], cols: list[str], window: str
+    ) -> pd.DataFrame:
+        return window_summary(
+            rows, cols, window, uuid=self.event_uuid, source_uuid=self.signal_uuid
+        )
+
+    @keyword_only(1)
     def score_trend(
         self,
         window: str = "8h",
@@ -162,8 +178,13 @@ class ProcessStabilityIndex(Base):
     ) -> pd.DataFrame:
         """Track whether stability is improving or degrading.
 
+        Args:
+            window: Scoring window passed to :meth:`stability_score`.
+            n_windows: Number of windows in the rolling average of the score.
+
         Returns:
-            DataFrame with columns: start, stability_score,
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, stability_score,
             rolling_avg, trend_direction, score_change.
         """
         cols = [
@@ -173,9 +194,9 @@ class ProcessStabilityIndex(Base):
             "trend_direction",
             "score_change",
         ]
-        scores = self.stability_score(window)
+        scores = self.stability_score(window=window)
         if scores.empty or len(scores) < 2:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         result = scores[["start", "stability_score"]].copy()
         result["rolling_avg"] = (
@@ -188,8 +209,13 @@ class ProcessStabilityIndex(Base):
             np.where(result["score_change"] < -2, "degrading", "stable"),
         )
 
-        return result[cols].dropna(subset=["score_change"]).reset_index(drop=True)
+        return self._summary(
+            result[cols].dropna(subset=["score_change"]).reset_index(drop=True),
+            cols,
+            window,
+        )
 
+    @keyword_only(1)
     def worst_periods(
         self,
         window: str = "1h",
@@ -197,8 +223,13 @@ class ProcessStabilityIndex(Base):
     ) -> pd.DataFrame:
         """Return the N worst-scoring windows.
 
+        Args:
+            window: Scoring window passed to :meth:`stability_score`.
+            n: Number of lowest-scoring windows to return.
+
         Returns:
-            DataFrame with columns: start, stability_score,
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, stability_score,
             variance_score, bias_score, excursion_score, smoothness_score,
             primary_issue.
         """
@@ -211,9 +242,9 @@ class ProcessStabilityIndex(Base):
             "smoothness_score",
             "primary_issue",
         ]
-        scores = self.stability_score(window)
+        scores = self.stability_score(window=window)
         if scores.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         sorted_scores = scores.sort_values("stability_score").head(n).copy()
 
@@ -234,13 +265,18 @@ class ProcessStabilityIndex(Base):
             sorted_scores[sub_cols].idxmin(axis=1).map(issue_map)
         )
 
-        return sorted_scores[cols].reset_index(drop=True)
+        return self._summary(sorted_scores[cols].reset_index(drop=True), cols, window)
 
+    @keyword_only(1)
     def stability_comparison(self, window: str = "8h") -> pd.DataFrame:
         """Compare each window to the best-observed window.
 
+        Args:
+            window: Scoring window passed to :meth:`stability_score`.
+
         Returns:
-            DataFrame with columns: start, stability_score,
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, stability_score,
             best_score, gap_to_best, pct_of_best.
         """
         cols = [
@@ -250,9 +286,9 @@ class ProcessStabilityIndex(Base):
             "gap_to_best",
             "pct_of_best",
         ]
-        scores = self.stability_score(window)
+        scores = self.stability_score(window=window)
         if scores.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         best = float(scores["stability_score"].max())
         result = scores[["start", "stability_score"]].copy()
@@ -262,4 +298,10 @@ class ProcessStabilityIndex(Base):
             result["stability_score"] / best * 100 if best > 0 else 0.0
         )
 
-        return result[cols].reset_index(drop=True)
+        return self._summary(result[cols].reset_index(drop=True), cols, window)
+
+
+#: Deprecated name, removed in 1.0.
+ProcessStabilityIndex = deprecated_class(
+    ProcessStabilityIndexEvents, "ProcessStabilityIndex"
+)

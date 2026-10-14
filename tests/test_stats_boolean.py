@@ -25,3 +25,27 @@ def test_boolean_statistics():
             "is_balanced",
         ]
     ).issubset(summary.keys())
+
+
+def test_counts_return_python_int():
+    df = pd.DataFrame({"value_bool": [True, False, None, True]})
+    for fn in (
+        BooleanStatistics.count_true,
+        BooleanStatistics.count_false,
+        BooleanStatistics.count_null,
+        BooleanStatistics.count_not_null,
+    ):
+        assert type(fn(df)) is int
+    assert BooleanStatistics.count_true(df) == 2
+    assert BooleanStatistics.count_false(df) == 1
+    assert BooleanStatistics.count_null(df) == 1
+    assert BooleanStatistics.count_not_null(df) == 3
+
+
+def test_is_balanced_is_exact_on_counts():
+    balanced = pd.DataFrame({"b": [True, False, None, True, False]})
+    assert BooleanStatistics.is_balanced(balanced, "b") is True
+    unbalanced = pd.DataFrame({"b": [True, True, False]})
+    assert BooleanStatistics.is_balanced(unbalanced, "b") is False
+    empty = pd.DataFrame({"b": pd.Series([], dtype=bool)})
+    assert BooleanStatistics.is_balanced(empty, "b") is False

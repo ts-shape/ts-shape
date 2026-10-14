@@ -1,4 +1,4 @@
-"""Reset-aware behaviour tests for ReworkTracking.
+"""Reset-aware behaviour tests for ReworkEvents.
 
 A rework counter can reset back to a lower value at a shift change or a
 controller restart. Without ``handle_resets`` a window containing a reset
@@ -9,7 +9,7 @@ through numerator and denominator).
 
 import pandas as pd
 
-from ts_shape.events.production.rework_tracking import ReworkTracking
+from ts_shape.events.production.rework_tracking import ReworkEvents
 
 
 def _make_reset_rework_df():
@@ -37,17 +37,24 @@ def _make_reset_rework_df():
 
 def test_rework_by_shift_default_underreports():
     df = _make_reset_rework_df()
-    tracker = ReworkTracking(df)
+    tracker = ReworkEvents(df)
     result = tracker.rework_by_shift(rework_uuid="rework_counter")
 
-    assert list(result.columns) == ["date", "shift", "rework_count"]
+    assert list(result.columns) == [
+        "start",
+        "end",
+        "duration_seconds",
+        "date",
+        "shift",
+        "rework_count",
+    ]
     assert "resets" not in result.columns
     assert result["rework_count"].sum() == 30
 
 
 def test_rework_by_shift_handles_resets():
     df = _make_reset_rework_df()
-    tracker = ReworkTracking(df)
+    tracker = ReworkEvents(df)
     result = tracker.rework_by_shift(rework_uuid="rework_counter", handle_resets=True)
 
     assert "resets" in result.columns
@@ -57,7 +64,7 @@ def test_rework_by_shift_handles_resets():
 
 def test_rework_by_reason_handles_resets():
     df = _make_reset_rework_df()
-    tracker = ReworkTracking(df)
+    tracker = ReworkEvents(df)
 
     default = tracker.rework_by_reason(
         rework_uuid="rework_counter", reason_uuid="rework_reason"
@@ -75,7 +82,7 @@ def test_rework_by_reason_handles_resets():
 
 def test_rework_rate_threads_handle_resets():
     df = _make_reset_rework_df()
-    tracker = ReworkTracking(df)
+    tracker = ReworkEvents(df)
 
     default = tracker.rework_rate(
         rework_uuid="rework_counter", total_production_uuid="total_counter"
@@ -97,7 +104,7 @@ def test_rework_rate_threads_handle_resets():
 
 def test_rework_cost_handles_resets():
     df = _make_reset_rework_df()
-    tracker = ReworkTracking(df)
+    tracker = ReworkEvents(df)
 
     default = tracker.rework_cost(
         rework_uuid="rework_counter",
@@ -122,7 +129,7 @@ def test_rework_cost_handles_resets():
 
 def test_rework_trend_handles_resets():
     df = _make_reset_rework_df()
-    tracker = ReworkTracking(df)
+    tracker = ReworkEvents(df)
 
     default = tracker.rework_trend(rework_uuid="rework_counter", window="1D")
     assert "resets" not in default.columns
@@ -133,4 +140,21 @@ def test_rework_trend_handles_resets():
     )
     assert "resets" in aware.columns
     assert aware["rework_count"].sum() == 85
+    assert aware["resets"].sum() == 1
+
+
+def test_rework_rate_adds_resets_columns():
+    df = _make_reset_rework_df()
+    tracker = ReworkEvents(df)
+    default = tracker.rework_rate(
+        rework_uuid="rework_counter", total_production_uuid="total_counter"
+    )
+    assert "resets" not in default.columns
+    aware = tracker.rework_rate(
+        rework_uuid="rework_counter",
+        total_production_uuid="total_counter",
+        handle_resets=True,
+    )
+    assert aware["rework_resets"].sum() == 1
+    assert aware["production_resets"].sum() == 0
     assert aware["resets"].sum() == 1

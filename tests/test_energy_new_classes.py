@@ -146,8 +146,8 @@ class TestUuidColumnAgnosticism:
         result = events.specific_energy_consumption(
             "meter:main",
             "counter:line1",
-            energy_column="value",
-            counter_column="value",
+            value_column_energy="value",
+            value_column_counter="value",
             window="1h",
         )
         assert not result.empty
@@ -173,6 +173,8 @@ class TestIdleEnergyDetectionEvents:
         )
         expected = [
             "start",
+            "end",
+            "duration_seconds",
             "uuid",
             "source_uuid",
             "is_delta",
@@ -181,6 +183,7 @@ class TestIdleEnergyDetectionEvents:
             "running_energy",
             "machine_running_pct",
             "idle_fraction",
+            "machine_running_ratio",
         ]
         assert list(result.columns) == expected
 
@@ -234,10 +237,40 @@ class TestIdleEnergyDetectionEvents:
         result = events.idle_energy_by_window(
             "meter:main",
             "state:machine1",
-            energy_column="value",
-            state_column="value",
+            value_column_energy="value",
+            value_column_state="value",
         )
         assert not result.empty
+
+
+class TestIdleFractionScale:
+    """machine_running_pct is a 0-1 fraction, so idle_fraction = 1 - pct."""
+
+    @staticmethod
+    def _frame() -> pd.DataFrame:
+        # One hour, 10 one-per-6min samples: 3 running, 7 idle; 1 kWh each.
+        t = pd.date_range("2026-01-13 08:00", periods=10, freq="6min", tz="UTC")
+        energy = pd.DataFrame({"systime": t, "uuid": "meter:main", "value_double": 1.0})
+        state = pd.DataFrame(
+            {"systime": t, "uuid": "state:m1", "value_bool": [True] * 3 + [False] * 7}
+        )
+        return pd.concat([energy, state], ignore_index=True)
+
+    def test_by_window_uses_fraction(self):
+        ev = IdleEnergyDetectionEvents(self._frame())
+        row = ev.idle_energy_by_window("meter:main", "state:m1", window="1h").iloc[0]
+        assert row["machine_running_pct"] == pytest.approx(0.3)
+        assert row["idle_fraction"] == pytest.approx(0.7)
+        assert row["idle_energy"] == pytest.approx(7.0)
+        assert row["running_energy"] == pytest.approx(3.0)
+        assert row["duration_seconds"] == pytest.approx(3600.0)
+
+    def test_by_shift_uses_fraction(self):
+        ev = IdleEnergyDetectionEvents(self._frame())
+        res = ev.idle_energy_by_shift("meter:main", "state:m1").set_index("shift")
+        assert res.loc["shift_1", "total_energy"] == pytest.approx(10.0)
+        assert res.loc["shift_1", "idle_energy"] == pytest.approx(7.0)
+        assert res.loc["shift_1", "waste_fraction"] == pytest.approx(0.7)
 
 
 # ── EnergyPerformanceIndicatorEvents ─────────────────────────────────────────
@@ -307,8 +340,8 @@ class TestEnergyPerformanceIndicatorEvents:
         result = events.enpi_by_window(
             "meter:main",
             "counter:line1",
-            energy_column="value",
-            counter_column="value",
+            value_column_energy="value",
+            value_column_counter="value",
             window="1h",
         )
         assert not result.empty
@@ -465,3 +498,35 @@ class TestEnPIRegressionBaseline:
             ev.enpi_vs_baseline(
                 "meter", "counter", baseline="regression", baseline_window=1
             )
+
+
+class TestIdleThresholdConsistency:
+    @staticmethod
+    def _frame() -> pd.DataFrame:
+        # One hour in shift_1: 1 of 20 state samples running (ratio 0.05).
+        t = pd.date_range("2026-01-13 08:00", periods=20, freq="3min", tz="UTC")
+        energy = pd.DataFrame({"systime": t, "uuid": "meter:main", "value_double": 1.0})
+        state = pd.DataFrame(
+            {"systime": t, "uuid": "state:m1", "value_bool": [True] + [False] * 19}
+        )
+        return pd.concat([energy, state], ignore_index=True)
+
+    def test_running_ratio_column(self):
+        ev = IdleEnergyDetectionEvents(self._frame())
+        out = ev.idle_energy_by_window("meter:main", "state:m1", window="1h")
+        assert (out["machine_running_ratio"] == out["machine_running_pct"]).all()
+        assert out["machine_running_ratio"].iloc[0] == pytest.approx(0.05)
+
+    def test_by_shift_applies_idle_threshold_like_by_window(self):
+        ev = IdleEnergyDetectionEvents(self._frame())
+        win = ev.idle_energy_by_window(
+            "meter:main", "state:m1", window="1h", idle_threshold=0.1
+        )
+        assert win["idle_fraction"].iloc[0] == 1.0  # below threshold: all idle
+        default = ev.idle_energy_by_shift("meter:main", "state:m1")
+        s1 = default.set_index("shift").loc["shift_1"]
+        assert s1["waste_fraction"] == pytest.approx(0.95)  # unchanged default
+        thr = ev.idle_energy_by_shift("meter:main", "state:m1", idle_threshold=0.1)
+        s1 = thr.set_index("shift").loc["shift_1"]
+        assert s1["waste_fraction"] == pytest.approx(1.0)
+        assert s1["idle_energy"] == pytest.approx(win["idle_energy"].sum())

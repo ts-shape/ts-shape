@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class SteadyStateDetectionEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -81,6 +82,7 @@ class SteadyStateDetectionEvents(Base):
                 intervals.append({"start": start, "end": end})
         return intervals
 
+    @keyword_only(1)
     def detect_steady_state(
         self,
         window: str = "5min",
@@ -102,13 +104,14 @@ class SteadyStateDetectionEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             mean_value, std_value, duration_seconds.
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "mean_value",
             "std_value",
@@ -135,6 +138,7 @@ class SteadyStateDetectionEvents(Base):
                     "start": iv["start"],
                     "end": iv["end"],
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": False,
                     "mean_value": float(segment.mean()),
                     "std_value": float(segment.std()) if len(segment) > 1 else 0.0,
@@ -144,6 +148,7 @@ class SteadyStateDetectionEvents(Base):
 
         return pd.DataFrame(events, columns=cols)
 
+    @keyword_only(1)
     def detect_transient_periods(
         self,
         window: str = "5min",
@@ -163,13 +168,14 @@ class SteadyStateDetectionEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             max_std, duration_seconds.
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "max_std",
             "duration_seconds",
@@ -192,6 +198,7 @@ class SteadyStateDetectionEvents(Base):
                     "start": iv["start"],
                     "end": iv["end"],
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": False,
                     "max_std": float(seg_std.max()),
                     "duration_seconds": (iv["end"] - iv["start"]).total_seconds(),
@@ -200,6 +207,7 @@ class SteadyStateDetectionEvents(Base):
 
         return pd.DataFrame(events, columns=cols)
 
+    @keyword_only(1)
     def steady_state_statistics(
         self,
         window: str = "5min",
@@ -207,6 +215,13 @@ class SteadyStateDetectionEvents(Base):
         min_duration: str = "10min",
     ) -> dict[str, Any]:
         """Summary statistics of steady vs transient time.
+
+        Args:
+            window: Rolling window for the std computation (pandas offset string),
+                passed to :meth:`detect_steady_state`.
+            std_threshold: Maximum rolling std, in signal units, to consider the
+                signal steady.
+            min_duration: Minimum duration of a steady interval.
 
         Returns:
             Dict with: total_steady_seconds, total_transient_seconds,
@@ -221,7 +236,9 @@ class SteadyStateDetectionEvents(Base):
                 "avg_steady_duration_seconds": 0.0,
             }
 
-        steady = self.detect_steady_state(window, std_threshold, min_duration)
+        steady = self.detect_steady_state(
+            window=window, std_threshold=std_threshold, min_duration=min_duration
+        )
         total_span = (
             self.signal[self.time_column].max() - self.signal[self.time_column].min()
         ).total_seconds()
@@ -240,6 +257,7 @@ class SteadyStateDetectionEvents(Base):
             "avg_steady_duration_seconds": (total_steady / n) if n > 0 else 0.0,
         }
 
+    @keyword_only(1)
     def steady_state_value_bands(
         self,
         window: str = "5min",
@@ -247,6 +265,13 @@ class SteadyStateDetectionEvents(Base):
         min_duration: str = "10min",
     ) -> pd.DataFrame:
         """Operating band (mean +/- std) for each steady-state interval.
+
+        Args:
+            window: Rolling window for the std computation (pandas offset string),
+                passed to :meth:`detect_steady_state`.
+            std_threshold: Maximum rolling std, in signal units, to consider the
+                signal steady.
+            min_duration: Minimum duration of a steady interval.
 
         Returns:
             DataFrame with columns: start, end, mean_value, lower_band,
@@ -260,7 +285,9 @@ class SteadyStateDetectionEvents(Base):
             "upper_band",
             "duration_seconds",
         ]
-        steady = self.detect_steady_state(window, std_threshold, min_duration)
+        steady = self.detect_steady_state(
+            window=window, std_threshold=std_threshold, min_duration=min_duration
+        )
         if steady.empty:
             return pd.DataFrame(columns=cols)
 

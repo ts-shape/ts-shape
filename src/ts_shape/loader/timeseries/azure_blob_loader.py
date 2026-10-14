@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.errors import LoaderConfigWarning
+from ts_shape.loader._utils import hourly_slots, trim_to_time_range
 
 logger = logging.getLogger(__name__)
 
@@ -282,10 +283,8 @@ class AzureBlobParquetLoader:
     def _hourly_slots(
         start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
     ) -> Iterable[pd.Timestamp]:
-        start = pd.to_datetime(start_timestamp)
-        end = pd.to_datetime(end_timestamp)
-        # Ensure inclusive range per hour
-        return pd.date_range(start=start, end=end, freq="h")
+        """Hours overlapping ``[start, end]``; the start is floored to the hour."""
+        return hourly_slots(start_timestamp, end_timestamp)
 
     def _hour_prefix(self, ts: pd.Timestamp) -> str:
         # Builds e.g. "parquet/2024/01/31/09/" if prefix="parquet/"
@@ -355,6 +354,8 @@ class AzureBlobParquetLoader:
         end_timestamp: str | pd.Timestamp,
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> pd.DataFrame:
         """
         Load all parquet blobs under hourly folders within [start, end].
@@ -363,9 +364,18 @@ class AzureBlobParquetLoader:
         Listing is constrained per-hour for speed.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
@@ -394,7 +404,10 @@ class AzureBlobParquetLoader:
                 filters=filters,
             )
             return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
+        out = pd.concat(frames, ignore_index=True)
+        if trim_to_range:
+            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+        return out
 
     def stream_by_time_range(
         self,
@@ -402,6 +415,8 @@ class AzureBlobParquetLoader:
         end_timestamp: str | pd.Timestamp,
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream parquet DataFrames under hourly folders within [start, end].
@@ -409,9 +424,18 @@ class AzureBlobParquetLoader:
         Yields (blob_name, DataFrame) one by one to avoid holding everything in memory.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
@@ -446,6 +470,8 @@ class AzureBlobParquetLoader:
                         df = fut.result()
                     except Exception:
                         df = None
+                    if df is not None and trim_to_range:
+                        df = trim_to_time_range(df, start_timestamp, end_timestamp)
                     if df is not None and not df.empty:
                         yielded += 1
                         yield (name, df)
@@ -476,6 +502,8 @@ class AzureBlobParquetLoader:
         uuid_list: list[str],
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> pd.DataFrame:
         """
         Load parquet blobs for given UUIDs within [start, end] hours.
@@ -490,9 +518,21 @@ class AzureBlobParquetLoader:
            those blindly.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file.
+                Surrounding whitespace and braces are stripped and a lowercase variant
+                is also tried.
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         if not uuid_list:
             return pd.DataFrame()
@@ -574,7 +614,10 @@ class AzureBlobParquetLoader:
                 filters=filters,
             )
             return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
+        out = pd.concat(frames, ignore_index=True)
+        if trim_to_range:
+            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+        return out
 
     def stream_files_by_time_range_and_uuids(
         self,
@@ -583,6 +626,8 @@ class AzureBlobParquetLoader:
         uuid_list: list[str],
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream parquet DataFrames for given UUIDs within [start, end] hours.
@@ -592,9 +637,21 @@ class AzureBlobParquetLoader:
         listing fails (see :meth:`load_files_by_time_range_and_uuids`).
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file.
+                Surrounding whitespace and braces are stripped and a lowercase variant
+                is also tried.
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         if not uuid_list:
             return
@@ -666,6 +723,8 @@ class AzureBlobParquetLoader:
                         df = fut.result()
                     except Exception:
                         df = None
+                    if df is not None and trim_to_range:
+                        df = trim_to_time_range(df, start_timestamp, end_timestamp)
                     if df is not None and not df.empty:
                         yielded += 1
                         yield (name, df)
@@ -761,6 +820,20 @@ class AzureBlobFlexibleFileLoader:
         See :class:`AzureBlobParquetLoader` for full parameter docs.
 
         A SAS URL is auto-detected when passed as ``connection_string``.
+
+        Args:
+            container_name: Target container name (not needed when using ``sas_url``).
+            connection_string: Azure Storage connection string. A value starting with
+                ``http`` is treated as ``sas_url``.
+            account_url: Full account URL for AAD auth (used with ``credential``).
+            credential: Azure credential object for AAD auth.
+            sas_url: Full Blob SAS URL including container and SAS token.
+            prefix: Path prefix prepended to every hour folder (e.g. ``"raw/"``).
+                Default ``""``.
+            max_workers: Maximum concurrent downloads; values below 1 are treated as 1.
+                Default 8.
+            hour_pattern: Pattern for the hour-level subpath, with tokens ``{Y}``
+                ``{m}`` ``{d}`` ``{H}``. Default ``"{Y}/{m}/{d}/{H}/"``.
         """
         try:
             from azure.storage.blob import ContainerClient  # type: ignore
@@ -829,9 +902,8 @@ class AzureBlobFlexibleFileLoader:
     def _hourly_slots(
         start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
     ) -> Iterable[pd.Timestamp]:
-        start = pd.to_datetime(start_timestamp)
-        end = pd.to_datetime(end_timestamp)
-        return pd.date_range(start=start, end=end, freq="h")
+        """Hours overlapping ``[start, end]``; the start is floored to the hour."""
+        return hourly_slots(start_timestamp, end_timestamp)
 
     def _hour_prefix(self, ts: pd.Timestamp) -> str:
         y = str(ts.year)
@@ -874,6 +946,14 @@ class AzureBlobFlexibleFileLoader:
     # ---- Parser registry ----
     @classmethod
     def register_parser(cls, extension: str, func: Callable[[bytes, str], Any]) -> None:
+        """Register a parser for a file extension, replacing any existing one.
+
+        Args:
+            extension: File extension, with or without the leading dot
+                (case-insensitive).
+            func: Callable receiving the blob content and blob name and
+                returning the parsed object.
+        """
         ext = extension.lower()
         if not ext.startswith("."):
             ext = "." + ext
@@ -881,6 +961,12 @@ class AzureBlobFlexibleFileLoader:
 
     @classmethod
     def unregister_parser(cls, extension: str) -> None:
+        """Remove the parser for a file extension, if one is registered.
+
+        Args:
+            extension: File extension, with or without the leading dot
+                (case-insensitive).
+        """
         ext = extension.lower()
         if not ext.startswith("."):
             ext = "." + ext
@@ -888,6 +974,7 @@ class AzureBlobFlexibleFileLoader:
 
     @classmethod
     def available_parsers(cls) -> set[str]:
+        """Return the set of file extensions that have a registered parser."""
         return set(cls._parsers.keys())
 
     @classmethod
@@ -965,6 +1052,10 @@ class AzureBlobFlexibleFileLoader:
         List blob names under each hourly prefix within [start, end].
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts);
+                hour folders from this hour on are listed.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
             extensions: Optional set/list of file extensions (e.g., {"json", ".bmp"}). Case-insensitive.
             limit: Optional cap on number of files collected.
         """
@@ -998,6 +1089,14 @@ class AzureBlobFlexibleFileLoader:
         """
         Yield blob names under each hourly prefix within [start, end].
         Uses server-side prefix listing and client-side extension filtering.
+
+        Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts);
+                hour folders from this hour on are listed.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            extensions: File extensions to keep, with or without the dot (e.g.
+                ``{"json", ".bmp"}``), case-insensitive. None keeps every file.
         """
         allowed_exts = self._normalize_exts(extensions)
         for pfx in (
@@ -1024,6 +1123,17 @@ class AzureBlobFlexibleFileLoader:
         Download files that match extensions within [start, end] hour prefixes.
         Returns a dict mapping blob_name -> parsed object (if parse=True and a parser exists),
         otherwise raw bytes.
+
+        Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts);
+                hour folders from this hour on are listed.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            extensions: File extensions to keep, with or without the dot (e.g.
+                ``{"json", ".bmp"}``), case-insensitive. None keeps every file.
+            parse: If True, parse each file with the parser registered for its extension
+                (see `register_parser`), falling back to raw bytes when none exists or
+                parsing fails. Default False returns raw bytes.
         """
         blob_names = self.list_files_by_time_range(
             start_timestamp, end_timestamp, extensions=extensions
@@ -1055,6 +1165,17 @@ class AzureBlobFlexibleFileLoader:
         """
         Stream matching files as (blob_name, bytes-or-parsed) within [start, end].
         Maintains up to `max_workers` concurrent downloads while yielding incrementally.
+
+        Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts);
+                hour folders from this hour on are listed.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            extensions: File extensions to keep, with or without the dot (e.g.
+                ``{"json", ".bmp"}``), case-insensitive. None keeps every file.
+            parse: If True, parse each file with the parser registered for its extension
+                (see `register_parser`), falling back to raw bytes when none exists or
+                parsing fails. Default False returns raw bytes.
         """
         names_iter = self.iter_file_names_by_time_range(
             start_timestamp, end_timestamp, extensions=extensions
@@ -1105,6 +1226,19 @@ class AzureBlobFlexibleFileLoader:
         Download files whose basename (final path segment) is in `basenames`,
         optionally filtered by extensions, within [start, end] hour prefixes.
         Returns blob_name -> parsed object (if parse=True and a parser exists), otherwise raw bytes.
+
+        Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts);
+                hour folders from this hour on are listed.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            basenames: File names (final path segment, extension included) to keep;
+                matched exactly, after stripping whitespace.
+            extensions: File extensions to keep, with or without the dot (e.g.
+                ``{"json", ".bmp"}``), case-insensitive. None keeps every file.
+            parse: If True, parse each file with the parser registered for its extension
+                (see `register_parser`), falling back to raw bytes when none exists or
+                parsing fails. Default False returns raw bytes.
         """
         base_set = {str(b).strip() for b in basenames if str(b).strip()}
         allowed_exts = self._normalize_exts(extensions)
@@ -1154,6 +1288,19 @@ class AzureBlobFlexibleFileLoader:
         """
         Stream files whose basename is in `basenames` within [start, end].
         Yields (blob_name, bytes-or-parsed) incrementally with bounded concurrency.
+
+        Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts);
+                hour folders from this hour on are listed.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            basenames: File names (final path segment, extension included) to keep;
+                matched exactly, after stripping whitespace.
+            extensions: File extensions to keep, with or without the dot (e.g.
+                ``{"json", ".bmp"}``), case-insensitive. None keeps every file.
+            parse: If True, parse each file with the parser registered for its extension
+                (see `register_parser`), falling back to raw bytes when none exists or
+                parsing fails. Default False returns raw bytes.
         """
         base_set = {str(b).strip() for b in basenames if str(b).strip()}
         allowed_exts = self._normalize_exts(extensions)

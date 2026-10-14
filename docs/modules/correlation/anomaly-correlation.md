@@ -9,7 +9,7 @@
 
 ## When to Use
 
-Use after anomaly detection on individual signals to understand relationships. Finds root cause candidates by identifying which signals' anomalies consistently precede others. Essential for complex systems where a fault in one subsystem cascades through multiple sensors.
+Use to understand how anomalies on individual signals relate to each other. The class flags anomalies itself (absolute Z-score at or above `n_sigma`, default 3.0, per signal on `value_double`), so pass raw long-format signals, not pre-computed anomaly flags. Finds root cause candidates by identifying which signals' anomalies consistently precede others. Essential for complex systems where a fault in one subsystem cascades through multiple sensors.
 
 ---
 
@@ -18,26 +18,23 @@ Use after anomaly detection on individual signals to understand relationships. F
 ```python
 from ts_shape.events.correlation.anomaly_correlation import AnomalyCorrelationEvents
 
-correlator = AnomalyCorrelationEvents(
-    df=anomaly_df,
-    timestamp_col="timestamp",
-    signal_col="signal_name",
-    anomaly_col="is_anomaly"
-)
+# df: systime | uuid | value_double
+correlator = AnomalyCorrelationEvents(df)
+signals = ["pump:pressure", "pump:flow", "motor:current"]
 
-# Find anomalies that co-occur within a 10-minute window
-coincident = correlator.coincident_anomalies(window="10T")
+# Find anomalies on at least 2 signals within a 10-minute window
+coincident = correlator.coincident_anomalies(signals, coincidence_window="10min")
 print(f"Found {len(coincident)} coincident anomaly groups")
 
-# Detect cascading patterns: signal A anomaly precedes signal B
+# Detect cascades: pressure anomaly followed by a flow anomaly within 15 minutes
 cascades = correlator.cascade_detection(
-    window="15T", min_occurrences=3
+    "pump:pressure", "pump:flow", max_delay="15min"
 )
 
 # Rank signals by how often their anomalies precede others
-ranking = correlator.root_cause_ranking()
+ranking = correlator.root_cause_ranking(signals)
 print("Top root cause candidates:")
-print(ranking.head(5)[["signal_name", "precedence_score"]])
+print(ranking.head(5)[["signal_uuid", "leader_ratio", "rank"]])
 ```
 
 ---
@@ -46,9 +43,9 @@ print(ranking.head(5)[["signal_name", "precedence_score"]])
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `coincident_anomalies()` | Co-occurring anomalies within time window | DataFrame of anomaly groups with participating signals |
-| `cascade_detection()` | Anomaly A precedes anomaly B within window | DataFrame of directed cascade pairs with counts |
-| `root_cause_ranking()` | Rank signals by how often they precede others | DataFrame of signals ranked by precedence score |
+| `coincident_anomalies(signal_uuids)` | Anomalies on at least `min_signals` (default 2) signals within `coincidence_window` (default `"5min"`) | `start`, `end`, `uuid`, `is_delta`, `anomaly_count`, `signal_uuids_involved` |
+| `cascade_detection(leader_uuid, follower_uuid)` | Leader anomaly followed by a follower anomaly within `max_delay` (default `"10min"`) | One row per cascade: `leader_time`, `follower_time`, `uuid`, `is_delta`, `leader_uuid`, `follower_uuid`, `delay_seconds` |
+| `root_cause_ranking(signal_uuids)` | Rank signals by how often their anomalies lead others | `signal_uuid`, `leader_count`, `follower_count`, `leader_ratio`, `rank` |
 
 ---
 

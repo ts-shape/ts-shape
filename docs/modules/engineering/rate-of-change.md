@@ -19,12 +19,12 @@ Use for detecting sudden process upsets, valve jumps, or rapid thermal changes. 
 from ts_shape.events.engineering.rate_of_change import RateOfChangeEvents
 
 detector = RateOfChangeEvents(
-    df=process_data,
-    uuid="flow_rate_01"
+    dataframe=process_data,
+    signal_uuid="flow_rate_01",
 )
 
-# Detect intervals where rate exceeds 10 units/min
-rapid = detector.detect_rapid_change(threshold=10.0, window="1min")
+# Detect intervals where the rate exceeds 0.5 units/second
+rapid = detector.detect_rapid_change(threshold=0.5)
 
 # Get rate statistics per hour for trend reporting
 stats = detector.rate_statistics(window="1h")
@@ -39,9 +39,9 @@ steps = detector.detect_step_changes(min_delta=20.0, max_duration="5s")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_rapid_change(threshold, window='1min')` | Rapid change intervals | DataFrame of rapid-change events |
-| `rate_statistics(window='1h')` | Rate statistics per window | DataFrame with rate stats |
-| `detect_step_changes(min_delta, max_duration='5s')` | Sudden value jumps | DataFrame of step events |
+| `detect_rapid_change(threshold)` | Intervals where \|rate\| (units/second) reaches `threshold` (`window` is deprecated and has no effect) | DataFrame: `start`, `end`, `max_rate`, `direction` |
+| `rate_statistics(window='1h')` | Rate statistics per window | DataFrame: `start`, `mean_rate`, `std_rate`, `max_rate`, `min_rate` |
+| `detect_step_changes(min_delta, max_duration='5s')` | Sudden value jumps | DataFrame: `time`, `value_before`, `value_after`, `delta`, `duration` |
 
 ---
 

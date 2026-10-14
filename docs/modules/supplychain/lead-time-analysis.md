@@ -18,26 +18,25 @@ Use to monitor supplier and internal process lead times. Pairs order and deliver
 ```python
 from ts_shape.events.supplychain.lead_time_analysis import LeadTimeAnalysisEvents
 
-analyzer = LeadTimeAnalysisEvents(
-    df=orders_df,
-    timestamp_col="timestamp",
-    event_type_col="event_type",
-    order_id_col="order_id"
+# orders_df holds two signals: "po_placed" and "po_received",
+# each row carrying the PO number in value_string
+analyzer = LeadTimeAnalysisEvents(dataframe=orders_df)
+
+# Match order placement to delivery events by PO number
+lead_times = analyzer.lead_times(
+    order_uuid="po_placed",
+    delivery_uuid="po_received",
 )
 
-# Match order placement to delivery events
-lead_times = analyzer.calculate_lead_times(
-    order_event="ORDER_PLACED",
-    delivery_event="DELIVERED"
+# Summary statistics across all orders (single-row DataFrame)
+stats = analyzer.lead_time_statistics(order_uuid="po_placed", delivery_uuid="po_received")
+print(f"Mean lead time: {stats['mean_hours'].iloc[0]:.1f} h")
+print(f"95th percentile: {stats['p95_hours'].iloc[0]:.1f} h")
+
+# Flag orders with abnormally long lead times (mean + 2 * std)
+anomalies = analyzer.detect_lead_time_anomalies(
+    order_uuid="po_placed", delivery_uuid="po_received", threshold_factor=2.0
 )
-
-# Summary statistics across all orders
-stats = analyzer.lead_time_statistics()
-print(f"Mean lead time: {stats['mean']:.1f} days")
-print(f"95th percentile: {stats['p95']:.1f} days")
-
-# Flag orders with abnormally long lead times
-anomalies = analyzer.detect_lead_time_anomalies(threshold_std=2.0)
 print(f"Anomalous deliveries: {len(anomalies)}")
 ```
 
@@ -47,16 +46,16 @@ print(f"Anomalous deliveries: {len(anomalies)}")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `calculate_lead_times()` | Match orders to deliveries and compute durations | DataFrame with order ID, lead time, and timestamps |
-| `lead_time_statistics()` | Summary statistics (mean, median, percentiles) | Dict with mean, median, std, p5, p25, p75, p95 |
-| `detect_lead_time_anomalies()` | Flag orders with abnormal lead times | DataFrame of anomalous orders with deviation score |
+| `lead_times()` | Match orders to deliveries and compute durations | DataFrame with `order_time`, `delivery_time`, `lead_time_seconds`, `lead_time_hours`, `order_id` |
+| `lead_time_statistics()` | Summary statistics of lead times | Single-row DataFrame with `mean_hours`, `std_hours`, `min_hours`, `max_hours`, `p95_hours`, `count` |
+| `detect_lead_time_anomalies()` | Flag lead times above mean + `threshold_factor` * std | DataFrame with `order_time`, `delivery_time`, `lead_time_hours`, `z_score` |
 
 ---
 
 ## Tips & Hints
 
 !!! tip "Segment lead times by supplier or product"
-    Global lead time statistics can hide per-supplier variation. Group by supplier before calling `lead_time_statistics()` to identify which vendors are unreliable and which are consistently fast.
+    Global lead time statistics can hide per-supplier variation. Use separate order/delivery signals per supplier (or filter the input DataFrame per supplier) before calling `lead_time_statistics()` to identify which vendors are unreliable and which are consistently fast.
 
 !!! info "Related modules"
     - [`InventoryMonitoringEvents`](inventory-monitoring.md) - Lead time variability directly affects reorder point calculations

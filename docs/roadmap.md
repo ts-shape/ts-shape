@@ -19,11 +19,29 @@ fixes the architecture.
 (`ts_shape.signals`). Detectors call the primitives instead of re-deriving
 semantics row by row. See [Signal semantics & profiling](guides/signals.md).
 
+## Consistency audit (done, October 2026)
+A full audit of wording, names, outputs and behavior. The rules are in [Naming & Output Conventions](naming.md), and tests enforce them:
+- **Docs show code that runs:** every documented call binds against the real signature.
+- **Detector outputs follow their declared shape:** the harness checks this, and empty results keep every column.
+- **One name per concept:** a lint over every signature, with deprecated aliases for old names.
+- **Every public parameter is documented.**
+- **Inputs are checked the same way** in every pack.
+
+Left for 1.0, because each changes results or API shape:
+- **Remove the deprecated aliases** (`DeprecationWarning` today).
+- **Return full precision.** Detectors round inconsistently today (0–8 decimals); rounding belongs in reports.
+- **Check value columns up front**, as the time and uuid columns already are.
+- **Run state in one form.** `DowntimeEvents` expects string states (`"Running"`), while `MachineStateEvents` and `OEEEvents` expect booleans. Accept either through `SignalSpec`.
+- **One place for the signal uuid.** Some detectors take it in the constructor, others per method. Pick one.
+- **Durations in one form.** `OEEEvents` takes `ideal_cycle_time` as float seconds; `takt_time` takes an offset string. Accept both everywhere.
+- **`ShiftReportEvents.best_and_worst_shifts`** returns a DataFrame (`as_frame=True` today).
+- **`BatchTrackingEvents.batch_transition_matrix`** becomes a long from/to/count table, so an empty result can keep its schema.
+
 ## W2 — 1.0: correct by default, one API, one output
 - Migrate the detectors pack by pack onto the primitives. Defaults come from
   the spec.
 - The opt-in correctness flags (`handle_resets`, `interval_end`, `max_gap`,
-  `time_weighted`, `group_by_uuid`) become the default behaviour.
+  `time_weighted`, `group_by_uuid`) become the default behavior.
   Deprecation path: one minor release with `DeprecationWarning`, then 1.0.
 - One enforced output contract (point / interval / summary) for every
   detector, and one API style with standard keyword names.
@@ -39,14 +57,15 @@ semantics row by row. See [Signal semantics & profiling](guides/signals.md).
   - AIAG MSA Gauge R&R ✅ (average-and-range worksheet: K1/K2/K3 and the
     `EV²/(n·r)` AV correction);
   - ISO 50001 / 50006 EnPI ✅ (opt-in regression baseline);
-  - next: ISO 22400 OEE, MTBF/MTTR, AIAG SPC rules and Cp/Cpk.
+  - ISO 22400 OEE and MTBF / MTTR ✅ (reference examples);
+  - next: AIAG SPC rules and Cp/Cpk.
 - The docs are tested: every `ts_shape` name in a code block must import,
   and CI builds the docs with `mkdocs build --strict`.
 
 ## W4 — Scale and lean install
 - Core install: pandas, numpy and scipy only. Cloud and SQL loaders become
   extras.
-- Vectorise the remaining row loops.
+- Vectorize the remaining row loops.
 - After 1.0: backend-agnostic primitives (Polars / DuckDB) and
   TimescaleDB push-down. Publish benchmarks.
 
@@ -64,15 +83,15 @@ semantics row by row. See [Signal semantics & profiling](guides/signals.md).
 - Semver with a deprecation policy from 1.0.
 
 ## Process analytics
-Added: change-point detection (`ChangePointEvents`: exact PELT and binary
-segmentation) and multivariate SPC (`MultivariateSPCEvents`: Hotelling T²
-with Phase I / II limits and contributions).
+Added:
+- change-point detection (`ChangePointEvents`: exact PELT and binary segmentation);
+- multivariate SPC (`MultivariateSPCEvents`: Hotelling T² with Phase I / II limits and contributions);
+- reliability (`ReliabilityEvents`: MTBF / MTTR per ISO 22400 and a censored Weibull life model).
 
 Candidates from past sessions, by value and effort:
 
 | Feature | Value | Effort |
 |---|---|---|
-| Reliability: Weibull fit, MTBF / MTTR | high | S–M |
 | Vibration: FFT spectral band energy | high | M |
 | Tool wear vs. measurement drift; first-article / setup verification; part disposition | high | M each |
 | MQTT / Kafka streaming loader | med-high | M |
@@ -91,7 +110,7 @@ and can be ported in their own PRs. Reconcile each with the core first:
     - weighted KPI roll-up;
     - ISA-95 hierarchy;
     - benchmarking, scorecard and variance bridge;
-    - FX normalisation;
+    - FX normalization;
     - reporting coverage.
   - Reconcile:
     - build the calendar on `signals.windows` / `shift_windows` (DST-correct

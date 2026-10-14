@@ -21,20 +21,22 @@ import pandas as pd
 import numpy as np
 
 np.random.seed(42)
-# Simulate a heater cycling on and off
+# Simulate a heater cycling on and off (long format, boolean signal)
 state = []
 for _ in range(50):
     state.extend([True] * np.random.randint(20, 60))
     state.extend([False] * np.random.randint(10, 40))
 df = pd.DataFrame({
-    "timestamp": pd.date_range("2024-01-01 06:00", periods=len(state), freq="1s"),
-    "heater_on": state[:len(state)],
+    "systime": pd.date_range("2024-01-01 06:00", periods=len(state), freq="1s"),
+    "uuid": "oven1:heater_on",
+    "value_bool": state,
 })
 
-dc = DutyCycleEvents(df, state_column="heater_on")
+dc = DutyCycleEvents(df, signal_uuid="oven1:heater_on")
 intervals = dc.on_off_intervals()
-duty = dc.duty_cycle_per_window(window="1h")
-excessive = dc.excessive_cycling(max_transitions=20, window="1h")
+duty = dc.duty_cycle_by_window(window="15min")
+counts = dc.cycle_count(window="15min")
+excessive = dc.excessive_cycling(max_transitions=20, window="15min")
 print(duty.head())
 ```
 
@@ -44,14 +46,17 @@ print(duty.head())
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `on_off_intervals()` | List all on and off intervals with start, end, and duration | DataFrame of intervals with state, start, end, and duration |
-| `duty_cycle_per_window(window='1h')` | Compute percentage of time the signal is ON per time window | DataFrame with window and duty_cycle ratio |
-| `cycle_count(window='1h')` | Count the number of on-to-off or off-to-on transitions per window | DataFrame with window and transition count |
-| `excessive_cycling(max_transitions=20, window='1h')` | Flag windows where the transition count exceeds a threshold | DataFrame of flagged windows with transition count |
+| `on_off_intervals()` | List all on and off intervals with start, end, and duration | DataFrame with `start`, `end`, `state` (`on`/`off`), `duration` (Timedelta) |
+| `duty_cycle_by_window(window='1h', time_weighted=False)` | Compute percentage of time the signal is ON per time window | DataFrame with `start`, `on_time`, `off_time`, `duty_cycle_pct` |
+| `cycle_count(window='1h')` | Count the number of on-to-off or off-to-on transitions per window | DataFrame with `start`, `on_count`, `off_count`, `total_transitions` |
+| `excessive_cycling(max_transitions=20, window='1h')` | Flag windows where the transition count exceeds a threshold | DataFrame with `start`, `transition_count`, `avg_on_duration`, `avg_off_duration` (seconds) |
 
 ---
 
 ## Tips & Hints
+
+!!! tip "Change-encoded signals"
+    If the signal only logs a row on each transition, construct with `interval_end="next_change"` and use `duty_cycle_by_window(time_weighted=True)`; the defaults assume uniformly sampled data.
 
 !!! tip "Set thresholds based on equipment specs"
     Motor contactors and relay-driven heaters have rated cycle counts. Use `excessive_cycling` with the manufacturer's limit to detect wear before failure — for example, many contactors are rated for 100,000 mechanical cycles.

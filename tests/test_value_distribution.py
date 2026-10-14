@@ -140,7 +140,7 @@ class TestDetectBimodal:
 class TestNormalityWindows:
     def test_normal_windows(self, normal_df):
         det = ValueDistributionEvents(normal_df, "sensor_1")
-        result = det.normality_windows(freq="1h", alpha=0.05)
+        result = det.normality_windows(window="1h", alpha=0.05)
         assert len(result) > 0
         assert "is_normal" in result.columns
         assert "p_value" in result.columns
@@ -161,7 +161,7 @@ class TestNormalityWindows:
         ]
         df = pd.DataFrame(rows)
         det = ValueDistributionEvents(df, "sensor_1")
-        result = det.normality_windows(freq="1h", alpha=0.05)
+        result = det.normality_windows(window="1h", alpha=0.05)
         assert len(result) > 0
         # Uniform should be flagged as non-normal
         assert any(~result["is_normal"])
@@ -175,20 +175,20 @@ class TestNormalityWindows:
 class TestPercentileTracking:
     def test_default_percentiles(self, normal_df):
         det = ValueDistributionEvents(normal_df, "sensor_1")
-        result = det.percentile_tracking(freq="1h")
+        result = det.percentile_tracking(window="1h")
         assert len(result) > 0
         for col in ["p5", "p25", "p50", "p75", "p95"]:
             assert col in result.columns
 
     def test_custom_percentiles(self, normal_df):
         det = ValueDistributionEvents(normal_df, "sensor_1")
-        result = det.percentile_tracking(percentiles=(10, 90), freq="1h")
+        result = det.percentile_tracking(percentiles=(10, 90), window="1h")
         assert "p10" in result.columns
         assert "p90" in result.columns
 
     def test_percentile_ordering(self, normal_df):
         det = ValueDistributionEvents(normal_df, "sensor_1")
-        result = det.percentile_tracking(freq="1h")
+        result = det.percentile_tracking(window="1h")
         for _, row in result.iterrows():
             assert row["p5"] <= row["p25"] <= row["p50"] <= row["p75"] <= row["p95"]
 

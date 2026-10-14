@@ -21,6 +21,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ class LineBalancingEvents(Base):
         value_column: str = "value_bool",
         time_column: str = "systime",
     ) -> None:
-        """Initialize the line-balancing analyser.
+        """Initialize the line-balancing analyzer.
 
         Args:
             dataframe: Input DataFrame with timeseries data.
@@ -73,7 +74,7 @@ class LineBalancingEvents(Base):
             value_column: Column holding the boolean cycle trigger.
             time_column: Name of the timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.station_uuids = dict(station_uuids)
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -151,6 +152,7 @@ class LineBalancingEvents(Base):
     # Public API
     # ------------------------------------------------------------------
 
+    @keyword_only(1)
     def station_cycle_times(self, window: str = "1h") -> pd.DataFrame:
         """Per-station cycle-time statistics per time window.
 

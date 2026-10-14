@@ -1,8 +1,8 @@
-"""Tests for TargetTracking module."""
+"""Tests for TargetEvents module."""
 
 import pandas as pd
 
-from ts_shape.events.production.target_tracking import TargetTracking
+from ts_shape.events.production.target_tracking import TargetEvents
 
 
 def _make_counter_df():
@@ -26,7 +26,7 @@ class TestTargetTracking:
 
     def test_compare_to_target(self):
         df = _make_counter_df()
-        tracker = TargetTracking(df)
+        tracker = TargetEvents(df)
         result = tracker.compare_to_target(
             metric_uuid="prod_counter",
             targets={"shift_1": 700, "shift_2": 700, "shift_3": 700},
@@ -39,7 +39,7 @@ class TestTargetTracking:
 
     def test_target_achievement_summary(self):
         df = _make_counter_df()
-        tracker = TargetTracking(df)
+        tracker = TargetEvents(df)
         result = tracker.target_achievement_summary(
             metric_uuid="prod_counter",
             daily_target=1300,
@@ -49,7 +49,7 @@ class TestTargetTracking:
 
     def test_target_hit_rate(self):
         df = _make_counter_df()
-        tracker = TargetTracking(df)
+        tracker = TargetEvents(df)
         result = tracker.target_hit_rate(
             metric_uuid="prod_counter",
             daily_target=1300,
@@ -60,7 +60,7 @@ class TestTargetTracking:
 
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer"])
-        tracker = TargetTracking(df)
+        tracker = TargetEvents(df)
         result = tracker.compare_to_target(
             metric_uuid="x",
             targets={"shift_1": 100},
@@ -69,6 +69,6 @@ class TestTargetTracking:
 
     def test_target_hit_rate_empty(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer"])
-        tracker = TargetTracking(df)
+        tracker = TargetEvents(df)
         result = tracker.target_hit_rate(metric_uuid="x", daily_target=100)
         assert result["total_days"] == 0

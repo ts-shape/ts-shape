@@ -3,8 +3,10 @@ import logging
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_per_window
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +69,7 @@ class CarbonIntensityEvents(Base):
             time_column: Name of the timestamp column.
             uuid_column: Name of the signal identifier column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.emission_factors = emission_factors
         self.scope_map = scope_map or {}
         self.event_uuid = event_uuid
@@ -90,8 +92,9 @@ class CarbonIntensityEvents(Base):
             window: Aggregation window (e.g. '1D', '1h').
 
         Returns:
-            DataFrame: start, uuid, source_uuid, scope,
-                       consumption, emission_factor, kgco2e
+            DataFrame: start, end, duration_seconds, uuid, source_uuid, scope,
+                       consumption, emission_factor, kgco2e. ``end`` is
+                       ``start`` plus ``window``.
         """
         frames = []
         for src_uuid, factor in self.emission_factors.items():
@@ -138,22 +141,26 @@ class CarbonIntensityEvents(Base):
             )
 
         if not frames:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "source_uuid",
-                    "scope",
-                    "consumption",
-                    "emission_factor",
-                    "kgco2e",
-                ]
+            return with_window_bounds(
+                pd.DataFrame(
+                    columns=[
+                        "start",
+                        "uuid",
+                        "source_uuid",
+                        "scope",
+                        "consumption",
+                        "emission_factor",
+                        "kgco2e",
+                    ]
+                ),
+                window,
             )
 
-        return (
+        return with_window_bounds(
             pd.concat(frames, ignore_index=True)
             .sort_values(["start", "source_uuid"])
-            .reset_index(drop=True)
+            .reset_index(drop=True),
+            window,
         )
 
     def total_emissions_by_window(
@@ -169,8 +176,8 @@ class CarbonIntensityEvents(Base):
             window: Aggregation window.
 
         Returns:
-            DataFrame: start, uuid, scope1_kgco2e, scope2_kgco2e,
-                       total_kgco2e
+            DataFrame: start, end, duration_seconds, uuid, scope1_kgco2e,
+                       scope2_kgco2e, total_kgco2e
         """
         all_emissions = self.emissions_by_window(
             scope=0, value_column=value_column, window=window
@@ -183,7 +190,7 @@ class CarbonIntensityEvents(Base):
             "total_kgco2e",
         ]
         if all_emissions.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         scope1 = (
             all_emissions[all_emissions["scope"] == 1]
@@ -201,14 +208,17 @@ class CarbonIntensityEvents(Base):
         out = pd.concat([scope1, scope2], axis=1).fillna(0.0).reset_index()
         out["total_kgco2e"] = out["scope1_kgco2e"] + out["scope2_kgco2e"]
         out["uuid"] = self.event_uuid
-        return out[empty_cols].sort_values("start").reset_index(drop=True)
+        return with_window_bounds(
+            out[empty_cols].sort_values("start").reset_index(drop=True), window
+        )
 
+    @renamed_kwargs(counter_column="value_column_counter")
     def carbon_intensity_per_unit(
         self,
         counter_uuid: str,
         *,
         value_column: str = "value_double",
-        counter_column: str = "value_integer",
+        value_column_counter: str = "value_integer",
         window: str = "1D",
         handle_resets: bool = False,
     ) -> pd.DataFrame:
@@ -217,7 +227,7 @@ class CarbonIntensityEvents(Base):
         Args:
             counter_uuid: Identifier of the production counter signal.
             value_column: Column containing energy/fuel readings.
-            counter_column: Column containing counter readings.
+            value_column_counter: Column containing counter readings.
             window: Aggregation window.
             handle_resets: Treat a decreasing production counter as a reset
                 and sum reset-aware increments per window (see
@@ -225,8 +235,8 @@ class CarbonIntensityEvents(Base):
                 ``False`` keeps the per-window ``max - min``.
 
         Returns:
-            DataFrame: start, uuid, total_kgco2e, units_produced,
-                       carbon_intensity, trend
+            DataFrame: start, end, duration_seconds, uuid, total_kgco2e,
+                       units_produced, carbon_intensity, trend
         """
         totals = self.total_emissions_by_window(
             value_column=value_column, window=window
@@ -240,7 +250,7 @@ class CarbonIntensityEvents(Base):
             "trend",
         ]
         if totals.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         counter_raw = (
             self.dataframe[self.dataframe[self._uuid_column] == counter_uuid]
@@ -248,13 +258,13 @@ class CarbonIntensityEvents(Base):
             .sort_values(self.time_column)
         )
         if counter_raw.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         counter_raw[self.time_column] = pd.to_datetime(counter_raw[self.time_column])
         counter_raw = counter_raw.set_index(self.time_column)
         counter_agg = (
             counter_per_window(
-                counter_raw[counter_column], window, handle_resets=handle_resets
+                counter_raw[value_column_counter], window, handle_resets=handle_resets
             )
             .to_frame("units_produced")
             .reset_index()
@@ -279,7 +289,7 @@ class CarbonIntensityEvents(Base):
             "improving",
             np.where(slope > 0.001, "worsening", "stable"),
         )
-        return merged[empty_cols]
+        return with_window_bounds(merged[empty_cols], window)
 
     def emission_factor_audit(self) -> pd.DataFrame:
         """Return the configured emission factors for audit and reporting.

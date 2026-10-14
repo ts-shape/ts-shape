@@ -105,7 +105,7 @@ class TestEstimateSensitivity:
             "sensor_1",
             env_uuid="thermocouple",
         )
-        result = ec.estimate_sensitivity(window="8h")
+        result = ec.sensitivity(window="8h")
         assert len(result) > 0
         # Coefficient should be close to 0.5
         assert abs(result.iloc[0]["coefficient"] - 0.5) < 0.1
@@ -117,7 +117,7 @@ class TestEstimateSensitivity:
             "sensor_1",
             env_uuid="thermocouple",
         )
-        result = ec.estimate_sensitivity(window="4h")
+        result = ec.sensitivity(window="4h")
         assert len(result) > 0
         # R² should be low
         assert result.iloc[0]["r_squared"] < 0.5
@@ -196,3 +196,24 @@ class TestConstructorValidation:
         )
         with pytest.raises(ValueError, match="env_uuid"):
             EnvironmentalCompensationEvents(df, "s1")
+
+
+class TestContract:
+    def test_env_value_alone_raises(self, temp_correlated_df):
+        with pytest.raises(ValueError, match="env_uuid is required"):
+            EnvironmentalCompensationEvents(
+                temp_correlated_df, "sensor_1", env_value=20.0
+            )
+
+    def test_compensated_signal_uuid_is_event_uuid(self, temp_correlated_df):
+        ec = EnvironmentalCompensationEvents(
+            temp_correlated_df,
+            "sensor_1",
+            env_uuid="thermocouple",
+            env_value=20.0,
+            event_uuid="evt:comp",
+        )
+        out = ec.compensated_signal()
+        assert not out.empty
+        assert (out["uuid"] == "evt:comp").all()
+        assert (out["source_uuid"] == "sensor_1").all()

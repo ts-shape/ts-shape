@@ -32,13 +32,15 @@ def dst_minutely():
 
 
 def test_data_completeness_23h_day_is_complete(dst_minutely):
-    out = SignalQualityEvents(dst_minutely, "s").data_completeness("1D", "1min")
+    out = SignalQualityEvents(dst_minutely, "s").data_completeness(
+        window="1D", expected_freq="1min"
+    )
     assert list(out["expected_count"]) == [1440, 1380, 1440]
     assert (out["completeness_pct"] == 100.0).all()
 
 
 def test_coverage_by_period_23h_day(dst_minutely):
-    out = DataGapAnalysisEvents(dst_minutely, "s").coverage_by_period("1D")
+    out = DataGapAnalysisEvents(dst_minutely, "s").coverage_by_period(window="1D")
     assert (out["coverage_pct"] == 100.0).all()
 
 
@@ -46,7 +48,7 @@ def test_coverage_auto_min_gap_ignores_duplicates():
     t = pd.date_range("2024-01-01", periods=20, freq="1min")
     df = pd.concat([_sig(t, 1.0)] * 3)  # two thirds of the intervals are 0
     with pytest.warns(DataQualityWarning):
-        out = DataGapAnalysisEvents(df, "s").coverage_by_period("1h")
+        out = DataGapAnalysisEvents(df, "s").coverage_by_period(window="1h")
     assert out["gap_count"].sum() == 0
 
 

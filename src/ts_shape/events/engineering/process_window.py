@@ -4,7 +4,10 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import empty_event_df, finalize_interval_df
+from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ class ProcessWindowEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -44,12 +47,17 @@ class ProcessWindowEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(1)
     def windowed_statistics(self, window: str = "1h") -> pd.DataFrame:
         """Per-window descriptive statistics.
 
+        Args:
+            window: Resample window (pandas offset string, e.g. '1h', '8h').
+
         Returns:
-            DataFrame with columns: start, count, mean, std,
-            min, max, median, p25, p75, range.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, count, mean, std, min, max, median, p25, p75, range.
+            ``end`` is ``start`` + ``window``.
         """
         cols = [
             "start",
@@ -64,7 +72,7 @@ class ProcessWindowEvents(Base):
             "range",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
@@ -89,8 +97,25 @@ class ProcessWindowEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._summary(events, cols, window)
 
+    def _summary(
+        self, rows: pd.DataFrame | list[dict[str, Any]], cols: list[str], window: str
+    ) -> pd.DataFrame:
+        return window_summary(
+            rows, cols, window, uuid=self.event_uuid, source_uuid=self.signal_uuid
+        )
+
+    def _intervals(self, events: list[dict[str, Any]], cols: list[str]) -> pd.DataFrame:
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+        )
+
+    @keyword_only(1)
     def detect_mean_shift(
         self,
         window: str = "1h",
@@ -100,9 +125,17 @@ class ProcessWindowEvents(Base):
 
         A shift is detected when |current_mean - prev_mean| > sensitivity * prev_std.
 
+        Args:
+            window: Resample window passed to :meth:`windowed_statistics`.
+            sensitivity: Shift between consecutive window means, in
+                multiples of the previous window's std, above which (strictly)
+                a window is flagged.
+
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
-            prev_mean, current_mean, shift_sigma.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, prev_mean, current_mean, shift_sigma.
+            ``start`` is the previous window's start, ``end`` the current
+            window's start.
         """
         cols = [
             "start",
@@ -113,9 +146,9 @@ class ProcessWindowEvents(Base):
             "current_mean",
             "shift_sigma",
         ]
-        stats = self.windowed_statistics(window)
+        stats = self.windowed_statistics(window=window)
         if len(stats) < 2:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         events: list[dict[str, Any]] = []
         for i in range(1, len(stats)):
@@ -123,7 +156,7 @@ class ProcessWindowEvents(Base):
             curr = stats.iloc[i]
             prev_std = prev["std"] if prev["std"] > 0 else 1e-10
             shift = abs(curr["mean"] - prev["mean"]) / prev_std
-            if shift >= sensitivity:
+            if shift > sensitivity:
                 events.append(
                     {
                         "start": prev["start"],
@@ -136,8 +169,9 @@ class ProcessWindowEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._intervals(events, cols)
 
+    @keyword_only(1)
     def detect_variance_change(
         self,
         window: str = "1h",
@@ -148,9 +182,17 @@ class ProcessWindowEvents(Base):
         A change is detected when (current_std / prev_std) > ratio_threshold
         or < (1 / ratio_threshold).
 
+        Args:
+            window: Resample window passed to :meth:`windowed_statistics`.
+            ratio_threshold: Std ratio (current / previous) strictly above
+                which, or strictly below whose reciprocal, a window is
+                flagged. Should be > 1.
+
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
-            prev_std, current_std, variance_ratio.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, prev_std, current_std, variance_ratio.
+            ``start`` is the previous window's start, ``end`` the current
+            window's start.
         """
         cols = [
             "start",
@@ -161,9 +203,9 @@ class ProcessWindowEvents(Base):
             "current_std",
             "variance_ratio",
         ]
-        stats = self.windowed_statistics(window)
+        stats = self.windowed_statistics(window=window)
         if len(stats) < 2:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         events: list[dict[str, Any]] = []
         for i in range(1, len(stats)):
@@ -175,9 +217,7 @@ class ProcessWindowEvents(Base):
                 ratio = float("inf")
             else:
                 ratio = curr["std"] / prev["std"]
-            if ratio >= ratio_threshold or (
-                ratio > 0 and ratio <= 1.0 / ratio_threshold
-            ):
+            if ratio > ratio_threshold or (ratio > 0 and ratio < 1.0 / ratio_threshold):
                 events.append(
                     {
                         "start": prev["start"],
@@ -190,19 +230,25 @@ class ProcessWindowEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._intervals(events, cols)
 
+    @keyword_only(1)
     def window_comparison(self, window: str = "1h") -> pd.DataFrame:
         """Compare each window mean to the overall baseline.
 
+        Args:
+            window: Resample window passed to :meth:`windowed_statistics`. A window
+                is anomalous when its mean is more than 2 std of the window means
+                away from their average.
+
         Returns:
-            DataFrame with columns: start, mean, z_score_vs_global,
-            is_anomalous.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, mean, z_score_vs_global, is_anomalous.
         """
         cols = ["start", "mean", "z_score_vs_global", "is_anomalous"]
-        stats = self.windowed_statistics(window)
+        stats = self.windowed_statistics(window=window)
         if stats.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         global_mean = float(stats["mean"].mean())
         global_std = float(stats["mean"].std()) if len(stats) > 1 else 1e-10
@@ -212,4 +258,4 @@ class ProcessWindowEvents(Base):
         result = stats[["start", "mean"]].copy()
         result["z_score_vs_global"] = (result["mean"] - global_mean) / global_std
         result["is_anomalous"] = result["z_score_vs_global"].abs() > 2.0
-        return result[cols].reset_index(drop=True)
+        return self._summary(result[cols].reset_index(drop=True), cols, window)

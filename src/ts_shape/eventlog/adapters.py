@@ -20,7 +20,7 @@ import pandas as pd
 from ..events._output import COL_END, COL_START, COL_SYSTIME
 from . import schema
 from .model import EventLog
-from .taxonomy import LabelRule, render_activity
+from .taxonomy import LabelRule, render_activity, resolve
 
 # ----------------------------------------------------------------------------
 # Registry of optional per-method overrides
@@ -40,19 +40,19 @@ def register_adapter(
     """
 
     def deco(fn: AdapterFn) -> AdapterFn:
-        _OVERRIDES[(class_name, method_name)] = fn
+        _OVERRIDES[resolve(class_name, method_name)] = fn
         return fn
 
     return deco
 
 
 def get_override(class_name: str, method_name: str) -> AdapterFn | None:
-    return _OVERRIDES.get((class_name, method_name))
+    return _OVERRIDES.get(resolve(class_name, method_name))
 
 
 def has_override(class_name: str, method_name: str) -> bool:
     """Return True iff a custom adapter is registered for ``(class, method)``."""
-    return (class_name, method_name) in _OVERRIDES
+    return resolve(class_name, method_name) in _OVERRIDES
 
 
 def clear_overrides(

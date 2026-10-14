@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class TimescaleDBDataAccess:
+    """Load timeseries data for given UUIDs and a time range from TimescaleDB."""
+
     def __init__(
         self,
         start_timestamp: str,
@@ -21,6 +23,15 @@ class TimescaleDBDataAccess:
         uuids: list[str],
         db_config: dict[str, str],
     ):
+        """Initialize the TimescaleDB loader and create the database engine.
+
+        Args:
+            start_timestamp: Start of the time range (inclusive) to query.
+            end_timestamp: End of the time range (inclusive) to query.
+            uuids: List of UUIDs to retrieve data for.
+            db_config: Connection settings with the keys ``db_user``,
+                ``db_pass``, ``db_host`` and ``db_name``.
+        """
         require_optional(create_engine, "sqlalchemy", "sql")
         self.start_timestamp = start_timestamp
         self.end_timestamp = end_timestamp
@@ -53,6 +64,14 @@ class TimescaleDBDataAccess:
         )
 
     def fetch_data_as_parquet(self, output_dir: str):
+        """Retrieve timeseries data from TimescaleDB and save it as Parquet files.
+
+        Rows are grouped by the hour of ``systime`` and written to one file per
+        UUID and hour at ``<output_dir>/year/month/day/hour/<uuid>.parquet``.
+
+        Args:
+            output_dir: Base directory to save the Parquet files.
+        """
         for uuid in self.uuids:
             hourly_data = {}
 
@@ -83,9 +102,11 @@ class TimescaleDBDataAccess:
                 data.to_parquet(output_path / f"{uuid}.parquet", index=False)
 
     def fetch_data_as_dataframe(self) -> pd.DataFrame:
-        """
-        Retrieves timeseries data from TimescaleDB and returns it as a single DataFrame.
-        :return: A combined DataFrame with data for all specified UUIDs within the time range.
+        """Retrieve timeseries data from TimescaleDB as a single DataFrame.
+
+        Returns:
+            A combined DataFrame with data for all specified UUIDs within the time
+            range.
         """
         df_list = [chunk for uuid in self.uuids for chunk in self._fetch_data(uuid)]
         return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()

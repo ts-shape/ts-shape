@@ -1,4 +1,4 @@
-# SetupTimeTracking
+# SetupTimeEvents
 
 > Track and analyze setup/changeover durations for SMED analysis.
 
@@ -16,28 +16,25 @@ Use for SMED (Single-Minute Exchange of Dies) analysis. Tracks setup durations a
 ## Quick Example
 
 ```python
-from ts_shape.events.production.setup_time_tracking import SetupTimeTracking
+from ts_shape.events.production.setup_time_tracking import SetupTimeEvents
 
-tracker = SetupTimeTracking(
-    df=production_df,
-    start_time="2024-01-01",
-    end_time="2024-03-31"
-)
+tracker = SetupTimeEvents(production_df)
 
 # List every setup event with duration
-setups = tracker.setup_durations(state_uuid="machine-state-001")
+# (state signal in value_string; rows equal to setup_value count as setup)
+setups = tracker.setup_durations(state_uuid="line1:state", setup_value="Setup")
 
 # Setup statistics grouped by product transition
 by_product = tracker.setup_by_product(
-    state_uuid="machine-state-001",
-    part_id_uuid="part-id-001"
+    state_uuid="line1:state",
+    part_id_uuid="line1:part_id"
 )
 
 # Overall setup time statistics
-stats = tracker.setup_statistics(state_uuid="machine-state-001")
+stats = tracker.setup_statistics(state_uuid="line1:state")
 
 # Weekly trend of setup durations
-trend = tracker.setup_trend(state_uuid="machine-state-001", window="1W")
+trend = tracker.setup_trend(state_uuid="line1:state", window="1W")
 ```
 
 ---
@@ -46,10 +43,10 @@ trend = tracker.setup_trend(state_uuid="machine-state-001", window="1W")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `setup_durations(state_uuid)` | List every setup event with start, end, and duration | `DataFrame` |
-| `setup_by_product(state_uuid, part_id_uuid)` | Setup time statistics grouped by product transition pair | `DataFrame` |
-| `setup_statistics(state_uuid)` | Overall setup time statistics (mean, median, std, total) | `DataFrame` |
-| `setup_trend(state_uuid, window='1W')` | Rolling trend of setup durations over time | `DataFrame` |
+| `setup_durations(state_uuid, setup_value='Setup')` | List every setup event with start, end, and duration | `DataFrame` with `start`, `end`, `duration_minutes`, `date`, `shift` |
+| `setup_by_product(state_uuid, part_id_uuid, setup_value='Setup')` | Setup time statistics grouped by product transition pair | `DataFrame` with `from_product`, `to_product`, `avg_minutes`, `min_minutes`, `max_minutes`, `count` |
+| `setup_statistics(state_uuid, setup_value='Setup')` | Overall setup time statistics (single row) | `DataFrame` with `total_setups`, `total_minutes`, `avg_minutes`, `median_minutes`, `std_minutes`, `pct_of_available_time` |
+| `setup_trend(state_uuid, setup_value='Setup', window='1W')` | Setup durations per time period | `DataFrame` with `period`, `avg_setup_minutes`, `setup_count`, `total_setup_minutes` |
 
 ---
 

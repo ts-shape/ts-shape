@@ -11,7 +11,9 @@ from typing import Any
 import pandas as pd  # type: ignore
 from pandas.tseries.frequencies import to_offset
 
+from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ class SignalQualityEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -52,6 +54,7 @@ class SignalQualityEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    @keyword_only(1)
     def detect_missing_data(
         self, expected_freq: str = "1s", tolerance_factor: float = 2.0
     ) -> pd.DataFrame:
@@ -62,12 +65,16 @@ class SignalQualityEvents(Base):
             tolerance_factor: Multiplier on expected_freq to trigger a gap.
 
         Returns:
-            DataFrame with columns: start, end, gap_duration,
-            expected_samples_missing.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, gap_duration, expected_samples_missing.
+            ``gap_duration`` is a Timedelta; ``duration_seconds`` is the
+            same span in float seconds.
         """
         cols = ["start", "end", "gap_duration", "expected_samples_missing"]
         if self.signal.empty or len(self.signal) < 2:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         times = self.signal[self.time_column].array
         diffs = times[1:] - times[:-1]
@@ -88,10 +95,11 @@ class SignalQualityEvents(Base):
                     }
                 )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def sampling_regularity(self, window: str = "1h") -> pd.DataFrame:
         """Inter-sample interval statistics per window.
 
@@ -99,8 +107,9 @@ class SignalQualityEvents(Base):
             window: Resample window.
 
         Returns:
-            DataFrame with columns: start, mean_interval, std_interval,
-            min_interval, max_interval, regularity_score.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, mean_interval, std_interval, min_interval,
+            max_interval, regularity_score. ``end`` is ``start`` plus one ``window``.
         """
         cols = [
             "start",
@@ -111,14 +120,28 @@ class SignalQualityEvents(Base):
             "regularity_score",
         ]
         if self.signal.empty or len(self.signal) < 2:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = self.signal[[self.time_column]].copy().set_index(self.time_column)
         sig["interval"] = sig.index.to_series().diff().dt.total_seconds()
         sig = sig.dropna(subset=["interval"])
 
         if sig.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         resampled = (
             sig["interval"].resample(window).agg(["mean", "std", "min", "max", "count"])
@@ -143,8 +166,13 @@ class SignalQualityEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
     def detect_out_of_range(
@@ -166,8 +194,10 @@ class SignalQualityEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start_time, end_time, duration,
-            min_observed, max_observed, direction.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, duration, min_observed, max_observed, direction.
+            ``duration`` is a Timedelta; ``duration_seconds`` is the same
+            span in float seconds.
         """
         cols = [
             "start",
@@ -178,7 +208,9 @@ class SignalQualityEvents(Base):
             "direction",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -190,7 +222,9 @@ class SignalQualityEvents(Base):
         )
 
         if not out_of_range.any():
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         groups = (out_of_range != out_of_range.shift()).cumsum()
         ends = interval_end_times(sig[self.time_column], interval_end)
@@ -223,10 +257,11 @@ class SignalQualityEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @keyword_only(1)
     def data_completeness(
         self, window: str = "1h", expected_freq: str = "1s"
     ) -> pd.DataFrame:
@@ -237,12 +272,20 @@ class SignalQualityEvents(Base):
             expected_freq: Expected sampling frequency.
 
         Returns:
-            DataFrame with columns: start, expected_count,
-            actual_count, completeness_pct.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, expected_count, actual_count, completeness_pct.
+            ``end`` is ``start`` plus one ``window``.
         """
         cols = ["start", "expected_count", "actual_count", "completeness_pct"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -273,6 +316,11 @@ class SignalQualityEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )

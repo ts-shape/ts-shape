@@ -14,7 +14,7 @@ actual transition. Two problems follow:
   and duty-cycle analyses then silently report nothing.
 
 :func:`state_intervals` closes each interval at the *next* transition instead,
-which is correct for both dense and change-encoded data. The behaviour is
+which is correct for both dense and change-encoded data. The behavior is
 opt-in via ``interval_end`` so existing callers are unaffected by default.
 """
 

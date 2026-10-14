@@ -282,7 +282,7 @@ print(result.by_asset)         # {'asset-A': 3}
 result.event_log               # the full EventLog — slice it any way you want
 ```
 
-Precision/recall against labelled historical events is a roadmap item (Phase 4 expanded), as is multi-rule diffing.
+Precision/recall against labeled historical events is a roadmap item (Phase 4 expanded), as is multi-rule diffing.
 
 ---
 
@@ -290,11 +290,11 @@ Precision/recall against labelled historical events is a roadmap item (Phase 4 e
 
 The lambda subsystem is the substrate for two AI-authoring features on the roadmap:
 
-- **Rule recommendation from data** — an LLM ingests dataset statistics (and optional labelled events) and proposes candidate lambda rules in this same DSL. The AST-restricted compiler is the safety net: anything the LLM emits that does not type-check, or that touches a disallowed AST node, is silently rejected. Surviving candidates are backtested.
+- **Rule recommendation from data** — an LLM ingests dataset statistics (and optional labeled events) and proposes candidate lambda rules in this same DSL. The AST-restricted compiler is the safety net: anything the LLM emits that does not type-check, or that touches a disallowed AST node, is silently rejected. Surviving candidates are backtested.
 - **Detector recommender** — given a process description and a list of signals, an LLM picks from the 290 built-in detectors (and recommended parameters) — grounded in the same `LabelRule` taxonomy used here. The output is verified against `REGISTRY` keys before being returned to avoid hallucinated method names.
 
 Both rely on (a) the canonical-event-log plumbing already in place, (b) the lambda DSL described above, and (c) the AST whitelist as the safety boundary.
 
-Other roadmap items: rule packs (versioned YAML bundles per industry), streaming evaluation over chunked DataFrames, polars backend, and labelled backtest scoring (precision/recall).
+Other roadmap items: rule packs (versioned YAML bundles per industry), streaming evaluation over chunked DataFrames, polars backend, and labeled backtest scoring (precision/recall).
 
 For an end-to-end runnable example see [`examples/lambda_rules_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/lambda_rules_demo.py). For the canonical schema the rules ultimately emit into, see the [Event Log guide](eventlog/index.md). For a side-by-side view of how every detection archetype flows from raw signals through events to rule definitions, see [Event Handling — Visual Overview](event-handling-flow.md).

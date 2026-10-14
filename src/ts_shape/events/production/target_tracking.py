@@ -12,12 +12,13 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class TargetTracking(Base):
+class TargetEvents(Base):
     """Compare any production metric to targets.
 
     Every plant has daily/shift targets.  This module provides a generic way to
@@ -27,14 +28,14 @@ class TargetTracking(Base):
 
     Pipeline example::
 
-        target = TargetTracking(df)
+        target = TargetEvents(df)
         result = target.compare_to_target('counter', {'shift_1': 450})
-        # → merge with PerformanceLossTracking.performance_by_shift() on [date, shift]
-        # → merge with QualityTracking.nok_by_shift() on [date, shift]
+        # → merge with PerformanceLossEvents.performance_by_shift() on [date, shift]
+        # → merge with QualityEvents.nok_by_shift() on [date, shift]
         # → result['status'] column enables filtering/alerting
 
     Example usage:
-        tracker = TargetTracking(df)
+        tracker = TargetEvents(df)
 
         # Compare counter to fixed target
         result = tracker.compare_to_target(
@@ -56,7 +57,7 @@ class TargetTracking(Base):
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.shift_definitions = shift_definitions or {
             "shift_1": ("06:00", "14:00"),
@@ -84,7 +85,7 @@ class TargetTracking(Base):
         *,
         value_column: str = "value_integer",
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Compare actual metric to per-shift targets.
 
@@ -102,7 +103,7 @@ class TargetTracking(Base):
             production_day: When True, the post-midnight portion of an overnight
                 shift (e.g. ``22:00 -> 06:00``) is attributed to the shift's
                 start date, so each ``(date, shift)`` group is one contiguous
-                interval. When False (default), readings are grouped by their
+                interval (the default). When False, readings are grouped by their
                 raw calendar date; a night shift is then split across two dates
                 and, within a date, its group spans the whole day so
                 ``last - first`` sweeps in other shifts' production. Only
@@ -298,3 +299,7 @@ class TargetTracking(Base):
             "hit_rate_pct": round(hit_rate, 1),
             "avg_achievement_pct": round(avg_achievement, 1),
         }
+
+
+#: Deprecated name, removed in 1.0.
+TargetTracking = deprecated_class(TargetEvents, "TargetTracking")

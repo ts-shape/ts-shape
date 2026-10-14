@@ -14,13 +14,15 @@ import logging
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import add_day_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
 
-class PeriodSummary(Base):
+class PeriodSummaryEvents(Base):
     """Aggregate daily metrics into weekly/monthly summaries.
 
     Merge keys: [week_start, week_end] for weekly, [year, month] for monthly.
@@ -29,21 +31,21 @@ class PeriodSummary(Base):
 
     **Pattern A — from raw signals:**
 
-        summary = PeriodSummary(df)
+        summary = PeriodSummaryEvents(df)
         weekly = summary.weekly_summary(counter_uuid='prod')
 
     **Pattern B — pipeline (compose from upstream modules):**
 
         # Build a daily DataFrame from any combination of upstream modules
-        quality = QualityTracking(df).daily_quality_summary('ok', 'nok')
-        downtime = DowntimeTracking(df).availability_trend('state', window='1D')
+        quality = QualityEvents(df).daily_quality_summary('ok', 'nok')
+        downtime = DowntimeEvents(df).availability_trend('state', window='1D')
 
         # Merge on date
         daily = quality.merge(downtime.rename(columns={'period': 'date'}), on='date')
 
         # Roll up to weekly/monthly
-        weekly = PeriodSummary.from_daily_data(daily, freq='W')
-        monthly = PeriodSummary.from_daily_data(daily, freq='MS')
+        weekly = PeriodSummaryEvents.from_daily_data(daily, window='W')
+        monthly = PeriodSummaryEvents.from_daily_data(daily, window='MS')
     """
 
     def __init__(
@@ -52,7 +54,7 @@ class PeriodSummary(Base):
         *,
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
 
     def _daily_counter(
@@ -99,17 +101,18 @@ class PeriodSummary(Base):
     # ------------------------------------------------------------------
 
     @staticmethod
+    @renamed_kwargs(freq="window")
     def from_daily_data(
         daily_df: pd.DataFrame,
         *,
-        freq: str = "W",
+        window: str = "W",
         date_column: str = "date",
     ) -> pd.DataFrame:
         """Roll up a pre-computed daily DataFrame to weekly or monthly.
 
         This is the **pipeline-friendly** entry-point.  It accepts any daily
-        DataFrame (e.g. merged output of QualityTracking, DowntimeTracking,
-        OEECalculator) and aggregates numeric columns.
+        DataFrame (e.g. merged output of QualityEvents, DowntimeEvents,
+        OEEEvents) and aggregates numeric columns.
 
         Numeric columns are aggregated as follows:
         - Columns containing ``_pct`` or ``pct``: averaged (mean).
@@ -123,8 +126,15 @@ class PeriodSummary(Base):
         Args:
             daily_df: DataFrame with a date column and numeric metric columns.
                 Expected merge key: [date].
-            freq: Pandas frequency string.
-                'W' = weekly (Monday start), 'MS' = monthly.
+            window: Pandas frequency string. ``'W'`` (pandas' weeks ending
+                Sunday, same as ``'W-SUN'``) gives Monday-to-Sunday weeks:
+                ``start`` is the Monday, ``end`` the following Sunday
+                (inclusive), even when the data covers only part of the week.
+                An anchored ``'W-<DAY>'`` gives weeks ending on ``<DAY>``
+                (e.g. ``'W-SAT'`` = Sunday-to-Saturday). ``'MS'`` = calendar
+                months (``end`` = last day of the month); any other frequency
+                is passed to :class:`pandas.Grouper` and ``end`` is the last
+                date present in the group.
             date_column: Name of the date column.
 
         Returns:
@@ -133,15 +143,21 @@ class PeriodSummary(Base):
 
         Example::
 
-            quality = QualityTracking(df).daily_quality_summary('ok', 'nok')
-            weekly = PeriodSummary.from_daily_data(quality, freq='W')
+            quality = QualityEvents(df).daily_quality_summary('ok', 'nok')
+            weekly = PeriodSummaryEvents.from_daily_data(quality, window='W')
             # → [start, end, days, ok_parts, nok_parts,
             #    total_parts, quality_pct, ...]
         """
         if daily_df.empty:
             return pd.DataFrame(columns=["start", "end", "days"])
 
-        data = daily_df.copy()
+        # Window bounds of the daily rows are not metrics: never sum them.
+        data = daily_df.drop(
+            columns=[
+                c for c in ("start", "end", "duration_seconds") if c != date_column
+            ],
+            errors="ignore",
+        )
         data[date_column] = pd.to_datetime(data[date_column])
         data = data.set_index(date_column)
 
@@ -156,10 +172,16 @@ class PeriodSummary(Base):
         for c in sum_cols:
             agg_spec[c] = "sum"
 
-        if freq.startswith("W"):
-            grouper = pd.Grouper(freq="W-MON", label="left", closed="left")
+        if window.startswith("W"):
+            days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+            anchor = window.split("-", 1)[1].upper() if "-" in window else "SUN"
+            if anchor not in days:
+                raise ValueError(f"Unknown weekly anchor in window={window!r}")
+            # A week ending on <anchor> starts the day after it.
+            first_day = days[(days.index(anchor) + 1) % 7]
+            grouper = pd.Grouper(freq=f"W-{first_day}", label="left", closed="left")
         else:
-            grouper = pd.Grouper(freq=freq)
+            grouper = pd.Grouper(freq=window)
 
         results = []
         for start, grp in data.groupby(grouper):
@@ -168,9 +190,9 @@ class PeriodSummary(Base):
 
             row = {"start": start.date(), "days": len(grp)}
 
-            if freq.startswith("W"):
+            if window.startswith("W"):
                 row["end"] = (start + pd.Timedelta(days=6)).date()
-            elif freq == "MS":
+            elif window == "MS":
                 row["end"] = (start + pd.offsets.MonthEnd(0)).date()
             else:
                 row["end"] = grp.index.max().date()
@@ -195,6 +217,7 @@ class PeriodSummary(Base):
     # Raw-signal entry-points
     # ------------------------------------------------------------------
 
+    @keyword_only(2)
     def weekly_summary(
         self,
         counter_uuid: str,
@@ -212,7 +235,7 @@ class PeriodSummary(Base):
         Args:
             counter_uuid: UUID of production counter.
             ok_counter_uuid: UUID of good parts counter (optional).
-            nok_counter_uuid: UUID of defective parts counter (optional).
+            nok_counter_uuid: UUID of the NOK part counter (optional).
             value_column: Column containing counter values.
             handle_resets: When True, treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it (a
@@ -221,6 +244,8 @@ class PeriodSummary(Base):
 
         Returns:
             DataFrame with columns:
+            - start, end, duration_seconds: the week window (Monday midnight to
+                the following Monday midnight, tz-aware in the data's tz)
             - week_start, week_end, total_production, daily_avg,
                 production_days, [ok_parts, nok_parts, quality_pct]
             - resets: Number of counter resets in the week (only when
@@ -241,7 +266,7 @@ class PeriodSummary(Base):
                 cols.extend(["ok_parts", "nok_parts", "quality_pct"])
             if handle_resets:
                 cols.append("resets")
-            return pd.DataFrame(columns=cols)
+            return add_day_window(pd.DataFrame(columns=cols), None)
 
         daily["date"] = pd.to_datetime(daily["date"])
 
@@ -311,8 +336,14 @@ class PeriodSummary(Base):
 
             results.append(row)
 
-        return pd.DataFrame(results)
+        return add_day_window(
+            pd.DataFrame(results),
+            data_tz(self.dataframe[self.time_column]),
+            date_col="week_start",
+            offset=pd.DateOffset(days=7),
+        )
 
+    @keyword_only(2)
     def monthly_summary(
         self,
         counter_uuid: str,
@@ -330,7 +361,7 @@ class PeriodSummary(Base):
         Args:
             counter_uuid: UUID of production counter.
             ok_counter_uuid: UUID of good parts counter (optional).
-            nok_counter_uuid: UUID of defective parts counter (optional).
+            nok_counter_uuid: UUID of the NOK part counter (optional).
             value_column: Column containing counter values.
             handle_resets: When True, treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it. The
@@ -339,6 +370,9 @@ class PeriodSummary(Base):
 
         Returns:
             DataFrame with columns:
+            - start, end, duration_seconds: the calendar-month window (first
+                of the month midnight to first of the next month midnight,
+                tz-aware in the data's tz)
             - year, month, total_production, daily_avg,
                 production_days, [ok_parts, nok_parts, quality_pct]
             - resets: Number of counter resets in the month (only when
@@ -353,7 +387,7 @@ class PeriodSummary(Base):
                 cols.extend(["ok_parts", "nok_parts", "quality_pct"])
             if handle_resets:
                 cols.append("resets")
-            return pd.DataFrame(columns=cols)
+            return add_day_window(pd.DataFrame(columns=cols), None)
 
         daily["date"] = pd.to_datetime(daily["date"])
 
@@ -421,7 +455,17 @@ class PeriodSummary(Base):
 
             results.append(row)
 
-        return pd.DataFrame(results)
+        out = pd.DataFrame(results)
+        out["_month_start"] = pd.to_datetime(
+            {"year": out["year"], "month": out["month"], "day": 1}
+        )
+        out = add_day_window(
+            out,
+            data_tz(self.dataframe[self.time_column]),
+            date_col="_month_start",
+            offset=pd.DateOffset(months=1),
+        )
+        return out.drop(columns="_month_start")
 
     def compare_periods(
         self,
@@ -509,3 +553,7 @@ class PeriodSummary(Base):
             )
 
         return pd.DataFrame(rows)
+
+
+#: Deprecated name, removed in 1.0.
+PeriodSummary = deprecated_class(PeriodSummaryEvents, "PeriodSummary")

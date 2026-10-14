@@ -18,26 +18,26 @@ Use to monitor relationships between process variables. Detects when normally co
 ```python
 from ts_shape.events.correlation.signal_correlation import SignalCorrelationEvents
 
-correlator = SignalCorrelationEvents(
-    df=process_df,
-    timestamp_col="timestamp",
-    value_col="pressure",
-    second_value_col="temperature"
-)
+# df: systime | uuid | value_double
+correlator = SignalCorrelationEvents(df)
 
-# Rolling Pearson correlation between pressure and temperature
-rolling = correlator.rolling_correlation(window="4H")
+# Rolling Pearson correlation on a 1-minute grid over 4 hours (240 periods)
+rolling = correlator.rolling_correlation(
+    "reactor:pressure", "reactor:temperature", window="1min", window_size=240
+)
 
 # Find periods where the correlation breaks down
 breakdowns = correlator.correlation_breakdown(
-    window="4H", threshold=0.5, min_duration="2H"
+    "reactor:pressure", "reactor:temperature", window_size=240, threshold=0.5
 )
 print(f"Found {len(breakdowns)} correlation breakdown periods")
 
-# Cross-correlation with time lag to find leading indicators
-lag_corr = correlator.lag_correlation(max_lag="30T", step="5T")
-best_lag = lag_corr.loc[lag_corr["correlation"].idxmax()]
-print(f"Best lag: {best_lag['lag']} with r={best_lag['correlation']:.3f}")
+# Cross-correlation with time lag (up to 30 periods of 1 minute each way)
+lag_corr = correlator.lag_correlation(
+    "reactor:pressure", "reactor:temperature", window="1min", max_lag=30
+)
+best_lag = lag_corr[lag_corr["is_best_lag"]].iloc[0]
+print(f"Best lag: {best_lag['lag_periods']} periods, r={best_lag['correlation']:.3f}")
 ```
 
 ---
@@ -46,16 +46,16 @@ print(f"Best lag: {best_lag['lag']} with r={best_lag['correlation']:.3f}")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `rolling_correlation()` | Rolling Pearson correlation over time | DataFrame with correlation coefficient per window |
-| `correlation_breakdown()` | Periods where correlation drops below threshold | DataFrame of breakdown intervals with duration |
-| `lag_correlation()` | Cross-correlation with time lag | DataFrame of correlation values at each lag offset |
+| `rolling_correlation(uuid_a, uuid_b)` | Rolling Pearson correlation over `window_size` periods of the `window` grid (defaults `window="1min"`, `window_size=60`) | `systime`, `uuid`, `source_uuid_a`, `source_uuid_b`, `is_delta`, `correlation` |
+| `correlation_breakdown(uuid_a, uuid_b)` | Periods where correlation drops below `threshold` (default 0.5) | `start`, `end`, `uuid`, `source_uuid_a`, `source_uuid_b`, `is_delta`, `min_correlation`, `duration_seconds` |
+| `lag_correlation(uuid_a, uuid_b)` | Cross-correlation for lags from `-max_lag` to `+max_lag` periods (default 30) | `lag_periods`, `correlation`, `is_best_lag` |
 
 ---
 
 ## Tips & Hints
 
 !!! tip "Use lag correlation to find leading indicators"
-    `lag_correlation()` can reveal that one signal leads another by a fixed delay. This is valuable for building early warning systems where an upstream variable predicts a downstream change.
+    `lag_correlation()` can reveal that one signal leads another by a fixed delay. Lags are counted in `window` periods, so `lag_periods=5` with `window="1min"` means 5 minutes; a positive lag pairs `uuid_a` at time t with `uuid_b` at t minus the lag. This is valuable for building early warning systems where an upstream variable predicts a downstream change.
 
 !!! info "Related modules"
     - [`AnomalyCorrelationEvents`](anomaly-correlation.md) - Correlate detected anomalies across signals instead of raw values

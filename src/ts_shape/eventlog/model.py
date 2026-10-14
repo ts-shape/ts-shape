@@ -43,6 +43,7 @@ class EventLog:
 
     @property
     def has_objects(self) -> bool:
+        """Whether the log contains at least one object in ``objects``."""
         return not self.objects.empty
 
     def __len__(self) -> int:
@@ -75,11 +76,34 @@ class EventLog:
         )
 
     def filter_by_pack(self, pack: str) -> EventLog:
+        """Return a sub-log containing only the events emitted by one pack.
+
+        Objects, relations, object-to-object links, and object changes are
+        restricted to those referenced by the kept events.
+
+        Args:
+            pack: Pack name to match against the ``ts_shape:pack`` column.
+
+        Returns:
+            A new EventLog restricted to the matching events.
+        """
         return self._restrict_to_events(
             self.events[self.events[schema.TS_PACK] == pack]
         )
 
     def filter_by_object(self, oid: str, type_: str | None = None) -> EventLog:
+        """Return a sub-log containing only the events related to one object.
+
+        Events are selected through the event-to-object ``relations`` table;
+        the other tables are restricted to the objects those events use.
+
+        Args:
+            oid: Object identifier (``ocel:oid``) to match.
+            type_: Optional object type (``ocel:type``) to match as well.
+
+        Returns:
+            A new EventLog restricted to the events related to the object.
+        """
         rel = self.relations
         mask = rel[schema.OCEL_OID] == oid
         if type_ is not None:

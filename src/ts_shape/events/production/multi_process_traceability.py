@@ -84,7 +84,7 @@ class MultiProcessTraceabilityEvents(Base):
             handover_value_column: Column holding handover trigger values.
             time_column: Name of timestamp column.
         """
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.processes = processes
         self.handovers = handovers or []
         self.event_uuid = event_uuid

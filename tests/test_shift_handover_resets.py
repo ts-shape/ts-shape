@@ -1,8 +1,8 @@
-"""Counter-reset handling for ShiftHandoverReport.generate_report."""
+"""Counter-reset handling for ShiftHandoverEvents.generate_report."""
 
 import pandas as pd
 
-from ts_shape.events.production.shift_handover import ShiftHandoverReport
+from ts_shape.events.production.shift_handover import ShiftHandoverEvents
 
 
 def _make_reset_handover_df():
@@ -36,14 +36,19 @@ def _make_reset_handover_df():
 
 
 def test_generate_report_under_reports_without_reset_handling():
-    report = ShiftHandoverReport(_make_reset_handover_df())
+    report = ShiftHandoverEvents(_make_reset_handover_df())
     result = report.generate_report(
         counter_uuid="prod_counter",
         ok_counter_uuid="ok_counter",
         nok_counter_uuid="nok_counter",
         state_uuid="machine_state",
     )
-    assert list(result.columns) == ShiftHandoverReport.OUTPUT_COLUMNS
+    assert list(result.columns) == [
+        "start",
+        "end",
+        "duration_seconds",
+        *ShiftHandoverEvents.OUTPUT_COLUMNS,
+    ]
     assert "resets" not in result.columns
 
     row = result[result["shift"] == "shift_1"].iloc[0]
@@ -51,7 +56,7 @@ def test_generate_report_under_reports_without_reset_handling():
 
 
 def test_generate_report_handles_resets():
-    report = ShiftHandoverReport(_make_reset_handover_df())
+    report = ShiftHandoverEvents(_make_reset_handover_df())
     result = report.generate_report(
         counter_uuid="prod_counter",
         ok_counter_uuid="ok_counter",

@@ -1,4 +1,4 @@
-# ShiftReporting
+# ShiftReportEvents
 
 > Simple shift-based production reporting from counter and part-ID signals.
 
@@ -16,23 +16,26 @@ Use for daily shift performance reporting. Computes production quantities per sh
 ## Quick Example
 
 ```python
-from ts_shape.events.production.shift_reporting import ShiftReporting
+from ts_shape.events.production.shift_reporting import ShiftReportEvents
 
-reporter = ShiftReporting(
-    df=production_df,
-    start_time="2024-01-01",
-    end_time="2024-01-31"
+reporter = ShiftReportEvents(
+    production_df,
+    shift_definitions={
+        "morning": ("06:00", "14:00"),
+        "afternoon": ("14:00", "22:00"),
+        "night": ("22:00", "06:00"),
+    },
 )
 
 # Production totals per shift
-shift_prod = reporter.shift_production(counter_uuid="counter-001")
+shift_prod = reporter.shift_production(counter_uuid="line1:parts")
 
 # Compare shifts over the last 7 days
-comparison = reporter.shift_comparison(counter_uuid="counter-001", days=7)
+comparison = reporter.shift_comparison(counter_uuid="line1:parts", days=7)
 
-# Check actual vs targets
+# Check actual vs targets (keys must match the shift names)
 targets = {"morning": 500, "afternoon": 480, "night": 400}
-result = reporter.shift_targets(counter_uuid="counter-001", targets=targets)
+result = reporter.shift_targets(counter_uuid="line1:parts", targets=targets)
 ```
 
 ---
@@ -41,17 +44,19 @@ result = reporter.shift_targets(counter_uuid="counter-001", targets=targets)
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `shift_production(counter_uuid, part_id_uuid=None)` | Production totals per shift, optionally split by part ID | `DataFrame` |
-| `shift_comparison(counter_uuid, days=7)` | Compare shift performance over a number of days | `DataFrame` |
-| `shift_targets(counter_uuid, targets)` | Compare actual production against per-shift targets | `DataFrame` |
-| `best_and_worst_shifts(counter_uuid, days=30)` | Identify best and worst performing shifts over a period | `DataFrame` |
+| `shift_production(counter_uuid, part_id_uuid=None)` | Production totals per shift, optionally split by part ID | `DataFrame` with `date`, `shift`, `quantity` (plus `part_number` when `part_id_uuid` is given) |
+| `shift_comparison(counter_uuid, days=7)` | Compare shift performance over a number of days | `DataFrame` with `shift`, `avg_quantity`, `min_quantity`, `max_quantity`, `std_quantity`, `days_count` |
+| `shift_targets(counter_uuid, targets)` | Compare actual production against per-shift targets | `DataFrame` with `date`, `shift`, `actual`, `target`, `variance`, `achievement_pct` |
+| `best_and_worst_shifts(counter_uuid, days=30)` | Identify the five best and five worst shifts over a period | `dict` with `"best"` and `"worst"` DataFrames |
+
+Without `shift_definitions`, the default shifts are `shift_1` (06:00-14:00), `shift_2` (14:00-22:00) and `shift_3` (22:00-06:00).
 
 ---
 
 ## Tips & Hints
 
 !!! tip "Define shift boundaries consistently"
-    Ensure your shift start and end times are aligned with your plant's actual shift calendar. Misaligned boundaries will split production counts incorrectly.
+    Pass `shift_definitions` that match your plant's actual shift calendar. Misaligned boundaries will split production counts incorrectly.
 
 !!! info "Related modules"
     - [Target Tracking](target-tracking.md) — generic target vs actual comparison

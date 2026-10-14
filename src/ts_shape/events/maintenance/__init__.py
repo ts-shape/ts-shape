@@ -1,8 +1,8 @@
 """Maintenance Events
 
 Detectors for maintenance-related patterns: degradation trends, failure
-prediction, and vibration analysis for predictive maintenance on
-manufacturing/industrial IoT time series data.
+prediction, reliability (MTBF / MTTR / Weibull) and vibration analysis for
+predictive maintenance on manufacturing/industrial IoT time series data.
 
 Classes:
 - AssetHealthIndexEvents: Fuse several degradation signals into one asset
@@ -25,6 +25,12 @@ Classes:
   - detect_exceedance_pattern: Rolling threshold exceedance frequency.
   - time_to_threshold: Rate-of-change based threshold ETA.
 
+- ReliabilityEvents: Reliability KPIs from a failure-state signal.
+  - failure_events: One interval per failure with repair and operating time.
+  - mtbf_mttr: MTBF (common and ISO 22400), MTTR, availability, failure rate.
+  - weibull_fit: Censored Weibull life model (beta, eta, MTTF, B10).
+  - reliability_at: Reliability and hazard ahead, optionally given the age.
+
 - VibrationAnalysisEvents: Vibration signal analysis for rotating equipment.
   - detect_rms_exceedance: Rolling RMS vs baseline threshold.
   - detect_amplitude_growth: Peak-to-peak amplitude tracking.
@@ -34,11 +40,13 @@ Classes:
 from .asset_health_index import AssetHealthIndexEvents
 from .degradation_detection import DegradationDetectionEvents
 from .failure_prediction import FailurePredictionEvents
+from .reliability import ReliabilityEvents
 from .vibration_analysis import VibrationAnalysisEvents
 
 __all__ = [
     "AssetHealthIndexEvents",
     "DegradationDetectionEvents",
     "FailurePredictionEvents",
+    "ReliabilityEvents",
     "VibrationAnalysisEvents",
 ]

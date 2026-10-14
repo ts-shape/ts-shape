@@ -18,27 +18,28 @@ Use to compare setpoint vs actual, sensor A vs sensor B, or any paired signals. 
 ```python
 from ts_shape.events.engineering.signal_comparison import SignalComparisonEvents
 
+# process_data holds both the reference and the actual signal
 comparator = SignalComparisonEvents(
-    df=process_data,
-    uuid="setpoint_pressure_01"
+    dataframe=process_data,
+    reference_uuid="pressure_setpoint_01",
 )
 
 # Detect when actual diverges from setpoint beyond tolerance
 divergence = comparator.detect_divergence(
-    actual_uuid="actual_pressure_01",
+    actual_uuid="pressure_actual_01",
     tolerance=2.0,
     min_duration="1min"
 )
 
 # Per-hour deviation statistics
 dev_stats = comparator.deviation_statistics(
-    actual_uuid="actual_pressure_01",
+    actual_uuid="pressure_actual_01",
     window="1h"
 )
 
 # Rolling correlation to detect decoupling
 correlation = comparator.correlation_windows(
-    actual_uuid="actual_pressure_01",
+    actual_uuid="pressure_actual_01",
     window="1h"
 )
 ```
@@ -49,10 +50,10 @@ correlation = comparator.correlation_windows(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_divergence(actual_uuid, tolerance, min_duration='1min')` | Divergence intervals | DataFrame of divergence events |
-| `deviation_statistics(actual_uuid, window='1h')` | Per-window deviation stats | DataFrame with deviation metrics |
-| `tracking_error_trend(actual_uuid, window='1D')` | Deviation trend over time | DataFrame with daily trend |
-| `correlation_windows(actual_uuid, window='1h')` | Per-window correlation | DataFrame with correlation values |
+| `detect_divergence(actual_uuid, tolerance, min_duration='1min')` | Divergence intervals | DataFrame of divergence intervals (`start`, `end`, `max_deviation`, `mean_deviation`, `direction`) |
+| `deviation_statistics(actual_uuid, window='1h')` | Per-window deviation stats | DataFrame: `start`, `mae`, `max_error`, `rmse`, `bias` |
+| `tracking_error_trend(actual_uuid, window='1D')` | Deviation trend over time | DataFrame: `start`, `mae`, `trend_slope`, `trend_direction` |
+| `correlation_windows(actual_uuid, window='1h')` | Per-window correlation | DataFrame: `start`, `correlation`, `sample_count` |
 
 ---
 

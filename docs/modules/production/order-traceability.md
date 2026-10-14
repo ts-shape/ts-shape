@@ -9,7 +9,7 @@
 
 ## When to Use
 
-Use to track parts, orders, or batches as they move through production stations. Each station has its own UUID signal carrying the current identifier being processed. This module correlates those signals into a unified timeline showing where each item has been and how long it spent at each station.
+Use to track parts, orders, or batches as they move through production stations. Each station has its own UUID signal carrying the current identifier being processed; `station_uuids` maps each of those UUIDs to a readable station name. This module correlates those signals into a unified timeline showing where each item has been and how long it spent at each station.
 
 ---
 
@@ -19,13 +19,13 @@ Use to track parts, orders, or batches as they move through production stations.
 from ts_shape.events.production.order_traceability import ValueTraceabilityEvents
 
 tracer = ValueTraceabilityEvents(
-    df=production_df,
+    production_df,
     station_uuids={
-        "cutting": "station-uuid-001",
-        "welding": "station-uuid-002",
-        "painting": "station-uuid-003",
-        "assembly": "station-uuid-004",
-    }
+        "line1:cutting:serial": "Cutting",
+        "line1:welding:serial": "Welding",
+        "line1:painting:serial": "Painting",
+        "line1:assembly:serial": "Assembly",
+    },
 )
 
 # Build full timeline per identifier per station

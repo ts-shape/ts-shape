@@ -1,8 +1,8 @@
-"""Tests for ReworkTracking module."""
+"""Tests for ReworkEvents module."""
 
 import pandas as pd
 
-from ts_shape.events.production.rework_tracking import ReworkTracking
+from ts_shape.events.production.rework_tracking import ReworkEvents
 
 
 def _make_rework_df():
@@ -47,7 +47,7 @@ class TestReworkTracking:
 
     def test_rework_by_shift(self):
         df = _make_rework_df()
-        tracker = ReworkTracking(df)
+        tracker = ReworkEvents(df)
         result = tracker.rework_by_shift(rework_uuid="rework_counter")
         assert not result.empty
         assert "rework_count" in result.columns
@@ -55,7 +55,7 @@ class TestReworkTracking:
 
     def test_rework_by_reason(self):
         df = _make_rework_df()
-        tracker = ReworkTracking(df)
+        tracker = ReworkEvents(df)
         result = tracker.rework_by_reason(
             rework_uuid="rework_counter",
             reason_uuid="rework_reason",
@@ -66,7 +66,7 @@ class TestReworkTracking:
 
     def test_rework_rate(self):
         df = _make_rework_df()
-        tracker = ReworkTracking(df)
+        tracker = ReworkEvents(df)
         result = tracker.rework_rate(
             rework_uuid="rework_counter",
             total_production_uuid="total_counter",
@@ -78,7 +78,7 @@ class TestReworkTracking:
 
     def test_rework_cost(self):
         df = _make_rework_df()
-        tracker = ReworkTracking(df)
+        tracker = ReworkEvents(df)
         result = tracker.rework_cost(
             rework_uuid="rework_counter",
             part_id_uuid="part_number",
@@ -90,7 +90,7 @@ class TestReworkTracking:
 
     def test_rework_trend(self):
         df = _make_rework_df()
-        tracker = ReworkTracking(df)
+        tracker = ReworkEvents(df)
         result = tracker.rework_trend(rework_uuid="rework_counter")
         assert not result.empty
         assert "period" in result.columns
@@ -98,7 +98,7 @@ class TestReworkTracking:
 
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer"])
-        tracker = ReworkTracking(df)
+        tracker = ReworkEvents(df)
         assert tracker.rework_by_shift(rework_uuid="x").empty
         assert tracker.rework_by_reason(rework_uuid="x", reason_uuid="y").empty
         assert tracker.rework_rate(rework_uuid="x", total_production_uuid="y").empty

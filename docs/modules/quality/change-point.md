@@ -11,7 +11,7 @@
 
 Use for retrospective analysis of a single signal: "when did this dimension move, and by how much?" A control chart tells you that a point is out of limits. Change-point detection segments the history into stable stretches and places each shift at the exact sample. It needs no window length.
 
-- **PELT** (`method="pelt"`, default) is exact: it returns the segmentation that minimises a Gaussian cost plus a penalty per change.
+- **PELT** (`method="pelt"`, default) is exact: it returns the segmentation that minimizes a Gaussian cost plus a penalty per change.
 - **Binary segmentation** (`method="binseg"`) is fast (O(n log n)) and approximate. Use it, or resample first, on long series with few changes, where PELT becomes quadratic. It warns above 20,000 samples.
 
 ---

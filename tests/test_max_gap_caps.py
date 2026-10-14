@@ -2,9 +2,9 @@
 
 import pandas as pd  # type: ignore
 
-from ts_shape.events.production.cycle_time_tracking import CycleTimeTracking
-from ts_shape.events.production.downtime_tracking import DowntimeTracking
-from ts_shape.events.production.performance_loss import PerformanceLossTracking
+from ts_shape.events.production.cycle_time_tracking import CycleTimeEvents
+from ts_shape.events.production.downtime_tracking import DowntimeEvents
+from ts_shape.events.production.performance_loss import PerformanceLossEvents
 
 
 def test_downtime_by_shift_max_gap_excludes_logger_outage():
@@ -20,7 +20,7 @@ def test_downtime_by_shift_max_gap_excludes_logger_outage():
             for t, v in rows
         ]
     )
-    dt = DowntimeTracking(df)
+    dt = DowntimeEvents(df)
 
     naive = dt.downtime_by_shift("state")
     capped = dt.downtime_by_shift("state", max_gap="15min")
@@ -48,7 +48,7 @@ def test_cycle_time_max_cycle_gap_drops_idle_interval():
             }
         )
     df = pd.DataFrame(rows)
-    ct = CycleTimeTracking(df)
+    ct = CycleTimeEvents(df)
 
     naive = ct.cycle_time_by_part("part", "trig")  # no part signal -> UNKNOWN
     capped = ct.cycle_time_by_part("part", "trig", max_cycle_gap="5min")
@@ -66,9 +66,49 @@ def test_performance_by_shift_max_cycle_gap():
         {"uuid": "c", "systime": t, "value_integer": i} for i, t in enumerate(times)
     ]
     df = pd.DataFrame(rows)
-    pl = PerformanceLossTracking(df)
+    pl = PerformanceLossEvents(df)
 
     naive = pl.performance_by_shift("c", target_cycle_time=45.0)
     capped = pl.performance_by_shift("c", target_cycle_time=45.0, max_cycle_gap="5min")
     # Excluding the 1h gap raises the reported performance (less phantom loss).
     assert capped["performance_pct"].iloc[0] > naive["performance_pct"].iloc[0]
+
+
+def test_cycle_time_max_cycle_gap_forwarded_by_derived_methods():
+    # 30 cycles at 45 s, then a 2 h idle gap, then 5 more cycles.
+    base = pd.Timestamp("2024-01-01 08:00:00")
+    times = [base + pd.Timedelta(seconds=45 * i) for i in range(30)]
+    restart = times[-1] + pd.Timedelta(hours=2)
+    times += [restart + pd.Timedelta(seconds=45 * i) for i in range(5)]
+    rows = []
+    for t in times:
+        rows.append({"uuid": "trig", "systime": t, "value_bool": False})
+        rows.append(
+            {
+                "uuid": "trig",
+                "systime": t + pd.Timedelta(milliseconds=1),
+                "value_bool": True,
+            }
+        )
+    ct = CycleTimeEvents(pd.DataFrame(rows))
+
+    stats = ct.cycle_time_statistics("part", "trig")
+    capped = ct.cycle_time_statistics("part", "trig", max_cycle_gap="5min")
+    assert stats["max_seconds"].iloc[0] > 3600
+    assert capped["max_seconds"].iloc[0] < 300
+    assert capped["count"].iloc[0] == stats["count"].iloc[0] - 1
+
+    assert len(ct.detect_slow_cycles("part", "trig")) == 1
+    assert ct.detect_slow_cycles("part", "trig", max_cycle_gap="5min").empty
+
+    trend = ct.cycle_time_trend("part", "trig", "UNKNOWN", window_size=5)
+    trend_capped = ct.cycle_time_trend(
+        "part", "trig", "UNKNOWN", window_size=5, max_cycle_gap="5min"
+    )
+    assert trend["cycle_time_seconds"].max() > 3600
+    assert trend_capped["cycle_time_seconds"].max() < 300
+
+    hourly = ct.hourly_cycle_time_summary("part", "trig")
+    hourly_capped = ct.hourly_cycle_time_summary("part", "trig", max_cycle_gap="5min")
+    assert hourly["max_cycle_time"].max() > 3600
+    assert hourly_capped["max_cycle_time"].max() < 300

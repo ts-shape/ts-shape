@@ -9,17 +9,24 @@ Track rework events and their impact:
 """
 
 import logging
+from typing import Any
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import (
+    add_period_window,
+    add_shift_window,
+    data_tz,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class ReworkTracking(Base):
+class ReworkEvents(Base):
     """Track parts that require rework (re-processing through a station).
 
     Each UUID represents one signal:
@@ -33,15 +40,15 @@ class ReworkTracking(Base):
 
     Pipeline example::
 
-        rework = ReworkTracking(df)
+        rework = ReworkEvents(df)
         shift_rework = rework.rework_by_shift('rework_counter')
-        # → merge with ShiftReporting.shift_production() on [date, shift]
-        # → merge with QualityTracking.nok_by_shift() on [date, shift]
+        # → merge with ShiftReportEvents.shift_production() on [date, shift]
+        # → merge with QualityEvents.nok_by_shift() on [date, shift]
         rate = rework.rework_rate('rework_counter', 'total_counter')
-        # → merge with ShiftReporting.shift_production() on [date, shift]
+        # → merge with ShiftReportEvents.shift_production() on [date, shift]
 
     Example usage:
-        tracker = ReworkTracking(df)
+        tracker = ReworkEvents(df)
 
         # Rework per shift
         shift_rework = tracker.rework_by_shift(rework_uuid='rework_counter')
@@ -60,7 +67,7 @@ class ReworkTracking(Base):
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.shift_definitions = shift_definitions or {
             "shift_1": ("06:00", "14:00"),
@@ -105,7 +112,7 @@ class ReworkTracking(Base):
         *,
         value_column: str = "value_integer",
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Rework count per shift.
 
@@ -120,11 +127,16 @@ class ReworkTracking(Base):
                 containing a reset reports too little (often 0).
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night
-                shift is one contiguous ``(date, shift)`` group. Default False
-                (raw calendar date). Only affects overnight schedules.
+                shift is one contiguous ``(date, shift)`` group. Default True;
+                False groups by raw calendar date, which splits a night shift
+                across two rows. Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
+            - start, end, duration_seconds: the shift window from
+                ``shift_definitions`` (``date`` at the shift start time,
+                tz-aware in the data's tz; an overnight shift ends on the
+                next day)
             - date, shift, rework_count
             - resets: Number of counter resets in the shift (only when
                 ``handle_resets=True``)
@@ -139,7 +151,9 @@ class ReworkTracking(Base):
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=columns)
+            return add_shift_window(
+                pd.DataFrame(columns=columns), self.shift_definitions, None
+            )
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data["shift"] = data[self.time_column].apply(self._assign_shift)
@@ -164,7 +178,11 @@ class ReworkTracking(Base):
                 row["resets"] = count_resets(grp[value_column])
             results.append(row)
 
-        return pd.DataFrame(results, columns=columns)
+        return add_shift_window(
+            pd.DataFrame(results, columns=columns),
+            self.shift_definitions,
+            data_tz(data[self.time_column]),
+        )
 
     def rework_by_reason(
         self,
@@ -276,7 +294,7 @@ class ReworkTracking(Base):
         value_column_rework: str = "value_integer",
         value_column_production: str = "value_integer",
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Rework rate as percentage of total production per shift.
 
@@ -288,16 +306,36 @@ class ReworkTracking(Base):
             handle_resets: When True, treat a decreasing counter as a reset
                 and count the production/rework accumulated after the reset,
                 for both the numerator (rework) and denominator (total
-                produced). When False (default), both use
-                ``max(0, last - first)`` per shift and a reset is lost.
+                produced). The result gains ``rework_resets``,
+                ``production_resets`` and ``resets`` (their sum) columns with
+                the number of resets observed in each shift. When False
+                (default), both use ``max(0, last - first)`` per shift and a
+                reset is lost.
             production_day: When True, an overnight shift's post-midnight
-                readings are attributed to the shift's start date. Default False
-                (raw calendar date). Only affects overnight schedules.
+                readings are attributed to the shift's start date. Default True;
+                False groups by raw calendar date, which splits a night shift
+                across two rows. Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:
+            - start, end, duration_seconds: the shift window from
+                ``shift_definitions`` (``date`` at the shift start time,
+                tz-aware in the data's tz; an overnight shift ends on the
+                next day)
             - date, shift, total_produced, rework_count, rework_rate_pct
+            - rework_resets, production_resets, resets: Number of counter
+                resets of the rework counter, the production counter, and
+                both together in the shift (only when ``handle_resets=True``)
         """
+        rate_cols = [
+            "date",
+            "shift",
+            "total_produced",
+            "rework_count",
+            "rework_rate_pct",
+        ]
+        if handle_resets:
+            rate_cols += ["rework_resets", "production_resets", "resets"]
         rework_data = (
             self.dataframe[self.dataframe["uuid"] == rework_uuid]
             .copy()
@@ -310,14 +348,8 @@ class ReworkTracking(Base):
         )
 
         if rework_data.empty or prod_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "shift",
-                    "total_produced",
-                    "rework_count",
-                    "rework_rate_pct",
-                ]
+            return add_shift_window(
+                pd.DataFrame(columns=rate_cols), self.shift_definitions, None
             )
 
         rework_data[self.time_column] = pd.to_datetime(rework_data[self.time_column])
@@ -371,17 +403,32 @@ class ReworkTracking(Base):
 
             rate = (rework_count / total_produced * 100) if total_produced > 0 else 0
 
-            results.append(
-                {
-                    "date": date,
-                    "shift": shift,
-                    "total_produced": round(total_produced, 0),
-                    "rework_count": round(rework_count, 0),
-                    "rework_rate_pct": round(rate, 1),
-                }
-            )
+            row: dict[str, Any] = {
+                "date": date,
+                "shift": shift,
+                "total_produced": round(total_produced, 0),
+                "rework_count": round(rework_count, 0),
+                "rework_rate_pct": round(rate, 1),
+            }
+            if handle_resets:
+                rw_resets = (
+                    count_resets(rw_grp[value_column_rework]) if not rw_grp.empty else 0
+                )
+                pr_resets = (
+                    count_resets(pr_grp[value_column_production])
+                    if not pr_grp.empty
+                    else 0
+                )
+                row["rework_resets"] = rw_resets
+                row["production_resets"] = pr_resets
+                row["resets"] = rw_resets + pr_resets
+            results.append(row)
 
-        return pd.DataFrame(results)
+        return add_shift_window(
+            pd.DataFrame(results, columns=rate_cols),
+            self.shift_definitions,
+            data_tz(prod_data[self.time_column]),
+        )
 
     def rework_cost(
         self,
@@ -492,6 +539,7 @@ class ReworkTracking(Base):
 
         Returns:
             DataFrame with columns:
+            - start, end (start + window), duration_seconds
             - period, rework_count
             - resets: Number of counter resets in the period (only when
                 ``handle_resets=True``)
@@ -506,7 +554,7 @@ class ReworkTracking(Base):
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=columns)
+            return add_period_window(pd.DataFrame(columns=columns), window)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
         data = data.set_index(self.time_column)
@@ -527,4 +575,8 @@ class ReworkTracking(Base):
                 row["resets"] = count_resets(grp[value_column])
             results.append(row)
 
-        return pd.DataFrame(results, columns=columns)
+        return add_period_window(pd.DataFrame(results, columns=columns), window)
+
+
+#: Deprecated name, removed in 1.0.
+ReworkTracking = deprecated_class(ReworkEvents, "ReworkTracking")

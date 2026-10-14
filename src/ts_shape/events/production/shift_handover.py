@@ -15,14 +15,16 @@ import logging
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class, keyword_only
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class ShiftHandoverReport(Base):
+class ShiftHandoverEvents(Base):
     """Generate automated shift handover reports.
 
     Combines production, quality, and downtime data into a single summary
@@ -34,7 +36,7 @@ class ShiftHandoverReport(Base):
 
     **Pattern A — from raw signals (one-step):**
 
-        report = ShiftHandoverReport(df)
+        report = ShiftHandoverEvents(df)
         result = report.generate_report(
             counter_uuid='prod', ok_counter_uuid='ok',
             nok_counter_uuid='nok', state_uuid='state',
@@ -44,12 +46,12 @@ class ShiftHandoverReport(Base):
     **Pattern B — pipeline (compose from upstream modules):**
 
         # Step 1: compute upstream DataFrames
-        prod   = ShiftReporting(df).shift_production('counter')
-        qual   = QualityTracking(df).nok_by_shift('ok', 'nok')
-        downtime = DowntimeTracking(df).downtime_by_shift('state')
+        prod   = ShiftReportEvents(df).shift_production('counter')
+        qual   = QualityEvents(df).nok_by_shift('ok', 'nok')
+        downtime = DowntimeEvents(df).downtime_by_shift('state')
 
         # Step 2: assemble into handover report
-        result = ShiftHandoverReport.from_shift_data(
+        result = ShiftHandoverEvents.from_shift_data(
             production_df=prod,
             quality_df=qual,
             downtime_df=downtime,
@@ -80,7 +82,7 @@ class ShiftHandoverReport(Base):
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.shift_definitions = shift_definitions or {
             "shift_1": ("06:00", "14:00"),
@@ -107,7 +109,7 @@ class ShiftHandoverReport(Base):
         value_column: str,
         *,
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Get counter deltas grouped by date/shift.
 
@@ -158,7 +160,7 @@ class ShiftHandoverReport(Base):
         running_value: str,
         value_column: str,
         *,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Compute availability grouped by date/shift."""
         data = (
@@ -200,6 +202,7 @@ class ShiftHandoverReport(Base):
     # ------------------------------------------------------------------
 
     @staticmethod
+    @keyword_only(1)
     def from_shift_data(
         production_df: pd.DataFrame,
         quality_df: pd.DataFrame | None = None,
@@ -212,15 +215,15 @@ class ShiftHandoverReport(Base):
 
         This is the **pipeline-friendly** entry-point.  Instead of reading raw
         signals, it accepts DataFrames that were already computed by upstream
-        modules (ShiftReporting, QualityTracking, DowntimeTracking, etc.).
+        modules (ShiftReportEvents, QualityEvents, DowntimeEvents, etc.).
 
         Args:
             production_df: DataFrame with [date, shift, quantity] — e.g. from
-                ``ShiftReporting.shift_production()``.
+                ``ShiftReportEvents.shift_production()``.
             quality_df: DataFrame with [date, shift, ok_parts, nok_parts, quality_pct]
-                — e.g. from ``QualityTracking.nok_by_shift()``.  Optional.
+                — e.g. from ``QualityEvents.nok_by_shift()``.  Optional.
             downtime_df: DataFrame with [date, shift, availability_pct, downtime_minutes]
-                — e.g. from ``DowntimeTracking.downtime_by_shift()``.  Optional.
+                — e.g. from ``DowntimeEvents.downtime_by_shift()``.  Optional.
             targets: Per-shift production targets (dict).
             report_date: Specific date (YYYY-MM-DD).  If None, uses latest.
 
@@ -229,7 +232,7 @@ class ShiftHandoverReport(Base):
             date, shift, production, production_target, production_achievement_pct,
             ok_parts, nok_parts, quality_pct, availability_pct, downtime_minutes
         """
-        output_cols = ShiftHandoverReport.OUTPUT_COLUMNS
+        output_cols = ShiftHandoverEvents.OUTPUT_COLUMNS
 
         if production_df.empty:
             return pd.DataFrame(columns=output_cols)
@@ -336,7 +339,7 @@ class ShiftHandoverReport(Base):
         value_column_state: str = "value_string",
         report_date: str | None = None,
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Generate a shift handover report from raw timeseries signals.
 
@@ -346,7 +349,7 @@ class ShiftHandoverReport(Base):
         Args:
             counter_uuid: UUID of production counter.
             ok_counter_uuid: UUID of good parts counter.
-            nok_counter_uuid: UUID of defective parts counter.
+            nok_counter_uuid: UUID of the NOK part counter.
             state_uuid: UUID of machine state signal.
             targets: Per-shift production targets.
             quality_target_pct: Quality target percentage.
@@ -364,13 +367,16 @@ class ShiftHandoverReport(Base):
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night
                 shift is one contiguous ``(date, shift)`` group instead of being
-                split across two calendar dates. Only affects schedules with an
+                split across two calendar dates. Default True. Only affects schedules with an
                 overnight shift.
 
         Returns:
             DataFrame with columns:
-            date, shift, production, production_target, production_achievement_pct,
-            ok_parts, nok_parts, quality_pct, availability_pct, downtime_minutes,
+            start, end, duration_seconds (the shift window from
+            ``shift_definitions``, tz-aware in the data's tz; an overnight
+            shift ends on the next day), date, shift, production,
+            production_target, production_achievement_pct, ok_parts,
+            nok_parts, quality_pct, availability_pct, downtime_minutes,
             and ``resets`` (only when ``handle_resets=True``).
         """
         output_cols = list(self.OUTPUT_COLUMNS)
@@ -404,7 +410,9 @@ class ShiftHandoverReport(Base):
         )
 
         if prod.empty:
-            return pd.DataFrame(columns=output_cols)
+            return add_shift_window(
+                pd.DataFrame(columns=output_cols), self.shift_definitions, None
+            )
 
         # Filter to report date
         if report_date:
@@ -470,8 +478,13 @@ class ShiftHandoverReport(Base):
             (result["ok_parts"] / total * 100).where(total > 0, 0).round(1)
         )
 
-        return result[output_cols].reset_index(drop=True)
+        return add_shift_window(
+            result[output_cols].reset_index(drop=True),
+            self.shift_definitions,
+            data_tz(self.dataframe[self.time_column]),
+        )
 
+    @keyword_only(1)
     def highlight_issues(
         self,
         counter_uuid: str | None = None,
@@ -500,7 +513,7 @@ class ShiftHandoverReport(Base):
         Args:
             counter_uuid: UUID of production counter (raw-signal mode).
             ok_counter_uuid: UUID of good parts counter (raw-signal mode).
-            nok_counter_uuid: UUID of defective parts counter (raw-signal mode).
+            nok_counter_uuid: UUID of the NOK part counter (raw-signal mode).
             state_uuid: UUID of machine state signal (raw-signal mode).
             report_df: Pre-computed report DataFrame (pipeline mode).
                 If provided, UUID arguments are ignored.
@@ -515,6 +528,10 @@ class ShiftHandoverReport(Base):
         Returns:
             List of dicts with keys: shift, metric, value, threshold, severity.
             severity is 'warning' (within 5% of threshold) or 'critical'.
+
+        Raises:
+            ValueError: If ``report_df`` is None and any of the four signal
+                UUIDs is missing, so no report can be built.
         """
         thresholds = thresholds or {
             "production_achievement_pct": 95.0,
@@ -537,7 +554,20 @@ class ShiftHandoverReport(Base):
                 report_date=report_date,
             )
         else:
-            return []
+            missing = [
+                name
+                for name, val in (
+                    ("counter_uuid", counter_uuid),
+                    ("ok_counter_uuid", ok_counter_uuid),
+                    ("nok_counter_uuid", nok_counter_uuid),
+                    ("state_uuid", state_uuid),
+                )
+                if not val
+            ]
+            raise ValueError(
+                "highlight_issues() needs either report_df or all four signal "
+                f"UUIDs to build the report; missing: {', '.join(missing)}"
+            )
 
         if report.empty:
             return []
@@ -561,3 +591,7 @@ class ShiftHandoverReport(Base):
                     )
 
         return issues
+
+
+#: Deprecated name, removed in 1.0.
+ShiftHandoverReport = deprecated_class(ShiftHandoverEvents, "ShiftHandoverReport")

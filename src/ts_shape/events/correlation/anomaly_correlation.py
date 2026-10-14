@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class AnomalyCorrelationEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
@@ -37,7 +38,7 @@ class AnomalyCorrelationEvents(Base):
         self,
         signal_uuid: str,
         *,
-        z_threshold: float = 3.0,
+        n_sigma: float = 3.0,
     ) -> pd.DataFrame:
         """Internal: detect anomalies in a single signal using Z-score."""
         s = (
@@ -60,16 +61,17 @@ class AnomalyCorrelationEvents(Base):
             )
 
         s["z_score"] = ((values - mean) / std).abs()
-        anomalies = s[s["z_score"] >= z_threshold][
+        anomalies = s[s["z_score"] >= n_sigma][
             [self.time_column, "uuid", self.value_column, "z_score"]
         ]
         return anomalies.reset_index(drop=True)
 
+    @renamed_kwargs(z_threshold="n_sigma")
     def coincident_anomalies(
         self,
         signal_uuids: list[str],
         *,
-        z_threshold: float = 3.0,
+        n_sigma: float = 3.0,
         coincidence_window: str = "5min",
         min_signals: int = 2,
     ) -> pd.DataFrame:
@@ -77,31 +79,35 @@ class AnomalyCorrelationEvents(Base):
 
         Args:
             signal_uuids: List of signal UUIDs to analyze.
-            z_threshold: Z-score threshold for anomaly detection per signal.
+            n_sigma: Z-score threshold for anomaly detection per signal.
             coincidence_window: Time window for considering anomalies coincident.
             min_signals: Minimum number of signals with anomalies to flag.
 
         Returns:
-            DataFrame: start, end, uuid, is_delta,
-                       anomaly_count, signal_uuids_involved
+            DataFrame: systime, start, end, uuid, source_uuid, is_delta,
+                       anomaly_count, signal_uuids_involved. ``systime`` is
+                       the first anomaly of the group (= ``start``) and
+                       ``source_uuid`` the comma-joined involved signals.
+                       Empty (same columns) when nothing coincides.
         """
         all_anomalies = []
         for uid in signal_uuids:
-            anom = self._detect_signal_anomalies(uid, z_threshold=z_threshold)
+            anom = self._detect_signal_anomalies(uid, n_sigma=n_sigma)
             if not anom.empty:
                 all_anomalies.append(anom)
 
+        cols = [
+            "systime",
+            "start",
+            "end",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "anomaly_count",
+            "signal_uuids_involved",
+        ]
         if not all_anomalies:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "anomaly_count",
-                    "signal_uuids_involved",
-                ]
-            )
+            return pd.DataFrame(columns=cols)
 
         combined = pd.concat(all_anomalies, ignore_index=True)
         combined = combined.sort_values(self.time_column)
@@ -121,26 +127,30 @@ class AnomalyCorrelationEvents(Base):
             unique_signals = window_data["uuid"].unique()
 
             if len(unique_signals) >= min_signals:
+                involved = ",".join(sorted(unique_signals))
                 rows.append(
                     {
+                        "systime": t,
                         "start": t,
                         "end": t + window_td,
                         "uuid": self.event_uuid,
+                        "source_uuid": involved,
                         "is_delta": True,
                         "anomaly_count": len(window_data),
-                        "signal_uuids_involved": ",".join(sorted(unique_signals)),
+                        "signal_uuids_involved": involved,
                     }
                 )
                 processed.update(window_data.index.tolist())
 
-        return pd.DataFrame(rows)
+        return pd.DataFrame(rows, columns=cols)
 
+    @renamed_kwargs(z_threshold="n_sigma")
     def cascade_detection(
         self,
         leader_uuid: str,
         follower_uuid: str,
         *,
-        z_threshold: float = 3.0,
+        n_sigma: float = 3.0,
         max_delay: str = "10min",
     ) -> pd.DataFrame:
         """Detect anomaly cascades: leader anomaly followed by follower anomaly.
@@ -151,32 +161,31 @@ class AnomalyCorrelationEvents(Base):
         Args:
             leader_uuid: UUID of the leading signal.
             follower_uuid: UUID of the following signal.
-            z_threshold: Z-score threshold for anomaly detection.
+            n_sigma: Z-score threshold for anomaly detection.
             max_delay: Maximum time between leader and follower anomaly.
 
         Returns:
-            DataFrame: leader_time, follower_time, uuid, is_delta,
-                       leader_uuid, follower_uuid, delay_seconds
+            DataFrame: systime, leader_time, follower_time, uuid,
+                       source_uuid, is_delta, leader_uuid, follower_uuid,
+                       delay_seconds. ``systime`` is the follower anomaly
+                       time; ``source_uuid`` is ``"<leader>,<follower>"``.
         """
-        leader_anom = self._detect_signal_anomalies(
-            leader_uuid, z_threshold=z_threshold
-        )
-        follower_anom = self._detect_signal_anomalies(
-            follower_uuid, z_threshold=z_threshold
-        )
+        leader_anom = self._detect_signal_anomalies(leader_uuid, n_sigma=n_sigma)
+        follower_anom = self._detect_signal_anomalies(follower_uuid, n_sigma=n_sigma)
 
+        cols = [
+            "systime",
+            "leader_time",
+            "follower_time",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "leader_uuid",
+            "follower_uuid",
+            "delay_seconds",
+        ]
         if leader_anom.empty or follower_anom.empty:
-            return pd.DataFrame(
-                columns=[
-                    "leader_time",
-                    "follower_time",
-                    "uuid",
-                    "is_delta",
-                    "leader_uuid",
-                    "follower_uuid",
-                    "delay_seconds",
-                ]
-            )
+            return pd.DataFrame(columns=cols)
 
         max_delay_td = pd.to_timedelta(max_delay)
         rows: list[dict[str, Any]] = []
@@ -192,9 +201,11 @@ class AnomalyCorrelationEvents(Base):
                 if fidx not in used_followers:
                     rows.append(
                         {
+                            "systime": frow[self.time_column],
                             "leader_time": lt,
                             "follower_time": frow[self.time_column],
                             "uuid": self.event_uuid,
+                            "source_uuid": f"{leader_uuid},{follower_uuid}",
                             "is_delta": True,
                             "leader_uuid": leader_uuid,
                             "follower_uuid": follower_uuid,
@@ -206,13 +217,14 @@ class AnomalyCorrelationEvents(Base):
                     used_followers.add(fidx)
                     break  # one follower per leader
 
-        return pd.DataFrame(rows)
+        return pd.DataFrame(rows, columns=cols)
 
+    @renamed_kwargs(z_threshold="n_sigma")
     def root_cause_ranking(
         self,
         signal_uuids: list[str],
         *,
-        z_threshold: float = 3.0,
+        n_sigma: float = 3.0,
         max_delay: str = "10min",
     ) -> pd.DataFrame:
         """Rank signals by how often their anomalies precede others.
@@ -223,7 +235,7 @@ class AnomalyCorrelationEvents(Base):
 
         Args:
             signal_uuids: List of signal UUIDs.
-            z_threshold: Z-score threshold.
+            n_sigma: Z-score threshold.
             max_delay: Maximum delay for cascade detection.
 
         Returns:
@@ -247,10 +259,10 @@ class AnomalyCorrelationEvents(Base):
         for i, uid_a in enumerate(signal_uuids):
             for uid_b in signal_uuids[i + 1 :]:
                 cascades_ab = self.cascade_detection(
-                    uid_a, uid_b, z_threshold=z_threshold, max_delay=max_delay
+                    uid_a, uid_b, n_sigma=n_sigma, max_delay=max_delay
                 )
                 cascades_ba = self.cascade_detection(
-                    uid_b, uid_a, z_threshold=z_threshold, max_delay=max_delay
+                    uid_b, uid_a, n_sigma=n_sigma, max_delay=max_delay
                 )
                 leader_counts[uid_a] += len(cascades_ab)
                 follower_counts[uid_b] += len(cascades_ab)

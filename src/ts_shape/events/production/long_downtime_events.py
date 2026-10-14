@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class LongDowntimeEvents(Base):
         time_column: str = "systime",
         value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
-        super().__init__(dataframe, column_name=time_column)
+        super().__init__(dataframe, time_column=time_column)
         self.state_uuid = state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -71,6 +72,7 @@ class LongDowntimeEvents(Base):
             return mask
         return col.fillna(False).astype(bool)
 
+    @keyword_only(1)
     def detect_long_downtime(
         self,
         min_gap: str = "3h",
@@ -80,18 +82,24 @@ class LongDowntimeEvents(Base):
     ) -> pd.DataFrame:
         """Return idle/stopped intervals whose duration is >= min_gap.
 
-        - interval_end: how each downtime interval is closed.
-          ``"last_sample"`` (default) ends it at its last sample -- backward
-          compatible, but a change-encoded (``is_delta``) state signal logs one
-          row per transition, so a real multi-hour stop becomes a single
-          zero-duration row and is missed. ``"next_change"`` closes the
-          interval at the following transition, so change-encoded stops are
-          detected. The final, still-open downtime is bounded by ``data_end``
-          when given (otherwise it stays zero-length and is filtered out).
-        - data_end: optional bound for a downtime still open at the end of the
-          data (e.g. "now").
+        Args:
+            min_gap: Minimum downtime duration to report (pandas offset
+                string). Default ``"3h"``.
+            interval_end: How each downtime interval is closed.
+                ``"last_sample"`` (default) ends it at its last sample --
+                backward compatible, but a change-encoded (``is_delta``) state
+                signal logs one row per transition, so a real multi-hour stop
+                becomes a single zero-duration row and is missed.
+                ``"next_change"`` closes the interval at the following
+                transition, so change-encoded stops are detected. The final,
+                still-open downtime is bounded by ``data_end`` when given
+                (otherwise it stays zero-length and is filtered out).
+            data_end: Optional bound for a downtime still open at the end of
+                the data (e.g. "now").
 
-        Columns: start, end, duration_seconds, downtime_index, uuid, source_uuid, is_delta
+        Returns:
+            DataFrame with columns: start, end, duration_seconds,
+            downtime_index, uuid, source_uuid, is_delta.
         """
         empty = pd.DataFrame(
             columns=[
@@ -161,6 +169,8 @@ class LongDowntimeEvents(Base):
         min_gap: str = "3h",
         value_column: str = "value_integer",
         aggregation: str = "count",
+        interval_end: str = "last_sample",
+        data_end: pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         """Count production events in each window between consecutive long downtimes.
 
@@ -173,6 +183,13 @@ class LongDowntimeEvents(Base):
                 - 'count': number of rows in the window
                 - 'sum': sum of value_column in the window
                 - 'transitions': number of value changes (state changes)
+            interval_end: How each downtime interval is closed; forwarded to
+                :meth:`detect_long_downtime`. ``"last_sample"`` (default) ends
+                it at its last sample; use ``"next_change"`` for a
+                change-encoded (``is_delta``) state signal, where every stop
+                is otherwise zero-length and no boundary is found.
+            data_end: Optional bound for a downtime still open at the end of
+                the data; forwarded to :meth:`detect_long_downtime`.
 
         Returns:
             DataFrame with one row per inter-gap window.
@@ -192,7 +209,9 @@ class LongDowntimeEvents(Base):
             ]
         )
 
-        gaps = self.detect_long_downtime(min_gap)
+        gaps = self.detect_long_downtime(
+            min_gap=min_gap, interval_end=interval_end, data_end=data_end
+        )
         if len(gaps) < 2:
             return empty
 

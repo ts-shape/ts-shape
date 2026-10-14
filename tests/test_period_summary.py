@@ -1,10 +1,10 @@
-"""Tests for PeriodSummary module."""
+"""Tests for PeriodSummaryEvents module."""
 
 from datetime import date
 
 import pandas as pd
 
-from ts_shape.events.production.period_summary import PeriodSummary
+from ts_shape.events.production.period_summary import PeriodSummaryEvents
 
 
 def _make_multiday_df(days=14):
@@ -36,7 +36,7 @@ class TestPeriodSummary:
 
     def test_weekly_summary(self):
         df = _make_multiday_df(14)
-        summary = PeriodSummary(df)
+        summary = PeriodSummaryEvents(df)
         result = summary.weekly_summary(counter_uuid="prod_counter")
         assert not result.empty
         assert "week_start" in result.columns
@@ -45,7 +45,7 @@ class TestPeriodSummary:
 
     def test_weekly_summary_with_quality(self):
         df = _make_multiday_df(14)
-        summary = PeriodSummary(df)
+        summary = PeriodSummaryEvents(df)
         result = summary.weekly_summary(
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
@@ -58,7 +58,7 @@ class TestPeriodSummary:
 
     def test_monthly_summary(self):
         df = _make_multiday_df(14)
-        summary = PeriodSummary(df)
+        summary = PeriodSummaryEvents(df)
         result = summary.monthly_summary(counter_uuid="prod_counter")
         assert not result.empty
         assert "year" in result.columns
@@ -67,7 +67,7 @@ class TestPeriodSummary:
 
     def test_compare_periods(self):
         df = _make_multiday_df(14)
-        summary = PeriodSummary(df)
+        summary = PeriodSummaryEvents(df)
         result = summary.compare_periods(
             counter_uuid="prod_counter",
             period1=("2024-01-01", "2024-01-07"),
@@ -135,7 +135,7 @@ class TestPeriodSummary:
             ]
         )
 
-        result = PeriodSummary.from_daily_data(daily, freq="W")
+        result = PeriodSummaryEvents.from_daily_data(daily, window="W")
         assert not result.empty
         assert "start" in result.columns
         assert "end" in result.columns
@@ -158,14 +158,14 @@ class TestPeriodSummary:
                 for d in range(1, 15)
             ]
         )
-        result = PeriodSummary.from_daily_data(daily, freq="MS")
+        result = PeriodSummaryEvents.from_daily_data(daily, window="MS")
         assert not result.empty
         assert len(result) == 1  # All in January
         assert result["days"].iloc[0] == 14
 
     def test_from_daily_data_empty(self):
         """Test from_daily_data with empty data."""
-        result = PeriodSummary.from_daily_data(pd.DataFrame(columns=["date"]))
+        result = PeriodSummaryEvents.from_daily_data(pd.DataFrame(columns=["date"]))
         assert result.empty
 
     def test_from_daily_data_pct_averaged(self):
@@ -176,7 +176,7 @@ class TestPeriodSummary:
                 {"date": date(2024, 1, 2), "quality_pct": 80.0, "count": 200},
             ]
         )
-        result = PeriodSummary.from_daily_data(daily, freq="W")
+        result = PeriodSummaryEvents.from_daily_data(daily, window="W")
         assert not result.empty
         # quality_pct should be averaged: (90+80)/2 = 85
         assert result["quality_pct"].iloc[0] == 85.0
@@ -185,7 +185,7 @@ class TestPeriodSummary:
 
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer"])
-        summary = PeriodSummary(df)
+        summary = PeriodSummaryEvents(df)
         assert summary.weekly_summary(counter_uuid="x").empty
         assert summary.monthly_summary(counter_uuid="x").empty
         assert summary.compare_periods(
@@ -193,3 +193,24 @@ class TestPeriodSummary:
             period1=("2024-01-01", "2024-01-07"),
             period2=("2024-01-08", "2024-01-14"),
         ).empty
+
+
+def test_from_daily_data_weekly_bounds_monday_start():
+    """'W' gives Monday-to-Sunday weeks; 'W-<DAY>' gives weeks ending on <DAY>."""
+    daily = pd.DataFrame(
+        {"date": pd.date_range("2024-01-03", periods=14, freq="D"), "parts": 1}
+    )
+    weekly = PeriodSummaryEvents.from_daily_data(daily, window="W")
+    assert weekly["start"].tolist() == [
+        date(2024, 1, 1),
+        date(2024, 1, 8),
+        date(2024, 1, 15),
+    ]
+    assert all(pd.Timestamp(s).day_name() == "Monday" for s in weekly["start"])
+    assert all(pd.Timestamp(e).day_name() == "Sunday" for e in weekly["end"])
+    assert weekly["days"].tolist() == [5, 7, 2]
+
+    sat = PeriodSummaryEvents.from_daily_data(daily, window="W-SAT")
+    assert sat["start"].iloc[0] == date(2023, 12, 31)
+    assert sat["end"].iloc[0] == date(2024, 1, 6)
+    assert sat["days"].tolist() == [4, 7, 3]

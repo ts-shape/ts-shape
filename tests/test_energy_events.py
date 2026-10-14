@@ -102,6 +102,8 @@ class TestEnergyConsumptionEvents:
         assert result.empty
         assert list(result.columns) == [
             "start",
+            "end",
+            "duration_seconds",
             "uuid",
             "source_uuid",
             "is_delta",
