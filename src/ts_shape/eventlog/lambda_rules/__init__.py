@@ -13,7 +13,7 @@ Typical use::
         shape="point",
         archetype="threshold",
         template="maintenance.tool.high_torque",
-        trigger=TriggerSpec(expression="torque > 75 & state == 'run'"),
+        trigger=TriggerSpec(expression="(torque > 75) & (state == 'run')"),
         standard_attrs={
             "ts_shape:method": "lambda_threshold",
             "ts_shape:direction": "above",

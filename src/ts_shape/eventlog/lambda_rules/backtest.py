@@ -44,7 +44,18 @@ def run_backtest(
     objects: Mapping[str, object] | None = None,
     qualifiers: Mapping[str, str] | None = None,
 ) -> BacktestResult:
-    """Run ``detector`` over ``df`` and summarize hit counts."""
+    """Run ``detector`` over ``df`` and summarize hit counts.
+
+    Args:
+        detector: The registered lambda rule.
+        df: Input frame the rule is evaluated on.
+        objects: Object bindings passed to the event-log adapter.
+        qualifiers: Relation qualifier per object type.
+
+    Returns:
+        A :class:`BacktestResult` with the hit count, hits per severity and
+        per asset, and the full event log.
+    """
     log = detector.to_event_log(df, objects=objects, qualifiers=qualifiers)
 
     by_severity: dict[str, int] = {}

@@ -328,14 +328,15 @@ def test_interval_rule_coalesces(bearing_df):
         det = register_lambda_rule(spec)
         log = det.to_event_log(bearing_df)
 
-        # asset-A long window (4 samples × 15s = 45s gap → 45s) kept;
-        # asset-A short window (1 sample, 0s) dropped;
+        # asset-A long window (4 samples × 15s, until the next sample → 60s)
+        # kept; asset-A short window (1 sample → 15s) dropped;
         # asset-B has no hot samples → no events.
         assert len(log.events) == 1
         ev = log.events.iloc[0]
         assert ev[OCEL_ACTIVITY] == "maintenance.bearing.hot"
-        # Duration is 45s (4 samples spaced 15s apart → first to last = 45s).
-        assert ev[TS_DURATION_S] == pytest.approx(45.0)
+        # Half-open: the run lasts until the next sample after its last
+        # True row (row 6), like signals.intervals.
+        assert ev[TS_DURATION_S] == pytest.approx(60.0)
         assert ev["ts_shape:lifecycle_state"] == "hot"
         # Asset binding via source_uuid.
         assert set(log.relations[OCEL_OID]) == {"asset-A"}

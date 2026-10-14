@@ -59,7 +59,7 @@ unless you supply them.
 
 | Column | Type | Content |
 |---|---|---|
-| `ocel:eid` | string | stable id, a UUIDv5 of detector, timestamp and row |
+| `ocel:eid` | string | content-based id, a UUIDv5 of detector, `source_uuid`, timestamps, activity and row values |
 | `ocel:activity` | string | dotted activity name, for example `production.machine_state.run` |
 | `ocel:timestamp` | datetime, UTC | event time; the interval end for intervals |
 | `ts_shape:start_timestamp` | datetime, UTC | interval start; `NaT` for point events |
@@ -100,9 +100,10 @@ Objects get onto events in two ways:
 1. **Automatically.** Most label rules declare `produces_objects=("asset",)`;
    the adapter then creates an `asset` object from the `source_uuid` column.
 2. **By the caller**, with `objects=`. A binding value is a column name, a
-   callable `row -> oid`, a `pd.Series` aligned with the detector output, or a
-   non-string scalar used for every row. A string is always read as a column
-   name, so use a callable for a constant id.
+   callable `row -> oid`, a `pd.Series` aligned with the detector output by
+   index label (a length or label mismatch raises `ValueError`), or any other
+   value -- including a string that is not a column name -- used as the id for
+   every row. `None` links no object.
 
 ```python
 log = to_event_log(
@@ -110,7 +111,7 @@ log = to_event_log(
     detector="OutlierDetectionEvents.detect_outliers_zscore",
     objects={
         "batch": "batch_id",                 # column
-        "operator": lambda row: "op-7",      # constant id
+        "operator": "op-7",                  # not a column: constant id
         "station": lambda row: "line-1",
     },
     qualifiers={"batch": "during_batch", "operator": "operated_by"},

@@ -11,11 +11,13 @@ for the few detectors whose frame layout does not fit any standard shape.
 
 from __future__ import annotations
 
+import datetime as _dt
 import uuid as _uuid
 import warnings
 from collections.abc import Callable, Mapping
 from typing import SupportsFloat
 
+import numpy as np
 import pandas as pd
 
 from ..errors import DataQualityWarning
@@ -24,7 +26,7 @@ from ..utils.coerce import to_numeric_checked
 from ..utils.deprecation import renamed_kwargs
 from . import schema
 from .model import EventLog
-from .taxonomy import LabelRule, render_activity, resolve
+from .taxonomy import LabelRule, render_activity, resolve, template_fields
 
 # ----------------------------------------------------------------------------
 # Registry of optional per-method overrides
@@ -51,6 +53,18 @@ def register_adapter(
 
 
 def get_override(class_name: str, method_name: str) -> AdapterFn | None:
+    """Return the custom adapter registered for ``(class, method)``.
+
+    Deprecated class and method names resolve to their current names.
+
+    Args:
+        class_name: Detector class name, e.g. ``"MachineStateEvents"``.
+        method_name: Method name on that class.
+
+    Returns:
+        The registered adapter function, or None when the shape-driven
+        default applies.
+    """
     return _OVERRIDES.get(resolve(class_name, method_name))
 
 
@@ -69,16 +83,26 @@ def clear_overrides(
     * Both arguments: clear that specific ``(class, method)`` only.
     * Class name only: clear every override on that class.
 
-    Has no effect if the targeted entries are already absent.
+    Deprecated class and method names (e.g. ``CycleTimeTracking``) resolve
+    to their current names, like :func:`register_adapter`. Has no effect if
+    the targeted entries are already absent.
+
+    Args:
+        class_name: Detector class name; None clears every registration.
+        method_name: Method name; None clears every method of ``class_name``.
+
+    Raises:
+        ValueError: If ``method_name`` is given without ``class_name``.
     """
     if class_name is None and method_name is None:
         _OVERRIDES.clear()
         return
     if class_name is not None and method_name is not None:
-        _OVERRIDES.pop((class_name, method_name), None)
+        _OVERRIDES.pop(resolve(class_name, method_name), None)
         return
     if class_name is not None:
-        for key in [k for k in _OVERRIDES if k[0] == class_name]:
+        current = resolve(class_name, "")[0]
+        for key in [k for k in _OVERRIDES if k[0] == current]:
             _OVERRIDES.pop(key, None)
         return
     raise ValueError("pass class_name when method_name is given")
@@ -90,13 +114,83 @@ def clear_overrides(
 
 _NAMESPACE = _uuid.UUID("8a4d3f1c-9b2e-4d3a-8f1e-c0ffee123456")
 
+#: Timestamp of ``static`` shape events when ``to_event_log`` gets no
+#: ``timestamp``: the Unix epoch (UTC). A fixed value keeps event ids and
+#: timestamps reproducible across runs.
+STATIC_TIMESTAMP = pd.Timestamp("1970-01-01T00:00:00", tz="UTC")
 
-# Hash input for the eid of ``static`` shape rows (see ``adapt``).
-_STATIC_EID_SENTINEL = pd.Timestamp("1970-01-01T00:00:00", tz="UTC")
+
+def _stable(value: object) -> str:
+    """Render one cell for the event-id hash, the same for every dtype.
+
+    ``1``, ``1.0`` and ``Int64(1)`` render alike, missing values render as an
+    empty marker and timestamps are rendered in UTC, so the id depends on the
+    content of a row only -- not on its dtype or its position.
+    """
+    if value is None or value is pd.NA or value is pd.NaT:
+        return "\x00"
+    if isinstance(value, bool | np.bool_):
+        return "True" if value else "False"
+    if isinstance(value, int | np.integer):
+        return str(int(value))
+    if isinstance(value, float | np.floating):
+        f = float(value)
+        if np.isnan(f):
+            return "\x00"
+        return str(int(f)) if f.is_integer() and abs(f) < 2**63 else repr(f)
+    if isinstance(value, pd.Timestamp | np.datetime64 | _dt.datetime):
+        ts = pd.Timestamp(value)
+        if ts is pd.NaT:
+            return "\x00"
+        ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+        return str(ts.isoformat())
+    if isinstance(value, pd.Timedelta | np.timedelta64 | _dt.timedelta):
+        td = pd.Timedelta(value)
+        return "\x00" if td is pd.NaT else str(td.value)
+    return str(value)
 
 
-def _eid(detector: str, ts: pd.Timestamp, key: str) -> str:
-    return "e-" + str(_uuid.uuid5(_NAMESPACE, f"{detector}|{ts.isoformat()}|{key}"))
+def _content_eids(
+    detector: str,
+    frame: pd.DataFrame,
+    ts_start: pd.Series,
+    ts_end: pd.Series,
+    activities: pd.Series,
+    time_cols: set[str],
+) -> pd.Series:
+    """Deterministic, content-based event ids.
+
+    The id hashes the detector, the row's ``source_uuid``, its start / end
+    timestamps, the activity and every other column of the row (values and
+    payload). It does not depend on the row's position, so the same
+    detector on two machines never collides, re-running gives the same ids,
+    and concatenating identical logs in any row order deduplicates. Rows that
+    are identical in every column get an occurrence suffix.
+    """
+    n = len(frame)
+    payload_cols = sorted(str(c) for c in frame.columns if c not in time_cols)
+    rendered = [[f"{c}={_stable(v)}" for v in frame[c].tolist()] for c in payload_cols]
+    source = (
+        [_stable(v) for v in frame["source_uuid"].tolist()]
+        if "source_uuid" in frame.columns
+        else ["\x00"] * n
+    )
+    starts = [_stable(v) for v in ts_start.tolist()]
+    ends = [_stable(v) for v in ts_end.tolist()]
+    acts = [str(a) for a in activities.tolist()]
+    seen: dict[str, int] = {}
+    out: list[str] = []
+    for i in range(n):
+        key = "|".join(
+            [detector, source[i], starts[i], ends[i], acts[i]]
+            + [col[i] for col in rendered]
+        )
+        k = seen.get(key, 0)
+        seen[key] = k + 1
+        if k:
+            key = f"{key}|#{k}"
+        out.append("e-" + str(_uuid.uuid5(_NAMESPACE, key)))
+    return pd.Series(out, dtype="string")
 
 
 def _require_columns(
@@ -129,10 +223,13 @@ def _to_utc_ts(value: object) -> pd.Timestamp | pd._libs.tslibs.nattype.NaTType:
 
 
 def _classify_severity(value: object) -> str | None:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
+    if value is None or value is pd.NA or (isinstance(value, float) and pd.isna(value)):
         return None
     if isinstance(value, str):
         return value
+    if isinstance(value, bool | np.bool_):
+        # A boolean flag ("is severe"): True -> warn, False -> info.
+        return "warn" if value else "info"
     if not isinstance(value, SupportsFloat):
         return None
     try:
@@ -165,6 +262,7 @@ def _resolve_objects(
     frame: pd.DataFrame,
     rule: LabelRule,
     user_objects: Mapping[str, object] | None,
+    index: pd.Index,
 ) -> dict[str, pd.Series]:
     """Produce ``object_type -> Series-of-oids`` aligned with the frame rows.
 
@@ -174,30 +272,26 @@ def _resolve_objects(
     object types not declared by the adapter are treated as contextual
     annotations the caller knows about (e.g. "this outlier happened
     during batch B-2026-117").
+
+    ``frame`` has a fresh RangeIndex; ``index`` is the caller's original
+    index, used to align a Series binding by label.
     """
     declared = set(rule.produces_objects)
     bindings: dict[str, pd.Series] = {}
 
     def _bind(otype: str, value: object) -> None:
-        if isinstance(value, str):
-            if value not in frame.columns:
-                warnings.warn(
-                    f"object type {otype!r} is bound to column {value!r}, which "
-                    f"the detector frame does not have (columns: "
-                    f"{list(frame.columns)}); no {otype!r} objects are linked.",
-                    DataQualityWarning,
-                    stacklevel=4,
-                )
-                return
+        if value is None:
+            return
+        if isinstance(value, str) and value in frame.columns:
             bindings[otype] = frame[value].reset_index(drop=True).astype("string")
         elif callable(value):
             bindings[otype] = pd.Series(
                 [value(r) for r in frame.to_dict("records")], dtype="string"
             )
         elif isinstance(value, pd.Series):
-            bindings[otype] = value.reset_index(drop=True).astype("string")
+            bindings[otype] = _align_series(otype, value, index)
         else:
-            # Scalar broadcast.
+            # Scalar broadcast (a string that is not a column name included).
             bindings[otype] = pd.Series([str(value)] * len(frame), dtype="string")
 
     if user_objects:
@@ -213,6 +307,30 @@ def _resolve_objects(
 
     # Drop empty / all-NaN bindings.
     return {k: v for k, v in bindings.items() if not v.isna().all()}
+
+
+def _align_series(otype: str, value: pd.Series, index: pd.Index) -> pd.Series:
+    """A Series binding, aligned with the detector frame by index label."""
+    if value.index.equals(index):
+        return value.reset_index(drop=True).astype("string")
+    if len(value) != len(index):
+        raise ValueError(
+            f"objects[{otype!r}]: Series has {len(value)} rows, the detector "
+            f"frame has {len(index)}; pass a Series with the frame's index"
+        )
+    if not value.index.is_unique or not index.is_unique:
+        raise ValueError(
+            f"objects[{otype!r}]: Series index does not match the detector "
+            "frame's index and one of them has duplicate labels"
+        )
+    missing = index.difference(value.index)
+    if len(missing):
+        raise ValueError(
+            f"objects[{otype!r}]: Series index lacks {len(missing)} label(s) of "
+            f"the detector frame, e.g. {list(missing[:3])}; pass a Series with "
+            "the frame's index"
+        )
+    return value.reindex(index).reset_index(drop=True).astype("string")
 
 
 def _to_relations(
@@ -306,7 +424,7 @@ def _severity_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
         warnings.warn(
             "severity column contains values outside "
             f"{_SEVERITY_VOCABULARY}: {bad}; they are set to <NA>",
-            UserWarning,
+            DataQualityWarning,
             stacklevel=3,
         )
         out = out.mask(unknown)
@@ -371,59 +489,102 @@ def adapt(
     detector: str,
     objects: Mapping[str, object] | None = None,
     qualifiers: Mapping[str, str] | None = None,
+    timestamp: object | None = None,
 ) -> EventLog:
-    """Convert one detector's output into a canonical :class:`EventLog`."""
+    """Convert one detector's output into a canonical :class:`EventLog`.
+
+    Args:
+        frame: The detector frame.
+        rule: The label rule of the detector method.
+        detector: ``"ClassName.method_name"``, written to ``ts_shape:detector``.
+        objects: Object bindings (see :func:`~ts_shape.eventlog.to_event_log`).
+        qualifiers: Relation qualifier per object type.
+        timestamp: Timestamp of ``static`` shape events; default
+            :data:`STATIC_TIMESTAMP` (the Unix epoch, UTC).
+
+    Returns:
+        The event log; an empty one for an empty frame.
+    """
     if frame is None or len(frame) == 0:
         return EventLog()
 
+    original_index = frame.index
     frame = frame.reset_index(drop=True)
     n = len(frame)
+
+    # Bind objects on the full frame, so a Series binding aligns with the
+    # caller's index before any row is dropped.
+    object_bindings = _resolve_objects(frame, rule, objects, original_index)
 
     # Resolve timestamps based on shape. Detectors are required (post-#62) to
     # emit canonical time columns: ``systime`` for point, ``start``/``end``
     # for interval and summary. Missing columns indicate a malformed frame —
-    # we fail fast rather than silently substituting ``utcnow()``.
-    if rule.shape == "interval":
+    # we fail fast rather than silently substituting ``utcnow()``. Naive
+    # timestamps are read as UTC.
+    if rule.shape in ("interval", "summary"):
         _require_columns(frame, (COL_START, COL_END), rule.shape, detector)
         ts_end = frame[COL_END].apply(_to_utc_ts)
         ts_start = frame[COL_START].apply(_to_utc_ts)
-        duration = (ts_end - ts_start).dt.total_seconds()
         time_cols_used = {COL_START, COL_END}
+        backwards = (ts_end < ts_start).fillna(False).astype(bool)
+        if backwards.any():
+            warnings.warn(
+                f"{detector}: {int(backwards.sum())} row(s) end before they "
+                "start; they are dropped from the event log",
+                DataQualityWarning,
+                stacklevel=3,
+            )
+            keep = ~backwards.to_numpy()
+            frame = frame.loc[keep].reset_index(drop=True)
+            ts_end = ts_end.loc[keep].reset_index(drop=True)
+            ts_start = ts_start.loc[keep].reset_index(drop=True)
+            object_bindings = {
+                k: v.loc[keep].reset_index(drop=True)
+                for k, v in object_bindings.items()
+            }
+            n = len(frame)
+            if n == 0:
+                return EventLog()
+        duration = (
+            pd.to_datetime(ts_end, utc=True) - pd.to_datetime(ts_start, utc=True)
+        ).dt.total_seconds()
     elif rule.shape == "point":
         _require_columns(frame, (COL_SYSTIME,), rule.shape, detector)
         ts_end = frame[COL_SYSTIME].apply(_to_utc_ts)
         ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
         duration = pd.Series([float("nan")] * n, dtype="float64")
         time_cols_used = {COL_SYSTIME}
-    elif rule.shape == "summary":
-        _require_columns(frame, (COL_START, COL_END), rule.shape, detector)
-        ts_end = frame[COL_END].apply(_to_utc_ts)
-        ts_start = frame[COL_START].apply(_to_utc_ts)
-        duration = (ts_end - ts_start).dt.total_seconds()
-        time_cols_used = {COL_START, COL_END}
     elif rule.shape == "static":
-        # No natural time. Use a single fixed reference (now-UTC) for all rows.
-        now = pd.Timestamp.now("UTC")
-        ts_end = pd.Series([now] * n)
+        # No natural time: every row carries one explicit timestamp.
+        ts = _to_utc_ts(timestamp) if timestamp is not None else STATIC_TIMESTAMP
+        ts_end = pd.Series([ts] * n)
         ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
         duration = pd.Series([float("nan")] * n, dtype="float64")
         time_cols_used = set()
     else:
         raise ValueError(f"unknown shape {rule.shape!r}")
 
-    # Render activity name (template substitution per row).
+    # Render activity name (template substitution per row). A missing value
+    # in a template field renders as "unknown".
+    nan_fields = {
+        f: int(frame[f].isna().sum())
+        for f in template_fields(rule.template)
+        if f in frame.columns and frame[f].isna().any()
+    }
+    if nan_fields:
+        warnings.warn(
+            f"{detector}: activity template {rule.template!r} has missing "
+            f"values in {nan_fields}; they render as 'unknown'",
+            DataQualityWarning,
+            stacklevel=3,
+        )
     activities = frame.apply(lambda r: render_activity(rule, r), axis=1).astype(
         "string"
     )
 
-    # Build canonical event ids. Static rows carry "now" as their visible
-    # timestamp; hashing that made every re-export produce new eids, so they
-    # hash a fixed sentinel instead (same input -> same eids).
-    eid_ts = pd.Series([_STATIC_EID_SENTINEL] * n) if rule.shape == "static" else ts_end
-    eids = pd.Series(
-        [_eid(detector, eid_ts.iloc[i], f"{i}|{activities.iloc[i]}") for i in range(n)],
-        dtype="string",
-    )
+    # Content-based event ids: same row content -> same id, independent of
+    # row position.
+    eids = _content_eids(detector, frame, ts_start, ts_end, activities, time_cols_used)
 
     severity = _severity_series(frame, rule)
     value = _value_series(frame, rule)
@@ -473,7 +634,7 @@ def adapt(
     if drop_empty:
         events = events.drop(columns=drop_empty)
 
-    object_bindings = _resolve_objects(frame, rule, objects)
+    object_bindings = {k: v for k, v in object_bindings.items() if not v.isna().all()}
     objects_df, relations_df = _to_relations(eids, object_bindings, qualifiers)
 
     return EventLog(events=events, objects=objects_df, relations=relations_df)

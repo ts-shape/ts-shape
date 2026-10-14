@@ -8,6 +8,7 @@ import pytest
 from ts_shape.eventlog import (
     OCEL_ACTIVITY,
     OCEL_EID,
+    OCEL_OID,
     OCEL_TYPE,
     TS_DETECTOR,
     TS_DURATION_S,
@@ -220,19 +221,19 @@ def test_canonical_severity_column_is_bucketed_without_explicit_field():
     }, f"raw numeric leaked through bucketing: {buckets}"
 
 
-def test_object_binding_to_missing_column_warns(outlier_df):
-    from ts_shape.errors import DataQualityWarning
-
+def test_object_binding_to_non_column_string_is_broadcast(outlier_df):
+    """A string that is not a column name is a literal broadcast to every row."""
     frame = OutlierDetectionEvents(
         outlier_df, value_column="value_double"
     ).detect_outliers_zscore()
-    with pytest.warns(DataQualityWarning, match="'no_such_column'"):
-        log = to_event_log(
-            frame,
-            detector="OutlierDetectionEvents.detect_outliers_zscore",
-            objects={"batch": "no_such_column"},
-        )
-    assert "batch" not in set(log.objects[OCEL_TYPE])
+    log = to_event_log(
+        frame,
+        detector="OutlierDetectionEvents.detect_outliers_zscore",
+        objects={"batch": "B-17"},
+    )
+    batch = log.relations[log.relations[OCEL_TYPE] == "batch"]
+    assert set(batch[OCEL_OID]) == {"B-17"}
+    assert len(batch) == len(log.events)
 
 
 def test_non_numeric_value_column_warns(outlier_df):

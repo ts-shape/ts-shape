@@ -35,6 +35,20 @@ def to_event_log_xes(
     ``lifecycle="two_row"`` — interval events expand into a ``start`` row
     (using ``ts_shape:start_timestamp``) and a ``complete`` row, paired by
     ``concept:instance``.
+
+    Args:
+        eventlog: The event log to flatten.
+        case_object_type: Object type whose objects become the traces.
+        lifecycle: ``"single"`` or ``"two_row"``.
+
+    Returns:
+        DataFrame with ``case:concept:name``, ``concept:name``,
+        ``time:timestamp``, ``lifecycle:transition`` (and ``org:resource``
+        when the log links operators), sorted by case and time.
+
+    Raises:
+        ValueError: When the log has no objects, no object of
+            ``case_object_type``, or ``lifecycle`` is unknown.
     """
     if not eventlog.has_objects:
         raise ValueError(

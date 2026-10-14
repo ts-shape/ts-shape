@@ -16,9 +16,11 @@ The rule's `shape` decides where the event time comes from:
 | `point` | `systime` | `systime` | `NaT`, `NaN` |
 | `interval` | `start`, `end` | `end` | `start`, `end - start` in seconds |
 | `summary` | `start`, `end` | `end` | `start`, `end - start` in seconds |
-| `static` | none | the time of conversion (UTC), the same for all rows | `NaT`, `NaN` |
+| `static` | none | `to_event_log(..., timestamp=...)`, the same for all rows; default the Unix epoch (`1970-01-01T00:00Z`) | `NaT`, `NaN` |
 
 A frame without the required columns raises an error naming the detector.
+Naive timestamps are read as UTC. Interval and summary rows whose `end` is
+before their `start` are dropped with a `DataQualityWarning`.
 The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
 
 ## LabelRule fields
@@ -29,7 +31,7 @@ The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
 | `pack` | required | stored as `ts_shape:pack` and used as prefix of the detector's own columns |
 | `shape` | `"point"` | see above |
 | `produces_objects` | `("asset",)` | object types created automatically from standard columns (`source_uuid` becomes an `asset`); `()` for none |
-| `severity_field` | `None` | numeric column bucketed into `ts_shape:severity`; without it a `severity` column with `info` / `warn` / `critical` is passed through |
+| `severity_field` | `None` | numeric column bucketed into `ts_shape:severity` (a boolean column maps `True` to `warn`, `False` to `info`); without it a `severity` column with `info` / `warn` / `critical` is passed through |
 | `value_field` | `None` | column used as `ts_shape:value`; without it the first of `value`, `value_double`, `value_integer` |
 | `drop_fields` | `()` | output columns not copied into the event log |
 | `standard_attrs` | `{}` | mapping to the [standard attribute keys](taxonomy.md#standard-attribute-extension) |
@@ -42,9 +44,12 @@ The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
 2. Uses a custom adapter if one is registered for that method.
 3. Otherwise runs the generic adapter:
     - takes the timestamps according to the shape;
-    - renders the activity from the template;
-    - builds a stable `ocel:eid` (a UUIDv5 of detector, timestamp and row), so
-      the same input always gives the same ids;
+    - renders the activity from the template (a missing value renders as
+      `unknown`, with a `DataQualityWarning`);
+    - builds a content-based `ocel:eid`: a UUIDv5 of the detector, the row's
+      `source_uuid`, its timestamps, the activity and every other column of
+      the row. The same input always gives the same ids, independent of row
+      order, and the same detector on two machines does not collide;
     - fills `ts_shape:severity`, `ts_shape:value` and the standard attributes;
     - copies every other output column as `<pack>:<column>` and drops such
       columns when they are completely empty;

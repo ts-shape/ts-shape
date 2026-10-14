@@ -14,7 +14,8 @@ A :class:`LabelRule` describes:
   ``"point"``      → single-timestamp event (`systime` or first datetime),
   ``"interval"``   → has ``start``/``end`` columns,
   ``"summary"``    → a windowed/aggregate row (uses end column or any datetime),
-  ``"static"``     → no time semantics; uses ``ts_shape:fallback_now``.
+  ``"static"``     → no time semantics; stamped with the ``timestamp``
+  passed to :func:`~ts_shape.eventlog.to_event_log` (default: the Unix epoch).
 * ``produces_objects`` — object types the adapter *auto-extracts* from
   the legacy DataFrame's standard columns (e.g. ``source_uuid -> asset``).
   Callers can always attach additional contextual object types (batch,
@@ -25,9 +26,13 @@ A :class:`LabelRule` describes:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
+
+import numpy as np
+import pandas as pd
 
 
 @dataclass(frozen=True)
@@ -2698,11 +2703,33 @@ def get(class_name: str, method_name: str) -> LabelRule | None:
     return REGISTRY.get(resolve(class_name, method_name))
 
 
+def _is_missing(value: object) -> bool:
+    """True for None / NaN / NA / NaT scalars (never for containers)."""
+    if value is None or value is pd.NA or value is pd.NaT:
+        return True
+    if isinstance(value, float | np.floating):
+        return bool(np.isnan(value))
+    return False
+
+
+def template_fields(template: str) -> list[str]:
+    """Names of the ``{field}`` placeholders in an activity template."""
+    return re.findall(r"\{([^{}]+)\}", template)
+
+
 def render_activity(rule: LabelRule, row: Mapping[str, object]) -> str:
     """Substitute ``{field}`` placeholders in ``rule.template`` from ``row``.
 
-    Missing fields render as ``unknown`` rather than raising — adapters
-    should not crash on partial input data.
+    Missing fields and missing values (``None``, ``NaN``, ``<NA>``) render as
+    ``unknown`` rather than raising — adapters should not crash on partial
+    input data.
+
+    Args:
+        rule: The label rule whose ``template`` is rendered.
+        row: One detector-frame row (a mapping or a ``pd.Series``).
+
+    Returns:
+        The activity name.
     """
     template = rule.template
     if "{" not in template:
@@ -2727,6 +2754,8 @@ def render_activity(rule: LabelRule, row: Mapping[str, object]) -> str:
                 val = row[field_name]
             except (KeyError, TypeError):
                 val = "unknown"
+        if _is_missing(val):
+            val = "unknown"
         parts.append(str(val))
         i = k + 1
     return "".join(parts)

@@ -112,18 +112,31 @@ for example between tests or when reloading a notebook.
 Trigger expressions are a small subset of Python, parsed with
 `ast.parse(mode="eval")` and checked against an allowlist:
 
-- comparisons: `<`, `<=`, `>`, `>=`, `==`, `!=`, `in`, `not in`;
-- element-wise logic: `&`, `|`, `~`;
+- comparisons: `<`, `<=`, `>`, `>=`, `==`, `!=`;
+- element-wise logic: `&` (and), `|` (or), `~` (not);
+- membership: `column.isin(['run', 'setup'])`;
 - arithmetic: `+`, `-`, `*`, `/`, `%`, unary `-` and `+`;
 - constants and column names;
-- the functions `abs`, `min` and `max`.
+- the function `abs`, and `min` / `max` over constants.
 
-Anything else (imports, attribute access, indexing, other calls, lambdas,
-comprehensions) raises `UnsafeExpression` when the rule is compiled.
+Anything else (imports, other attribute access, indexing, other calls,
+lambdas, comprehensions) raises `UnsafeExpression` when the rule is compiled.
+So do Python's `and`, `or`, `not`, `in` / `not in`, chained comparisons and
+`min` / `max` over columns: on a column they are not element-wise, and the
+error message points to `&`, `|`, `~` and `.isin(...)`. An expression that
+does not give True / False per row (for example `torque * 2`) is rejected
+too, and a name that is not a column of the frame raises
+`ColumnNotFoundError` when the rule runs. Rules are compiled when they are
+registered; `load_dicts` registers a batch all or nothing.
 
 `&` and `|` bind tighter than comparisons, as in `DataFrame.query`, so put
 each comparison in parentheses: `(torque > 75) & (state == 'run')`, not
-`torque > 75 & state == 'run'`.
+`torque > 75 & state == 'run'` (rejected as a chained comparison).
+
+Interval rules join consecutive True rows (per `group_by`) into one event
+that lasts until the next sample after the last True row, half-open like
+`ts_shape.signals.primitives.intervals`; a run at the end of the data ends at
+its last sample.
 
 ## RuleSpec fields
 
