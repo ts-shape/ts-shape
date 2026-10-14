@@ -237,7 +237,7 @@ def demo_string_statistics(df: pd.DataFrame):
 
     # Top N most common
     print(f"\n  Top 3 most common recipes:")
-    top3 = StringStatistics.most_common_n_strings(recipe_df, n=3, column_name=col)
+    top3 = StringStatistics.most_common_n_strings(recipe_df, n=3, value_column=col)
     for name, count in top3.items():
         print(f"    {name}: {count}")
 
@@ -347,7 +347,7 @@ def demo_time_grouped_statistics(df: pd.DataFrame):
     # Single statistic: 10-minute mean
     print("\n--- 10-minute mean temperature ---")
     mean_10m = TimeGroupedStatistics.calculate_statistic(
-        temp_df, time_column="systime", value_column="value_double", freq="10min", stat_method="mean"
+        temp_df, time_column="systime", value_column="value_double", window="10min", stat_method="mean"
     )
     print(mean_10m.head(8).to_string())
 
@@ -357,7 +357,7 @@ def demo_time_grouped_statistics(df: pd.DataFrame):
         temp_df,
         time_column="systime",
         value_column="value_double",
-        freq="10min",
+        window="10min",
         stat_methods=["mean", "min", "max", "range"],
     )
     print(multi.head(8).to_string())
@@ -365,7 +365,7 @@ def demo_time_grouped_statistics(df: pd.DataFrame):
     # Hourly difference (last - first)
     print("\n--- Hourly difference (last - first) ---")
     diff_h = TimeGroupedStatistics.calculate_statistic(
-        temp_df, time_column="systime", value_column="value_double", freq="h", stat_method="diff"
+        temp_df, time_column="systime", value_column="value_double", window="h", stat_method="diff"
     )
     print(diff_h.to_string())
 
@@ -373,7 +373,7 @@ def demo_time_grouped_statistics(df: pd.DataFrame):
     print("\n--- 10-minute coefficient of variation (custom func) ---")
     cv_func = lambda x: x.std() / x.mean() if x.mean() != 0 else 0
     cv_10m = TimeGroupedStatistics.calculate_custom_func(
-        temp_df, time_column="systime", value_column="value_double", freq="10min", func=cv_func
+        temp_df, time_column="systime", value_column="value_double", window="10min", func=cv_func
     )
     print(cv_10m.head(8).to_string())
     print()
@@ -465,8 +465,8 @@ def demo_cycle_processor(df: pd.DataFrame):
     processor = CycleDataProcessor(
         cycles_df=complete_cycles,
         values_df=temp_df,
-        cycle_uuid_col="cycle_uuid",
-        systime_col="systime",
+        cycle_uuid_column="cycle_uuid",
+        time_column="systime",
     )
 
     # --- Merge values with cycles ---
@@ -496,7 +496,7 @@ def demo_cycle_processor(df: pd.DataFrame):
     # --- Compare cycles against a reference ---
     print("\n--- Compare cycles against first cycle ---")
     ref_uuid = complete_cycles["cycle_uuid"].iloc[0]
-    comparison = processor.compare_cycles(reference_cycle_uuid=ref_uuid, metric="value_double")
+    comparison = processor.compare_cycles(reference_cycle_uuid=ref_uuid, value_column="value_double")
     if not comparison.empty:
         comp_display = comparison[["cycle_uuid", "is_reference", "mean_value", "deviation_from_ref", "deviation_pct"]].copy()
         comp_display["cycle_uuid"] = comp_display["cycle_uuid"].str[:12] + "..."
@@ -504,7 +504,7 @@ def demo_cycle_processor(df: pd.DataFrame):
 
     # --- Identify golden cycles ---
     print("\n--- Identify golden cycles (low variability) ---")
-    golden = processor.identify_golden_cycles(metric="value_double", method="low_variability", top_n=2)
+    golden = processor.identify_golden_cycles(value_column="value_double", method="low_variability", top_n=2)
     for i, gc in enumerate(golden):
         print(f"  #{i+1}: {gc[:12]}...")
 

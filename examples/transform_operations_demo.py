@@ -129,14 +129,14 @@ def demo_numeric_filters(df: pd.DataFrame):
     print(f"\nConveyor speed rows: {len(speed_df)}")
 
     # Match a specific RPM value
-    stopped = IntegerFilter.filter_value_integer_match(speed_df, column_name="value_integer", integer_value=0)
+    stopped = IntegerFilter.filter_value_integer_match(speed_df, value_column="value_integer", integer_value=0)
     print(f"  Conveyor stopped (RPM=0): {len(stopped)} rows")
 
-    running = IntegerFilter.filter_value_integer_not_match(speed_df, column_name="value_integer", integer_value=0)
+    running = IntegerFilter.filter_value_integer_not_match(speed_df, value_column="value_integer", integer_value=0)
     print(f"  Conveyor running (RPM!=0): {len(running)} rows")
 
     # Range filter
-    in_range = IntegerFilter.filter_value_integer_between(speed_df, column_name="value_integer", min_value=50, max_value=70)
+    in_range = IntegerFilter.filter_value_integer_between(speed_df, value_column="value_integer", min_value=50, max_value=70)
     print(f"  RPM between 50 and 70: {len(in_range)} rows")
 
     # --- Double filters ---
@@ -144,11 +144,11 @@ def demo_numeric_filters(df: pd.DataFrame):
     print(f"\nFill weight rows: {len(weight_df)}")
 
     # Remove NaN weights
-    valid_weights = DoubleFilter.filter_nan_value_double(weight_df, column_name="value_double")
+    valid_weights = DoubleFilter.filter_nan_value_double(weight_df, value_column="value_double")
     print(f"  Valid (non-NaN) weights: {len(valid_weights)} rows")
 
     # Filter weights within an acceptable range
-    in_spec = DoubleFilter.filter_value_double_between(valid_weights, column_name="value_double", min_value=495.0, max_value=505.0)
+    in_spec = DoubleFilter.filter_value_double_between(valid_weights, value_column="value_double", min_value=495.0, max_value=505.0)
     print(f"  Weights in spec (495-505 g): {len(in_spec)} rows")
     print()
 
@@ -163,29 +163,29 @@ def demo_string_filters(df: pd.DataFrame):
     print(f"\nProduct label rows: {len(label_df)}")
 
     # Remove NAs
-    clean = StringFilter.filter_na_value_string(label_df, column_name="value_string")
+    clean = StringFilter.filter_na_value_string(label_df, value_column="value_string")
     print(f"  Non-null labels: {len(clean)}")
 
     # Exact match
-    sku_a = StringFilter.filter_value_string_match(clean, string_value="SKU-A100", column_name="value_string")
+    sku_a = StringFilter.filter_value_string_match(clean, string_value="SKU-A100", value_column="value_string")
     print(f"  SKU-A100 rows: {len(sku_a)}")
 
     # Not match
-    not_a = StringFilter.filter_value_string_not_match(clean, string_value="SKU-A100", column_name="value_string")
+    not_a = StringFilter.filter_value_string_not_match(clean, string_value="SKU-A100", value_column="value_string")
     print(f"  Not SKU-A100: {len(not_a)}")
 
     # Substring contains
-    b_products = StringFilter.filter_string_contains(clean, substring="B200", column_name="value_string")
+    b_products = StringFilter.filter_string_contains(clean, substring="B200", value_column="value_string")
     print(f"  Labels containing 'B200': {len(b_products)}")
 
     # Detect label changes (e.g., product changeover)
-    changes = StringFilter.detect_changes_in_string(clean, column_name="value_string")
+    changes = StringFilter.detect_changes_in_string(clean, value_column="value_string")
     print(f"  Label change events: {len(changes)}")
 
     # Regex clean: strip the alphabetic prefix to keep only the numeric part
     cleaned = StringFilter.regex_clean_value_string(
         clean.copy(),
-        column_name="value_string",
+        value_column="value_string",
         regex_pattern=r"SKU-[A-Z]",
         replacement="ITEM-",
     )
@@ -209,10 +209,10 @@ def demo_boolean_filters(df: pd.DataFrame):
     print(f"  is_delta=False: {len(delta_false)} rows")
 
     # Boolean edge detection: rising (False -> True) and falling (True -> False)
-    falling = BooleanFilter.filter_falling_value_bool(seal_df.copy(), column_name="value_bool")
+    falling = BooleanFilter.filter_falling_value_bool(seal_df.copy(), value_column="value_bool")
     print(f"  Falling edges (seal lost): {len(falling)} rows")
 
-    raising = BooleanFilter.filter_raising_value_bool(seal_df.copy(), column_name="value_bool")
+    raising = BooleanFilter.filter_raising_value_bool(seal_df.copy(), value_column="value_bool")
     print(f"  Rising edges (seal restored): {len(raising)} rows")
     print()
 
@@ -230,31 +230,31 @@ def demo_datetime_filters(df: pd.DataFrame):
     print(f"Time range: {df['systime'].min()} to {df['systime'].max()}")
 
     # Filter rows after a specific date/time
-    after = DateTimeFilter.filter_after_datetime(df, column_name="systime", datetime="2025-07-01 08:30:00")
+    after = DateTimeFilter.filter_after_datetime(df, time_column="systime", datetime="2025-07-01 08:30:00")
     print(f"  After 08:30:00: {len(after)} rows")
 
     # Filter rows before a specific date/time
-    before = DateTimeFilter.filter_before_datetime(df, column_name="systime", datetime="2025-07-01 08:15:00")
+    before = DateTimeFilter.filter_before_datetime(df, time_column="systime", datetime="2025-07-01 08:15:00")
     print(f"  Before 08:15:00: {len(before)} rows")
 
     # Filter between two datetimes
     between = DateTimeFilter.filter_between_datetimes(
         df,
-        column_name="systime",
+        time_column="systime",
         start_datetime="2025-07-01 08:10:00",
         end_datetime="2025-07-01 08:20:00",
     )
     print(f"  Between 08:10 and 08:20: {len(between)} rows")
 
     # Date-level filters
-    after_date = DateTimeFilter.filter_after_date(df, column_name="systime", date="2025-06-30")
+    after_date = DateTimeFilter.filter_after_date(df, time_column="systime", date="2025-06-30")
     print(f"  After 2025-06-30: {len(after_date)} rows (should be all)")
 
-    before_date = DateTimeFilter.filter_before_date(df, column_name="systime", date="2025-07-02")
+    before_date = DateTimeFilter.filter_before_date(df, time_column="systime", date="2025-07-02")
     print(f"  Before 2025-07-02: {len(before_date)} rows (should be all)")
 
     between_dates = DateTimeFilter.filter_between_dates(
-        df, column_name="systime", start_date="2025-06-30", end_date="2025-07-02"
+        df, time_column="systime", start_date="2025-06-30", end_date="2025-07-02"
     )
     print(f"  Between 2025-06-30 and 2025-07-02: {len(between_dates)} rows")
     print()
@@ -271,13 +271,13 @@ def demo_numeric_calc(df: pd.DataFrame):
     print(f"\nOriginal RPM sum: {original_sum}")
 
     # Scale: convert RPM to radians/sec (multiply by 2*pi/60)
-    scaled = IntegerCalc.scale_column(speed_df.copy(), column_name="value_integer", factor=2 * np.pi / 60)
+    scaled = IntegerCalc.scale_column(speed_df.copy(), value_column="value_integer", factor=2 * np.pi / 60)
     print(f"  After scale (RPM -> rad/s), first 3 values: {[round(v, 4) for v in scaled['value_integer'].head(3).tolist()]}")
 
     # Offset: add a calibration offset of +2 RPM
     offset = IntegerCalc.offset_column(
         df[df["uuid"] == "conveyor_speed"][["systime", "uuid", "value_integer"]].copy(),
-        column_name="value_integer",
+        value_column="value_integer",
         offset_value=2,
     )
     print(f"  After offset +2, first 3 values: {offset['value_integer'].head(3).tolist()}")
@@ -285,7 +285,7 @@ def demo_numeric_calc(df: pd.DataFrame):
     # Divide: convert RPM to RPS
     divided = IntegerCalc.divide_column(
         df[df["uuid"] == "conveyor_speed"][["systime", "uuid", "value_integer"]].copy(),
-        column_name="value_integer",
+        value_column="value_integer",
         divisor=60,
     )
     print(f"  After divide by 60 (RPM -> RPS), first 3 values: {divided['value_integer'].head(3).tolist()}")
@@ -293,7 +293,7 @@ def demo_numeric_calc(df: pd.DataFrame):
     # Combined multiply + add (linear transform: y = mx + b)
     combined = IntegerCalc.calculate_with_fixed_factors(
         df[df["uuid"] == "conveyor_speed"][["systime", "uuid", "value_integer"]].copy(),
-        column_name="value_integer",
+        value_column="value_integer",
         multiply_factor=1.05,
         add_factor=-3,
     )
@@ -302,7 +302,7 @@ def demo_numeric_calc(df: pd.DataFrame):
     # Power: square the values
     powered = IntegerCalc.power_column(
         df[df["uuid"] == "conveyor_speed"][["systime", "uuid", "value_integer"]].copy(),
-        column_name="value_integer",
+        value_column="value_integer",
         power_value=2,
     )
     print(f"  After power(2), first 3 values: {powered['value_integer'].head(3).tolist()}")
@@ -310,7 +310,7 @@ def demo_numeric_calc(df: pd.DataFrame):
     # Modulus
     modded = IntegerCalc.mod_column(
         df[df["uuid"] == "conveyor_speed"][["systime", "uuid", "value_integer"]].copy(),
-        column_name="value_integer",
+        value_column="value_integer",
         mod_value=7,
     )
     print(f"  After mod 7, first 3 values: {modded['value_integer'].head(3).tolist()}")
@@ -330,7 +330,7 @@ def demo_lambda_processor(df: pd.DataFrame):
     # Apply a lambda to convert grams to kilograms
     kg_df = LambdaProcessor.apply_function(
         weight_df.copy(),
-        column_name="value_double",
+        value_column="value_double",
         func=lambda x: x / 1000.0,
     )
     print(f"  After g -> kg, first 3: {[round(v, 5) for v in kg_df['value_double'].head(3).tolist()]}")
@@ -338,7 +338,7 @@ def demo_lambda_processor(df: pd.DataFrame):
     # Apply numpy log transform
     log_df = LambdaProcessor.apply_function(
         weight_df.copy(),
-        column_name="value_double",
+        value_column="value_double",
         func=lambda x: np.log(x),
     )
     print(f"  After log transform, first 3: {[round(v, 4) for v in log_df['value_double'].head(3).tolist()]}")
@@ -346,7 +346,7 @@ def demo_lambda_processor(df: pd.DataFrame):
     # Apply a clipping function
     clipped = LambdaProcessor.apply_function(
         weight_df.copy(),
-        column_name="value_double",
+        value_column="value_double",
         func=lambda x: np.clip(x, 497.0, 503.0),
     )
     print(f"  After clip [497, 503], min={clipped['value_double'].min():.1f}, max={clipped['value_double'].max():.1f}")

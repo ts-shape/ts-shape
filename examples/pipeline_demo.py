@@ -37,7 +37,7 @@ def demo_sensor_quality() -> None:
     pipe = (
         Pipeline(name="sensor-quality")
         # Transform: scale raw counts into engineering units (replaces signal).
-        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=0.1)
+        .transform(IntegerCalc, "scale_column", value_column="value_double", factor=0.1)
         # Detect: outliers on the scaled signal (branch-off result).
         .detect(
             OutlierDetectionEvents,
