@@ -78,6 +78,37 @@ Each `*_minutes` or `*_s` duration column now has a `*_seconds` twin right after
 - **Degenerate inputs:** duplicate timestamps give `NaN` rates (with a
   warning) instead of `inf`; `detect_oscillation(window<=0)` raises.
 
+### Cycles, segments and objects
+
+These were verified against hand-built scenarios; the fixes change results:
+
+- **Cycles** (`CycleExtractor`):
+  - back-to-back cycles sharing a timestamp come out correctly;
+  - a second start while a cycle is open aborts it (`is_complete=False`) instead of
+    producing overlapping cycles;
+  - a held start pulse is one start;
+  - value/state-change cycles read only `start_uuid`;
+  - a cycle already running at the first sample has `is_complete=False`;
+  - `cycle_uuid` is deterministic (same data, same id).
+- **Cycle data** (`CycleDataProcessor`): every method uses `start <= t < end`. A
+  sample exactly at a cycle end belongs to the next cycle, not to both; open cycles
+  get no samples. `identify_golden_cycles(method="target_value")` needs `target=`.
+- **Segments** (`SegmentExtractor` / `SegmentProcessor`):
+  - the last segment runs to the end of the data (it had zero length);
+  - `apply_ranges` cuts half-open, so boundary samples are no longer duplicated;
+  - the first sample of an empty-id gap is no longer given to the previous order.
+- **`segment_by_cut`:** material is assigned to the piece the next cut finishes. Before,
+  it was one piece off and piece 1 got two pieces' worth. Material after the last
+  cut has `piece_id` `<NA>`.
+- **Objects** (`object_intervals` / `detect_objects`):
+  - an empty or NaN reading ends a presence;
+  - a change-encoded id stays present to the end of the data;
+  - at a hand-over instant only the incoming object gets the event;
+  - a child is `part_of` only the parent it overlaps longest;
+  - `min_duration` measures the presence, not first-to-last sample;
+  - use `to_event_log_ocel(log, pm4py=True)` for pm4py export.
+- **`production_dates`:** correct after a DST change (it was one day off).
+
 ## October 2026, round 5: correct by default
 
 The correct behavior is now the default, and results are returned at full

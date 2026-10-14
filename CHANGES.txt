@@ -32,6 +32,16 @@ test: reference tests for SPC rules 1-8, Cp/Cpk (Montgomery), GUM,
   Weibull (Lieblein-Zelen) and energy values; property tests; harness
   dtypes check; examples/ and docstring examples run in the test suite.
 types: strict mypy flags for the whole library, no exemptions.
+fix: cycles, period cutters and object detection verified against
+  hand-built scenarios. Cycles: correct pairing for back-to-back and
+  nested markers, deterministic cycle_uuid, one half-open boundary rule.
+  Segments: the last period keeps its data, boundary samples are cut
+  once, segment_by_cut is no longer one piece off. Objects: empty
+  readings end a presence, change-encoded ids last to the data end,
+  hand-over events link once, pm4py export round-trips. All three are
+  10-100x faster.
+docs: the site is cut from 139 to 106 pages (14k to 6k lines) and
+  rewritten in plain language; every example runs.
 
 # October 14, 2026 (round 5)
 Correct by default. Results change wherever data has counter resets,
