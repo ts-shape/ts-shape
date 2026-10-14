@@ -38,3 +38,22 @@ def test_resampled_summary_windows_contain_their_data(window):
         inside = df[(df.systime >= row.start) & (df.systime < row.end)]
         assert len(inside), f"{window}: window {row.start}..{row.end} holds no samples"
     assert out["start"].min() <= t[0] < out["end"].iloc[0]
+
+
+def test_floor_local_across_fall_back_keeps_each_offset():
+    from ts_shape.events._windows import floor_local
+
+    t = pd.Series(
+        pd.date_range("2024-10-27 00:00", periods=8, freq="30min", tz="UTC").tz_convert(
+            "Europe/Berlin"
+        )
+    )
+    with pytest.raises(ValueError):
+        t.dt.floor("1h")  # what floor_local replaces
+    out = floor_local(t, "1h")
+    assert out.iloc[1] == pd.Timestamp("2024-10-27 02:00+02:00")
+    assert out.iloc[3] == pd.Timestamp("2024-10-27 02:00+01:00")
+    assert (out <= t).all()
+    assert floor_local(t.dt.tz_localize(None), "1h").equals(
+        t.dt.tz_localize(None).dt.floor("1h")
+    )

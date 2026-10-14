@@ -40,6 +40,7 @@ __all__ = [
     "add_window_bounds",
     "data_tz",
     "finish_events",
+    "floor_local",
     "window_bounds",
     "window_summary",
     "with_window_bounds",
@@ -50,6 +51,33 @@ WINDOW_COLS: list[str] = [COL_START, COL_END, COL_DURATION_S]
 _RIGHT_LABELED = {"ME", "YE", "QE", "BME", "BYE", "BQE", "W", "M", "A", "Y", "Q"}
 
 Window: TypeAlias = "str | pd.Timedelta | pd.DateOffset"
+
+
+def floor_local(times: pd.Series, freq: Window) -> pd.Series:
+    """``times.dt.floor(freq)`` that also works across a DST change.
+
+    Flooring local wall-clock times fails on the repeated hour of a
+    fall-back change (``"Cannot infer dst time"``) and can land in the
+    skipped hour of a spring-forward change. Each floored time keeps the
+    UTC offset of the time it came from; a time in the skipped hour moves
+    back to the last valid instant.
+
+    Args:
+        times: Datetime Series, tz-naive or tz-aware.
+        freq: Fixed frequency (``"15min"``, ``"1h"``, ``"1D"``, ...).
+
+    Returns:
+        The floored Series, in the same time zone.
+    """
+    try:
+        return times.dt.floor(freq)
+    except ValueError:
+        if times.dt.tz is None:
+            raise
+    is_dst = times.map(lambda t: bool(t.dst()) if pd.notna(t) else False)
+    return times.dt.floor(
+        freq, ambiguous=is_dst.to_numpy(dtype=bool), nonexistent="shift_backward"
+    )
 
 
 def _right_labeled(window: Window) -> bool:
