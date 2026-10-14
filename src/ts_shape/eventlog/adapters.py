@@ -20,7 +20,7 @@ from typing import SupportsFloat
 import numpy as np
 import pandas as pd
 
-from ..errors import DataQualityWarning
+from ..errors import ColumnNotFoundError, DataQualityWarning
 from ..events._output import COL_END, COL_START, COL_SYSTIME
 from ..utils.coerce import to_numeric_checked
 from ..utils.deprecation import renamed_kwargs
@@ -193,17 +193,28 @@ def _content_eids(
     return pd.Series(out, dtype="string")
 
 
+class MissingCanonicalColumn(ColumnNotFoundError, KeyError):
+    """A detector frame lacks a time column of its shape.
+
+    A :class:`~ts_shape.errors.ColumnNotFoundError` like every missing column,
+    and a ``KeyError`` for code written against earlier releases.
+    """
+
+    def __str__(self) -> str:
+        return str(self.args[0]) if self.args else ""
+
+
 def _require_columns(
     df: pd.DataFrame, cols: tuple[str, ...], shape: str, detector: str
 ) -> None:
-    """Raise KeyError if any canonical time column for ``shape`` is missing.
+    """Raise if any canonical time column for ``shape`` is missing.
 
     Post-#62 every detector is guaranteed to emit these columns. A missing
     column means the caller fed a malformed frame.
     """
     missing = [c for c in cols if c not in df.columns]
     if missing:
-        raise KeyError(
+        raise MissingCanonicalColumn(
             f"detector {detector!r} produced shape {shape!r} but is missing "
             f"canonical column(s) {missing}; got {list(df.columns)}"
         )
