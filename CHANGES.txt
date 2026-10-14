@@ -1,3 +1,33 @@
+# October 14, 2026 (round 6)
+Maturity of the existing functions: same numbers for any data source, fast
+on real data sizes, proven against references, traceable outputs.
+fix: results no longer depend on how the data was loaded. Nullable,
+  pyarrow and text-number columns are converted once (utils.normalize):
+  52 methods gave different numbers (counter totals counted the first
+  reading as production, downtime per shift was 0) and 172 crashed.
+  Rows with the same timestamp are ordered by uuid.
+perf: shift reports, maintenance trend fits, routing, warmup and stockout
+  methods are vectorized: 10-300x faster on 200k rows (nok_by_shift
+  59 s -> 1.3 s, remaining_useful_life 55 s -> 0.2 s).
+fix: DST fall-back nights no longer crash window flooring (floor_local);
+  duplicate timestamps no longer give infinite rates; single-row and
+  constant inputs, all-null/boolean string columns, and window <= 0 in
+  oscillation detection are handled.
+fix: capability trending uses the spec in force in each window; energy
+  methods with weekly/month-end windows report the real window (and
+  energy_per_unit / carbon_intensity_per_unit no longer return empty or
+  raise); downtime and shift handover read boolean run signals (was 100%
+  downtime); flow_constraint_analytics applies its thresholds;
+  from_shift_data matches string dates; detect_outlier_sensor needs
+  three sensors to name an outlier.
+change: KPIs carry their basis (run/planned/excluded seconds, parts,
+  resets); every duration has a *_seconds column; seven summary methods
+  return a DataFrame (as_frame=False deprecated). See docs/migration.md.
+test: reference tests for SPC rules 1-8, Cp/Cpk (Montgomery), GUM,
+  Weibull (Lieblein-Zelen) and energy values; property tests; harness
+  dtypes check; examples/ and docstring examples run in the test suite.
+types: strict mypy flags for the whole library, no exemptions.
+
 # October 14, 2026 (round 5)
 Correct by default. Results change wherever data has counter resets,
 change-encoded signals, uneven sampling or several signals per frame; the

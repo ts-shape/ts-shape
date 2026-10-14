@@ -52,22 +52,30 @@ For a future major release: remove the deprecated aliases (they warn since 0.0.6
 
 ## W3 — Proven correctness ✅ (harness started)
 - A registry-wide invariant harness (`tests/invariants`) runs every detector
-  method on empty input, on tz-aware input, and with an unrelated extra
-  signal. It is pinned to a ratchet baseline.
-- Property-based tests (hypothesis) cover the primitives.
+  method on empty input, on tz-aware input, with an unrelated extra
+  signal, and with nullable / pyarrow / text-number dtypes (same result
+  required). It is pinned to a ratchet baseline: 278 methods, 0 failures.
+- Property-based tests (hypothesis) cover the primitives, counters,
+  intervals and window bounds.
 - Reference-validated KPI tests:
   - AIAG MSA Gauge R&R ✅ (average-and-range worksheet: K1/K2/K3 and the
     `EV²/(n·r)` AV correction);
   - ISO 50001 / 50006 EnPI ✅ (opt-in regression baseline);
   - ISO 22400 OEE and MTBF / MTTR ✅ (reference examples);
-  - next: AIAG SPC rules and Cp/Cpk.
+  - Western Electric / Nelson SPC rules 1–8 ✅ (hand-derived charts);
+  - Cp / Cpk / Pp / Ppk / Cpm ✅ (Montgomery, Introduction to SQC);
+  - GUM measurement uncertainty ✅ (JCGM 100 §4.4.3 example);
+  - Weibull MLE ✅ (Lieblein–Zelen ball bearings, Lawless Ex. 5.2.2).
 - The docs are tested: every `ts_shape` name in a code block must import,
   and CI builds the docs with `mkdocs build --strict`.
 
 ## W4 — Scale and lean install
 - Core install: pandas, numpy and scipy only. Cloud and SQL loaders become
   extras.
-- Vectorize the remaining row loops.
+- ✅ Vectorized the slow row loops: shift assignment, maintenance trend
+  fits, routing, warmup, stockout (10–300× faster on 200k rows). PELT
+  change points are still quadratic on change-free data (about 6 s on
+  200k rows). A scale smoke test guards the fixed methods.
 - After 1.0: backend-agnostic primitives (Polars / DuckDB) and
   TimescaleDB push-down. Publish benchmarks.
 
