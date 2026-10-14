@@ -19,6 +19,24 @@ fixes the architecture.
 (`ts_shape.signals`). Detectors call the primitives instead of re-deriving
 semantics row by row. See [Signal semantics & profiling](guides/signals.md).
 
+## Consistency audit (done, October 2026)
+A full audit of wording, names, outputs and behavior. The rules are in [Naming & Output Conventions](naming.md), and tests enforce them:
+- **Docs show code that runs:** every documented call binds against the real signature.
+- **Detector outputs follow their declared shape:** the harness checks this, and empty results keep every column.
+- **One name per concept:** a lint over every signature, with deprecated aliases for old names.
+- **Every public parameter is documented.**
+- **Inputs are checked the same way** in every pack.
+
+Left for 1.0, because each changes results or API shape:
+- **Remove the deprecated aliases** (`DeprecationWarning` today).
+- **Return full precision.** Detectors round inconsistently today (0–8 decimals); rounding belongs in reports.
+- **Check value columns up front**, as the time and uuid columns already are.
+- **Run state in one form.** `DowntimeEvents` expects string states (`"Running"`), while `MachineStateEvents` and `OEEEvents` expect booleans. Accept either through `SignalSpec`.
+- **One place for the signal uuid.** Some detectors take it in the constructor, others per method. Pick one.
+- **Durations in one form.** `OEEEvents` takes `ideal_cycle_time` as float seconds; `takt_time` takes an offset string. Accept both everywhere.
+- **`ShiftReportEvents.best_and_worst_shifts`** returns a DataFrame (`as_frame=True` today).
+- **`BatchTrackingEvents.batch_transition_matrix`** becomes a long from/to/count table, so an empty result can keep its schema.
+
 ## W2 — 1.0: correct by default, one API, one output
 - Migrate the detectors pack by pack onto the primitives. Defaults come from
   the spec.
