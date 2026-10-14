@@ -3,10 +3,20 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from pandas.api import types as ptypes
 from scipy import signal as scipy_signal
 from scipy import stats as scipy_stats
 
+from ts_shape.utils.frames import as_datetime, require_columns
+
 logger = logging.getLogger(__name__)
+
+
+def _is_signal(series: pd.Series) -> bool:
+    """A numeric (NumPy, nullable or pyarrow), non-boolean column."""
+    return ptypes.is_numeric_dtype(series.dtype) and not ptypes.is_bool_dtype(
+        series.dtype
+    )
 
 
 class CrossSignalAnalytics:
@@ -30,21 +40,47 @@ class CrossSignalAnalytics:
         dataframe: pd.DataFrame,
         time_column: str = "systime",
     ) -> None:
-        if time_column in dataframe.columns:
-            self.df = dataframe.set_index(time_column).copy()
-        else:
-            self.df = dataframe.copy()
+        """Keep a time-ordered copy of the wide frame.
 
-        self.signals = [
-            col
-            for col in self.df.columns
-            if self.df[col].dtype
-            in [np.float64, np.float32, np.int64, np.int32, float, int]
-        ]
+        Args:
+            dataframe: Wide frame, one numeric column per signal. NumPy,
+                nullable (``Float64``, ``Int64``) and pyarrow numeric columns
+                are signals; they are read as ``float64``.
+            time_column: Time column; when present, rows are sorted by it and
+                it becomes the index.
+
+        Raises:
+            ValueError: If fewer than 2 numeric signal columns are found.
+        """
+        df = dataframe.copy()
+        if time_column in df.columns:
+            df[time_column] = as_datetime(df[time_column], where="CrossSignalAnalytics")
+            df = df.sort_values(time_column, kind="stable").set_index(time_column)
+        self.signals = [col for col in df.columns if _is_signal(df[col])]
+        for col in self.signals:
+            df[col] = np.asarray(
+                df[col].to_numpy(dtype="float64", na_value=np.nan), dtype="float64"
+            )
+        self.df = df
         if len(self.signals) < 2:
             raise ValueError(
                 f"Need at least 2 numeric signal columns, found {len(self.signals)}."
             )
+
+    def _pair(
+        self, first: str, second: str, where: str
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Both signals at the rows where both have a value, in time order.
+
+        Raises:
+            ColumnNotFoundError: If a signal column is missing.
+        """
+        require_columns(self.df, [first, second], where=f"CrossSignalAnalytics.{where}")
+        both = self.df[[first, second]].apply(pd.to_numeric, errors="coerce")
+        both = both.dropna()
+        x = np.asarray(both.iloc[:, 0].to_numpy(dtype="float64"), dtype="float64")
+        y = np.asarray(both.iloc[:, 1].to_numpy(dtype="float64"), dtype="float64")
+        return x, y
 
     def granger_causality(
         self,
@@ -63,11 +99,12 @@ class CrossSignalAnalytics:
 
         Returns:
             Dict with optimal_lag, f_statistic, p_value, is_causal, results_by_lag.
+                Only rows where both signals have a value are used. With too
+                few of them to fit a lag, ``f_statistic`` and ``p_value`` are
+                NaN and ``is_causal`` is False.
         """
-        x = self.df[cause].dropna().values
-        y = self.df[effect].dropna().values
-        n = min(len(x), len(y))
-        x, y = x[:n], y[:n]
+        x, y = self._pair(cause, effect, "granger_causality")
+        n = len(x)
 
         results_by_lag: list[dict[str, Any]] = []
 
@@ -108,10 +145,11 @@ class CrossSignalAnalytics:
             )
 
         if not results_by_lag:
+            # Too few aligned samples to fit any lag: no test result.
             return {
                 "optimal_lag": 0,
-                "f_statistic": 0.0,
-                "p_value": 1.0,
+                "f_statistic": float("nan"),
+                "p_value": float("nan"),
                 "is_causal": False,
                 "results_by_lag": [],
             }
@@ -143,15 +181,14 @@ class CrossSignalAnalytics:
             bins: Number of bins for discretization.
 
         Returns:
-            Transfer entropy in bits.
+            Transfer entropy in bits; NaN when there are no more aligned
+                samples (rows where both signals have a value) than ``lag``.
         """
-        x = self.df[source].dropna().values
-        y = self.df[target].dropna().values
-        n = min(len(x), len(y))
-        x, y = x[:n], y[:n]
+        x, y = self._pair(source, target, "transfer_entropy")
+        n = len(x)
 
         if n <= lag:
-            return 0.0
+            return float("nan")
 
         y_future = y[lag:]
         y_past = y[: n - lag]
@@ -243,12 +280,14 @@ class CrossSignalAnalytics:
             method: 'phase' for phase-locking value, 'amplitude' for envelope correlation.
 
         Returns:
-            Float between 0 (no sync) and 1 (perfect sync).
+            Float between 0 (no sync) and 1 (perfect sync); NaN when no row
+                has a value for both signals.
         """
-        a = self.df[signal_a].dropna().values
-        b = self.df[signal_b].dropna().values
-        n = min(len(a), len(b))
-        a, b = a[:n].astype(float), b[:n].astype(float)
+        if method not in ("phase", "amplitude"):
+            raise ValueError(f"Unknown method: {method}. Use 'phase' or 'amplitude'.")
+        a, b = self._pair(signal_a, signal_b, "synchronization_index")
+        if len(a) == 0:
+            return float("nan")
 
         if method == "phase":
             analytic_a = scipy_signal.hilbert(a)
@@ -307,17 +346,32 @@ class CrossSignalAnalytics:
             significance: P-value threshold.
 
         Returns:
-            Dict with optimal_lag, correlation_at_lag, leader, follower, p_value, is_significant.
+            Dict with optimal_lag, correlation_at_lag, leader, follower, p_value,
+                is_significant. ``optimal_lag`` is the number of samples by
+                which ``signal_a`` leads ``signal_b``: positive when
+                ``signal_b`` repeats ``signal_a`` later (``leader`` is
+                ``signal_a``), negative when ``signal_b`` leads. Only rows where
+                both signals have a value are used; with fewer than 2 such rows
+                the numbers are NaN and ``leader`` / ``follower`` are None.
         """
-        a = self.df[signal_a].dropna().values.astype(float)
-        b = self.df[signal_b].dropna().values.astype(float)
-        n = min(len(a), len(b))
-        a, b = a[:n], b[:n]
+        a, b = self._pair(signal_a, signal_b, "lead_lag")
+        n = len(a)
+        if n < 2:
+            return {
+                "optimal_lag": float("nan"),
+                "correlation_at_lag": float("nan"),
+                "leader": None,
+                "follower": None,
+                "p_value": float("nan"),
+                "is_significant": False,
+            }
 
         # Normalize
         a = (a - a.mean()) / (a.std() + 1e-12)
         b = (b - b.mean()) / (b.std() + 1e-12)
 
+        # correlate(a, b)[k] = sum_n a[n + k] * b[n]: a peak at lag k < 0
+        # means b repeats a k samples later, i.e. a leads.
         corr_full = scipy_signal.correlate(a, b, mode="full") / n
         lags = scipy_signal.correlation_lags(n, n, mode="full")
 
@@ -327,7 +381,7 @@ class CrossSignalAnalytics:
         lags_clipped = lags[mask]
 
         best_idx = int(np.argmax(np.abs(corr_clipped)))
-        optimal_lag = int(lags_clipped[best_idx])
+        optimal_lag = -int(lags_clipped[best_idx])
         best_corr = float(corr_clipped[best_idx])
 
         # Permutation test for significance

@@ -1,15 +1,11 @@
 import logging
-from typing import cast
 
 import pandas as pd
 
+from ts_shape.features.stats._values import bool_values
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
-
-# pandas ships no type information here (no py.typed, pandas-stubs not
-# installed), so every reduction is ``Any``; ``cast`` records the documented
-# scalar type without converting it (the numpy scalar is returned as before).
 
 
 class BooleanStatistics(Base):
@@ -28,7 +24,10 @@ class BooleanStatistics(Base):
             column_name: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
         """
-        return int(dataframe[column_name].sum())
+        values = bool_values(
+            dataframe, column_name, where="BooleanStatistics.count_true"
+        )
+        return int(values.eq(True).sum())
 
     @classmethod
     def count_false(
@@ -41,7 +40,10 @@ class BooleanStatistics(Base):
             column_name: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
         """
-        return int(dataframe[column_name].eq(False).sum())
+        values = bool_values(
+            dataframe, column_name, where="BooleanStatistics.count_false"
+        )
+        return int(values.eq(False).sum())
 
     @classmethod
     def count_null(
@@ -54,7 +56,10 @@ class BooleanStatistics(Base):
             column_name: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
         """
-        return int(dataframe[column_name].isna().sum())
+        values = bool_values(
+            dataframe, column_name, where="BooleanStatistics.count_null"
+        )
+        return int(values.isna().sum())
 
     @classmethod
     def count_not_null(
@@ -67,7 +72,10 @@ class BooleanStatistics(Base):
             column_name: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
         """
-        return int(dataframe[column_name].notna().sum())
+        values = bool_values(
+            dataframe, column_name, where="BooleanStatistics.count_not_null"
+        )
+        return int(values.notna().sum())
 
     @classmethod
     def true_percentage(
@@ -79,10 +87,15 @@ class BooleanStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
+
+
+        Returns:
+            Percentage (0-100) of the non-null values that are True; NaN
+                when the column holds no non-null value.
         """
         true_count = cls.count_true(dataframe, column_name)
         total_count = cls.count_not_null(dataframe, column_name)
-        return (true_count / total_count) * 100 if total_count > 0 else 0.0
+        return (true_count / total_count) * 100 if total_count > 0 else float("nan")
 
     @classmethod
     def false_percentage(
@@ -94,20 +107,33 @@ class BooleanStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the boolean column to analyze. Default
                 ``"value_bool"``.
+
+
+        Returns:
+            Percentage (0-100) of the non-null values that are False; NaN
+                when the column holds no non-null value.
         """
         false_count = cls.count_false(dataframe, column_name)
         total_count = cls.count_not_null(dataframe, column_name)
-        return (false_count / total_count) * 100 if total_count > 0 else 0.0
+        return (false_count / total_count) * 100 if total_count > 0 else float("nan")
 
     @classmethod
-    def mode(cls, dataframe: pd.DataFrame, column_name: str) -> bool:
+    def mode(cls, dataframe: pd.DataFrame, column_name: str) -> bool | None:
         """Returns the mode (most common value) of the specified boolean column.
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the boolean column to analyze.
+
+        Returns:
+            The most common non-null value (``False`` on a tie), or ``None``
+                when the column holds no non-null value.
         """
-        return cast(bool, dataframe[column_name].mode()[0])
+        values = bool_values(dataframe, column_name, where="BooleanStatistics.mode")
+        modes = values.dropna().mode()
+        if modes.empty:
+            return None
+        return bool(modes.iloc[0])
 
     @classmethod
     def is_balanced(cls, dataframe: pd.DataFrame, column_name: str) -> bool:
@@ -127,7 +153,7 @@ class BooleanStatistics(Base):
     @classmethod
     def summary_as_dict(
         cls, dataframe: pd.DataFrame, column_name: str
-    ) -> dict[str, int | float | bool]:
+    ) -> dict[str, int | float | bool | None]:
         """Returns a summary of boolean statistics for the specified column as a dictionary.
 
         Args:

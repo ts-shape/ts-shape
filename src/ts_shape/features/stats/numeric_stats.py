@@ -4,6 +4,7 @@ from typing import cast
 import pandas as pd
 from scipy import stats
 
+from ts_shape.features.stats._values import numeric_values
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].mean())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_mean"
+            ).mean(),
+        )
 
     @classmethod
     def column_median(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -36,7 +42,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].median())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_median"
+            ).median(),
+        )
 
     @classmethod
     def column_std(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -46,7 +57,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].std())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_std"
+            ).std(),
+        )
 
     @classmethod
     def column_variance(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -56,7 +72,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].var())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_variance"
+            ).var(),
+        )
 
     @classmethod
     def column_min(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -66,7 +87,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].min())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_min"
+            ).min(),
+        )
 
     @classmethod
     def column_max(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -76,7 +102,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].max())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_max"
+            ).max(),
+        )
 
     @classmethod
     def column_sum(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -86,7 +117,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].sum())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_sum"
+            ).sum(),
+        )
 
     @classmethod
     def column_kurtosis(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -96,7 +132,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].kurt())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_kurtosis"
+            ).kurt(),
+        )
 
     @classmethod
     def column_skewness(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -106,7 +147,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].skew())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_skewness"
+            ).skew(),
+        )
 
     @classmethod
     def column_quantile(
@@ -119,7 +165,12 @@ class NumericStatistics(Base):
             column_name: Name of the numeric column to analyze.
             quantile: Quantile to compute, between 0 and 1 (0.5 is the median).
         """
-        return cast(float, dataframe[column_name].quantile(quantile))
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.column_quantile"
+            ).quantile(quantile),
+        )
 
     @classmethod
     def column_iqr(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -129,7 +180,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, stats.iqr(dataframe[column_name]))
+        values = numeric_values(
+            dataframe, column_name, where="NumericStatistics.column_iqr"
+        )
+        if not values.notna().any():
+            return float("nan")
+        return float(stats.iqr(values, nan_policy="omit"))
 
     @classmethod
     def column_range(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -139,9 +195,10 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cls.column_max(dataframe, column_name) - cls.column_min(
-            dataframe, column_name
+        values = numeric_values(
+            dataframe, column_name, where="NumericStatistics.column_range"
         )
+        return cast(float, values.max() - values.min())
 
     @classmethod
     def column_mad(cls, dataframe: pd.DataFrame, column_name: str) -> float:
@@ -151,7 +208,9 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        series = dataframe[column_name]
+        series = numeric_values(
+            dataframe, column_name, where="NumericStatistics.column_mad"
+        )
         return cast(float, (series - series.mean()).abs().mean())
 
     @classmethod
@@ -162,7 +221,9 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        modes = dataframe[column_name].mode()
+        modes = numeric_values(
+            dataframe, column_name, where="NumericStatistics.column_mode"
+        ).mode()
         return cast(float, modes.iloc[0]) if not modes.empty else None
 
     @classmethod
@@ -192,7 +253,12 @@ class NumericStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the numeric column to analyze.
         """
-        return cast(float, dataframe[column_name].sem())
+        return cast(
+            float,
+            numeric_values(
+                dataframe, column_name, where="NumericStatistics.standard_error_mean"
+            ).sem(),
+        )
 
     @classmethod
     def describe(cls, dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -224,7 +290,10 @@ class NumericStatistics(Base):
                 ``mad``, ``coeff_var``, ``sem``, ``mode``, ``percentile_90`` and
                 ``percentile_10``.
         """
-        _series = dataframe[column_name]
+        series = numeric_values(
+            dataframe, column_name, where="NumericStatistics.summary_as_dict"
+        )
+        dataframe = series.to_frame(column_name)
         return {
             "min": cls.column_min(dataframe, column_name),
             "max": cls.column_max(dataframe, column_name),

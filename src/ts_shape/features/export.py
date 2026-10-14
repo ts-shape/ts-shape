@@ -7,8 +7,10 @@ suitable for machine-learning workflows.
 import logging
 from collections.abc import Callable
 
-import numpy as np
 import pandas as pd
+from pandas.api import types as ptypes
+
+from ts_shape.utils.frames import require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +31,12 @@ class FeatureMatrixExporter:
         matrix = FeatureMatrixExporter.to_feature_matrix(df, uuid_col='uuid', value_cols=['value_double'])
     """
 
-    _DEFAULT_AGGS: dict[str, Callable] = {
-        "mean": np.mean,
-        "std": np.std,
-        "min": np.min,
-        "max": np.max,
+    #: pandas reductions: ``std`` is the sample standard deviation (ddof=1).
+    _DEFAULT_AGGS: dict[str, str | Callable] = {
+        "mean": "mean",
+        "std": "std",
+        "min": "min",
+        "max": "max",
     }
 
     @classmethod
@@ -51,10 +54,12 @@ class FeatureMatrixExporter:
             df: Long-format DataFrame containing signal data.
             uuid_col: Column whose unique values become column prefixes
                 (e.g. ``'uuid'``).
-            value_cols: Numeric columns to aggregate. If ``None``, all
-                numeric columns except ``uuid_col`` are used.
+            value_cols: Numeric columns to aggregate. If ``None``, the numeric
+                ``value_*`` columns (``value_double``, ``value_integer``) are
+                used; flags such as ``is_delta`` are not features.
             agg_funcs: Mapping of ``name -> callable`` or pandas agg string.
-                Defaults to ``mean``, ``std``, ``min``, ``max``.
+                Defaults to ``mean``, ``std`` (sample standard deviation,
+                ``ddof=1``), ``min``, ``max``.
             group_col: Optional column to use as the row index of the output
                 matrix (e.g. ``'cycle_uuid'``, ``'batch_id'``).  When
                 ``None`` the entire DataFrame is treated as one group and a
@@ -66,30 +71,27 @@ class FeatureMatrixExporter:
             when provided, otherwise 0.
 
         Raises:
-            ValueError: If ``uuid_col`` is not in ``df``.
+            ColumnNotFoundError: If ``uuid_col``, a ``value_cols`` entry or
+                ``group_col`` is not in ``df``.
+            ValueError: If no numeric value column is found.
         """
-        if uuid_col not in df.columns:
-            raise ValueError(
-                f"uuid_col '{uuid_col}' not found. Available columns: {list(df.columns)}"
-            )
+        where = "FeatureMatrixExporter.to_feature_matrix"
+        require_columns(df, [uuid_col, group_col], where=where)
 
         if value_cols is None:
             value_cols = [
-                c for c in df.select_dtypes(include="number").columns if c != uuid_col
+                c
+                for c in df.columns
+                if str(c).startswith("value_")
+                and c != uuid_col
+                and ptypes.is_numeric_dtype(df[c].dtype)
+                and not ptypes.is_bool_dtype(df[c].dtype)
             ]
         if not value_cols:
             raise ValueError("No numeric value columns found to aggregate.")
+        require_columns(df, value_cols, where=where)
 
         aggs = agg_funcs if agg_funcs is not None else cls._DEFAULT_AGGS
-
-        missing = [c for c in value_cols if c not in df.columns]
-        if missing:
-            raise ValueError(f"value_cols not found in DataFrame: {missing}")
-
-        if group_col is not None and group_col not in df.columns:
-            raise ValueError(
-                f"group_col '{group_col}' not found. Available columns: {list(df.columns)}"
-            )
 
         rows: dict = {}
         if group_col:
@@ -101,7 +103,7 @@ class FeatureMatrixExporter:
 
         for (row_key, sig), grp in iterator:
             for vcol in value_cols:
-                series = grp[vcol].dropna()
+                series = pd.to_numeric(grp[vcol], errors="coerce").dropna()
                 for agg_name, agg_fn in aggs.items():
                     col_name = f"{sig}__{vcol}__{agg_name}"
                     if not len(series):

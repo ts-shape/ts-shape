@@ -6,6 +6,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
+from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,44 @@ class DataHarmonizer(Base):
         uuid_column: str = "uuid",
         value_column: str = "value_double",
     ) -> None:
+        """Keep a time-sorted copy of ``dataframe``.
+
+        Args:
+            dataframe: Long-format input.
+            time_column: Timestamp column. Text and pyarrow timestamps are
+                converted; an empty untyped column becomes ``datetime64``.
+            uuid_column: Signal identifier column.
+            value_column: Column holding the values to harmonize.
+
+        Raises:
+            ColumnNotFoundError: If one of the three columns is missing.
+        """
+        require_columns(
+            dataframe,
+            [time_column, uuid_column, value_column],
+            where="DataHarmonizer",
+        )
         super().__init__(dataframe, time_column=time_column)
+        self.dataframe[time_column] = as_datetime(
+            self.dataframe[time_column], where="DataHarmonizer"
+        )
         self.time_column = time_column
         self.uuid_column = uuid_column
         self.value_column = value_column
+
+    def _pivot(self, dataframe: pd.DataFrame, aggfunc: str) -> pd.DataFrame:
+        """Wide frame with a DatetimeIndex; signals without values are kept."""
+        if dataframe.empty:
+            index = pd.DatetimeIndex(dataframe[self.time_column], name=self.time_column)
+            return pd.DataFrame(index=index[:0], columns=pd.Index([], dtype=object))
+        wide: pd.DataFrame = dataframe.pivot_table(
+            index=self.time_column,
+            columns=self.uuid_column,
+            values=self.value_column,
+            aggfunc=aggfunc,
+            dropna=False,
+        )
+        return wide
 
     def pivot_to_wide(self, aggfunc: str = "first") -> pd.DataFrame:
         """Pivot long-format DataFrame to wide-format with one column per UUID.
@@ -44,7 +79,8 @@ class DataHarmonizer(Base):
             aggfunc: Aggregation function for duplicate timestamps ('first', 'mean', 'last').
 
         Returns:
-            DataFrame with systime as index and one column per UUID.
+            DataFrame with systime as index and one column per UUID. A signal
+                without any value is kept as an all-NaN column.
         """
         dupes = self.dataframe.duplicated(
             subset=[self.time_column, self.uuid_column], keep=False
@@ -56,12 +92,7 @@ class DataHarmonizer(Base):
                 DataQualityWarning,
                 stacklevel=2,
             )
-        return self.dataframe.pivot_table(
-            index=self.time_column,
-            columns=self.uuid_column,
-            values=self.value_column,
-            aggfunc=aggfunc,
-        )
+        return self._pivot(self.dataframe, aggfunc)
 
     def resample_to_uniform(
         self,
@@ -90,32 +121,39 @@ class DataHarmonizer(Base):
             threshold: Minimum gap duration as a pandas Timedelta string.
 
         Returns:
-            DataFrame with columns: uuid, gap_start, gap_end, gap_duration.
+            DataFrame with one row per gap: ``uuid``, ``gap_start``,
+                ``gap_end``, ``gap_duration`` (Timedelta) and the canonical
+                ``start``, ``end``, ``duration_seconds`` (the same gap). Empty
+                with these columns, typed, when there is no gap.
         """
         threshold_td = pd.Timedelta(threshold)
-        rows = []
+        time_dtype = self.dataframe[self.time_column].dtype
+        uuids: list[object] = []
+        starts: list[pd.Timestamp] = []
+        ends: list[pd.Timestamp] = []
 
-        for uid, group in self.dataframe.groupby(self.uuid_column):
-            times = group[self.time_column].sort_values().reset_index(drop=True)
+        for uid, group in self.dataframe.groupby(self.uuid_column, sort=True):
+            times = group[self.time_column].dropna().sort_values()
             diffs = times.diff()
-            gap_positions = diffs[diffs > threshold_td].index
+            is_gap = (diffs > threshold_td).to_numpy()
+            positions = np.flatnonzero(is_gap)
+            uuids.extend([uid] * len(positions))
+            starts.extend(times.iloc[positions - 1])
+            ends.extend(times.iloc[positions])
 
-            for pos in gap_positions:
-                gap_start = times.iloc[pos - 1]
-                gap_end = times.iloc[pos]
-                rows.append(
-                    {
-                        "uuid": uid,
-                        "gap_start": gap_start,
-                        "gap_end": gap_end,
-                        "gap_duration": gap_end - gap_start,
-                    }
-                )
-
-        return (
-            pd.DataFrame(rows)
-            if rows
-            else pd.DataFrame(columns=["uuid", "gap_start", "gap_end", "gap_duration"])
+        start = pd.Series(starts, dtype=time_dtype)
+        end = pd.Series(ends, dtype=time_dtype)
+        duration = end - start
+        return pd.DataFrame(
+            {
+                "uuid": pd.Series(uuids, dtype=object),
+                "gap_start": start,
+                "gap_end": end,
+                "gap_duration": duration,
+                "start": start,
+                "end": end,
+                "duration_seconds": duration.dt.total_seconds().astype("float64"),
+            }
         )
 
     def fill_gaps(
@@ -128,9 +166,10 @@ class DataHarmonizer(Base):
 
         Args:
             strategy: One of 'interpolate', 'ffill', 'bfill', 'constant'.
-            max_gap: Maximum gap size to fill (pandas Timedelta string). Larger gaps
-                remain NaN. ``None`` (default) fills every gap the strategy can
-                fill, however long.
+            max_gap: Maximum gap size to fill (pandas Timedelta string),
+                measured from the valid sample before a run of missing values
+                to the valid sample after it. Larger gaps remain NaN. ``None``
+                (default) fills every gap the strategy can fill, however long.
             fill_value: Value used when strategy='constant'.
 
         Returns:
@@ -153,17 +192,25 @@ class DataHarmonizer(Base):
 
         if max_gap is not None:
             max_gap_td = pd.Timedelta(max_gap)
-            nan_mask = wide.isna()
+            times = wide.index
+            n = len(times)
             for col in wide.columns:
-                col_nans = nan_mask[col]
-                if not col_nans.any():
+                missing = wide[col].isna().to_numpy()
+                if not missing.any():
                     continue
-                groups = (col_nans != col_nans.shift()).cumsum()
-                for _, grp_idx in col_nans[col_nans].groupby(groups):
-                    start = grp_idx.index[0]
-                    end = grp_idx.index[-1]
-                    if (end - start) > max_gap_td:
-                        filled.loc[grp_idx.index, col] = np.nan
+                # Runs of consecutive missing rows: [first, last] positions.
+                edges = np.diff(np.r_[0, missing.astype(np.int8), 0])
+                firsts = np.flatnonzero(edges == 1)
+                lasts = np.flatnonzero(edges == -1) - 1
+                for first, last in zip(firsts, lasts):
+                    # The gap spans from the valid sample before the run to
+                    # the valid sample after it.
+                    before = times[first - 1] if first > 0 else times[first]
+                    after = times[last + 1] if last + 1 < n else times[last]
+                    if (after - before) > max_gap_td:
+                        filled.iloc[first : last + 1, filled.columns.get_loc(col)] = (
+                            np.nan
+                        )
 
         return filled
 
@@ -184,11 +231,25 @@ class DataHarmonizer(Base):
 
         Returns:
             DataFrame with systime, value_left, value_right.
+
+        Warns:
+            DataQualityWarning: When a uuid is not in the (non-empty) frame;
+                the result then has no matches for it.
         """
+        present = set(self.dataframe[self.uuid_column].dropna().unique())
+        for name, uid in (("left_uuid", left_uuid), ("right_uuid", right_uuid)):
+            if uid not in present and not self.dataframe.empty:
+                warnings.warn(
+                    f"DataHarmonizer.align_asof: {name} {uid!r} not found. "
+                    f"Available uuids: {sorted(str(u) for u in present)}",
+                    DataQualityWarning,
+                    stacklevel=2,
+                )
         left = (
             self.dataframe[self.dataframe[self.uuid_column] == left_uuid][
                 [self.time_column, self.value_column]
             ]
+            .dropna(subset=[self.time_column])
             .sort_values(self.time_column)
             .rename(columns={self.value_column: "value_left"})
         )
@@ -196,6 +257,7 @@ class DataHarmonizer(Base):
             self.dataframe[self.dataframe[self.uuid_column] == right_uuid][
                 [self.time_column, self.value_column]
             ]
+            .dropna(subset=[self.time_column])
             .sort_values(self.time_column)
             .rename(columns={self.value_column: "value_right"})
         )
@@ -228,12 +290,7 @@ class DataHarmonizer(Base):
         if uuids is not None:
             df = df[df[self.uuid_column].isin(uuids)]
 
-        wide = df.pivot_table(
-            index=self.time_column,
-            columns=self.uuid_column,
-            values=self.value_column,
-            aggfunc="first",
-        )
+        wide = self._pivot(df, "first")
 
         if freq is not None:
             wide = wide.resample(freq).first()

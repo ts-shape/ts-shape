@@ -4,6 +4,7 @@ from typing import Literal
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,12 @@ class DateTimeFilter(Base):
     so the same ``"2024-01-02"`` works on naive and tz-aware ``systime``
     columns (previously a tz-aware column raised ``TypeError``).
     """
+
+    @staticmethod
+    def _times(dataframe: pd.DataFrame, column_name: str, where: str) -> pd.Series:
+        """The time column as datetimes (text parsed, empty columns typed)."""
+        require_columns(dataframe, [column_name], where=f"DateTimeFilter.{where}")
+        return as_datetime(dataframe[column_name], where=f"DateTimeFilter.{where}")
 
     @staticmethod
     def _bound(column: pd.Series, value: str) -> pd.Timestamp:
@@ -63,10 +70,8 @@ class DateTimeFilter(Base):
         """
         if date is None:
             raise ValueError("date parameter is required")
-        Base._validate_column(dataframe, column_name)
-        return dataframe[
-            dataframe[column_name] > cls._bound(dataframe[column_name], date)
-        ]
+        col = cls._times(dataframe, column_name, "filter_after_date")
+        return dataframe[(col > cls._bound(col, date)).to_numpy(dtype=bool)]
 
     @classmethod
     def filter_before_date(
@@ -96,10 +101,8 @@ class DateTimeFilter(Base):
         """
         if date is None:
             raise ValueError("date parameter is required")
-        Base._validate_column(dataframe, column_name)
-        return dataframe[
-            dataframe[column_name] < cls._bound(dataframe[column_name], date)
-        ]
+        col = cls._times(dataframe, column_name, "filter_before_date")
+        return dataframe[(col < cls._bound(col, date)).to_numpy(dtype=bool)]
 
     @classmethod
     def filter_between_dates(
@@ -134,12 +137,11 @@ class DateTimeFilter(Base):
         """
         if start_date is None or end_date is None:
             raise ValueError("start_date and end_date parameters are required")
-        Base._validate_column(dataframe, column_name)
-        col = dataframe[column_name]
+        col = cls._times(dataframe, column_name, "filter_between_dates")
         mask = col.between(
             cls._bound(col, start_date), cls._bound(col, end_date), inclusive=inclusive
         )
-        return dataframe[mask]
+        return dataframe[mask.to_numpy(dtype=bool)]
 
     @classmethod
     def filter_after_datetime(
@@ -169,10 +171,8 @@ class DateTimeFilter(Base):
         """
         if datetime is None:
             raise ValueError("datetime parameter is required")
-        Base._validate_column(dataframe, column_name)
-        return dataframe[
-            dataframe[column_name] > cls._bound(dataframe[column_name], datetime)
-        ]
+        col = cls._times(dataframe, column_name, "filter_after_datetime")
+        return dataframe[(col > cls._bound(col, datetime)).to_numpy(dtype=bool)]
 
     @classmethod
     def filter_before_datetime(
@@ -202,10 +202,8 @@ class DateTimeFilter(Base):
         """
         if datetime is None:
             raise ValueError("datetime parameter is required")
-        Base._validate_column(dataframe, column_name)
-        return dataframe[
-            dataframe[column_name] < cls._bound(dataframe[column_name], datetime)
-        ]
+        col = cls._times(dataframe, column_name, "filter_before_datetime")
+        return dataframe[(col < cls._bound(col, datetime)).to_numpy(dtype=bool)]
 
     @classmethod
     def filter_between_datetimes(
@@ -241,11 +239,10 @@ class DateTimeFilter(Base):
         """
         if start_datetime is None or end_datetime is None:
             raise ValueError("start_datetime and end_datetime parameters are required")
-        Base._validate_column(dataframe, column_name)
-        col = dataframe[column_name]
+        col = cls._times(dataframe, column_name, "filter_between_datetimes")
         mask = col.between(
             cls._bound(col, start_datetime),
             cls._bound(col, end_datetime),
             inclusive=inclusive,
         )
-        return dataframe[mask]
+        return dataframe[mask.to_numpy(dtype=bool)]

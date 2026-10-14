@@ -5,9 +5,31 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_per_window
+from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
+
+
+def _prepared(
+    dataframe: pd.DataFrame, time_column: str, value_column: str, where: str
+) -> pd.DataFrame:
+    """A copy with a datetime time column and a float value column."""
+    where = f"TimeGroupedStatistics.{where}"
+    require_columns(dataframe, [time_column, value_column], where=where)
+    df = dataframe.copy()
+    df[time_column] = as_datetime(df[time_column], where=where)
+    values = df[value_column]
+    if not (
+        pd.api.types.is_numeric_dtype(values.dtype)
+        and not isinstance(values.dtype, pd.api.extensions.ExtensionDtype)
+    ):
+        values = to_numeric_checked(
+            values, what=f"column {value_column!r}", stacklevel=4
+        )
+        df[value_column] = values.astype("float64")
+    return df
 
 
 class TimeGroupedStatistics(Base):
@@ -53,6 +75,11 @@ class TimeGroupedStatistics(Base):
         Returns:
             pd.DataFrame: A DataFrame with the time intervals and the calculated statistics.
         """
+        require_columns(
+            dataframe,
+            [time_column, value_column],
+            where="TimeGroupedStatistics.calculate_statistic",
+        )
         if group_by_uuid and "uuid" in dataframe.columns:
             parts = {
                 uuid: cls.calculate_statistic(
@@ -78,6 +105,9 @@ class TimeGroupedStatistics(Base):
                 )
             return pd.concat(parts, names=["uuid"])
 
+        dataframe = _prepared(
+            dataframe, time_column, value_column, "calculate_statistic"
+        )
         if handle_resets and stat_method == "diff":
             series = dataframe.sort_values(time_column).set_index(time_column)[
                 value_column
@@ -167,6 +197,8 @@ class TimeGroupedStatistics(Base):
         value_column: str,
         freq: str,
         func: Callable[[pd.Series], Any],
+        *,
+        group_by_uuid: bool = True,
     ) -> pd.DataFrame:
         """
         Apply a custom aggregation function on the value column over the grouped time intervals.
@@ -177,10 +209,33 @@ class TimeGroupedStatistics(Base):
             value_column (str): The name of the numeric column to calculate statistics on.
             freq (str): Frequency string for time grouping (e.g., 'h' for hourly, 'D' for daily; pandas 3 rejects 'H').
             func (callable): Custom function to apply to each group.
+            group_by_uuid (bool): See :meth:`calculate_statistic`.
 
         Returns:
-            pd.DataFrame: A DataFrame with the custom calculated statistics.
+            pd.DataFrame: A DataFrame with the custom calculated statistics in
+                the column ``custom``, indexed by time window (and ``uuid``
+                when grouping by uuid).
         """
-        grouped_df = dataframe.set_index(time_column).resample(freq)
-        result = grouped_df[value_column].apply(func).to_frame("custom")
+        require_columns(
+            dataframe,
+            [time_column, value_column],
+            where="TimeGroupedStatistics.calculate_custom_func",
+        )
+        if group_by_uuid and "uuid" in dataframe.columns and not dataframe.empty:
+            parts = {
+                uuid: cls.calculate_custom_func(
+                    group,
+                    time_column,
+                    value_column,
+                    freq,
+                    func,
+                    group_by_uuid=False,
+                )
+                for uuid, group in dataframe.groupby("uuid", sort=True)
+            }
+            if parts:
+                return pd.concat(parts, names=["uuid"])
+        df = _prepared(dataframe, time_column, value_column, "calculate_custom_func")
+        grouped_df = df.set_index(time_column).resample(freq)
+        result: pd.DataFrame = grouped_df[value_column].apply(func).to_frame("custom")
         return result

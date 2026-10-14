@@ -3,6 +3,7 @@ from typing import cast
 
 import pandas as pd
 
+from ts_shape.features.stats._values import text_values
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,12 @@ class StringStatistics(Base):
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
         """
-        return cast(int, dataframe[column_name].nunique())
+        return cast(
+            int,
+            text_values(
+                dataframe, column_name, where="StringStatistics.count_unique"
+            ).nunique(),
+        )
 
     @classmethod
     def most_frequent(
@@ -45,7 +51,9 @@ class StringStatistics(Base):
             The most frequent non-null string (the smallest on ties), or
             ``None`` when the column holds no non-null value.
         """
-        modes = dataframe[column_name].mode()
+        modes = text_values(
+            dataframe, column_name, where="StringStatistics.most_frequent"
+        ).mode()
         return None if modes.empty else modes.iloc[0]
 
     @classmethod
@@ -63,7 +71,9 @@ class StringStatistics(Base):
             Occurrences of :meth:`most_frequent`; ``0`` when the column holds
             no non-null value (it raised ``IndexError`` before).
         """
-        counts = dataframe[column_name].value_counts()
+        counts = text_values(
+            dataframe, column_name, where="StringStatistics.count_most_frequent"
+        ).value_counts()
         # The highest count; label lookup would fail for boolean labels.
         return int(counts.iloc[0]) if len(counts) else 0
 
@@ -78,7 +88,12 @@ class StringStatistics(Base):
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
         """
-        return cast(int, dataframe[column_name].isna().sum())
+        return cast(
+            int,
+            text_values(dataframe, column_name, where="StringStatistics.count_null")
+            .isna()
+            .sum(),
+        )
 
     @classmethod
     def average_string_length(
@@ -91,7 +106,15 @@ class StringStatistics(Base):
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
         """
-        return cast(float, dataframe[column_name].dropna().str.len().mean())
+        return cast(
+            float,
+            text_values(
+                dataframe, column_name, where="StringStatistics.average_string_length"
+            )
+            .dropna()
+            .str.len()
+            .mean(),
+        )
 
     @classmethod
     def longest_string(
@@ -108,7 +131,9 @@ class StringStatistics(Base):
             The longest non-null string, or ``None`` when the column holds no
             non-null value.
         """
-        values = dataframe[column_name].dropna()
+        values = text_values(
+            dataframe, column_name, where="StringStatistics.longest_string"
+        ).dropna()
         if values.empty:
             return None
         return cast(str | None, values.loc[values.str.len().idxmax()])
@@ -128,7 +153,9 @@ class StringStatistics(Base):
             The shortest non-null string, or ``None`` when the column holds no
             non-null value.
         """
-        values = dataframe[column_name].dropna()
+        values = text_values(
+            dataframe, column_name, where="StringStatistics.shortest_string"
+        ).dropna()
         if values.empty:
             return None
         return cast(str | None, values.loc[values.str.len().idxmin()])
@@ -148,7 +175,13 @@ class StringStatistics(Base):
             One-row DataFrame with columns ``Min Length``, ``Max Length`` and ``Average
                 Length`` (null values excluded).
         """
-        lengths = dataframe[column_name].dropna().str.len()
+        lengths = (
+            text_values(
+                dataframe, column_name, where="StringStatistics.string_length_summary"
+            )
+            .dropna()
+            .str.len()
+        )
         return pd.DataFrame(
             {
                 "Min Length": [lengths.min()],
@@ -172,7 +205,13 @@ class StringStatistics(Base):
         Returns:
             Series of counts indexed by string, most frequent first.
         """
-        return dataframe[column_name].value_counts().head(n)
+        return (
+            text_values(
+                dataframe, column_name, where="StringStatistics.most_common_n_strings"
+            )
+            .value_counts()
+            .head(n)
+        )
 
     @classmethod
     def contains_substring_count(
@@ -196,7 +235,14 @@ class StringStatistics(Base):
                 treat it as a regular expression.
         """
         return int(
-            dataframe[column_name].dropna().str.contains(substring, regex=regex).sum()
+            text_values(
+                dataframe,
+                column_name,
+                where="StringStatistics.contains_substring_count",
+            )
+            .dropna()
+            .str.contains(substring, regex=regex)
+            .sum()
         )
 
     @classmethod
@@ -211,7 +257,15 @@ class StringStatistics(Base):
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
         """
-        return cast(int, dataframe[column_name].dropna().str.startswith(prefix).sum())
+        return cast(
+            int,
+            text_values(
+                dataframe, column_name, where="StringStatistics.starts_with_count"
+            )
+            .dropna()
+            .str.startswith(prefix)
+            .sum(),
+        )
 
     @classmethod
     def ends_with_count(
@@ -225,7 +279,15 @@ class StringStatistics(Base):
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
         """
-        return cast(int, dataframe[column_name].dropna().str.endswith(suffix).sum())
+        return cast(
+            int,
+            text_values(
+                dataframe, column_name, where="StringStatistics.ends_with_count"
+            )
+            .dropna()
+            .str.endswith(suffix)
+            .sum(),
+        )
 
     @classmethod
     def uppercase_percentage(
@@ -237,12 +299,19 @@ class StringStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+
+        Returns:
+            Percentage (0-100) of the non-null strings that are fully
+                uppercase; NaN when the column holds no non-null value.
         """
-        total_non_null = dataframe[column_name].notna().sum()
-        if total_non_null == 0:
-            return 0.0
-        uppercase_count = dataframe[column_name].dropna().str.isupper().sum()
-        return cast(float, (uppercase_count / total_non_null) * 100)
+        values = text_values(
+            dataframe, column_name, where="StringStatistics.uppercase_percentage"
+        ).dropna()
+        if values.empty:
+            return float("nan")
+        count = int(values.astype(str).str.isupper().sum())
+        return count / len(values) * 100
 
     @classmethod
     def lowercase_percentage(
@@ -254,12 +323,19 @@ class StringStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
+
+
+        Returns:
+            Percentage (0-100) of the non-null strings that are fully
+                lowercase; NaN when the column holds no non-null value.
         """
-        total_non_null = dataframe[column_name].notna().sum()
-        if total_non_null == 0:
-            return 0.0
-        lowercase_count = dataframe[column_name].dropna().str.islower().sum()
-        return cast(float, (lowercase_count / total_non_null) * 100)
+        values = text_values(
+            dataframe, column_name, where="StringStatistics.lowercase_percentage"
+        ).dropna()
+        if values.empty:
+            return float("nan")
+        count = int(values.astype(str).str.islower().sum())
+        return count / len(values) * 100
 
     @classmethod
     def contains_digit_count(
@@ -272,7 +348,15 @@ class StringStatistics(Base):
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
         """
-        return cast(int, dataframe[column_name].dropna().str.contains(r"\d").sum())
+        return cast(
+            int,
+            text_values(
+                dataframe, column_name, where="StringStatistics.contains_digit_count"
+            )
+            .dropna()
+            .str.contains(r"\d")
+            .sum(),
+        )
 
     @classmethod
     def summary_as_dict(
@@ -291,6 +375,9 @@ class StringStatistics(Base):
                 ``lowercase_percentage``, ``contains_digit_count``, ``least_common`` and
                 ``frequency_least_common``.
         """
+        dataframe = text_values(
+            dataframe, column_name, where="StringStatistics.summary_as_dict"
+        ).to_frame(column_name)
         most_frequent = cls.most_frequent(dataframe, column_name)
         value_counts = dataframe[column_name].value_counts()
 

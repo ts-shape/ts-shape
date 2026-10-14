@@ -1,10 +1,27 @@
 import logging
 
+import numpy as np
 import pandas as pd
+from pandas.api import types as ptypes
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 
 logger = logging.getLogger(__name__)
+
+
+def _numbers(dataframe: pd.DataFrame, column_name: str) -> pd.Series:
+    """The column as numbers; text numbers are parsed (with a warning)."""
+    Base._validate_column(dataframe, column_name)
+    values = dataframe[column_name]
+    if ptypes.is_numeric_dtype(values.dtype) and not ptypes.is_bool_dtype(values.dtype):
+        return values
+    return to_numeric_checked(values, what=f"column {column_name!r}", stacklevel=4)
+
+
+def _rows(dataframe: pd.DataFrame, mask: pd.Series) -> pd.DataFrame:
+    """Rows where ``mask`` is True; a missing comparison counts as False."""
+    return dataframe[np.asarray(mask.fillna(False), dtype=bool)]
 
 
 class IntegerFilter(Base):
@@ -26,8 +43,8 @@ class IntegerFilter(Base):
             column_name: Name of the column to filter on. Default ``"value_integer"``.
             integer_value: Value to keep. Default 0.
         """
-        Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name] == integer_value]
+        values = _numbers(dataframe, column_name)
+        return _rows(dataframe, values == integer_value)
 
     @classmethod
     def filter_value_integer_not_match(
@@ -43,8 +60,8 @@ class IntegerFilter(Base):
             column_name: Name of the column to filter on. Default ``"value_integer"``.
             integer_value: Value to drop. Default 0.
         """
-        Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name] != integer_value]
+        values = _numbers(dataframe, column_name)
+        return _rows(dataframe, values != integer_value)
 
     @classmethod
     def filter_value_integer_between(
@@ -62,11 +79,8 @@ class IntegerFilter(Base):
             min_value: Lower bound, inclusive. Default 0.
             max_value: Upper bound, inclusive. Default 100.
         """
-        Base._validate_column(dataframe, column_name)
-        return dataframe[
-            (dataframe[column_name] >= min_value)
-            & (dataframe[column_name] <= max_value)
-        ]
+        values = _numbers(dataframe, column_name)
+        return _rows(dataframe, (values >= min_value) & (values <= max_value))
 
 
 class DoubleFilter(Base):
@@ -104,8 +118,5 @@ class DoubleFilter(Base):
             min_value: Lower bound, inclusive. Default 0.0.
             max_value: Upper bound, inclusive. Default 100.0.
         """
-        Base._validate_column(dataframe, column_name)
-        return dataframe[
-            (dataframe[column_name] >= min_value)
-            & (dataframe[column_name] <= max_value)
-        ]
+        values = _numbers(dataframe, column_name)
+        return _rows(dataframe, (values >= min_value) & (values <= max_value))

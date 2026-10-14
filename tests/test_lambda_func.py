@@ -15,4 +15,4 @@ def test_lambda_processor_raises_on_missing_column():
         LambdaProcessor.apply_function(df, "x", lambda arr: arr)
         assert False, "Expected ValueError for missing column"
     except ValueError as e:
-        assert "Column 'x' not found" in str(e)
+        assert "'x' not found" in str(e)

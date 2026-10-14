@@ -13,9 +13,11 @@ pint is an optional dependency; install it with::
 
 import logging
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 
 logger = logging.getLogger(__name__)
 
@@ -152,15 +154,22 @@ class UnitConverter(Base):
             ImportError: If the ``pint`` library is not installed.
             ColumnNotFoundError: If ``column_name`` is missing.
             ValueError: If a unit is unknown or the units are incompatible.
+
+        Warns:
+            DataQualityWarning: When values are not numbers; they become NaN.
         """
         ureg = _require_pint()
         Base._validate_column(dataframe, column_name)
         df = dataframe.copy()
         target = target_column or column_name
+        numbers = to_numeric_checked(
+            df[column_name], what=f"column {column_name!r}", stacklevel=3
+        )
+        magnitudes = np.asarray(
+            numbers.to_numpy(dtype="float64", na_value=np.nan), dtype="float64"
+        )
         try:
-            quantity = ureg.Quantity(
-                df[column_name].to_numpy(dtype=float), _normalize(from_unit)
-            )
+            quantity = ureg.Quantity(magnitudes, _normalize(from_unit))
             df[target] = quantity.to(_normalize(to_unit)).magnitude
         except pint.PintError as exc:
             raise ValueError(

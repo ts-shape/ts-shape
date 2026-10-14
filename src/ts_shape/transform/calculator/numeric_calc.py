@@ -1,10 +1,26 @@
 import logging
 
 import pandas as pd
+from pandas.api import types as ptypes
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.frames import require_columns
 
 logger = logging.getLogger(__name__)
+
+
+def _operand(dataframe: pd.DataFrame, column_name: str, where: str) -> pd.Series:
+    """The column to calculate on; numbers stored as text are parsed.
+
+    Raises:
+        ColumnNotFoundError: If the column is missing.
+    """
+    require_columns(dataframe, [column_name], where=f"IntegerCalc.{where}")
+    values = dataframe[column_name]
+    if ptypes.is_object_dtype(values.dtype) or ptypes.is_string_dtype(values.dtype):
+        return to_numeric_checked(values, what=f"column {column_name!r}", stacklevel=4)
+    return values
 
 
 class IntegerCalc(Base):
@@ -30,8 +46,9 @@ class IntegerCalc(Base):
         Returns:
             pd.DataFrame: The DataFrame with the scaled column.
         """
+        values = _operand(dataframe, column_name, "scale_column")
         dataframe = dataframe.copy()
-        dataframe[column_name] = dataframe[column_name] * factor
+        dataframe[column_name] = values * factor
         return dataframe
 
     @classmethod
@@ -52,8 +69,9 @@ class IntegerCalc(Base):
         Returns:
             pd.DataFrame: The DataFrame with the offset column.
         """
+        values = _operand(dataframe, column_name, "offset_column")
         dataframe = dataframe.copy()
-        dataframe[column_name] = dataframe[column_name] + offset_value
+        dataframe[column_name] = values + offset_value
         return dataframe
 
     @classmethod
@@ -79,8 +97,9 @@ class IntegerCalc(Base):
         """
         if divisor == 0:
             raise ValueError("divisor cannot be zero")
+        values = _operand(dataframe, column_name, "divide_column")
         dataframe = dataframe.copy()
-        dataframe[column_name] = dataframe[column_name] / divisor
+        dataframe[column_name] = values / divisor
         return dataframe
 
     @classmethod
@@ -101,8 +120,9 @@ class IntegerCalc(Base):
         Returns:
             pd.DataFrame: The DataFrame with the subtracted column.
         """
+        values = _operand(dataframe, column_name, "subtract_column")
         dataframe = dataframe.copy()
-        dataframe[column_name] = dataframe[column_name] - subtract_value
+        dataframe[column_name] = values - subtract_value
         return dataframe
 
     @classmethod
@@ -125,8 +145,9 @@ class IntegerCalc(Base):
         Returns:
             pd.DataFrame: The DataFrame after applying the calculations.
         """
+        values = _operand(dataframe, column_name, "calculate_with_fixed_factors")
         dataframe = dataframe.copy()
-        dataframe[column_name] = (dataframe[column_name] * multiply_factor) + add_factor
+        dataframe[column_name] = (values * multiply_factor) + add_factor
         return dataframe
 
     @classmethod
@@ -152,8 +173,16 @@ class IntegerCalc(Base):
         """
         if mod_value == 0:
             raise ValueError("mod_value cannot be zero")
+        values = _operand(dataframe, column_name, "mod_column")
         dataframe = dataframe.copy()
-        dataframe[column_name] = dataframe[column_name] % mod_value
+        if isinstance(values.dtype, pd.ArrowDtype):
+            # pyarrow has no modulo kernel; compute on the nullable equivalent.
+            nullable = "Int64" if ptypes.is_integer_dtype(values.dtype) else "Float64"
+            dataframe[column_name] = (values.astype(nullable) % mod_value).astype(
+                values.dtype
+            )
+        else:
+            dataframe[column_name] = values % mod_value
         return dataframe
 
     @classmethod
@@ -174,6 +203,7 @@ class IntegerCalc(Base):
         Returns:
             pd.DataFrame: The DataFrame with the power operation applied.
         """
+        values = _operand(dataframe, column_name, "power_column")
         dataframe = dataframe.copy()
-        dataframe[column_name] = dataframe[column_name] ** power_value
+        dataframe[column_name] = values**power_value
         return dataframe

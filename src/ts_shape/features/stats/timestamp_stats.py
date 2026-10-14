@@ -3,6 +3,7 @@ from typing import cast
 
 import pandas as pd
 
+from ts_shape.features.stats._values import time_values
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,12 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return cast(int, dataframe[column_name].isna().sum())
+        return cast(
+            int,
+            time_values(dataframe, column_name, where="TimestampStatistics.count_null")
+            .isna()
+            .sum(),
+        )
 
     @classmethod
     def count_not_null(
@@ -38,7 +44,14 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return cast(int, dataframe[column_name].notna().sum())
+        return cast(
+            int,
+            time_values(
+                dataframe, column_name, where="TimestampStatistics.count_not_null"
+            )
+            .notna()
+            .sum(),
+        )
 
     @classmethod
     def earliest_timestamp(
@@ -50,7 +63,9 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return dataframe[column_name].min()
+        return time_values(
+            dataframe, column_name, where="TimestampStatistics.earliest_timestamp"
+        ).min()
 
     @classmethod
     def latest_timestamp(
@@ -62,7 +77,9 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return dataframe[column_name].max()
+        return time_values(
+            dataframe, column_name, where="TimestampStatistics.latest_timestamp"
+        ).max()
 
     @classmethod
     def timestamp_range(
@@ -81,14 +98,23 @@ class TimestampStatistics(Base):
     @classmethod
     def most_frequent_timestamp(
         cls, dataframe: pd.DataFrame, column_name: str = "systime"
-    ) -> pd.Timestamp:
+    ) -> pd.Timestamp | None:
         """Returns the most frequent timestamp in the column.
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
+
+        Returns:
+            The most frequent timestamp (the earliest on a tie), or ``None``
+                when the column holds no timestamp.
         """
-        return dataframe[column_name].mode().iloc[0]
+        modes = time_values(
+            dataframe, column_name, where="TimestampStatistics.most_frequent_timestamp"
+        ).mode()
+        if modes.empty:
+            return None
+        return cast(pd.Timestamp, modes.iloc[0])
 
     @classmethod
     def count_most_frequent_timestamp(
@@ -100,8 +126,12 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        most_frequent_value = cls.most_frequent_timestamp(dataframe, column_name)
-        return cast(int, dataframe[column_name].value_counts().loc[most_frequent_value])
+        counts = time_values(
+            dataframe,
+            column_name,
+            where="TimestampStatistics.count_most_frequent_timestamp",
+        ).value_counts()
+        return int(counts.iloc[0]) if len(counts) else 0
 
     @classmethod
     def year_distribution(
@@ -116,7 +146,9 @@ class TimestampStatistics(Base):
         Returns:
             Series of timestamp counts indexed by year, most frequent first.
         """
-        return dataframe[column_name].dt.year.value_counts()
+        return time_values(
+            dataframe, column_name, where="TimestampStatistics.year_distribution"
+        ).dt.year.value_counts()
 
     @classmethod
     def month_distribution(
@@ -132,7 +164,9 @@ class TimestampStatistics(Base):
             Series of timestamp counts indexed by month number (1-12), most frequent
                 first.
         """
-        return dataframe[column_name].dt.month.value_counts()
+        return time_values(
+            dataframe, column_name, where="TimestampStatistics.month_distribution"
+        ).dt.month.value_counts()
 
     @classmethod
     def weekday_distribution(
@@ -148,7 +182,9 @@ class TimestampStatistics(Base):
             Series of timestamp counts indexed by weekday (0=Monday, 6=Sunday), most
                 frequent first.
         """
-        return dataframe[column_name].dt.weekday.value_counts()
+        return time_values(
+            dataframe, column_name, where="TimestampStatistics.weekday_distribution"
+        ).dt.weekday.value_counts()
 
     @classmethod
     def hour_distribution(
@@ -163,31 +199,51 @@ class TimestampStatistics(Base):
         Returns:
             Series of timestamp counts indexed by hour (0-23), most frequent first.
         """
-        return dataframe[column_name].dt.hour.value_counts()
+        return time_values(
+            dataframe, column_name, where="TimestampStatistics.hour_distribution"
+        ).dt.hour.value_counts()
 
     @classmethod
     def most_frequent_day(
         cls, dataframe: pd.DataFrame, column_name: str = "systime"
-    ) -> int:
+    ) -> int | None:
         """Returns the most frequent day of the week (0=Monday, 6=Sunday).
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return cast(int, dataframe[column_name].dt.weekday.mode().iloc[0])
+        modes = (
+            time_values(
+                dataframe, column_name, where="TimestampStatistics.most_frequent_day"
+            )
+            .dt.weekday.dropna()
+            .mode()
+        )
+        if modes.empty:
+            return None
+        return int(modes.iloc[0])
 
     @classmethod
     def most_frequent_hour(
         cls, dataframe: pd.DataFrame, column_name: str = "systime"
-    ) -> int:
+    ) -> int | None:
         """Returns the most frequent hour of the day (0-23).
 
         Args:
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return cast(int, dataframe[column_name].dt.hour.mode().iloc[0])
+        modes = (
+            time_values(
+                dataframe, column_name, where="TimestampStatistics.most_frequent_hour"
+            )
+            .dt.hour.dropna()
+            .mode()
+        )
+        if modes.empty:
+            return None
+        return int(modes.iloc[0])
 
     @classmethod
     def average_time_gap(
@@ -199,7 +255,13 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        sorted_times = dataframe[column_name].dropna().sort_values()
+        sorted_times = (
+            time_values(
+                dataframe, column_name, where="TimestampStatistics.average_time_gap"
+            )
+            .dropna()
+            .sort_values()
+        )
         time_deltas = sorted_times.diff().dropna()
         return time_deltas.mean()
 
@@ -213,7 +275,9 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return dataframe[column_name].median()
+        return time_values(
+            dataframe, column_name, where="TimestampStatistics.median_timestamp"
+        ).median()
 
     @classmethod
     def standard_deviation_timestamps(
@@ -225,7 +289,15 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        sorted_times = dataframe[column_name].dropna().sort_values()
+        sorted_times = (
+            time_values(
+                dataframe,
+                column_name,
+                where="TimestampStatistics.standard_deviation_timestamps",
+            )
+            .dropna()
+            .sort_values()
+        )
         time_deltas = sorted_times.diff().dropna()
         return time_deltas.std()
 
@@ -239,7 +311,9 @@ class TimestampStatistics(Base):
             dataframe: Input DataFrame.
             column_name: Name of the timestamp column to analyze. Default ``"systime"``.
         """
-        return dataframe[column_name].quantile([0.25, 0.5, 0.75])
+        return time_values(
+            dataframe, column_name, where="TimestampStatistics.timestamp_quartiles"
+        ).quantile([0.25, 0.5, 0.75])
 
     @classmethod
     def days_with_most_activity(
@@ -255,4 +329,12 @@ class TimestampStatistics(Base):
         Returns:
             Series of timestamp counts indexed by calendar date, most active first.
         """
-        return dataframe[column_name].dt.date.value_counts().head(n)
+        return (
+            time_values(
+                dataframe,
+                column_name,
+                where="TimestampStatistics.days_with_most_activity",
+            )
+            .dt.date.value_counts()
+            .head(n)
+        )

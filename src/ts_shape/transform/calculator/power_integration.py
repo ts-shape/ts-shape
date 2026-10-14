@@ -51,6 +51,7 @@ from pandas.tseries.offsets import Tick
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.frames import as_datetime, localize_like, require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,54 @@ _WINDOW_COLUMNS = [
     "coverage",
     "sample_count",
 ]
+
+
+def _time_dtype(dataframe: pd.DataFrame, time_column: str) -> object:
+    """dtype the time columns of the result get (the input's, as datetime64)."""
+    if time_column not in dataframe.columns:
+        return np.dtype("datetime64[ns]")
+    values = dataframe[time_column]
+    if isinstance(values.dtype, pd.ArrowDtype) or values.dtype == object:
+        if not values.notna().any():
+            return np.dtype("datetime64[ns]")
+        try:
+            values = as_datetime(values, where="PowerIntegrator")
+        except ValueError:
+            return np.dtype("datetime64[ns]")
+    if pd.api.types.is_datetime64_any_dtype(values.dtype):
+        return values.dtype
+    return np.dtype("datetime64[ns]")
+
+
+def _empty_segments(time_dtype: object) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "uuid": pd.Series(dtype=object),
+            "window_start": pd.Series(dtype=time_dtype),
+            "start": pd.Series(dtype=time_dtype),
+            "end": pd.Series(dtype=time_dtype),
+            "duration_seconds": pd.Series(dtype="float64"),
+            "kw_start": pd.Series(dtype="float64"),
+            "kw_end": pd.Series(dtype="float64"),
+            "kwh": pd.Series(dtype="float64"),
+        }
+    )
+
+
+def _empty_windows(time_dtype: object, total: bool) -> pd.DataFrame:
+    columns: dict[str, pd.Series] = {} if total else {"uuid": pd.Series(dtype=object)}
+    columns.update(
+        {
+            "start": pd.Series(dtype=time_dtype),
+            "end": pd.Series(dtype=time_dtype),
+            "duration_seconds": pd.Series(dtype="float64"),
+            "kwh": pd.Series(dtype="float64"),
+            "avg_kw": pd.Series(dtype="float64"),
+            "coverage": pd.Series(dtype="float64"),
+            "sample_count": pd.Series(dtype="int64"),
+        }
+    )
+    return pd.DataFrame(columns)
 
 
 def _is_fixed(offset: object) -> bool:
@@ -159,7 +208,10 @@ class PowerIntegrator(Base):
         # they must share one index or a non-default input index silently
         # mispairs them.
         src = dataframe.reset_index(drop=True)
-        times = pd.to_datetime(src[time_column], errors="coerce")
+        raw_times = src[time_column]
+        if isinstance(raw_times.dtype, pd.ArrowDtype):
+            raw_times = as_datetime(raw_times, where="PowerIntegrator")
+        times = pd.to_datetime(raw_times, errors="coerce")
         bad_times = int((times.isna() & src[time_column].notna()).sum())
         if bad_times:
             warnings.warn(
@@ -202,7 +254,7 @@ class PowerIntegrator(Base):
         if data_end is not None:
             # Close the trailing segment of every series at a known end of
             # data (e.g. the query window end) instead of dropping it.
-            end_ts = pd.Timestamp(data_end)
+            end_ts = localize_like(data_end, df["ts"])
             tail = df["end"].isna()
             df.loc[tail, "end"] = end_ts
             # Nothing is known past the last sample, so hold it flat.
@@ -241,7 +293,7 @@ class PowerIntegrator(Base):
         start = segments["ts"]
         end = segments["end"]
         if start.empty:
-            return pd.DataFrame(columns=_SEGMENT_COLUMNS)
+            return _empty_segments(start.dtype)
         first = (
             start.min().floor(freq)
             if _is_fixed(offset)
@@ -265,7 +317,7 @@ class PowerIntegrator(Base):
 
         idx = np.repeat(np.arange(len(segments)), n_buckets)
         if idx.size == 0:
-            return pd.DataFrame(columns=_SEGMENT_COLUMNS)
+            return _empty_segments(start.dtype)
 
         # Position of each row within its parent segment: 0, 1, 2, ...
         offsets = np.arange(idx.size) - np.repeat(
@@ -349,8 +401,14 @@ class PowerIntegrator(Base):
         """
         if method not in ("locf", "linear"):
             raise ValueError(f"method must be 'locf' or 'linear', got {method!r}")
+        require_columns(
+            dataframe,
+            [time_column, uuid_column, value_column],
+            where="PowerIntegrator",
+        )
+        empty = _empty_segments(_time_dtype(dataframe, time_column))
         if dataframe.empty:
-            return pd.DataFrame(columns=_SEGMENT_COLUMNS)
+            return empty
 
         prepared = cls._prepare(
             dataframe,
@@ -361,11 +419,11 @@ class PowerIntegrator(Base):
         )
         segments = cls._hold_segments(prepared, max_gap=max_gap, data_end=data_end)
         if segments.empty:
-            return pd.DataFrame(columns=_SEGMENT_COLUMNS)
+            return empty
 
         parts = cls._split_on_windows(segments, freq)
         if parts.empty:
-            return pd.DataFrame(columns=_SEGMENT_COLUMNS)
+            return empty
 
         if method == "locf":
             parts["kw_start"] = parts["kw"]
@@ -449,7 +507,6 @@ class PowerIntegrator(Base):
             aggregate to local days afterwards if that matters.
         """
         extra = [] if total else ["uuid"]
-        empty = pd.DataFrame(columns=extra + _WINDOW_COLUMNS)
 
         parts = cls.segment_energy(
             dataframe,
@@ -463,7 +520,7 @@ class PowerIntegrator(Base):
             value_column=value_column,
         )
         if parts.empty:
-            return empty
+            return _empty_windows(parts["start"].dtype, total)
 
         offset = to_offset(freq)
 
@@ -568,7 +625,6 @@ class PowerIntegrator(Base):
             ``value_double`` being kWh consumed in the window starting at
             ``systime``.
         """
-        cols = ["systime", "uuid", "value_double", "is_delta"]
         windows = cls.energy_by_window(
             dataframe,
             freq=freq,
@@ -582,7 +638,14 @@ class PowerIntegrator(Base):
             value_column=value_column,
         )
         if windows.empty:
-            return pd.DataFrame(columns=cols)
+            return pd.DataFrame(
+                {
+                    "systime": pd.Series(dtype=windows["start"].dtype),
+                    "uuid": pd.Series(dtype=object),
+                    "value_double": pd.Series(dtype="float64"),
+                    "is_delta": pd.Series(dtype=bool),
+                }
+            )
 
         out = pd.DataFrame(
             {
