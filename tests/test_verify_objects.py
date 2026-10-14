@@ -543,3 +543,28 @@ def test_pyarrow_timestamps_and_ids():
     )
     iv = object_intervals(df, [ObjectSpec("s", "order", value_column="value_integer")])
     assert _spans(iv) == [("1", _m(0), _m(10)), ("2", _m(15), _m(15))]
+
+
+def test_last_id_on_a_change_encoded_signal_stays_present_to_the_data_end():
+    import pandas as pd
+
+    from ts_shape.eventlog import ObjectSpec, object_intervals
+
+    t = pd.date_range("2024-01-01 06:00", periods=6, freq="10min", tz="UTC")
+    df = pd.concat(
+        [
+            pd.DataFrame(
+                {"systime": t[[0, 3]], "uuid": "batch", "value_string": ["B1", "B2"]}
+            ),
+            pd.DataFrame({"systime": t, "uuid": "temp", "value_string": "x"}),
+        ],
+        ignore_index=True,
+    )
+    out = object_intervals(df, [ObjectSpec("batch", "batch")])
+    assert out["end"].tolist() == [t[3], t[5]]  # B2 is still running
+    # A cleared id is not extended.
+    cleared = pd.concat(
+        [df, pd.DataFrame({"systime": [t[4]], "uuid": "batch", "value_string": [""]})]
+    )
+    out = object_intervals(cleared, [ObjectSpec("batch", "batch")])
+    assert out["end"].tolist() == [t[3], t[4]]

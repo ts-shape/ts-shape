@@ -56,6 +56,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -78,8 +79,8 @@ _SOURCE = "source_uuid"
 #: Columns of the interval table that are not object attributes.
 _RESERVED: tuple[str, ...] = (_OID, _TYPE, _START, _END, _DURATION, _UUID, _SOURCE)
 
-_I64 = npt.NDArray[np.int64]
-_BOOL = npt.NDArray[np.bool_]
+_I64: TypeAlias = "npt.NDArray[np.int64]"
+_BOOL: TypeAlias = "npt.NDArray[np.bool_]"
 _NAT = np.iinfo(np.int64).min  # int64 view of NaT
 
 
@@ -261,6 +262,8 @@ def _detect(
     frames: list[pd.DataFrame] = []
     changes: list[pd.DataFrame] = []
     available = set(df[uuid_column].unique()) if not df.empty else set()
+    times = df[time_column].dropna() if not df.empty else df[time_column]
+    data_end_ns = int(np.max(_ns(times))) if len(times) else None
     for spec in specs:
         if not schema.is_known_object_type(spec.object_type):
             schema.register_object_type(spec.object_type)
@@ -298,6 +301,17 @@ def _detect(
         )
         if len(codes) == 0:
             continue
+        # A signal that still carries an id at its last reading (change
+        # encoded: the id is not re-sent) keeps that object present until the
+        # end of the data, like the last segment of SegmentExtractor.
+        last_value = sig[spec.value_column].iloc[-1]
+        still_set = not (
+            pd.isna(last_value)
+            or (isinstance(last_value, str) and last_value.strip(" \t\r\n\x00") == "")
+        )
+        if still_set and data_end_ns is not None and end[-1] < data_end_ns:
+            end = end.copy()
+            end[-1] = data_end_ns
 
         oids = _render_oids(uniques, spec.id_template, spec.object_type)
         oid = oids.to_numpy()[codes]
@@ -375,7 +389,8 @@ def object_intervals(
 
     Each id signal is run-length encoded: an id is present from its first
     sample until the next value on the same signal (next id, or an empty /
-    missing reading); the last presence ends at its last sample. An id that
+    missing reading). A signal whose last reading is still an id keeps that
+    object present until the last timestamp of the frame. An id that
     re-appears later yields another row with the same ``oid``. An empty frame
     or no matching signal gives an empty frame with the full column set.
     """
