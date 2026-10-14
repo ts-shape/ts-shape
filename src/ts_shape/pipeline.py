@@ -36,6 +36,13 @@ Keyword-argument values may use two **sentinels**, resolved at run time:
 These wire steps that need a second DataFrame (e.g.
 ``SegmentProcessor.apply_ranges``). If a kwarg names the step's own
 DataFrame parameter, that value is used instead of the auto-injected one.
+Only string values are compared with the sentinels; write ``"$$..."`` for a
+literal string starting with ``$`` (``"$$input"`` passes ``"$input"``).
+
+Each transform works on a copy of the working DataFrame, so a transform that
+changes its input in place never changes the caller's DataFrame. Step names
+are unique: they key :meth:`Pipeline.run_steps` and the detector results,
+and ``"input"`` is reserved for the input frame.
 
 Example::
 
@@ -117,21 +124,35 @@ def _first_param_name(func: Any) -> str | None:
 
 
 def _subst(value: Any, working_df: pd.DataFrame, input_df: pd.DataFrame) -> Any:
-    """Resolve a ``$input`` / ``$prev`` sentinel to its DataFrame."""
+    """Resolve a ``$input`` / ``$prev`` sentinel to its DataFrame.
+
+    Only strings are compared, so arrays, Series and DataFrames pass through
+    unchanged. ``"$$..."`` is the escaped literal ``"$..."``.
+    """
+    if not isinstance(value, str):
+        return value
     if value == "$input":
         return input_df
     if value == "$prev":
         return working_df
+    if value.startswith("$$"):
+        return value[1:]
     return value
 
 
 def _validate_sentinels(kwargs: dict[str, Any]) -> None:
     """Reject unknown ``$``-prefixed sentinel strings at registration time."""
     for key, value in kwargs.items():
-        if isinstance(value, str) and value.startswith("$") and value not in _SENTINELS:
+        if (
+            isinstance(value, str)
+            and value.startswith("$")
+            and not value.startswith("$$")
+            and value not in _SENTINELS
+        ):
             raise ValueError(
                 f"unknown sentinel {value!r} for argument {key!r}; "
-                f"valid sentinels are $input and $prev"
+                f"valid sentinels are $input and $prev (write $$ for a "
+                f"literal $, e.g. '$${value[1:]}')"
             )
 
 
@@ -262,7 +283,7 @@ def _resolve_source(
             )
 
         def _load_callable() -> pd.DataFrame:
-            return target(**kwargs)
+            return target(**_literal(kwargs))
 
         return _load_callable
 
@@ -281,7 +302,7 @@ def _resolve_source(
         bound = getattr(target, method)
 
         def _load_static() -> pd.DataFrame:
-            return bound(**kwargs)
+            return bound(**_literal(kwargs))
 
         return _load_static
 
@@ -289,12 +310,21 @@ def _resolve_source(
     init_keys, method_keys = _split_kwargs(target, method, kwargs)
 
     def _load_instance() -> pd.DataFrame:
-        init_kwargs = {k: kwargs[k] for k in init_keys}
-        method_kwargs = {k: kwargs[k] for k in method_keys}
+        resolved = _literal(kwargs)
+        init_kwargs = {k: resolved[k] for k in init_keys}
+        method_kwargs = {k: resolved[k] for k in method_keys}
         instance = target(**init_kwargs)
         return getattr(instance, method)(**method_kwargs)
 
     return _load_instance
+
+
+def _literal(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Unescape ``"$$..."`` literals (sources have no sentinels)."""
+    return {
+        k: v[1:] if isinstance(v, str) and v.startswith("$$") else v
+        for k, v in kwargs.items()
+    }
 
 
 def _default_name(target: Any, method: str | None) -> str:
@@ -459,25 +489,54 @@ class Pipeline:
             target: A callable ``df -> df``, or a transform class.
             method: Method name to call on ``target`` (omit for the callable
                 form).
-            name: Optional step label (defaults to the method/callable name).
+            name: Optional step label (defaults to the method/callable name,
+                with a ``_2``, ``_3`` suffix when that name is taken).
             **kwargs: Forwarded to the transform (routed between constructor
                 and method for stateful classes). Values may be the ``$input``
                 / ``$prev`` sentinels.
 
         Returns:
             ``self``, for chaining.
+
+        Raises:
+            ValueError: If an explicit ``name`` is taken or is ``"input"``.
         """
         executor, _ = _resolve(target, method, kwargs)
         self._steps.append(
             _Step(
                 "transform",
-                name or _default_name(target, method),
+                self._step_name(name, target, method, kind="transform"),
                 executor,
                 None,
                 kwargs,
             )
         )
         return self
+
+    def _step_name(
+        self, name: str | None, target: Any, method: str | None, *, kind: str
+    ) -> str:
+        """A unique step name; a default transform name gets a suffix."""
+        taken = {s.name for s in self._steps}
+        if name is None and kind == "transform":
+            base = _default_name(target, method)
+            candidate, n = base, 1
+            while candidate in taken or candidate == "input":
+                n += 1
+                candidate = f"{base}_{n}"
+            return candidate
+        step_name = name or _default_name(target, method)
+        if step_name == "input":
+            raise ValueError(
+                "the step name 'input' is reserved for the input DataFrame "
+                "in run_steps(); pass another name="
+            )
+        if step_name in taken:
+            label = "detector step" if kind == "detect" else "step"
+            raise ValueError(
+                f"duplicate {label} name {step_name!r}; pass a unique name="
+            )
+        return step_name
 
     def detect(
         self,
@@ -502,15 +561,10 @@ class Pipeline:
 
         Raises:
             ValueError: If the resolved step name collides with an existing
-                detector step.
+                step or is ``"input"``.
         """
         executor, detector_id = _resolve(target, method, kwargs)
-        step_name = name or _default_name(target, method)
-        existing = {s.name for s in self._steps if s.kind == "detect"}
-        if step_name in existing:
-            raise ValueError(
-                f"duplicate detector step name {step_name!r}; pass a unique name="
-            )
+        step_name = self._step_name(name, target, method, kind="detect")
         self._steps.append(_Step("detect", step_name, executor, detector_id, kwargs))
         return self
 
@@ -579,12 +633,15 @@ class Pipeline:
             if capture:
                 intermediates["input"] = dataframe
 
-        input_df = dataframe
-        working = dataframe
+        # The caller's frame is never handed to a step: ``$input`` is a copy
+        # and every transform gets its own copy of the working frame.
+        input_df = dataframe.copy()
+        working = input_df
 
         for index, step in enumerate(remaining, start=1 if has_source else 0):
             try:
-                result = step.executor(working, input_df)
+                arg = working.copy() if step.kind == "transform" else working
+                result = step.executor(arg, input_df)
             except Exception as exc:  # noqa: BLE001 -- re-raised with context
                 raise RuntimeError(
                     f"pipeline {self.name!r}: step {index} "

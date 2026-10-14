@@ -66,7 +66,7 @@ def empty_signal_frame(tz: str | None = None) -> pd.DataFrame:
             "value_integer": pd.Series(dtype="Int64"),
             "value_double": pd.Series(dtype="float64"),
             "value_string": pd.Series(dtype=object),
-            "is_delta": pd.Series(dtype="boolean"),
+            "is_delta": pd.Series(dtype="bool"),
         }
     )
 

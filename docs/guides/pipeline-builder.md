@@ -36,6 +36,12 @@ The pipeline is linear. You declare the role of each step:
 | `.transform(...)` | the output replaces the working DataFrame |
 | `.detect(...)` | the output is stored in `result.events[name]`; the working DataFrame is unchanged |
 
+Step names are unique: a second step with an explicit name that is taken
+raises `ValueError`, while a transform without `name=` gets a `_2`, `_3`
+suffix. `"input"` is reserved for the input frame in `run_steps()`. Each
+transform works on a copy of the working DataFrame, so a transform that
+changes its input in place never changes the DataFrame passed to `run()`.
+
 ## Step targets
 
 A step is either a plain callable `df -> df`:
@@ -79,7 +85,9 @@ raised as a `RuntimeError` naming step 0.
 Any keyword value can be a sentinel: `"$input"` is the DataFrame passed to
 `run()`, `"$prev"` the current working DataFrame. If the keyword names the
 step's own DataFrame parameter (such as `dataframe`), the sentinel replaces the
-automatically passed working frame.
+automatically passed working frame. Only strings are compared with the
+sentinels, so arrays, Series and DataFrames can be passed as keyword values;
+write `"$$input"` for the literal string `"$input"`.
 
 The recipe below cuts process signals into order segments and computes a
 feature table with one row per order and 15-minute window:
