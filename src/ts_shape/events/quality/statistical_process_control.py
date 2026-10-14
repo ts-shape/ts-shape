@@ -18,6 +18,12 @@ class StatisticalProcessControlEvents(Base):
     """
     Inherits from Base and applies SPC rules (Western Electric Rules) to a DataFrame for event detection.
     Processes data based on control limit UUIDs, actual value UUIDs, and generates events with an event UUID.
+
+    ``rule_1`` .. ``rule_8`` are the eight tests of Nelson (1984), "The
+    Shewhart Control Chart--Tests for Special Causes", Journal of Quality
+    Technology 16(4); rules 1, 5 and 6 are the Western Electric zone rules
+    (Montgomery, Introduction to Statistical Quality Control, Table 5.1).
+    The center line and sigma come from the ``tolerance_uuid`` rows.
     """
 
     def __init__(
@@ -163,185 +169,246 @@ class StatisticalProcessControlEvents(Base):
         control_limits["source_uuid"] = self.actual_uuid
         return control_limits.reset_index(drop=True)
 
-    def rule_1(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
-        """
-        Rule 1: One point beyond the 3σ control limits.
+    # The rule definitions follow Nelson (1984), "The Shewhart Control
+    # Chart--Tests for Special Causes", Journal of Quality Technology 16(4),
+    # pp. 237-239, which extends the Western Electric zone rules (Western
+    # Electric Statistical Quality Control Handbook, 1956; Montgomery,
+    # Introduction to Statistical Quality Control, Table 5.1). Zones are
+    # measured from the chart's center line (the tolerance mean): zone C is
+    # within 1 sigma, zone B between 1 and 2 sigma, zone A between 2 and 3
+    # sigma. Run lengths count *points*: "six points steadily increasing" is
+    # five consecutive increases. A rule flags the point that completes the
+    # pattern (the last point of every qualifying window).
+    _RULE_NAMES = tuple(f"rule_{i}" for i in range(1, 9))
+
+    def _rule_mask(
+        self,
+        rule: str,
+        values: pd.Series,
+        limits: pd.DataFrame | None,
+        center: float | None = None,
+    ) -> pd.Series:
+        """Boolean mask of the points that complete a violation of ``rule``.
+
+        Shared by the per-rule methods, :meth:`detect_violations` and
+        :meth:`detect_rule_violations` so all paths flag the same points.
 
         Args:
-            df: Rows of the actual signal, sorted by time. A boolean
-                ``rule_1`` column is added to it in place.
+            rule: One of ``"rule_1"`` .. ``"rule_8"``.
+            values: The actual values, sorted by time.
+            limits: Control limits as returned by :meth:`control_limits`
+                (first row used). Only rules 2-4 work without limits.
+            center: Center line for rule 2; defaults to ``limits["mean"]``,
+                or to the mean of ``values`` when no limits are given.
+
+        Returns:
+            pd.Series: Boolean mask aligned with ``values``.
+        """
+        if rule in ("rule_2", "rule_3", "rule_4") and limits is None:
+            lim: dict[str, float] = {}
+        elif limits is None:
+            raise ValueError(f"{rule} needs control limits")
+        else:
+            lim = {c: float(limits[c].values[0]) for c in limits.columns}
+        if rule == "rule_1":
+            # Nelson 1: one point more than 3 sigma from the center line.
+            return (values > lim["3sigma_upper"]) | (values < lim["3sigma_lower"])
+        if rule == "rule_2":
+            # Nelson 2: nine points in a row on the same side of the center
+            # line (a point exactly on the center line breaks the run).
+            if center is None:
+                center = lim["mean"] if lim else float(values.mean())
+            above = (values > center).astype(int).rolling(window=9).sum() == 9
+            below = (values < center).astype(int).rolling(window=9).sum() == 9
+            return above | below
+        if rule == "rule_3":
+            # Nelson 3: six points in a row steadily increasing or decreasing
+            # = five consecutive strictly positive (or negative) differences.
+            diffs = values.diff()
+            inc = (diffs > 0).astype(int).rolling(window=5).sum() == 5
+            dec = (diffs < 0).astype(int).rolling(window=5).sum() == 5
+            return inc | dec
+        if rule == "rule_4":
+            # Nelson 4: fourteen points in a row alternating up and down
+            # = thirteen consecutive non-zero differences whose signs alternate.
+            signs = np.sign(values.diff().to_numpy(dtype=float))
+            flips = np.zeros(len(signs), dtype=int)
+            if len(signs) > 1:
+                flips[1:] = (signs[1:] * signs[:-1]) < 0  # NaN/0 compare False
+            # 13 alternating differences = 12 consecutive sign flips.
+            return pd.Series(flips, index=values.index).rolling(window=12).sum() == 12
+        if rule == "rule_5":
+            # Nelson 5 / Western Electric 2: two out of three points in a row
+            # more than 2 sigma from the center line, on the same side
+            # (zone A *or beyond*).
+            up = (values > lim["2sigma_upper"]).astype(int).rolling(window=3).sum()
+            lo = (values < lim["2sigma_lower"]).astype(int).rolling(window=3).sum()
+            return (up >= 2) | (lo >= 2)
+        if rule == "rule_6":
+            # Nelson 6 / Western Electric 3: four out of five points in a row
+            # more than 1 sigma from the center line, on the same side
+            # (zone B *or beyond*).
+            up = (values > lim["1sigma_upper"]).astype(int).rolling(window=5).sum()
+            lo = (values < lim["1sigma_lower"]).astype(int).rolling(window=5).sum()
+            return (up >= 4) | (lo >= 4)
+        if rule == "rule_7":
+            # Nelson 7: fifteen points in a row within 1 sigma (zone C),
+            # either side of the center line.
+            within = (values < lim["1sigma_upper"]) & (values > lim["1sigma_lower"])
+            return within.astype(int).rolling(window=15).sum() == 15
+        if rule == "rule_8":
+            # Nelson 8: eight points in a row with none within 1 sigma (none
+            # in zone C), on either side of the center line.
+            outside = (values > lim["1sigma_upper"]) | (values < lim["1sigma_lower"])
+            return outside.astype(int).rolling(window=8).sum() == 8
+        raise ValueError(f"Unknown rule: {rule!r}")
+
+    def _apply_rule(
+        self, rule: str, df: pd.DataFrame, limits: pd.DataFrame | None
+    ) -> pd.DataFrame:
+        out = df.copy()
+        out[rule] = self._rule_mask(rule, out[self.value_column], limits).astype(bool)
+        return out[out[rule]]
+
+    def rule_1(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
+        """
+        Rule 1 (Nelson 1984, test 1): one point more than 3σ from the center line.
+
+        Args:
+            df: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
         Returns:
-            pd.DataFrame: Filtered DataFrame with rule violations.
+            pd.DataFrame: The violating rows (a copy) with a boolean
+                ``rule_1`` column.
         """
-        df["rule_1"] = (df[self.value_column] > limits["3sigma_upper"].values[0]) | (
-            df[self.value_column] < limits["3sigma_lower"].values[0]
-        )
-        return df[df["rule_1"]]
+        return self._apply_rule("rule_1", df, limits)
 
-    def rule_2(self, df: pd.DataFrame) -> pd.DataFrame:
+    def rule_2(
+        self, df: pd.DataFrame, *, limits: pd.DataFrame | None = None
+    ) -> pd.DataFrame:
         """
-        Rule 2: Nine consecutive points on one side of the mean.
+        Rule 2 (Nelson 1984, test 2): nine points in a row on the same side of the center line.
 
         Args:
-            df: Rows of the actual signal, sorted by time. A boolean
-                ``rule_2`` column and helper columns ``above_mean`` and
-                ``below_mean`` are added to it in place.
+            df: Rows of the actual signal, sorted by time. Not modified.
+            limits: Control limits as returned by :meth:`control_limits`;
+                the center line is ``limits["mean"]``. When omitted, the
+                mean of ``df``'s values is used as the center line.
 
         Returns:
-            pd.DataFrame: Filtered DataFrame with rule violations.
+            pd.DataFrame: The violating rows (a copy) with a boolean
+                ``rule_2`` column (the ninth point of each run is flagged).
         """
-        mean = df[self.value_column].mean()
-        df["above_mean"] = df[self.value_column] > mean
-        df["below_mean"] = df[self.value_column] < mean
-        df["rule_2"] = (df["above_mean"].rolling(window=9).sum() == 9) | (
-            df["below_mean"].rolling(window=9).sum() == 9
-        )
-        return df[df["rule_2"]]
+        return self._apply_rule("rule_2", df, limits)
 
     def rule_3(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Rule 3: Six consecutive points steadily increasing or decreasing.
+        Rule 3 (Nelson 1984, test 3): six points in a row steadily increasing or decreasing.
+
+        Six points means five consecutive strictly positive (or strictly
+        negative) differences; an unchanged value breaks the run.
 
         Args:
-            df: Rows of the actual signal, sorted by time. A boolean
-                ``rule_3`` column and helper columns ``increasing`` and
-                ``decreasing`` are added to it in place.
+            df: Rows of the actual signal, sorted by time. Not modified.
 
         Returns:
-            pd.DataFrame: Filtered DataFrame with rule violations.
+            pd.DataFrame: The violating rows (a copy) with a boolean
+                ``rule_3`` column (the sixth point of each run is flagged).
         """
-        df["increasing"] = df[self.value_column].diff().gt(0)
-        df["decreasing"] = df[self.value_column].diff().lt(0)
-        df["rule_3"] = (df["increasing"].rolling(window=6).sum() == 6) | (
-            df["decreasing"].rolling(window=6).sum() == 6
-        )
-        return df[df["rule_3"]]
+        return self._apply_rule("rule_3", df, None)
 
     def rule_4(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Rule 4: Fourteen consecutive points alternating up and down.
+        Rule 4 (Nelson 1984, test 4): fourteen points in a row alternating up and down.
+
+        Fourteen points means thirteen consecutive non-zero differences
+        whose signs alternate; an unchanged value breaks the run.
 
         Args:
-            df: Rows of the actual signal, sorted by time. A ``rule_4``
-                column (1.0 where the rule fires) and a helper column
-                ``alternating`` are added to it in place.
+            df: Rows of the actual signal, sorted by time. Not modified.
 
         Returns:
-            pd.DataFrame: Filtered DataFrame with rule violations.
+            pd.DataFrame: The violating rows (a copy) with a boolean
+                ``rule_4`` column (the fourteenth point of each run is flagged).
         """
-        df["alternating"] = np.sign(df[self.value_column].diff())
-        # In a 14-value window of difference-signs, an alternating run
-        # means every adjacent pair differs. ``raw=True`` passes a NumPy
-        # array, so compare neighbors with array slicing rather than
-        # Series.shift(). Reject windows containing the leading NaN that
-        # diff() produces.
-        df["rule_4"] = (
-            df["alternating"]
-            .rolling(window=14)
-            .apply(
-                lambda x: bool(not np.isnan(x).any() and np.all(x[1:] != x[:-1])),
-                raw=True,
-            )
-        )
-        return df[df["rule_4"] == 1]
+        return self._apply_rule("rule_4", df, None)
 
     def rule_5(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
-        Rule 5: Two out of three consecutive points near the control limit (beyond 2σ but within 3σ).
+        Rule 5 (Nelson 1984, test 5): two out of three points in a row more than 2σ from the center line, same side.
+
+        Points beyond 3σ count as beyond 2σ (zone A or beyond).
 
         Args:
-            df: Rows of the actual signal, sorted by time. A boolean
-                ``rule_5`` column is added to it in place.
+            df: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
         Returns:
-            pd.DataFrame: Filtered DataFrame with rule violations.
+            pd.DataFrame: The violating rows (a copy) with a boolean
+                ``rule_5`` column (the last point of each qualifying
+                three-point window is flagged).
         """
-        values = df[self.value_column]
-        beyond_2sigma = (
-            (values > limits["2sigma_upper"].values[0])
-            & (values < limits["3sigma_upper"].values[0])
-        ) | (
-            (values < limits["2sigma_lower"].values[0])
-            & (values > limits["3sigma_lower"].values[0])
-        )
-        df["rule_5"] = beyond_2sigma.astype(int).rolling(window=3).sum() >= 2
-        return df[df["rule_5"]]
+        return self._apply_rule("rule_5", df, limits)
 
     def rule_6(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
-        Rule 6: Four out of five consecutive points near the control limit (beyond 1σ but within 2σ).
+        Rule 6 (Nelson 1984, test 6): four out of five points in a row more than 1σ from the center line, same side.
+
+        Points beyond 2σ or 3σ count as beyond 1σ (zone B or beyond).
 
         Args:
-            df: Rows of the actual signal, sorted by time. A boolean
-                ``rule_6`` column is added to it in place.
+            df: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
         Returns:
-            pd.DataFrame: Filtered DataFrame with rule violations.
+            pd.DataFrame: The violating rows (a copy) with a boolean
+                ``rule_6`` column (the last point of each qualifying
+                five-point window is flagged).
         """
-        values = df[self.value_column]
-        beyond_1sigma = (
-            (values > limits["1sigma_upper"].values[0])
-            & (values < limits["2sigma_upper"].values[0])
-        ) | (
-            (values < limits["1sigma_lower"].values[0])
-            & (values > limits["2sigma_lower"].values[0])
-        )
-        df["rule_6"] = beyond_1sigma.astype(int).rolling(window=5).sum() >= 4
-        return df[df["rule_6"]]
+        return self._apply_rule("rule_6", df, limits)
 
     def rule_7(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
-        Rule 7: Fifteen consecutive points within 1σ of the centerline.
+        Rule 7 (Nelson 1984, test 7): fifteen points in a row within 1σ of the center line (either side).
 
         Args:
-            df: Rows of the actual signal, sorted by time. A boolean
-                ``rule_7`` column is added to it in place.
+            df: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
         Returns:
-            pd.DataFrame: Filtered DataFrame with rule violations.
+            pd.DataFrame: The violating rows (a copy) with a boolean
+                ``rule_7`` column.
         """
-        values = df[self.value_column]
-        within_1sigma = (values < limits["1sigma_upper"].values[0]) & (
-            values > limits["1sigma_lower"].values[0]
-        )
-        df["rule_7"] = within_1sigma.astype(int).rolling(window=15).sum() == 15
-        return df[df["rule_7"]]
+        return self._apply_rule("rule_7", df, limits)
 
     def rule_8(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
-        Rule 8: Eight consecutive points on both sides of the mean within 1σ.
+        Rule 8 (Nelson 1984, test 8): eight points in a row with none within 1σ of the center line.
+
+        The points may lie on either side of the center line; what matters
+        is that none falls in zone C (within 1σ).
 
         Args:
-            df: Rows of the actual signal, sorted by time. A boolean
-                ``rule_8`` column is added to it in place.
+            df: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
         Returns:
-            pd.DataFrame: Filtered DataFrame with rule violations.
+            pd.DataFrame: The violating rows (a copy) with a boolean
+                ``rule_8`` column.
         """
-        values = df[self.value_column]
-        within_1sigma = (values < limits["1sigma_upper"].values[0]) & (
-            values > limits["1sigma_lower"].values[0]
-        )
-        df["rule_8"] = within_1sigma.astype(int).rolling(window=8).sum() == 8
-        return df[df["rule_8"]]
+        return self._apply_rule("rule_8", df, limits)
 
     def _calculate_rule_2_7_8_optimized(
         self, df: pd.DataFrame, limits: pd.DataFrame
     ) -> tuple[pd.Series, pd.Series, pd.Series]:
         """
-        Optimized calculation for rules 2, 7, and 8 that share common computations.
-        Reduces multiple passes through the data by computing related patterns together.
+        Masks for rules 2, 7 and 8 (kept for backward compatibility).
 
         Args:
             df (pd.DataFrame): DataFrame with values to analyze
@@ -351,27 +418,11 @@ class StatisticalProcessControlEvents(Base):
             Tuple[pd.Series, pd.Series, pd.Series]: Boolean series for rule_2, rule_7, rule_8 violations
         """
         values = df[self.value_column]
-        mean = values.mean()
-        upper_1sigma = limits["1sigma_upper"].values[0]
-        lower_1sigma = limits["1sigma_lower"].values[0]
-
-        # Shared computation: determine position relative to mean and sigma bands
-        above_mean = values > mean
-        below_mean = values < mean
-        within_1sigma = (values < upper_1sigma) & (values > lower_1sigma)
-
-        # Rule 2: Nine consecutive points on one side of the mean
-        rule_2 = (above_mean.rolling(window=9).sum() == 9) | (
-            below_mean.rolling(window=9).sum() == 9
+        return (
+            self._rule_mask("rule_2", values, limits),
+            self._rule_mask("rule_7", values, limits),
+            self._rule_mask("rule_8", values, limits),
         )
-
-        # Rule 7: Fifteen consecutive points within 1σ
-        rule_7 = within_1sigma.rolling(window=15).sum() == 15
-
-        # Rule 8: Eight consecutive points within 1σ
-        rule_8 = within_1sigma.rolling(window=8).sum() == 8
-
-        return rule_2, rule_7, rule_8
 
     apply_rules_vectorized = deprecated_method("detect_rule_violations")
 
@@ -410,147 +461,31 @@ class StatisticalProcessControlEvents(Base):
                 "rule_8",
             ]
 
-        # Pre-compute values used across multiple rules
+        rule_severity = {
+            "rule_1": "critical",
+            "rule_2": "medium",
+            "rule_3": "medium",
+            "rule_4": "medium",
+            "rule_5": "high",
+            "rule_6": "medium",
+            "rule_7": "low",
+            "rule_8": "low",
+        }
         values = df[self.value_column]
-        _mean = values.mean()
-        upper_3sigma = limits["3sigma_upper"].values[0]
-        lower_3sigma = limits["3sigma_lower"].values[0]
-        upper_2sigma = limits["2sigma_upper"].values[0]
-        lower_2sigma = limits["2sigma_lower"].values[0]
-        upper_1sigma = limits["1sigma_upper"].values[0]
-        lower_1sigma = limits["1sigma_lower"].values[0]
-
-        # Initialize results
         violations = []
-
-        # Rule 1: One point beyond 3σ
-        if "rule_1" in selected_rules:
-            rule_1_mask = (values > upper_3sigma) | (values < lower_3sigma)
-            if rule_1_mask.any():
-                for idx in df[rule_1_mask].index:
-                    violations.append(
-                        {
-                            "systime": df.loc[idx, "systime"],
-                            "value": df.loc[idx, self.value_column],
-                            "rule": "rule_1",
-                            "severity": "critical",
-                        }
-                    )
-
-        # Optimized rules 2, 7, 8 (processed together)
-        if any(r in selected_rules for r in ["rule_2", "rule_7", "rule_8"]):
-            rule_2_mask, rule_7_mask, rule_8_mask = (
-                self._calculate_rule_2_7_8_optimized(df, limits)
-            )
-
-            if "rule_2" in selected_rules and rule_2_mask.any():
-                for idx in df[rule_2_mask].index:
-                    violations.append(
-                        {
-                            "systime": df.loc[idx, "systime"],
-                            "value": df.loc[idx, self.value_column],
-                            "rule": "rule_2",
-                            "severity": "medium",
-                        }
-                    )
-
-            if "rule_7" in selected_rules and rule_7_mask.any():
-                for idx in df[rule_7_mask].index:
-                    violations.append(
-                        {
-                            "systime": df.loc[idx, "systime"],
-                            "value": df.loc[idx, self.value_column],
-                            "rule": "rule_7",
-                            "severity": "low",
-                        }
-                    )
-
-            if "rule_8" in selected_rules and rule_8_mask.any():
-                for idx in df[rule_8_mask].index:
-                    violations.append(
-                        {
-                            "systime": df.loc[idx, "systime"],
-                            "value": df.loc[idx, self.value_column],
-                            "rule": "rule_8",
-                            "severity": "low",
-                        }
-                    )
-
-        # Rule 3: Six consecutive points steadily increasing or decreasing
-        if "rule_3" in selected_rules:
-            diffs = values.diff()
-            increasing = diffs > 0
-            decreasing = diffs < 0
-            rule_3_mask = (increasing.rolling(window=6).sum() == 6) | (
-                decreasing.rolling(window=6).sum() == 6
-            )
-            if rule_3_mask.any():
-                for idx in df[rule_3_mask].index:
-                    violations.append(
-                        {
-                            "systime": df.loc[idx, "systime"],
-                            "value": df.loc[idx, self.value_column],
-                            "rule": "rule_3",
-                            "severity": "medium",
-                        }
-                    )
-
-        # Rule 4: Fourteen consecutive points alternating
-        if "rule_4" in selected_rules:
-            alternating = values.diff().apply(np.sign)
-            rule_4_mask = (
-                alternating.rolling(window=14).apply(
-                    # raw=True passes a NumPy array; an alternating run
-                    # means every adjacent sign differs. See rule_4().
-                    lambda x: bool(not np.isnan(x).any() and np.all(x[1:] != x[:-1])),
-                    raw=True,
+        for rule in self._RULE_NAMES:
+            if rule not in selected_rules:
+                continue
+            mask = self._rule_mask(rule, values, limits)
+            for idx in df[mask].index:
+                violations.append(
+                    {
+                        "systime": df.loc[idx, "systime"],
+                        "value": df.loc[idx, self.value_column],
+                        "rule": rule,
+                        "severity": rule_severity[rule],
+                    }
                 )
-                == 1
-            )
-            if rule_4_mask.any():
-                for idx in df[rule_4_mask].index:
-                    violations.append(
-                        {
-                            "systime": df.loc[idx, "systime"],
-                            "value": df.loc[idx, self.value_column],
-                            "rule": "rule_4",
-                            "severity": "medium",
-                        }
-                    )
-
-        # Rule 5: Two out of three beyond 2σ
-        if "rule_5" in selected_rules:
-            beyond_2sigma = ((values > upper_2sigma) & (values < upper_3sigma)) | (
-                (values < lower_2sigma) & (values > lower_3sigma)
-            )
-            rule_5_mask = beyond_2sigma.rolling(window=3).sum() >= 2
-            if rule_5_mask.any():
-                for idx in df[rule_5_mask].index:
-                    violations.append(
-                        {
-                            "systime": df.loc[idx, "systime"],
-                            "value": df.loc[idx, self.value_column],
-                            "rule": "rule_5",
-                            "severity": "high",
-                        }
-                    )
-
-        # Rule 6: Four out of five beyond 1σ
-        if "rule_6" in selected_rules:
-            beyond_1sigma = ((values > upper_1sigma) & (values < upper_2sigma)) | (
-                (values < lower_1sigma) & (values > lower_2sigma)
-            )
-            rule_6_mask = beyond_1sigma.rolling(window=5).sum() >= 4
-            if rule_6_mask.any():
-                for idx in df[rule_6_mask].index:
-                    violations.append(
-                        {
-                            "systime": df.loc[idx, "systime"],
-                            "value": df.loc[idx, self.value_column],
-                            "rule": "rule_6",
-                            "severity": "medium",
-                        }
-                    )
 
         # Create violations DataFrame
         if violations:
@@ -705,14 +640,16 @@ class StatisticalProcessControlEvents(Base):
                 "default_severity": "medium",
             },
             "rule_5": {
-                "interpretation": "Two out of three consecutive points beyond 2-sigma limits",
+                "interpretation": "Two out of three consecutive points beyond 2-sigma "
+                "limits on the same side",
                 "meaning": "Process variation has increased or mean is shifting",
                 "recommendation": "Monitor closely and prepare to investigate. May indicate the start "
                 "of a larger problem",
                 "default_severity": "high",
             },
             "rule_6": {
-                "interpretation": "Four out of five consecutive points beyond 1-sigma limits",
+                "interpretation": "Four out of five consecutive points beyond 1-sigma "
+                "limits on the same side",
                 "meaning": "Process variation or mean has likely changed",
                 "recommendation": "Check for changes in process inputs or measurement system accuracy",
                 "default_severity": "medium",
@@ -725,7 +662,8 @@ class StatisticalProcessControlEvents(Base):
                 "default_severity": "low",
             },
             "rule_8": {
-                "interpretation": "Eight consecutive points beyond 1-sigma on both sides",
+                "interpretation": "Eight consecutive points with none within 1-sigma "
+                "of the center line (either side)",
                 "meaning": "Process variation may be higher than expected",
                 "recommendation": "Review process capability and consider if control limits need recalculation",
                 "default_severity": "low",
@@ -792,7 +730,7 @@ class StatisticalProcessControlEvents(Base):
         # Dictionary of rule functions
         rules = {
             "rule_1": lambda df: self.rule_1(df, limits),
-            "rule_2": lambda df: self.rule_2(df),
+            "rule_2": lambda df: self.rule_2(df, limits=limits),
             "rule_3": lambda df: self.rule_3(df),
             "rule_4": lambda df: self.rule_4(df),
             "rule_5": lambda df: self.rule_5(df, limits),
@@ -821,7 +759,7 @@ class StatisticalProcessControlEvents(Base):
         all_events = []
         for rule_name in selected_rules:
             if rule_name in rules:
-                rule_events = rules[rule_name](df.copy())
+                rule_events = rules[rule_name](df)
                 if not rule_events.empty:
                     rule_events["triggered_rule"] = rule_name
                     rule_events["severity"] = rule_severity.get(rule_name, "medium")

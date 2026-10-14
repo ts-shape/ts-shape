@@ -36,3 +36,41 @@ def test_throughput_oee_explicit_zero_target_rate():
     )
     res = LineThroughputEvents(df).throughput_oee("counter", target_rate=0)
     assert (res["performance"] == 0.0).all()
+
+
+def test_takt_adherence_cycle_equal_to_takt_is_not_violation():
+    t = pd.to_datetime(
+        ["2024-01-01 00:00:00", "2024-01-01 00:01:00", "2024-01-01 00:02:01"]
+    )
+    df = pd.DataFrame({"systime": t, "uuid": "c", "value_bool": [True] * 3})
+    df = pd.concat(
+        [
+            df,
+            pd.DataFrame(
+                {
+                    "systime": t + pd.Timedelta(seconds=1),
+                    "uuid": "c",
+                    "value_bool": [False] * 3,
+                }
+            ),
+        ]
+    )
+    out = LineThroughputEvents(df).takt_adherence("c", takt_time="60s")
+    assert out["cycle_time_seconds"].tolist() == [60.0, 61.0]
+    assert out["violation"].tolist() == [False, True]
+    strict = LineThroughputEvents(df).takt_adherence(
+        "c", takt_time="60s", min_violation="1s"
+    )
+    assert strict["violation"].tolist() == [False, False]
+
+
+def test_takt_adherence_numeric_counter_reset_is_not_a_cycle():
+    t = pd.date_range("2024-01-01", periods=5, freq="30s")
+    # 1, 2, reset to 0, 1, 2: the reset is not a cycle boundary.
+    df = pd.DataFrame({"systime": t, "uuid": "cnt", "value_integer": [1, 2, 0, 1, 2]})
+    out = LineThroughputEvents(df).takt_adherence(
+        "cnt", value_column="value_integer", takt_time="30s"
+    )
+    # boundaries at 0 s, 30 s, 90 s, 120 s
+    assert out["cycle_time_seconds"].tolist() == [30.0, 60.0, 30.0]
+    assert out["violation"].tolist() == [False, True, False]

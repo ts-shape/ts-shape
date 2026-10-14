@@ -44,15 +44,15 @@ print(f"Cpk: {capability['Cpk']:.2f}, Ppk: {capability['Ppk']:.2f}")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `detect_deviations()` | Apply tolerance checks, group out-of-tolerance samples within `time_threshold` into events (first and last row per event) | DataFrame with `systime`, `uuid`, `deviation_abs`, `deviation_pct`, `severity` (`minor`, `major`, `critical`) |
-| `capability_indices(target_value=None)` | Calculate Cp, Cpk, Pp, Ppk capability indices | Dictionary with `Cp`, `Cpk`, `Pp`, `Ppk`, `mean`, `std`, `usl`, `lsl`, `target` |
+| `detect_deviations()` | Apply tolerance checks, group out-of-tolerance samples within `time_threshold` into events (first and last row per event; a single-sample event is one row; the actual value column keeps the measured value) | DataFrame with `systime`, `uuid`, `deviation_abs`, `deviation_pct`, `severity` (`minor`, `major`, `critical`) |
+| `capability_indices(target_value=None)` | Calculate Cp, Cpk, Pp, Ppk capability indices | Dictionary with `Cp`, `Cpk`, `Pp`, `Ppk`, `mean`, `std`, `usl`, `lsl`, `target` (plus `Cpm` when `target_value` is given) |
 
 ---
 
 ## Tips & Hints
 
 !!! tip "Use separate upper and lower limits for two-sided specs"
-    With a single `tolerance_uuid` the limit is treated as a one-sided upper spec: Cp/Pp are undefined (NaN) and Cpk/Ppk are the one-sided upper index. Pass `upper_tolerance_uuid` and `lower_tolerance_uuid` for full two-sided capability. Cp/Cpk measure distance to the spec limits; `target_value` is only reported back (defaulting to the spec midpoint) and does not change the indices.
+    With a single `tolerance_uuid` the limit is treated as a one-sided upper spec: Cp/Pp are undefined (NaN) and Cpk/Ppk are the one-sided upper index. Pass `upper_tolerance_uuid` and `lower_tolerance_uuid` for full two-sided capability. Cp/Cpk measure distance to the spec limits. σ is the overall sample standard deviation (the data has no subgroups), so Cp/Cpk equal Pp/Ppk. When `target_value` is given, the Taguchi index `Cpm = Cp / sqrt(1 + ((mean - target) / σ)²)` is added; otherwise `target` is only reported back (the spec midpoint).
 
 !!! info "Related modules"
     - [SPC Rules](spc.md) — Western Electric rule-based monitoring with control limits

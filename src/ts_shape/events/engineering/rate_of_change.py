@@ -1,4 +1,5 @@
 import logging
+import warnings
 from typing import Any
 
 import numpy as np  # type: ignore
@@ -71,14 +72,26 @@ class RateOfChangeEvents(Base):
     ) -> pd.DataFrame:
         """Flag intervals where rate of change exceeds threshold.
 
+        Each run of consecutive samples whose absolute rate is at or above
+        ``threshold`` becomes one interval.
+
         Args:
             threshold: Minimum absolute rate (units/second) to flag.
-            window: Minimum duration to group rapid change intervals.
+            window: Deprecated; has no effect and will be removed in 1.0.
+                Passing a value other than '1min' emits a
+                ``DeprecationWarning``. Filter the result on
+                ``duration_seconds`` to drop short intervals.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, max_rate, direction.
         """
+        if window != "1min":
+            warnings.warn(
+                "window has no effect and will be removed in 1.0",
+                DeprecationWarning,
+                stacklevel=3,
+            )
         cols = ["start", "end", "max_rate", "direction"]
         empty = empty_event_df("interval", ["max_rate", "direction"])
         rate_df = self._compute_rate()

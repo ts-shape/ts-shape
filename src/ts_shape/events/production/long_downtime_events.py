@@ -169,6 +169,8 @@ class LongDowntimeEvents(Base):
         min_gap: str = "3h",
         value_column: str = "value_integer",
         aggregation: str = "count",
+        interval_end: str = "last_sample",
+        data_end: pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         """Count production events in each window between consecutive long downtimes.
 
@@ -181,6 +183,13 @@ class LongDowntimeEvents(Base):
                 - 'count': number of rows in the window
                 - 'sum': sum of value_column in the window
                 - 'transitions': number of value changes (state changes)
+            interval_end: How each downtime interval is closed; forwarded to
+                :meth:`detect_long_downtime`. ``"last_sample"`` (default) ends
+                it at its last sample; use ``"next_change"`` for a
+                change-encoded (``is_delta``) state signal, where every stop
+                is otherwise zero-length and no boundary is found.
+            data_end: Optional bound for a downtime still open at the end of
+                the data; forwarded to :meth:`detect_long_downtime`.
 
         Returns:
             DataFrame with one row per inter-gap window.
@@ -200,7 +209,9 @@ class LongDowntimeEvents(Base):
             ]
         )
 
-        gaps = self.detect_long_downtime(min_gap=min_gap)
+        gaps = self.detect_long_downtime(
+            min_gap=min_gap, interval_end=interval_end, data_end=data_end
+        )
         if len(gaps) < 2:
             return empty
 

@@ -128,13 +128,19 @@ class StartupDetectionEvents(Base):
     ) -> pd.DataFrame:
         """
         Startup intervals where per-second slope >= `min_slope` for at least
-        `min_duration`. `slope_window` is accepted for API completeness but the
-        current implementation uses instantaneous slope between samples.
+        `min_duration`.
+
+        With the default ``slope_window="0s"`` the slope is the instantaneous
+        slope between consecutive samples. With a positive ``slope_window``
+        the slope at each sample is taken over a trailing window: the change
+        from the latest sample at or before ``t - slope_window`` to the
+        current sample, divided by the actual elapsed seconds. Samples with
+        no sample that far back get no slope. A longer window smooths noise.
 
         Args:
-            min_slope: Minimum slope in signal units per second between consecutive
-                samples.
-            slope_window: Accepted for API completeness; currently unused.
+            min_slope: Minimum slope in signal units per second.
+            slope_window: Trailing window for the slope as a pandas offset
+                string (default '0s': between consecutive samples).
             min_duration: Minimum time from the first to the last sample of a
                 contiguous run at or above ``min_slope`` (pandas offset string).
 
@@ -155,8 +161,26 @@ class StartupDetectionEvents(Base):
             return self._intervals([], cols)
 
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["dt_s"] = s[self.time_column].diff().dt.total_seconds()
-        s["dv"] = s[self.value_column].diff()
+        win = pd.to_timedelta(slope_window)
+        if win > pd.Timedelta(0):
+            s = s.reset_index(drop=True)
+            probe = pd.DataFrame(
+                {"_t": s[self.time_column] - win, "_row": np.arange(len(s))}
+            )
+            ref = s[[self.time_column, self.value_column]].rename(
+                columns={self.time_column: "_t", self.value_column: "_v0"}
+            )
+            ref["_t0"] = ref["_t"]
+            back = pd.merge_asof(probe, ref, on="_t", direction="backward").sort_values(
+                "_row"
+            )
+            s["dt_s"] = (
+                s[self.time_column] - back["_t0"].to_numpy()
+            ).dt.total_seconds()
+            s["dv"] = s[self.value_column] - back["_v0"].to_numpy()
+        else:
+            s["dt_s"] = s[self.time_column].diff().dt.total_seconds()
+            s["dv"] = s[self.value_column].diff()
         s["slope"] = s["dv"] / s["dt_s"]
         mask = s["slope"] >= float(min_slope)
 

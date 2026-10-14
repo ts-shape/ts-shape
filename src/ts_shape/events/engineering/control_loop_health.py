@@ -343,12 +343,29 @@ class ControlLoopHealthEvents(Base):
         )
 
     @keyword_only(1)
-    def loop_health_summary(self, window: str = "8h") -> pd.DataFrame:
+    def loop_health_summary(
+        self,
+        window: str = "8h",
+        oscillation_window: str = "5min",
+        min_crossings: int = 4,
+    ) -> pd.DataFrame:
         """Shift-level report card combining all loop health metrics.
+
+        Oscillation is detected with :meth:`detect_oscillation` on short
+        analysis windows of ``oscillation_window`` (not on the report
+        ``window``: a whole shift would almost always contain enough
+        zero-crossings). ``oscillation_count`` is the number of merged
+        oscillation episodes that start inside each report window.
 
         Args:
             window: Report window as a pandas offset string (e.g. '8h' for a
-                shift). Used for the error integrals and the saturation share.
+                shift). Used for the error integrals, the saturation share
+                and to bucket the oscillation episodes.
+            oscillation_window: Analysis window passed to
+                :meth:`detect_oscillation` (default '5min', the previous
+                fixed behavior).
+            min_crossings: Minimum zero-crossings per ``oscillation_window``
+                to flag oscillation, passed to :meth:`detect_oscillation`.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, iae, bias,
@@ -367,7 +384,9 @@ class ControlLoopHealthEvents(Base):
         if integrals.empty:
             return empty_event_df("summary", cols[1:])
 
-        osc = self.detect_oscillation()
+        osc = self.detect_oscillation(
+            window=oscillation_window, min_crossings=min_crossings
+        )
         sat = self.output_saturation(window=window)
 
         events: list[dict[str, Any]] = []

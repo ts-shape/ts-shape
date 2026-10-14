@@ -126,8 +126,15 @@ class PeriodSummaryEvents(Base):
         Args:
             daily_df: DataFrame with a date column and numeric metric columns.
                 Expected merge key: [date].
-            window: Pandas frequency string.
-                'W' = weekly (Monday start), 'MS' = monthly.
+            window: Pandas frequency string. ``'W'`` (pandas' weeks ending
+                Sunday, same as ``'W-SUN'``) gives Monday-to-Sunday weeks:
+                ``start`` is the Monday, ``end`` the following Sunday
+                (inclusive), even when the data covers only part of the week.
+                An anchored ``'W-<DAY>'`` gives weeks ending on ``<DAY>``
+                (e.g. ``'W-SAT'`` = Sunday-to-Saturday). ``'MS'`` = calendar
+                months (``end`` = last day of the month); any other frequency
+                is passed to :class:`pandas.Grouper` and ``end`` is the last
+                date present in the group.
             date_column: Name of the date column.
 
         Returns:
@@ -166,7 +173,13 @@ class PeriodSummaryEvents(Base):
             agg_spec[c] = "sum"
 
         if window.startswith("W"):
-            grouper = pd.Grouper(freq="W-MON", label="left", closed="left")
+            days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+            anchor = window.split("-", 1)[1].upper() if "-" in window else "SUN"
+            if anchor not in days:
+                raise ValueError(f"Unknown weekly anchor in window={window!r}")
+            # A week ending on <anchor> starts the day after it.
+            first_day = days[(days.index(anchor) + 1) % 7]
+            grouper = pd.Grouper(freq=f"W-{first_day}", label="left", closed="left")
         else:
             grouper = pd.Grouper(freq=window)
 

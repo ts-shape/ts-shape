@@ -1,4 +1,5 @@
 import logging
+import warnings
 from typing import Any
 
 import numpy as np  # type: ignore
@@ -321,8 +322,10 @@ class SetpointChangeEvents(Base):
 
         Args:
             actual_uuid: UUID of the actual/process value signal
-            tol: Absolute tolerance (used if settle_pct is None)
-            settle_pct: Percentage-based tolerance (e.g., 0.02 for 2% of step magnitude)
+            tol: Absolute tolerance, used when ``settle_pct`` is None.
+            settle_pct: Tolerance as a fraction of the step magnitude (e.g.
+                0.02 for 2%). When given it wins over ``tol``; passing both
+                emits a ``UserWarning``.
             hold: Minimum duration the signal must stay within tolerance
             lookahead: Maximum time window to search for settling
 
@@ -332,6 +335,13 @@ class SetpointChangeEvents(Base):
             is_delta, t_settle_seconds, settled.
         """
         cols = ["start", "uuid", "is_delta", "t_settle_seconds", "settled"]
+        if settle_pct is not None and tol != 0.0:
+            warnings.warn(
+                "time_to_settle(): both tol and settle_pct were passed; "
+                "settle_pct wins and tol is ignored",
+                UserWarning,
+                stacklevel=2,
+            )
         if self.sp.empty:
             return self._kpi_frame([], cols, actual_uuid, lookahead)
 
@@ -1078,8 +1088,11 @@ class SetpointChangeEvents(Base):
 
         Args:
             actual_uuid: UUID of the actual/process value signal
-            tol: Absolute tolerance for settling (used if settle_pct is None)
-            settle_pct: Percentage-based tolerance for settling
+            tol: Absolute tolerance for settling, used when ``settle_pct``
+                is None.
+            settle_pct: Settling tolerance as a fraction of the step
+                magnitude. When given it wins over ``tol``; passing both
+                emits a ``UserWarning``.
             hold: Minimum duration to confirm settling
             lookahead: Time window for all analyses
             rate_threshold: Rate threshold for derivative-based settling
@@ -1120,6 +1133,15 @@ class SetpointChangeEvents(Base):
                     "steady_state_error",
                 ],
             )
+
+        if settle_pct is not None and tol != 0.0:
+            warnings.warn(
+                "control_quality_metrics(): both tol and settle_pct were "
+                "passed; settle_pct wins and tol is ignored",
+                UserWarning,
+                stacklevel=2,
+            )
+            tol = 0.0  # unused once settle_pct is set; avoid a second warning
 
         # Compute all individual metrics using cached actual data
         settle_df = self.time_to_settle(
@@ -1170,28 +1192,24 @@ class SetpointChangeEvents(Base):
 
         ss_error_df = pd.DataFrame(ss_error_rows)
 
-        # Merge all metrics on 'start'
-        result = settle_df.copy()
+        # Merge all metrics on 'start'. Every KPI method emits one row per
+        # setpoint change in the same order, so two changes at the same
+        # instant are matched by their occurrence number instead of being
+        # cross-joined.
+        def _keyed(frame: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+            out = frame[cols].copy()
+            out["_occ"] = out.groupby("start").cumcount()
+            return out
 
-        # Merge settle_deriv
-        result = result.merge(
-            settle_deriv_df[["start", "t_settle_seconds"]].rename(
+        result = settle_df.copy()
+        result["_occ"] = result.groupby("start").cumcount()
+        parts = [
+            _keyed(settle_deriv_df, ["start", "t_settle_seconds"]).rename(
                 columns={"t_settle_seconds": "t_settle_derivative_seconds"}
             ),
-            on="start",
-            how="left",
-        )
-
-        # Merge rise time
-        result = result.merge(
-            rise_df[["start", "rise_time_seconds"]],
-            on="start",
-            how="left",
-        )
-
-        # Merge overshoot metrics
-        result = result.merge(
-            overshoot_df[
+            _keyed(rise_df, ["start", "rise_time_seconds"]),
+            _keyed(
+                overshoot_df,
                 [
                     "start",
                     "overshoot_abs",
@@ -1200,31 +1218,14 @@ class SetpointChangeEvents(Base):
                     "undershoot_pct",
                     "oscillation_count",
                     "oscillation_amplitude",
-                ]
-            ],
-            on="start",
-            how="left",
-        )
-
-        # Merge frequency
-        result = result.merge(
-            freq_df[["start", "oscillation_freq_hz"]],
-            on="start",
-            how="left",
-        )
-
-        # Merge decay
-        result = result.merge(
-            decay_df[["start", "decay_rate_lambda", "fit_quality_r2"]],
-            on="start",
-            how="left",
-        )
-
-        # Merge steady-state error
-        result = result.merge(
-            ss_error_df[["start", "steady_state_error"]],
-            on="start",
-            how="left",
-        )
+                ],
+            ),
+            _keyed(freq_df, ["start", "oscillation_freq_hz"]),
+            _keyed(decay_df, ["start", "decay_rate_lambda", "fit_quality_r2"]),
+            _keyed(ss_error_df, ["start", "steady_state_error"]),
+        ]
+        for part in parts:
+            result = result.merge(part, on=["start", "_occ"], how="left")
+        result = result.drop(columns="_occ")
 
         return result

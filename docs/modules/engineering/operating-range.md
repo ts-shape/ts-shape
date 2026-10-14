@@ -51,7 +51,7 @@ distribution = analyzer.value_distribution(n_bins=10)
 |--------|---------|---------|
 | `operating_envelope(window='1h')` | Per-window min/p5/mean/p95/max envelope | DataFrame: `start`, `min_value`, `p5`, `mean_value`, `p95`, `max_value`, `range_width` |
 | `detect_regime_change(window='1h', shift_threshold=2.0)` | Operating point shifts | DataFrame of regime changes (`start`, `end`, `prev_mean`, `new_mean`, `shift_magnitude`) |
-| `time_in_range(lower_limit, upper_limit, window='1h')` | Percentage of time in target range per window | DataFrame: `start`, `time_in_range_pct`, `time_below_pct`, `time_above_pct` |
+| `time_in_range(lower_limit, upper_limit, window='1h', time_weighted=False)` | Share of samples (or, with `time_weighted=True`, of time) in, below and above the target range per window | DataFrame: `start`, `time_in_range_pct`, `time_below_pct`, `time_above_pct` |
 | `value_distribution(n_bins=10)` | Value histogram | DataFrame: `bin_lower`, `bin_upper`, `count`, `pct`, `cumulative_pct` |
 
 ---

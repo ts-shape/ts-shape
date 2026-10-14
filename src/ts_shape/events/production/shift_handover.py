@@ -528,6 +528,10 @@ class ShiftHandoverEvents(Base):
         Returns:
             List of dicts with keys: shift, metric, value, threshold, severity.
             severity is 'warning' (within 5% of threshold) or 'critical'.
+
+        Raises:
+            ValueError: If ``report_df`` is None and any of the four signal
+                UUIDs is missing, so no report can be built.
         """
         thresholds = thresholds or {
             "production_achievement_pct": 95.0,
@@ -550,7 +554,20 @@ class ShiftHandoverEvents(Base):
                 report_date=report_date,
             )
         else:
-            return []
+            missing = [
+                name
+                for name, val in (
+                    ("counter_uuid", counter_uuid),
+                    ("ok_counter_uuid", ok_counter_uuid),
+                    ("nok_counter_uuid", nok_counter_uuid),
+                    ("state_uuid", state_uuid),
+                )
+                if not val
+            ]
+            raise ValueError(
+                "highlight_issues() needs either report_df or all four signal "
+                f"UUIDs to build the report; missing: {', '.join(missing)}"
+            )
 
         if report.empty:
             return []

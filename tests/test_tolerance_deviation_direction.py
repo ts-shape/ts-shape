@@ -72,3 +72,83 @@ def test_capability_single_measurement_raises():
     df = _df().iloc[:2]
     with pytest.raises(ValueError, match="undefined"):
         _events(df).capability_indices()
+
+
+def test_detect_deviations_keeps_value_and_single_sample_events():
+    t = pd.to_datetime(
+        ["2024-01-01 09:00", "2024-01-01 09:30", "2024-01-01 10:00", "2024-01-01 10:01"]
+    )
+    df = pd.DataFrame(
+        {
+            "systime": t,
+            "uuid": ["tol", "act", "act", "act"],
+            "value_double": [10.0, 12.0, 13.0, 14.0],
+            "is_delta": True,
+        }
+    )
+    out = _events(df).detect_deviations()
+    # 09:30 is a one-sample event (one row); 10:00-10:01 a two-sample event.
+    assert list(out["systime"].dt.strftime("%H:%M")) == ["09:30", "10:00", "10:01"]
+    assert list(out["value_double"]) == [12.0, 13.0, 14.0]
+
+
+def test_separate_tolerances_keep_value_and_single_sample_events():
+    t = pd.to_datetime(
+        ["2024-01-01 09:00", "2024-01-01 09:00", "2024-01-01 09:30", "2024-01-01 09:40"]
+    )
+    df = pd.DataFrame(
+        {
+            "systime": t,
+            "uuid": ["usl", "lsl", "act", "act"],
+            "value_double": [12.0, 8.0, 13.0, 10.0],
+            "is_delta": True,
+        }
+    )
+    out = ToleranceDeviationEvents(
+        df,
+        "value_double",
+        "value_double",
+        actual_uuid="act",
+        event_uuid="evt",
+        upper_tolerance_uuid="usl",
+        lower_tolerance_uuid="lsl",
+    ).detect_deviations()
+    assert len(out) == 1
+    assert out["value_double"].iloc[0] == 13.0
+
+
+def test_missing_actual_uuid_raises():
+    with pytest.raises(ValueError, match="actual_uuid is required"):
+        ToleranceDeviationEvents(
+            _df(), "value_double", "value_double", tolerance_uuid="tol"
+        )
+
+
+def test_capability_cpm_only_with_target():
+    t = pd.date_range("2024-01-01", periods=6, freq="min")
+    df = pd.DataFrame(
+        {
+            "systime": t,
+            "uuid": ["usl", "lsl", "act", "act", "act", "act"],
+            "value_double": [16.0, 4.0, 11.0, 12.0, 13.0, 12.0],
+            "is_delta": True,
+        }
+    )
+    ev = ToleranceDeviationEvents(
+        df,
+        "value_double",
+        "value_double",
+        actual_uuid="act",
+        upper_tolerance_uuid="usl",
+        lower_tolerance_uuid="lsl",
+    )
+    assert "Cpm" not in ev.capability_indices()
+    res = ev.capability_indices(target_value=10.0)
+    sigma = pd.Series([11.0, 12.0, 13.0, 12.0]).std()
+    cp = 12.0 / (6 * sigma)
+    assert res["Cpm"] == pytest.approx(
+        cp / np.sqrt(1 + ((12.0 - 10.0) / sigma) ** 2), abs=1e-4
+    )
+    assert res["Pp"] == res["Cp"] and res["Ppk"] == res["Cpk"]
+    # On target, Cpm equals Cp.
+    assert ev.capability_indices(target_value=12.0)["Cpm"] == res["Cp"]

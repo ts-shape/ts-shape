@@ -49,7 +49,7 @@ summary = spc.interpret_violations(violations)
 | `detect_cusum_shifts(target=None, k=0.5, h=5.0)` | CUSUM shift detection for small sustained shifts | DataFrame with `systime`, `value`, `cusum_high`, `cusum_low`, `shift_detected`, `shift_direction` |
 | `interpret_violations(violations_df)` | Add human-readable interpretations to violations | DataFrame with added `interpretation`, `meaning`, `recommendation` |
 | `process(selected_rules=None, include_severity=False)` | Full SPC pipeline: limits + rules | Violation events with `systime`, value column, `uuid` (plus `rule`, `severity` when `include_severity=True`) |
-| `rule_1` through `rule_8` | Individual Western Electric rule checks | DataFrame with single rule flags |
+| `rule_1` through `rule_8` | Individual rule checks: the eight Nelson (1984) tests, which include the Western Electric zone rules (same-side counts include points beyond the next zone; run lengths count points). They do not modify the input frame | Violating rows with a boolean rule column |
 
 ---
 

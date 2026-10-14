@@ -94,3 +94,12 @@ class TestPerformanceLossTracking:
             target_cycle_time=45.0,
         )
         assert result.empty
+
+
+def test_class_docstring_does_not_promise_part_id_uuid():
+    """No method accepts part_id_uuid, so the class docs must not mention it."""
+    import inspect
+
+    assert "part_id_uuid" not in (PerformanceLossEvents.__doc__ or "")
+    for name, member in inspect.getmembers(PerformanceLossEvents, inspect.isfunction):
+        assert "part_id_uuid" not in inspect.signature(member).parameters, name

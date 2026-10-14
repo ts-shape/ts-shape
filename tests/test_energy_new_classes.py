@@ -183,6 +183,7 @@ class TestIdleEnergyDetectionEvents:
             "running_energy",
             "machine_running_pct",
             "idle_fraction",
+            "machine_running_ratio",
         ]
         assert list(result.columns) == expected
 
@@ -497,3 +498,35 @@ class TestEnPIRegressionBaseline:
             ev.enpi_vs_baseline(
                 "meter", "counter", baseline="regression", baseline_window=1
             )
+
+
+class TestIdleThresholdConsistency:
+    @staticmethod
+    def _frame() -> pd.DataFrame:
+        # One hour in shift_1: 1 of 20 state samples running (ratio 0.05).
+        t = pd.date_range("2026-01-13 08:00", periods=20, freq="3min", tz="UTC")
+        energy = pd.DataFrame({"systime": t, "uuid": "meter:main", "value_double": 1.0})
+        state = pd.DataFrame(
+            {"systime": t, "uuid": "state:m1", "value_bool": [True] + [False] * 19}
+        )
+        return pd.concat([energy, state], ignore_index=True)
+
+    def test_running_ratio_column(self):
+        ev = IdleEnergyDetectionEvents(self._frame())
+        out = ev.idle_energy_by_window("meter:main", "state:m1", window="1h")
+        assert (out["machine_running_ratio"] == out["machine_running_pct"]).all()
+        assert out["machine_running_ratio"].iloc[0] == pytest.approx(0.05)
+
+    def test_by_shift_applies_idle_threshold_like_by_window(self):
+        ev = IdleEnergyDetectionEvents(self._frame())
+        win = ev.idle_energy_by_window(
+            "meter:main", "state:m1", window="1h", idle_threshold=0.1
+        )
+        assert win["idle_fraction"].iloc[0] == 1.0  # below threshold: all idle
+        default = ev.idle_energy_by_shift("meter:main", "state:m1")
+        s1 = default.set_index("shift").loc["shift_1"]
+        assert s1["waste_fraction"] == pytest.approx(0.95)  # unchanged default
+        thr = ev.idle_energy_by_shift("meter:main", "state:m1", idle_threshold=0.1)
+        s1 = thr.set_index("shift").loc["shift_1"]
+        assert s1["waste_fraction"] == pytest.approx(1.0)
+        assert s1["idle_energy"] == pytest.approx(win["idle_energy"].sum())

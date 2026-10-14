@@ -37,7 +37,7 @@ drifts = classifier.detect_drift(window="1h", min_slope=0.01)
 |--------|---------|---------|
 | `detect_flatline(min_duration='1min', tolerance=1e-6)` | Detect stuck/frozen signal segments | DataFrame with `start`, `end`, `duration`, `stuck_value` |
 | `detect_oscillation(window='1min', min_crossings=6)` | Detect excessive oscillation (e.g., control valve hunting) | DataFrame with `start`, `end`, `crossing_count`, `amplitude` |
-| `detect_drift(window='1h', min_slope=0.01)` | Detect gradual drift in signal mean | DataFrame with `start`, `end`, `slope`, `direction` |
+| `detect_drift(window='1h', min_slope=0.01, slope_per='sample')` | Detect gradual drift in signal mean; `slope_per='second'` makes `slope`/`min_slope` units per second instead of per sample (independent of the sampling rate) | DataFrame with `start`, `end`, `slope`, `direction` |
 | `classify_anomalies(window='10min', n_sigma=3.0)` | Multi-type classification: spike, drift, oscillation, flatline, level shift | DataFrame with `start`, `end`, `anomaly_type`, `severity`, `details` |
 
 ---

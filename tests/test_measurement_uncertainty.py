@@ -179,3 +179,18 @@ class TestUncertaintyBudget:
         df = pd.DataFrame(columns=["systime", "uuid", "value_double"])
         mu = MeasurementUncertaintyEvents(df, "sensor_1")
         assert len(mu.uncertainty_budget()) == 0
+
+
+def test_part_uuid_is_deprecated_no_op(with_part_uuid_df):
+    import warnings
+
+    with pytest.warns(DeprecationWarning, match="part_uuid has no effect"):
+        with_part = MeasurementUncertaintyEvents(
+            with_part_uuid_df, "sensor_1", part_uuid="part_id"
+        )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        without = MeasurementUncertaintyEvents(with_part_uuid_df, "sensor_1")
+    pd.testing.assert_frame_equal(
+        with_part.type_a_uncertainty(), without.type_a_uncertainty()
+    )

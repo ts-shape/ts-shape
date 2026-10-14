@@ -21,6 +21,10 @@ class EnvironmentalCompensationEvents(Base):
     - sensitivity: Linear regression coefficient per window.
     - compensated_signal: Apply compensation model to signal.
     - detect_env_exceedance: Flag out-of-range environmental conditions.
+
+    ``env_uuid`` (the environment signal) is required; the constructor
+    raises ``ValueError`` without it. ``env_value`` is optional and only
+    sets the nominal environment value used by ``compensated_signal``.
     """
 
     def __init__(
@@ -42,8 +46,14 @@ class EnvironmentalCompensationEvents(Base):
         self.event_uuid = event_uuid
         self.time_column = time_column
 
-        if env_uuid is None and env_value is None:
-            raise ValueError("Either env_uuid or env_value must be provided")
+        if env_uuid is None:
+            # Every method reads the environment signal; env_value is only
+            # the nominal (reference) value used by compensated_signal().
+            raise ValueError(
+                "env_uuid is required: every method reads the environment "
+                "signal. env_value only sets the nominal environment value "
+                "used by compensated_signal()."
+            )
 
         # Extract signal data
         self.signal = (
@@ -191,7 +201,7 @@ class EnvironmentalCompensationEvents(Base):
         Returns:
             DataFrame with columns: systime, uuid, value_double,
             compensated_value, correction_applied, source_uuid. ``uuid``
-            and ``source_uuid`` both carry the measured signal's uuid.
+            is the event uuid and ``source_uuid`` the measured signal's uuid.
         """
         cols = [
             "systime",
@@ -225,7 +235,7 @@ class EnvironmentalCompensationEvents(Base):
         result = pd.DataFrame(
             {
                 "systime": aligned.index,
-                "uuid": self.signal_uuid,
+                "uuid": self.event_uuid,
                 "value_double": aligned["signal"].values,
                 "compensated_value": np.round(compensated.values, 8),
                 "correction_applied": np.round(correction.values, 8),

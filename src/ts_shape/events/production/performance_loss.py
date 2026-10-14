@@ -56,9 +56,12 @@ class PerformanceLossEvents(Base):
     Identifies hidden losses where the machine is running but slower than
     it should be.  Typically 10-20% of production time is lost to speed losses.
 
-    Each UUID represents one signal:
+    Each method takes one signal:
     - cycle_uuid: cycle trigger or production counter
-    - part_id_uuid: part number signal (optional, for per-part targets)
+
+    All methods compare against a single ``target_cycle_time``; there are no
+    per-part targets. For a line that runs several part numbers, filter the
+    data to one part (or one product run) per call.
 
     Merge keys: [date, shift] for shift-level, [period] for trend data.
 

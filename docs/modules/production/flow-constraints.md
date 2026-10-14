@@ -53,6 +53,9 @@ print(analytics["summary"]["blocked_count"])
 
 ## Tips & Hints
 
+!!! note "What \"starved\" means here"
+    Both detectors only see the two run signals. `starved_events` reports the *onset* of starvation: downstream still running while upstream is stopped, so downstream drains its buffer. Once downstream runs dry and stops too, both stations are stopped and the interval is no longer reported — a station idle for lack of input cannot be told apart from any other joint stop without a buffer or part-presence signal.
+
 !!! tip "Use tolerance to handle signal jitter"
     Set `tolerance` to account for PLC scan-time differences between stations — 200ms to 1s is typical. Without tolerance, you may get false blocked/starved detections from timing mismatches.
 

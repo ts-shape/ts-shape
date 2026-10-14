@@ -205,3 +205,26 @@ def test_daily_quality_summary_zero_total_day_is_zero_not_nan():
     assert row["first_pass_yield_pct"] == 0.0
     assert not pd.isna(row["nok_rate_pct"])
     assert not pd.isna(row["first_pass_yield_pct"])
+
+
+def test_quality_docstrings_list_every_returned_column():
+    """Every column a method returns is named in its docstring."""
+    df = _make_reset_quality_df()
+    tracker = QualityEvents(df)
+    calls = {
+        "nok_by_shift": lambda: tracker.nok_by_shift("ok_counter", "nok_counter"),
+        "quality_by_part": lambda: tracker.quality_by_part(
+            "ok_counter", "nok_counter", "part_number"
+        ),
+        "nok_by_reason": lambda: tracker.nok_by_reason("nok_counter", "defect_reason"),
+        "daily_quality_summary": lambda: tracker.daily_quality_summary(
+            "ok_counter", "nok_counter"
+        ),
+    }
+    for name, call in calls.items():
+        doc = getattr(QualityEvents, name).__doc__ or ""
+        out = call()
+        missing = [c for c in out.columns if c not in doc]
+        assert not missing, f"{name} docstring omits {missing}"
+        if "quality_pct" in out.columns:
+            assert "quality_pct" in doc

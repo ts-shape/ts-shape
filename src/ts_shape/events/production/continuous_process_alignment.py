@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -48,14 +50,17 @@ class ContinuousProcessAlignmentEvents(Base):
         line_config: Physical layout description — list of dicts with keys
             ``name`` (str), ``offset`` (float, meters from reference), and
             ``uuids`` (list[str]).
-        ref_uuid: Optional UUID of a signal located at the reference point
-            (offset = 0).
+        ref_uuid: Deprecated; has no effect and will be removed in 1.0
+            (passing it emits a DeprecationWarning). Put a reference-point
+            signal into ``line_config`` with ``offset`` 0 instead.
         cut_uuid: Optional UUID whose values carry the cut piece length in
-            meters.
+            meters. Used by `segment_by_cut` as the default
+            ``cut_length_uuid``.
         time_column: Name of the timestamp column (default ``"systime"``).
         uuid_column: Name of the UUID/identifier column (default ``"uuid"``).
-        value_column: Default value column used when no override is supplied
-            to a method (default ``"value_double"``).
+        value_column: Value column of the speed signal, and the default
+            station value column when no override is supplied to a method
+            (default ``"value_double"``).
         speed_unit: Unit of the speed signal. One of ``"m/min"``, ``"m/s"``,
             ``"mm/s"``.
         min_speed: Minimum speed in m/s used to clamp the speed before
@@ -84,6 +89,12 @@ class ContinuousProcessAlignmentEvents(Base):
 
         self.speed_uuid = speed_uuid
         self.line_config = line_config
+        if ref_uuid is not None:
+            warnings.warn(
+                "ref_uuid has no effect and will be removed in 1.0",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.ref_uuid = ref_uuid
         self.cut_uuid = cut_uuid
         self.time_column = time_column
@@ -195,7 +206,9 @@ class ContinuousProcessAlignmentEvents(Base):
             if station_df.empty or speed_df.empty:
                 continue
 
-            merged = self._attach_speed(station_df, speed_df)
+            merged = self._attach_speed(
+                station_df, speed_df, speed_col=self.value_column
+            )
             lag = self._lag_from_speed(merged, offset_m)
 
             out = merged[[self.time_column, self.uuid_column]].copy()
@@ -247,6 +260,7 @@ class ContinuousProcessAlignmentEvents(Base):
         Args:
             aligned_df: Output of `align_to_reference`.
             cut_length_uuid: UUID carrying the cut piece length value.
+                Defaults to the constructor ``cut_uuid`` when None.
             part_counter_uuid: UUID of a part-counter signal (boolean or
                 monotonically increasing integer).
             cut_value_column: Column holding the length value in
@@ -265,9 +279,11 @@ class ContinuousProcessAlignmentEvents(Base):
                 (Timestamp).
 
         Raises:
-            ValueError: If neither ``cut_length_uuid`` nor
-                ``part_counter_uuid`` is given.
+            ValueError: If neither ``cut_length_uuid`` (nor the constructor
+                ``cut_uuid``) nor ``part_counter_uuid`` is given.
         """
+        if cut_length_uuid is None:
+            cut_length_uuid = self.cut_uuid
         if cut_length_uuid is None and part_counter_uuid is None:
             raise ValueError(
                 "Provide at least one of cut_length_uuid or part_counter_uuid."

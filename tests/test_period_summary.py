@@ -193,3 +193,24 @@ class TestPeriodSummary:
             period1=("2024-01-01", "2024-01-07"),
             period2=("2024-01-08", "2024-01-14"),
         ).empty
+
+
+def test_from_daily_data_weekly_bounds_monday_start():
+    """'W' gives Monday-to-Sunday weeks; 'W-<DAY>' gives weeks ending on <DAY>."""
+    daily = pd.DataFrame(
+        {"date": pd.date_range("2024-01-03", periods=14, freq="D"), "parts": 1}
+    )
+    weekly = PeriodSummaryEvents.from_daily_data(daily, window="W")
+    assert weekly["start"].tolist() == [
+        date(2024, 1, 1),
+        date(2024, 1, 8),
+        date(2024, 1, 15),
+    ]
+    assert all(pd.Timestamp(s).day_name() == "Monday" for s in weekly["start"])
+    assert all(pd.Timestamp(e).day_name() == "Sunday" for e in weekly["end"])
+    assert weekly["days"].tolist() == [5, 7, 2]
+
+    sat = PeriodSummaryEvents.from_daily_data(daily, window="W-SAT")
+    assert sat["start"].iloc[0] == date(2023, 12, 31)
+    assert sat["end"].iloc[0] == date(2024, 1, 6)
+    assert sat["days"].tolist() == [4, 7, 3]

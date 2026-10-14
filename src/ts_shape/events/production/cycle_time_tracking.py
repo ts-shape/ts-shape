@@ -217,6 +217,7 @@ class CycleTimeEvents(Base):
         *,
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Calculate statistics: min, avg, max, std cycle time by part.
 
@@ -225,6 +226,10 @@ class CycleTimeEvents(Base):
             cycle_trigger_uuid: UUID for cycle completion trigger
             value_column_part: Column containing part numbers
             value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap (e.g. "5min") forwarded to
+                :meth:`cycle_time_by_part`: intervals between consecutive
+                completions longer than this are dropped as inter-cycle
+                downtime. Default None keeps every interval.
 
         Returns:
             DataFrame with statistics per part:
@@ -247,6 +252,7 @@ class CycleTimeEvents(Base):
             cycle_trigger_uuid,
             value_column_part=value_column_part,
             value_column_trigger=value_column_trigger,
+            max_cycle_gap=max_cycle_gap,
         )
 
         if cycle_data.empty:
@@ -287,6 +293,7 @@ class CycleTimeEvents(Base):
         threshold_factor: float = 1.5,
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Identify cycles that exceed normal time by threshold factor.
 
@@ -296,6 +303,10 @@ class CycleTimeEvents(Base):
             threshold_factor: Cycles slower than median * factor are flagged (default: 1.5)
             value_column_part: Column containing part numbers
             value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap (e.g. "5min") forwarded to
+                :meth:`cycle_time_by_part`: intervals between consecutive
+                completions longer than this are dropped as inter-cycle
+                downtime. Default None keeps every interval.
 
         Returns:
             DataFrame with slow cycles:
@@ -319,6 +330,7 @@ class CycleTimeEvents(Base):
             cycle_trigger_uuid,
             value_column_part=value_column_part,
             value_column_trigger=value_column_trigger,
+            max_cycle_gap=max_cycle_gap,
         )
 
         if cycle_data.empty:
@@ -359,6 +371,7 @@ class CycleTimeEvents(Base):
         window_size: int = 20,
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Analyze cycle time trends for a specific part.
 
@@ -369,6 +382,10 @@ class CycleTimeEvents(Base):
             window_size: Number of cycles for moving average (default: 20)
             value_column_part: Column containing part numbers
             value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap (e.g. "5min") forwarded to
+                :meth:`cycle_time_by_part`: intervals between consecutive
+                completions longer than this are dropped as inter-cycle
+                downtime. Default None keeps every interval.
 
         Returns:
             DataFrame with trend data:
@@ -389,6 +406,7 @@ class CycleTimeEvents(Base):
             cycle_trigger_uuid,
             value_column_part=value_column_part,
             value_column_trigger=value_column_trigger,
+            max_cycle_gap=max_cycle_gap,
         )
 
         if cycle_data.empty:
@@ -430,6 +448,7 @@ class CycleTimeEvents(Base):
         *,
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
         """Hourly summary of cycle times by part.
 
@@ -438,6 +457,10 @@ class CycleTimeEvents(Base):
             cycle_trigger_uuid: UUID for cycle completion trigger
             value_column_part: Column containing part numbers
             value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap (e.g. "5min") forwarded to
+                :meth:`cycle_time_by_part`: intervals between consecutive
+                completions longer than this are dropped as inter-cycle
+                downtime. Default None keeps every interval.
 
         Returns:
             DataFrame with hourly statistics:
@@ -459,6 +482,7 @@ class CycleTimeEvents(Base):
             cycle_trigger_uuid,
             value_column_part=value_column_part,
             value_column_trigger=value_column_trigger,
+            max_cycle_gap=max_cycle_gap,
         )
 
         if cycle_data.empty:

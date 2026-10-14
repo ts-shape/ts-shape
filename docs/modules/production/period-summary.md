@@ -50,7 +50,7 @@ monthly_from_df = PeriodSummaryEvents.from_daily_data(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `from_daily_data(daily_df, window='W', date_column='date')` | Roll up a daily DataFrame to weekly (`'W'`) or monthly (`'MS'`) frequency | `DataFrame` with `start`, `end`, `days` plus aggregated metric columns |
+| `from_daily_data(daily_df, window='W', date_column='date')` | Roll up a daily DataFrame to weekly (`'W'`: Monday-to-Sunday weeks, `start` = Monday, `end` = Sunday; `'W-<DAY>'` = weeks ending on `<DAY>`) or monthly (`'MS'`) frequency | `DataFrame` with `start`, `end`, `days` plus aggregated metric columns |
 | `weekly_summary(counter_uuid, ok_counter_uuid=None, nok_counter_uuid=None)` | Weekly production summary from raw signals | `DataFrame` with `week_start`, `week_end`, `total_production`, `daily_avg`, `production_days` (plus `ok_parts`, `nok_parts`, `quality_pct` when OK/NOK counters are given) |
 | `monthly_summary(counter_uuid, ok_counter_uuid=None, nok_counter_uuid=None)` | Monthly production summary from raw signals | `DataFrame` with `year`, `month`, `total_production`, `daily_avg`, `production_days` (plus quality columns as above) |
 | `compare_periods(counter_uuid, period1, period2)` | Side-by-side comparison of two date ranges | `DataFrame` with `metric`, `period1_value`, `period2_value`, `change`, `change_pct` |

@@ -49,7 +49,7 @@ failed = detector.detect_failed_startups(
 | Method | Purpose | Returns |
 |--------|---------|---------|
 | `detect_startup_by_threshold(threshold, hysteresis=None, min_above='0s')` | Threshold-based startup detection | DataFrame of startup intervals |
-| `detect_startup_by_slope(min_slope, slope_window='0s', min_duration='0s')` | Slope-based startup detection (`slope_window` is currently unused) | DataFrame of startup intervals |
+| `detect_startup_by_slope(min_slope, slope_window='0s', min_duration='0s')` | Slope-based startup detection; a positive `slope_window` computes the slope over that trailing window instead of between consecutive samples | DataFrame of startup intervals |
 | `detect_startup_multi_signal(signals, logic='all', time_tolerance='30s')` | Multi-signal startup detection | DataFrame of startup intervals |
 | `detect_startup_adaptive(baseline_window=None, sensitivity=2.0, min_above='10s', lookback_periods=5)` | Adaptive baseline startup detection | DataFrame of startup intervals |
 | `assess_startup_quality(startup_events)` | Quality assessment of startups | DataFrame with quality metrics |

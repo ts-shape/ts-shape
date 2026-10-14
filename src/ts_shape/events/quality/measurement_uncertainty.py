@@ -1,3 +1,4 @@
+import warnings
 from typing import Any
 
 import numpy as np  # type: ignore
@@ -27,6 +28,10 @@ class MeasurementUncertaintyEvents(Base):
     - type_b_uncertainty: Uncertainty from calibration certs, resolution, etc.
     - combined_uncertainty: Root-sum-of-squares combination with expansion.
     - uncertainty_budget: Contribution breakdown by source.
+
+    ``part_uuid`` is deprecated: it has no effect (no method groups by
+    part) and will be removed in 1.0; passing it emits a
+    ``DeprecationWarning``.
     """
 
     def __init__(
@@ -53,8 +58,13 @@ class MeasurementUncertaintyEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
-        # If part_uuid provided, extract part identifiers
+        # part_uuid is kept for backward compatibility only; nothing uses it.
         if self.part_uuid is not None:
+            warnings.warn(
+                "part_uuid has no effect and will be removed in 1.0",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             self._parts = (
                 self.dataframe[self.dataframe["uuid"] == self.part_uuid]
                 .copy()

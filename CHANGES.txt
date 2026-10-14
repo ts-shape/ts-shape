@@ -1,4 +1,22 @@
 # October 14, 2026 (round 4)
+fix: SPC rules follow Nelson (1984) / Western Electric: rule 8 = 8 in a row
+  with none within 1 sigma (was within), rule 3 = 6 points, rule 4 = 14
+  points, rules 5/6 count outer zones per side, rule 2 uses the center line;
+  rules no longer mutate the input; vectorized == per-rule results.
+fix: detectors do what their signatures and docs promise (28 items across
+  production, quality, engineering, energy, development, loaders, features):
+  ignored parameters now work or warn (slope_window, max_cycle_gap on every
+  CycleTimeEvents method, idle_threshold per shift, interval_end on
+  long-downtime gap counting and recipe phases, value_column in process
+  alignment, ...); silently overridden ones warn (settle_pct vs tol,
+  state_map vs station_map); tolerance deviations keep values and single
+  samples; takt adherence uses strict > and ignores counter resets; golden
+  batch phases compare like with like; hour-folder loaders include the
+  end hour; NaN instead of None/0.0 for undefined ratios. Opt-in: time-
+  weighted time_in_range, slope per second in drift detection,
+  trim_to_range in loaders, regex=False for substring matching. Every
+  result change is listed in docs/migration.md.
+docs: every public parameter is documented (guard test).
 change: consistent input checks for every detector (Base.__init_subclass__ +
   utils.signal_checks): a signal uuid that is not in a non-empty frame emits
   DataQualityWarning naming the available uuids (one per call, not per

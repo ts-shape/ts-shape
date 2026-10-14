@@ -45,12 +45,12 @@ env.detect_env_exceedance(valid_range=(15.0, 30.0), window="1h")
 |---|---|---|
 | `detect_correlation(window)` | summary | per window: `window_start`, `correlation`, `p_value`, `significant` |
 | `sensitivity(window)` | summary | per window: `window_start`, `coefficient`, `intercept`, `r_squared`, `unit_change_per_degree` |
-| `compensated_signal(coefficient)` | point | per sample: `systime`, `uuid`, `value_double` (measured), `compensated_value`, `correction_applied` |
+| `compensated_signal(coefficient)` | point | per sample: `systime`, `uuid` (the event uuid), `value_double` (measured), `compensated_value`, `correction_applied`, `source_uuid` (the measured signal) |
 | `detect_env_exceedance(valid_range, window)` | interval | windows outside the range: `window_start`, `window_end`, `env_mean`, `env_min`, `env_max`, `exceedance_type` (`high`/`low`/`both`), `severity` |
 
 ## Notes
 
-- The constructor needs `env_uuid` or `env_value` and raises `ValueError` otherwise. Every method reads the environment signal, so in practice pass `env_uuid`; with `env_value` alone all methods return empty frames.
+- The constructor requires `env_uuid` (every method reads the environment signal) and raises `ValueError` without it. `env_value` is optional: the nominal environment value for `compensated_signal`.
 - Both signals are read from the same `value_column`. Each measurement sample is paired with the nearest environment sample within 5 minutes; samples without one are dropped.
 - Compensation: `compensated_value = measured − coefficient × (env − env_nominal)`. `env_nominal` is `env_value` if given, else the mean of the environment signal. Without `coefficient`, one linear regression over all paired data estimates it.
 - `significant` means Pearson `p < 0.05`. Windows with fewer than 5 paired samples are skipped. `unit_change_per_degree` equals `coefficient`.

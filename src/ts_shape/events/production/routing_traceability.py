@@ -25,6 +25,7 @@ This module correlates both signals to reconstruct the full routing path.
 """
 
 import logging
+import warnings
 from typing import Any
 
 import pandas as pd  # type: ignore
@@ -100,7 +101,9 @@ class RoutingTraceabilityEvents(Base):
                        Values can be int, float, or str keys.
                        If not provided, raw signal values are used as labels.
             station_map: Deprecated alias for state_map (for backwards
-                         compatibility). Use state_map instead.
+                         compatibility). Use state_map instead. When both
+                         are passed, state_map wins and a UserWarning is
+                         emitted.
             event_uuid: UUID to tag derived events with.
             id_value_column: Column holding the item ID string.
             routing_value_column: Column holding the state/routing value.
@@ -110,7 +113,15 @@ class RoutingTraceabilityEvents(Base):
         self.id_uuid = id_uuid
         self.routing_uuid = routing_uuid
         # state_map takes priority; fall back to station_map for backwards compat
-        self.state_map: dict[int | float | str, str] = state_map or station_map or {}
+        if state_map is not None and station_map is not None:
+            warnings.warn(
+                "Both state_map and station_map were passed; station_map is "
+                "ignored and state_map is used.",
+                UserWarning,
+                stacklevel=2,
+            )
+        chosen = state_map if state_map is not None else station_map
+        self.state_map: dict[int | float | str, str] = chosen or {}
         self.event_uuid = event_uuid
         self.id_value_column = id_value_column
         self.routing_value_column = routing_value_column

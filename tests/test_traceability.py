@@ -406,6 +406,19 @@ class TestRoutingTraceabilityEvents:
         assert len(timeline) == 5
         assert timeline.iloc[0]["station_name"] == "Heating"
 
+    def test_state_map_and_station_map_warns(self, routing_trace_data):
+        """Passing both maps warns; state_map wins."""
+        with pytest.warns(UserWarning, match="station_map is ignored"):
+            tracer = RoutingTraceabilityEvents(
+                routing_trace_data,
+                id_uuid="id_signal",
+                routing_uuid="state_signal",
+                state_map={10: "H", 20: "Ho", 30: "C"},
+                station_map={10: "Heating", 20: "Holding", 30: "Cooling"},
+            )
+        timeline = tracer.build_routing_timeline()
+        assert timeline.iloc[0]["station_name"] == "H"
+
     def test_station_sequence_per_item(self, routing_tracer):
         """Each item should have its own sequence numbering."""
         timeline = routing_tracer.build_routing_timeline()

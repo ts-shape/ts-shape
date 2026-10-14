@@ -453,3 +453,41 @@ class TestSpeedUnits:
                 [{"name": "zone_a", "offset": 30.0, "uuids": ["station:a"]}],
                 speed_unit="km/h",
             )
+
+
+# ---------------------------------------------------------------------------
+# Constructor parameters: value_column, cut_uuid, ref_uuid
+# ---------------------------------------------------------------------------
+
+
+class TestConfiguredColumns:
+    def test_align_reads_speed_from_value_column(self, df):
+        df2 = df.copy()
+        df2["value_float"] = df2["value_double"]
+        df2["value_double"] = np.nan
+        aligner = ContinuousProcessAlignmentEvents(
+            df2, "speed:line", LINE_CONFIG, value_column="value_float"
+        )
+        result = aligner.align_to_reference(station_uuids=["station:a"])
+        first_hour = result[result["systime"] < pd.Timestamp("2024-01-01 00:59:00")][
+            "lag_seconds"
+        ]
+        assert np.allclose(first_hour, _LAG_A)
+        profile = aligner.lag_profile(station_uuids=["station:a"], window="1h")
+        assert profile.iloc[0]["lag_seconds"] == pytest.approx(_LAG_A)
+
+    def test_cut_uuid_is_default_cut_length_uuid(self, df):
+        aligner = ContinuousProcessAlignmentEvents(
+            df, "speed:line", LINE_CONFIG, cut_uuid="cut:length"
+        )
+        aligned = aligner.align_to_reference(station_uuids=["station:a"])
+        result = aligner.segment_by_cut(aligned)
+        lengths = result["piece_length_m"].dropna().unique()
+        assert len(lengths) > 0
+        assert all(abs(length - 0.8) < 0.01 for length in lengths)
+
+    def test_ref_uuid_is_deprecated(self, df):
+        with pytest.warns(DeprecationWarning, match="ref_uuid has no effect"):
+            ContinuousProcessAlignmentEvents(
+                df, "speed:line", LINE_CONFIG, ref_uuid="station:a"
+            )

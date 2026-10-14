@@ -287,7 +287,7 @@ class MachineStateEvents(Base):
     def state_quality_metrics(
         self,
         *,
-        interval_end: str = "last_sample",
+        interval_end: str | None = None,
         data_end: pd.Timestamp | None = None,
     ) -> dict[str, Any]:
         """Return quality metrics for the state data.
@@ -296,7 +296,9 @@ class MachineStateEvents(Base):
             interval_end: Forwarded to :meth:`detect_run_idle`. Pass
                 ``"next_change"`` for change-encoded signals so the run/idle
                 durations are measured to the next transition rather than
-                collapsing to zero. Default ``"last_sample"``.
+                collapsing to zero. Default ``None`` resolves exactly as in
+                :meth:`detect_run_idle`: follow the signal's spec when
+                ``specs=`` was given, otherwise ``"last_sample"``.
             data_end: Forwarded to :meth:`detect_run_idle`; optional bound for
                 the final, still-open interval.
 
@@ -306,7 +308,9 @@ class MachineStateEvents(Base):
             - total_transitions: total number of state transitions
             - avg_run_duration: average duration of run states in seconds
             - avg_idle_duration: average duration of idle states in seconds
-            - run_idle_ratio: ratio of run time to idle time
+            - run_idle_ratio: ratio of total run time to total idle time;
+                NaN when there is no idle time (including no intervals at all),
+                since the ratio is undefined
             - data_gaps_detected: number of data gaps found
             - rapid_transitions_detected: number of rapid transition events
         """
@@ -318,7 +322,7 @@ class MachineStateEvents(Base):
         if intervals.empty:
             avg_run_duration = 0.0
             avg_idle_duration = 0.0
-            run_idle_ratio = 0.0
+            run_idle_ratio = float("nan")
         else:
             run_intervals = intervals[intervals["state"] == "run"]
             idle_intervals = intervals[intervals["state"] == "idle"]
@@ -345,7 +349,9 @@ class MachineStateEvents(Base):
                 else 0.0
             )
             run_idle_ratio = (
-                total_run_time / total_idle_time if total_idle_time > 0 else 0.0
+                total_run_time / total_idle_time
+                if total_idle_time > 0
+                else float("nan")
             )
 
         data_gaps_detected = self._detect_data_gaps()
@@ -359,9 +365,7 @@ class MachineStateEvents(Base):
             "avg_idle_duration": (
                 float(avg_idle_duration) if not np.isnan(avg_idle_duration) else 0.0
             ),
-            "run_idle_ratio": (
-                float(run_idle_ratio) if not np.isnan(run_idle_ratio) else 0.0
-            ),
+            "run_idle_ratio": float(run_idle_ratio),
             "data_gaps_detected": data_gaps_detected,
             "rapid_transitions_detected": rapid_transitions_detected,
         }

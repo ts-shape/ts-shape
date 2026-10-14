@@ -121,17 +121,23 @@ class LineThroughputEvents(Base):
         """Flag cycles whose durations exceed the takt_time.
 
         For boolean triggers: detect True rising edges as cycle boundaries.
-        For integer steps: detect increments as cycle boundaries.
+        For numeric counters/steps: detect increments as cycle boundaries; a
+        decrease (a counter reset) is not a cycle boundary.
 
         Args:
             cycle_uuid: UUID of the cycle trigger signal.
             value_column: Column holding the trigger. ``"value_bool"`` uses
-                rising edges as cycle boundaries; any other column uses every
-                change of value.
+                rising edges as cycle boundaries; a numeric column uses every
+                increase of the value (a reset or other decrease is not a
+                boundary, so the cycle spanning it runs to the next
+                increase); a non-numeric column (e.g. a string step name)
+                uses every change of value.
             takt_time: Takt time (pandas offset string, e.g. '60s').
             min_violation: How far a cycle must exceed ``takt_time`` to be a
-                violation. Default ``"0s"``: a cycle equal to the takt time
-                already counts.
+                violation: a cycle is a violation when it is strictly longer
+                than ``takt_time + min_violation``. Default ``"0s"``: any
+                cycle longer than the takt time counts; a cycle exactly equal
+                to the takt time does not.
 
         Returns:
             DataFrame with columns: systime (at the boundary that closes the
@@ -160,6 +166,12 @@ class LineThroughputEvents(Base):
             state = s[value_column].astype("boolean").fillna(False).astype(bool)
             edges = s[state & ~state.shift(fill_value=False)]
             times = edges[self.time_column].reset_index(drop=True)
+        elif pd.api.types.is_numeric_dtype(s[value_column]):
+            # Counter/step: a boundary is an increase; a reset is not a cycle.
+            cur = s[value_column].fillna(0)
+            prev = s[value_column].shift(1).fillna(0)
+            edges = s[cur > prev]
+            times = edges[self.time_column].reset_index(drop=True)
         else:
             s["prev"] = s[value_column].shift(1)
             edges = s[s[value_column].fillna(0) != s["prev"].fillna(0)]
@@ -178,7 +190,7 @@ class LineThroughputEvents(Base):
         cycle_times = (times.diff().dt.total_seconds()).iloc[1:].reset_index(drop=True)
         min_td = pd.to_timedelta(min_violation).total_seconds()
         target = pd.to_timedelta(takt_time).total_seconds()
-        viol = (cycle_times - target) >= min_td
+        viol = (cycle_times - target) > min_td
         out = pd.DataFrame(
             {
                 "systime": times.iloc[1:].reset_index(drop=True),
@@ -415,6 +427,12 @@ class LineThroughputEvents(Base):
             # Cast first: ``~`` on an object column of Python bools is -2/-1.
             state = s[value_column].astype("boolean").fillna(False).astype(bool)
             edges = s[state & ~state.shift(fill_value=False)]
+            times = edges[self.time_column].reset_index(drop=True)
+        elif pd.api.types.is_numeric_dtype(s[value_column]):
+            # Counter/step: a boundary is an increase; a reset is not a cycle.
+            cur = s[value_column].fillna(0)
+            prev = s[value_column].shift(1).fillna(0)
+            edges = s[cur > prev]
             times = edges[self.time_column].reset_index(drop=True)
         else:
             s["prev"] = s[value_column].shift(1)

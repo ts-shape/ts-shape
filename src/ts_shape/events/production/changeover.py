@@ -305,13 +305,13 @@ class ChangeoverEvents(Base):
         *,
         value_column: str = "value_string",
     ) -> pd.DataFrame:
-        """Compute quality metrics for changeovers.
+        """Per-product changeover frequency: how often, and how far apart.
 
-        Returns metrics including:
-        - changeover duration patterns
-        - frequency statistics
-        - time between changeovers
-        - product-specific metrics
+        For each product, counts the changeovers *to* that product and
+        summarizes the time between consecutive ones. Changeover durations
+        are not measured here (a product-signal change is a point, not an
+        interval); use :meth:`changeover_window` for when the process is
+        stable again after a changeover.
 
         Args:
             product_uuid: UUID of the product/recipe signal.

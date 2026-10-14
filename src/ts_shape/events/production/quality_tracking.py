@@ -626,6 +626,7 @@ class QualityEvents(Base):
             - total_parts: Total parts produced
             - nok_rate_pct: Percentage of NOK parts
             - first_pass_yield_pct: Percentage of good parts
+            - quality_pct: Same as first_pass_yield_pct
             - resets: Number of counter resets that day (only when
                 ``handle_resets=True``)
 

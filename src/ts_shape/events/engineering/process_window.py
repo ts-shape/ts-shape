@@ -127,8 +127,9 @@ class ProcessWindowEvents(Base):
 
         Args:
             window: Resample window passed to :meth:`windowed_statistics`.
-            sensitivity: Minimum shift between consecutive window means, in
-                multiples of the previous window's std, to flag a window.
+            sensitivity: Shift between consecutive window means, in
+                multiples of the previous window's std, above which (strictly)
+                a window is flagged.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -155,7 +156,7 @@ class ProcessWindowEvents(Base):
             curr = stats.iloc[i]
             prev_std = prev["std"] if prev["std"] > 0 else 1e-10
             shift = abs(curr["mean"] - prev["mean"]) / prev_std
-            if shift >= sensitivity:
+            if shift > sensitivity:
                 events.append(
                     {
                         "start": prev["start"],
@@ -183,8 +184,9 @@ class ProcessWindowEvents(Base):
 
         Args:
             window: Resample window passed to :meth:`windowed_statistics`.
-            ratio_threshold: Std ratio (current / previous) at or above which, or
-                at or below whose reciprocal, a window is flagged. Should be > 1.
+            ratio_threshold: Std ratio (current / previous) strictly above
+                which, or strictly below whose reciprocal, a window is
+                flagged. Should be > 1.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -215,9 +217,7 @@ class ProcessWindowEvents(Base):
                 ratio = float("inf")
             else:
                 ratio = curr["std"] / prev["std"]
-            if ratio >= ratio_threshold or (
-                ratio > 0 and ratio <= 1.0 / ratio_threshold
-            ):
+            if ratio > ratio_threshold or (ratio > 0 and ratio < 1.0 / ratio_threshold):
                 events.append(
                     {
                         "start": prev["start"],

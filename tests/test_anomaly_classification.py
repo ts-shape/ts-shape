@@ -117,3 +117,55 @@ class TestClassifyAnomalies:
         detector = AnomalyClassificationEvents(df, "sensor_1")
         result = detector.classify_anomalies()
         assert len(result) == 0
+
+
+def _ramp(step_seconds: int, hours: int = 2) -> pd.DataFrame:
+    """Ramp of 0.01 units per second sampled every ``step_seconds``."""
+    n = hours * 3600 // step_seconds
+    t = pd.Timestamp("2024-01-01") + pd.to_timedelta(
+        np.arange(n) * step_seconds, unit="s"
+    )
+    return pd.DataFrame(
+        {
+            "systime": t,
+            "uuid": "sensor_1",
+            "value_double": 0.01 * np.arange(n) * step_seconds,
+        }
+    )
+
+
+class TestSlopePerSecond:
+    def test_detect_drift_slope_independent_of_sampling_rate(self):
+        fast = AnomalyClassificationEvents(_ramp(1), "sensor_1")
+        slow = AnomalyClassificationEvents(_ramp(10), "sensor_1")
+        # Per sample (default): slopes 0.01 vs 0.1 per sample.
+        assert fast.detect_drift(min_slope=0.05).empty
+        assert not slow.detect_drift(min_slope=0.05).empty
+        # Per second: 0.01 units/s for both.
+        for det in (fast, slow):
+            out = det.detect_drift(min_slope=0.005, slope_per="second")
+            assert not out.empty
+            assert np.allclose(out["slope"], 0.01)
+
+    def test_classify_anomalies_slope_per_second_details(self):
+        # Alternating +-0.3 noise every 10 s with a 0.04/sample
+        # (= 0.004/s) ramp in the 00:50 window.
+        n = 720
+        v = np.where(np.arange(n) % 2 == 0, 1.0, -1.0) * 0.3
+        v[300:331] += np.arange(31) * 0.04
+        t = pd.Timestamp("2024-01-01") + pd.to_timedelta(np.arange(n) * 10, unit="s")
+        df = pd.DataFrame({"systime": t, "uuid": "sensor_1", "value_double": v})
+        det = AnomalyClassificationEvents(df, "sensor_1")
+        default = det.classify_anomalies(window="5min")
+        per_s = det.classify_anomalies(window="5min", slope_per="second")
+        # Regular sampling: the same windows and types are flagged.
+        assert list(default["anomaly_type"]) == list(per_s["anomaly_type"])
+        d0 = default[default["anomaly_type"] == "drift"]["details"]
+        d1 = per_s[per_s["anomaly_type"] == "drift"]["details"]
+        assert list(d0) == ["slope=0.040000, direction=increasing"]
+        assert list(d1) == ["slope=0.004000, direction=increasing"]
+
+    def test_invalid_slope_per(self):
+        det = AnomalyClassificationEvents(_ramp(10), "sensor_1")
+        with pytest.raises(ValueError, match="slope_per"):
+            det.detect_drift(slope_per="minute")

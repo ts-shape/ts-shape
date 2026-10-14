@@ -9,6 +9,7 @@ Track rework events and their impact:
 """
 
 import logging
+from typing import Any
 
 import pandas as pd  # type: ignore
 
@@ -305,8 +306,11 @@ class ReworkEvents(Base):
             handle_resets: When True, treat a decreasing counter as a reset
                 and count the production/rework accumulated after the reset,
                 for both the numerator (rework) and denominator (total
-                produced). When False (default), both use
-                ``max(0, last - first)`` per shift and a reset is lost.
+                produced). The result gains ``rework_resets``,
+                ``production_resets`` and ``resets`` (their sum) columns with
+                the number of resets observed in each shift. When False
+                (default), both use ``max(0, last - first)`` per shift and a
+                reset is lost.
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date. Default True;
                 False groups by raw calendar date, which splits a night shift
@@ -319,6 +323,9 @@ class ReworkEvents(Base):
                 tz-aware in the data's tz; an overnight shift ends on the
                 next day)
             - date, shift, total_produced, rework_count, rework_rate_pct
+            - rework_resets, production_resets, resets: Number of counter
+                resets of the rework counter, the production counter, and
+                both together in the shift (only when ``handle_resets=True``)
         """
         rate_cols = [
             "date",
@@ -327,6 +334,8 @@ class ReworkEvents(Base):
             "rework_count",
             "rework_rate_pct",
         ]
+        if handle_resets:
+            rate_cols += ["rework_resets", "production_resets", "resets"]
         rework_data = (
             self.dataframe[self.dataframe["uuid"] == rework_uuid]
             .copy()
@@ -394,15 +403,26 @@ class ReworkEvents(Base):
 
             rate = (rework_count / total_produced * 100) if total_produced > 0 else 0
 
-            results.append(
-                {
-                    "date": date,
-                    "shift": shift,
-                    "total_produced": round(total_produced, 0),
-                    "rework_count": round(rework_count, 0),
-                    "rework_rate_pct": round(rate, 1),
-                }
-            )
+            row: dict[str, Any] = {
+                "date": date,
+                "shift": shift,
+                "total_produced": round(total_produced, 0),
+                "rework_count": round(rework_count, 0),
+                "rework_rate_pct": round(rate, 1),
+            }
+            if handle_resets:
+                rw_resets = (
+                    count_resets(rw_grp[value_column_rework]) if not rw_grp.empty else 0
+                )
+                pr_resets = (
+                    count_resets(pr_grp[value_column_production])
+                    if not pr_grp.empty
+                    else 0
+                )
+                row["rework_resets"] = rw_resets
+                row["production_resets"] = pr_resets
+                row["resets"] = rw_resets + pr_resets
+            results.append(row)
 
         return add_shift_window(
             pd.DataFrame(results, columns=rate_cols),

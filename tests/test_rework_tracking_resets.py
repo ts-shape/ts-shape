@@ -141,3 +141,20 @@ def test_rework_trend_handles_resets():
     assert "resets" in aware.columns
     assert aware["rework_count"].sum() == 85
     assert aware["resets"].sum() == 1
+
+
+def test_rework_rate_adds_resets_columns():
+    df = _make_reset_rework_df()
+    tracker = ReworkEvents(df)
+    default = tracker.rework_rate(
+        rework_uuid="rework_counter", total_production_uuid="total_counter"
+    )
+    assert "resets" not in default.columns
+    aware = tracker.rework_rate(
+        rework_uuid="rework_counter",
+        total_production_uuid="total_counter",
+        handle_resets=True,
+    )
+    assert aware["rework_resets"].sum() == 1
+    assert aware["production_resets"].sum() == 0
+    assert aware["resets"].sum() == 1

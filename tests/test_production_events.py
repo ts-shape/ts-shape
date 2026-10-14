@@ -249,3 +249,32 @@ def test_flow_blocked_and_starved():
         min_duration="30s",
     )
     assert isinstance(starved, pd.DataFrame)
+
+
+def test_flow_starved_is_downstream_running_upstream_stopped():
+    """starved_events flags downstream running while upstream is stopped;
+    both stopped is not reported. Directional tolerances work."""
+    t = pd.date_range("2024-01-01 00:00:00", periods=6, freq="30s")
+    up = [True, False, False, False, False, True]
+    dn = [True, True, True, False, False, True]
+    df = pd.concat(
+        [
+            pd.DataFrame({"uuid": "up", "systime": t, "value_bool": up}),
+            pd.DataFrame({"uuid": "dn", "systime": t, "value_bool": dn}),
+        ],
+        ignore_index=True,
+    )
+    fce = FlowConstraintEvents(df)
+    roles = {"upstream_run": "up", "downstream_run": "dn"}
+    starved = fce.starved_events(roles=roles, tolerance="1s")
+    assert len(starved) == 1
+    assert starved.iloc[0]["start"] == t[1]
+    assert starved.iloc[0]["end"] == t[2]
+    directional = fce.starved_events(
+        roles=roles, tolerance_before="1s", tolerance_after="1s"
+    )
+    pd.testing.assert_frame_equal(directional, starved)
+    blocked = fce.blocked_events(
+        roles=roles, tolerance_before="1s", tolerance_after="1s"
+    )
+    assert blocked.empty

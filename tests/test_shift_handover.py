@@ -3,6 +3,7 @@
 from datetime import date
 
 import pandas as pd
+import pytest
 
 from ts_shape.events.production.shift_handover import ShiftHandoverEvents
 
@@ -207,3 +208,17 @@ class TestShiftHandoverReport:
             state_uuid="w",
         )
         assert issues == []
+
+
+def test_highlight_issues_without_report_or_uuids_raises():
+    df = pd.DataFrame(columns=["systime", "uuid", "value_integer", "value_string"])
+    report = ShiftHandoverEvents(df)
+    with pytest.raises(ValueError, match="state_uuid"):
+        report.highlight_issues(
+            counter_uuid="x",
+            ok_counter_uuid="y",
+            nok_counter_uuid="z",
+            thresholds={"quality_pct": 99.0},
+        )
+    with pytest.raises(ValueError, match="report_df"):
+        report.highlight_issues(thresholds={"quality_pct": 99.0})

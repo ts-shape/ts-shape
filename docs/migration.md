@@ -69,6 +69,35 @@ The old names still work. They emit a `DeprecationWarning`, and the event log ac
 
 To find every remaining old name in your code, run your tests with `-W error::DeprecationWarning`.
 
+## Behavior fixes that change results
+
+These change output because the old output was wrong or contradicted the documentation. Each one has a regression test.
+
+- **SPC rules now follow Nelson (1984) / Western Electric** (`StatisticalProcessControlEvents`):
+  - rule 8 flags 8 points in a row with **none** within 1σ (it used to flag 8 points *within* 1σ);
+  - rule 3 is 6 points steadily rising or falling (was 7), and rule 4 is 14 points alternating up and down (was 15);
+  - rules 5 and 6 count points beyond the next zone too, per side;
+  - rule 2 measures sides against the chart center line;
+  - the rules no longer add columns to your frame, and the vectorized and per-rule paths flag the same points.
+- **`ToleranceDeviationEvents.detect_deviations`** keeps the measured value and reports single-sample deviations. A missing `actual_uuid` raises instead of returning nothing. `capability_indices` adds `Cpm` when `target_value` is given.
+- **`LineThroughputEvents.takt_adherence`:**
+  - a cycle exactly equal to takt is no longer a violation;
+  - a decrease in a numeric counter (a reset) is no longer a cycle.
+- **`MachineStateEvents.state_quality_metrics`:**
+  - follows the signal's spec like `detect_run_idle`;
+  - `run_idle_ratio` is NaN, not 0.0, when there is no idle time.
+- **`ShiftHandoverEvents.highlight_issues`** without `report_df` or the four uuids raises instead of returning `[]`.
+- **`PeriodSummaryEvents.from_daily_data`** honors anchored weeks (`'W-FRI'` …).
+- **`GoldenBatchDeviationEvents.phase_breakdown`** compares each phase with the same phase of the golden batch.
+- **`EnvironmentalCompensationEvents`:**
+  - constructing without `env_uuid` raises;
+  - `compensated_signal`'s `uuid` is the event uuid.
+- **`SetpointChangeEvents`:** two setpoint changes at the same instant no longer multiply the KPI rows.
+- **`ProcessWindowEvents`** uses the strict `>` its docstrings describe.
+- **Hour-folder loaders** no longer drop the hour that contains the range end. Databricks loaders apply a single `start` or `end` bound.
+
+Parameters that had no effect now warn when passed: `RateOfChangeEvents.detect_rapid_change(window=...)`, `MeasurementUncertaintyEvents(part_uuid=...)`, `ContinuousProcessAlignmentEvents(ref_uuid=...)`. When both `settle_pct` and `tol` are passed to a setpoint KPI, a warning says `settle_pct` wins. When both `state_map` and `station_map` are passed, a warning says `state_map` wins.
+
 ## Every detector output carries its time bounds
 
 Each detector returns the canonical columns of its shape (see [Naming & Output Conventions](naming.md)):
