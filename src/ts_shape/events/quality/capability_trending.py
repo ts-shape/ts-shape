@@ -112,7 +112,7 @@ class CapabilityTrendingEvents(Base):
         inside = rows[(times > start) & (times < end)]
         if not inside.empty:
             return float(inside[self.value_column].iloc[0])
-        return np.nan
+        return float("nan")
 
     def _resolve_spec_limits(self, start: pd.Timestamp, end: pd.Timestamp) -> tuple:
         """Resolve upper/lower spec limits for the window ``[start, end)``.

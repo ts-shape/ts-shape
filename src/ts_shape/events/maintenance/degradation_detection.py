@@ -301,8 +301,8 @@ class DegradationDetectionEvents(Base):
         ccnt = np.concatenate(([0], np.cumsum(finite)))
 
         def _mean(a: int, b: int) -> float:
-            k = ccnt[b] - ccnt[a]
-            return ref + (csum[b] - csum[a]) / k if k else np.nan
+            k = int(ccnt[b] - ccnt[a])
+            return ref + float(csum[b] - csum[a]) / k if k else float("nan")
 
         events: list[dict[str, Any]] = []
 
