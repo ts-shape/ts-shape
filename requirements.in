@@ -1,4 +1,0 @@
-# Core dependencies are defined in pyproject.toml [project.dependencies].
-# This file is used by pip-compile to generate the pinned requirements.txt.
-#
-# To regenerate: pip-compile --strip-extras -o requirements.txt pyproject.toml

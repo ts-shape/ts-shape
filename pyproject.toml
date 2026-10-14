@@ -5,14 +5,29 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ts_shape"
 dynamic = ["version"]
-description = "ts-shape filters, transforms and engineers your timeseries dataframe"
+description = "Manufacturing time-series analytics for pandas: events, KPIs, SPC, reliability and energy from long-format signal data"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
     { name = "Jakob Gabriel", email = "jakob.gabriel5@googlemail.com" },
 ]
+keywords = [
+    "time series",
+    "manufacturing",
+    "industrial",
+    "OEE",
+    "SPC",
+    "reliability",
+    "energy",
+    "pandas",
+    "IIoT",
+    "event detection",
+]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Manufacturing",
+    "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -35,11 +50,16 @@ Repository = "https://github.com/ts-shape/ts-shape"
 
 [project.optional-dependencies]
 # Loader backends. The analytics core needs only pandas, numpy and scipy.
+parquet = [
+    "pyarrow>=15.0",
+]
 s3 = [
     "s3fs>=2024.10.0",
+    "pyarrow>=15.0",
 ]
 azure = [
     "azure-storage-blob>=12.19.1",
+    "pyarrow>=15.0",
 ]
 api = [
     "requests>=2.32.3",
@@ -54,12 +74,10 @@ postgres = [
 yaml = [
     "pyyaml>=6.0",
 ]
+# Every optional feature: all loader backends, YAML specs, units and the
+# scikit-learn based detectors.
 all = [
-    "s3fs>=2024.10.0",
-    "azure-storage-blob>=12.19.1",
-    "requests>=2.32.3",
-    "sqlalchemy>=2.0.32",
-    "pyyaml>=6.0",
+    "ts_shape[parquet,s3,azure,api,sql,postgres,yaml,ml,units]",
 ]
 docs = [
     "mkdocs>=1.5",
@@ -71,7 +89,8 @@ docs = [
     "black==26.3.1",
 ]
 dev = [
-    "ts_shape[all]",
+    # Everything except the postgres driver, which needs a database to test.
+    "ts_shape[parquet,s3,azure,api,sql,yaml,ml,units]",
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "hypothesis>=6.100",
@@ -79,7 +98,8 @@ dev = [
     "ruff==0.15.8",
     "pre-commit>=3.0",
     "mypy>=1.0",
-    "pint>=0.24",
+    "build>=1.2",
+    "twine>=5.0",
 ]
 ml = [
     "scikit-learn>=1.3.0",
@@ -94,10 +114,11 @@ where = ["src"]
 [tool.setuptools.package-data]
 ts_shape = ["py.typed"]
 
-[tool.setuptools-scm]
+[tool.setuptools_scm]
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
-fallback_version = "0.1.0"
+# Used only when building outside a git checkout without a version override.
+fallback_version = "0.0.0+unknown"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
