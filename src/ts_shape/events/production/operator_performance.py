@@ -106,7 +106,7 @@ class OperatorPerformanceTracking(Base):
         value_column_operator: str,
         value_column_counter: str,
         *,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Merge operator signal with counter signal by timestamp."""
         operator_data = (
@@ -163,7 +163,7 @@ class OperatorPerformanceTracking(Base):
         value_column_operator: str = "value_string",
         value_column_counter: str = "value_integer",
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Parts produced per operator.
 
@@ -181,8 +181,8 @@ class OperatorPerformanceTracking(Base):
                 containing a reset reports too little (often 0).
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night
-                shift counts as one worked shift. Default False (raw calendar
-                date). Only affects overnight schedules.
+                shift counts as one worked shift. Default True; False groups by
+                raw calendar date. Only affects overnight schedules.
 
         Returns:
             DataFrame with columns:

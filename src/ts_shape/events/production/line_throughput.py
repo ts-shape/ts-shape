@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
 
@@ -15,6 +16,9 @@ class LineThroughputEvents(Base):
     Methods:
     - count_parts: Part counts per fixed window from a monotonically increasing counter.
     - takt_adherence: Cycle time violations against a takt time from step/boolean triggers.
+    - cycle_quality_check: Cycles from a trigger signal, flagged when outside the expected range.
+    - throughput_oee: Availability, performance and OEE ratios (0-1) per window.
+    - throughput_trends: Throughput trend with moving averages and degradation flags.
     """
 
     def __init__(
@@ -46,10 +50,19 @@ class LineThroughputEvents(Base):
         post-reset value counted as new production) and summed into each window,
         and a ``resets`` column reports the number of resets per window.
 
-        Returns columns: start, uuid, source_uuid, is_delta, count
-        (plus ``resets`` when ``handle_resets=True``)
+        Returns columns: start, end (start + window), duration_seconds, uuid,
+        source_uuid, is_delta, count (plus ``resets`` when
+        ``handle_resets=True``)
         """
-        base_columns = ["start", "uuid", "source_uuid", "is_delta", "count"]
+        base_columns = [
+            "start",
+            "end",
+            "duration_seconds",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "count",
+        ]
         if handle_resets:
             base_columns.append("resets")
         c = (
@@ -82,6 +95,8 @@ class LineThroughputEvents(Base):
                 .reset_index()
                 .rename(columns={self.time_column: "start"})
             )
+        out["start"], out["end"] = window_bounds(out["start"], window)
+        out["duration_seconds"] = (out["end"] - out["start"]).dt.total_seconds()
         out["uuid"] = self.event_uuid
         out["source_uuid"] = counter_uuid
         out["is_delta"] = True
@@ -188,8 +203,8 @@ class LineThroughputEvents(Base):
                 is not dropped. Default False.
 
         Returns:
-            DataFrame with columns: start, uuid, source_uuid, is_delta,
-            actual_count, target_count, availability, performance, oee_score
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, is_delta, actual_count, target_count, availability, performance, oee_score
         """
         parts_df = self.count_parts(
             counter_uuid,
@@ -202,6 +217,8 @@ class LineThroughputEvents(Base):
             return pd.DataFrame(
                 columns=[
                     "start",
+                    "end",
+                    "duration_seconds",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -243,6 +260,8 @@ class LineThroughputEvents(Base):
         return parts_df[
             [
                 "start",
+                "end",
+                "duration_seconds",
                 "uuid",
                 "source_uuid",
                 "is_delta",
@@ -271,7 +290,9 @@ class LineThroughputEvents(Base):
             trend_window: Number of windows for trend calculation
 
         Returns:
-            DataFrame with throughput, moving average, trend direction, and degradation flag
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, is_delta, count, moving_avg,
+            trend_direction, degradation_detected
         """
         parts_df = self.count_parts(
             counter_uuid, value_column=value_column, window=window
@@ -281,6 +302,8 @@ class LineThroughputEvents(Base):
             return pd.DataFrame(
                 columns=[
                     "start",
+                    "end",
+                    "duration_seconds",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -312,6 +335,8 @@ class LineThroughputEvents(Base):
         return parts_df[
             [
                 "start",
+                "end",
+                "duration_seconds",
                 "uuid",
                 "source_uuid",
                 "is_delta",

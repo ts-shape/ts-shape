@@ -91,6 +91,9 @@ class StatisticalProcessControlRuleBased(Base):
 
         Returns:
             pd.DataFrame: DataFrame with dynamic control limits indexed by time.
+                Columns: systime, mean, 1sigma_upper, 1sigma_lower,
+                2sigma_upper, 2sigma_lower, 3sigma_upper, 3sigma_lower, uuid
+                (the event uuid) and source_uuid (the actual signal's uuid).
         """
         df = self.dataframe[self.dataframe["uuid"] == self.actual_uuid].copy()
         df = df.sort_values(by="systime")
@@ -143,6 +146,8 @@ class StatisticalProcessControlRuleBased(Base):
         else:
             raise ValueError(f"Unknown method: {method}. Use 'moving_range' or 'ewma'.")
 
+        control_limits["uuid"] = self.event_uuid
+        control_limits["source_uuid"] = self.actual_uuid
         return control_limits.reset_index(drop=True)
 
     def rule_1(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
@@ -322,7 +327,9 @@ class StatisticalProcessControlRuleBased(Base):
                 If None, applies all rules.
 
         Returns:
-            pd.DataFrame: DataFrame with rule violations, including rule name and severity.
+            pd.DataFrame: DataFrame with rule violations. Columns: systime,
+                value, rule, severity, uuid (the event uuid) and source_uuid
+                (the actual signal's uuid).
         """
         df = self.dataframe[self.dataframe["uuid"] == self.actual_uuid].copy()
         df["systime"] = pd.to_datetime(df["systime"])
@@ -488,10 +495,11 @@ class StatisticalProcessControlRuleBased(Base):
         if violations:
             violations_df = pd.DataFrame(violations)
             violations_df["uuid"] = self.event_uuid
+            violations_df["source_uuid"] = self.actual_uuid
             return violations_df.drop_duplicates()
         else:
             return pd.DataFrame(
-                columns=["systime", "value", "rule", "severity", "uuid"]
+                columns=["systime", "value", "rule", "severity", "uuid", "source_uuid"]
             )
 
     def detect_cusum_shifts(
@@ -512,7 +520,9 @@ class StatisticalProcessControlRuleBased(Base):
 
         Returns:
             pd.DataFrame: DataFrame with CUSUM statistics and detected shifts.
-                Columns: systime, value, cusum_high, cusum_low, shift_detected, shift_direction
+                Columns: systime, value_column, cusum_high, cusum_low,
+                shift_direction, severity, uuid (the event uuid) and
+                source_uuid (the actual signal's uuid).
         """
         df = self.dataframe[self.dataframe["uuid"] == self.actual_uuid].copy()
         df = df.sort_values(by="systime").reset_index(drop=True)
@@ -532,6 +542,7 @@ class StatisticalProcessControlRuleBased(Base):
             "shift_direction",
             "severity",
             "uuid",
+            "source_uuid",
         ]
         if not sigma > 0:
             # sigma NaN (fewer than two rows) or 0 (constant): k*sigma and the
@@ -584,6 +595,7 @@ class StatisticalProcessControlRuleBased(Base):
 
         # Add event UUID to detected shifts
         df.loc[df["shift_detected"], "uuid"] = self.event_uuid
+        df["source_uuid"] = self.actual_uuid
 
         # Return only rows with detected shifts
         result = df[df["shift_detected"]].copy()
@@ -701,8 +713,10 @@ class StatisticalProcessControlRuleBased(Base):
 
         Returns:
             pd.DataFrame: DataFrame with rule violations and detected events.
-                If include_severity=False: columns are [systime, value_column, uuid]
-                If include_severity=True: columns include [systime, value_column, uuid, rule, severity]
+                If include_severity=False: columns are [systime, value_column, uuid, source_uuid]
+                If include_severity=True: columns include [systime, value_column, uuid,
+                triggered_rule, severity, source_uuid]. ``source_uuid`` is the actual
+                signal's uuid.
         """
         df = self.dataframe[self.dataframe["uuid"] == self.actual_uuid].copy()
         df["systime"] = pd.to_datetime(df["systime"])
@@ -757,12 +771,22 @@ class StatisticalProcessControlRuleBased(Base):
 
         # Add the event UUID to the detected events
         events["uuid"] = self.event_uuid
+        events["source_uuid"] = self.actual_uuid
 
         # Return appropriate columns based on include_severity flag
         if include_severity and "triggered_rule" in events.columns:
             return events[
-                ["systime", self.value_column, "uuid", "triggered_rule", "severity"]
+                [
+                    "systime",
+                    self.value_column,
+                    "uuid",
+                    "triggered_rule",
+                    "severity",
+                    "source_uuid",
+                ]
             ].drop_duplicates()
         else:
             # Backward compatible output
-            return events[["systime", self.value_column, "uuid"]].drop_duplicates()
+            return events[
+                ["systime", self.value_column, "uuid", "source_uuid"]
+            ].drop_duplicates()

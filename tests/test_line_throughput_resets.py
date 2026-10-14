@@ -35,6 +35,8 @@ def test_count_parts_default_under_reports(reset_counter_data):
     result = lt.count_parts("line_counter", window="5min")
     assert list(result.columns) == [
         "start",
+        "end",
+        "duration_seconds",
         "uuid",
         "source_uuid",
         "is_delta",

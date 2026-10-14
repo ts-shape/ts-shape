@@ -10,9 +10,43 @@ import logging
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import (
+    add_period_window,
+    add_shift_window,
+    data_tz,
+)
 from ts_shape.utils.base import Base
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
+
+_SHIFT_COLS = [
+    "date",
+    "shift",
+    "actual_parts",
+    "avg_cycle_time_s",
+    "target_cycle_time_s",
+    "performance_pct",
+    "loss_minutes",
+]
+_SLOW_COLS = [
+    "start",
+    "end",
+    "duration_seconds",
+    "uuid",
+    "source_uuid",
+    "actual_parts",
+    "avg_cycle_time_s",
+    "performance_pct",
+    "loss_minutes",
+]
+_TREND_COLS = [
+    "period",
+    "actual_parts",
+    "avg_cycle_time_s",
+    "performance_pct",
+    "loss_minutes",
+]
 
 
 class PerformanceLossTracking(Base):
@@ -58,9 +92,23 @@ class PerformanceLossTracking(Base):
         *,
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
+        event_uuid: str = "prod:performance_loss",
     ) -> None:
+        """Initialize the performance-loss tracker.
+
+        Args:
+            dataframe: Input DataFrame with timeseries data.
+            time_column: Name of timestamp column (default: 'systime').
+            shift_definitions: Mapping of shift name to (start, end) times.
+                Default: 3-shift operation (06:00-14:00, 14:00-22:00,
+                22:00-06:00).
+            event_uuid: UUID tagged on derived interval events (the ``uuid``
+                column of :meth:`slow_periods`; default:
+                'prod:performance_loss').
+        """
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
+        self.event_uuid = event_uuid
         self.shift_definitions = shift_definitions or {
             "shift_1": ("06:00", "14:00"),
             "shift_2": ("14:00", "22:00"),
@@ -123,6 +171,7 @@ class PerformanceLossTracking(Base):
         *,
         value_column: str = "value_integer",
         max_cycle_gap: str | None = None,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Calculate performance percentage per shift.
 
@@ -136,9 +185,16 @@ class PerformanceLossTracking(Base):
                 this are treated as stoppages and excluded, so a break or
                 downtime is not counted as slow-running time (which would
                 otherwise report a large, spurious speed loss).
+            production_day: Attribute an overnight shift's post-midnight
+                readings to the shift's start date, so a night shift is one
+                ``(date, shift)`` row (default). False groups by raw calendar
+                date, which splits a night shift across two rows.
 
         Returns:
             DataFrame with columns:
+            - start, end, duration_seconds: the shift window from
+                ``shift_definitions`` (tz-aware in the data's tz; an overnight
+                shift ends on the next day)
             - date, shift, actual_parts, avg_cycle_time_s,
                 target_cycle_time_s, performance_pct, loss_minutes
         """
@@ -146,20 +202,18 @@ class PerformanceLossTracking(Base):
             cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
         )
         if data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "shift",
-                    "actual_parts",
-                    "avg_cycle_time_s",
-                    "target_cycle_time_s",
-                    "performance_pct",
-                    "loss_minutes",
-                ]
+            return add_shift_window(
+                pd.DataFrame(columns=_SHIFT_COLS), self.shift_definitions, None
             )
 
         data["shift"] = data[self.time_column].apply(self._assign_shift)
-        data["date"] = data[self.time_column].dt.date
+        data["date"] = (
+            production_dates(
+                data[self.time_column], data["shift"], self.shift_definitions
+            )
+            if production_day
+            else data[self.time_column].dt.date
+        )
 
         results = []
         for (date, shift), grp in data.groupby(["date", "shift"]):
@@ -187,7 +241,11 @@ class PerformanceLossTracking(Base):
                 }
             )
 
-        return pd.DataFrame(results)
+        return add_shift_window(
+            pd.DataFrame(results, columns=_SHIFT_COLS),
+            self.shift_definitions,
+            data_tz(data[self.time_column]),
+        )
 
     def slow_periods(
         self,
@@ -210,23 +268,15 @@ class PerformanceLossTracking(Base):
 
         Returns:
             DataFrame with columns:
-            - start, end, actual_parts, avg_cycle_time_s,
-                performance_pct, loss_minutes
+            - start, end, duration_seconds (float seconds, end - start),
+                uuid (event uuid), source_uuid (cycle_uuid), actual_parts,
+                avg_cycle_time_s, performance_pct, loss_minutes
         """
         data = self._compute_cycle_times(
             cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
         )
         if data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "actual_parts",
-                    "avg_cycle_time_s",
-                    "performance_pct",
-                    "loss_minutes",
-                ]
-            )
+            return pd.DataFrame(columns=_SLOW_COLS)
 
         data = data.set_index(self.time_column)
         results = []
@@ -251,6 +301,9 @@ class PerformanceLossTracking(Base):
                     {
                         "start": start,
                         "end": start + pd.Timedelta(window),
+                        "duration_seconds": pd.Timedelta(window).total_seconds(),
+                        "uuid": self.event_uuid,
+                        "source_uuid": cycle_uuid,
                         "actual_parts": actual_parts,
                         "avg_cycle_time_s": round(avg_ct, 2),
                         "performance_pct": round(performance, 1),
@@ -258,7 +311,7 @@ class PerformanceLossTracking(Base):
                     }
                 )
 
-        return pd.DataFrame(results)
+        return pd.DataFrame(results, columns=_SLOW_COLS)
 
     def performance_trend(
         self,
@@ -279,21 +332,14 @@ class PerformanceLossTracking(Base):
 
         Returns:
             DataFrame with columns:
+            - start, end (start + window), duration_seconds
             - period, actual_parts, avg_cycle_time_s, performance_pct, loss_minutes
         """
         data = self._compute_cycle_times(
             cycle_uuid, value_column, max_cycle_gap=max_cycle_gap
         )
         if data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "period",
-                    "actual_parts",
-                    "avg_cycle_time_s",
-                    "performance_pct",
-                    "loss_minutes",
-                ]
-            )
+            return add_period_window(pd.DataFrame(columns=_TREND_COLS), window)
 
         data = data.set_index(self.time_column)
         results = []
@@ -324,4 +370,4 @@ class PerformanceLossTracking(Base):
                 }
             )
 
-        return pd.DataFrame(results)
+        return add_period_window(pd.DataFrame(results, columns=_TREND_COLS), window)

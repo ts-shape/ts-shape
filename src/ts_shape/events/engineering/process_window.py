@@ -4,6 +4,8 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import empty_event_df, finalize_interval_df
+from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -48,8 +50,9 @@ class ProcessWindowEvents(Base):
         """Per-window descriptive statistics.
 
         Returns:
-            DataFrame with columns: start, count, mean, std,
-            min, max, median, p25, p75, range.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, count, mean, std, min, max, median, p25, p75, range.
+            ``end`` is ``start`` + ``window``.
         """
         cols = [
             "start",
@@ -64,7 +67,7 @@ class ProcessWindowEvents(Base):
             "range",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
@@ -89,7 +92,23 @@ class ProcessWindowEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._summary(events, cols, window)
+
+    def _summary(
+        self, rows: pd.DataFrame | list[dict[str, Any]], cols: list[str], window: str
+    ) -> pd.DataFrame:
+        return window_summary(
+            rows, cols, window, uuid=self.event_uuid, source_uuid=self.signal_uuid
+        )
+
+    def _intervals(self, events: list[dict[str, Any]], cols: list[str]) -> pd.DataFrame:
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+        )
 
     def detect_mean_shift(
         self,
@@ -101,8 +120,10 @@ class ProcessWindowEvents(Base):
         A shift is detected when |current_mean - prev_mean| > sensitivity * prev_std.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
-            prev_mean, current_mean, shift_sigma.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, prev_mean, current_mean, shift_sigma.
+            ``start`` is the previous window's start, ``end`` the current
+            window's start.
         """
         cols = [
             "start",
@@ -115,7 +136,7 @@ class ProcessWindowEvents(Base):
         ]
         stats = self.windowed_statistics(window)
         if len(stats) < 2:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         events: list[dict[str, Any]] = []
         for i in range(1, len(stats)):
@@ -136,7 +157,7 @@ class ProcessWindowEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._intervals(events, cols)
 
     def detect_variance_change(
         self,
@@ -149,8 +170,10 @@ class ProcessWindowEvents(Base):
         or < (1 / ratio_threshold).
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
-            prev_std, current_std, variance_ratio.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, prev_std, current_std, variance_ratio.
+            ``start`` is the previous window's start, ``end`` the current
+            window's start.
         """
         cols = [
             "start",
@@ -163,7 +186,7 @@ class ProcessWindowEvents(Base):
         ]
         stats = self.windowed_statistics(window)
         if len(stats) < 2:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         events: list[dict[str, Any]] = []
         for i in range(1, len(stats)):
@@ -190,19 +213,19 @@ class ProcessWindowEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._intervals(events, cols)
 
     def window_comparison(self, window: str = "1h") -> pd.DataFrame:
         """Compare each window mean to the overall baseline.
 
         Returns:
-            DataFrame with columns: start, mean, z_score_vs_global,
-            is_anomalous.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, mean, z_score_vs_global, is_anomalous.
         """
         cols = ["start", "mean", "z_score_vs_global", "is_anomalous"]
         stats = self.windowed_statistics(window)
         if stats.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         global_mean = float(stats["mean"].mean())
         global_std = float(stats["mean"].std()) if len(stats) > 1 else 1e-10
@@ -212,4 +235,4 @@ class ProcessWindowEvents(Base):
         result = stats[["start", "mean"]].copy()
         result["z_score_vs_global"] = (result["mean"] - global_mean) / global_std
         result["is_anomalous"] = result["z_score_vs_global"].abs() > 2.0
-        return result[cols].reset_index(drop=True)
+        return self._summary(result[cols].reset_index(drop=True), cols, window)

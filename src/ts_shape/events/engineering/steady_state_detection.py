@@ -102,13 +102,14 @@ class SteadyStateDetectionEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             mean_value, std_value, duration_seconds.
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "mean_value",
             "std_value",
@@ -135,6 +136,7 @@ class SteadyStateDetectionEvents(Base):
                     "start": iv["start"],
                     "end": iv["end"],
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": False,
                     "mean_value": float(segment.mean()),
                     "std_value": float(segment.std()) if len(segment) > 1 else 0.0,
@@ -163,13 +165,14 @@ class SteadyStateDetectionEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             max_std, duration_seconds.
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "max_std",
             "duration_seconds",
@@ -192,6 +195,7 @@ class SteadyStateDetectionEvents(Base):
                     "start": iv["start"],
                     "end": iv["end"],
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": False,
                     "max_std": float(seg_std.max()),
                     "duration_seconds": (iv["end"] - iv["start"]).total_seconds(),

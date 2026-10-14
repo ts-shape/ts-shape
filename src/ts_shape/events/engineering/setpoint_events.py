@@ -4,6 +4,12 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_interval_df,
+    finalize_summary_df,
+)
+from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -59,6 +65,40 @@ class SetpointChangeEvents(Base):
             self._actual_cache[actual_uuid] = actual
         return self._actual_cache[actual_uuid]
 
+    def _change_intervals(
+        self, rows: list[dict[str, Any]], cols: list[str]
+    ) -> pd.DataFrame:
+        """Canonical interval frame for setpoint changes (full schema if empty)."""
+        if not rows:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(rows, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.setpoint_uuid,
+        )
+
+    def _kpi_frame(
+        self,
+        rows: list[dict[str, Any]],
+        cols: list[str],
+        actual_uuid: str,
+        lookahead: str,
+    ) -> pd.DataFrame:
+        """Canonical summary frame for per-change KPIs.
+
+        One row per setpoint change: ``start`` is the change instant, ``end``
+        is ``start`` + ``lookahead`` (the analyzed response window) and
+        ``source_uuid`` is ``"<setpoint_uuid>,<actual_uuid>"``.
+        """
+        source = f"{self.setpoint_uuid},{actual_uuid}"
+        extra = ["uuid", "source_uuid", *[c for c in cols if c != "start"]]
+        if not rows:
+            return empty_event_df("summary", extra)
+        df = add_window_bounds(
+            pd.DataFrame(rows, columns=cols), pd.to_timedelta(lookahead)
+        )
+        return finalize_summary_df(df, uuid=self.event_uuid, source_uuid=source)
+
     # ---- Change detection ----
     def detect_setpoint_steps(
         self,
@@ -78,22 +118,22 @@ class SetpointChangeEvents(Base):
             noise_threshold: Threshold for noise filtering (absolute value)
 
         Returns:
-            DataFrame with columns: start, end (== start), uuid, is_delta,
-            change_type='step', magnitude, prev_level, new_level.
+            DataFrame with columns: start, end (== start), duration_seconds
+            (0.0), uuid, source_uuid, is_delta, change_type='step', magnitude,
+            prev_level, new_level.
         """
+        cols = [
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "change_type",
+            "magnitude",
+            "prev_level",
+            "new_level",
+        ]
         if self.sp.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "change_type",
-                    "magnitude",
-                    "prev_level",
-                    "new_level",
-                ]
-            )
+            return self._change_intervals([], cols)
 
         sp = self.sp[[self.time_column, self.value_column]].copy()
 
@@ -140,7 +180,7 @@ class SetpointChangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(rows)
+        return self._change_intervals(rows, cols)
 
     def detect_setpoint_ramps(
         self, min_rate: float, min_duration: str = "0s"
@@ -149,21 +189,20 @@ class SetpointChangeEvents(Base):
         Interval events where |dS/dt| >= min_rate for at least `min_duration`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta, change_type='ramp',
-            avg_rate, delta.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, change_type='ramp', avg_rate, delta.
         """
+        cols = [
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "change_type",
+            "avg_rate",
+            "delta",
+        ]
         if self.sp.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "change_type",
-                    "avg_rate",
-                    "delta",
-                ]
-            )
+            return self._change_intervals([], cols)
 
         sp = self.sp[[self.time_column, self.value_column]].copy()
         sp["dt_s"] = sp[self.time_column].diff().dt.total_seconds()
@@ -198,7 +237,7 @@ class SetpointChangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events)
+        return self._change_intervals(events, cols)
 
     def detect_setpoint_changes(
         self,
@@ -210,76 +249,42 @@ class SetpointChangeEvents(Base):
     ) -> pd.DataFrame:
         """
         Unified setpoint change table (steps + ramps) with standardized columns.
+
+        Returns:
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, change_type, magnitude, prev_level,
+            new_level, avg_rate, delta.
         """
+        cols = [
+            "start",
+            "end",
+            "duration_seconds",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "change_type",
+            "magnitude",
+            "prev_level",
+            "new_level",
+            "avg_rate",
+            "delta",
+        ]
         steps = self.detect_setpoint_steps(min_delta=min_delta, min_hold=min_hold)
         ramps = (
             self.detect_setpoint_ramps(min_rate=min_rate, min_duration=min_duration)
             if min_rate is not None
-            else pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "change_type",
-                    "avg_rate",
-                    "delta",
-                ]
-            )
+            else empty_event_df("interval")
         )
         # ensure uniform columns
         if not steps.empty:
-            steps = steps.assign(avg_rate=None, delta=None)[
-                [
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "change_type",
-                    "magnitude",
-                    "prev_level",
-                    "new_level",
-                    "avg_rate",
-                    "delta",
-                ]
-            ]
+            steps = steps.assign(avg_rate=None, delta=None)[cols]
         if not ramps.empty:
-            ramps = ramps.assign(magnitude=None, prev_level=None, new_level=None)[
-                [
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "change_type",
-                    "magnitude",
-                    "prev_level",
-                    "new_level",
-                    "avg_rate",
-                    "delta",
-                ]
-            ]
+            ramps = ramps.assign(magnitude=None, prev_level=None, new_level=None)[cols]
         frames = [df for df in (steps, ramps) if not df.empty]
-        combined = (
-            pd.concat(frames, ignore_index=True)
-            if frames
-            else pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "change_type",
-                    "magnitude",
-                    "prev_level",
-                    "new_level",
-                    "avg_rate",
-                    "delta",
-                ]
-            )
-        )
-        return (
-            combined.sort_values(["start", "end"]) if not combined.empty else combined
-        )
+        if not frames:
+            return empty_event_df("interval", cols)
+        combined = pd.concat(frames, ignore_index=True)
+        return combined.sort_values(["start", "end"])
 
     # ---- Follow-up KPIs ----
     def time_to_settle(
@@ -303,12 +308,13 @@ class SetpointChangeEvents(Base):
             lookahead: Maximum time window to search for settling
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta, t_settle_seconds, settled.
+            DataFrame with columns: start, end (start + the lookahead window),
+            duration_seconds, uuid, source_uuid ("<setpoint_uuid>,<actual_uuid>"),
+            is_delta, t_settle_seconds, settled.
         """
+        cols = ["start", "uuid", "is_delta", "t_settle_seconds", "settled"]
         if self.sp.empty:
-            return pd.DataFrame(
-                columns=["start", "uuid", "is_delta", "t_settle_seconds", "settled"]
-            )
+            return self._kpi_frame([], cols, actual_uuid, lookahead)
 
         # Use cached actual data
         actual = self._get_actual(actual_uuid)
@@ -386,7 +392,7 @@ class SetpointChangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(rows)
+        return self._kpi_frame(rows, cols, actual_uuid, lookahead)
 
     def overshoot_metrics(
         self,
@@ -399,26 +405,27 @@ class SetpointChangeEvents(Base):
         relative to the new setpoint within a lookahead window.
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta, overshoot_abs, overshoot_pct,
+            DataFrame with columns: start, end (start + the lookahead window),
+            duration_seconds, uuid, source_uuid ("<setpoint_uuid>,<actual_uuid>"),
+            is_delta, overshoot_abs, overshoot_pct,
             t_peak_seconds, undershoot_abs, undershoot_pct, t_undershoot_seconds,
             oscillation_count, oscillation_amplitude.
         """
+        cols = [
+            "start",
+            "uuid",
+            "is_delta",
+            "overshoot_abs",
+            "overshoot_pct",
+            "t_peak_seconds",
+            "undershoot_abs",
+            "undershoot_pct",
+            "t_undershoot_seconds",
+            "oscillation_count",
+            "oscillation_amplitude",
+        ]
         if self.sp.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "is_delta",
-                    "overshoot_abs",
-                    "overshoot_pct",
-                    "t_peak_seconds",
-                    "undershoot_abs",
-                    "undershoot_pct",
-                    "t_undershoot_seconds",
-                    "oscillation_count",
-                    "oscillation_amplitude",
-                ]
-            )
+            return self._kpi_frame([], cols, actual_uuid, window)
 
         # Use cached actual data
         actual = self._get_actual(actual_uuid)
@@ -553,7 +560,7 @@ class SetpointChangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(out_rows)
+        return self._kpi_frame(out_rows, cols, actual_uuid, window)
 
     def time_to_settle_derivative(
         self,
@@ -574,19 +581,20 @@ class SetpointChangeEvents(Base):
             hold: Minimum duration the rate must stay below threshold
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta, t_settle_seconds, settled, final_rate.
+            DataFrame with columns: start, end (start + the lookahead window),
+            duration_seconds, uuid, source_uuid ("<setpoint_uuid>,<actual_uuid>"),
+            is_delta, t_settle_seconds, settled, final_rate.
         """
+        cols = [
+            "start",
+            "uuid",
+            "is_delta",
+            "t_settle_seconds",
+            "settled",
+            "final_rate",
+        ]
         if self.sp.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "is_delta",
-                    "t_settle_seconds",
-                    "settled",
-                    "final_rate",
-                ]
-            )
+            return self._kpi_frame([], cols, actual_uuid, lookahead)
 
         # Use cached actual data
         actual = self._get_actual(actual_uuid)
@@ -674,7 +682,7 @@ class SetpointChangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(rows)
+        return self._kpi_frame(rows, cols, actual_uuid, lookahead)
 
     def rise_time(
         self,
@@ -695,18 +703,19 @@ class SetpointChangeEvents(Base):
             lookahead: Maximum time window to search
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta, rise_time_seconds, reached_end.
+            DataFrame with columns: start, end (start + the lookahead window),
+            duration_seconds, uuid, source_uuid ("<setpoint_uuid>,<actual_uuid>"),
+            is_delta, rise_time_seconds, reached_end.
         """
+        cols = [
+            "start",
+            "uuid",
+            "is_delta",
+            "rise_time_seconds",
+            "reached_end",
+        ]
         if self.sp.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "is_delta",
-                    "rise_time_seconds",
-                    "reached_end",
-                ]
-            )
+            return self._kpi_frame([], cols, actual_uuid, lookahead)
 
         # Use cached actual data
         actual = self._get_actual(actual_uuid)
@@ -783,7 +792,7 @@ class SetpointChangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(rows)
+        return self._kpi_frame(rows, cols, actual_uuid, lookahead)
 
     def decay_rate(
         self,
@@ -802,18 +811,19 @@ class SetpointChangeEvents(Base):
             min_points: Minimum number of points required for fitting
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta, decay_rate_lambda, fit_quality_r2.
+            DataFrame with columns: start, end (start + the lookahead window),
+            duration_seconds, uuid, source_uuid ("<setpoint_uuid>,<actual_uuid>"),
+            is_delta, decay_rate_lambda, fit_quality_r2.
         """
+        cols = [
+            "start",
+            "uuid",
+            "is_delta",
+            "decay_rate_lambda",
+            "fit_quality_r2",
+        ]
         if self.sp.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "is_delta",
-                    "decay_rate_lambda",
-                    "fit_quality_r2",
-                ]
-            )
+            return self._kpi_frame([], cols, actual_uuid, lookahead)
 
         # Use cached actual data
         actual = self._get_actual(actual_uuid)
@@ -903,7 +913,7 @@ class SetpointChangeEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(rows)
+        return self._kpi_frame(rows, cols, actual_uuid, lookahead)
 
     def oscillation_frequency(
         self,
@@ -922,18 +932,19 @@ class SetpointChangeEvents(Base):
             min_oscillations: Minimum number of oscillations to compute frequency
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta, oscillation_freq_hz, period_seconds.
+            DataFrame with columns: start, end (start + the lookahead window),
+            duration_seconds, uuid, source_uuid ("<setpoint_uuid>,<actual_uuid>"),
+            is_delta, oscillation_freq_hz, period_seconds.
         """
+        cols = [
+            "start",
+            "uuid",
+            "is_delta",
+            "oscillation_freq_hz",
+            "period_seconds",
+        ]
         if self.sp.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "is_delta",
-                    "oscillation_freq_hz",
-                    "period_seconds",
-                ]
-            )
+            return self._kpi_frame([], cols, actual_uuid, window)
 
         # Use cached actual data
         actual = self._get_actual(actual_uuid)
@@ -1023,7 +1034,7 @@ class SetpointChangeEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(rows)
+        return self._kpi_frame(rows, cols, actual_uuid, window)
 
     def control_quality_metrics(
         self,
@@ -1051,7 +1062,8 @@ class SetpointChangeEvents(Base):
 
         Returns:
             DataFrame with comprehensive metrics including:
-            - start, uuid, is_delta
+            - start, end (start + lookahead), duration_seconds, uuid,
+                source_uuid ("<setpoint_uuid>,<actual_uuid>"), is_delta
             - t_settle_seconds, settled (from time_to_settle)
             - t_settle_derivative_seconds (from time_to_settle_derivative)
             - rise_time_seconds (from rise_time)
@@ -1062,10 +1074,11 @@ class SetpointChangeEvents(Base):
             - steady_state_error (final error in window)
         """
         if self.sp.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
+            return empty_event_df(
+                "summary",
+                [
                     "uuid",
+                    "source_uuid",
                     "is_delta",
                     "t_settle_seconds",
                     "settled",
@@ -1081,7 +1094,7 @@ class SetpointChangeEvents(Base):
                     "decay_rate_lambda",
                     "fit_quality_r2",
                     "steady_state_error",
-                ]
+                ],
             )
 
         # Compute all individual metrics using cached actual data

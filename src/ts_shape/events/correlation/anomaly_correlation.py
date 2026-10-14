@@ -82,8 +82,11 @@ class AnomalyCorrelationEvents(Base):
             min_signals: Minimum number of signals with anomalies to flag.
 
         Returns:
-            DataFrame: start, end, uuid, is_delta,
-                       anomaly_count, signal_uuids_involved
+            DataFrame: systime, start, end, uuid, source_uuid, is_delta,
+                       anomaly_count, signal_uuids_involved. ``systime`` is
+                       the first anomaly of the group (= ``start``) and
+                       ``source_uuid`` the comma-joined involved signals.
+                       Empty (same columns) when nothing coincides.
         """
         all_anomalies = []
         for uid in signal_uuids:
@@ -91,17 +94,18 @@ class AnomalyCorrelationEvents(Base):
             if not anom.empty:
                 all_anomalies.append(anom)
 
+        cols = [
+            "systime",
+            "start",
+            "end",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "anomaly_count",
+            "signal_uuids_involved",
+        ]
         if not all_anomalies:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "anomaly_count",
-                    "signal_uuids_involved",
-                ]
-            )
+            return pd.DataFrame(columns=cols)
 
         combined = pd.concat(all_anomalies, ignore_index=True)
         combined = combined.sort_values(self.time_column)
@@ -121,19 +125,22 @@ class AnomalyCorrelationEvents(Base):
             unique_signals = window_data["uuid"].unique()
 
             if len(unique_signals) >= min_signals:
+                involved = ",".join(sorted(unique_signals))
                 rows.append(
                     {
+                        "systime": t,
                         "start": t,
                         "end": t + window_td,
                         "uuid": self.event_uuid,
+                        "source_uuid": involved,
                         "is_delta": True,
                         "anomaly_count": len(window_data),
-                        "signal_uuids_involved": ",".join(sorted(unique_signals)),
+                        "signal_uuids_involved": involved,
                     }
                 )
                 processed.update(window_data.index.tolist())
 
-        return pd.DataFrame(rows)
+        return pd.DataFrame(rows, columns=cols)
 
     def cascade_detection(
         self,
@@ -155,8 +162,10 @@ class AnomalyCorrelationEvents(Base):
             max_delay: Maximum time between leader and follower anomaly.
 
         Returns:
-            DataFrame: leader_time, follower_time, uuid, is_delta,
-                       leader_uuid, follower_uuid, delay_seconds
+            DataFrame: systime, leader_time, follower_time, uuid,
+                       source_uuid, is_delta, leader_uuid, follower_uuid,
+                       delay_seconds. ``systime`` is the follower anomaly
+                       time; ``source_uuid`` is ``"<leader>,<follower>"``.
         """
         leader_anom = self._detect_signal_anomalies(
             leader_uuid, z_threshold=z_threshold
@@ -165,18 +174,19 @@ class AnomalyCorrelationEvents(Base):
             follower_uuid, z_threshold=z_threshold
         )
 
+        cols = [
+            "systime",
+            "leader_time",
+            "follower_time",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "leader_uuid",
+            "follower_uuid",
+            "delay_seconds",
+        ]
         if leader_anom.empty or follower_anom.empty:
-            return pd.DataFrame(
-                columns=[
-                    "leader_time",
-                    "follower_time",
-                    "uuid",
-                    "is_delta",
-                    "leader_uuid",
-                    "follower_uuid",
-                    "delay_seconds",
-                ]
-            )
+            return pd.DataFrame(columns=cols)
 
         max_delay_td = pd.to_timedelta(max_delay)
         rows: list[dict[str, Any]] = []
@@ -192,9 +202,11 @@ class AnomalyCorrelationEvents(Base):
                 if fidx not in used_followers:
                     rows.append(
                         {
+                            "systime": frow[self.time_column],
                             "leader_time": lt,
                             "follower_time": frow[self.time_column],
                             "uuid": self.event_uuid,
+                            "source_uuid": f"{leader_uuid},{follower_uuid}",
                             "is_delta": True,
                             "leader_uuid": leader_uuid,
                             "follower_uuid": follower_uuid,
@@ -206,7 +218,7 @@ class AnomalyCorrelationEvents(Base):
                     used_followers.add(fidx)
                     break  # one follower per leader
 
-        return pd.DataFrame(rows)
+        return pd.DataFrame(rows, columns=cols)
 
     def root_cause_ranking(
         self,

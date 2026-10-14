@@ -120,11 +120,19 @@ class DesignOfExperimentsEvents(Base):
 
         Returns:
             Interval-shape DataFrame with columns: ``start``, ``end``,
-            ``duration_seconds``, ``uuid``, ``run_id``, and one
-            ``factor__<uuid>_level`` column per factor.
+            ``duration_seconds``, ``uuid``, ``source_uuid`` (the comma-joined
+            factor UUIDs), ``run_id``, and one ``factor__<uuid>_level`` column
+            per factor.
         """
         n_levels = n_levels or {}
-        base_cols = ["start", "end", "duration_seconds", "uuid", "run_id"]
+        base_cols = [
+            "start",
+            "end",
+            "duration_seconds",
+            "uuid",
+            "source_uuid",
+            "run_id",
+        ]
         level_cols = [f"factor__{u}_level" for u in self.factor_uuids]
         all_cols = base_cols + level_cols
 
@@ -160,6 +168,7 @@ class DesignOfExperimentsEvents(Base):
                 "end": end_t,
                 "duration_seconds": (end_t - start_t).total_seconds(),
                 "uuid": self.event_uuid,
+                "source_uuid": ",".join(self.factor_uuids),
                 "run_id": int(gid),
             }
             for u in self.factor_uuids:

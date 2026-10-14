@@ -6,6 +6,29 @@ while you migrate. Deprecated names still function but emit a
 authoritative, dated record is the [Changelog](changelog.md) — this page is the
 quick old → new lookup.
 
+## Every detector output carries its time bounds
+
+Each detector returns the canonical columns of its shape (see [Naming & Output Conventions](naming.md)):
+- **intervals:** `start`, `end`, `duration_seconds`, `uuid`, `source_uuid`;
+- **summaries:** `start`, `end`, `duration_seconds`, also when they are keyed by `date`, `(date, shift)` or `period`;
+- **points:** `systime`, `uuid`, `source_uuid`.
+
+The new columns were added next to the old ones; none was removed or renamed. Two consequences:
+
+- **Merging two summaries on `date` or `(date, shift)`** now finds `start`, `end` and `duration_seconds` on both sides, and pandas suffixes them `_x` / `_y`. Merge on the window instead, or select your columns first:
+
+```python
+quality = QualityTracking(df).daily_quality_summary("line1:ok", "line1:nok")
+production = PartProductionTracking(df).daily_production_summary("line1:part", "line1:count")
+daily = quality.merge(production, on=["start", "end", "duration_seconds"])
+```
+
+- **Night shifts are one row.** An overnight shift (e.g. 22:00 to 06:00) is attributed to the day it starts (`production_day=True` is now the default). Before, grouping by calendar date split one night across two rows, and each row mixed two different nights. Pass `production_day=False` to get the old grouping.
+
+## `ShiftReporting.best_and_worst_shifts` will return a DataFrame
+
+It still returns `{"best": DataFrame, "worst": DataFrame}`, but now emits a `FutureWarning`. Pass `as_frame=True` to get the 1.0 behavior already: one frame with a `rank_type` column (`best` / `worst`).
+
 ## Removed exporter aliases
 
 The event-log exporters were renamed into a consistent `to_event_log_*` family.

@@ -22,7 +22,7 @@ def _counter_frame():
 
 def test_target_tracking_overnight_split_without_production_day():
     tt = TargetTracking(_counter_frame())
-    naive = tt.compare_to_target("counter", {"shift_3": 800})
+    naive = tt.compare_to_target("counter", {"shift_3": 800}, production_day=False)
     # Jan 1 shift_3 group spans 00:00-06:00 AND 22:00-23:59 -> last-first sweeps
     # in the whole day, hugely overstating achievement.
     jan1_night = naive[

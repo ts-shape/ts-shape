@@ -4,6 +4,12 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_interval_df,
+    finalize_summary_df,
+)
+from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -98,12 +104,12 @@ class ControlLoopHealthEvents(Base):
                 no gap cap.
 
         Returns:
-            DataFrame with columns: start, iae, ise, itae, bias,
-            sample_count.
+            DataFrame with columns: start, end, duration_seconds, iae, ise,
+            itae, bias, sample_count. ``end`` is ``start`` + ``window``.
         """
         cols = ["start", "iae", "ise", "itae", "bias", "sample_count"]
         if self._aligned.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", cols[1:])
 
         df = self._aligned.set_index(self.time_column)
         groups = df.resample(window)
@@ -136,7 +142,11 @@ class ControlLoopHealthEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("summary", cols[1:])
+        return finalize_summary_df(
+            add_window_bounds(pd.DataFrame(events, columns=cols), window)
+        )
 
     def detect_oscillation(
         self,
@@ -150,7 +160,8 @@ class ControlLoopHealthEvents(Base):
             min_crossings: Minimum zero-crossings to flag oscillation.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid (setpoint and actual uuids, comma-joined), is_delta,
             crossing_count, estimated_period_seconds, amplitude,
             damping_direction.
         """
@@ -165,7 +176,7 @@ class ControlLoopHealthEvents(Base):
             "damping_direction",
         ]
         if self._aligned.empty or len(self._aligned) < 4:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         df = self._aligned.set_index(self.time_column)
         td = pd.Timedelta(window)
@@ -223,7 +234,7 @@ class ControlLoopHealthEvents(Base):
             )
 
         if not osc_windows:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         # Merge contiguous oscillating windows
         events: list[dict[str, Any]] = []
@@ -243,7 +254,11 @@ class ControlLoopHealthEvents(Base):
                 current = w.copy()
         events.append(current)
 
-        return pd.DataFrame(events, columns=cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=f"{self.setpoint_uuid},{self.actual_uuid}",
+        )
 
     def output_saturation(
         self,
@@ -256,8 +271,10 @@ class ControlLoopHealthEvents(Base):
         Requires output_uuid in constructor.
 
         Returns:
-            DataFrame with columns: start, pct_time_at_high,
-            pct_time_at_low, pct_time_saturated, longest_saturation_seconds.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid (the output uuid), pct_time_at_high, pct_time_at_low,
+            pct_time_saturated, longest_saturation_seconds. One row per
+            window; ``end`` is ``start`` + ``window``.
         """
         cols = [
             "start",
@@ -267,7 +284,7 @@ class ControlLoopHealthEvents(Base):
             "longest_saturation_seconds",
         ]
         if self._out.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         out = self._out.set_index(self.time_column)[self.value_column]
         groups = out.resample(window)
@@ -304,14 +321,21 @@ class ControlLoopHealthEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            add_window_bounds(pd.DataFrame(events, columns=cols), window),
+            uuid=self.event_uuid,
+            source_uuid=self.output_uuid,
+        )
 
     def loop_health_summary(self, window: str = "8h") -> pd.DataFrame:
         """Shift-level report card combining all loop health metrics.
 
         Returns:
-            DataFrame with columns: start, iae, bias,
-            oscillation_count, pct_saturated, health_grade.
+            DataFrame with columns: start, end, duration_seconds, iae, bias,
+            oscillation_count, pct_saturated, health_grade. ``end`` is
+            ``start`` + ``window``.
         """
         cols = [
             "start",
@@ -323,7 +347,7 @@ class ControlLoopHealthEvents(Base):
         ]
         integrals = self.error_integrals(window)
         if integrals.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", cols[1:])
 
         osc = self.detect_oscillation()
         sat = self.output_saturation(window=window)
@@ -376,4 +400,6 @@ class ControlLoopHealthEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return finalize_summary_df(
+            add_window_bounds(pd.DataFrame(events, columns=cols), window)
+        )

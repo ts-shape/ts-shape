@@ -67,7 +67,14 @@ class OutlierDetectionEvents(Base):
             ``severity`` and ``is_delta``. ``uuid`` carries the event id and
             ``source_uuid`` the originating signal id.
         """
-        extra_cols = [self.value_column, "severity", "is_delta"]
+        # Carry the input columns too, so an empty result has the same
+        # schema as a non-empty one (which keeps every input column).
+        dropped = {"systime", "uuid", "source_uuid", "outlier", "group_id"}
+        extra_cols = [c for c in outliers_df.columns if c not in dropped] + [
+            self.value_column,
+            "severity",
+            "is_delta",
+        ]
         if outliers_df.empty:
             return empty_event_df("point", extra_cols=extra_cols)
 

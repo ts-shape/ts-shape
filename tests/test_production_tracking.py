@@ -312,6 +312,8 @@ def test_detect_resets(sample_reset_data):
 
     assert list(resets.columns) == [
         "systime",
+        "uuid",
+        "source_uuid",
         "part_number",
         "count_before",
         "count_after",

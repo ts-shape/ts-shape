@@ -11,11 +11,25 @@ import logging
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import (
+    add_day_window,
+    add_shift_window,
+    data_tz,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
+
+_QUALITY_COLS = [
+    "ok_parts",
+    "nok_parts",
+    "total_parts",
+    "nok_rate_pct",
+    "first_pass_yield_pct",
+    "quality_pct",
+]
 
 
 class QualityTracking(Base):
@@ -107,7 +121,7 @@ class QualityTracking(Base):
         *,
         value_column: str = "value_integer",
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Calculate NOK (defective) parts per shift.
 
@@ -125,6 +139,10 @@ class QualityTracking(Base):
 
         Returns:
             DataFrame with quality metrics by shift:
+            - start: Start of the shift window (``date`` at the shift start
+                time from ``shift_definitions``, tz-aware in the data's tz)
+            - end: End of the shift window (next day for overnight shifts)
+            - duration_seconds: Shift window length in seconds
             - date: Production date
             - shift: Shift name
             - ok_parts: Good parts produced
@@ -132,6 +150,7 @@ class QualityTracking(Base):
             - total_parts: Total parts produced
             - nok_rate_pct: Percentage of defective parts
             - first_pass_yield_pct: Percentage of good parts
+            - quality_pct: Same as first_pass_yield_pct
             - resets: Number of counter resets in the shift (only when
                 ``handle_resets=True``)
 
@@ -156,17 +175,12 @@ class QualityTracking(Base):
             .sort_values(self.time_column)
         )
 
+        shift_cols = ["date", "shift", *_QUALITY_COLS]
+        if handle_resets:
+            shift_cols.append("resets")
         if ok_data.empty and nok_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "shift",
-                    "ok_parts",
-                    "nok_parts",
-                    "total_parts",
-                    "nok_rate_pct",
-                    "first_pass_yield_pct",
-                ]
+            return add_shift_window(
+                pd.DataFrame(columns=shift_cols), self.shift_definitions, None
             )
 
         # Process OK data
@@ -259,7 +273,11 @@ class QualityTracking(Base):
                 row["resets"] = int(resets)
             results.append(row)
 
-        return pd.DataFrame(results)
+        return add_shift_window(
+            pd.DataFrame(results, columns=shift_cols),
+            self.shift_definitions,
+            data_tz(self.dataframe[self.time_column]),
+        )
 
     def quality_by_part(
         self,
@@ -299,6 +317,7 @@ class QualityTracking(Base):
             - total_parts: Total parts produced
             - nok_rate_pct: Percentage of defective parts
             - first_pass_yield_pct: Percentage of good parts
+            - quality_pct: Same as first_pass_yield_pct
             - resets: Number of counter resets for the part (only when
                 ``handle_resets=True``)
 
@@ -315,17 +334,11 @@ class QualityTracking(Base):
             .sort_values(self.time_column)
         )
 
+        part_cols = ["part_number", *_QUALITY_COLS]
+        if handle_resets:
+            part_cols.append("resets")
         if part_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "part_number",
-                    "ok_parts",
-                    "nok_parts",
-                    "total_parts",
-                    "nok_rate_pct",
-                    "first_pass_yield_pct",
-                ]
-            )
+            return pd.DataFrame(columns=part_cols)
 
         part_data[self.time_column] = pd.to_datetime(part_data[self.time_column])
 
@@ -450,7 +463,7 @@ class QualityTracking(Base):
                 row["resets"] = resets_by_part.get(part_num, 0)
             results.append(row)
 
-        return pd.DataFrame(results)
+        return pd.DataFrame(results, columns=part_cols)
 
     def nok_by_reason(
         self,
@@ -580,7 +593,7 @@ class QualityTracking(Base):
         *,
         value_column: str = "value_integer",
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Daily quality summary.
 
@@ -595,10 +608,13 @@ class QualityTracking(Base):
                 (default), a shift containing a reset reports too little.
             production_day: Forwarded to :meth:`nok_by_shift`; attributes an
                 overnight shift's post-midnight readings to the shift's start
-                date. Default False (raw calendar date).
+                date. Default True; False groups by raw calendar date, which splits a night shift across two rows.
 
         Returns:
             DataFrame with daily quality:
+            - start: Midnight of ``date`` (tz-aware in the data's tz)
+            - end: Midnight of the following day
+            - duration_seconds: Day length in seconds
             - date: Production date
             - ok_parts: Good parts produced
             - nok_parts: Defective parts
@@ -636,7 +652,7 @@ class QualityTracking(Base):
             base_columns.append("resets")
 
         if shift_quality.empty:
-            return pd.DataFrame(columns=base_columns)
+            return add_day_window(pd.DataFrame(columns=base_columns), None)
 
         # Aggregate by date
         agg = {
@@ -662,4 +678,4 @@ class QualityTracking(Base):
         )
         daily["quality_pct"] = daily["first_pass_yield_pct"]
 
-        return daily
+        return add_day_window(daily, data_tz(self.dataframe[self.time_column]))

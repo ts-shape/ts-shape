@@ -15,6 +15,7 @@ import logging
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.shifts import production_dates
@@ -107,7 +108,7 @@ class ShiftHandoverReport(Base):
         value_column: str,
         *,
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Get counter deltas grouped by date/shift.
 
@@ -158,7 +159,7 @@ class ShiftHandoverReport(Base):
         running_value: str,
         value_column: str,
         *,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Compute availability grouped by date/shift."""
         data = (
@@ -336,7 +337,7 @@ class ShiftHandoverReport(Base):
         value_column_state: str = "value_string",
         report_date: str | None = None,
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Generate a shift handover report from raw timeseries signals.
 
@@ -364,13 +365,16 @@ class ShiftHandoverReport(Base):
             production_day: When True, an overnight shift's post-midnight
                 readings are attributed to the shift's start date, so a night
                 shift is one contiguous ``(date, shift)`` group instead of being
-                split across two calendar dates. Only affects schedules with an
+                split across two calendar dates. Default True. Only affects schedules with an
                 overnight shift.
 
         Returns:
             DataFrame with columns:
-            date, shift, production, production_target, production_achievement_pct,
-            ok_parts, nok_parts, quality_pct, availability_pct, downtime_minutes,
+            start, end, duration_seconds (the shift window from
+            ``shift_definitions``, tz-aware in the data's tz; an overnight
+            shift ends on the next day), date, shift, production,
+            production_target, production_achievement_pct, ok_parts,
+            nok_parts, quality_pct, availability_pct, downtime_minutes,
             and ``resets`` (only when ``handle_resets=True``).
         """
         output_cols = list(self.OUTPUT_COLUMNS)
@@ -404,7 +408,9 @@ class ShiftHandoverReport(Base):
         )
 
         if prod.empty:
-            return pd.DataFrame(columns=output_cols)
+            return add_shift_window(
+                pd.DataFrame(columns=output_cols), self.shift_definitions, None
+            )
 
         # Filter to report date
         if report_date:
@@ -470,7 +476,11 @@ class ShiftHandoverReport(Base):
             (result["ok_parts"] / total * 100).where(total > 0, 0).round(1)
         )
 
-        return result[output_cols].reset_index(drop=True)
+        return add_shift_window(
+            result[output_cols].reset_index(drop=True),
+            self.shift_definitions,
+            data_tz(self.dataframe[self.time_column]),
+        )
 
     def highlight_issues(
         self,

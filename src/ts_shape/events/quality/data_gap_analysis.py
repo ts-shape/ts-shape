@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 from pandas.tseries.frequencies import to_offset
 
+from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -60,8 +61,10 @@ class DataGapAnalysisEvents(Base):
                 ``'1min'``, ``'1h'``).
 
         Returns:
-            DataFrame with columns: start, end, gap_duration_seconds,
-            samples_before_gap, samples_after_gap.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, gap_duration_seconds, samples_before_gap,
+            samples_after_gap. ``gap_duration_seconds`` is rounded to
+            milliseconds; ``duration_seconds`` is exact.
         """
         cols = [
             "start",
@@ -71,7 +74,9 @@ class DataGapAnalysisEvents(Base):
             "samples_after_gap",
         ]
         if self.signal.empty or len(self.signal) < 2:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         threshold = pd.to_timedelta(min_gap)
         times = self.signal[self.time_column].array
@@ -91,8 +96,8 @@ class DataGapAnalysisEvents(Base):
                     }
                 )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
     def gap_summary(self, min_gap: str = "5s") -> pd.DataFrame:
@@ -162,8 +167,9 @@ class DataGapAnalysisEvents(Base):
                 Defaults to 2x the median sampling interval (auto-detected).
 
         Returns:
-            DataFrame with columns: start, sample_count,
-            coverage_pct, gap_count, gap_seconds.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, sample_count, coverage_pct, gap_count,
+            gap_seconds. ``end`` is the next period start.
         """
         cols = [
             "start",
@@ -173,7 +179,14 @@ class DataGapAnalysisEvents(Base):
             "gap_seconds",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=freq,
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -225,8 +238,13 @@ class DataGapAnalysisEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=freq,
         )
 
     def interpolation_candidates(
@@ -239,8 +257,9 @@ class DataGapAnalysisEvents(Base):
             min_gap: Minimum gap duration (ignore trivially small gaps).
 
         Returns:
-            DataFrame with columns: start, end, gap_duration_seconds,
-            value_before, value_after, value_jump, safe_to_interpolate.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, gap_duration_seconds, value_before, value_after,
+            value_jump, safe_to_interpolate.
             ``safe_to_interpolate`` is True when the value jump across the
             gap is within 2 standard deviations of the signal.
         """
@@ -254,7 +273,9 @@ class DataGapAnalysisEvents(Base):
             "safe_to_interpolate",
         ]
         if self.signal.empty or len(self.signal) < 2:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         max_td = pd.to_timedelta(max_gap)
         min_td = pd.to_timedelta(min_gap)
@@ -293,6 +314,6 @@ class DataGapAnalysisEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )

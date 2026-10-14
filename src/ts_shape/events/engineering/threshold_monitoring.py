@@ -4,6 +4,12 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_interval_df,
+    finalize_summary_df,
+)
+from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
 
@@ -64,11 +70,12 @@ class ThresholdMonitoringEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start_time, end_time, duration, level, peak_value.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, duration (Timedelta), level, peak_value.
         """
         cols = ["start", "end", "duration", "level", "peak_value"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -116,10 +123,12 @@ class ThresholdMonitoringEvents(Base):
                     }
                 )
 
-        return (
-            pd.DataFrame(all_events, columns=cols)
-            if all_events
-            else pd.DataFrame(columns=cols)
+        if not all_events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(all_events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
         )
 
     def threshold_with_hysteresis(self, high: float, low: float) -> pd.DataFrame:
@@ -132,11 +141,12 @@ class ThresholdMonitoringEvents(Base):
             low: Lower threshold to exit alarm state.
 
         Returns:
-            DataFrame with columns: start_time, end_time, duration, peak_value.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, duration (Timedelta), peak_value.
         """
         cols = ["start", "end", "duration", "peak_value"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -184,8 +194,12 @@ class ThresholdMonitoringEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
         )
 
     def time_above_threshold(
@@ -208,11 +222,12 @@ class ThresholdMonitoringEvents(Base):
                 (``pct_above`` is relative to the window length).
 
         Returns:
-            DataFrame with columns: start, time_above, pct_above, exceedance_count.
+            DataFrame with columns: start, end, duration_seconds, time_above,
+            pct_above, exceedance_count. ``end`` is ``start`` + ``window``.
         """
         cols = ["start", "time_above", "pct_above", "exceedance_count"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", cols[1:])
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -251,8 +266,10 @@ class ThresholdMonitoringEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        if not events:
+            return empty_event_df("summary", cols[1:])
+        return finalize_summary_df(
+            add_window_bounds(pd.DataFrame(events, columns=cols), window)
         )
 
     @staticmethod
@@ -285,13 +302,21 @@ class ThresholdMonitoringEvents(Base):
             window: Resample window (e.g. '1D' for daily).
 
         Returns:
-            DataFrame with columns: start, exceedance_count,
-            total_duration, trend_direction.
+            DataFrame with columns: start, end, duration_seconds,
+            exceedance_count, total_duration, trend_direction. ``end`` is
+            ``start`` + ``window``.
         """
-        cols = ["start", "exceedance_count", "total_duration", "trend_direction"]
+        cols = [
+            "start",
+            "end",
+            "duration_seconds",
+            "exceedance_count",
+            "total_duration",
+            "trend_direction",
+        ]
         time_above = self.time_above_threshold(threshold, window)
         if time_above.empty or len(time_above) < 2:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", cols)
 
         counts = time_above["exceedance_count"].values
         # Simple trend: compare second half to first half
@@ -306,7 +331,9 @@ class ThresholdMonitoringEvents(Base):
         else:
             trend = "stable"
 
-        result = time_above[["start", "exceedance_count", "time_above"]].copy()
+        result = time_above[
+            ["start", "end", "duration_seconds", "exceedance_count", "time_above"]
+        ].copy()
         result = result.rename(columns={"time_above": "total_duration"})
         result["trend_direction"] = trend
 

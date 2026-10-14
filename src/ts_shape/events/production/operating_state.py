@@ -70,7 +70,8 @@ class OperatingStateEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, state, state_label,
-            mean_value, duration_seconds.
+            mean_value, duration_seconds, uuid (event uuid), source_uuid
+            (signal uuid).
         """
         cols = [
             "start",
@@ -79,6 +80,8 @@ class OperatingStateEvents(Base):
             "state_label",
             "mean_value",
             "duration_seconds",
+            "uuid",
+            "source_uuid",
         ]
         if self.signal.empty or len(self.signal) < n_states:
             return pd.DataFrame(columns=cols)
@@ -118,6 +121,8 @@ class OperatingStateEvents(Base):
                     "state_label": labels[state_id],
                     "mean_value": round(float(seg[self.value_column].mean()), 4),
                     "duration_seconds": round(duration.total_seconds(), 3),
+                    "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                 }
             )
 
@@ -267,7 +272,8 @@ class OperatingStateEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, state_label,
-            duration_seconds, excess_seconds.
+            duration_seconds, excess_seconds, uuid (event uuid), source_uuid
+            (signal uuid).
         """
         cols = [
             "start",
@@ -275,6 +281,8 @@ class OperatingStateEvents(Base):
             "state_label",
             "duration_seconds",
             "excess_seconds",
+            "uuid",
+            "source_uuid",
         ]
         intervals = self.infer_states(n_states=n_states)
         if intervals.empty:
@@ -294,6 +302,8 @@ class OperatingStateEvents(Base):
                         "state_label": row["state_label"],
                         "duration_seconds": dur,
                         "excess_seconds": round(dur - max_td, 3),
+                        "uuid": self.event_uuid,
+                        "source_uuid": self.signal_uuid,
                     }
                 )
 

@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -166,13 +167,14 @@ class WarmUpCoolDownEvents(Base):
                 tolerated inside a ramp (default 0: any pause ends it).
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             start_value, end_value, rise, duration_seconds, avg_rate.
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "start_value",
             "end_value",
@@ -191,6 +193,7 @@ class WarmUpCoolDownEvents(Base):
                     "start": r["start"],
                     "end": r["end"],
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": False,
                     "start_value": r["start_value"],
                     "end_value": r["end_value"],
@@ -218,13 +221,14 @@ class WarmUpCoolDownEvents(Base):
                 tolerated inside a ramp (default 0: any pause ends it).
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             start_value, end_value, fall, duration_seconds, avg_rate.
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "start_value",
             "end_value",
@@ -243,6 +247,7 @@ class WarmUpCoolDownEvents(Base):
                     "start": r["start"],
                     "end": r["end"],
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": False,
                     "start_value": r["start_value"],
                     "end_value": r["end_value"],
@@ -262,25 +267,28 @@ class WarmUpCoolDownEvents(Base):
         """Compare warm-up curves for consistency in duration and rate.
 
         Returns:
-            DataFrame with columns: warmup_index, start, duration_seconds,
-            avg_rate, deviation_from_median_duration.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, warmup_index, avg_rate,
+            deviation_from_median_duration. ``start`` / ``end`` are the
+            warm-up's bounds.
         """
-        cols = [
+        extra = [
+            "uuid",
+            "source_uuid",
             "warmup_index",
-            "start",
-            "duration_seconds",
             "avg_rate",
             "deviation_from_median_duration",
         ]
         warmups = self.detect_warmup(min_rise, min_duration)
         if warmups.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", extra)
 
         median_dur = warmups["duration_seconds"].median()
         result = pd.DataFrame(
             {
                 "warmup_index": range(len(warmups)),
                 "start": warmups["start"].array,
+                "end": warmups["end"].array,
                 "duration_seconds": warmups["duration_seconds"].values,
                 "avg_rate": warmups["avg_rate"].values,
                 "deviation_from_median_duration": (
@@ -288,7 +296,9 @@ class WarmUpCoolDownEvents(Base):
                 ),
             }
         )
-        return result
+        return finalize_summary_df(
+            result, uuid=self.event_uuid, source_uuid=self.signal_uuid
+        )
 
     def time_to_target(
         self,
@@ -302,12 +312,14 @@ class WarmUpCoolDownEvents(Base):
             direction: 'rising' or 'falling'.
 
         Returns:
-            DataFrame with columns: start, target_reached_at,
+            DataFrame with columns: start, end (= target_reached_at),
+            duration_seconds, uuid, source_uuid, target_reached_at,
             time_to_target_seconds, overshoot.
         """
         cols = ["start", "target_reached_at", "time_to_target_seconds", "overshoot"]
+        empty = empty_event_df("summary", ["uuid", "source_uuid", *cols[1:]])
         if self.signal.empty or len(self.signal) < 3:
-            return pd.DataFrame(columns=cols)
+            return empty
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -318,7 +330,7 @@ class WarmUpCoolDownEvents(Base):
         # Detect ramp starts using a minimal change threshold
         ramps = self._detect_ramps(direction, min_change=0.01, min_duration="0s")
         if not ramps:
-            return pd.DataFrame(columns=cols)
+            return empty
 
         events: list[dict[str, Any]] = []
         for r in ramps:
@@ -354,4 +366,10 @@ class WarmUpCoolDownEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty
+        result = pd.DataFrame(events, columns=cols)
+        result["end"] = result["target_reached_at"]
+        return finalize_summary_df(
+            result, uuid=self.event_uuid, source_uuid=self.signal_uuid
+        )

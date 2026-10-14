@@ -63,13 +63,14 @@ class VibrationAnalysisEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             rms_value, baseline_rms, ratio, duration_seconds.
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "rms_value",
             "baseline_rms",
@@ -121,6 +122,7 @@ class VibrationAnalysisEvents(Base):
                     "start": start_time,
                     "end": end_time,
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "rms_value": avg_rms,
                     "baseline_rms": baseline_rms,
@@ -147,12 +149,16 @@ class VibrationAnalysisEvents(Base):
             growth_threshold: Minimum fractional growth (e.g. 0.1 = 10%) to flag.
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta,
-            amplitude, baseline_amplitude, growth_pct.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, amplitude, baseline_amplitude, growth_pct.
+            ``end`` is ``start`` plus ``window``.
         """
         cols = [
             "start",
+            "end",
+            "duration_seconds",
             "uuid",
+            "source_uuid",
             "is_delta",
             "amplitude",
             "baseline_amplitude",
@@ -181,7 +187,7 @@ class VibrationAnalysisEvents(Base):
             if len(win) < 2:
                 continue
             amp = float(win.max() - win.min())
-            amplitudes.append({"start": ws, "amplitude": amp})
+            amplitudes.append({"start": ws, "end": we, "amplitude": amp})
 
         if not amplitudes:
             return pd.DataFrame(columns=cols)
@@ -197,7 +203,10 @@ class VibrationAnalysisEvents(Base):
             rows.append(
                 {
                     "start": a["start"],
+                    "end": a["end"],
+                    "duration_seconds": (a["end"] - a["start"]).total_seconds(),
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "amplitude": a["amplitude"],
                     "baseline_amplitude": amplitudes[0]["amplitude"],
@@ -219,12 +228,16 @@ class VibrationAnalysisEvents(Base):
             window: Window size for indicator computation.
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta,
-            rms, peak, crest_factor, kurtosis.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, rms, peak, crest_factor, kurtosis.
+            ``end`` is ``start`` plus ``window``.
         """
         cols = [
             "start",
+            "end",
+            "duration_seconds",
             "uuid",
+            "source_uuid",
             "is_delta",
             "rms",
             "peak",
@@ -263,7 +276,10 @@ class VibrationAnalysisEvents(Base):
             rows.append(
                 {
                     "start": ws,
+                    "end": we,
+                    "duration_seconds": (we - ws).total_seconds(),
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "rms": round(rms_val, 6),
                     "peak": round(peak_val, 6),

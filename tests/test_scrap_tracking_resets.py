@@ -39,7 +39,14 @@ def test_scrap_by_shift_default_underreports():
     result = tracker.scrap_by_shift(scrap_uuid="scrap_weight")
 
     # Default clamps to last - first = 30, losing the pre-reset production.
-    assert list(result.columns) == ["date", "shift", "scrap_quantity"]
+    assert list(result.columns) == [
+        "start",
+        "end",
+        "duration_seconds",
+        "date",
+        "shift",
+        "scrap_quantity",
+    ]
     assert "resets" not in result.columns
     assert result["scrap_quantity"].sum() == 30.0
 

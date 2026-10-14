@@ -276,11 +276,16 @@ class BatchTrackingEvents(Base):
         Returns:
             DataFrame (pivot table) where index = from_batch, columns = to_batch,
             values = transition count.  An extra ``total`` column is appended.
+            The batch columns depend on the data, so with fewer than two
+            batches the result is an empty frame with only the ``total``
+            column (index named ``from_batch``).
         """
         batches = self.detect_batches()
 
         if batches.empty or len(batches) < 2:
-            return pd.DataFrame()
+            return pd.DataFrame(
+                columns=["total"], index=pd.Index([], name="from_batch")
+            )
 
         from_batch = batches["batch_id"].iloc[:-1].values
         to_batch = batches["batch_id"].iloc[1:].values

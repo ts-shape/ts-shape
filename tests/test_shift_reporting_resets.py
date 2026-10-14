@@ -36,7 +36,14 @@ def test_shift_production_under_reports_without_reset_handling():
     reporter = ShiftReporting(_make_reset_shift_df())
     result = reporter.shift_production(counter_uuid="production_counter")
 
-    assert list(result.columns) == ["date", "shift", "quantity"]
+    assert list(result.columns) == [
+        "start",
+        "end",
+        "duration_seconds",
+        "date",
+        "shift",
+        "quantity",
+    ]
     assert "resets" not in result.columns
 
     row = result[result["shift"] == "shift_1"].iloc[0]

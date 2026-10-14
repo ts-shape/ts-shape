@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.intervals import interval_end_times
 
@@ -68,11 +69,15 @@ class AnomalyClassificationEvents(Base):
                 still reports a stuck sensor.
 
         Returns:
-            DataFrame with columns: start_time, end_time, duration, stuck_value.
+            DataFrame with columns: start, end, duration_seconds, uuid, source_uuid,
+                duration, stuck_value. ``duration`` is a Timedelta;
+                ``duration_seconds`` is the same span in float seconds.
         """
         cols = ["start", "end", "duration", "stuck_value"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -108,8 +113,8 @@ class AnomalyClassificationEvents(Base):
                     }
                 )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
     def detect_oscillation(
@@ -122,11 +127,14 @@ class AnomalyClassificationEvents(Base):
             min_crossings: Minimum zero-crossings to flag oscillation.
 
         Returns:
-            DataFrame with columns: start_time, end_time, crossing_count, amplitude.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+                source_uuid, crossing_count, amplitude.
         """
         cols = ["start", "end", "crossing_count", "amplitude"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -164,8 +172,8 @@ class AnomalyClassificationEvents(Base):
                     )
             current = win_end
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
     def detect_drift(self, window: str = "1h", min_slope: float = 0.01) -> pd.DataFrame:
@@ -176,11 +184,14 @@ class AnomalyClassificationEvents(Base):
             min_slope: Minimum absolute slope to flag.
 
         Returns:
-            DataFrame with columns: start_time, end_time, slope, direction.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+                source_uuid, slope, direction.
         """
         cols = ["start", "end", "slope", "direction"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -216,8 +227,8 @@ class AnomalyClassificationEvents(Base):
                     )
             current = win_end
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
     def classify_anomalies(
@@ -232,11 +243,14 @@ class AnomalyClassificationEvents(Base):
             z_threshold: Z-score threshold for spike detection.
 
         Returns:
-            DataFrame with columns: start_time, end_time, anomaly_type, severity, details.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+                source_uuid, anomaly_type, severity, details.
         """
         cols = ["start", "end", "anomaly_type", "severity", "details"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -356,6 +370,6 @@ class AnomalyClassificationEvents(Base):
 
             current = win_end
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )

@@ -13,6 +13,16 @@ small synthetic plant dataset:
     shifts every timestamp by the UTC offset).
 ``extra_uuid``
     Appending rows of an unrelated uuid must not change the result.
+``shape``
+    The result is a DataFrame with at least one column, carrying the
+    canonical columns of the shape the taxonomy declares for the method
+    (:mod:`ts_shape.events._output`): ``systime`` / ``uuid`` /
+    ``source_uuid`` for points, ``start`` / ``end`` / ``duration_seconds`` /
+    ``uuid`` / ``source_uuid`` for intervals, ``start`` / ``end`` /
+    ``duration_seconds`` for summaries; ``duration_seconds`` is numeric.
+``empty_schema``
+    On empty input the result has the same columns as on real data, so code
+    written against the normal output also works when nothing was found.
 
 Each check yields a status string: ``"ok"``, ``"fail: <reason>"``, or
 ``"n/a: <reason>"`` (the harness could not build a valid call -- e.g. a
@@ -41,7 +51,7 @@ from ts_shape.eventlog.taxonomy import REGISTRY
 
 BASELINE = Path(__file__).with_name("baseline.json")
 BERLIN = "Europe/Berlin"
-CHECKS = ("empty", "tz", "extra_uuid")
+CHECKS = ("empty", "tz", "extra_uuid", "shape", "empty_schema")
 
 CONT, CONT2, STATE, COUNTER, SETPOINT, TEXT = (
     "sig:cont",
@@ -416,13 +426,34 @@ def _same(a: Any, b: Any) -> bool:
     return True
 
 
+_REQUIRED = {
+    "point": ("systime", "uuid", "source_uuid"),
+    "interval": ("start", "end", "duration_seconds", "uuid", "source_uuid"),
+    "summary": ("start", "end", "duration_seconds"),
+}
+
+
+def _shape_problem(result: Any, shape: str) -> str | None:
+    if not isinstance(result, pd.DataFrame):
+        return f"returns {type(result).__name__}, not a DataFrame"
+    if len(result.columns) == 0:
+        return "DataFrame without columns"
+    missing = [c for c in _REQUIRED.get(shape, ()) if c not in result.columns]
+    if missing:
+        return f"{shape} output missing {missing}"
+    if "duration_seconds" in result.columns and len(result):
+        if not pd.api.types.is_numeric_dtype(result["duration_seconds"]):
+            return "duration_seconds is not numeric"
+    return None
+
+
 def check(cls_name: str, method: str) -> dict[str, str]:
     cls = getattr(ts_shape, cls_name)
     base = plant_frame()
     status: dict[str, str] = {}
 
     empty = base.iloc[0:0]
-    status["empty"] = _run(cls, method, empty)[0]
+    status["empty"], empty_result = _run(cls, method, empty)
 
     tz_status, tz_result = _run(cls, method, plant_frame(BERLIN))
     if tz_status == "ok":
@@ -431,6 +462,25 @@ def check(cls_name: str, method: str) -> dict[str, str]:
     status["tz"] = tz_status
 
     plain_status, plain = _run(cls, method, base)
+    shape = REGISTRY[(cls_name, method)].shape
+    if plain_status != "ok":
+        status["shape"] = status["empty_schema"] = plain_status
+    else:
+        problem = _shape_problem(plain, shape)
+        status["shape"] = f"fail: {problem}" if problem else "ok"
+        if status["empty"] != "ok":
+            status["empty_schema"] = status["empty"]
+        elif not isinstance(plain, pd.DataFrame) or not isinstance(
+            empty_result, pd.DataFrame
+        ):
+            status["empty_schema"] = "fail: not a DataFrame"
+        else:
+            extra = sorted(
+                set(map(str, plain.columns)) - set(map(str, empty_result.columns))
+            )
+            status["empty_schema"] = (
+                f"fail: empty result lacks {extra[:4]}" if extra else "ok"
+            )
     if plain_status != "ok":
         status["extra_uuid"] = plain_status
     else:

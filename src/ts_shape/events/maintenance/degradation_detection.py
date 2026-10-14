@@ -65,13 +65,15 @@ class DegradationDetectionEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta, avg_slope,
-            total_change, duration_seconds.
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
+            avg_slope, total_change, duration_seconds. ``source_uuid`` is the
+            analyzed signal.
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "avg_slope",
             "total_change",
@@ -144,6 +146,7 @@ class DegradationDetectionEvents(Base):
                     "start": start_time,
                     "end": end_time,
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "avg_slope": avg_slope,
                     "total_change": total_change,
@@ -176,17 +179,20 @@ class DegradationDetectionEvents(Base):
                 :func:`ts_shape.utils.intervals.interval_end_times`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
-            baseline_variance, current_variance, ratio.
+            DataFrame with columns: start, end, uuid, source_uuid, is_delta,
+            baseline_variance, current_variance, ratio, duration_seconds
+            (float seconds from start to end).
         """
         cols = [
             "start",
             "end",
             "uuid",
+            "source_uuid",
             "is_delta",
             "baseline_variance",
             "current_variance",
             "ratio",
+            "duration_seconds",
         ]
         if self.signal.empty:
             return pd.DataFrame(columns=cols)
@@ -240,10 +246,14 @@ class DegradationDetectionEvents(Base):
                     "start": seg[self.time_column].iloc[0],
                     "end": ends.loc[seg.index[-1]],
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "baseline_variance": baseline_var,
                     "current_variance": float(seg["current_variance"].mean()),
                     "ratio": float(seg["ratio"].mean()),
+                    "duration_seconds": (
+                        ends.loc[seg.index[-1]] - seg[self.time_column].iloc[0]
+                    ).total_seconds(),
                 }
             )
 
@@ -264,12 +274,13 @@ class DegradationDetectionEvents(Base):
             hold: Minimum duration the new level must persist.
 
         Returns:
-            DataFrame with columns: systime, uuid, is_delta,
+            DataFrame with columns: systime, uuid, source_uuid, is_delta,
             shift_magnitude, prev_mean, new_mean.
         """
         cols = [
             "systime",
             "uuid",
+            "source_uuid",
             "is_delta",
             "shift_magnitude",
             "prev_mean",
@@ -318,6 +329,7 @@ class DegradationDetectionEvents(Base):
                             {
                                 "systime": pd.Timestamp(times[i]),
                                 "uuid": self.event_uuid,
+                                "source_uuid": self.signal_uuid,
                                 "is_delta": True,
                                 "shift_magnitude": shift_mag,
                                 "prev_mean": prev_mean,
@@ -348,12 +360,13 @@ class DegradationDetectionEvents(Base):
             baseline_window: Initial period used to establish baseline behaviour.
 
         Returns:
-            DataFrame with columns: systime, uuid, is_delta,
+            DataFrame with columns: systime, uuid, source_uuid, is_delta,
             health_score, mean_drift_pct, variance_ratio, trend_slope.
         """
         cols = [
             "systime",
             "uuid",
+            "source_uuid",
             "is_delta",
             "health_score",
             "mean_drift_pct",
@@ -385,6 +398,7 @@ class DegradationDetectionEvents(Base):
             result = sig[[self.time_column]].copy()
             result = result.rename(columns={self.time_column: "systime"})
             result["uuid"] = self.event_uuid
+            result["source_uuid"] = self.signal_uuid
             result["is_delta"] = True
             result["health_score"] = 100.0
             result["mean_drift_pct"] = 0.0
@@ -414,6 +428,7 @@ class DegradationDetectionEvents(Base):
                     {
                         "systime": t_end,
                         "uuid": self.event_uuid,
+                        "source_uuid": self.signal_uuid,
                         "is_delta": True,
                         "health_score": 100.0,
                         "mean_drift_pct": 0.0,
@@ -458,6 +473,7 @@ class DegradationDetectionEvents(Base):
                 {
                     "systime": t_end,
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "health_score": round(score, 2),
                     "mean_drift_pct": round(mean_drift_pct, 4),

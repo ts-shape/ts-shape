@@ -4,6 +4,11 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_interval_df,
+    finalize_point_df,
+)
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -55,12 +60,12 @@ class StartupDetectionEvents(Base):
         least `min_above`.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta, method, threshold.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, method, threshold.
         """
+        cols = ["start", "end", "uuid", "is_delta", "method", "threshold"]
         if self.series.empty:
-            return pd.DataFrame(
-                columns=["start", "end", "uuid", "is_delta", "method", "threshold"]
-            )
+            return self._intervals([], cols)
 
         enter_thr = threshold if hysteresis is None else hysteresis[0]
         exit_thr = threshold if hysteresis is None else hysteresis[1]
@@ -91,7 +96,17 @@ class StartupDetectionEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(events)
+        return self._intervals(events, cols)
+
+    def _intervals(self, events: list[dict[str, Any]], cols: list[str]) -> pd.DataFrame:
+        """Canonical interval frame (full schema, also when empty)."""
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.target_uuid,
+        )
 
     def detect_startup_by_slope(
         self,
@@ -106,20 +121,20 @@ class StartupDetectionEvents(Base):
         current implementation uses instantaneous slope between samples.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta, method, min_slope, avg_slope.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, method, min_slope, avg_slope.
         """
+        cols = [
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "method",
+            "min_slope",
+            "avg_slope",
+        ]
         if self.series.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "method",
-                    "min_slope",
-                    "avg_slope",
-                ]
-            )
+            return self._intervals([], cols)
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s["dt_s"] = s[self.time_column].diff().dt.total_seconds()
@@ -151,7 +166,7 @@ class StartupDetectionEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events)
+        return self._intervals(events, cols)
 
     def detect_startup_multi_signal(
         self,
@@ -328,22 +343,22 @@ class StartupDetectionEvents(Base):
                 when ``baseline_window`` is None
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta, method, adaptive_threshold,
-                                    baseline_mean, baseline_std
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, method, adaptive_threshold, baseline_mean,
+            baseline_std
         """
+        cols = [
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "method",
+            "adaptive_threshold",
+            "baseline_mean",
+            "baseline_std",
+        ]
         if self.series.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "method",
-                    "adaptive_threshold",
-                    "baseline_mean",
-                    "baseline_std",
-                ]
-            )
+            return self._intervals([], cols)
 
         min_above_td = pd.to_timedelta(min_above)
 
@@ -416,7 +431,7 @@ class StartupDetectionEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(events)
+        return self._intervals(events, cols)
 
     def assess_startup_quality(
         self,
@@ -761,22 +776,23 @@ class StartupDetectionEvents(Base):
             required_stability: Time that must be maintained at completion level
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta, method, failure_reason,
-                                    max_value_reached, time_to_failure
+            DataFrame with columns: systime (= start, the startup attempt),
+            uuid, source_uuid, start, end, is_delta, method, failure_reason,
+            max_value_reached, time_to_failure
         """
+        cols = [
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "method",
+            "failure_reason",
+            "max_value_reached",
+            "time_to_failure",
+        ]
+        empty = empty_event_df("point", cols)
         if self.series.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "is_delta",
-                    "method",
-                    "failure_reason",
-                    "max_value_reached",
-                    "time_to_failure",
-                ]
-            )
+            return empty
 
         if completion_threshold is None:
             completion_threshold = threshold * 2.0
@@ -886,4 +902,10 @@ class StartupDetectionEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(failed_events)
+        if not failed_events:
+            return empty
+        out = pd.DataFrame(failed_events, columns=cols)
+        out["systime"] = out["start"]
+        return finalize_point_df(
+            out, uuid=self.event_uuid, source_uuid=self.target_uuid
+        )

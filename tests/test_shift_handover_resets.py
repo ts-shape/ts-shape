@@ -43,7 +43,12 @@ def test_generate_report_under_reports_without_reset_handling():
         nok_counter_uuid="nok_counter",
         state_uuid="machine_state",
     )
-    assert list(result.columns) == ShiftHandoverReport.OUTPUT_COLUMNS
+    assert list(result.columns) == [
+        "start",
+        "end",
+        "duration_seconds",
+        *ShiftHandoverReport.OUTPUT_COLUMNS,
+    ]
     assert "resets" not in result.columns
 
     row = result[result["shift"] == "shift_1"].iloc[0]

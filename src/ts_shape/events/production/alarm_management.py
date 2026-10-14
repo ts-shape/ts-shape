@@ -9,6 +9,8 @@ from typing import Any
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import finalize_interval_df
+from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -130,13 +132,24 @@ class AlarmManagementEvents(Base):
 
         Returns:
             DataFrame with columns:
-            - start
+            - start: window start
+            - end: window end (start + window)
+            - duration_seconds: window length in seconds
             - alarm_count
             - uuid
             - source_uuid
         """
         if self.series.empty:
-            return pd.DataFrame(columns=["start", "alarm_count", "uuid", "source_uuid"])
+            return pd.DataFrame(
+                columns=[
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "alarm_count",
+                    "uuid",
+                    "source_uuid",
+                ]
+            )
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = s[self.value_column].fillna(False).astype(bool)
@@ -152,6 +165,13 @@ class AlarmManagementEvents(Base):
         counts = s["activation"].resample(window).sum().reset_index()
         counts.columns = ["start", "alarm_count"]
         counts["alarm_count"] = counts["alarm_count"].astype(int)
+        counts["start"], end = window_bounds(counts["start"], window)
+        counts.insert(1, "end", end)
+        counts.insert(
+            2,
+            "duration_seconds",
+            (counts["end"] - counts["start"]).dt.total_seconds(),
+        )
         counts["uuid"] = self.event_uuid
         counts["source_uuid"] = self.alarm_uuid
         return counts
@@ -214,6 +234,7 @@ class AlarmManagementEvents(Base):
             DataFrame with columns:
             - start
             - end
+            - duration_seconds: float seconds (end - start)
             - transition_count
             - uuid
             - source_uuid
@@ -223,6 +244,7 @@ class AlarmManagementEvents(Base):
                 columns=[
                     "start",
                     "end",
+                    "duration_seconds",
                     "transition_count",
                     "uuid",
                     "source_uuid",
@@ -249,6 +271,7 @@ class AlarmManagementEvents(Base):
                 columns=[
                     "start",
                     "end",
+                    "duration_seconds",
                     "transition_count",
                     "uuid",
                     "source_uuid",
@@ -292,7 +315,11 @@ class AlarmManagementEvents(Base):
             }
         )
 
-        return pd.DataFrame(rows)
+        out = finalize_interval_df(
+            pd.DataFrame(rows), uuid=self.event_uuid, source_uuid=self.alarm_uuid
+        )
+        cols = ["start", "end", "duration_seconds", "transition_count"]
+        return out[cols + ["uuid", "source_uuid"]]
 
     def standing_alarms(self, min_duration: str = "1h") -> pd.DataFrame:
         """Identify alarms that stay active longer than *min_duration*.

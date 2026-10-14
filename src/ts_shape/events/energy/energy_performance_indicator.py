@@ -3,6 +3,7 @@ import logging
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_per_window
 
@@ -70,8 +71,9 @@ class EnergyPerformanceIndicatorEvents(Base):
                 ``False`` keeps the per-window ``max - min``.
 
         Returns:
-            DataFrame: start, uuid, source_uuid, is_delta,
-                       energy_kwh, units_produced, enpi
+            DataFrame: start, end, duration_seconds, uuid, source_uuid,
+                       is_delta, energy_kwh, units_produced, enpi. ``end``
+                       is ``start`` plus ``window``.
         """
         energy, counter = self._aggregate_pair(
             meter_uuid,
@@ -91,7 +93,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             "enpi",
         ]
         if energy.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         merged = energy.join(counter, how="inner").reset_index()
         merged = merged.rename(columns={self.time_column: "start"})
@@ -103,7 +105,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         merged["uuid"] = self.event_uuid
         merged["source_uuid"] = meter_uuid
         merged["is_delta"] = True
-        return merged[empty_cols]
+        return with_window_bounds(merged[empty_cols], window)
 
     def enpi_vs_baseline(
         self,
@@ -154,7 +156,8 @@ class EnergyPerformanceIndicatorEvents(Base):
                 ``False`` keeps the per-window ``max - min``.
 
         Returns:
-            DataFrame: start, uuid, source_uuid, enpi, baseline_enpi,
+            DataFrame: start, end, duration_seconds, uuid, source_uuid, enpi,
+                       baseline_enpi,
                        deviation_pct, is_anomaly, trend
         """
         base = self.enpi_by_window(
@@ -182,7 +185,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         if baseline == "regression":
             empty_cols = empty_cols + ["expected_energy_kwh", "energy_savings_kwh"]
         if base.empty or len(base) < 2:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         if baseline == "regression":
             expected = self._regression_baseline(base, baseline_window, baseline_period)
@@ -217,7 +220,7 @@ class EnergyPerformanceIndicatorEvents(Base):
             "improving",
             np.where(slope > 0.01, "degrading", "stable"),
         )
-        return base[empty_cols]
+        return with_window_bounds(base[empty_cols], window)
 
     @staticmethod
     def _regression_baseline(
@@ -276,7 +279,8 @@ class EnergyPerformanceIndicatorEvents(Base):
                 ``False`` keeps the per-window ``max - min``.
 
         Returns:
-            DataFrame: start, meter_uuid, energy_kwh, units_produced, enpi
+            DataFrame: start, end, duration_seconds, meter_uuid, energy_kwh,
+                       units_produced, enpi
         """
         frames = []
         for meter_uuid in meter_uuids:
@@ -303,20 +307,24 @@ class EnergyPerformanceIndicatorEvents(Base):
                 )
 
         if not frames:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "meter_uuid",
-                    "energy_kwh",
-                    "units_produced",
-                    "enpi",
-                ]
+            return with_window_bounds(
+                pd.DataFrame(
+                    columns=[
+                        "start",
+                        "meter_uuid",
+                        "energy_kwh",
+                        "units_produced",
+                        "enpi",
+                    ]
+                ),
+                window,
             )
 
-        return (
+        return with_window_bounds(
             pd.concat(frames, ignore_index=True)
             .sort_values(["start", "meter_uuid"])
-            .reset_index(drop=True)
+            .reset_index(drop=True),
+            window,
         )
 
     # ── Internal helpers ────────────────────────────────────────────────────

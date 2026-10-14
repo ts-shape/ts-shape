@@ -11,6 +11,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 from scipy import stats  # type: ignore
 
+from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -94,12 +95,14 @@ class SensorDriftEvents(Base):
                 as 3x std of first window if not provided.
 
         Returns:
-            DataFrame with columns: start, end, mean_offset,
-            drift_rate, severity.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, mean_offset, drift_rate, severity.
         """
         cols = ["start", "end", "mean_offset", "drift_rate", "severity"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
+            )
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -177,8 +180,8 @@ class SensorDriftEvents(Base):
         for e in events:
             e.pop("_raw_mean", None)
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
     def detect_span_drift(self, window: str = "8h") -> pd.DataFrame:
@@ -191,14 +194,29 @@ class SensorDriftEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: start, sensitivity,
-            sensitivity_change_pct.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, sensitivity, sensitivity_change_pct.
+            ``end`` is ``start`` plus one ``window``.
         """
         cols = ["start", "sensitivity", "sensitivity_change_pct"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "interval",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
         if self.reference_value is None and self._reference_series is None:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "interval",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -233,8 +251,13 @@ class SensorDriftEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "interval",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
     def drift_trend(self, window: str = "1D", metric: str = "mean") -> pd.DataFrame:
@@ -245,12 +268,20 @@ class SensorDriftEvents(Base):
             metric: Statistic to trend ('mean' or 'std').
 
         Returns:
-            DataFrame with columns: start, value, slope,
-            r_squared, direction.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, value, slope, r_squared, direction.
+            ``end`` is ``start`` plus one ``window``.
         """
         cols = ["start", "value", "slope", "r_squared", "direction"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -268,7 +299,14 @@ class SensorDriftEvents(Base):
             window_values.append((ts, v))
 
         if len(window_values) < 2:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         _timestamps = [wv[0] for wv in window_values]
         values = np.array([wv[1] for wv in window_values])
@@ -299,8 +337,13 @@ class SensorDriftEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )
 
     def calibration_health(
@@ -314,12 +357,20 @@ class SensorDriftEvents(Base):
                 bias and precision into a 0-100 score.
 
         Returns:
-            DataFrame with columns: start, bias, precision,
-            health_score.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, bias, precision, health_score.
+            ``end`` is ``start`` plus one ``window``.
         """
         cols = ["start", "bias", "precision", "health_score"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=self.signal_uuid,
+                window=window,
+            )
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -362,6 +413,11 @@ class SensorDriftEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+            window=window,
         )

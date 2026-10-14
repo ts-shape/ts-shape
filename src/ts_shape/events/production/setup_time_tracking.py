@@ -11,7 +11,9 @@ import logging
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import add_period_window
 from ts_shape.utils.base import Base
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +55,22 @@ class SetupTimeTracking(Base):
         *,
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
+        event_uuid: str = "prod:setup_time",
     ) -> None:
+        """Initialize the setup-time tracker.
+
+        Args:
+            dataframe: Input DataFrame with timeseries data.
+            time_column: Name of timestamp column (default: 'systime').
+            shift_definitions: Mapping of shift name to (start, end) times.
+                Default: 3-shift operation (06:00-14:00, 14:00-22:00,
+                22:00-06:00).
+            event_uuid: UUID tagged on derived interval events (the ``uuid``
+                column of :meth:`setup_durations`; default: 'prod:setup_time').
+        """
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
+        self.event_uuid = event_uuid
         self.shift_definitions = shift_definitions or {
             "shift_1": ("06:00", "14:00"),
             "shift_2": ("14:00", "22:00"),
@@ -129,6 +144,7 @@ class SetupTimeTracking(Base):
         *,
         setup_value: str = "Setup",
         value_column: str = "value_string",
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """List every setup event with duration.
 
@@ -136,19 +152,47 @@ class SetupTimeTracking(Base):
             state_uuid: UUID for machine state signal.
             setup_value: Value that indicates a setup state.
             value_column: Column containing state values.
+            production_day: Attribute an overnight shift's post-midnight
+                setups to the shift's start date, so a night shift is one
+                ``(date, shift)`` row (default). False groups by raw calendar
+                date, which splits a night shift across two rows.
 
         Returns:
             DataFrame with columns:
-            - start_time, end_time, duration_minutes, date, shift
+            - start, end, duration_seconds (float seconds, end - start),
+                uuid (event uuid), source_uuid (state_uuid),
+                duration_minutes, date, shift
         """
         intervals = self._extract_setup_intervals(state_uuid, setup_value, value_column)
         if intervals.empty:
             return pd.DataFrame(
-                columns=["start", "end", "duration_minutes", "date", "shift"]
+                columns=[
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "uuid",
+                    "source_uuid",
+                    "duration_minutes",
+                    "date",
+                    "shift",
+                ]
             )
 
-        intervals["date"] = intervals["start"].dt.date
         intervals["shift"] = intervals["start"].apply(self._assign_shift)
+        intervals["date"] = (
+            production_dates(
+                intervals["start"], intervals["shift"], self.shift_definitions
+            )
+            if production_day
+            else intervals["start"].dt.date
+        )
+        intervals.insert(
+            2,
+            "duration_seconds",
+            (intervals["end"] - intervals["start"]).dt.total_seconds(),
+        )
+        intervals.insert(3, "uuid", self.event_uuid)
+        intervals.insert(4, "source_uuid", state_uuid)
 
         return intervals
 
@@ -342,18 +386,20 @@ class SetupTimeTracking(Base):
 
         Returns:
             DataFrame with columns:
+            - start, end, duration_seconds: the period's bin bounds (for the
+                default ``'1W'`` the Monday-to-Monday week; ``period`` is the
+                pandas bin label, i.e. the week's Sunday)
             - period, avg_setup_minutes, setup_count, total_setup_minutes
         """
+        trend_cols = [
+            "period",
+            "avg_setup_minutes",
+            "setup_count",
+            "total_setup_minutes",
+        ]
         intervals = self._extract_setup_intervals(state_uuid, setup_value, value_column)
         if intervals.empty:
-            return pd.DataFrame(
-                columns=[
-                    "period",
-                    "avg_setup_minutes",
-                    "setup_count",
-                    "total_setup_minutes",
-                ]
-            )
+            return add_period_window(pd.DataFrame(columns=trend_cols), window)
 
         intervals = intervals.set_index("start")
 
@@ -370,4 +416,4 @@ class SetupTimeTracking(Base):
                 }
             )
 
-        return pd.DataFrame(results)
+        return add_period_window(pd.DataFrame(results, columns=trend_cols), window)

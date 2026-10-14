@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 import pandas as pd  # type: ignore
+from pandas.tseries.frequencies import to_offset
 
 from ts_shape.utils.base import Base
 
@@ -56,9 +57,12 @@ class BottleneckDetectionEvents(Base):
                 reflects wall-clock time in the running state.
 
         Returns:
-            DataFrame with columns: start, uuid, utilization_pct.
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid (the station uuid), source_uuid (the
+            station uuid), utilization_pct.
         """
         rows: list[dict[str, Any]] = []
+        offset = to_offset(window)
 
         for uid in station_uuids:
             station = self.dataframe[self.dataframe["uuid"] == uid].copy()
@@ -96,7 +100,10 @@ class BottleneckDetectionEvents(Base):
                     rows.append(
                         {
                             "start": ts,
+                            "end": ts + offset,
+                            "duration_seconds": (ts + offset - ts).total_seconds(),
                             "uuid": uid,
+                            "source_uuid": uid,
                             "utilization_pct": round(pct * 100, 2),
                         }
                     )
@@ -104,7 +111,16 @@ class BottleneckDetectionEvents(Base):
         return (
             pd.DataFrame(rows)
             if rows
-            else pd.DataFrame(columns=["start", "uuid", "utilization_pct"])
+            else pd.DataFrame(
+                columns=[
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "uuid",
+                    "source_uuid",
+                    "utilization_pct",
+                ]
+            )
         )
 
     def detect_bottleneck(
@@ -126,7 +142,9 @@ class BottleneckDetectionEvents(Base):
                 for change-encoded/irregular signals.
 
         Returns:
-            DataFrame with columns: start, end, bottleneck_uuid, utilization_pct.
+            DataFrame with columns: start, end, duration_seconds, uuid (the
+            detector's event uuid), source_uuid (the bottleneck station uuid),
+            bottleneck_uuid, utilization_pct.
         """
         util = self.station_utilization(
             station_uuids, window, time_weighted=time_weighted
@@ -136,6 +154,9 @@ class BottleneckDetectionEvents(Base):
                 columns=[
                     "start",
                     "end",
+                    "duration_seconds",
+                    "uuid",
+                    "source_uuid",
                     "bottleneck_uuid",
                     "utilization_pct",
                 ]
@@ -145,7 +166,7 @@ class BottleneckDetectionEvents(Base):
         bottlenecks = util.loc[idx].copy()
         window_td = pd.to_timedelta(window)
 
-        return pd.DataFrame(
+        out = pd.DataFrame(
             {
                 "start": bottlenecks["start"].array,
                 "end": bottlenecks["start"].array + window_td,
@@ -153,6 +174,12 @@ class BottleneckDetectionEvents(Base):
                 "utilization_pct": bottlenecks["utilization_pct"].values,
             }
         )
+        out.insert(
+            2, "duration_seconds", (out["end"] - out["start"]).dt.total_seconds()
+        )
+        out.insert(3, "uuid", self.event_uuid)
+        out.insert(4, "source_uuid", out["bottleneck_uuid"])
+        return out
 
     def shifting_bottleneck(
         self,
@@ -169,7 +196,8 @@ class BottleneckDetectionEvents(Base):
             time_weighted: Forwarded to :meth:`station_utilization`.
 
         Returns:
-            DataFrame with columns: systime, from_uuid, to_uuid,
+            DataFrame with columns: systime, uuid (the detector's event uuid),
+            source_uuid (``"<from_uuid>,<to_uuid>"``), from_uuid, to_uuid,
             previous_utilization, new_utilization.
         """
         bottlenecks = self.detect_bottleneck(
@@ -179,6 +207,8 @@ class BottleneckDetectionEvents(Base):
             return pd.DataFrame(
                 columns=[
                     "systime",
+                    "uuid",
+                    "source_uuid",
                     "from_uuid",
                     "to_uuid",
                     "previous_utilization",
@@ -197,6 +227,8 @@ class BottleneckDetectionEvents(Base):
                 shifts.append(
                     {
                         "systime": bottlenecks.iloc[i]["start"],
+                        "uuid": self.event_uuid,
+                        "source_uuid": f"{prev_uuid},{curr_uuid}",
                         "from_uuid": prev_uuid,
                         "to_uuid": curr_uuid,
                         "previous_utilization": prev_util,
@@ -212,6 +244,8 @@ class BottleneckDetectionEvents(Base):
             else pd.DataFrame(
                 columns=[
                     "systime",
+                    "uuid",
+                    "source_uuid",
                     "from_uuid",
                     "to_uuid",
                     "previous_utilization",

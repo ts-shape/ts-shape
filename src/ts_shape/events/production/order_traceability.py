@@ -161,6 +161,7 @@ class ValueTraceabilityEvents(Base):
             - sample_count: Number of data points.
             - station_sequence: Order of visit (1-based) per identifier.
             - uuid: Event UUID.
+            - source_uuid: UUID of the station signal (same as station_uuid).
         """
         all_intervals: list[pd.DataFrame] = []
         for uuid in self.station_uuids:
@@ -180,6 +181,7 @@ class ValueTraceabilityEvents(Base):
                     "sample_count",
                     "station_sequence",
                     "uuid",
+                    "source_uuid",
                 ]
             )
 
@@ -189,6 +191,7 @@ class ValueTraceabilityEvents(Base):
         # Assign station visit sequence per identifier
         timeline["station_sequence"] = timeline.groupby("identifier").cumcount() + 1
         timeline["uuid"] = self.event_uuid
+        timeline["source_uuid"] = timeline["station_uuid"]
 
         if infer_dwell_from_next:
             next_start = timeline.groupby("identifier")["start"].shift(-1)
@@ -217,6 +220,11 @@ class ValueTraceabilityEvents(Base):
             - stations_visited: Number of distinct stations visited.
             - station_path: Arrow-separated ordered station names.
             - uuid: Event UUID.
+            - start: Same as first_seen.
+            - end: Same as last_seen.
+            - duration_seconds: Same as lead_time_seconds (float seconds).
+            - source_uuid: Comma-joined station UUIDs in visit order
+                (each listed once).
         """
         timeline = self.build_timeline()
 
@@ -232,6 +240,10 @@ class ValueTraceabilityEvents(Base):
                     "stations_visited",
                     "station_path",
                     "uuid",
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "source_uuid",
                 ]
             )
 
@@ -252,6 +264,10 @@ class ValueTraceabilityEvents(Base):
                     "stations_visited": grp["station_name"].nunique(),
                     "station_path": station_path,
                     "uuid": self.event_uuid,
+                    "start": first_seen,
+                    "end": last_seen,
+                    "duration_seconds": float((last_seen - first_seen).total_seconds()),
+                    "source_uuid": ",".join(dict.fromkeys(grp["station_uuid"])),
                 }
             )
 

@@ -14,6 +14,7 @@ import logging
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import add_day_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
 
@@ -141,7 +142,13 @@ class PeriodSummary(Base):
         if daily_df.empty:
             return pd.DataFrame(columns=["start", "end", "days"])
 
-        data = daily_df.copy()
+        # Window bounds of the daily rows are not metrics: never sum them.
+        data = daily_df.drop(
+            columns=[
+                c for c in ("start", "end", "duration_seconds") if c != date_column
+            ],
+            errors="ignore",
+        )
         data[date_column] = pd.to_datetime(data[date_column])
         data = data.set_index(date_column)
 
@@ -221,6 +228,8 @@ class PeriodSummary(Base):
 
         Returns:
             DataFrame with columns:
+            - start, end, duration_seconds: the week window (Monday midnight to
+                the following Monday midnight, tz-aware in the data's tz)
             - week_start, week_end, total_production, daily_avg,
                 production_days, [ok_parts, nok_parts, quality_pct]
             - resets: Number of counter resets in the week (only when
@@ -241,7 +250,7 @@ class PeriodSummary(Base):
                 cols.extend(["ok_parts", "nok_parts", "quality_pct"])
             if handle_resets:
                 cols.append("resets")
-            return pd.DataFrame(columns=cols)
+            return add_day_window(pd.DataFrame(columns=cols), None)
 
         daily["date"] = pd.to_datetime(daily["date"])
 
@@ -311,7 +320,12 @@ class PeriodSummary(Base):
 
             results.append(row)
 
-        return pd.DataFrame(results)
+        return add_day_window(
+            pd.DataFrame(results),
+            data_tz(self.dataframe[self.time_column]),
+            date_col="week_start",
+            offset=pd.DateOffset(days=7),
+        )
 
     def monthly_summary(
         self,
@@ -339,6 +353,9 @@ class PeriodSummary(Base):
 
         Returns:
             DataFrame with columns:
+            - start, end, duration_seconds: the calendar-month window (first
+                of the month midnight to first of the next month midnight,
+                tz-aware in the data's tz)
             - year, month, total_production, daily_avg,
                 production_days, [ok_parts, nok_parts, quality_pct]
             - resets: Number of counter resets in the month (only when
@@ -353,7 +370,7 @@ class PeriodSummary(Base):
                 cols.extend(["ok_parts", "nok_parts", "quality_pct"])
             if handle_resets:
                 cols.append("resets")
-            return pd.DataFrame(columns=cols)
+            return add_day_window(pd.DataFrame(columns=cols), None)
 
         daily["date"] = pd.to_datetime(daily["date"])
 
@@ -421,7 +438,17 @@ class PeriodSummary(Base):
 
             results.append(row)
 
-        return pd.DataFrame(results)
+        out = pd.DataFrame(results)
+        out["_month_start"] = pd.to_datetime(
+            {"year": out["year"], "month": out["month"], "day": 1}
+        )
+        out = add_day_window(
+            out,
+            data_tz(self.dataframe[self.time_column]),
+            date_col="_month_start",
+            offset=pd.DateOffset(months=1),
+        )
+        return out.drop(columns="_month_start")
 
     def compare_periods(
         self,

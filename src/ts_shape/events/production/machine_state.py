@@ -221,18 +221,22 @@ class MachineStateEvents(Base):
 
         - threshold: time window to look for rapid transitions
         - min_count: minimum number of transitions within threshold to be considered rapid
-        Returns: DataFrame with start_time, end_time, transition_count, duration_seconds
+        Returns: DataFrame with systime (= start, the first transition of the
+        burst), uuid (event uuid), source_uuid (run-state uuid), start, end,
+        transition_count, duration_seconds
         """
+        cols = [
+            "systime",
+            "uuid",
+            "source_uuid",
+            "start",
+            "end",
+            "transition_count",
+            "duration_seconds",
+        ]
         transitions = self.transition_events()
         if transitions.empty or len(transitions) < min_count:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "transition_count",
-                    "duration_seconds",
-                ]
-            )
+            return pd.DataFrame(columns=cols)
 
         threshold_td = pd.to_timedelta(threshold)
         rapid_events: list[dict[str, Any]] = []
@@ -255,7 +259,13 @@ class MachineStateEvents(Base):
                 else:
                     break
 
-        return pd.DataFrame(rapid_events)
+        if not rapid_events:
+            return pd.DataFrame(columns=cols)
+        out = pd.DataFrame(rapid_events)
+        out.insert(0, "systime", out["start"])
+        out.insert(1, "uuid", self.event_uuid)
+        out.insert(2, "source_uuid", self.run_state_uuid)
+        return out
 
     def _detect_data_gaps(self, max_gap: str = "5min") -> int:
         """Detect missing data gaps in the time series.

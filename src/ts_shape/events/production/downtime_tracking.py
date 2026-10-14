@@ -12,10 +12,26 @@ from collections.abc import Mapping
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import (
+    add_period_window,
+    add_shift_window,
+    data_tz,
+)
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
+from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
+
+_SHIFT_COLS = [
+    "date",
+    "shift",
+    "total_minutes",
+    "downtime_minutes",
+    "uptime_minutes",
+    "availability_pct",
+]
+_TREND_COLS = ["period", "availability_pct", "uptime_minutes", "downtime_minutes"]
 
 
 class DowntimeTracking(Base):
@@ -105,6 +121,7 @@ class DowntimeTracking(Base):
         running_value: str = "Running",
         value_column: str = "value_string",
         max_gap: str | None = None,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Calculate downtime duration per shift.
 
@@ -120,9 +137,16 @@ class DowntimeTracking(Base):
                 inflating availability toward 100 % over a period with no data.
                 Defaults to the state signal's spec ``max_gap`` when ``specs``
                 were given.
+            production_day: Attribute an overnight shift's post-midnight
+                readings to the shift's start date, so a night shift is one
+                ``(date, shift)`` row (default). False groups by raw calendar
+                date, which splits a night shift across two rows.
 
         Returns:
             DataFrame with downtime by shift:
+            - start: Start of the shift window (tz-aware in the data's tz)
+            - end: End of the shift window (next day for overnight shifts)
+            - duration_seconds: Shift window length in seconds
             - date: Production date
             - shift: Shift name
             - total_minutes: Total shift duration in minutes
@@ -144,22 +168,23 @@ class DowntimeTracking(Base):
         )
 
         if state_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "date",
-                    "shift",
-                    "total_minutes",
-                    "downtime_minutes",
-                    "uptime_minutes",
-                    "availability_pct",
-                ]
+            return add_shift_window(
+                pd.DataFrame(columns=_SHIFT_COLS), self.shift_definitions, None
             )
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
 
         # Assign shifts and dates
         state_data["shift"] = state_data[self.time_column].apply(self._assign_shift)
-        state_data["date"] = state_data[self.time_column].dt.date
+        state_data["date"] = (
+            production_dates(
+                state_data[self.time_column],
+                state_data["shift"],
+                self.shift_definitions,
+            )
+            if production_day
+            else state_data[self.time_column].dt.date
+        )
 
         # Calculate duration for each state
         state_data["next_time"] = state_data[self.time_column].shift(-1)
@@ -215,7 +240,11 @@ class DowntimeTracking(Base):
                 }
             )
 
-        return pd.DataFrame(results)
+        return add_shift_window(
+            pd.DataFrame(results, columns=_SHIFT_COLS),
+            self.shift_definitions,
+            data_tz(state_data[self.time_column]),
+        )
 
     def downtime_by_reason(
         self,
@@ -431,6 +460,9 @@ class DowntimeTracking(Base):
 
         Returns:
             DataFrame with availability trend:
+            - start: Period start
+            - end: Period end (start + window)
+            - duration_seconds: Period length in seconds
             - period: Time period
             - availability_pct: Availability percentage
             - uptime_minutes: Total uptime
@@ -450,14 +482,7 @@ class DowntimeTracking(Base):
         )
 
         if state_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "period",
-                    "availability_pct",
-                    "uptime_minutes",
-                    "downtime_minutes",
-                ]
-            )
+            return add_period_window(pd.DataFrame(columns=_TREND_COLS), window)
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
 
@@ -480,14 +505,7 @@ class DowntimeTracking(Base):
         state_data = state_data[state_data["duration_minutes"].notna()]
 
         if state_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "period",
-                    "availability_pct",
-                    "uptime_minutes",
-                    "downtime_minutes",
-                ]
-            )
+            return add_period_window(pd.DataFrame(columns=_TREND_COLS), window)
 
         # Group by time window
         state_data = state_data.set_index(self.time_column)
@@ -512,4 +530,4 @@ class DowntimeTracking(Base):
                 }
             )
 
-        return pd.DataFrame(results)
+        return add_period_window(pd.DataFrame(results, columns=_TREND_COLS), window)

@@ -18,6 +18,7 @@ import logging
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import add_day_window, data_tz, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
 
@@ -66,15 +67,19 @@ class PartProductionTracking(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
+        event_uuid: str = "prod:part_tracking",
     ) -> None:
         """Initialize part production tracker.
 
         Args:
             dataframe: Input DataFrame with timeseries data
             time_column: Name of timestamp column (default: 'systime')
+            event_uuid: UUID tagged on derived point events (the ``uuid``
+                column of :meth:`detect_resets`; default: 'prod:part_tracking')
         """
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
+        self.event_uuid = event_uuid
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -156,7 +161,15 @@ class PartProductionTracking(Base):
 
     @staticmethod
     def _empty_production_frame(handle_resets: bool) -> pd.DataFrame:
-        columns = ["start", "part_number", "quantity", "first_count", "last_count"]
+        columns = [
+            "start",
+            "end",
+            "duration_seconds",
+            "part_number",
+            "quantity",
+            "first_count",
+            "last_count",
+        ]
         if handle_resets:
             columns.append("resets")
         return pd.DataFrame(columns=columns)
@@ -189,6 +202,8 @@ class PartProductionTracking(Base):
         Returns:
             DataFrame with columns:
             - start: Start of time window
+            - end: End of time window (start + window)
+            - duration_seconds: Window length in seconds
             - part_number: Part number/ID
             - quantity: Parts produced in window
             - first_count: Counter value at window start
@@ -248,10 +263,21 @@ class PartProductionTracking(Base):
         if not results:
             return self._empty_production_frame(handle_resets)
 
-        columns = ["start", "part_number", "quantity", "first_count", "last_count"]
+        columns = [
+            "start",
+            "end",
+            "duration_seconds",
+            "part_number",
+            "quantity",
+            "first_count",
+            "last_count",
+        ]
         if handle_resets:
             columns.append("resets")
-        return pd.DataFrame(results)[columns]
+        out = pd.DataFrame(results)
+        out["start"], out["end"] = window_bounds(out["start"], window)
+        out["duration_seconds"] = (out["end"] - out["start"]).dt.total_seconds()
+        return out[columns]
 
     def detect_resets(
         self,
@@ -275,6 +301,8 @@ class PartProductionTracking(Base):
         Returns:
             DataFrame with one row per reset and columns:
             - <time_column>: Timestamp of the reading after the reset
+            - uuid: Event UUID of this tracker
+            - source_uuid: The counter UUID
             - part_number: Active part number at the reset
             - count_before: Counter value just before the reset
             - count_after: Counter value just after the reset
@@ -288,6 +316,8 @@ class PartProductionTracking(Base):
         """
         columns = [
             self.time_column,
+            "uuid",
+            "source_uuid",
             "part_number",
             "count_before",
             "count_after",
@@ -318,6 +348,8 @@ class PartProductionTracking(Base):
             }
         )
         out["drop"] = out["count_before"] - out["count_after"]
+        out.insert(1, "uuid", self.event_uuid)
+        out.insert(2, "source_uuid", counter_uuid)
         return out.reset_index(drop=True)
 
     def daily_production_summary(
@@ -342,6 +374,9 @@ class PartProductionTracking(Base):
 
         Returns:
             DataFrame with columns:
+            - start: Midnight of ``date`` (tz-aware in the data's tz)
+            - end: Midnight of the following day
+            - duration_seconds: Day length in seconds
             - date: Production date
             - part_number: Part number/ID
             - total_quantity: Total parts produced that day
@@ -370,8 +405,9 @@ class PartProductionTracking(Base):
             base_columns.append("resets")
 
         if hourly.empty:
-            return pd.DataFrame(columns=base_columns)
+            return add_day_window(pd.DataFrame(columns=base_columns), None)
 
+        tz = data_tz(hourly["start"])
         hourly["date"] = hourly["start"].dt.date
 
         agg = {
@@ -383,7 +419,7 @@ class PartProductionTracking(Base):
 
         daily = hourly.groupby(["date", "part_number"]).agg(**agg).reset_index()
 
-        return daily
+        return add_day_window(daily, tz)
 
     def production_totals(
         self,

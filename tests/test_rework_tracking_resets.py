@@ -40,7 +40,14 @@ def test_rework_by_shift_default_underreports():
     tracker = ReworkTracking(df)
     result = tracker.rework_by_shift(rework_uuid="rework_counter")
 
-    assert list(result.columns) == ["date", "shift", "rework_count"]
+    assert list(result.columns) == [
+        "start",
+        "end",
+        "duration_seconds",
+        "date",
+        "shift",
+        "rework_count",
+    ]
     assert "resets" not in result.columns
     assert result["rework_count"].sum() == 30
 

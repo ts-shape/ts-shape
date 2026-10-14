@@ -84,7 +84,7 @@ class TargetTracking(Base):
         *,
         value_column: str = "value_integer",
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Compare actual metric to per-shift targets.
 
@@ -102,7 +102,7 @@ class TargetTracking(Base):
             production_day: When True, the post-midnight portion of an overnight
                 shift (e.g. ``22:00 -> 06:00``) is attributed to the shift's
                 start date, so each ``(date, shift)`` group is one contiguous
-                interval. When False (default), readings are grouped by their
+                interval (the default). When False, readings are grouped by their
                 raw calendar date; a night shift is then split across two dates
                 and, within a date, its group spans the whole day so
                 ``last - first`` sweeps in other shifts' production. Only

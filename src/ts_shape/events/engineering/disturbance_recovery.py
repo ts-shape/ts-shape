@@ -4,6 +4,12 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_interval_df,
+    finalize_summary_df,
+)
+from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -120,8 +126,8 @@ class DisturbanceRecoveryEvents(Base):
             min_duration: Minimum disturbance duration.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
-            peak_deviation, mean_deviation, direction, duration_seconds,
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, peak_deviation, mean_deviation, direction,
             disturbance_type.
         """
         cols = [
@@ -137,11 +143,11 @@ class DisturbanceRecoveryEvents(Base):
         ]
         bd = self._compute_baseline_and_deviation(baseline_window)
         if bd.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         exceeded = bd["deviation"].abs() > (threshold_sigma * bd["rolling_std"])
         if not exceeded.any():
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         min_td = pd.Timedelta(min_duration)
         groups = (exceeded != exceeded.shift()).cumsum()
@@ -193,7 +199,13 @@ class DisturbanceRecoveryEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+        )
 
     def recovery_time(
         self,
@@ -210,9 +222,9 @@ class DisturbanceRecoveryEvents(Base):
             max_recovery: Maximum time to look for recovery.
 
         Returns:
-            DataFrame with columns: start, end,
-            recovery_time_seconds, recovered, pre_disturbance_mean,
-            post_recovery_mean, residual_offset.
+            DataFrame with columns: start, end, duration_seconds (of the
+            disturbance), uuid, source_uuid, recovery_time_seconds, recovered,
+            pre_disturbance_mean, post_recovery_mean, residual_offset.
         """
         cols = [
             "start",
@@ -225,7 +237,7 @@ class DisturbanceRecoveryEvents(Base):
         ]
         disturbances = self.detect_disturbances(baseline_window, threshold_sigma)
         if disturbances.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         bd = self._compute_baseline_and_deviation(baseline_window)
         max_td = pd.Timedelta(max_recovery)
@@ -282,7 +294,11 @@ class DisturbanceRecoveryEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+        )
 
     def disturbance_frequency(
         self,
@@ -293,9 +309,9 @@ class DisturbanceRecoveryEvents(Base):
         """Count disturbances per time window.
 
         Returns:
-            DataFrame with columns: start, disturbance_count,
-            total_disturbance_seconds, pct_time_disturbed,
-            avg_recovery_seconds.
+            DataFrame with columns: start, end, duration_seconds,
+            disturbance_count, total_disturbance_seconds, pct_time_disturbed,
+            avg_recovery_seconds. ``end`` is ``start`` + ``window``.
         """
         cols = [
             "start",
@@ -308,7 +324,7 @@ class DisturbanceRecoveryEvents(Base):
         recovery = self.recovery_time(baseline_window, threshold_sigma)
 
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", cols[1:])
 
         # Create time windows
         t_min = self.signal[self.time_column].min()
@@ -355,7 +371,11 @@ class DisturbanceRecoveryEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("summary", cols[1:])
+        return finalize_summary_df(
+            add_window_bounds(pd.DataFrame(events, columns=cols), window)
+        )
 
     def before_after_comparison(
         self,
@@ -366,11 +386,13 @@ class DisturbanceRecoveryEvents(Base):
         """Compare process statistics before vs after each disturbance.
 
         Returns:
-            DataFrame with columns: start, pre_mean, post_mean,
-            pre_std, post_std, mean_shift, variance_ratio.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, pre_mean, post_mean, pre_std, post_std, mean_shift,
+            variance_ratio. ``start`` / ``end`` are the disturbance bounds.
         """
         cols = [
             "start",
+            "end",
             "pre_mean",
             "post_mean",
             "pre_std",
@@ -380,7 +402,7 @@ class DisturbanceRecoveryEvents(Base):
         ]
         disturbances = self.detect_disturbances(baseline_window, threshold_sigma)
         if disturbances.empty or self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("summary", ["uuid", "source_uuid"] + cols[2:])
 
         sig = self.signal.set_index(self.time_column)[self.value_column]
         comp_td = pd.Timedelta(comparison_window)
@@ -404,6 +426,7 @@ class DisturbanceRecoveryEvents(Base):
             events.append(
                 {
                     "start": d_start,
+                    "end": d_end,
                     "pre_mean": pre_mean,
                     "post_mean": post_mean,
                     "pre_std": pre_std,
@@ -415,4 +438,10 @@ class DisturbanceRecoveryEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("summary", ["uuid", "source_uuid"] + cols[2:])
+        return finalize_summary_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+        )

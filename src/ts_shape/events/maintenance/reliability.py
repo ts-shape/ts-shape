@@ -230,7 +230,8 @@ class ReliabilityEvents(Base):
                 Default: the data's timezone.
 
         Returns:
-            Summary rows (``start``, ``end``, ``duration_seconds``) with
+            Summary rows (``start``, ``end``, ``duration_seconds``, ``uuid``,
+            ``source_uuid``) with
             ``operating_hours``, ``repair_hours``, ``no_data_hours``,
             ``failures``, ``mtbf_hours``, ``mtbf_iso22400_hours``,
             ``mttr_hours``, ``availability_pct`` and
@@ -239,14 +240,16 @@ class ReliabilityEvents(Base):
         """
         tl = self.timeline
         if tl.empty:
-            return empty_event_df("summary", _SUMMARY_COLS)
+            return empty_event_df("summary", ["uuid", "source_uuid", *_SUMMARY_COLS])
         t0, t1 = tl["start"].iloc[0], tl["end"].iloc[-1]
         if window is None:
             grid = pd.DataFrame({"start": [t0], "end": [t1]})
         else:
             grid = windows(t0, t1, window, tz=tz)[["start", "end"]]
             if grid.empty:
-                return empty_event_df("summary", _SUMMARY_COLS)
+                return empty_event_df(
+                    "summary", ["uuid", "source_uuid", *_SUMMARY_COLS]
+                )
 
         failed = tl["failed"].to_numpy()
         ep_starts = pd.to_datetime(self._episodes["start"])

@@ -3,6 +3,7 @@ import logging
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.time_weighted import time_weighted_resample
 
@@ -81,8 +82,8 @@ class IdleEnergyDetectionEvents(Base):
                 drop their energy.
 
         Returns:
-            DataFrame: start, uuid, source_uuid, is_delta,
-                       total_energy, idle_energy, running_energy,
+            DataFrame: start, end, duration_seconds, uuid, source_uuid,
+                       is_delta, total_energy, idle_energy, running_energy,
                        machine_running_pct, idle_fraction
         """
         energy, state = self._filter_two(meter_uuid, state_uuid)
@@ -98,7 +99,7 @@ class IdleEnergyDetectionEvents(Base):
             "idle_fraction",
         ]
         if energy.empty or state.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         energy = energy.set_index(self.time_column)
         state = state.set_index(self.time_column)
@@ -141,7 +142,7 @@ class IdleEnergyDetectionEvents(Base):
         out["source_uuid"] = meter_uuid
         out["is_delta"] = True
 
-        return out[empty_cols]
+        return with_window_bounds(out[empty_cols], window)
 
     def idle_energy_by_shift(
         self,
@@ -235,8 +236,8 @@ class IdleEnergyDetectionEvents(Base):
             idle_threshold: machine_running_pct below this → idle.
 
         Returns:
-            DataFrame: start, uuid, source_uuid, idle_energy,
-                       rolling_avg_idle_energy, trend_direction
+            DataFrame: start, end, duration_seconds, uuid, source_uuid,
+                       idle_energy, rolling_avg_idle_energy, trend_direction
         """
         by_window = self.idle_energy_by_window(
             meter_uuid,
@@ -255,7 +256,7 @@ class IdleEnergyDetectionEvents(Base):
             "trend_direction",
         ]
         if by_window.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         by_window["rolling_avg_idle_energy"] = (
             by_window["idle_energy"].rolling(window=trend_window, min_periods=1).mean()
@@ -266,7 +267,7 @@ class IdleEnergyDetectionEvents(Base):
             bins=[-np.inf, -0.01, 0.01, np.inf],
             labels=["improving", "stable", "worsening"],
         )
-        return by_window[empty_cols]
+        return with_window_bounds(by_window[empty_cols], window)
 
     # ── Internal helpers ────────────────────────────────────────────────────
 

@@ -4,6 +4,8 @@ from typing import Any
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._output import empty_event_df, finalize_interval_df
+from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -48,8 +50,9 @@ class OperatingRangeEvents(Base):
         """Per-window operating envelope statistics.
 
         Returns:
-            DataFrame with columns: start, min_value, p5,
-            mean_value, p95, max_value, range_width.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, min_value, p5, mean_value, p95, max_value,
+            range_width. ``end`` is ``start`` + ``window``.
         """
         cols = [
             "start",
@@ -61,7 +64,7 @@ class OperatingRangeEvents(Base):
             "range_width",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
@@ -87,7 +90,18 @@ class OperatingRangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._summary(events, cols, window)
+
+    def _summary(
+        self, events: list[dict[str, Any]], cols: list[str], window: str
+    ) -> pd.DataFrame:
+        return window_summary(
+            events,
+            cols,
+            window,
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+        )
 
     def detect_regime_change(
         self,
@@ -100,8 +114,10 @@ class OperatingRangeEvents(Base):
         previous window mean by more than shift_threshold * pooled std.
 
         Returns:
-            DataFrame with columns: start, end, uuid, is_delta,
-            prev_mean, new_mean, shift_magnitude.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, prev_mean, new_mean, shift_magnitude.
+            ``start`` is the previous window's start and ``end`` the new
+            window's start.
         """
         cols = [
             "start",
@@ -113,7 +129,7 @@ class OperatingRangeEvents(Base):
             "shift_magnitude",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
@@ -132,7 +148,7 @@ class OperatingRangeEvents(Base):
             )
 
         if len(window_stats) < 2:
-            return pd.DataFrame(columns=cols)
+            return empty_event_df("interval", cols)
 
         events: list[dict[str, Any]] = []
         for i in range(1, len(window_stats)):
@@ -155,7 +171,13 @@ class OperatingRangeEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(events, columns=cols)
+        if not events:
+            return empty_event_df("interval", cols)
+        return finalize_interval_df(
+            pd.DataFrame(events, columns=cols),
+            uuid=self.event_uuid,
+            source_uuid=self.signal_uuid,
+        )
 
     def time_in_range(
         self,
@@ -166,12 +188,13 @@ class OperatingRangeEvents(Base):
         """Percentage of time within a defined range per window.
 
         Returns:
-            DataFrame with columns: start, time_in_range_pct,
-            time_below_pct, time_above_pct.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, time_in_range_pct, time_below_pct, time_above_pct.
+            ``end`` is ``start`` + ``window``.
         """
         cols = ["start", "time_in_range_pct", "time_below_pct", "time_above_pct"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return self._summary([], cols, window)
 
         indexed = self.signal.set_index(self.time_column)[self.value_column]
         groups = indexed.resample(window)
@@ -194,7 +217,7 @@ class OperatingRangeEvents(Base):
                 }
             )
 
-        return pd.DataFrame(events, columns=cols)
+        return self._summary(events, cols, window)
 
     def value_distribution(self, n_bins: int = 10) -> pd.DataFrame:
         """Histogram of signal values.

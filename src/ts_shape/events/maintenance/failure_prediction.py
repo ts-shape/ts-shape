@@ -55,14 +55,15 @@ class FailurePredictionEvents(Base):
                 (positive: failure when the value rises to the threshold).
 
         Returns:
-            DataFrame with columns: systime, uuid, is_delta, current_value,
-            rul_seconds, rul_hours, confidence. ``rul_*`` is 0 once the
+            DataFrame with columns: systime, uuid, source_uuid, is_delta,
+            current_value, rul_seconds, rul_hours, confidence. ``rul_*`` is 0 once the
             threshold is reached or passed, and None when no failure is
             projected (flat trend, or a trend moving away from the threshold).
         """
         cols = [
             "systime",
             "uuid",
+            "source_uuid",
             "is_delta",
             "current_value",
             "rul_seconds",
@@ -145,6 +146,7 @@ class FailurePredictionEvents(Base):
                 {
                     "systime": t_now,
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "current_value": current_val,
                     "rul_seconds": rul_seconds,
@@ -171,12 +173,16 @@ class FailurePredictionEvents(Base):
             window: Rolling window size.
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta,
-            warning_count, critical_count, escalation_detected.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, warning_count, critical_count,
+            escalation_detected. ``end`` is ``start`` plus ``window``.
         """
         cols = [
             "start",
+            "end",
+            "duration_seconds",
             "uuid",
+            "source_uuid",
             "is_delta",
             "warning_count",
             "critical_count",
@@ -227,7 +233,10 @@ class FailurePredictionEvents(Base):
             rows.append(
                 {
                     "start": ws,
+                    "end": we,
+                    "duration_seconds": (we - ws).total_seconds(),
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "warning_count": warning_count,
                     "critical_count": critical_count,
@@ -253,12 +262,13 @@ class FailurePredictionEvents(Base):
             direction: 'increasing' or 'decreasing'.
 
         Returns:
-            DataFrame with columns: systime, uuid, is_delta, current_value,
-            rate_of_change, estimated_time_seconds.
+            DataFrame with columns: systime, uuid, source_uuid, is_delta,
+            current_value, rate_of_change, estimated_time_seconds.
         """
         cols = [
             "systime",
             "uuid",
+            "source_uuid",
             "is_delta",
             "current_value",
             "rate_of_change",
@@ -313,6 +323,7 @@ class FailurePredictionEvents(Base):
                 {
                     "systime": t_now,
                     "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
                     "is_delta": True,
                     "current_value": current_val,
                     "rate_of_change": rate,

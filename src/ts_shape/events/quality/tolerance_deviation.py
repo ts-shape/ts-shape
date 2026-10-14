@@ -159,6 +159,9 @@ class ToleranceDeviationEvents(Base):
 
         Returns:
             pd.DataFrame: A DataFrame of processed and grouped event data with enhanced metrics.
+            Columns: systime, uuid (the event uuid), source_uuid (the actual
+            measurement signal's uuid), the value columns, is_delta,
+            deviation_abs, deviation_pct and severity.
         """
         df = self.dataframe.copy()  # Inherited from Base class
 
@@ -179,6 +182,8 @@ class ToleranceDeviationEvents(Base):
         if self.tolerance_lag != "0s":
             df = self._apply_tolerance_lag(df, "tolerance_value")
 
+        # Every event row is about the actual measurement signal.
+        df["source_uuid"] = self.actual_uuid
         return df
 
     def _process_single_tolerance(self, df: pd.DataFrame) -> pd.DataFrame:

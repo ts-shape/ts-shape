@@ -226,3 +226,27 @@ class TestConstructorValidation:
         )
         with pytest.raises(ValueError, match="lower_spec"):
             CapabilityTrendingEvents(df, "s1", upper_spec=10.0)
+
+
+def test_capability_forecast_counts_windows_from_each_window():
+    """Regression: windows_to_threshold was (breach - 2*i), not (breach - i)."""
+    import numpy as np
+
+    from ts_shape.events.quality.capability_trending import CapabilityTrendingEvents
+
+    rng = np.random.default_rng(0)
+    rows = []
+    for day in range(10):
+        spread = 0.5 + 0.1 * day  # widening spread: Cpk falls every day
+        t = pd.date_range(f"2024-01-{day + 1:02d}", periods=50, freq="20min")
+        vals = 10 + rng.normal(0, spread, len(t))
+        rows.append(pd.DataFrame({"systime": t, "uuid": "dim", "value_double": vals}))
+    df = pd.concat(rows, ignore_index=True)
+    ev = CapabilityTrendingEvents(df, "dim", upper_spec=13.0, lower_spec=7.0)
+    out = ev.capability_forecast(window="1D", threshold=1.0)
+    slope = out["trend_slope"].iloc[0]
+    assert slope < 0
+    # consecutive windows are exactly one window closer to the breach
+    steps = out["windows_to_threshold"].diff().dropna()
+    steps = steps[out["windows_to_threshold"].iloc[1:].to_numpy() > 0]
+    assert np.allclose(steps, -1.0, atol=0.11)

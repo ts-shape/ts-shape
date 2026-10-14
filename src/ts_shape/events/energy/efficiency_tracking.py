@@ -3,6 +3,7 @@ import logging
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments, counter_per_window
 from ts_shape.utils.time_weighted import time_weighted_resample
@@ -105,8 +106,8 @@ class EnergyEfficiencyEvents(Base):
                 ``False`` keeps the per-window ``max - min``.
 
         Returns:
-            DataFrame: start, uuid, source_uuid, is_delta,
-                       energy, units, efficiency, rolling_avg_efficiency,
+            DataFrame: start, end, duration_seconds, uuid, source_uuid,
+                       is_delta, energy, units, efficiency, rolling_avg_efficiency,
                        trend_direction
         """
         # Aggregate energy
@@ -122,18 +123,21 @@ class EnergyEfficiencyEvents(Base):
         )
 
         if energy_data.empty or counter_data.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "energy",
-                    "units",
-                    "efficiency",
-                    "rolling_avg_efficiency",
-                    "trend_direction",
-                ]
+            return with_window_bounds(
+                pd.DataFrame(
+                    columns=[
+                        "start",
+                        "uuid",
+                        "source_uuid",
+                        "is_delta",
+                        "energy",
+                        "units",
+                        "efficiency",
+                        "rolling_avg_efficiency",
+                        "trend_direction",
+                    ]
+                ),
+                window,
             )
 
         energy_data[self.time_column] = pd.to_datetime(energy_data[self.time_column])
@@ -153,18 +157,21 @@ class EnergyEfficiencyEvents(Base):
         merged = merged.rename(columns={self.time_column: "start"})
 
         if merged.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "energy",
-                    "units",
-                    "efficiency",
-                    "rolling_avg_efficiency",
-                    "trend_direction",
-                ]
+            return with_window_bounds(
+                pd.DataFrame(
+                    columns=[
+                        "start",
+                        "uuid",
+                        "source_uuid",
+                        "is_delta",
+                        "energy",
+                        "units",
+                        "efficiency",
+                        "rolling_avg_efficiency",
+                        "trend_direction",
+                    ]
+                ),
+                window,
             )
 
         merged["efficiency"] = np.where(
@@ -188,19 +195,22 @@ class EnergyEfficiencyEvents(Base):
         merged["source_uuid"] = meter_uuid
         merged["is_delta"] = True
 
-        return merged[
-            [
-                "start",
-                "uuid",
-                "source_uuid",
-                "is_delta",
-                "energy",
-                "units",
-                "efficiency",
-                "rolling_avg_efficiency",
-                "trend_direction",
-            ]
-        ]
+        return with_window_bounds(
+            merged[
+                [
+                    "start",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "energy",
+                    "units",
+                    "efficiency",
+                    "rolling_avg_efficiency",
+                    "trend_direction",
+                ]
+            ],
+            window,
+        )
 
     def idle_energy_waste(
         self,
@@ -232,8 +242,8 @@ class EnergyEfficiencyEvents(Base):
                 windows without a state row drop their energy.
 
         Returns:
-            DataFrame: start, uuid, source_uuid, is_delta,
-                       energy_consumed, machine_running_pct, is_idle_waste,
+            DataFrame: start, end, duration_seconds, uuid, source_uuid,
+                       is_delta, energy_consumed, machine_running_pct, is_idle_waste,
                        waste_energy
         """
         energy = (
@@ -248,17 +258,20 @@ class EnergyEfficiencyEvents(Base):
         )
 
         if energy.empty or state.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "energy_consumed",
-                    "machine_running_pct",
-                    "is_idle_waste",
-                    "waste_energy",
-                ]
+            return with_window_bounds(
+                pd.DataFrame(
+                    columns=[
+                        "start",
+                        "uuid",
+                        "source_uuid",
+                        "is_delta",
+                        "energy_consumed",
+                        "machine_running_pct",
+                        "is_idle_waste",
+                        "waste_energy",
+                    ]
+                ),
+                window,
             )
 
         energy[self.time_column] = pd.to_datetime(energy[self.time_column])
@@ -305,18 +318,21 @@ class EnergyEfficiencyEvents(Base):
         merged["source_uuid"] = meter_uuid
         merged["is_delta"] = True
 
-        return merged[
-            [
-                "start",
-                "uuid",
-                "source_uuid",
-                "is_delta",
-                "energy_consumed",
-                "machine_running_pct",
-                "is_idle_waste",
-                "waste_energy",
-            ]
-        ]
+        return with_window_bounds(
+            merged[
+                [
+                    "start",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "energy_consumed",
+                    "machine_running_pct",
+                    "is_idle_waste",
+                    "waste_energy",
+                ]
+            ],
+            window,
+        )
 
     def specific_energy_consumption(
         self,
@@ -344,8 +360,8 @@ class EnergyEfficiencyEvents(Base):
                 ``False`` keeps the per-window ``max - min``.
 
         Returns:
-            DataFrame: start, uuid, source_uuid, is_delta,
-                       total_energy, total_output, sec, sec_trend
+            DataFrame: start, end, duration_seconds, uuid, source_uuid,
+                       is_delta, total_energy, total_output, sec, sec_trend
         """
         energy = (
             self.dataframe[self.dataframe[self._uuid_column] == meter_uuid]
@@ -359,17 +375,20 @@ class EnergyEfficiencyEvents(Base):
         )
 
         if energy.empty or counter.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "total_energy",
-                    "total_output",
-                    "sec",
-                    "sec_trend",
-                ]
+            return with_window_bounds(
+                pd.DataFrame(
+                    columns=[
+                        "start",
+                        "uuid",
+                        "source_uuid",
+                        "is_delta",
+                        "total_energy",
+                        "total_output",
+                        "sec",
+                        "sec_trend",
+                    ]
+                ),
+                window,
             )
 
         energy[self.time_column] = pd.to_datetime(energy[self.time_column])
@@ -406,18 +425,21 @@ class EnergyEfficiencyEvents(Base):
         merged["source_uuid"] = meter_uuid
         merged["is_delta"] = True
 
-        return merged[
-            [
-                "start",
-                "uuid",
-                "source_uuid",
-                "is_delta",
-                "total_energy",
-                "total_output",
-                "sec",
-                "sec_trend",
-            ]
-        ]
+        return with_window_bounds(
+            merged[
+                [
+                    "start",
+                    "uuid",
+                    "source_uuid",
+                    "is_delta",
+                    "total_energy",
+                    "total_output",
+                    "sec",
+                    "sec_trend",
+                ]
+            ],
+            window,
+        )
 
     def efficiency_comparison(
         self,

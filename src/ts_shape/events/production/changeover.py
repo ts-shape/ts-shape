@@ -17,6 +17,7 @@ class ChangeoverEvents(Base):
     Methods:
     - detect_changeover: point events when product/recipe changes.
     - changeover_window: derive an end time via fixed window or 'stable_band' metrics.
+    - changeover_quality_metrics: per-product changeover counts and time between changeovers.
     """
 
     def __init__(
@@ -109,6 +110,11 @@ class ChangeoverEvents(Base):
                   'target_values': {'m1': 100.0, ...}  # for target_value
                 }
         fallback: {'default_duration': '10min', 'completed': False}
+
+        Returns:
+            DataFrame with columns: start, end, duration_seconds (float
+            seconds, end - start), uuid, source_uuid, is_delta, method,
+            completed.
         """
         config = config or {}
         fallback = fallback or {"default_duration": "10min", "completed": False}
@@ -125,6 +131,7 @@ class ChangeoverEvents(Base):
                 columns=[
                     "start",
                     "end",
+                    "duration_seconds",
                     "uuid",
                     "source_uuid",
                     "is_delta",
@@ -182,7 +189,11 @@ class ChangeoverEvents(Base):
                 }
             )
 
-        return pd.DataFrame(rows)
+        out = pd.DataFrame(rows)
+        out.insert(
+            2, "duration_seconds", (out["end"] - out["start"]).dt.total_seconds()
+        )
+        return out
 
     def _compute_stable_band_end(
         self, t0: pd.Timestamp, config: dict[str, Any]

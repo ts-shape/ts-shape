@@ -7,9 +7,12 @@ Simple module for shift summaries:
 """
 
 import logging
+import warnings
+from typing import Literal, overload
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.shifts import production_dates
@@ -118,7 +121,7 @@ class ShiftReporting(Base):
         value_column_part: str = "value_string",
         date: str | None = None,
         handle_resets: bool = False,
-        production_day: bool = False,
+        production_day: bool = True,
     ) -> pd.DataFrame:
         """Production quantity per shift.
 
@@ -143,12 +146,16 @@ class ShiftReporting(Base):
             production_day: When True, the post-midnight portion of an overnight
                 shift (e.g. ``22:00 -> 06:00``) is attributed to the shift's
                 start date, so a night shift is one contiguous ``(date, shift)``
-                group instead of being split across two calendar dates. When
-                False (default), grouping is by raw calendar date. Only affects
+                group instead of being split across two calendar dates (the
+                default). When False, grouping is by raw calendar date. Only affects
                 schedules with an overnight shift.
 
         Returns:
             DataFrame with production by shift:
+            - start: Start of the shift window (``date`` at the shift start
+                time from ``shift_definitions``, tz-aware in the data's tz)
+            - end: End of the shift window (next day for overnight shifts)
+            - duration_seconds: Shift window length in seconds
             - date: Production date
             - shift: Shift name
             - part_number: Part number (if part_id_uuid provided)
@@ -169,13 +176,15 @@ class ShiftReporting(Base):
             .sort_values(self.time_column)
         )
 
+        cols = ["date", "shift", "quantity"]
+        if part_id_uuid:
+            cols.insert(2, "part_number")
+        if handle_resets:
+            cols.append("resets")
         if counter_data.empty:
-            cols = ["date", "shift", "quantity"]
-            if part_id_uuid:
-                cols.insert(2, "part_number")
-            if handle_resets:
-                cols.append("resets")
-            return pd.DataFrame(columns=cols)
+            return add_shift_window(
+                pd.DataFrame(columns=cols), self.shift_definitions, None
+            )
 
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
 
@@ -260,7 +269,14 @@ class ShiftReporting(Base):
 
             results.append(row)
 
-        return pd.DataFrame(results)
+        out = pd.DataFrame(results)
+        if out.empty:
+            out = pd.DataFrame(columns=cols)
+        return add_shift_window(
+            out,
+            self.shift_definitions,
+            data_tz(counter_data[self.time_column]),
+        )
 
     def shift_comparison(
         self,
@@ -397,24 +413,59 @@ class ShiftReporting(Base):
             ["date", "shift", "actual", "target", "variance", "achievement_pct"]
         ]
 
+    @overload
+    def best_and_worst_shifts(
+        self,
+        counter_uuid: str,
+        *,
+        value_column_counter: str = ...,
+        days: int = ...,
+        as_frame: Literal[False] = ...,
+    ) -> dict[str, pd.DataFrame]: ...
+
+    @overload
+    def best_and_worst_shifts(
+        self,
+        counter_uuid: str,
+        *,
+        value_column_counter: str = ...,
+        days: int = ...,
+        as_frame: Literal[True],
+    ) -> pd.DataFrame: ...
+
     def best_and_worst_shifts(
         self,
         counter_uuid: str,
         *,
         value_column_counter: str = "value_integer",
         days: int = 30,
-    ) -> dict[str, pd.DataFrame]:
+        as_frame: bool = False,
+    ) -> dict[str, pd.DataFrame] | pd.DataFrame:
         """Identify best and worst performing shifts.
 
         Args:
             counter_uuid: Production counter UUID
             value_column_counter: Column containing counter values
             days: Number of recent days to analyze (default: 30)
+            as_frame: When True, return a single DataFrame (see below) instead
+                of the dict. The dict return is deprecated: calling with the
+                default ``as_frame=False`` emits a ``FutureWarning``, and 1.0
+                will return the DataFrame.
 
         Returns:
-            Dictionary with:
-            - 'best': Top 5 best shifts
-            - 'worst': Top 5 worst shifts
+            With ``as_frame=False`` (default), a dictionary with:
+            - 'best': Top 5 best shifts (columns date, shift, quantity)
+            - 'worst': Top 5 worst shifts (columns date, shift, quantity)
+
+            With ``as_frame=True``, one DataFrame with columns:
+            - start, end, duration_seconds: the shift window (``date`` at the
+                shift start time, tz-aware in the data's tz; an overnight
+                shift ends on the next day)
+            - rank_type: ``'best'`` or ``'worst'``
+            - date, shift, quantity
+            The best rows come first (highest quantity first), then the worst
+            rows (lowest quantity first). A shift can appear in both groups
+            when there are fewer than ten shifts.
 
         Example:
             >>> results = best_and_worst_shifts('counter')
@@ -424,12 +475,24 @@ class ShiftReporting(Base):
             1   2024-01-18  shift_1  490
             2   2024-01-22  shift_2  485
         """
+        if not as_frame:
+            warnings.warn(
+                "best_and_worst_shifts() will return a DataFrame "
+                "(as_frame=True) in 1.0",
+                FutureWarning,
+                stacklevel=2,
+            )
+
         shift_prod = self.shift_production(
             counter_uuid, value_column_counter=value_column_counter
         )
+        key_cols = ["date", "shift", "quantity"]
+        frame_cols = ["start", "end", "duration_seconds", "rank_type", *key_cols]
 
         if shift_prod.empty:
-            empty_df = pd.DataFrame(columns=["date", "shift", "quantity"])
+            if as_frame:
+                return pd.DataFrame(columns=frame_cols)
+            empty_df = pd.DataFrame(columns=key_cols)
             return {"best": empty_df, "worst": empty_df}
 
         # Filter to recent days
@@ -438,7 +501,20 @@ class ShiftReporting(Base):
         shift_prod = shift_prod[shift_prod["date"] >= cutoff_date]
 
         # Get best and worst
-        best = shift_prod.nlargest(5, "quantity")[["date", "shift", "quantity"]]
-        worst = shift_prod.nsmallest(5, "quantity")[["date", "shift", "quantity"]]
+        best_rows = shift_prod.nlargest(5, "quantity")
+        worst_rows = shift_prod.nsmallest(5, "quantity")
+
+        if as_frame:
+            out = pd.concat(
+                [
+                    best_rows.assign(rank_type="best"),
+                    worst_rows.assign(rank_type="worst"),
+                ],
+                ignore_index=True,
+            )
+            return out[frame_cols]
+
+        best = best_rows[key_cols]
+        worst = worst_rows[key_cols]
 
         return {"best": best, "worst": worst}

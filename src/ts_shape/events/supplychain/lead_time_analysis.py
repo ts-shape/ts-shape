@@ -67,13 +67,19 @@ class LeadTimeAnalysisEvents(Base):
             value_column: Column containing order identifiers.
 
         Returns:
-            DataFrame with columns: order_time, delivery_time, uuid, is_delta,
-            lead_time_seconds, lead_time_hours, order_id.
+            DataFrame with columns: start, end, duration_seconds, order_time,
+            delivery_time, uuid, source_uuid, is_delta, lead_time_seconds,
+            lead_time_hours, order_id. ``start``/``end`` are the order and
+            delivery times; ``source_uuid`` is ``"<order_uuid>,<delivery_uuid>"``.
         """
         empty_cols = [
+            "start",
+            "end",
+            "duration_seconds",
             "order_time",
             "delivery_time",
             "uuid",
+            "source_uuid",
             "is_delta",
             "lead_time_seconds",
             "lead_time_hours",
@@ -143,9 +149,13 @@ class LeadTimeAnalysisEvents(Base):
 
         result = pd.DataFrame(
             {
+                "start": order_times.reset_index(drop=True),
+                "end": delivery_times.reset_index(drop=True),
+                "duration_seconds": lead_seconds,
                 "order_time": order_times.reset_index(drop=True),
                 "delivery_time": delivery_times.reset_index(drop=True),
                 "uuid": self.event_uuid,
+                "source_uuid": f"{order_uuid},{delivery_uuid}",
                 "is_delta": True,
                 "lead_time_seconds": lead_seconds,
                 "lead_time_hours": lead_seconds / 3600.0,
@@ -219,13 +229,16 @@ class LeadTimeAnalysisEvents(Base):
             value_column: Column containing order identifiers.
 
         Returns:
-            DataFrame with columns: order_time, delivery_time, uuid, is_delta,
-            lead_time_hours, z_score.
+            DataFrame with columns: systime, order_time, delivery_time, uuid,
+            source_uuid, is_delta, lead_time_hours, z_score. ``systime`` is
+            the delivery time (when the anomaly becomes known).
         """
         empty_cols = [
+            "systime",
             "order_time",
             "delivery_time",
             "uuid",
+            "source_uuid",
             "is_delta",
             "lead_time_hours",
             "z_score",
@@ -249,13 +262,5 @@ class LeadTimeAnalysisEvents(Base):
         if anomalies.empty:
             return pd.DataFrame(columns=empty_cols)
 
-        return anomalies[
-            [
-                "order_time",
-                "delivery_time",
-                "uuid",
-                "is_delta",
-                "lead_time_hours",
-                "z_score",
-            ]
-        ].reset_index(drop=True)
+        anomalies["systime"] = anomalies["delivery_time"]
+        return anomalies[empty_cols].reset_index(drop=True)

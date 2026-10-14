@@ -9,6 +9,7 @@ import logging
 import numpy as np
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -73,19 +74,20 @@ class DemandPatternEvents(Base):
             period: Pandas offset alias for grouping (e.g. ``'1D'``, ``'1h'``).
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta,
-            total_demand, avg_demand, peak_demand.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, total_demand, avg_demand, peak_demand.
         """
         empty_cols = [
             "start",
             "uuid",
+            "source_uuid",
             "is_delta",
             "total_demand",
             "avg_demand",
             "peak_demand",
         ]
         if self.demand.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), period)
 
         dm = self.demand[[self.time_column, self.value_column]].copy()
         dm = dm.set_index(self.time_column)
@@ -110,12 +112,13 @@ class DemandPatternEvents(Base):
         result = result.dropna(subset=["total_demand"]).copy()
 
         if result.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), period)
 
         result["uuid"] = self.event_uuid
+        result["source_uuid"] = self.demand_uuid
         result["is_delta"] = True
 
-        return result[empty_cols].reset_index(drop=True)
+        return with_window_bounds(result[empty_cols].reset_index(drop=True), period)
 
     def detect_demand_spikes(
         self,
@@ -130,41 +133,44 @@ class DemandPatternEvents(Base):
             window: Pandas offset alias for aggregation period.
 
         Returns:
-            DataFrame with columns: start, uuid, is_delta,
-            demand, baseline_mean, spike_magnitude.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, is_delta, demand, baseline_mean, spike_magnitude.
+            ``end`` is ``start`` plus ``window``.
         """
         empty_cols = [
             "start",
             "uuid",
+            "source_uuid",
             "is_delta",
             "demand",
             "baseline_mean",
             "spike_magnitude",
         ]
         if self.demand.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         period_data = self.demand_by_period(period=window)
 
         if period_data.empty or len(period_data) < 2:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         mean_demand = period_data["total_demand"].mean()
         std_demand = period_data["total_demand"].std()
 
         if std_demand == 0 or np.isnan(std_demand):
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         threshold = mean_demand + threshold_factor * std_demand
         spikes = period_data[period_data["total_demand"] > threshold].copy()
 
         if spikes.empty:
-            return pd.DataFrame(columns=empty_cols)
+            return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         result = pd.DataFrame(
             {
                 "start": spikes["start"].array,
                 "uuid": self.event_uuid,
+                "source_uuid": self.demand_uuid,
                 "is_delta": True,
                 "demand": spikes["total_demand"].values,
                 "baseline_mean": mean_demand,
@@ -172,7 +178,7 @@ class DemandPatternEvents(Base):
             }
         )
 
-        return result[empty_cols].reset_index(drop=True)
+        return with_window_bounds(result[empty_cols].reset_index(drop=True), window)
 
     def seasonality_summary(
         self,

@@ -173,6 +173,8 @@ class TestIdleEnergyDetectionEvents:
         )
         expected = [
             "start",
+            "end",
+            "duration_seconds",
             "uuid",
             "source_uuid",
             "is_delta",
@@ -238,6 +240,36 @@ class TestIdleEnergyDetectionEvents:
             state_column="value",
         )
         assert not result.empty
+
+
+class TestIdleFractionScale:
+    """machine_running_pct is a 0-1 fraction, so idle_fraction = 1 - pct."""
+
+    @staticmethod
+    def _frame() -> pd.DataFrame:
+        # One hour, 10 one-per-6min samples: 3 running, 7 idle; 1 kWh each.
+        t = pd.date_range("2026-01-13 08:00", periods=10, freq="6min", tz="UTC")
+        energy = pd.DataFrame({"systime": t, "uuid": "meter:main", "value_double": 1.0})
+        state = pd.DataFrame(
+            {"systime": t, "uuid": "state:m1", "value_bool": [True] * 3 + [False] * 7}
+        )
+        return pd.concat([energy, state], ignore_index=True)
+
+    def test_by_window_uses_fraction(self):
+        ev = IdleEnergyDetectionEvents(self._frame())
+        row = ev.idle_energy_by_window("meter:main", "state:m1", window="1h").iloc[0]
+        assert row["machine_running_pct"] == pytest.approx(0.3)
+        assert row["idle_fraction"] == pytest.approx(0.7)
+        assert row["idle_energy"] == pytest.approx(7.0)
+        assert row["running_energy"] == pytest.approx(3.0)
+        assert row["duration_seconds"] == pytest.approx(3600.0)
+
+    def test_by_shift_uses_fraction(self):
+        ev = IdleEnergyDetectionEvents(self._frame())
+        res = ev.idle_energy_by_shift("meter:main", "state:m1").set_index("shift")
+        assert res.loc["shift_1", "total_energy"] == pytest.approx(10.0)
+        assert res.loc["shift_1", "idle_energy"] == pytest.approx(7.0)
+        assert res.loc["shift_1", "waste_fraction"] == pytest.approx(0.7)
 
 
 # ── EnergyPerformanceIndicatorEvents ─────────────────────────────────────────

@@ -45,15 +45,19 @@ class CycleTimeTracking(Base):
         dataframe: pd.DataFrame,
         *,
         time_column: str = "systime",
+        event_uuid: str = "prod:cycle_time",
     ) -> None:
         """Initialize cycle time tracker.
 
         Args:
             dataframe: Input DataFrame with timeseries data
             time_column: Name of timestamp column (default: 'systime')
+            event_uuid: UUID tagged on derived cycle events (the ``uuid``
+                column of point outputs; default: 'prod:cycle_time')
         """
         super().__init__(dataframe, column_name=time_column)
         self.time_column = time_column
+        self.event_uuid = event_uuid
 
     def cycle_time_by_part(
         self,
@@ -81,6 +85,8 @@ class CycleTimeTracking(Base):
         Returns:
             DataFrame with columns:
             - systime: Cycle completion time
+            - uuid: Event UUID of this tracker
+            - source_uuid: The cycle trigger UUID
             - part_number: Part number/ID
             - cycle_time_seconds: Cycle time in seconds
 
@@ -100,7 +106,13 @@ class CycleTimeTracking(Base):
 
         if cycles.empty:
             return pd.DataFrame(
-                columns=["systime", "part_number", "cycle_time_seconds"]
+                columns=[
+                    "systime",
+                    "uuid",
+                    "source_uuid",
+                    "part_number",
+                    "cycle_time_seconds",
+                ]
             )
 
         cycles[self.time_column] = pd.to_datetime(cycles[self.time_column])
@@ -120,7 +132,13 @@ class CycleTimeTracking(Base):
 
         if len(times) < 2:
             return pd.DataFrame(
-                columns=["systime", "part_number", "cycle_time_seconds"]
+                columns=[
+                    "systime",
+                    "uuid",
+                    "source_uuid",
+                    "part_number",
+                    "cycle_time_seconds",
+                ]
             )
 
         # Calculate cycle times
@@ -152,6 +170,8 @@ class CycleTimeTracking(Base):
                 no_part = no_part[
                     no_part["cycle_time_seconds"] <= cap_seconds
                 ].reset_index(drop=True)
+            no_part.insert(1, "uuid", self.event_uuid)
+            no_part.insert(2, "source_uuid", cycle_trigger_uuid)
             return no_part
 
         part_data[self.time_column] = pd.to_datetime(part_data[self.time_column])
@@ -182,7 +202,10 @@ class CycleTimeTracking(Base):
                 result_df["cycle_time_seconds"] <= cap_seconds
             ].reset_index(drop=True)
 
-        return result_df[["systime", "part_number", "cycle_time_seconds"]]
+        result_df = result_df[["systime", "part_number", "cycle_time_seconds"]].copy()
+        result_df.insert(1, "uuid", self.event_uuid)
+        result_df.insert(2, "source_uuid", cycle_trigger_uuid)
+        return result_df
 
     def cycle_time_statistics(
         self,
@@ -274,6 +297,8 @@ class CycleTimeTracking(Base):
         Returns:
             DataFrame with slow cycles:
             - systime: Cycle completion time
+            - uuid: Event UUID of this tracker
+            - source_uuid: The cycle trigger UUID
             - part_number: Part number/ID
             - cycle_time_seconds: Actual cycle time
             - median_seconds: Expected (median) cycle time
@@ -297,6 +322,8 @@ class CycleTimeTracking(Base):
             return pd.DataFrame(
                 columns=[
                     "systime",
+                    "uuid",
+                    "source_uuid",
                     "part_number",
                     "cycle_time_seconds",
                     "median_seconds",

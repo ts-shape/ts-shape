@@ -184,7 +184,8 @@ class EnvironmentalCompensationEvents(Base):
 
         Returns:
             DataFrame with columns: systime, uuid, value_double,
-            compensated_value, correction_applied.
+            compensated_value, correction_applied, source_uuid. ``uuid``
+            and ``source_uuid`` both carry the measured signal's uuid.
         """
         cols = [
             "systime",
@@ -192,6 +193,7 @@ class EnvironmentalCompensationEvents(Base):
             "value_double",
             "compensated_value",
             "correction_applied",
+            "source_uuid",
         ]
         aligned = self._build_aligned()
         if aligned.empty:
@@ -221,6 +223,7 @@ class EnvironmentalCompensationEvents(Base):
                 "value_double": aligned["signal"].values,
                 "compensated_value": np.round(compensated.values, 8),
                 "correction_applied": np.round(correction.values, 8),
+                "source_uuid": self.signal_uuid,
             }
         )
 

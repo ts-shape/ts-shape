@@ -4,6 +4,7 @@ from typing import Any
 
 import pandas as pd  # type: ignore
 
+from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -73,8 +74,11 @@ class MultiSensorValidationEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: start, end, max_spread,
-            sensor_high, sensor_low, duration.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, max_spread, sensor_high, sensor_low, duration.
+            ``duration`` is a Timedelta; ``duration_seconds`` is the same
+            span in float seconds. ``source_uuid`` is the comma-joined
+            sensor uuids.
         """
         cols = [
             "start",
@@ -85,7 +89,13 @@ class MultiSensorValidationEvents(Base):
             "duration",
         ]
         if self._pivot.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "interval",
+                uuid=self.event_uuid,
+                source_uuid=",".join(self.sensor_uuids),
+            )
 
         events: list[dict[str, Any]] = []
         for ts, group in self._pivot.resample(window):
@@ -112,8 +122,12 @@ class MultiSensorValidationEvents(Base):
                     }
                 )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "interval",
+            uuid=self.event_uuid,
+            source_uuid=",".join(self.sensor_uuids),
         )
 
     def pairwise_bias(self, window: str = "1h") -> pd.DataFrame:
@@ -168,12 +182,21 @@ class MultiSensorValidationEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: start, consensus_mean,
-            spread_std, consensus_score.
+            DataFrame with columns: start, end, duration_seconds, uuid,
+            source_uuid, consensus_mean, spread_std, consensus_score.
+            ``end`` is ``start`` plus one ``window``; ``source_uuid`` is the
+            comma-joined sensor uuids.
         """
         cols = ["start", "consensus_mean", "spread_std", "consensus_score"]
         if self._pivot.empty:
-            return pd.DataFrame(columns=cols)
+            return finish_events(
+                [],
+                cols,
+                "summary",
+                uuid=self.event_uuid,
+                source_uuid=",".join(self.sensor_uuids),
+                window=window,
+            )
 
         events: list[dict[str, Any]] = []
         for ts, group in self._pivot.resample(window):
@@ -203,8 +226,13 @@ class MultiSensorValidationEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return finish_events(
+            events,
+            cols,
+            "summary",
+            uuid=self.event_uuid,
+            source_uuid=",".join(self.sensor_uuids),
+            window=window,
         )
 
     def identify_outlier_sensor(

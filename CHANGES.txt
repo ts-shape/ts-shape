@@ -1,4 +1,22 @@
 # October 14, 2026 (round 4)
+fix: every detector output now carries the canonical columns of its shape
+  (intervals start/end/duration_seconds/uuid/source_uuid, summaries
+  start/end/duration_seconds, points systime/uuid/source_uuid): 276 of 277
+  harness-callable methods conform, up from 78. Columns were only added,
+  never removed or renamed. The taxonomy declares the shape each method
+  really returns (69 corrected). Empty results keep the full column set;
+  six methods that returned frames without columns now return the schema.
+  The invariant harness checks `shape` and `empty_schema` for every method.
+fix: weekly / month-end windows ('W', 'ME', ...) reported the bin's last day
+  as `start`; windows now span their real [start, end).
+fix: night shifts are one (date, shift) row: production_day=True is the
+  default (False keeps calendar-date grouping, which split a night across
+  two rows that each mixed two nights); downtime_by_shift,
+  performance_by_shift and setup_durations gained the option.
+fix: CapabilityTrendingEvents.capability_forecast subtracted the window index
+  twice, understating windows_to_threshold for later windows.
+add: ShiftReporting.best_and_worst_shifts(as_frame=True); the dict default
+  emits a FutureWarning.
 add: ReliabilityEvents (events/maintenance/reliability.py) -- reliability
   KPIs from a failure-state signal (fault bit or status codes), built on
   signals.primitives.intervals so states hold until the next change and

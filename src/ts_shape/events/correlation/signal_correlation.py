@@ -86,8 +86,9 @@ class SignalCorrelationEvents(Base):
             window: Rolling window size (in resampled periods).
 
         Returns:
-            DataFrame: systime, uuid, source_uuid_a, source_uuid_b,
-                       is_delta, correlation
+            DataFrame: systime, uuid, source_uuid, source_uuid_a,
+                       source_uuid_b, is_delta, correlation. ``source_uuid``
+                       is ``"<uuid_a>,<uuid_b>"``.
         """
         # Keep the regular grid: rolling over dropna()'d rows let a window of
         # `window` rows span a multi-day gap.
@@ -97,6 +98,7 @@ class SignalCorrelationEvents(Base):
                 columns=[
                     "systime",
                     "uuid",
+                    "source_uuid",
                     "source_uuid_a",
                     "source_uuid_b",
                     "is_delta",
@@ -113,6 +115,7 @@ class SignalCorrelationEvents(Base):
             {
                 "systime": aligned.index,
                 "uuid": self.event_uuid,
+                "source_uuid": f"{uuid_a},{uuid_b}",
                 "source_uuid_a": uuid_a,
                 "source_uuid_b": uuid_b,
                 "is_delta": True,
@@ -151,24 +154,24 @@ class SignalCorrelationEvents(Base):
 
         Returns:
             DataFrame: start, end, uuid, source_uuid_a, source_uuid_b,
-                       is_delta, min_correlation, duration_seconds
+                       is_delta, min_correlation, duration_seconds. Empty
+                       (same columns) when no breakdown is found.
         """
         corr_df = self.rolling_correlation(
             uuid_a, uuid_b, resample=resample, window=window
         )
+        cols = [
+            "start",
+            "end",
+            "uuid",
+            "source_uuid_a",
+            "source_uuid_b",
+            "is_delta",
+            "min_correlation",
+            "duration_seconds",
+        ]
         if corr_df.empty:
-            return pd.DataFrame(
-                columns=[
-                    "start",
-                    "end",
-                    "uuid",
-                    "source_uuid_a",
-                    "source_uuid_b",
-                    "is_delta",
-                    "min_correlation",
-                    "duration_seconds",
-                ]
-            )
+            return pd.DataFrame(columns=cols)
 
         corr_df["below"] = corr_df["correlation"] < threshold
         corr_df["group"] = (corr_df["below"] != corr_df["below"].shift()).cumsum()
@@ -192,7 +195,7 @@ class SignalCorrelationEvents(Base):
                 }
             )
 
-        return pd.DataFrame(rows)
+        return pd.DataFrame(rows, columns=cols)
 
     def lag_correlation(
         self,

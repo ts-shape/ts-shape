@@ -166,6 +166,10 @@ class RoutingTraceabilityEvents(Base):
     # build_routing_timeline
     # ------------------------------------------------------------------
 
+    @property
+    def _source_uuid(self) -> str:
+        return f"{self.id_uuid},{self.routing_uuid}"
+
     def build_routing_timeline(
         self, *, infer_dwell_from_next: bool = False
     ) -> pd.DataFrame:
@@ -196,6 +200,8 @@ class RoutingTraceabilityEvents(Base):
             - sample_count: Number of routing samples in interval.
             - station_sequence: Visit order per item (1-based).
             - uuid: Event UUID.
+            - source_uuid: ``"<id_uuid>,<routing_uuid>"`` (the two
+                correlated input signals).
         """
         if self.routing_data.empty or self.id_data.empty:
             return pd.DataFrame(
@@ -209,6 +215,7 @@ class RoutingTraceabilityEvents(Base):
                     "sample_count",
                     "station_sequence",
                     "uuid",
+                    "source_uuid",
                 ]
             )
 
@@ -246,6 +253,7 @@ class RoutingTraceabilityEvents(Base):
                     "sample_count",
                     "station_sequence",
                     "uuid",
+                    "source_uuid",
                 ]
             )
 
@@ -275,6 +283,7 @@ class RoutingTraceabilityEvents(Base):
         timeline = timeline.sort_values(["item_id", "start"]).reset_index(drop=True)
         timeline["station_sequence"] = timeline.groupby("item_id").cumcount() + 1
         timeline["uuid"] = self.event_uuid
+        timeline["source_uuid"] = self._source_uuid
 
         if infer_dwell_from_next:
             next_start = timeline.groupby("item_id")["start"].shift(-1)
@@ -303,6 +312,10 @@ class RoutingTraceabilityEvents(Base):
             - stations_visited: Number of distinct stations/steps.
             - routing_path: Ordered station names joined by " -> ".
             - uuid: Event UUID.
+            - start: Same as first_seen.
+            - end: Same as last_seen.
+            - duration_seconds: Same as lead_time_seconds (float seconds).
+            - source_uuid: ``"<id_uuid>,<routing_uuid>"``.
         """
         timeline = self.build_routing_timeline()
 
@@ -318,6 +331,10 @@ class RoutingTraceabilityEvents(Base):
                     "stations_visited",
                     "routing_path",
                     "uuid",
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "source_uuid",
                 ]
             )
 
@@ -338,6 +355,10 @@ class RoutingTraceabilityEvents(Base):
                     "stations_visited": grp["station_name"].nunique(),
                     "routing_path": routing_path,
                     "uuid": self.event_uuid,
+                    "start": first_seen,
+                    "end": last_seen,
+                    "duration_seconds": float((last_seen - first_seen).total_seconds()),
+                    "source_uuid": self._source_uuid,
                 }
             )
 

@@ -114,6 +114,7 @@ class TestValueTraceabilityEvents:
             "sample_count",
             "station_sequence",
             "uuid",
+            "source_uuid",
         }
         assert set(timeline.columns) == expected_cols
 
@@ -308,6 +309,7 @@ class TestRoutingTraceabilityEvents:
             "sample_count",
             "station_sequence",
             "uuid",
+            "source_uuid",
         }
         assert set(timeline.columns) == expected_cols
 
