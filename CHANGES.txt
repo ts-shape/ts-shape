@@ -1,3 +1,23 @@
+# October 14, 2026 (round 7)
+Robust and consistent behavior for every public function.
+fix: wrong results: CrossSignalAnalytics.lead_lag named the wrong leader;
+  PatternRecognition dropped the timezone, ignored row order and mixed
+  signals; event ids collided across machines so concat dropped events;
+  ValueMapper/ContextEnricher dropped columns and codes; build_paths missed
+  the last hour; boolean and string change filters missed edges;
+  fill_gaps(max_gap) measured gaps wrongly; lead_times could be negative;
+  reliability and stockout returned inf.
+fix: crashes on empty, single-row, all-NaN, text-time, nullable and pyarrow
+  input across transforms, features, signals, profile, pipeline, event log
+  and detectors; a missing column raises ColumnNotFoundError everywhere.
+change: canonical parameter names (value_column, time_column, uuid_column,
+  window) outside the detectors; old names deprecated. No data gives NaN or
+  None, unknown mapping codes are kept. See docs/migration.md.
+feat: max_gap on detect_flatline, threshold_with_hysteresis and
+  on_off_intervals; contract tests for every public function; the
+  invariant harness checks determinism, input mutation, row order,
+  output sanity, all-NaN, single-row and duplicate timestamps.
+
 # October 14, 2026 (round 6)
 Maturity of the existing functions: same numbers for any data source, fast
 on real data sizes, proven against references, traceable outputs.

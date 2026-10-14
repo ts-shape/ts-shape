@@ -6,6 +6,108 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 7: every function robust and consistent
+
+Every public function, not only the detectors, now handles empty frames,
+timezones, nullable and pyarrow dtypes, text time columns and missing
+columns the same way. Contract tests check this for every public callable.
+
+### Renamed parameters
+
+The old names work and warn.
+
+| Old | New | Where |
+|---|---|---|
+| `column_name` (a value column) | `value_column` | filters, `IntegerCalc`, `LambdaProcessor.apply_function`, `UnitConverter.convert_column`, `Numeric/Boolean/StringStatistics` |
+| `column_name` (the time column) | `time_column` | `DateTimeFilter`, `TimestampStatistics`, `ValueMapper` |
+| `freq` | `window` | `PowerIntegrator`, `DataHarmonizer.resample_to_uniform` / `merge_multi_signals`, `TimeGroupedStatistics` |
+| `df`, `uuid_col`, `value_cols`, `group_col` | `dataframe`, `uuid_column`, `value_columns`, `group_column` | `FeatureMatrixExporter.to_feature_matrix` |
+| `cycle_uuid_col`, `systime_col` | `cycle_uuid_column`, `time_column` | `CycleDataProcessor` |
+| `metric` | `value_column` | `CycleDataProcessor.compare_cycles`, `identify_golden_cycles` |
+| `metadata_uuid_col`, `tolerance_uuid_col`, `mapping_uuid_col` | `*_uuid_column` | `ContextEnricher` |
+
+`DateTimeFilter` takes the bound right after the frame:
+`filter_after_date(df, "2024-01-02", time_column="systime")`. The old order
+still works and warns.
+
+### Results that were wrong
+
+- `CrossSignalAnalytics.lead_lag` reported the leader backwards. A positive
+  `optimal_lag` now means `signal_a` leads. All its methods sort by time and
+  use only rows where both signals have a value.
+- `PatternRecognition` sorts by time, keeps the timezone, and needs `uuid=`
+  when the frame holds several signals. `normalize=False` now really uses
+  the raw distance.
+- `BooleanFilter` edges are found per uuid in time order; a missing value
+  holds the previous state. `StringFilter.detect_changes_in_string` always
+  reports the first row of each uuid, also for `string` dtype.
+- `DataHarmonizer.fill_gaps(max_gap=)` measures the gap between the valid
+  samples around it; signals without values are kept as NaN columns.
+- `LambdaProcessor.apply_function` and
+  `TimezoneShift.revert_to_original_timezone` no longer change your frame.
+- `FeatureMatrixExporter` uses the sample standard deviation (ddof=1) and
+  aggregates only `value_*` columns by default.
+- `ReliabilityEvents`, `InventoryMonitoringEvents.stockout_prediction`:
+  NaN instead of `inf`. `LeadTimeAnalysisEvents.lead_times` pairs each order
+  with the first later delivery, never a negative lead time.
+- A zero-length step (duplicate timestamp) is no data gap and starts no
+  flatline. Duplicated rows no longer duplicate outlier and tolerance events.
+- `object_intervals(min_duration=)` no longer loses an id that comes back
+  after a short blip.
+
+### Event ids
+
+`to_event_log` builds `ocel:eid` from the detector, `source_uuid`, the
+timestamps, the activity and the row's values, no longer from the row
+position. The same detector on two machines no longer collides, and `concat`
+no longer drops events. Event ids from earlier releases change.
+
+Also in `to_event_log`: a string in `objects=` that is not a column is used
+as the object id for every row; a NaN in an activity template gives
+`unknown` with a warning; interval rows with `end < start` are dropped with a
+warning; the static shape uses `timestamp=` (default 1970-01-01 UTC), not
+the current time.
+
+### No data, unknown codes
+
+- Percentages of no data (`true_percentage`, `uppercase_percentage`, ...)
+  are NaN, not 0. A mode of no data is `None`.
+- `CrossSignalAnalytics` with too little data gives NaN, not 0.0 / 1.0.
+- `ValueMapper` keeps codes the mapping table does not know, with a
+  `DataQualityWarning` (they were NaN). Duplicate keys raise `ValueError`.
+- `ContextEnricher` calls build on each other; `get_enriched_dataframe()`
+  returns the cumulative result. Duplicate keys and colliding column names
+  raise `ValueError`.
+- `ToleranceDeviationEvents.capability_indices` and `MultivariateSPCEvents`
+  with too little data give NaN / an empty result with a warning instead of
+  raising.
+
+### Errors
+
+A missing column raises `ColumnNotFoundError` (a `ValueError`) in every
+public function; it was often a `KeyError`.
+
+### Loaders, signals, rules
+
+- `DatabricksSparkParquetLoader.build_paths` includes the hour of a
+  mid-hour start and builds folder hours in UTC. `ParquetLoader` matches
+  uuids to whole file names. `EnergyAPILoader` returns UTC times.
+- `signals.align` handles mixed time units and names the time column after
+  `time_column`; `per_window` handles booleans with missing values.
+  `SignalSpec` validates its fields.
+- Lambda rule expressions reject `and`, `or`, `not`, `in` and chained
+  comparisons at compile time (use `&`, `|`, `~`, `.isin`). Interval rules
+  end at the next sample after the last true one, like `signals.intervals`.
+- `Pipeline` passes arrays and frames as step arguments and never changes
+  your input frame.
+
+### New
+
+- `max_gap` on `detect_flatline`, `threshold_with_hysteresis` and
+  `on_off_intervals`.
+- `DataHarmonizer.detect_gaps` adds `start`, `end`, `duration_seconds`.
+- `TimeGroupedStatistics.calculate_custom_func(group_by_uuid=True)`.
+
 ## October 2026, round 6: consistent outputs
 
 ### Summary methods return a DataFrame
