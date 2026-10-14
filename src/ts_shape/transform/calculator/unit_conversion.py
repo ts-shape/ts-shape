@@ -18,6 +18,7 @@ import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class UnitConverter(Base):
 
         UnitConverter.convert_value(100, "C", "F")          # 212.0
         UnitConverter.conversion_factor("bar", "psi")        # (14.5037..., 0.0)
-        UnitConverter.convert_column(df, "bar", "psi", column_name="value_double")
+        UnitConverter.convert_column(df, "bar", "psi", value_column="value_double")
     """
 
     @classmethod
@@ -128,13 +129,14 @@ class UnitConverter(Base):
         return (one - zero, zero)
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def convert_column(
         cls,
         dataframe: pd.DataFrame,
         from_unit: str,
         to_unit: str,
         *,
-        column_name: str = "value_double",
+        value_column: str = "value_double",
         target_column: str | None = None,
     ) -> pd.DataFrame:
         """Convert a numeric DataFrame column to different units.
@@ -143,27 +145,27 @@ class UnitConverter(Base):
             dataframe: The DataFrame to operate on.
             from_unit: Source unit of the column values.
             to_unit: Target unit.
-            column_name: Column holding the values to convert.
+            value_column: Column holding the values to convert.
             target_column: Column to write the converted values to. Defaults to
-                ``column_name`` (in-place on a copy).
+                ``value_column`` (in-place on a copy).
 
         Returns:
             A copy of the DataFrame with the converted column.
 
         Raises:
             ImportError: If the ``pint`` library is not installed.
-            ColumnNotFoundError: If ``column_name`` is missing.
+            ColumnNotFoundError: If ``value_column`` is missing.
             ValueError: If a unit is unknown or the units are incompatible.
 
         Warns:
             DataQualityWarning: When values are not numbers; they become NaN.
         """
         ureg = _require_pint()
-        Base._validate_column(dataframe, column_name)
+        Base._validate_column(dataframe, value_column)
         df = dataframe.copy()
-        target = target_column or column_name
+        target = target_column or value_column
         numbers = to_numeric_checked(
-            df[column_name], what=f"column {column_name!r}", stacklevel=3
+            df[value_column], what=f"column {value_column!r}", stacklevel=3
         )
         magnitudes = np.asarray(
             numbers.to_numpy(dtype="float64", na_value=np.nan), dtype="float64"

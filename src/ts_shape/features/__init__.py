@@ -127,8 +127,8 @@ Classes:
   - find_similar_pairs: Find similar (UUID, segment) pairs across all data.
 
 - FeatureMatrixExporter: Convert long-format timeseries to wide ML-ready feature matrices.
-  - to_feature_matrix: Pivot by uuid × value_col × agg into {uuid}__{col}__{agg} columns.
-    Supports optional group_col (cycle, batch, segment) as row index.
+  - to_feature_matrix: Pivot by uuid × value column × agg into {uuid}__{col}__{agg} columns.
+    Supports an optional group_column (cycle, batch, segment) as row index.
 """
 
 import importlib as _importlib

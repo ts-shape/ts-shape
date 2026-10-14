@@ -2,7 +2,7 @@ import logging
 
 import pandas as pd
 
-from ts_shape.transform.time_functions.timezone_shift import valid_timezone
+from ts_shape.transform.time_functions.timezone_shift import _valid_timezone
 from ts_shape.utils.base import Base
 from ts_shape.utils.frames import require_columns
 
@@ -41,7 +41,7 @@ class TimestampConverter(Base):
         if unit not in valid_units:
             raise ValueError(f"Invalid unit '{unit}'. Must be one of {valid_units}.")
 
-        timezone = valid_timezone(timezone)
+        timezone = _valid_timezone(timezone)
         if isinstance(columns, str):
             columns = [columns]
         require_columns(

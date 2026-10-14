@@ -90,8 +90,8 @@ values of the machine the cycles belong to.
 | `merge_dataframes_by_cycle()` | the in-cycle samples with a `cycle_uuid` column |
 | `split_by_cycle()` | `{cycle_uuid: samples}` in chronological order |
 | `compute_cycle_statistics()` | one row per cycle: `duration_seconds`, `sample_count`, `value_count`, `mean_value_double`, `std_value_double` |
-| `compare_cycles(reference_cycle_uuid, metric)` | each cycle's mean and spread against a reference cycle |
-| `identify_golden_cycles(metric, method, top_n, target=None)` | the best cycle ids by `"low_variability"`, `"high_mean"` or `"target_value"` (needs `target`) |
+| `compare_cycles(reference_cycle_uuid, value_column)` | each cycle's mean and spread against a reference cycle |
+| `identify_golden_cycles(value_column, method, top_n, target=None)` | the best cycle ids by `"low_variability"`, `"high_mean"` or `"target_value"` (needs `target`) |
 
 ## Segments (periods)
 

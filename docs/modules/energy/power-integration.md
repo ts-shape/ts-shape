@@ -16,8 +16,8 @@ t = pd.date_range("2024-01-01 06:00", periods=240, freq="1min")
 df = pd.DataFrame({"systime": t, "uuid": "press7:Total_Active_Power-kW",
                    "value_double": np.where(np.arange(240) % 60 < 45, 140.0, 20.0)})
 
-print(PowerIntegrator.energy_by_window(df, freq="1h", max_gap="15min"))
-deltas = PowerIntegrator.to_energy_deltas(df, freq="1h", max_gap="15min")
+print(PowerIntegrator.energy_by_window(df, window="1h", max_gap="15min"))
+deltas = PowerIntegrator.to_energy_deltas(df, window="1h", max_gap="15min")
 daily = EnergyConsumptionEvents(deltas).consumption_by_window("press7:Total_Active_Power-kW", window="1D")
 ```
 
@@ -27,9 +27,9 @@ All are static and keyword-only after the frame.
 
 | Method | Returns |
 |---|---|
-| `energy_by_window(df, freq='1h', method='locf', max_gap=None, total=True)` | per window: `start`, `end`, `kwh`, `avg_kw`, `coverage`, `sample_count` (+ `uuid` with `total=False`) |
-| `to_energy_deltas(df, freq='1h', ...)` | the same energy in the standard schema: `systime`, `uuid`, `value_double` (kWh), `is_delta`; feeds the energy detectors |
-| `segment_energy(df, freq='1h', ...)` | per-sample contributions (audit trail): `window_start`, `start`, `end`, `kw_start`, `kw_end`, `kwh` |
+| `energy_by_window(df, window='1h', method='locf', max_gap=None, total=True)` | per window: `start`, `end`, `kwh`, `avg_kw`, `coverage`, `sample_count` (+ `uuid` with `total=False`) |
+| `to_energy_deltas(df, window='1h', ...)` | the same energy in the standard schema: `systime`, `uuid`, `value_double` (kWh), `is_delta`; feeds the energy detectors |
+| `segment_energy(df, window='1h', ...)` | per-sample contributions (audit trail): `window_start`, `start`, `end`, `kw_start`, `kw_end`, `kwh` |
 
 ## Notes
 

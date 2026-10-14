@@ -15,7 +15,7 @@ df = ts_shape.make_timeseries(["sensor:temp"], n_points=1000, n_outliers=4)
 
 pipe = (
     Pipeline(name="sensor-quality")
-    .transform(IntegerCalc, "scale_column", column_name="value_double", factor=0.1)
+    .transform(IntegerCalc, "scale_column", value_column="value_double", factor=0.1)
     .detect(OutlierDetectionEvents, "detect_outliers_zscore",
             name="outliers", value_column="value_double", threshold=3.0)
 )

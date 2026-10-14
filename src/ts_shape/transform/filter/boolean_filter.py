@@ -5,6 +5,7 @@ import pandas as pd
 
 from ts_shape.transform.filter._sequence import scatter, time_order
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -15,36 +16,38 @@ class IsDeltaFilter(Base):
     """
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def filter_is_delta_true(
-        cls, dataframe: pd.DataFrame, column_name: str = "is_delta"
+        cls, dataframe: pd.DataFrame, value_column: str = "is_delta"
     ) -> pd.DataFrame:
         """Filters rows where 'is_delta' is True.
 
         Args:
             dataframe: Input DataFrame.
-            column_name: Name of the column to filter on. Default ``"is_delta"``.
+            value_column: Name of the column to filter on. Default ``"is_delta"``.
         """
-        Base._validate_column(dataframe, column_name)
+        Base._validate_column(dataframe, value_column)
         # ``eq`` keeps missing values out of both filters.
-        return dataframe[dataframe[column_name].eq(True)]
+        return dataframe[dataframe[value_column].eq(True)]
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def filter_is_delta_false(
-        cls, dataframe: pd.DataFrame, column_name: str = "is_delta"
+        cls, dataframe: pd.DataFrame, value_column: str = "is_delta"
     ) -> pd.DataFrame:
         """Filters rows where 'is_delta' is False.
 
         Args:
             dataframe: Input DataFrame.
-            column_name: Name of the column to filter on. Default ``"is_delta"``.
+            value_column: Name of the column to filter on. Default ``"is_delta"``.
         """
-        Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name].eq(False)]
+        Base._validate_column(dataframe, value_column)
+        return dataframe[dataframe[value_column].eq(False)]
 
 
 def _edges(
     dataframe: pd.DataFrame,
-    column_name: str,
+    value_column: str,
     *,
     group_by_uuid: bool,
     time_column: str,
@@ -57,8 +60,8 @@ def _edges(
     Each row is compared with the previous known state of the same signal in
     time order; a missing value holds the previous state.
     """
-    Base._validate_column(dataframe, column_name)
-    values = dataframe[column_name]
+    Base._validate_column(dataframe, value_column)
+    values = dataframe[value_column]
     is_true = values.eq(True).fillna(False).to_numpy(dtype=bool)
     is_false = values.eq(False).fillna(False).to_numpy(dtype=bool)
     state = np.where(is_true, 1.0, np.where(is_false, 0.0, np.nan))
@@ -87,10 +90,11 @@ class BooleanFilter(Base):
     """
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def filter_falling_value_bool(
         cls,
         dataframe: pd.DataFrame,
-        column_name: str = "value_bool",
+        value_column: str = "value_bool",
         *,
         group_by_uuid: bool = True,
         time_column: str = "systime",
@@ -100,7 +104,7 @@ class BooleanFilter(Base):
 
         Args:
             dataframe: Input DataFrame.
-            column_name: Name of the column to filter on. Default ``"value_bool"``.
+            value_column: Name of the column to filter on. Default ``"value_bool"``.
             group_by_uuid: When ``True`` (default) each row is compared with
                 the previous row of the same ``uuid`` (when the frame has a
                 ``uuid`` column), so a multi-signal frame produces no edge
@@ -119,7 +123,7 @@ class BooleanFilter(Base):
         """
         return _edges(
             dataframe,
-            column_name,
+            value_column,
             group_by_uuid=group_by_uuid,
             time_column=time_column,
             uuid_column=uuid_column,
@@ -128,10 +132,11 @@ class BooleanFilter(Base):
         )
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def filter_raising_value_bool(
         cls,
         dataframe: pd.DataFrame,
-        column_name: str = "value_bool",
+        value_column: str = "value_bool",
         *,
         group_by_uuid: bool = True,
         time_column: str = "systime",
@@ -141,7 +146,7 @@ class BooleanFilter(Base):
 
         Args:
             dataframe: Input DataFrame.
-            column_name: Name of the column to filter on. Default ``"value_bool"``.
+            value_column: Name of the column to filter on. Default ``"value_bool"``.
             group_by_uuid: When ``True`` (default) each row is compared with
                 the previous row of the same ``uuid`` (when the frame has a
                 ``uuid`` column), so a multi-signal frame produces no edge
@@ -160,7 +165,7 @@ class BooleanFilter(Base):
         """
         return _edges(
             dataframe,
-            column_name,
+            value_column,
             group_by_uuid=group_by_uuid,
             time_column=time_column,
             uuid_column=uuid_column,

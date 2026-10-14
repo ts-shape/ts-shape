@@ -6,6 +6,7 @@ from pandas.api import types as ptypes
 
 from ts_shape.transform.filter._sequence import is_first, scatter, time_order
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -32,58 +33,62 @@ class StringFilter(Base):
     """
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def filter_na_value_string(
-        cls, dataframe: pd.DataFrame, column_name: str = "value_string"
+        cls, dataframe: pd.DataFrame, value_column: str = "value_string"
     ) -> pd.DataFrame:
         """Filters out rows where the specified string column is NA.
 
         Args:
             dataframe: Input DataFrame.
-            column_name: Name of the column to filter on. Default ``"value_string"``.
+            value_column: Name of the column to filter on. Default ``"value_string"``.
         """
-        Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name].notna()]
+        Base._validate_column(dataframe, value_column)
+        return dataframe[dataframe[value_column].notna()]
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def filter_value_string_match(
         cls,
         dataframe: pd.DataFrame,
         string_value: str,
-        column_name: str = "value_string",
+        value_column: str = "value_string",
     ) -> pd.DataFrame:
         """Filters rows where the specified string column matches the provided string.
 
         Args:
             dataframe: Input DataFrame.
             string_value: Exact value to keep.
-            column_name: Name of the column to filter on. Default ``"value_string"``.
+            value_column: Name of the column to filter on. Default ``"value_string"``.
         """
-        Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name] == string_value]
+        Base._validate_column(dataframe, value_column)
+        return dataframe[dataframe[value_column] == string_value]
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def filter_value_string_not_match(
         cls,
         dataframe: pd.DataFrame,
         string_value: str,
-        column_name: str = "value_string",
+        value_column: str = "value_string",
     ) -> pd.DataFrame:
         """Filters rows where the specified string column does not match the provided string.
 
         Args:
             dataframe: Input DataFrame.
             string_value: Exact value to drop.
-            column_name: Name of the column to filter on. Default ``"value_string"``.
+            value_column: Name of the column to filter on. Default ``"value_string"``.
         """
-        Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name] != string_value]
+        Base._validate_column(dataframe, value_column)
+        return dataframe[dataframe[value_column] != string_value]
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def filter_string_contains(
         cls,
         dataframe: pd.DataFrame,
         substring: str,
-        column_name: str = "value_string",
+        value_column: str = "value_string",
         *,
         regex: bool = False,
     ) -> pd.DataFrame:
@@ -94,21 +99,22 @@ class StringFilter(Base):
             substring: Text to look for, matched literally by default, so
                 characters such as ``.``, ``(`` or ``+`` have no special
                 meaning. NA rows are dropped.
-            column_name: Name of the column to filter on. Default ``"value_string"``.
+            value_column: Name of the column to filter on. Default ``"value_string"``.
             regex: If False (default), match ``substring`` literally; if True,
                 treat it as a regular expression.
         """
-        Base._validate_column(dataframe, column_name)
-        mask = _text(dataframe[column_name]).str.contains(
+        Base._validate_column(dataframe, value_column)
+        mask = _text(dataframe[value_column]).str.contains(
             substring, na=False, regex=regex
         )
         return dataframe[mask.fillna(False).to_numpy(dtype=bool)]
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def regex_clean_value_string(
         cls,
         dataframe: pd.DataFrame,
-        column_name: str = "value_string",
+        value_column: str = "value_string",
         regex_pattern: str = r"(\d+)\s*([a-zA-Z]*)",
         replacement: str = "",
         regex: bool = True,
@@ -117,7 +123,7 @@ class StringFilter(Base):
 
         Args:
             dataframe: Input DataFrame.
-            column_name: Name of the column to clean. Default ``"value_string"``.
+            value_column: Name of the column to clean. Default ``"value_string"``.
             regex_pattern: Pattern to replace. The default matches a number followed by
                 optional whitespace and letters (a value with its unit).
             replacement: Text substituted for each match. Default ``""``.
@@ -127,20 +133,21 @@ class StringFilter(Base):
         Returns:
             A copy of ``dataframe`` with the column cleaned.
         """
-        Base._validate_column(dataframe, column_name)
+        Base._validate_column(dataframe, value_column)
         dataframe = dataframe.copy()
-        values = dataframe[column_name]
+        values = dataframe[value_column]
         if values.notna().any():
-            dataframe[column_name] = _text(values).str.replace(
+            dataframe[value_column] = _text(values).str.replace(
                 regex_pattern, replacement, regex=regex
             )
         return dataframe
 
     @classmethod
+    @renamed_kwargs(column_name="value_column")
     def detect_changes_in_string(
         cls,
         dataframe: pd.DataFrame,
-        column_name: str = "value_string",
+        value_column: str = "value_string",
         *,
         group_by_uuid: bool = True,
         time_column: str = "systime",
@@ -150,7 +157,7 @@ class StringFilter(Base):
 
         Args:
             dataframe: Input DataFrame.
-            column_name: Name of the column to filter on. Default ``"value_string"``.
+            value_column: Name of the column to filter on. Default ``"value_string"``.
             group_by_uuid: When ``True`` (default) each row is compared with
                 the previous row of the same ``uuid`` (when the frame has a
                 ``uuid`` column), so a multi-signal frame produces no change
@@ -166,7 +173,7 @@ class StringFilter(Base):
                 order. The first row (or first row of each uuid) is always
                 included; a missing value after a missing value is not a change.
         """
-        Base._validate_column(dataframe, column_name)
+        Base._validate_column(dataframe, value_column)
         order, groups = time_order(
             dataframe,
             time_column=time_column,
@@ -174,7 +181,7 @@ class StringFilter(Base):
             group_by_uuid=group_by_uuid,
             where="StringFilter.detect_changes_in_string",
         )
-        raw = dataframe[column_name].astype(object)
+        raw = dataframe[value_column].astype(object)
         values = raw.where(raw.notna(), None).to_numpy()[order]
         missing = pd.isna(values)
         previous = np.r_[np.array([None], dtype=object), values[:-1]]
@@ -187,6 +194,6 @@ class StringFilter(Base):
         if result.empty:
             logger.info(
                 "No changes detected in the '%s' column between consecutive rows.",
-                column_name,
+                value_column,
             )
         return result

@@ -726,7 +726,7 @@ def test_cycle_extractor_custom_column_names():
         lambda df: StringStatistics.count_unique(df, "nope"),
         lambda df: TimestampStatistics.earliest_timestamp(df, "nope"),
         lambda df: StringFilter.filter_na_value_string(df, "nope"),
-        lambda df: DateTimeFilter.filter_after_date(df, "nope", "2024"),
+        lambda df: DateTimeFilter.filter_after_date(df, "2024", time_column="nope"),
         lambda df: TimeGroupedStatistics.calculate_statistic(
             df, "systime", "nope", "1h", "mean"
         ),

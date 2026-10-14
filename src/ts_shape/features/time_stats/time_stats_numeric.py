@@ -7,6 +7,7 @@ import pandas as pd
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_per_window
+from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
@@ -38,13 +39,14 @@ class TimeGroupedStatistics(Base):
     """
 
     @classmethod
+    @renamed_kwargs(freq="window")
     def calculate_statistic(
         cls,
         dataframe: pd.DataFrame,
-        time_column: str,
-        value_column: str,
-        freq: str,
-        stat_method: str,
+        time_column: str = "systime",
+        value_column: str = "value_double",
+        window: str = "1h",
+        stat_method: str = "mean",
         *,
         group_by_uuid: bool = True,
         handle_resets: bool = True,
@@ -55,9 +57,13 @@ class TimeGroupedStatistics(Base):
         Args:
             dataframe (pd.DataFrame): The DataFrame containing the data.
             time_column (str): The name of the time column to group and sort by.
+                Default ``"systime"``.
             value_column (str): The name of the numeric column to calculate statistics on.
-            freq (str): Frequency string for time grouping (e.g., 'h' for hourly, 'D' for daily; pandas 3 rejects 'H').
+                Default ``"value_double"``.
+            window (str): Frequency string for time grouping (e.g., 'h' for hourly, 'D' for daily; pandas 3 rejects 'H').
+                Default ``"1h"``. ``freq`` is the deprecated name.
             stat_method (str): The statistical method to apply ('mean', 'sum', 'min', 'max', 'diff', 'range').
+                Default ``'mean'``.
             group_by_uuid (bool): When ``True`` (default) and the frame has a
                 ``uuid`` column, compute the statistic per ``uuid`` (result
                 indexed by ``uuid`` and time), so signals are never mixed.
@@ -86,7 +92,7 @@ class TimeGroupedStatistics(Base):
                     group,
                     time_column,
                     value_column,
-                    freq,
+                    window,
                     stat_method,
                     group_by_uuid=False,
                     handle_resets=handle_resets,
@@ -98,7 +104,7 @@ class TimeGroupedStatistics(Base):
                     dataframe,
                     time_column,
                     value_column,
-                    freq,
+                    window,
                     stat_method,
                     group_by_uuid=False,
                     handle_resets=handle_resets,
@@ -112,12 +118,12 @@ class TimeGroupedStatistics(Base):
             series = dataframe.sort_values(time_column).set_index(time_column)[
                 value_column
             ]
-            return counter_per_window(series, freq, handle_resets=True).to_frame(
+            return counter_per_window(series, window, handle_resets=True).to_frame(
                 "difference"
             )
 
         # Set the DataFrame index to the time column and resample to the specified frequency
-        grouped_df = dataframe.set_index(time_column).resample(freq)
+        grouped_df = dataframe.set_index(time_column).resample(window)
 
         # Select the calculation method
         if stat_method == "mean":
@@ -146,13 +152,14 @@ class TimeGroupedStatistics(Base):
         return result
 
     @classmethod
+    @renamed_kwargs(freq="window")
     def calculate_statistics(
         cls,
         dataframe: pd.DataFrame,
-        time_column: str,
-        value_column: str,
-        freq: str,
-        stat_methods: list,
+        time_column: str = "systime",
+        value_column: str = "value_double",
+        window: str = "1h",
+        stat_methods: list[str] | None = None,
         *,
         group_by_uuid: bool = True,
         handle_resets: bool = True,
@@ -163,22 +170,28 @@ class TimeGroupedStatistics(Base):
         Args:
             dataframe (pd.DataFrame): The DataFrame containing the data.
             time_column (str): The name of the time column to group and sort by.
+                Default ``"systime"``.
             value_column (str): The name of the numeric column to calculate statistics on.
-            freq (str): Frequency string for time grouping (e.g., 'h' for hourly, 'D' for daily; pandas 3 rejects 'H').
+                Default ``"value_double"``.
+            window (str): Frequency string for time grouping (e.g., 'h' for hourly, 'D' for daily; pandas 3 rejects 'H').
+                Default ``"1h"``. ``freq`` is the deprecated name.
             stat_methods (list): A list of statistical methods to apply (e.g., ['mean', 'sum', 'diff', 'range']).
+                Default ``['mean', 'min', 'max']``.
             group_by_uuid (bool): See :meth:`calculate_statistic`.
             handle_resets (bool): See :meth:`calculate_statistic`.
 
         Returns:
             pd.DataFrame: A DataFrame with the time intervals and the calculated statistics for each method.
         """
+        if stat_methods is None:
+            stat_methods = ["mean", "min", "max"]
         # One column per statistic, aligned on the (uuid,) time-window index.
         frames = [
             cls.calculate_statistic(
                 dataframe,
                 time_column,
                 value_column,
-                freq,
+                window,
                 method,
                 group_by_uuid=group_by_uuid,
                 handle_resets=handle_resets,
@@ -190,13 +203,14 @@ class TimeGroupedStatistics(Base):
         return pd.concat(frames, axis=1)
 
     @classmethod
+    @renamed_kwargs(freq="window")
     def calculate_custom_func(
         cls,
         dataframe: pd.DataFrame,
-        time_column: str,
-        value_column: str,
-        freq: str,
-        func: Callable[[pd.Series], Any],
+        time_column: str = "systime",
+        value_column: str = "value_double",
+        window: str = "1h",
+        func: Callable[[pd.Series], Any] | None = None,
         *,
         group_by_uuid: bool = True,
     ) -> pd.DataFrame:
@@ -206,9 +220,12 @@ class TimeGroupedStatistics(Base):
         Args:
             dataframe (pd.DataFrame): The DataFrame containing the data.
             time_column (str): The name of the time column to group and sort by.
+                Default ``"systime"``.
             value_column (str): The name of the numeric column to calculate statistics on.
-            freq (str): Frequency string for time grouping (e.g., 'h' for hourly, 'D' for daily; pandas 3 rejects 'H').
-            func (callable): Custom function to apply to each group.
+                Default ``"value_double"``.
+            window (str): Frequency string for time grouping (e.g., 'h' for hourly, 'D' for daily; pandas 3 rejects 'H').
+                Default ``"1h"``. ``freq`` is the deprecated name.
+            func (callable): Custom function to apply to each group (required).
             group_by_uuid (bool): See :meth:`calculate_statistic`.
 
         Returns:
@@ -216,6 +233,8 @@ class TimeGroupedStatistics(Base):
                 the column ``custom``, indexed by time window (and ``uuid``
                 when grouping by uuid).
         """
+        if func is None:
+            raise TypeError("calculate_custom_func() needs func=<callable>")
         require_columns(
             dataframe,
             [time_column, value_column],
@@ -227,7 +246,7 @@ class TimeGroupedStatistics(Base):
                     group,
                     time_column,
                     value_column,
-                    freq,
+                    window,
                     func,
                     group_by_uuid=False,
                 )
@@ -236,6 +255,6 @@ class TimeGroupedStatistics(Base):
             if parts:
                 return pd.concat(parts, names=["uuid"])
         df = _prepared(dataframe, time_column, value_column, "calculate_custom_func")
-        grouped_df = df.set_index(time_column).resample(freq)
+        grouped_df = df.set_index(time_column).resample(window)
         result: pd.DataFrame = grouped_df[value_column].apply(func).to_frame("custom")
         return result

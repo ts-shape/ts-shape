@@ -24,12 +24,12 @@ Typical use -- one number per hour from the raw ts-shape schema::
 
     from ts_shape.transform.calculator.power_integration import PowerIntegrator
 
-    PowerIntegrator.energy_by_window(df, freq="1h", max_gap="15min")
+    PowerIntegrator.energy_by_window(df, window="1h", max_gap="15min")
     #                  start                 end  duration_seconds    kwh  avg_kw  coverage  sample_count
 
 Or emit ts-shape-schema energy deltas and hand off to the energy pack::
 
-    deltas = PowerIntegrator.to_energy_deltas(df, freq="1h", max_gap="15min")
+    deltas = PowerIntegrator.to_energy_deltas(df, window="1h", max_gap="15min")
     EnergyConsumptionEvents(deltas).consumption_by_window(meter_uuid, window="1h")
 
 Note:
@@ -51,6 +51,7 @@ from pandas.tseries.offsets import Tick
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.frames import as_datetime, localize_like, require_columns
 
 logger = logging.getLogger(__name__)
@@ -140,10 +141,10 @@ def _is_fixed(offset: object) -> bool:
     return isinstance(offset, Tick)
 
 
-def _calendar_floor(ts: pd.Timestamp, freq: str) -> pd.Timestamp:
+def _calendar_floor(ts: pd.Timestamp, window: str) -> pd.Timestamp:
     """Start of the calendar period containing ``ts`` (e.g. local midnight)."""
     period_start = (
-        pd.Series(1, index=pd.DatetimeIndex([ts])).resample(freq).sum().index[0]
+        pd.Series(1, index=pd.DatetimeIndex([ts])).resample(window).sum().index[0]
     )
     return period_start
 
@@ -282,28 +283,28 @@ class PowerIntegrator(Base):
         return df.reset_index(drop=True)
 
     @staticmethod
-    def _split_on_windows(segments: pd.DataFrame, freq: str) -> pd.DataFrame:
+    def _split_on_windows(segments: pd.DataFrame, window: str) -> pd.DataFrame:
         """Cut every hold segment at window boundaries.
 
         A sample at 00:55 held until 01:05 belongs 5 minutes to hour 00 and 5
         minutes to hour 01. Flooring the sample timestamp instead would book
         all ten minutes to hour 00.
         """
-        offset = to_offset(freq)
+        offset = to_offset(window)
         start = segments["ts"]
         end = segments["end"]
         if start.empty:
             return _empty_segments(start.dtype)
         first = (
-            start.min().floor(freq)
+            start.min().floor(window)
             if _is_fixed(offset)
-            else _calendar_floor(start.min(), freq)
+            else _calendar_floor(start.min(), window)
         )
         if first + offset <= first:
-            raise ValueError(f"freq must be a positive frequency, got {freq!r}")
+            raise ValueError(f"window must be a positive frequency, got {window!r}")
         # Window boundaries on the calendar of the data's timezone: hourly
         # windows stay one real hour across DST, daily windows are 23 h / 25 h.
-        grid = pd.date_range(first, end.max(), freq=freq)
+        grid = pd.date_range(first, end.max(), freq=window)
         grid = grid.append(pd.DatetimeIndex([grid[-1] + offset]))
         while grid[-1] < end.max():
             grid = grid.append(pd.DatetimeIndex([grid[-1] + offset]))
@@ -355,11 +356,12 @@ class PowerIntegrator(Base):
     # ------------------------------------------------------------------
 
     @classmethod
+    @renamed_kwargs(freq="window")
     def segment_energy(
         cls,
         dataframe: pd.DataFrame,
         *,
-        freq: str = "1h",
+        window: str = "1h",
         method: str = "locf",
         max_gap: str | None = None,
         power_unit: str = "kW",
@@ -377,7 +379,7 @@ class PowerIntegrator(Base):
 
         Args:
             dataframe: Long-format power data (ts-shape schema by default).
-            freq: Fixed window size the segments are cut on ('1h', '15min', '1D').
+            window: Fixed window size the segments are cut on ('1h', '15min', '1D').
             method: 'locf' (step hold) or 'linear' (trapezoidal).
             max_gap: Gaps longer than this (e.g. '15min') are treated as
                 logging outages: the segment is dropped entirely and counts
@@ -421,7 +423,7 @@ class PowerIntegrator(Base):
         if segments.empty:
             return empty
 
-        parts = cls._split_on_windows(segments, freq)
+        parts = cls._split_on_windows(segments, window)
         if parts.empty:
             return empty
 
@@ -444,11 +446,12 @@ class PowerIntegrator(Base):
         return parts[_SEGMENT_COLUMNS].reset_index(drop=True)
 
     @classmethod
+    @renamed_kwargs(freq="window")
     def energy_by_window(
         cls,
         dataframe: pd.DataFrame,
         *,
-        freq: str = "1h",
+        window: str = "1h",
         method: str = "locf",
         max_gap: str | None = None,
         power_unit: str = "kW",
@@ -462,7 +465,7 @@ class PowerIntegrator(Base):
 
         Args:
             dataframe: Long-format power data (ts-shape schema by default).
-            freq: Window size -- '1h' gives kWh per hour.
+            window: Window size -- '1h' gives kWh per hour.
             method: 'locf' (step hold, default) or 'linear' (trapezoidal).
             max_gap: Cap on how long one sample may be held (e.g. '15min').
                 Longer gaps are dropped as logging outages -- see
@@ -487,7 +490,7 @@ class PowerIntegrator(Base):
                 (exported/regenerated) power.
             - ``avg_kw`` -- time-weighted mean power over the *covered* time,
                 i.e. ``kwh`` divided by the hours actually logged. With full
-                coverage and ``freq='1h'`` this equals ``kwh``.
+                coverage and ``window='1h'`` this equals ``kwh``.
             - ``coverage`` -- fraction of the window backed by data (with
                 ``total=True``, that of the least-covered signal). Anything below
                 1.0 means the window is under-reported.
@@ -498,7 +501,7 @@ class PowerIntegrator(Base):
             0.0 kWh, so "not measured" never renders as "used nothing".
 
         Note:
-            ``freq`` must be a *fixed* frequency ('15min', '1h', '1D'), and
+            ``window`` must be a *fixed* frequency ('15min', '1h', '1D'), and
             windows are fixed-length and anchored on the floored sample
             timestamp. Elapsed time and total energy are always correct on
             tz-aware input, but a ``'1D'`` window spans 24 elapsed hours
@@ -510,7 +513,7 @@ class PowerIntegrator(Base):
 
         parts = cls.segment_energy(
             dataframe,
-            freq=freq,
+            window=window,
             method=method,
             max_gap=max_gap,
             power_unit=power_unit,
@@ -522,7 +525,7 @@ class PowerIntegrator(Base):
         if parts.empty:
             return _empty_windows(parts["start"].dtype, total)
 
-        offset = to_offset(freq)
+        offset = to_offset(window)
 
         def window_seconds(starts: pd.Series) -> pd.Series:
             # Real window length: calendar windows are 23 h / 25 h on DST days.
@@ -579,11 +582,12 @@ class PowerIntegrator(Base):
         return out[extra + _WINDOW_COLUMNS].reset_index(drop=True)
 
     @classmethod
+    @renamed_kwargs(freq="window")
     def to_energy_deltas(
         cls,
         dataframe: pd.DataFrame,
         *,
-        freq: str = "1h",
+        window: str = "1h",
         method: str = "locf",
         max_gap: str | None = None,
         power_unit: str = "kW",
@@ -606,7 +610,7 @@ class PowerIntegrator(Base):
 
         Args:
             dataframe: Long-format power data.
-            freq: Delta size -- one row per signal per window.
+            window: Delta size -- one row per signal per window.
             method: 'locf' (default) or 'linear'.
             max_gap: Cap on how long one sample may be held; longer gaps
                 are dropped as logging outages. ``None`` (default) holds every
@@ -627,7 +631,7 @@ class PowerIntegrator(Base):
         """
         windows = cls.energy_by_window(
             dataframe,
-            freq=freq,
+            window=window,
             method=method,
             max_gap=max_gap,
             power_unit=power_unit,

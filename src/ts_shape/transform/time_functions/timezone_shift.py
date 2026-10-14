@@ -9,7 +9,7 @@ from ts_shape.utils.frames import as_datetime, require_columns
 logger = logging.getLogger(__name__)
 
 
-def valid_timezone(name: str, *, what: str = "timezone") -> str:
+def _valid_timezone(name: str, *, what: str = "timezone") -> str:
     """Return the IANA name for ``name``; ``"utc"`` in any case is ``"UTC"``.
 
     Raises:
@@ -61,8 +61,8 @@ class TimezoneShift(Base):
             pd.DataFrame: A copy of the DataFrame with timestamps converted to
             the target timezone (the input frame is not modified).
         """
-        input_timezone = valid_timezone(input_timezone, what="input timezone")
-        target_timezone = valid_timezone(target_timezone, what="target timezone")
+        input_timezone = _valid_timezone(input_timezone, what="input timezone")
+        target_timezone = _valid_timezone(target_timezone, what="target timezone")
         require_columns(dataframe, [time_column], where="TimezoneShift.shift_timezone")
         values = dataframe[time_column]
         if values.notna().any() and not (
@@ -113,7 +113,7 @@ class TimezoneShift(Base):
         require_columns(
             dataframe, [time_column], where="TimezoneShift.add_timezone_column"
         )
-        target_timezone = valid_timezone(target_timezone, what="target timezone")
+        target_timezone = _valid_timezone(target_timezone, what="target timezone")
         # Duplicate the DataFrame to prevent modifying the original column
         df_copy = dataframe.copy()
 
@@ -172,7 +172,7 @@ class TimezoneShift(Base):
         Returns:
             pd.DataFrame: A DataFrame with timestamps reverted to the original timezone.
         """
-        original_timezone = valid_timezone(original_timezone, what="original timezone")
+        original_timezone = _valid_timezone(original_timezone, what="original timezone")
         times = _times(dataframe, time_column, "revert_to_original_timezone")
         if times.dt.tz is None and times.isna().all():
             times = times.dt.tz_localize("UTC")

@@ -6,6 +6,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
@@ -94,16 +95,17 @@ class DataHarmonizer(Base):
             )
         return self._pivot(self.dataframe, aggfunc)
 
+    @renamed_kwargs(freq="window")
     def resample_to_uniform(
         self,
-        freq: str,
+        window: str,
         method: str = "linear",
         fill_limit: int | None = None,
     ) -> pd.DataFrame:
         """Resample to a uniform time grid with interpolation.
 
         Args:
-            freq: Pandas frequency string (e.g. '1s', '100ms', '1min').
+            window: Pandas frequency string (e.g. '1s', '100ms', '1min').
             method: Interpolation method ('linear', 'time', 'nearest', 'quadratic', 'cubic').
             fill_limit: Maximum number of consecutive NaNs to fill.
 
@@ -111,7 +113,7 @@ class DataHarmonizer(Base):
             DataFrame with uniform DatetimeIndex.
         """
         wide = self.pivot_to_wide()
-        resampled = wide.resample(freq).first()
+        resampled = wide.resample(window).first()
         return resampled.interpolate(method=method, limit=fill_limit)
 
     def detect_gaps(self, threshold: str = "10s") -> pd.DataFrame:
@@ -270,17 +272,18 @@ class DataHarmonizer(Base):
             direction=direction,
         )
 
+    @renamed_kwargs(freq="window")
     def merge_multi_signals(
         self,
         uuids: list[str] | None = None,
-        freq: str | None = None,
+        window: str | None = None,
         method: str = "linear",
     ) -> pd.DataFrame:
         """End-to-end harmonization: pivot, filter, resample, interpolate.
 
         Args:
             uuids: Optional list of UUIDs to include. None means all.
-            freq: Optional resample frequency. None means no resampling.
+            window: Optional resample frequency. None means no resampling.
             method: Interpolation method for resampling.
 
         Returns:
@@ -292,8 +295,8 @@ class DataHarmonizer(Base):
 
         wide = self._pivot(df, "first")
 
-        if freq is not None:
-            wide = wide.resample(freq).first()
+        if window is not None:
+            wide = wide.resample(window).first()
             wide = wide.interpolate(method=method)
 
         return wide

@@ -10,6 +10,7 @@ from collections.abc import Callable
 import pandas as pd
 from pandas.api import types as ptypes
 
+from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.frames import require_columns
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ class FeatureMatrixExporter:
 
     Pivots a multiplexed DataFrame (one row per timestamp per signal) into
     a single row per entity (e.g. cycle, segment, batch) with one column per
-    ``{uuid}__{value_col}__{agg}`` combination.  The result is ready for
+    ``{uuid}__{value_column}__{agg}`` combination.  The result is ready for
     use with scikit-learn, XGBoost, or any tabular ML framework.
 
     Usage::
@@ -28,7 +29,7 @@ class FeatureMatrixExporter:
         from ts_shape.features.export import FeatureMatrixExporter
 
         # Long-format df: columns systime, uuid, value_double
-        matrix = FeatureMatrixExporter.to_feature_matrix(df, uuid_col='uuid', value_cols=['value_double'])
+        matrix = FeatureMatrixExporter.to_feature_matrix(df, uuid_column='uuid', value_columns=['value_double'])
     """
 
     #: pandas reductions: ``std`` is the sample standard deviation (ddof=1).
@@ -40,69 +41,76 @@ class FeatureMatrixExporter:
     }
 
     @classmethod
+    @renamed_kwargs(
+        df="dataframe",
+        uuid_col="uuid_column",
+        value_cols="value_columns",
+        group_col="group_column",
+    )
     def to_feature_matrix(
         cls,
-        df: pd.DataFrame,
-        uuid_col: str = "uuid",
-        value_cols: list[str] | None = None,
+        dataframe: pd.DataFrame,
+        uuid_column: str = "uuid",
+        value_columns: list[str] | None = None,
         agg_funcs: dict[str, str | Callable] | None = None,
-        group_col: str | None = None,
+        group_column: str | None = None,
     ) -> pd.DataFrame:
         """Pivot a long-format DataFrame into a wide feature matrix.
 
         Args:
-            df: Long-format DataFrame containing signal data.
-            uuid_col: Column whose unique values become column prefixes
+            dataframe: Long-format DataFrame containing signal data.
+            uuid_column: Column whose unique values become column prefixes
                 (e.g. ``'uuid'``).
-            value_cols: Numeric columns to aggregate. If ``None``, the numeric
+            value_columns: Numeric columns to aggregate. If ``None``, the numeric
                 ``value_*`` columns (``value_double``, ``value_integer``) are
                 used; flags such as ``is_delta`` are not features.
             agg_funcs: Mapping of ``name -> callable`` or pandas agg string.
                 Defaults to ``mean``, ``std`` (sample standard deviation,
                 ``ddof=1``), ``min``, ``max``.
-            group_col: Optional column to use as the row index of the output
+            group_column: Optional column to use as the row index of the output
                 matrix (e.g. ``'cycle_uuid'``, ``'batch_id'``).  When
                 ``None`` the entire DataFrame is treated as one group and a
                 single-row matrix is returned.
 
         Returns:
             Wide-format DataFrame.  Columns are named
-            ``{uuid}__{value_col}__{agg}``.  Row index is ``group_col``
+            ``{uuid}__{value_column}__{agg}``.  Row index is ``group_column``
             when provided, otherwise 0.
 
         Raises:
-            ColumnNotFoundError: If ``uuid_col``, a ``value_cols`` entry or
-                ``group_col`` is not in ``df``.
+            ColumnNotFoundError: If ``uuid_column``, a ``value_columns`` entry or
+                ``group_column`` is not in ``dataframe``.
             ValueError: If no numeric value column is found.
         """
         where = "FeatureMatrixExporter.to_feature_matrix"
-        require_columns(df, [uuid_col, group_col], where=where)
+        require_columns(dataframe, [uuid_column, group_column], where=where)
 
-        if value_cols is None:
-            value_cols = [
+        if value_columns is None:
+            value_columns = [
                 c
-                for c in df.columns
+                for c in dataframe.columns
                 if str(c).startswith("value_")
-                and c != uuid_col
-                and ptypes.is_numeric_dtype(df[c].dtype)
-                and not ptypes.is_bool_dtype(df[c].dtype)
+                and c != uuid_column
+                and ptypes.is_numeric_dtype(dataframe[c].dtype)
+                and not ptypes.is_bool_dtype(dataframe[c].dtype)
             ]
-        if not value_cols:
+        if not value_columns:
             raise ValueError("No numeric value columns found to aggregate.")
-        require_columns(df, value_cols, where=where)
+        require_columns(dataframe, value_columns, where=where)
 
         aggs = agg_funcs if agg_funcs is not None else cls._DEFAULT_AGGS
 
         rows: dict = {}
-        if group_col:
+        if group_column:
             iterator = (
-                ((rk, sig), grp) for (rk, sig), grp in df.groupby([group_col, uuid_col])
+                ((rk, sig), grp)
+                for (rk, sig), grp in dataframe.groupby([group_column, uuid_column])
             )
         else:
-            iterator = (((0, sig), grp) for sig, grp in df.groupby(uuid_col))
+            iterator = (((0, sig), grp) for sig, grp in dataframe.groupby(uuid_column))
 
         for (row_key, sig), grp in iterator:
-            for vcol in value_cols:
+            for vcol in value_columns:
                 series = pd.to_numeric(grp[vcol], errors="coerce").dropna()
                 for agg_name, agg_fn in aggs.items():
                     col_name = f"{sig}__{vcol}__{agg_name}"
@@ -119,11 +127,11 @@ class FeatureMatrixExporter:
             return pd.DataFrame()
 
         matrix = pd.DataFrame.from_dict(rows, orient="index")
-        matrix.index.name = group_col
+        matrix.index.name = group_column
         matrix = matrix.sort_index(axis=1)
 
         logger.info(
             f"Feature matrix built: {matrix.shape[0]} rows × {matrix.shape[1]} columns "
-            f"({len(df[uuid_col].unique())} signals, {len(value_cols)} value cols, {len(aggs)} aggs)."
+            f"({len(dataframe[uuid_column].unique())} signals, {len(value_columns)} value cols, {len(aggs)} aggs)."
         )
         return matrix

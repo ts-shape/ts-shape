@@ -17,6 +17,7 @@ import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -27,54 +28,60 @@ class CycleDataProcessor(Base):
     Samples are matched to cycles with a sorted search (no per-cycle scans).
     """
 
+    @renamed_kwargs(cycle_uuid_col="cycle_uuid_column", systime_col="time_column")
     def __init__(
         self,
         cycles_df: pd.DataFrame,
         values_df: pd.DataFrame,
-        cycle_uuid_col: str = "cycle_uuid",
-        systime_col: str = "systime",
-    ):
+        cycle_uuid_column: str = "cycle_uuid",
+        time_column: str = "systime",
+    ) -> None:
         """
         Initializes the CycleDataProcessor with cycles and values DataFrames.
 
         Args:
             cycles_df: DataFrame containing columns 'cycle_start', 'cycle_end', and 'cycle_uuid'.
             values_df: DataFrame containing the values and timestamps in the 'systime' column.
-            cycle_uuid_col: Name of the column representing cycle UUIDs.
-            systime_col: Name of the column representing the timestamps for the values.
+            cycle_uuid_column: Name of the column representing cycle UUIDs.
+                ``cycle_uuid_col`` is the deprecated name.
+            time_column: Name of the column representing the timestamps for the
+                values. ``systime_col`` is the deprecated name.
 
         Raises:
             ColumnNotFoundError: If a cycle column or the time column is missing.
             TypeError: If one of cycles and values is tz-aware and the other naive.
         """
-        super().__init__(values_df)  # Call the parent constructor
-        for column in ("cycle_start", "cycle_end", cycle_uuid_col):
+        super().__init__(values_df, time_column=time_column)
+        for column in ("cycle_start", "cycle_end", cycle_uuid_column):
             if column not in cycles_df.columns:
                 raise ColumnNotFoundError(
                     f"cycles_df: column {column!r} not found. "
                     f"Columns: {list(cycles_df.columns)}"
                 )
-        if systime_col not in values_df.columns:
+        if time_column not in values_df.columns:
             raise ColumnNotFoundError(
-                f"values_df: column {systime_col!r} not found. "
+                f"values_df: column {time_column!r} not found. "
                 f"Columns: {list(values_df.columns)}"
             )
         self.values_df = values_df.copy()  # Initialize self.values_df explicitly
         self.cycles_df = cycles_df.copy()
-        self.cycle_uuid_col = cycle_uuid_col
-        self.systime_col = systime_col
+        self.cycle_uuid_column = cycle_uuid_column
+        self.time_column = time_column
+        # Old attribute names, kept for code that reads them.
+        self.cycle_uuid_col = cycle_uuid_column
+        self.systime_col = time_column
 
         # Ensure proper datetime format
         self.cycles_df["cycle_start"] = pd.to_datetime(self.cycles_df["cycle_start"])
         self.cycles_df["cycle_end"] = pd.to_datetime(self.cycles_df["cycle_end"])
-        self.values_df[systime_col] = pd.to_datetime(self.values_df[systime_col])
+        self.values_df[time_column] = pd.to_datetime(self.values_df[time_column])
 
         aware = [
             s.dt.tz is not None
             for s in (
                 self.cycles_df["cycle_start"],
                 self.cycles_df["cycle_end"],
-                self.values_df[systime_col],
+                self.values_df[time_column],
             )
         ]
         if len(set(aware)) > 1:
@@ -107,7 +114,7 @@ class CycleDataProcessor(Base):
         """
         if self._pairs_cache is not None:
             return self._pairs_cache
-        times = self.values_df[self.systime_col]
+        times = self.values_df[self.time_column]
         valid_t = np.flatnonzero(times.notna().to_numpy())
         t_ns = self._as_ns(times)[valid_t]
         t_order = np.argsort(t_ns, kind="stable")
@@ -158,9 +165,9 @@ class CycleDataProcessor(Base):
             logger.warning("No cycles or values available for splitting.")
             return {}
         result = {
-            cycle_uuid: group.drop(columns=[self.cycle_uuid_col])
+            cycle_uuid: group.drop(columns=[self.cycle_uuid_column])
             for cycle_uuid, group in merged.groupby(
-                self.cycle_uuid_col, sort=False, dropna=True
+                self.cycle_uuid_column, sort=False, dropna=True
             )
         }
         logger.info(f"Split {len(result)} cycles.")
@@ -178,19 +185,19 @@ class CycleDataProcessor(Base):
         """
         value_pos, cycle_pos = self._pairs()
         result = self.values_df.iloc[value_pos].copy()
-        result[self.cycle_uuid_col] = (
-            self.cycles_df[self.cycle_uuid_col].to_numpy()[cycle_pos]
+        result[self.cycle_uuid_column] = (
+            self.cycles_df[self.cycle_uuid_column].to_numpy()[cycle_pos]
             if len(cycle_pos)
             else pd.Series(dtype=object)
         )
-        dropped = int(self.values_df[self.systime_col].notna().sum()) - len(
+        dropped = int(self.values_df[self.time_column].notna().sum()) - len(
             np.unique(value_pos)
         )
         if dropped > 0:
             logger.info(f"Dropping {dropped} rows not assigned to any cycle.")
         logger.info(
             f"Merged DataFrame contains {len(result)} records across "
-            f"{result[self.cycle_uuid_col].nunique()} cycles."
+            f"{result[self.cycle_uuid_column].nunique()} cycles."
         )
         return result
 
@@ -210,14 +217,14 @@ class CycleDataProcessor(Base):
         if data is None:
             data = self.merge_dataframes_by_cycle()
 
-        if self.cycle_uuid_col not in data.columns:
+        if self.cycle_uuid_column not in data.columns:
             logger.warning(
-                f"Column '{self.cycle_uuid_col}' not found in data. Cannot group."
+                f"Column '{self.cycle_uuid_column}' not found in data. Cannot group."
             )
             return []
 
         grouped_dataframes = [
-            group for _, group in data.groupby(self.cycle_uuid_col, sort=False)
+            group for _, group in data.groupby(self.cycle_uuid_column, sort=False)
         ]
         logger.info(f"Grouped data into {len(grouped_dataframes)} cycle UUID groups.")
         return grouped_dataframes
@@ -255,8 +262,8 @@ class CycleDataProcessor(Base):
         self, start_time: pd.Timestamp, end_time: pd.Timestamp
     ) -> pd.DataFrame:
         """Rows with ``start_time <= systime < end_time`` (the cycle rule)."""
-        mask = (self.values_df[self.systime_col] >= start_time) & (
-            self.values_df[self.systime_col] < end_time
+        mask = (self.values_df[self.time_column] >= start_time) & (
+            self.values_df[self.time_column] < end_time
         )
         return self.values_df[mask]
 
@@ -314,7 +321,9 @@ class CycleDataProcessor(Base):
         end = self.cycles_df["cycle_end"].reset_index(drop=True)
         result = pd.DataFrame(
             {
-                self.cycle_uuid_col: self.cycles_df[self.cycle_uuid_col].to_numpy(),
+                self.cycle_uuid_column: self.cycles_df[
+                    self.cycle_uuid_column
+                ].to_numpy(),
                 "cycle_start": start,
                 "cycle_end": end,
                 "duration_seconds": (end - start).dt.total_seconds(),
@@ -335,7 +344,7 @@ class CycleDataProcessor(Base):
     def _comparison_schema(self) -> pd.DataFrame:
         return pd.DataFrame(
             {
-                self.cycle_uuid_col: pd.Series(dtype=object),
+                self.cycle_uuid_column: pd.Series(dtype=object),
                 "is_reference": pd.Series(dtype=bool),
                 "mean_value": pd.Series(dtype="float64"),
                 "std_value": pd.Series(dtype="float64"),
@@ -345,18 +354,20 @@ class CycleDataProcessor(Base):
             }
         )
 
+    @renamed_kwargs(metric="value_column")
     def compare_cycles(
-        self, reference_cycle_uuid: str, metric: str = "value_double"
+        self, reference_cycle_uuid: str, value_column: str = "value_double"
     ) -> pd.DataFrame:
         """
         Compare all cycles against a reference cycle.
 
         Args:
             reference_cycle_uuid: UUID of the reference cycle
-            metric: Column name to use for comparison
+            value_column: Column holding the values to compare. ``metric`` is the
+                deprecated name.
 
         Returns:
-            One row per cycle with data for ``metric`` (chronological order):
+            One row per cycle with data for ``value_column`` (chronological order):
                 ``cycle_uuid``, ``is_reference``, ``mean_value``, ``std_value``,
                 ``deviation_from_ref`` (mean minus reference mean),
                 ``deviation_pct`` (relative to the reference mean, NaN when it
@@ -366,10 +377,10 @@ class CycleDataProcessor(Base):
                 has no data.
 
         Raises:
-            ColumnNotFoundError: If ``metric`` is not a column of ``values_df``.
+            ColumnNotFoundError: If ``value_column`` is not a column of ``values_df``.
         """
-        uuids = self.cycles_df[self.cycle_uuid_col].astype(str).to_numpy()
-        stats = self._per_cycle_metric(metric)
+        uuids = self.cycles_df[self.cycle_uuid_column].astype(str).to_numpy()
+        stats = self._per_cycle_metric(value_column)
         ref_positions = np.flatnonzero(uuids == str(reference_cycle_uuid))
         if len(ref_positions) == 0:
             warnings.warn(
@@ -382,7 +393,7 @@ class CycleDataProcessor(Base):
         if ref_pos not in stats.index:
             warnings.warn(
                 f"compare_cycles: reference cycle {reference_cycle_uuid!r} has "
-                f"no {metric!r} data.",
+                f"no {value_column!r} data.",
                 DataQualityWarning,
                 stacklevel=2,
             )
@@ -407,7 +418,7 @@ class CycleDataProcessor(Base):
             )
         result = pd.DataFrame(
             {
-                self.cycle_uuid_col: self.cycles_df[self.cycle_uuid_col]
+                self.cycle_uuid_column: self.cycles_df[self.cycle_uuid_column]
                 .to_numpy()[order]
                 .astype(object),
                 "is_reference": uuids[order] == str(reference_cycle_uuid),
@@ -423,9 +434,10 @@ class CycleDataProcessor(Base):
         )
         return result
 
+    @renamed_kwargs(metric="value_column")
     def identify_golden_cycles(
         self,
-        metric: str = "value_double",
+        value_column: str = "value_double",
         method: str = "low_variability",
         top_n: int = 5,
         target: float | None = None,
@@ -434,7 +446,8 @@ class CycleDataProcessor(Base):
         Identify the best performing cycles (golden cycles).
 
         Args:
-            metric: Column name to evaluate
+            value_column: Column holding the values to evaluate. ``metric`` is the
+                deprecated name.
             method: ``'low_variability'`` (smallest std / |mean|),
                 ``'high_mean'`` (largest mean) or ``'target_value'`` (mean
                 closest to ``target``).
@@ -443,13 +456,13 @@ class CycleDataProcessor(Base):
 
         Returns:
             Up to ``top_n`` cycle UUIDs, best first; ties keep chronological
-                order. Cycles without ``metric`` data, or whose score is
+                order. Cycles without ``value_column`` data, or whose score is
                 undefined (a single sample has no std), are not ranked.
 
         Raises:
             ValueError: For an unknown ``method``, or ``'target_value'`` without
                 ``target``.
-            ColumnNotFoundError: If ``metric`` is not a column of ``values_df``.
+            ColumnNotFoundError: If ``value_column`` is not a column of ``values_df``.
         """
         if method not in ("low_variability", "high_mean", "target_value"):
             raise ValueError(
@@ -459,7 +472,7 @@ class CycleDataProcessor(Base):
         if method == "target_value" and target is None:
             raise ValueError("method='target_value' needs target=<value>.")
 
-        stats = self._per_cycle_metric(metric)
+        stats = self._per_cycle_metric(value_column)
         if stats.empty:
             logger.warning("Could not compute scores for any cycles.")
             return []
@@ -481,7 +494,7 @@ class CycleDataProcessor(Base):
         ranked = ranked.sort_values(
             ["score", "chrono"], ascending=[False, True], kind="stable"
         )
-        uuids = self.cycles_df[self.cycle_uuid_col].to_numpy()
+        uuids = self.cycles_df[self.cycle_uuid_column].to_numpy()
         golden_cycles: list[str] = [uuids[int(p)] for p in ranked.index[:top_n]]
 
         logger.info(
