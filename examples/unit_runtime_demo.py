@@ -81,7 +81,7 @@ def demo_runtime_accounting():
     print("=" * 72)
 
     df = build_run_signal()
-    rt = RuntimeAccountingEvents(df, run_uuid="pump:run")
+    rt = RuntimeAccountingEvents(df, run_state_uuid="pump:run")
 
     print("\n--- Runtime summary ---")
     summary = rt.runtime_summary()
@@ -96,7 +96,7 @@ def demo_runtime_accounting():
     print(summary[cols].to_string(index=False))
 
     print("\n--- Runtime per window (1 h) ---")
-    per_window = rt.runtime_per_window(window="1h")
+    per_window = rt.runtime_by_window(window="1h")
     print(
         per_window[["start", "run_hours", "start_count", "utilization_pct"]]
         .head(8)

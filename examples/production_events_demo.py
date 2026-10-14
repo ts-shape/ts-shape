@@ -11,14 +11,14 @@ This script demonstrates every production event class and method:
     4. FlowConstraintEvents   -- blocked/starved interval detection
 
   Daily Production Tracking:
-    5. PartProductionTracking  -- production by part, daily summary, totals
-    6. CycleTimeTracking       -- cycle times, statistics, slow cycle detection, trends
-    7. ShiftReporting          -- shift production, comparison, targets, best/worst
-    8. DowntimeTracking        -- downtime by shift/reason, top reasons, availability trend
-    9. QualityTracking         -- NOK by shift/part/reason, daily quality summary
+    5. PartProductionEvents  -- production by part, daily summary, totals
+    6. CycleTimeEvents       -- cycle times, statistics, slow cycle detection, trends
+    7. ShiftReportEvents          -- shift production, comparison, targets, best/worst
+    8. DowntimeEvents        -- downtime by shift/reason, top reasons, availability trend
+    9. QualityEvents         -- NOK by shift/part/reason, daily quality summary
 
   OEE and Advanced Analytics:
-   10. OEECalculator           -- availability, performance, quality, combined OEE
+   10. OEEEvents           -- availability, performance, quality, combined OEE
    11. AlarmManagementEvents   -- frequency, duration stats, chattering, standing alarms
    12. BatchTrackingEvents     -- batch detection, duration stats, yield, transition matrix
 
@@ -45,12 +45,12 @@ from ts_shape.events.production import (
     LineThroughputEvents,
     ChangeoverEvents,
     FlowConstraintEvents,
-    PartProductionTracking,
-    CycleTimeTracking,
-    ShiftReporting,
-    DowntimeTracking,
-    QualityTracking,
-    OEECalculator,
+    PartProductionEvents,
+    CycleTimeEvents,
+    ShiftReportEvents,
+    DowntimeEvents,
+    QualityEvents,
+    OEEEvents,
     AlarmManagementEvents,
     BatchTrackingEvents,
 )
@@ -472,11 +472,11 @@ def demo_flow_constraints(df: pd.DataFrame) -> None:
 
 
 def demo_part_production_tracking(df: pd.DataFrame) -> None:
-    """5. PartProductionTracking: production_by_part, daily_production_summary,
+    """5. PartProductionEvents: production_by_part, daily_production_summary,
     production_totals."""
-    _header("5. PartProductionTracking")
+    _header("5. PartProductionEvents")
 
-    ppt = PartProductionTracking(dataframe=df)
+    ppt = PartProductionEvents(dataframe=df)
 
     # production_by_part (hourly)
     _subheader("production_by_part(window='1h')")
@@ -511,11 +511,11 @@ def demo_part_production_tracking(df: pd.DataFrame) -> None:
 
 
 def demo_cycle_time_tracking(df: pd.DataFrame) -> None:
-    """6. CycleTimeTracking: cycle_time_by_part, cycle_time_statistics,
+    """6. CycleTimeEvents: cycle_time_by_part, cycle_time_statistics,
     detect_slow_cycles, cycle_time_trend."""
-    _header("6. CycleTimeTracking")
+    _header("6. CycleTimeEvents")
 
-    ctt = CycleTimeTracking(dataframe=df)
+    ctt = CycleTimeEvents(dataframe=df)
 
     # cycle_time_by_part
     _subheader("cycle_time_by_part()")
@@ -564,16 +564,16 @@ def demo_cycle_time_tracking(df: pd.DataFrame) -> None:
 
 
 def demo_shift_reporting(df: pd.DataFrame) -> None:
-    """7. ShiftReporting: shift_production, shift_comparison, shift_targets,
+    """7. ShiftReportEvents: shift_production, shift_comparison, shift_targets,
     best_and_worst_shifts."""
-    _header("7. ShiftReporting")
+    _header("7. ShiftReportEvents")
 
     shifts = {
         "day": ("06:00", "14:00"),
         "afternoon": ("14:00", "22:00"),
         "night": ("22:00", "06:00"),
     }
-    sr = ShiftReporting(dataframe=df, shift_definitions=shifts)
+    sr = ShiftReportEvents(dataframe=df, shift_definitions=shifts)
 
     # shift_production
     _subheader("shift_production()")
@@ -609,16 +609,16 @@ def demo_shift_reporting(df: pd.DataFrame) -> None:
 
 
 def demo_downtime_tracking(df: pd.DataFrame) -> None:
-    """8. DowntimeTracking: downtime_by_shift, downtime_by_reason,
+    """8. DowntimeEvents: downtime_by_shift, downtime_by_reason,
     top_downtime_reasons, availability_trend."""
-    _header("8. DowntimeTracking")
+    _header("8. DowntimeEvents")
 
     shifts = {
         "day": ("06:00", "14:00"),
         "afternoon": ("14:00", "22:00"),
         "night": ("22:00", "06:00"),
     }
-    dt = DowntimeTracking(dataframe=df, shift_definitions=shifts)
+    dt = DowntimeEvents(dataframe=df, shift_definitions=shifts)
 
     # downtime_by_shift
     _subheader("downtime_by_shift()")
@@ -663,16 +663,16 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
 
 
 def demo_quality_tracking(df: pd.DataFrame) -> None:
-    """9. QualityTracking: nok_by_shift, quality_by_part, nok_by_reason,
+    """9. QualityEvents: nok_by_shift, quality_by_part, nok_by_reason,
     daily_quality_summary."""
-    _header("9. QualityTracking")
+    _header("9. QualityEvents")
 
     shifts = {
         "day": ("06:00", "14:00"),
         "afternoon": ("14:00", "22:00"),
         "night": ("22:00", "06:00"),
     }
-    qt = QualityTracking(dataframe=df, shift_definitions=shifts)
+    qt = QualityEvents(dataframe=df, shift_definitions=shifts)
 
     # nok_by_shift
     _subheader("nok_by_shift()")
@@ -714,21 +714,21 @@ def demo_quality_tracking(df: pd.DataFrame) -> None:
 
 
 def demo_oee_calculator(df: pd.DataFrame) -> None:
-    """10. OEECalculator: calculate_availability, calculate_performance,
+    """10. OEEEvents: calculate_availability, calculate_performance,
     calculate_quality, calculate_oee."""
-    _header("10. OEECalculator")
+    _header("10. OEEEvents")
 
-    oee = OEECalculator(dataframe=df)
+    oee = OEEEvents(dataframe=df)
 
     # calculate_availability
     _subheader("calculate_availability()")
-    avail = oee.calculate_availability(UUID_MACHINE_STATE)
+    avail = oee.availability(UUID_MACHINE_STATE)
     if not avail.empty:
         print(avail)
 
     # calculate_performance (ideal cycle time = 30 s per part)
     _subheader("calculate_performance(ideal_cycle_time=30)")
-    perf = oee.calculate_performance(
+    perf = oee.performance(
         UUID_PART_COUNTER,
         ideal_cycle_time=30.0,
         run_state_uuid=UUID_MACHINE_STATE,
@@ -738,13 +738,13 @@ def demo_oee_calculator(df: pd.DataFrame) -> None:
 
     # calculate_quality
     _subheader("calculate_quality()")
-    qual = oee.calculate_quality(UUID_TOTAL_COUNTER, UUID_REJECT_COUNTER)
+    qual = oee.quality(UUID_TOTAL_COUNTER, UUID_REJECT_COUNTER)
     if not qual.empty:
         print(qual)
 
     # calculate_oee (combined daily OEE)
     _subheader("calculate_oee()")
-    daily_oee = oee.calculate_oee(
+    daily_oee = oee.oee(
         run_state_uuid=UUID_MACHINE_STATE,
         counter_uuid=UUID_PART_COUNTER,
         ideal_cycle_time=30.0,
@@ -776,7 +776,7 @@ def demo_alarm_management(df: pd.DataFrame) -> None:
 
     # alarm_duration_stats
     _subheader("alarm_duration_stats()")
-    stats = alarms.alarm_duration_stats()
+    stats = alarms.alarm_duration_statistics()
     if not stats.empty:
         print(stats)
 
@@ -816,7 +816,7 @@ def demo_batch_tracking(df: pd.DataFrame) -> None:
 
     # batch_duration_stats
     _subheader("batch_duration_stats()")
-    stats = bt.batch_duration_stats()
+    stats = bt.batch_duration_statistics()
     if not stats.empty:
         print(stats)
 

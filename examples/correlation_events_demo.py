@@ -82,7 +82,7 @@ if __name__ == "__main__":
     sc = SignalCorrelationEvents(df)
 
     corr = sc.rolling_correlation(
-        "proc:temperature", "proc:pressure", resample="1min", window=30
+        "proc:temperature", "proc:pressure", window="1min", window_size=30
     )
     print(f"\nRolling correlation points: {len(corr)}")
     print(f"Mean correlation: {corr['correlation'].mean():.3f}")
@@ -98,7 +98,7 @@ if __name__ == "__main__":
 
     breakdowns = sc.correlation_breakdown(
         "proc:temperature", "proc:pressure",
-        resample="1min", window=30, threshold=0.3,
+        window="1min", window_size=30, threshold=0.3,
     )
     print(f"\nCorrelation breakdowns detected: {len(breakdowns)}")
     if not breakdowns.empty:
@@ -115,7 +115,7 @@ if __name__ == "__main__":
     print("-" * 70)
 
     lag = sc.lag_correlation(
-        "proc:temperature", "proc:vibration", resample="1min", max_lag=20
+        "proc:temperature", "proc:vibration", window="1min", max_lag=20
     )
     best = lag[lag["is_best_lag"]].iloc[0]
     print(f"\nBest lag: {best['lag_periods']} periods "
@@ -137,7 +137,7 @@ if __name__ == "__main__":
 
     signals = ["proc:temperature", "proc:pressure", "proc:vibration", "proc:flow_rate"]
     coincident = ac.coincident_anomalies(
-        signals, z_threshold=2.5, coincidence_window="15min", min_signals=2
+        signals, n_sigma=2.5, coincidence_window="15min", min_signals=2
     )
     print(f"\nCoincident anomaly windows: {len(coincident)}")
     if not coincident.empty:
@@ -155,7 +155,7 @@ if __name__ == "__main__":
 
     cascades = ac.cascade_detection(
         "proc:temperature", "proc:vibration",
-        z_threshold=2.5, max_delay="15min",
+        n_sigma=2.5, max_delay="15min",
     )
     print(f"\nCascade events detected: {len(cascades)}")
     if not cascades.empty:
@@ -171,7 +171,7 @@ if __name__ == "__main__":
     print("6. ROOT CAUSE RANKING")
     print("-" * 70)
 
-    ranking = ac.root_cause_ranking(signals, z_threshold=2.5, max_delay="15min")
+    ranking = ac.root_cause_ranking(signals, n_sigma=2.5, max_delay="15min")
     print(f"\nSignal ranking by anomaly leadership:")
     for _, row in ranking.iterrows():
         print(f"  #{int(row['rank'])} {row['signal_uuid']}: "

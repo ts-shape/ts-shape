@@ -345,7 +345,7 @@ def demo_lead_time_analysis() -> None:
 
     # 2a. Calculate lead times
     subsection("calculate_lead_times(order_uuid, delivery_uuid)")
-    lead_times = analyzer.calculate_lead_times(
+    lead_times = analyzer.lead_times(
         order_uuid='order_placed',
         delivery_uuid='delivery_received',
         value_column='value_string',
@@ -412,8 +412,8 @@ def demo_demand_patterns() -> None:
     )
 
     # 3a. Demand by period -- daily
-    subsection("demand_by_period(period='1D')  [daily]")
-    daily = analyzer.demand_by_period(period='1D')
+    subsection("demand_by_period(window='1D')  [daily]")
+    daily = analyzer.demand_by_period(window='1D')
     if not daily.empty:
         print(f"  Days with data   : {len(daily)}")
         print(f"  Avg daily demand : {daily['total_demand'].mean():.1f}")
@@ -423,8 +423,8 @@ def demo_demand_patterns() -> None:
                       'avg_demand', 'peak_demand']].head(14).to_string(index=False))
 
     # 3b. Demand by period -- hourly
-    subsection("demand_by_period(period='1h')  [hourly]")
-    hourly_agg = analyzer.demand_by_period(period='1h')
+    subsection("demand_by_period(window='1h')  [hourly]")
+    hourly_agg = analyzer.demand_by_period(window='1h')
     if not hourly_agg.empty:
         print(f"  Hourly buckets   : {len(hourly_agg)}")
         print(f"  Avg hourly demand: {hourly_agg['total_demand'].mean():.2f}")
@@ -449,14 +449,14 @@ def demo_demand_patterns() -> None:
                              'baseline_mean', 'spike_magnitude']].to_string(index=False))
 
     # 3e. Seasonality -- day-of-week
-    subsection("seasonality_summary(period='1D')  [day-of-week]")
-    dow = analyzer.seasonality_summary(period='1D')
+    subsection("seasonality_summary(window='1D')  [day-of-week]")
+    dow = analyzer.seasonality_summary(window='1D')
     if not dow.empty:
         print(dow.to_string(index=False))
 
     # 3f. Seasonality -- hour-of-day
-    subsection("seasonality_summary(period='1h')  [hour-of-day]")
-    hod = analyzer.seasonality_summary(period='1h')
+    subsection("seasonality_summary(window='1h')  [hour-of-day]")
+    hod = analyzer.seasonality_summary(window='1h')
     if not hod.empty:
         print(hod.to_string(index=False))
 
@@ -500,7 +500,7 @@ def demo_combined_scenario() -> None:
     # Lead time analysis on the combined frame
     lta = LeadTimeAnalysisEvents(dataframe=combined)
     subsection("Lead times from combined frame")
-    lt = lta.calculate_lead_times('order_placed', 'delivery_received')
+    lt = lta.lead_times('order_placed', 'delivery_received')
     print(f"  Paired orders: {len(lt)}")
     if not lt.empty:
         print(f"  Mean lead time: {lt['lead_time_hours'].mean():.1f} h")
@@ -508,7 +508,7 @@ def demo_combined_scenario() -> None:
     # Demand analysis on the combined frame
     dpa = DemandPatternEvents(dataframe=combined, demand_uuid='product_demand')
     subsection("Daily demand from combined frame")
-    daily = dpa.demand_by_period(period='1D')
+    daily = dpa.demand_by_period(window='1D')
     print(f"  Days with demand data: {len(daily)}")
     if not daily.empty:
         print(f"  Avg daily demand: {daily['total_demand'].mean():.1f}")

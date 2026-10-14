@@ -69,7 +69,7 @@ def demo_machine_utilization() -> None:
         RuntimeAccountingEvents,
         "runtime_summary",
         name="runtime",
-        run_uuid="machine:running",
+        run_state_uuid="machine:running",
     )
     print(pipe)
 
