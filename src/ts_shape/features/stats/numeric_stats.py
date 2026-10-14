@@ -171,10 +171,13 @@ class NumericStatistics(Base):
             column_name: Name of the numeric column to analyze.
 
         Returns:
-            Standard deviation divided by the mean, or None when the mean is 0.
+            Standard deviation divided by the mean, or ``float("nan")`` when the
+            mean is 0 (the ratio is undefined).
         """
         mean = cls.column_mean(dataframe, column_name)
-        return cls.column_std(dataframe, column_name) / mean if mean != 0 else None
+        if mean == 0:
+            return float("nan")
+        return float(cls.column_std(dataframe, column_name) / mean)
 
     @classmethod
     def standard_error_mean(cls, dataframe: pd.DataFrame, column_name: str) -> float:

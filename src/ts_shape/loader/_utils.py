@@ -22,6 +22,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
+import pandas as pd
+
 from ts_shape.errors import LoaderError
 
 logger = logging.getLogger(__name__)
@@ -146,3 +148,73 @@ def require_optional(obj: object, package: str, extra: str) -> None:
             f"This loader needs the optional package {package!r}. Install it with "
             f"`pip install ts-shape[{extra}]` (or `pip install {package}`)."
         )
+
+
+def hourly_slots(
+    start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
+) -> pd.DatetimeIndex:
+    """Return every hour that overlaps the closed range ``[start, end]``.
+
+    ``start`` is floored to the hour, so a range starting mid-hour still
+    includes the hour that contains it, and the hour that contains ``end`` is
+    always included: ``09:30 .. 11:00`` yields ``09:00, 10:00, 11:00``.
+
+    Args:
+        start_timestamp: Range start (anything ``pd.to_datetime`` accepts).
+        end_timestamp: Range end, inclusive (anything ``pd.to_datetime`` accepts).
+
+    Returns:
+        Hour-aligned timestamps, one per hour folder to visit; empty when
+        ``start`` is after ``end``.
+    """
+    start = pd.to_datetime(start_timestamp)
+    end = pd.to_datetime(end_timestamp)
+    if start > end:
+        return pd.DatetimeIndex([], tz=start.tz)
+    return pd.date_range(start=start.floor("h"), end=end.floor("h"), freq="h")
+
+
+def _align_bound(bound: pd.Timestamp, column: pd.Series) -> pd.Timestamp:
+    """Match ``bound``'s timezone-awareness to a datetime ``column``."""
+    col_tz = getattr(column.dt, "tz", None)
+    if col_tz is not None and bound.tz is None:
+        return bound.tz_localize(col_tz)
+    if col_tz is None and bound.tz is not None:
+        return bound.tz_convert("UTC").tz_localize(None)
+    return bound
+
+
+def trim_to_time_range(
+    df: pd.DataFrame,
+    start_timestamp: str | pd.Timestamp | None,
+    end_timestamp: str | pd.Timestamp | None,
+    *,
+    time_column: str = "systime",
+) -> pd.DataFrame:
+    """Keep the rows whose ``time_column`` lies in ``[start, end]`` (both inclusive).
+
+    Frames without ``time_column`` (e.g. because a column projection left it
+    out) are returned unchanged. A naive bound is interpreted in the column's
+    timezone; an aware bound is compared against a naive column in UTC.
+
+    Args:
+        df: Frame to trim.
+        start_timestamp: Inclusive lower bound; None leaves the start open.
+        end_timestamp: Inclusive upper bound; None leaves the end open.
+        time_column: Name of the timestamp column to compare.
+
+    Returns:
+        The trimmed frame with a fresh ``RangeIndex``, or ``df`` itself when
+        there is nothing to trim.
+    """
+    if df.empty or time_column not in df.columns:
+        return df
+    if start_timestamp is None and end_timestamp is None:
+        return df
+    times = pd.to_datetime(df[time_column])
+    mask = pd.Series(True, index=df.index)
+    if start_timestamp is not None:
+        mask &= times >= _align_bound(pd.to_datetime(start_timestamp), times)
+    if end_timestamp is not None:
+        mask &= times <= _align_bound(pd.to_datetime(end_timestamp), times)
+    return df.loc[mask].reset_index(drop=True)

@@ -226,3 +226,54 @@ def test_filters_too_strict_warning_hint(tmp_path, monkeypatch):
     with pytest.warns(LoaderConfigWarning, match="filters argument may be too strict"):
         df = loader.load_all_files(filters=[("value_double", ">", 1e9)])
     assert df.empty
+
+
+def test_load_by_time_range_mid_hour_start_includes_end_hour(tmp_path, monkeypatch):
+    loader, _ = _loader(tmp_path, monkeypatch)
+    df = loader.load_by_time_range("2024-01-01 09:30:00", "2024-01-01 11:00:00")
+    assert sorted(df["uuid"]) == ["u1", "u1", "u2"]
+
+
+def test_trim_to_range_drops_rows_outside_bounds(tmp_path, monkeypatch):
+    loader, _ = _loader(tmp_path, monkeypatch=None)
+
+    def fake_read(p, columns=None, filters=None):
+        hour = int(Path(p).parent.name)
+        return pd.DataFrame(
+            {
+                "systime": [
+                    pd.Timestamp(2024, 1, 1, hour, 0),
+                    pd.Timestamp(2024, 1, 1, hour, 45),
+                ],
+                "uuid": [Path(p).stem] * 2,
+            }
+        )
+
+    monkeypatch.setattr(pd, "read_parquet", fake_read)
+    df = loader.load_by_time_range(
+        "2024-01-01 09:30", "2024-01-01 11:00", trim_to_range=True
+    )
+    assert df["systime"].tolist() == [
+        pd.Timestamp("2024-01-01 09:45"),
+        pd.Timestamp("2024-01-01 10:00"),
+        pd.Timestamp("2024-01-01 10:45"),
+        pd.Timestamp("2024-01-01 11:00"),
+    ]
+    streamed = list(
+        loader.stream_files_by_time_range_and_uuids(
+            "2024-01-01 09:30", "2024-01-01 11:00", ["u2"], trim_to_range=True
+        )
+    )
+    assert [len(f) for _, f in streamed] == [1]
+
+
+def test_fetch_data_as_dataframe_start_only(tmp_path, monkeypatch):
+    loader, _ = _loader(tmp_path, monkeypatch)
+    df = loader.fetch_data_as_dataframe(start_timestamp="2024-01-01 10:30:00")
+    assert sorted(df["uuid"]) == ["u1", "u2"]  # hours 10 and 11
+
+
+def test_fetch_data_as_dataframe_end_only(tmp_path, monkeypatch):
+    loader, _ = _loader(tmp_path, monkeypatch)
+    df = loader.fetch_data_as_dataframe(end_timestamp="2024-01-01 09:59:00")
+    assert df["uuid"].tolist() == ["u1"]  # hour 9 only

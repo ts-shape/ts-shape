@@ -32,3 +32,12 @@ def test_numeric_statistics_summary_dataframe_and_missing_mode_safe():
     out = NumericStatistics.summary_as_dataframe(df, "x")
     assert out.shape[0] == 1
     assert "mode" in out.columns
+
+
+def test_coefficient_of_variation_zero_mean_returns_nan():
+    import math
+
+    df = pd.DataFrame({"x": [-1.0, 1.0]})
+    cv = NumericStatistics.coefficient_of_variation(df, "x")
+    assert isinstance(cv, float)
+    assert math.isnan(cv)

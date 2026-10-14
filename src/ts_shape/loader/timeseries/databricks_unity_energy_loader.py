@@ -201,12 +201,13 @@ class DatabricksUnityEnergyLoader:
 
         With start/end: visits only the day folders in range and keeps files
         whose stem matches a requested series_id. Without dates: walks ``csv/``
-        and filters by stem.
+        and filters by stem. With only one bound the range is open on the
+        other side (day folders on or after ``start``, or on or before ``end``).
 
         Args:
             series_ids: Series IDs to load.
-            start: Optional start date filter.
-            end: Optional end date filter.
+            start: Optional start date filter (inclusive, whole days).
+            end: Optional end date filter (inclusive, whole days).
 
         Returns:
             Standard schema DataFrame: systime | uuid | value_double | is_delta
@@ -215,11 +216,7 @@ class DatabricksUnityEnergyLoader:
         if start is not None and end is not None:
             paths = self._list_csv_by_date_range(start, end, ids_set)
         else:
-            paths = [
-                p
-                for p in self._walk_csv(self.base_path / _CSV_PREFIX)
-                if self._series_id_from_path(p) in ids_set
-            ]
+            paths = self._list_csv_open_range(start, end, ids_set)
         return self._read_and_concat(paths)
 
     def stream_by_time_range(
@@ -270,12 +267,16 @@ class DatabricksUnityEnergyLoader:
         Return a combined DataFrame, for ``Pipeline`` / ``DataIntegratorHybrid``.
 
         With a ``start``/``end`` pair this delegates to :meth:`load_by_time_range`
-        (visiting only the in-range day folders); with no bounds it loads every
-        series under ``csv/``.
+        (visiting only the in-range day folders). With only one bound the range
+        is open on the other side: every day folder on or after ``start`` (or on
+        or before ``end``) is read. With no bounds it loads every series under
+        ``csv/``.
 
         Args:
-            start: Start date/datetime (inclusive). Used only together with ``end``.
-            end: End date/datetime (inclusive). Used only together with ``start``.
+            start: Start date/datetime (inclusive, whole days); None leaves the
+                start open.
+            end: End date/datetime (inclusive, whole days); None leaves the end
+                open.
             series_ids: Series IDs to load. None loads every series.
 
         Returns:
@@ -283,10 +284,8 @@ class DatabricksUnityEnergyLoader:
         """
         if start is not None and end is not None:
             return self.load_by_time_range(start, end, series_ids=series_ids)
-        if series_ids:
-            return self.load_by_series_ids(series_ids)
-        paths = self._walk_csv(self.base_path / _CSV_PREFIX)
-        return self._read_and_concat(paths)
+        ids_set = set(series_ids) if series_ids else None
+        return self._read_and_concat(self._list_csv_open_range(start, end, ids_set))
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -345,6 +344,47 @@ class DatabricksUnityEnergyLoader:
                     continue
                 paths.append(path)
         return paths
+
+    def _list_csv_open_range(
+        self,
+        start: Union[str, "pd.Timestamp"] | None,
+        end: Union[str, "pd.Timestamp"] | None,
+        ids_set: set | None,
+    ) -> list[Path]:
+        """List CSV files in day folders within an optionally open date range."""
+        lo = None if start is None else pd.to_datetime(start).tz_localize(None)
+        hi = None if end is None else pd.to_datetime(end).tz_localize(None)
+        lo = None if lo is None else lo.normalize()
+        hi = None if hi is None else hi.normalize()
+        csv_root = self.base_path / _CSV_PREFIX
+        paths: list[Path] = []
+        for path in self._walk_csv(csv_root):
+            if ids_set is not None and self._series_id_from_path(path) not in ids_set:
+                continue
+            if lo is not None or hi is not None:
+                day = self._day_of_path(path, csv_root)
+                if day is None:
+                    continue
+                if (lo is not None and day < lo) or (hi is not None and day > hi):
+                    continue
+            paths.append(path)
+        return paths
+
+    @staticmethod
+    def _day_of_path(path: Path, csv_root: Path) -> "pd.Timestamp | None":
+        """Return the ``YYYY/MM/DD`` day folder of ``path``, or None if off-layout."""
+        try:
+            parts = path.relative_to(csv_root).parts
+        except ValueError:
+            return None
+        if len(parts) != 4:
+            return None
+        try:
+            return pd.Timestamp(
+                year=int(parts[0]), month=int(parts[1]), day=int(parts[2])
+            )
+        except ValueError:
+            return None
 
     @staticmethod
     def _series_id_from_path(path: Path) -> str:

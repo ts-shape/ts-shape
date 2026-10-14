@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd  # type: ignore
 
 from ts_shape.errors import LoaderConfigWarning
+from ts_shape.loader._utils import hourly_slots, trim_to_time_range
 
 logger = logging.getLogger(__name__)
 
@@ -282,10 +283,8 @@ class AzureBlobParquetLoader:
     def _hourly_slots(
         start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
     ) -> Iterable[pd.Timestamp]:
-        start = pd.to_datetime(start_timestamp)
-        end = pd.to_datetime(end_timestamp)
-        # Ensure inclusive range per hour
-        return pd.date_range(start=start, end=end, freq="h")
+        """Hours overlapping ``[start, end]``; the start is floored to the hour."""
+        return hourly_slots(start_timestamp, end_timestamp)
 
     def _hour_prefix(self, ts: pd.Timestamp) -> str:
         # Builds e.g. "parquet/2024/01/31/09/" if prefix="parquet/"
@@ -355,6 +354,8 @@ class AzureBlobParquetLoader:
         end_timestamp: str | pd.Timestamp,
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> pd.DataFrame:
         """
         Load all parquet blobs under hourly folders within [start, end].
@@ -364,13 +365,17 @@ class AzureBlobParquetLoader:
 
         Args:
             start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
-                Whole hour folders are read; rows are not trimmed to the exact
-                timestamp.
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
             end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
                 accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
@@ -399,7 +404,10 @@ class AzureBlobParquetLoader:
                 filters=filters,
             )
             return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
+        out = pd.concat(frames, ignore_index=True)
+        if trim_to_range:
+            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+        return out
 
     def stream_by_time_range(
         self,
@@ -407,6 +415,8 @@ class AzureBlobParquetLoader:
         end_timestamp: str | pd.Timestamp,
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream parquet DataFrames under hourly folders within [start, end].
@@ -415,13 +425,17 @@ class AzureBlobParquetLoader:
 
         Args:
             start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
-                Whole hour folders are read; rows are not trimmed to the exact
-                timestamp.
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
             end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
                 accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         slots = list(self._hourly_slots(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
@@ -456,6 +470,8 @@ class AzureBlobParquetLoader:
                         df = fut.result()
                     except Exception:
                         df = None
+                    if df is not None and trim_to_range:
+                        df = trim_to_time_range(df, start_timestamp, end_timestamp)
                     if df is not None and not df.empty:
                         yielded += 1
                         yield (name, df)
@@ -486,6 +502,8 @@ class AzureBlobParquetLoader:
         uuid_list: list[str],
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> pd.DataFrame:
         """
         Load parquet blobs for given UUIDs within [start, end] hours.
@@ -501,8 +519,8 @@ class AzureBlobParquetLoader:
 
         Args:
             start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
-                Whole hour folders are read; rows are not trimmed to the exact
-                timestamp.
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
             end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
                 accepts).
             uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file.
@@ -511,6 +529,10 @@ class AzureBlobParquetLoader:
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         if not uuid_list:
             return pd.DataFrame()
@@ -592,7 +614,10 @@ class AzureBlobParquetLoader:
                 filters=filters,
             )
             return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
+        out = pd.concat(frames, ignore_index=True)
+        if trim_to_range:
+            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+        return out
 
     def stream_files_by_time_range_and_uuids(
         self,
@@ -601,6 +626,8 @@ class AzureBlobParquetLoader:
         uuid_list: list[str],
         columns: list[str] | None = None,
         filters: list | None = None,
+        *,
+        trim_to_range: bool = False,
     ) -> Iterator[tuple[str, pd.DataFrame]]:
         """
         Stream parquet DataFrames for given UUIDs within [start, end] hours.
@@ -611,8 +638,8 @@ class AzureBlobParquetLoader:
 
         Args:
             start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
-                Whole hour folders are read; rows are not trimmed to the exact
-                timestamp.
+                Every hour folder that overlaps ``[start, end]`` is read in
+                full (the start is floored to the hour); see ``trim_to_range``.
             end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
                 accepts).
             uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file.
@@ -621,6 +648,10 @@ class AzureBlobParquetLoader:
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
+            trim_to_range: If True, drop rows whose ``systime`` falls outside
+                ``[start, end]`` (both bounds inclusive). Frames without a
+                ``systime`` column are left as read. Default False keeps
+                whole hour folders.
         """
         if not uuid_list:
             return
@@ -692,6 +723,8 @@ class AzureBlobParquetLoader:
                         df = fut.result()
                     except Exception:
                         df = None
+                    if df is not None and trim_to_range:
+                        df = trim_to_time_range(df, start_timestamp, end_timestamp)
                     if df is not None and not df.empty:
                         yielded += 1
                         yield (name, df)
@@ -869,9 +902,8 @@ class AzureBlobFlexibleFileLoader:
     def _hourly_slots(
         start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
     ) -> Iterable[pd.Timestamp]:
-        start = pd.to_datetime(start_timestamp)
-        end = pd.to_datetime(end_timestamp)
-        return pd.date_range(start=start, end=end, freq="h")
+        """Hours overlapping ``[start, end]``; the start is floored to the hour."""
+        return hourly_slots(start_timestamp, end_timestamp)
 
     def _hour_prefix(self, ts: pd.Timestamp) -> str:
         y = str(ts.year)

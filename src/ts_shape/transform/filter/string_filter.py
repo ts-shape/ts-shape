@@ -63,18 +63,27 @@ class StringFilter(Base):
 
     @classmethod
     def filter_string_contains(
-        cls, dataframe: pd.DataFrame, substring: str, column_name: str = "value_string"
+        cls,
+        dataframe: pd.DataFrame,
+        substring: str,
+        column_name: str = "value_string",
+        *,
+        regex: bool = True,
     ) -> pd.DataFrame:
         """Filters rows where the specified string column contains the provided substring.
 
         Args:
             dataframe: Input DataFrame.
-            substring: Substring to look for; interpreted as a regular expression
-                (``Series.str.contains`` default). NA rows are dropped.
+            substring: Pattern to look for. It is a regular expression unless
+                ``regex=False``, so characters such as ``.``, ``(`` or ``+`` are
+                special by default. NA rows are dropped.
             column_name: Name of the column to filter on. Default ``"value_string"``.
+            regex: If True (default), treat ``substring`` as a regular
+                expression; if False, match it literally.
         """
         Base._validate_column(dataframe, column_name)
-        return dataframe[dataframe[column_name].str.contains(substring, na=False)]
+        mask = dataframe[column_name].str.contains(substring, na=False, regex=regex)
+        return dataframe[mask]
 
     @classmethod
     def regex_clean_value_string(

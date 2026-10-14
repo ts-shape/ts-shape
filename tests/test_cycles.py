@@ -81,3 +81,21 @@ def test_cycle_data_processor_split_merge_group():
     # Split by group helper
     split_groups = proc.split_dataframes_by_group(groups, "value_integer")
     assert len(split_groups) >= 2
+
+
+def test_process_value_change_cycle_does_not_mutate_stored_frame():
+    df = pd.DataFrame(
+        {
+            "systime": pd.date_range("2024-01-01", periods=4, freq="min"),
+            "uuid": "u",
+            "value_double": [1.0, None, 3.0, 3.0],
+            "value_bool": [None, None, None, None],
+            "value_string": [None, None, None, None],
+            "value_integer": [None, None, None, None],
+        }
+    )
+    extractor = CycleExtractor(df, "u")
+    before = extractor.df.copy()
+    extractor.process_value_change_cycle()
+    pd.testing.assert_frame_equal(extractor.df, before)
+    assert "value_change" not in extractor.df.columns

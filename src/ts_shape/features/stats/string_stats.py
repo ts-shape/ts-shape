@@ -155,18 +155,28 @@ class StringStatistics(Base):
 
     @classmethod
     def contains_substring_count(
-        cls, dataframe: pd.DataFrame, substring: str, column_name: str = "value_string"
+        cls,
+        dataframe: pd.DataFrame,
+        substring: str,
+        column_name: str = "value_string",
+        *,
+        regex: bool = True,
     ) -> int:
         """Counts how many strings contain the specified substring.
 
         Args:
             dataframe: Input DataFrame.
-            substring: Substring to look for; interpreted as a regular expression
-                (``Series.str.contains`` default).
+            substring: Pattern to look for. It is a regular expression unless
+                ``regex=False``, so characters such as ``.``, ``(`` or ``+`` are
+                special by default.
             column_name: Name of the string column to analyze. Default
                 ``"value_string"``.
+            regex: If True (default), treat ``substring`` as a regular
+                expression; if False, match it literally.
         """
-        return dataframe[column_name].dropna().str.contains(substring).sum()
+        return int(
+            dataframe[column_name].dropna().str.contains(substring, regex=regex).sum()
+        )
 
     @classmethod
     def starts_with_count(
