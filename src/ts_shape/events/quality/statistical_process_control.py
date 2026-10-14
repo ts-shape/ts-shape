@@ -38,6 +38,9 @@ class StatisticalProcessControlEvents(Base):
         1 2025-01-01 00:24:30   88.1  rule_1  critical
     """
 
+    #: CUSUM: ``high`` is a detected shift, ``critical`` twice the threshold.
+    _severity_levels = {"detect_cusum_shifts": {"high": "warn"}}
+
     def __init__(
         self,
         dataframe: pd.DataFrame,

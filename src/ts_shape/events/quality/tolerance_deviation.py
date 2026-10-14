@@ -61,6 +61,9 @@ class ToleranceDeviationEvents(Base):
         49 2025-01-01 00:24:30         112.1    major
     """
 
+    #: Any out-of-tolerance value is a real deviation.
+    _severity_levels = {"*": {"minor": "warn"}}
+
     @keyword_only(4)
     def __init__(
         self,

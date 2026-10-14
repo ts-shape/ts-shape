@@ -92,6 +92,7 @@ class ShiftHandoverEvents(Base):
         "value",
         "threshold",
         "severity",
+        "severity_level",
     ]
 
     def __init__(
@@ -625,7 +626,7 @@ class ShiftHandoverEvents(Base):
             (:attr:`ISSUE_COLUMNS`): start, end, duration_seconds (the shift
             window of the report row; NaT / NaN when the report has none,
             e.g. one built by :meth:`from_shift_data`), date, shift, metric,
-            value, threshold, severity.
+            value, threshold, severity, severity_level (warn / critical).
 
             With ``as_frame=False`` (deprecated), a list of dicts with keys
             shift, metric, value, threshold, severity.

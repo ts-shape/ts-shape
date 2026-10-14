@@ -36,6 +36,9 @@ class OutlierDetectionEvents(Base):
         3 2025-01-01 07:54:30          96.4       3.1
     """
 
+    #: ``severity`` is a numeric score; no ``severity_level`` is added.
+    _severity_levels = None
+
     @keyword_only(3)
     def __init__(
         self,

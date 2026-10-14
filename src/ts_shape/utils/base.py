@@ -35,6 +35,7 @@ the right one based on the complexity of the operation:
 
 import logging
 import warnings
+from typing import ClassVar
 
 import pandas as pd
 
@@ -47,11 +48,17 @@ logger = logging.getLogger(__name__)
 
 
 class Base:
+    #: Severity label overrides for ``severity_level``, keyed by method name
+    #: (``"*"`` for all methods); ``None`` when ``severity`` is a score.
+    _severity_levels: ClassVar[dict[str, dict[str, str]] | None] = {}
+
     def __init_subclass__(cls, **kwargs: object) -> None:
         """Give every detector in ``ts_shape.events`` the same input checks.
 
         Public methods and the constructor are wrapped by
-        :mod:`ts_shape.utils.signal_checks`: an unknown signal uuid warns
+        :mod:`ts_shape.utils.signal_checks`: results with a categorical
+        ``severity`` get ``severity_level`` (info / warn / critical), an
+        unknown signal uuid warns
         (:class:`~ts_shape.errors.DataQualityWarning`) and a missing uuid
         column raises :class:`~ts_shape.errors.ColumnNotFoundError`.
         """

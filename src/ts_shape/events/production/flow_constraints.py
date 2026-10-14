@@ -35,6 +35,9 @@ class FlowConstraintEvents(Base):
       longer reported.
     """
 
+    #: minor / moderate / severe are the three duration bands.
+    _severity_levels = {"*": {"minor": "info"}}
+
     def __init__(
         self,
         dataframe: pd.DataFrame,

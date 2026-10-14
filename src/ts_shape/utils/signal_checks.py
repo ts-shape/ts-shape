@@ -145,6 +145,24 @@ def _bound_arguments(
     return dict(bound.arguments)
 
 
+def _with_severity_level(obj: Any, method: str, result: Any) -> Any:
+    """Add ``severity_level`` to a result that has categorical ``severity``.
+
+    A detector class can set ``_severity_levels`` to label overrides keyed by
+    method name (``"*"`` for every method), or to ``None`` when its
+    ``severity`` is a numeric score.
+    """
+    if not isinstance(result, pd.DataFrame) or "severity" not in result.columns:
+        return result
+    table = getattr(type(obj), "_severity_levels", {})
+    if table is None or pd.api.types.is_numeric_dtype(result["severity"]):
+        return result
+    from ts_shape.events._output import add_severity_level
+
+    overrides = {**table.get("*", {}), **table.get(method, {})}
+    return add_severity_level(result, overrides)
+
+
 def checked(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Wrap a detector method with :func:`check_signals` (outermost call only)."""
 
@@ -155,7 +173,7 @@ def checked(fn: Callable[..., Any]) -> Callable[..., Any]:
         check_signals(self, fn, args, kwargs)
         object.__setattr__(self, _CHECKING, True)
         try:
-            return fn(self, *args, **kwargs)
+            return _with_severity_level(self, fn.__name__, fn(self, *args, **kwargs))
         except KeyError as err:
             bound = _bound_arguments(fn, self, args, kwargs)
             frame, _ = _frame_uuids(self)
