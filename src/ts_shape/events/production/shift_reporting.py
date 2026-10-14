@@ -144,11 +144,14 @@ class ShiftReportEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> shift_production('counter', part_id_uuid='part_id')
-                date        shift    part_number  quantity
-            0   2024-01-01  shift_1  PART_A       450
-            1   2024-01-01  shift_2  PART_A       425
-            2   2024-01-01  shift_3  PART_A       380
+            >>> import ts_shape
+            >>> df = ts_shape.make_timeseries(["counter"], n_points=32, freq="30min",
+            ...     start="2025-01-01 06:00", noise=0, drift=310, value_column="value_integer")
+            >>> out = ts_shape.ShiftReportEvents(df).shift_production("counter")
+            >>> out[["date", "shift", "quantity"]]
+                     date    shift  quantity
+            0  2025-01-01  shift_1       150
+            1  2025-01-01  shift_2       150
         """
         counter_data = (
             self.dataframe[self.dataframe["uuid"] == counter_uuid]
@@ -284,11 +287,16 @@ class ShiftReportEvents(Base):
             - days_count: Number of days included
 
         Example:
-            >>> shift_comparison('counter', days=7)
-                shift    avg_quantity  min_quantity  max_quantity  std_quantity  days_count
-            0   shift_1  445           420           465           15.2          7
-            1   shift_2  430           405           450           12.8          7
-            2   shift_3  385           360           410           18.5          7
+            >>> import ts_shape
+            >>> df = ts_shape.make_timeseries(["counter"], n_points=96, freq="30min",
+            ...     start="2025-01-01 06:00", baseline=10, noise=3, value_column="value_integer")
+            >>> df["value_integer"] = df["value_integer"].cumsum()  # running part counter
+            >>> out = ts_shape.ShiftReportEvents(df).shift_comparison("counter")
+            >>> out[["shift", "avg_quantity", "min_quantity", "max_quantity"]]
+                 shift  avg_quantity  min_quantity  max_quantity
+            0  shift_1         144.0           144           144
+            1  shift_2         152.0           145           159
+            2  shift_3         147.0           136           158
         """
         shift_prod = self.shift_production(
             counter_uuid, value_column_counter=value_column_counter
@@ -354,11 +362,15 @@ class ShiftReportEvents(Base):
             - achievement_pct: Percentage of target achieved
 
         Example:
-            >>> shift_targets('counter', targets={'shift_1': 450, 'shift_2': 450, 'shift_3': 400})
-                date        shift    actual  target  variance  achievement_pct
-            0   2024-01-01  shift_1  445     450     -5        98.9
-            1   2024-01-01  shift_2  465     450     15        103.3
-            2   2024-01-01  shift_3  390     400     -10       97.5
+            >>> import ts_shape
+            >>> df = ts_shape.make_timeseries(["counter"], n_points=32, freq="30min",
+            ...     start="2025-01-01 06:00", noise=0, drift=310, value_column="value_integer")
+            >>> rep = ts_shape.ShiftReportEvents(df)
+            >>> out = rep.shift_targets("counter", targets={"shift_1": 150, "shift_2": 200})
+            >>> out[["shift", "actual", "target", "variance", "achievement_pct"]]
+                 shift  actual  target  variance  achievement_pct
+            0  shift_1     150     150         0            100.0
+            1  shift_2     150     200       -50             75.0
         """
         shift_prod = self.shift_production(
             counter_uuid, value_column_counter=value_column_counter, date=date
@@ -448,13 +460,17 @@ class ShiftReportEvents(Base):
             - 'worst': Top 5 worst shifts (columns date, shift, quantity)
 
         Example:
-            >>> ranked = reporter.best_and_worst_shifts('counter')
+            >>> import ts_shape
+            >>> df = ts_shape.make_timeseries(["counter"], n_points=96, freq="30min",
+            ...     start="2025-01-01 06:00", baseline=10, noise=3, value_column="value_integer")
+            >>> df["value_integer"] = df["value_integer"].cumsum()  # running part counter
+            >>> ranked = ts_shape.ShiftReportEvents(df).best_and_worst_shifts("counter")
             >>> best = ranked[ranked["rank_type"] == "best"]
-            >>> best.loc[:, ["date", "shift", "quantity"]]
-                date        shift    quantity
-            0   2024-01-15  shift_2  495
-            1   2024-01-18  shift_1  490
-            2   2024-01-22  shift_2  485
+            >>> best[["date", "shift", "quantity"]].head(3)
+                    date    shift  quantity
+            0 2025-01-01  shift_2       159
+            1 2025-01-01  shift_3       158
+            2 2025-01-02  shift_2       145
         """
         if not as_frame:
             warnings.warn(

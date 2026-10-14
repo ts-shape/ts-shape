@@ -93,21 +93,14 @@ class DowntimeEvents(Base):
         # → merge with ShiftReportEvents.shift_production() on [date, shift]
         # → feed into ShiftHandoverEvents.from_shift_data()
 
-    Example usage:
-        tracker = DowntimeEvents(df)
-
-        # Downtime per shift
-        shift_downtime = tracker.downtime_by_shift(
-            state_uuid='machine_state',
-            running_value='Running'
-        )
-
-        # Downtime by reason
-        reason_analysis = tracker.downtime_by_reason(
-            state_uuid='machine_state',
-            reason_uuid='downtime_reason',
-            stopped_value='Stopped'
-        )
+    Example:
+        >>> import ts_shape
+        >>> df = ts_shape.make_id_signal("state", ["Running", "Stopped", "Running"],
+        ...                              hold=20, freq="1min", start="2025-01-01 08:00")
+        >>> out = ts_shape.DowntimeEvents(df).downtime_by_shift("state")
+        >>> out[["date", "shift", "downtime_minutes", "availability_pct"]].round(1)
+                 date    shift  downtime_minutes  availability_pct
+        0  2025-01-01  shift_1              20.0              66.1
     """
 
     def __init__(
@@ -193,11 +186,14 @@ class DowntimeEvents(Base):
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
         Example:
-            >>> downtime_by_shift('machine_state', running_value='Running')
-                date        shift    total_minutes  downtime_minutes  uptime_minutes  availability_pct
-            0   2024-01-01  shift_1  480            45.2             434.8           90.6
-            1   2024-01-01  shift_2  480            67.5             412.5           85.9
-            2   2024-01-01  shift_3  480            92.0             388.0           80.8
+            >>> import ts_shape
+            >>> df = ts_shape.make_id_signal(
+            ...     "state", ["Running", "Stopped", "Running"], hold=20, freq="1min",
+            ...     start="2025-01-01 08:00")
+            >>> out = ts_shape.DowntimeEvents(df).downtime_by_shift("state")
+            >>> out[["shift", "downtime_minutes", "uptime_minutes", "availability_pct"]]
+                 shift  downtime_minutes  uptime_minutes  availability_pct
+            0  shift_1              20.0            39.0         66.101695
         """
         state_data = (
             self.dataframe[self.dataframe["uuid"] == state_uuid]
@@ -344,11 +340,16 @@ class DowntimeEvents(Base):
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
         Example:
-            >>> downtime_by_reason('state', 'reason', stopped_value='Stopped')
-                reason              occurrences  total_minutes  avg_minutes  pct_of_total
-            0   Material_Shortage   12           145.5         12.1         35.2
-            1   Tool_Change         8            98.2          12.3         23.8
-            2   Quality_Issue       5            76.0          15.2         18.4
+            >>> import pandas as pd, ts_shape
+            >>> states = ["Running", "Stopped", "Running", "Stopped", "Running"]
+            >>> df = pd.concat([ts_shape.make_id_signal("state", states, hold=10, freq="1min"),
+            ...     ts_shape.make_id_signal("reason", ["-", "Jam", "-", "Tool", "-"], hold=10,
+            ...                             freq="1min")])
+            >>> out = ts_shape.DowntimeEvents(df).downtime_by_reason("state", "reason")
+            >>> out[["reason", "occurrences", "total_minutes", "pct_of_total"]]
+              reason  occurrences  total_minutes  pct_of_total
+            0    Jam           10           10.0          50.0
+            1   Tool           10           10.0          50.0
         """
         state_data = (
             self.dataframe[self.dataframe["uuid"] == state_uuid]
@@ -456,11 +457,15 @@ class DowntimeEvents(Base):
             total_minutes, total_seconds, pct_of_total, cumulative_pct
 
         Example:
-            >>> top_downtime_reasons('state', 'reason', top_n=5)
-                reason              total_minutes  pct_of_total  cumulative_pct
-            0   Material_Shortage   145.5         35.2          35.2
-            1   Tool_Change         98.2          23.8          59.0
-            2   Quality_Issue       76.0          18.4          77.4
+            >>> import pandas as pd, ts_shape
+            >>> states = ["Running", "Stopped", "Running", "Stopped", "Running"]
+            >>> df = pd.concat([ts_shape.make_id_signal("state", states, hold=10, freq="1min"),
+            ...     ts_shape.make_id_signal("reason", ["-", "Jam", "-", "Tool", "-"], hold=10,
+            ...                             freq="1min")])
+            >>> top = ts_shape.DowntimeEvents(df).top_downtime_reasons("state", "reason", top_n=1)
+            >>> top[["reason", "total_minutes", "cumulative_pct"]]
+              reason  total_minutes  cumulative_pct
+            0    Jam           10.0            50.0
         """
         reason_stats = self.downtime_by_reason(
             state_uuid,
@@ -520,11 +525,14 @@ class DowntimeEvents(Base):
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
         Example:
-            >>> availability_trend('state', window='1D')
-                period      availability_pct  uptime_minutes  downtime_minutes
-            0   2024-01-01  87.5             1260.0          180.0
-            1   2024-01-02  91.2             1313.3          126.7
-            2   2024-01-03  85.8             1235.5          204.5
+            >>> import ts_shape
+            >>> df = ts_shape.make_id_signal(
+            ...     "state", ["Running", "Stopped", "Running"], hold=20, freq="1min")
+            >>> out = ts_shape.DowntimeEvents(df).availability_trend("state", window="30min")
+            >>> out[["period", "availability_pct", "downtime_minutes"]]
+                           period  availability_pct  downtime_minutes
+            0 2025-01-01 00:00:00         66.666667              10.0
+            1 2025-01-01 00:30:00         65.517241              10.0
         """
         state_data = (
             self.dataframe[self.dataframe["uuid"] == state_uuid]

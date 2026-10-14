@@ -60,22 +60,17 @@ class OEEEvents(Base):
     ``start`` (midnight) / ``end`` (next midnight) / ``duration_seconds`` (the
     real day length: 86400, or 23 h / 25 h on DST days with tz-aware data).
 
-    Example usage:
-        oee = OEEEvents(df)
-
-        # Individual components
-        avail = oee.availability('machine_state')
-        perf = oee.performance('part_counter', ideal_cycle_time=30.0, run_state_uuid='machine_state')
-        qual = oee.quality('total_counter', 'reject_counter')
-
-        # Combined daily OEE
-        daily = oee.oee(
-            run_state_uuid='machine_state',
-            counter_uuid='part_counter',
-            ideal_cycle_time=30.0,
-            total_uuid='total_counter',
-            reject_uuid='reject_counter',
-        )
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> kw = dict(n_points=60, freq="1min")
+        >>> run = ts_shape.make_timeseries(["run"], value_column="value_bool", **kw)
+        >>> parts = ts_shape.make_timeseries(["parts"], noise=0, drift=59,
+        ...                                  value_column="value_integer", **kw)
+        >>> daily = ts_shape.OEEEvents(pd.concat([run, parts])).oee(
+        ...     "run", "parts", ideal_cycle_time=30.0)
+        >>> daily[["availability_pct", "performance_pct", "quality_pct", "oee_pct"]].round(1)
+           availability_pct  performance_pct  quality_pct  oee_pct
+        0              54.2             92.2        100.0     50.0
     """
 
     def __init__(

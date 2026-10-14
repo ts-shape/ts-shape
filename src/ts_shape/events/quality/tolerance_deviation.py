@@ -45,6 +45,20 @@ class ToleranceDeviationEvents(Base):
     - Severity level classification (minor, major, critical)
     - Process capability indices (Cp, Cpk, Pp, Ppk)
     - Time-lagged tolerance application
+
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> act = ts_shape.make_timeseries(["act"], n_points=60, n_outliers=3)
+        >>> limits = pd.DataFrame({"systime": act["systime"].min(), "uuid": ["usl", "lsl"],
+        ...                        "value_double": [103.0, 97.0]})
+        >>> tde = ts_shape.ToleranceDeviationEvents(
+        ...     pd.concat([limits, act]), "value_double", "value_double", actual_uuid="act",
+        ...     upper_tolerance_uuid="usl", lower_tolerance_uuid="lsl")
+        >>> tde.detect_deviations()[["systime", "value_double", "severity"]].round(1)
+                       systime  value_double severity
+        4  2025-01-01 00:02:00         110.0    major
+        33 2025-01-01 00:16:30         111.2    major
+        49 2025-01-01 00:24:30         112.1    major
     """
 
     @keyword_only(4)

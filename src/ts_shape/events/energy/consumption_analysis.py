@@ -41,6 +41,18 @@ class EnergyConsumptionEvents(Base):
     - consumption_baseline_deviation: Compare actual vs rolling baseline.
     - energy_per_unit: Energy per production unit when paired with a counter.
     - normalize: Static helper to convert raw CSV format to standard schema.
+
+    Example:
+        >>> import ts_shape
+        >>> df = ts_shape.make_timeseries(["meter"], n_points=96, freq="15min",
+        ...                               baseline=5.0, noise=0.5)  # kWh per 15 min
+        >>> energy = ts_shape.EnergyConsumptionEvents(df)
+        >>> energy.consumption_by_window("meter", window="6h")[["start", "consumption"]].round(1)
+                        start  consumption
+        0 2025-01-01 00:00:00        119.8
+        1 2025-01-01 06:00:00        122.1
+        2 2025-01-01 12:00:00        118.9
+        3 2025-01-01 18:00:00        118.1
     """
 
     def __init__(

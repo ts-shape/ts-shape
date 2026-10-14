@@ -26,20 +26,15 @@ class CycleTimeEvents(Base):
     - part_id_uuid: string signal with current part number
     - cycle_trigger_uuid: boolean/integer signal for cycle completion
 
-    Example usage:
-        tracker = CycleTimeEvents(df)
-
-        # Get cycle times by part
-        cycles = tracker.cycle_time_by_part(
-            part_id_uuid='part_number_signal',
-            cycle_trigger_uuid='cycle_complete_signal'
-        )
-
-        # Get statistics
-        stats = tracker.cycle_time_statistics(
-            part_id_uuid='part_number_signal',
-            cycle_trigger_uuid='cycle_complete_signal'
-        )
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> df = pd.concat([ts_shape.make_id_signal("part", ["A", "B"], hold=30),
+        ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
+        >>> stats = ts_shape.CycleTimeEvents(df).cycle_time_statistics("part", "cycle")
+        >>> stats[["part_number", "count", "avg_seconds"]].round(1)
+          part_number  count  avg_seconds
+        0           A      7        111.4
+        1           B      5        198.0
     """
 
     def __init__(
@@ -93,11 +88,15 @@ class CycleTimeEvents(Base):
             - cycle_time_seconds: Cycle time in seconds
 
         Example:
-            >>> cycle_time_by_part('part_id', 'cycle_trigger')
-                systime              part_number  cycle_time_seconds
-            0   2024-01-01 08:05:30  PART_A       45.2
-            1   2024-01-01 08:06:18  PART_A       48.0
-            2   2024-01-01 08:07:05  PART_A       47.1
+            >>> import pandas as pd, ts_shape
+            >>> df = pd.concat([ts_shape.make_id_signal("part", ["A", "B"], hold=30),
+            ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
+            >>> out = ts_shape.CycleTimeEvents(df).cycle_time_by_part("part", "cycle")
+            >>> out[["part_number", "cycle_time_seconds"]].head(3)
+              part_number  cycle_time_seconds
+            0           A                60.0
+            1           A               120.0
+            2           A               120.0
         """
         # Get cycle completion times
         cycles = (
@@ -243,10 +242,14 @@ class CycleTimeEvents(Base):
             - median_seconds: Median cycle time (robust target)
 
         Example:
-            >>> cycle_time_statistics('part_id', 'cycle_trigger')
-                part_number  count  min_seconds  avg_seconds  max_seconds  std_seconds  median_seconds
-            0   PART_A       450    42.1         47.5         58.2         3.2          47.1
-            1   PART_B       320    55.0         62.8         78.5         5.1          61.9
+            >>> import pandas as pd, ts_shape
+            >>> df = pd.concat([ts_shape.make_id_signal("part", ["A", "B"], hold=30),
+            ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
+            >>> stats = ts_shape.CycleTimeEvents(df).cycle_time_statistics("part", "cycle")
+            >>> stats[["part_number", "count", "median_seconds", "max_seconds"]]
+              part_number  count  median_seconds  max_seconds
+            0           A      7           120.0        180.0
+            1           B      5           150.0        420.0
         """
         cycle_data = self.cycle_time_by_part(
             part_id_uuid,
@@ -321,10 +324,15 @@ class CycleTimeEvents(Base):
             - is_slow: Flag (always True in returned data)
 
         Example:
-            >>> detect_slow_cycles('part_id', 'cycle_trigger', threshold_factor=1.5)
-                systime              part_number  cycle_time_seconds  median_seconds  deviation_factor  is_slow
-            0   2024-01-01 10:15:30  PART_A       75.2               47.1            1.60              True
-            1   2024-01-01 14:22:18  PART_A       82.5               47.1            1.75              True
+            >>> import pandas as pd, ts_shape
+            >>> df = pd.concat([ts_shape.make_id_signal("part", ["A", "B"], hold=30),
+            ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
+            >>> slow = ts_shape.CycleTimeEvents(df).detect_slow_cycles("part", "cycle")
+            >>> slow[["part_number", "cycle_time_seconds", "deviation_factor"]]
+              part_number  cycle_time_seconds  deviation_factor
+            0           A               180.0               1.5
+            1           B               240.0               1.6
+            2           B               420.0               2.8
         """
         cycle_data = self.cycle_time_by_part(
             part_id_uuid,
@@ -396,11 +404,16 @@ class CycleTimeEvents(Base):
             - trend: 'improving', 'stable', or 'degrading'
 
         Example:
-            >>> cycle_time_trend('part_id', 'cycle_trigger', 'PART_A')
-                systime              cycle_time_seconds  moving_avg  trend
-            0   2024-01-01 08:05:30  45.2               47.1        improving
-            1   2024-01-01 08:06:18  48.0               47.2        stable
-            2   2024-01-01 08:07:05  47.1               47.1        stable
+            >>> import pandas as pd, ts_shape
+            >>> df = pd.concat([ts_shape.make_id_signal("part", ["A", "B"], hold=30),
+            ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
+            >>> trend = ts_shape.CycleTimeEvents(df).cycle_time_trend(
+            ...     "part", "cycle", "A", window_size=3)
+            >>> trend[["cycle_time_seconds", "moving_avg", "trend"]].tail(3)
+               cycle_time_seconds  moving_avg      trend
+            4                60.0       120.0  improving
+            5               120.0       120.0     stable
+            6               120.0       100.0  improving
         """
         cycle_data = self.cycle_time_by_part(
             part_id_uuid,
@@ -473,10 +486,14 @@ class CycleTimeEvents(Base):
             - max_cycle_time: Slowest cycle
 
         Example:
-            >>> hourly_cycle_time_summary('part_id', 'cycle_trigger')
-                hour                 part_number  cycles_completed  avg_cycle_time  min_cycle_time  max_cycle_time
-            0   2024-01-01 08:00:00  PART_A       75               47.2            42.1            55.8
-            1   2024-01-01 09:00:00  PART_A       78               46.8            43.0            52.3
+            >>> import pandas as pd, ts_shape
+            >>> df = pd.concat([ts_shape.make_id_signal("part", ["A", "B"], hold=30),
+            ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
+            >>> hourly = ts_shape.CycleTimeEvents(df).hourly_cycle_time_summary("part", "cycle")
+            >>> hourly[["part_number", "cycles_completed", "avg_cycle_time"]]
+              part_number  cycles_completed  avg_cycle_time
+            0           A                 7      111.428571
+            1           B                 5      198.000000
         """
         cycle_data = self.cycle_time_by_part(
             part_id_uuid,

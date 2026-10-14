@@ -23,6 +23,17 @@ except ImportError:
 class OutlierDetectionEvents(Base):
     """
     Processes time series data to detect outliers based on specified statistical methods.
+
+    Example:
+        >>> import ts_shape
+        >>> df = ts_shape.make_timeseries(["temp"], n_outliers=3)
+        >>> out = ts_shape.OutlierDetectionEvents(df, "value_double").detect_outliers_zscore()
+        >>> out[["systime", "value_double", "severity"]].round(1)
+                      systime  value_double  severity
+        0 2025-01-01 01:34:30          89.7       8.9
+        1 2025-01-01 03:21:00          88.8       9.6
+        2 2025-01-01 05:23:00          88.6       9.8
+        3 2025-01-01 07:54:30          96.4       3.1
     """
 
     @keyword_only(3)

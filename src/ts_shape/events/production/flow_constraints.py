@@ -431,10 +431,17 @@ class FlowConstraintEvents(Base):
                 - starved_severity_breakdown: Count by severity level
                 - overall_alignment_quality: Average alignment quality across both types
 
-        Examples:
-            >>> roles = {'upstream_run': 'uuid1', 'downstream_run': 'uuid2'}
-            >>> analytics = flow.flow_constraint_analytics(roles=roles)
-            >>> print(analytics['summary']['blocked_count'])
+        Example:
+            >>> import pandas as pd, ts_shape
+            >>> t = pd.date_range("2025-01-01", periods=6, freq="10s")
+            >>> up = pd.DataFrame({"systime": t, "uuid": "up", "value_bool": True})
+            >>> down = up.assign(uuid="down", value_bool=[True, False, False, True, True, True])
+            >>> flow = ts_shape.FlowConstraintEvents(pd.concat([up, down]))
+            >>> out = flow.flow_constraint_analytics(roles={"upstream_run": "up", "downstream_run": "down"})
+            >>> out[["constraint_type", "event_count", "total_duration_seconds"]]
+              constraint_type  event_count  total_duration_seconds
+            0         blocked            1                    10.0
+            1         starved            0                     0.0
         """
         if not as_frame:
             warn_dict_return("FlowConstraintEvents.flow_constraint_analytics")

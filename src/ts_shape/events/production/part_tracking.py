@@ -38,29 +38,16 @@ class PartProductionEvents(Base):
     enable ``handle_resets`` so the reset is treated as new production
     instead of being discarded.
 
-    Example usage:
-        tracker = PartProductionEvents(df)
-
-        # Hourly production by part, accounting for counter resets
-        hourly = tracker.production_by_part(
-            part_id_uuid='part_number_signal',
-            counter_uuid='counter_signal',
-            window='1h',
-            handle_resets=True,
-        )
-
-        # Daily summary
-        daily = tracker.daily_production_summary(
-            part_id_uuid='part_number_signal',
-            counter_uuid='counter_signal',
-            handle_resets=True,
-        )
-
-        # When did the counter reset?
-        resets = tracker.detect_resets(
-            part_id_uuid='part_number_signal',
-            counter_uuid='counter_signal',
-        )
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> parts = ts_shape.make_id_signal("part", ["A", "B"], hold=60, freq="1min")
+        >>> counter = ts_shape.make_timeseries(["counter"], n_points=120, freq="1min",
+        ...     noise=0, drift=119, value_column="value_integer")
+        >>> pp = ts_shape.PartProductionEvents(pd.concat([parts, counter]))
+        >>> pp.production_by_part("part", "counter")[["start", "part_number", "quantity"]]
+                        start part_number  quantity
+        0 2025-01-01 00:00:00           A        59
+        1 2025-01-01 01:00:00           B        60
     """
 
     def __init__(
@@ -213,14 +200,18 @@ class PartProductionEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> production_by_part('part_id', 'counter', window='1h')
-                start         part_number  quantity  first_count  last_count
-            0   2024-01-01 08:00:00  PART_A       150       1000        1150
-            1   2024-01-01 09:00:00  PART_A       145       1150        1295
-            2   2024-01-01 10:00:00  PART_B       98        1295        1393
+            >>> import pandas as pd, ts_shape
+            >>> parts = ts_shape.make_id_signal("part", ["A", "B"], hold=60, freq="1min")
+            >>> counter = ts_shape.make_timeseries(["counter"], n_points=120, freq="1min",
+            ...     noise=0, drift=119, value_column="value_integer")
+            >>> pp = ts_shape.PartProductionEvents(pd.concat([parts, counter]))
+            >>> pp.production_by_part("part", "counter")[["part_number", "quantity"]]
+              part_number  quantity
+            0           A        59
+            1           B        60
 
-            With ``handle_resets=True``, a window where the counter drops
-            from 432 to 61 reports a quantity of 61 (and ``resets=1``)
+            With ``handle_resets=True`` (the default), a window where the counter
+            drops from 432 to 61 reports a quantity of 61 (and ``resets=1``)
             instead of 0.
         """
         merged = self._merge_part_counter(
@@ -310,10 +301,14 @@ class PartProductionEvents(Base):
             - drop: How far the counter fell (count_before - count_after)
 
         Example:
-            >>> detect_resets('part_id', 'counter')
-                systime              part_number  count_before  count_after  drop
-            0   2026-06-15 17:00:00  8842580      432           61           371
-            1   2026-06-16 19:00:00  9423376      854           0            854
+            >>> import pandas as pd, ts_shape
+            >>> parts = ts_shape.make_id_signal("part", ["A"], hold=6, freq="1min")
+            >>> counter = parts.assign(uuid="counter", value_string=pd.NA,
+            ...                        value_integer=[430, 431, 432, 61, 62, 63])
+            >>> pp = ts_shape.PartProductionEvents(pd.concat([parts, counter]))
+            >>> pp.detect_resets("part", "counter")[["part_number", "count_before", "count_after"]]
+              part_number  count_before  count_after
+            0           A         432.0         61.0
         """
         columns = [
             self.time_column,
@@ -386,11 +381,16 @@ class PartProductionEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> daily_production_summary('part_id', 'counter')
-                date        part_number  total_quantity  hours_active
-            0   2024-01-01  PART_A       1200           8
-            1   2024-01-01  PART_B       850            6
-            2   2024-01-02  PART_A       1150           8
+            >>> import pandas as pd, ts_shape
+            >>> parts = ts_shape.make_id_signal("part", ["A", "B"], hold=60, freq="1min")
+            >>> counter = ts_shape.make_timeseries(["counter"], n_points=120, freq="1min",
+            ...     noise=0, drift=119, value_column="value_integer")
+            >>> pp = ts_shape.PartProductionEvents(pd.concat([parts, counter]))
+            >>> daily = pp.daily_production_summary("part", "counter")
+            >>> daily[["date", "part_number", "total_quantity", "hours_active"]]
+                     date part_number  total_quantity  hours_active
+            0  2025-01-01           A              59             1
+            1  2025-01-01           B              60             1
         """
         hourly = self.production_by_part(
             part_id_uuid,
@@ -450,11 +450,15 @@ class PartProductionEvents(Base):
             DataFrame with total production per part
 
         Example:
-            >>> production_totals('part_id', 'counter',
-            ...                   start_date='2024-01-01', end_date='2024-01-07')
-                part_number  total_quantity  days_produced
-            0   PART_A       8450           5
-            1   PART_B       6200           4
+            >>> import pandas as pd, ts_shape
+            >>> parts = ts_shape.make_id_signal("part", ["A", "B"], hold=60, freq="1min")
+            >>> counter = ts_shape.make_timeseries(["counter"], n_points=120, freq="1min",
+            ...     noise=0, drift=119, value_column="value_integer")
+            >>> pp = ts_shape.PartProductionEvents(pd.concat([parts, counter]))
+            >>> pp.production_totals("part", "counter", start_date="2025-01-01")
+              part_number  total_quantity  days_produced  resets
+            0           A              59              1       0
+            1           B              60              1       0
         """
         daily = self.daily_production_summary(
             part_id_uuid,

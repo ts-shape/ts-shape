@@ -49,25 +49,17 @@ class QualityEvents(Base):
     so downstream modules (ShiftHandoverEvents, PeriodSummaryEvents, OEEEvents)
     can join on a consistent column name.
 
-    Example usage:
-        tracker = QualityEvents(df)
-
-        # NOK parts per shift
-        shift_nok = tracker.nok_by_shift(
-            ok_counter_uuid='good_parts',
-            nok_counter_uuid='bad_parts'
-        )
-
-        # Quality by part number
-        part_quality = tracker.quality_by_part(
-            ok_counter_uuid='good_parts',
-            nok_counter_uuid='bad_parts',
-            part_id_uuid='part_number'
-        )
-
-        # Pipeline: feed into PeriodSummaryEvents
-        daily = tracker.daily_quality_summary('good', 'bad')
-        # daily has [date, ok_parts, nok_parts, total_parts, quality_pct, ...]
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> kw = dict(n_points=20, freq="1min", noise=0, value_column="value_integer")
+        >>> df = pd.concat([ts_shape.make_timeseries(["ok"], drift=190, **kw),
+        ...                 ts_shape.make_timeseries(["nok"], drift=19, **kw),
+        ...                 ts_shape.make_id_signal("part", ["A", "B"], freq="1min")])
+        >>> out = ts_shape.QualityEvents(df).quality_by_part("ok", "nok", "part")
+        >>> out[["part_number", "ok_parts", "nok_parts", "first_pass_yield_pct"]].round(1)
+          part_number  ok_parts  nok_parts  first_pass_yield_pct
+        0           A      90.0        9.0                  90.9
+        1           B     100.0       10.0                  90.9
     """
 
     MERGE_KEYS_SHIFT = ["date", "shift"]
@@ -148,11 +140,15 @@ class QualityEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> nok_by_shift('good_counter', 'bad_counter')
-                date        shift    ok_parts  nok_parts  total_parts  nok_rate_pct  first_pass_yield_pct
-            0   2024-01-01  shift_1  450       12         462          2.6           97.4
-            1   2024-01-01  shift_2  425       18         443          4.1           95.9
-            2   2024-01-01  shift_3  380       25         405          6.2           93.8
+            >>> import pandas as pd, ts_shape
+            >>> kw = dict(n_points=16, freq="30min", start="2025-01-01 06:00", noise=0,
+            ...           value_column="value_integer")
+            >>> df = pd.concat([ts_shape.make_timeseries(["ok"], drift=150, **kw),
+            ...                 ts_shape.make_timeseries(["nok"], drift=15, **kw)])
+            >>> out = ts_shape.QualityEvents(df).nok_by_shift("ok", "nok")
+            >>> out[["shift", "ok_parts", "nok_parts", "first_pass_yield_pct"]].round(1)
+                 shift  ok_parts  nok_parts  first_pass_yield_pct
+            0  shift_1     150.0       15.0                  90.9
         """
         # Get OK counter data
         ok_data = (
@@ -318,10 +314,16 @@ class QualityEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> quality_by_part('good', 'bad', 'part_id')
-                part_number  ok_parts  nok_parts  total_parts  nok_rate_pct  first_pass_yield_pct
-            0   PART_A       1255      55         1310         4.2           95.8
-            1   PART_B       890       38         928          4.1           95.9
+            >>> import pandas as pd, ts_shape
+            >>> kw = dict(n_points=20, freq="1min", noise=0, value_column="value_integer")
+            >>> df = pd.concat([ts_shape.make_timeseries(["ok"], drift=190, **kw),
+            ...                 ts_shape.make_timeseries(["nok"], drift=19, **kw),
+            ...                 ts_shape.make_id_signal("part", ["A", "B"], freq="1min")])
+            >>> out = ts_shape.QualityEvents(df).quality_by_part("ok", "nok", "part")
+            >>> out[["part_number", "ok_parts", "nok_parts", "nok_rate_pct"]]
+              part_number  ok_parts  nok_parts  nok_rate_pct
+            0           A      90.0        9.0      9.090909
+            1           B     100.0       10.0      9.090909
         """
         # Get part ID data
         part_data = (
@@ -497,11 +499,14 @@ class QualityEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> nok_by_reason('bad_parts', 'defect_reason')
-                reason              nok_parts  pct_of_total
-            0   Dimension_Error     45         40.5
-            1   Surface_Defect      28         25.2
-            2   Wrong_Color         22         19.8
+            >>> import pandas as pd, ts_shape
+            >>> kw = dict(n_points=20, freq="1min", noise=0, value_column="value_integer")
+            >>> df = pd.concat([ts_shape.make_timeseries(["nok"], drift=19, **kw),
+            ...                 ts_shape.make_id_signal("reason", ["Scratch", "Dent"], freq="1min")])
+            >>> ts_shape.QualityEvents(df).nok_by_reason("nok", "reason")
+                reason  nok_parts  pct_of_total  resets
+            0     Dent       10.0     52.631579       0
+            1  Scratch        9.0     47.368421       0
         """
         nok_data = (
             self.dataframe[self.dataframe["uuid"] == nok_counter_uuid]
@@ -619,11 +624,15 @@ class QualityEvents(Base):
                 ``handle_resets=True``)
 
         Example:
-            >>> daily_quality_summary('good', 'bad')
-                date        ok_parts  nok_parts  total_parts  nok_rate_pct  first_pass_yield_pct
-            0   2024-01-01  1255      55         1310         4.2           95.8
-            1   2024-01-02  1308      42         1350         3.1           96.9
-            2   2024-01-03  1290      60         1350         4.4           95.6
+            >>> import pandas as pd, ts_shape
+            >>> kw = dict(n_points=16, freq="30min", start="2025-01-01 06:00", noise=0,
+            ...           value_column="value_integer")
+            >>> df = pd.concat([ts_shape.make_timeseries(["ok"], drift=150, **kw),
+            ...                 ts_shape.make_timeseries(["nok"], drift=15, **kw)])
+            >>> out = ts_shape.QualityEvents(df).daily_quality_summary("ok", "nok")
+            >>> out[["date", "ok_parts", "nok_parts", "nok_rate_pct"]].round(1)
+                     date  ok_parts  nok_parts  nok_rate_pct
+            0  2025-01-01     150.0       15.0           9.1
         """
         shift_quality = self.nok_by_shift(
             ok_counter_uuid,

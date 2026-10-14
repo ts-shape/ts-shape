@@ -24,6 +24,19 @@ class MachineStateEvents(Base):
     - MachineStateEvents: Run/idle state intervals and transitions.
       - detect_run_idle: Intervalize run/idle states with optional min duration filter.
       - transition_events: Point events on state changes (idle->run, run->idle).
+
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> t = pd.date_range("2025-01-01 08:00", periods=6, freq="10min")
+        >>> df = pd.DataFrame({"systime": t, "uuid": "run",
+        ...                    "value_bool": [True, True, False, True, True, False]})
+        >>> out = ts_shape.MachineStateEvents(df, "run").detect_run_idle()
+        >>> out[["start", "state", "duration_seconds"]]
+                        start state  duration_seconds
+        0 2025-01-01 08:00:00   run            1200.0
+        1 2025-01-01 08:20:00  idle             600.0
+        2 2025-01-01 08:30:00   run            1200.0
+        3 2025-01-01 08:50:00  idle               0.0
     """
 
     def __init__(

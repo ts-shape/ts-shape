@@ -43,24 +43,17 @@ class ScrapEvents(Base):
         cost = scrap.scrap_cost('scrap_weight', 'part_id', {'A': 12.5})
         # → merge with QualityEvents.quality_by_part() on [part_number]
 
-    Example usage:
-        tracker = ScrapEvents(df)
-
-        # Scrap per shift
-        shift_scrap = tracker.scrap_by_shift(scrap_uuid='scrap_weight')
-
-        # Scrap by reason
-        reasons = tracker.scrap_by_reason(
-            scrap_uuid='scrap_weight',
-            reason_uuid='scrap_reason'
-        )
-
-        # Convert to cost
-        cost = tracker.scrap_cost(
-            scrap_uuid='scrap_weight',
-            part_id_uuid='part_number',
-            material_costs={'PART_A': 12.50, 'PART_B': 8.75}
-        )
+    Example:
+        >>> import pandas as pd, ts_shape
+        >>> scrap = ts_shape.make_timeseries(["scrap_kg"], n_points=20, freq="1min",
+        ...                                  baseline=0.0, noise=0, drift=9.5)
+        >>> reason = ts_shape.make_id_signal("reason", ["Burr", "Crack"], freq="1min")
+        >>> out = ts_shape.ScrapEvents(pd.concat([scrap, reason])).scrap_by_reason(
+        ...     "scrap_kg", "reason")
+        >>> out[["reason", "scrap_quantity", "pct_of_total"]].round(1)
+          reason  scrap_quantity  pct_of_total
+        0  Crack             5.0          52.6
+        1   Burr             4.5          47.4
     """
 
     def __init__(
