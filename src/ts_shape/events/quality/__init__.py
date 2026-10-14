@@ -10,10 +10,10 @@ Classes:
   - detect_outliers_isolation_forest: Detects outliers using sklearn's IsolationForest algorithm.
   - detect_outliers_mad: Detects outliers using the Median Absolute Deviation (MAD) method.
 
-- StatisticalProcessControlRuleBased: Apply Western Electric rules to actual values
+- StatisticalProcessControlEvents: Apply Western Electric rules to actual values
   using tolerance context to flag control-limit violations.
-  - calculate_control_limits: Compute mean and ±1/±2/±3 standard-deviation bands from tolerance rows.
-  - process: Apply selected rules and emit event rows for violations.
+  - control_limits: Compute mean and ±1/±2/±3 standard-deviation bands from tolerance rows.
+  - detect_violations: Apply selected rules and emit event rows for violations.
   - rule_1: One point beyond the 3-sigma control limits.
   - rule_2: Nine consecutive points on one side of the mean.
   - rule_3: Six consecutive points steadily increasing or decreasing.
@@ -22,15 +22,15 @@ Classes:
   - rule_6: Four of five consecutive points near the control limit (between 1 and 2 sigma).
   - rule_7: Fifteen consecutive points within 1 sigma of the mean.
   - rule_8: Eight consecutive points on both sides of the mean within 1 sigma.
-  - apply_rules_vectorized: Apply the selected Western Electric rules in one vectorized pass.
-  - calculate_dynamic_control_limits: Calculate dynamic control limits that adapt over time.
+  - detect_rule_violations: Apply the selected Western Electric rules in one vectorized pass.
+  - dynamic_control_limits: Calculate dynamic control limits that adapt over time.
   - detect_cusum_shifts: Detect process shifts using CUSUM (Cumulative Sum) control chart.
   - interpret_violations: Add human-readable interpretations to rule violations.
 
 - ToleranceDeviationEvents: Flag intervals where actual values cross/compare against
   tolerance settings and group them into start/end events.
-  - process_and_group_data_with_events: Build grouped deviation events with event UUIDs.
-  - compute_capability_indices: Calculate process capability indices (Cp, Cpk, Pp, Ppk).
+  - detect_deviations: Build grouped deviation events with event UUIDs.
+  - capability_indices: Calculate process capability indices (Cp, Cpk, Pp, Ppk).
 
 - AnomalyClassificationEvents: Classify anomaly types in numeric signals.
   - classify_anomalies: Detect and classify by type (spike/drift/oscillation/flatline/level_shift).
@@ -60,7 +60,7 @@ Classes:
   - detect_disagreement: Flag windows where sensor spread exceeds threshold.
   - pairwise_bias: Mean difference between each sensor pair per window.
   - consensus_score: Per-window measurement consensus across sensors.
-  - identify_outlier_sensor: Find the sensor furthest from the group.
+  - detect_outlier_sensor: Find the sensor furthest from the group.
 
 - GaugeRepeatabilityEvents: Measurement System Analysis (Gauge R&R).
   - repeatability: Equipment Variation (EV) per part.
@@ -85,7 +85,7 @@ Classes:
 
 - EnvironmentalCompensationEvents: Environmental effect compensation.
   - detect_correlation: Pearson correlation with environmental signal per window.
-  - estimate_sensitivity: Environmental sensitivity coefficient estimation.
+  - sensitivity: Environmental sensitivity coefficient estimation.
   - compensated_signal: Apply linear compensation model.
   - detect_env_exceedance: Flag out-of-range environmental conditions.
 
@@ -102,7 +102,7 @@ Classes:
   - sampling_jitter: Measure timing regularity of sampling.
 
 - DataGapAnalysisEvents: Analyse gaps and coverage in signal data.
-  - find_gaps: Locate all gaps longer than a threshold.
+  - detect_gaps: Locate all gaps longer than a threshold.
   - gap_summary: Aggregate statistics across all gaps.
   - coverage_by_period: Data coverage percentage per time window.
   - interpolation_candidates: Gaps small enough to interpolate safely.

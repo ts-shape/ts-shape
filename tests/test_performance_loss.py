@@ -1,8 +1,8 @@
-"""Tests for PerformanceLossTracking module."""
+"""Tests for PerformanceLossEvents module."""
 
 import pandas as pd
 
-from ts_shape.events.production.performance_loss import PerformanceLossTracking
+from ts_shape.events.production.performance_loss import PerformanceLossEvents
 
 
 def _make_cycle_df(n_cycles=20, base_cycle_time=45.0, jitter=5.0):
@@ -30,7 +30,7 @@ class TestPerformanceLossTracking:
 
     def test_performance_by_shift_basic(self):
         df = _make_cycle_df(n_cycles=20, base_cycle_time=45.0)
-        tracker = PerformanceLossTracking(df)
+        tracker = PerformanceLossEvents(df)
         result = tracker.performance_by_shift(
             cycle_uuid="cycle_counter",
             target_cycle_time=45.0,
@@ -44,7 +44,7 @@ class TestPerformanceLossTracking:
     def test_performance_by_shift_slow(self):
         # Cycles 2x slower than target → ~50% performance
         df = _make_cycle_df(n_cycles=20, base_cycle_time=90.0, jitter=2.0)
-        tracker = PerformanceLossTracking(df)
+        tracker = PerformanceLossEvents(df)
         result = tracker.performance_by_shift(
             cycle_uuid="cycle_counter",
             target_cycle_time=45.0,
@@ -54,7 +54,7 @@ class TestPerformanceLossTracking:
 
     def test_slow_periods(self):
         df = _make_cycle_df(n_cycles=50, base_cycle_time=60.0, jitter=3.0)
-        tracker = PerformanceLossTracking(df)
+        tracker = PerformanceLossEvents(df)
         result = tracker.slow_periods(
             cycle_uuid="cycle_counter",
             target_cycle_time=45.0,
@@ -67,7 +67,7 @@ class TestPerformanceLossTracking:
 
     def test_performance_trend(self):
         df = _make_cycle_df(n_cycles=30, base_cycle_time=50.0)
-        tracker = PerformanceLossTracking(df)
+        tracker = PerformanceLossEvents(df)
         result = tracker.performance_trend(
             cycle_uuid="cycle_counter",
             target_cycle_time=45.0,
@@ -79,7 +79,7 @@ class TestPerformanceLossTracking:
 
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer"])
-        tracker = PerformanceLossTracking(df)
+        tracker = PerformanceLossEvents(df)
         result = tracker.performance_by_shift(
             cycle_uuid="nonexistent",
             target_cycle_time=45.0,
@@ -88,7 +88,7 @@ class TestPerformanceLossTracking:
 
     def test_slow_periods_empty(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_integer"])
-        tracker = PerformanceLossTracking(df)
+        tracker = PerformanceLossEvents(df)
         result = tracker.slow_periods(
             cycle_uuid="nonexistent",
             target_cycle_time=45.0,

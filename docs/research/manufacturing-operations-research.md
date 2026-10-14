@@ -223,12 +223,12 @@ The table below maps each identified industry challenge to the corresponding ts-
 | # | Manufacturing Issue | ts-shape Coverage | Coverage Level |
 |---|---|---|---|
 | 1.1 | Unplanned Equipment Downtime | `DegradationDetectionEvents`, `FailurePredictionEvents`, `VibrationAnalysisEvents`, `AssetHealthIndexEvents` | **Good** |
-| 1.2 | Poor OEE | `OEECalculator`, `MachineStateEvents`, `MicroStopEvents`, `ChangeoverEvents`, `LineThroughputEvents` | **Strong** |
-| 1.3 | Quality Defects & Scrap | `StatisticalProcessControlRuleBased`, `OutlierDetectionEvents`, `ToleranceDeviationEvents`, `CapabilityTrendingEvents`, `GaugeRepeatabilityEvents`, `ScrapTracking`, `QualityTracking` | **Strong** |
+| 1.2 | Poor OEE | `OEEEvents`, `MachineStateEvents`, `MicroStopEvents`, `ChangeoverEvents`, `LineThroughputEvents` | **Strong** |
+| 1.3 | Quality Defects & Scrap | `StatisticalProcessControlEvents`, `OutlierDetectionEvents`, `ToleranceDeviationEvents`, `CapabilityTrendingEvents`, `GaugeRepeatabilityEvents`, `ScrapEvents`, `QualityEvents` | **Strong** |
 | 1.4 | Supply Chain Disruptions | `InventoryMonitoringEvents`, `LeadTimeAnalysisEvents`, `DemandPatternEvents` | **Partial** |
 | 1.5 | Energy Waste | `ConsumptionAnalysisEvents`, `EfficiencyTrackingEvents`, `IdleEnergyDetectionEvents`, `EnergyPerformanceIndicatorEvents`, `CarbonIntensityEvents` | **Good** |
-| 1.6 | Workforce Productivity | `OperatorPerformanceTracking`, `ShiftReporting`, `ShiftHandoverReport`, `TargetTracking` | **Good** |
-| 1.7 | Process Variability | `SetpointChangeEvents`, `ControlLoopHealthEvents`, `ProcessStabilityIndex`, `OperatingRangeEvents`, `DisturbanceRecoveryEvents` | **Strong** |
+| 1.6 | Workforce Productivity | `OperatorPerformanceEvents`, `ShiftReportEvents`, `ShiftHandoverEvents`, `TargetEvents` | **Good** |
+| 1.7 | Process Variability | `SetpointChangeEvents`, `ControlLoopHealthEvents`, `ProcessStabilityIndexEvents`, `OperatingRangeEvents`, `DisturbanceRecoveryEvents` | **Strong** |
 | 1.8 | Alarm Flood & Fatigue | `AlarmManagementEvents` (chattering, standing alarms, flood detection) | **Strong** |
 | 1.9 | Traceability & Compliance | `ValueTraceabilityEvents`, `OrderTraceabilityEvents`, `RoutingTraceabilityEvents`, `MultiProcessTraceabilityEvents`, `BatchTrackingEvents` | **Strong** |
 | 1.10 | Bottleneck Management | `BottleneckDetectionEvents`, `FlowConstraintEvents`, `LineThroughputEvents`, `ChangeoverEvents`, `ProductionScheduleAdherenceEvents` | **Strong** |
@@ -430,7 +430,7 @@ The following new modules are recommended to close the identified gaps and align
 ### 4.6 `MultivariateProcessControlEvents` (Quality)
 **Addresses:** Gap 3.4 — multivariate SPC
 
-**Concept:** Detect out-of-control conditions in processes with multiple correlated quality variables using Hotelling T² statistic. Complements the existing univariate `StatisticalProcessControlRuleBased` for processes where individual signals appear in-control but their joint distribution shifts.
+**Concept:** Detect out-of-control conditions in processes with multiple correlated quality variables using Hotelling T² statistic. Complements the existing univariate `StatisticalProcessControlEvents` for processes where individual signals appear in-control but their joint distribution shifts.
 
 **Key outputs:**
 - `t2_statistic`: Hotelling T² value
@@ -486,7 +486,7 @@ that cannot be acted on.
 - `recovery_required_rate`: units/hour needed to recover by end of shift
 
 **Implementation approach:**
-- Accept planned schedule DataFrame (period start/end, planned quantity, order ID) and actual `PartProductionTracking` output
+- Accept planned schedule DataFrame (period start/end, planned quantity, order ID) and actual `PartProductionEvents` output
 - Merge on time periods and compute adherence metrics
 - Emit events for deviations exceeding configurable thresholds
 
@@ -606,7 +606,7 @@ These questions appear in process development for pharma (ICH Q8 design space, I
 
 | Detector | Purpose | Output shape | Methods |
 |---|---|---|---|
-| `DesignOfExperimentsEvents` | Recover DOE run structure from continuous data; estimate per-factor main effects. | interval / static | `detect_runs`, `compute_effects` |
+| `DesignOfExperimentsEvents` | Recover DOE run structure from continuous data; estimate per-factor main effects. | interval / static | `detect_runs`, `effects` |
 | `DesignSpaceEvents` | Fit a multivariate qualified operating window (box or convex hull) from R&D data; flag commercial-operation excursions and near-boundary samples. | interval / point | `fit_box`, `fit_hull`, `detect_excursions`, `boundary_proximity` |
 | `GoldenBatchDeviationEvents` | Quantify deviation of a new batch trajectory from a reference (golden) batch using pointwise, area-between-curves, or DTW distance. | summary | `compare`, `phase_breakdown` |
 | `RecipePhaseAdherenceEvents` | Evaluate batch recipe phases against a declarative spec (duration / hold value / ramp rate / peak / trough). | interval | `evaluate` |
@@ -624,7 +624,7 @@ These questions appear in process development for pharma (ICH Q8 design space, I
 | R&D gap | Coverage before | Coverage now |
 |---|---|---|
 | DOE run segmentation from continuous data | none | `DesignOfExperimentsEvents.detect_runs` |
-| Per-factor effect estimation | none | `DesignOfExperimentsEvents.compute_effects` |
+| Per-factor effect estimation | none | `DesignOfExperimentsEvents.effects` |
 | Multivariate design-space monitoring | univariate only (`ProcessWindowEvents`) | `DesignSpaceEvents` (box + hull) |
 | Golden-batch trajectory comparison | clustering only (`ProfileComparison`) | `GoldenBatchDeviationEvents` |
 | Recipe-phase spec compliance | phase segmentation only (`BatchTrackingEvents`) | `RecipePhaseAdherenceEvents` |

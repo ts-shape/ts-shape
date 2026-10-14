@@ -13,7 +13,7 @@ Classes:
 - DesignOfExperimentsEvents: Segment continuous signals into DOE runs and
   estimate main effects per factor.
   - detect_runs: Identify stable factor-setting intervals as DOE runs.
-  - compute_effects: Aggregate run response and main effects per factor.
+  - effects: Aggregate run response and main effects per factor.
 
 - DesignSpaceEvents: Establish a multivariate qualified operating window
   from R&D data and monitor commercial operation against it.

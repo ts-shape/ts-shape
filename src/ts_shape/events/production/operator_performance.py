@@ -13,12 +13,13 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class OperatorPerformanceTracking(Base):
+class OperatorPerformanceEvents(Base):
     """Track and compare operator performance.
 
     Each UUID represents one signal:
@@ -30,14 +31,14 @@ class OperatorPerformanceTracking(Base):
 
     Pipeline example::
 
-        ops = OperatorPerformanceTracking(df)
+        ops = OperatorPerformanceEvents(df)
         by_op = ops.production_by_operator('operator_id', 'part_counter')
         # → standalone KPI report
         quality = ops.quality_by_operator('operator_id', 'good_parts', 'bad_parts')
-        # → merge with QualityTracking outputs on [date, shift]
+        # → merge with QualityEvents outputs on [date, shift]
 
     Example usage:
-        tracker = OperatorPerformanceTracking(df)
+        tracker = OperatorPerformanceEvents(df)
 
         # Parts per operator
         prod = tracker.production_by_operator(
@@ -459,3 +460,9 @@ class OperatorPerformanceTracking(Base):
         )
 
         return prod[["operator", "total_produced", "rank", "pct_of_best"]]
+
+
+#: Deprecated name, removed in 1.0.
+OperatorPerformanceTracking = deprecated_class(
+    OperatorPerformanceEvents, "OperatorPerformanceTracking"
+)

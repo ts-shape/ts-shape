@@ -6,11 +6,12 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_class
 
 logger = logging.getLogger(__name__)
 
 
-class ProcessStabilityIndex(Base):
+class ProcessStabilityIndexEvents(Base):
     """Engineering: Process Stability Index
 
     Generate a single 0-100 stability score per shift/day for a signal.
@@ -279,3 +280,9 @@ class ProcessStabilityIndex(Base):
         )
 
         return self._summary(result[cols].reset_index(drop=True), cols, window)
+
+
+#: Deprecated name, removed in 1.0.
+ProcessStabilityIndex = deprecated_class(
+    ProcessStabilityIndexEvents, "ProcessStabilityIndex"
+)

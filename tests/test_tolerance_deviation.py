@@ -38,7 +38,7 @@ def test_tolerance_deviation_events_grouping():
         time_threshold="5min",
     )
 
-    out = tde.process_and_group_data_with_events()
+    out = tde.detect_deviations()
     assert "uuid" in out.columns
     assert (out["uuid"] == evt_uuid).all()
     assert out["is_delta"].all()

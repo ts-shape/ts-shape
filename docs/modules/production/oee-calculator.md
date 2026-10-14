@@ -1,4 +1,4 @@
-# OEECalculator
+# OEEEvents
 
 > Calculate Overall Equipment Effectiveness from timeseries signals: Availability x Performance x Quality.
 
@@ -16,7 +16,7 @@ Use for daily OEE reporting. Combines availability (from machine state), perform
 ## Quick Example
 
 ```python
-from ts_shape.events.production.oee_calculator import OEECalculator
+from ts_shape.events.production.oee_calculator import OEEEvents
 import pandas as pd
 import numpy as np
 
@@ -32,13 +32,13 @@ df = pd.concat([
                   "value_integer": np.cumsum(np.random.choice([0, 1], size=480, p=[0.97, 0.03]))}),
 ], ignore_index=True)
 
-oee = OEECalculator(df)
-availability = oee.calculate_availability(run_state_uuid="line1:running", planned_time_hours=8)
-performance = oee.calculate_performance(
+oee = OEEEvents(df)
+availability = oee.availability(run_state_uuid="line1:running", planned_time_hours=8)
+performance = oee.performance(
     counter_uuid="line1:part_counter", ideal_cycle_time=55.0, run_state_uuid="line1:running"
 )
-quality = oee.calculate_quality(total_uuid="line1:part_counter", reject_uuid="line1:reject_counter")
-daily = oee.calculate_oee(
+quality = oee.quality(total_uuid="line1:part_counter", reject_uuid="line1:reject_counter")
+daily = oee.oee(
     run_state_uuid="line1:running",
     counter_uuid="line1:part_counter",
     ideal_cycle_time=55.0,  # seconds per part
@@ -55,10 +55,10 @@ print(daily[["start", "availability_pct", "performance_pct", "quality_pct", "oee
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `calculate_availability(run_state_uuid, planned_time_hours=None, max_gap=None)` | Compute daily availability from a boolean run-state signal (planned time defaults to the data span per day) | DataFrame per day with `start`, `end`, `duration_seconds`, `run_seconds`, `planned_seconds`, `availability_pct` |
-| `calculate_performance(counter_uuid, ideal_cycle_time, run_state_uuid=None, handle_resets=False)` | Compute daily performance: actual output vs theoretical maximum at the ideal cycle time (seconds per part) | DataFrame per day with `actual_parts`, `ideal_parts`, `run_seconds`, `performance_pct` |
-| `calculate_quality(total_uuid, reject_uuid, handle_resets=False)` | Compute daily quality: good parts divided by total parts produced | DataFrame per day with `total_parts`, `reject_parts`, `good_parts`, `quality_pct` |
-| `calculate_oee(run_state_uuid, counter_uuid, ideal_cycle_time, total_uuid=None, reject_uuid=None, planned_time_hours=None)` | Compute daily OEE as Availability x Performance x Quality (quality is 100% without `total_uuid`/`reject_uuid`) | DataFrame per day with `start`, `end`, `duration_seconds`, `availability_pct`, `performance_pct`, `quality_pct`, `oee_pct` |
+| `availability(run_state_uuid, planned_time_hours=None, max_gap=None)` | Compute daily availability from a boolean run-state signal (planned time defaults to the data span per day) | DataFrame per day with `start`, `end`, `duration_seconds`, `run_seconds`, `planned_seconds`, `availability_pct` |
+| `performance(counter_uuid, ideal_cycle_time, run_state_uuid=None, handle_resets=False)` | Compute daily performance: actual output vs theoretical maximum at the ideal cycle time (seconds per part) | DataFrame per day with `actual_parts`, `ideal_parts`, `run_seconds`, `performance_pct` |
+| `quality(total_uuid, reject_uuid, handle_resets=False)` | Compute daily quality: good parts divided by total parts produced | DataFrame per day with `total_parts`, `reject_parts`, `good_parts`, `quality_pct` |
+| `oee(run_state_uuid, counter_uuid, ideal_cycle_time, total_uuid=None, reject_uuid=None, planned_time_hours=None)` | Compute daily OEE as Availability x Performance x Quality (quality is 100% without `total_uuid`/`reject_uuid`) | DataFrame per day with `start`, `end`, `duration_seconds`, `availability_pct`, `performance_pct`, `quality_pct`, `oee_pct` |
 
 ---
 

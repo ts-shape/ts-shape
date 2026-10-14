@@ -34,7 +34,7 @@ df = pd.DataFrame({
 
 dc = DutyCycleEvents(df, signal_uuid="oven1:heater_on")
 intervals = dc.on_off_intervals()
-duty = dc.duty_cycle_per_window(window="15min")
+duty = dc.duty_cycle_by_window(window="15min")
 counts = dc.cycle_count(window="15min")
 excessive = dc.excessive_cycling(max_transitions=20, window="15min")
 print(duty.head())
@@ -47,7 +47,7 @@ print(duty.head())
 | Method | Purpose | Returns |
 |--------|---------|---------|
 | `on_off_intervals()` | List all on and off intervals with start, end, and duration | DataFrame with `start`, `end`, `state` (`on`/`off`), `duration` (Timedelta) |
-| `duty_cycle_per_window(window='1h', time_weighted=False)` | Compute percentage of time the signal is ON per time window | DataFrame with `start`, `on_time`, `off_time`, `duty_cycle_pct` |
+| `duty_cycle_by_window(window='1h', time_weighted=False)` | Compute percentage of time the signal is ON per time window | DataFrame with `start`, `on_time`, `off_time`, `duty_cycle_pct` |
 | `cycle_count(window='1h')` | Count the number of on-to-off or off-to-on transitions per window | DataFrame with `start`, `on_count`, `off_count`, `total_transitions` |
 | `excessive_cycling(max_transitions=20, window='1h')` | Flag windows where the transition count exceeds a threshold | DataFrame with `start`, `transition_count`, `avg_on_duration`, `avg_off_duration` (seconds) |
 
@@ -56,7 +56,7 @@ print(duty.head())
 ## Tips & Hints
 
 !!! tip "Change-encoded signals"
-    If the signal only logs a row on each transition, construct with `interval_end="next_change"` and use `duty_cycle_per_window(time_weighted=True)`; the defaults assume uniformly sampled data.
+    If the signal only logs a row on each transition, construct with `interval_end="next_change"` and use `duty_cycle_by_window(time_weighted=True)`; the defaults assume uniformly sampled data.
 
 !!! tip "Set thresholds based on equipment specs"
     Motor contactors and relay-driven heaters have rated cycle counts. Use `excessive_cycling` with the manufacturer's limit to detect wear before failure — for example, many contactors are rated for 100,000 mechanical cycles.

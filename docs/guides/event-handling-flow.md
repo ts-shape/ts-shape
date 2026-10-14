@@ -137,7 +137,7 @@ flowchart TB
         EW2["📊 oee_shift @ shift-B<br/>availability=0.93 · performance=0.89 · quality=0.99<br/>OEE=0.82 · sample_count=389"]
     end
     subgraph RULE["④ Rule — aggregate archetype"]
-        R["<b>OEECalculator.calculate_oee</b> (built-in)<br/>— or —<br/><b>PartProductionTracking.daily_production_summary</b><br/><br/>group_by: [shift_id, asset]<br/>window: per shift<br/>activity template: production.oee.shift_summary<br/>required standard_attrs: ts_shape:sample_count"]
+        R["<b>OEEEvents.oee</b> (built-in)<br/>— or —<br/><b>PartProductionEvents.daily_production_summary</b><br/><br/>group_by: [shift_id, asset]<br/>window: per shift<br/>activity template: production.oee.shift_summary<br/>required standard_attrs: ts_shape:sample_count"]
     end
     R -.watches.-> SC
     R -.watches.-> SR
@@ -181,7 +181,7 @@ flowchart TB
         ES["📐 spc_limits @ asset-A · torque<br/>method=xbar_r · UCL=46.3 · LCL=37.9 · mean=42.1<br/>sample_count=100"]
     end
     subgraph RULE["④ Rule — static archetype"]
-        R["<b>StatisticalProcessControlRuleBased.calculate_control_limits</b><br/>— or —<br/><b>GaugeRepeatabilityEvents.repeatability</b><br/><br/>method: xbar_r / nelson / westgard<br/>activity template: quality.spc.control_limits<br/>required standard_attrs: ts_shape:method"]
+        R["<b>StatisticalProcessControlEvents.control_limits</b><br/>— or —<br/><b>GaugeRepeatabilityEvents.repeatability</b><br/><br/>method: xbar_r / nelson / westgard<br/>activity template: quality.spc.control_limits<br/>required standard_attrs: ts_shape:method"]
     end
     R -.watches.-> SH
     SH --> C

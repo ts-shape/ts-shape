@@ -10,7 +10,7 @@
 | Upper spec limit | `temperature_usl` | `value_double` | Upper specification limit (or provide as fixed value) |
 | Lower spec limit | `temperature_lsl` | `value_double` | Lower specification limit (or provide as fixed value) |
 
-**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [DoubleFilter](../reference/ts_shape/transform/filter/numeric_filter.md) | [SignalQualityEvents](../reference/ts_shape/events/quality/signal_quality.md) | [OutlierDetectionEvents](../reference/ts_shape/events/quality/outlier_detection.md) | [StatisticalProcessControlRuleBased](../reference/ts_shape/events/quality/statistical_process_control.md) | [ToleranceDeviationEvents](../reference/ts_shape/events/quality/tolerance_deviation.md) | [CapabilityTrendingEvents](../reference/ts_shape/events/quality/capability_trending.md)
+**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [DoubleFilter](../reference/ts_shape/transform/filter/numeric_filter.md) | [SignalQualityEvents](../reference/ts_shape/events/quality/signal_quality.md) | [OutlierDetectionEvents](../reference/ts_shape/events/quality/outlier_detection.md) | [StatisticalProcessControlEvents](../reference/ts_shape/events/quality/statistical_process_control.md) | [ToleranceDeviationEvents](../reference/ts_shape/events/quality/tolerance_deviation.md) | [CapabilityTrendingEvents](../reference/ts_shape/events/quality/capability_trending.md)
 
 ---
 
@@ -81,7 +81,7 @@ from ts_shape.transform.harmonization import DataHarmonizer
 from ts_shape.events.quality.signal_quality import SignalQualityEvents
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 from ts_shape.events.quality.statistical_process_control import (
-    StatisticalProcessControlRuleBased,
+    StatisticalProcessControlEvents,
 )
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 from ts_shape.events.quality.capability_trending import CapabilityTrendingEvents
@@ -116,22 +116,22 @@ pipe = (
             threshold=(1.5, 1.5))
 
     # -- SPC rule checks --
-    .detect(StatisticalProcessControlRuleBased, "calculate_control_limits",
+    .detect(StatisticalProcessControlEvents, "control_limits",
             name="control_limits", value_column="value_double",
             tolerance_uuid="temperature_usl",
             actual_uuid="temperature_actual", event_uuid="quality:spc")
-    .detect(StatisticalProcessControlRuleBased,
-            "calculate_dynamic_control_limits", name="dynamic_limits",
+    .detect(StatisticalProcessControlEvents,
+            "dynamic_control_limits", name="dynamic_limits",
             value_column="value_double", tolerance_uuid="temperature_usl",
             actual_uuid="temperature_actual", event_uuid="quality:spc",
             window=20)
-    .detect(StatisticalProcessControlRuleBased, "process", name="violations",
+    .detect(StatisticalProcessControlEvents, "process", name="violations",
             value_column="value_double", tolerance_uuid="temperature_usl",
             actual_uuid="temperature_actual", event_uuid="quality:spc",
             include_severity=True)
 
     # -- tolerance & capability --
-    .detect(ToleranceDeviationEvents, "process_and_group_data_with_events",
+    .detect(ToleranceDeviationEvents, "detect_deviations",
             name="tolerance_deviations", tolerance_column="value_double",
             actual_column="value_double", actual_uuid="temperature_actual",
             event_uuid="quality:tolerance",

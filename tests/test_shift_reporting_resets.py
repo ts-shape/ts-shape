@@ -1,8 +1,8 @@
-"""Counter-reset handling for ShiftReporting.shift_production."""
+"""Counter-reset handling for ShiftReportEvents.shift_production."""
 
 import pandas as pd
 
-from ts_shape.events.production.shift_reporting import ShiftReporting
+from ts_shape.events.production.shift_reporting import ShiftReportEvents
 
 
 def _make_reset_shift_df():
@@ -33,7 +33,7 @@ def _make_reset_shift_df():
 
 
 def test_shift_production_under_reports_without_reset_handling():
-    reporter = ShiftReporting(_make_reset_shift_df())
+    reporter = ShiftReportEvents(_make_reset_shift_df())
     result = reporter.shift_production(counter_uuid="production_counter")
 
     assert list(result.columns) == [
@@ -51,7 +51,7 @@ def test_shift_production_under_reports_without_reset_handling():
 
 
 def test_shift_production_handles_resets():
-    reporter = ShiftReporting(_make_reset_shift_df())
+    reporter = ShiftReportEvents(_make_reset_shift_df())
     result = reporter.shift_production(
         counter_uuid="production_counter", handle_resets=True
     )
@@ -75,7 +75,7 @@ def test_shift_production_resets_column_with_parts():
             "is_delta": [False] * 5,
         }
     )
-    reporter = ShiftReporting(pd.concat([df, parts], ignore_index=True))
+    reporter = ShiftReportEvents(pd.concat([df, parts], ignore_index=True))
 
     result = reporter.shift_production(
         counter_uuid="production_counter",

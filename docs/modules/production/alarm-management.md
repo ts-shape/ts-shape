@@ -30,7 +30,7 @@ df = pd.DataFrame({
 
 alarms = AlarmManagementEvents(df, alarm_uuid="line1:temp_high_alarm")
 freq = alarms.alarm_frequency(window="1h")
-stats = alarms.alarm_duration_stats()
+stats = alarms.alarm_duration_statistics()
 chattering = alarms.chattering_detection(min_transitions=5, window="10min")
 standing = alarms.standing_alarms(min_duration="1h")
 print(freq.head())
@@ -43,7 +43,7 @@ print(freq.head())
 | Method | Purpose | Returns |
 |--------|---------|---------|
 | `alarm_frequency(window='1h')` | Count alarm activations per time window to identify alarm flood periods | DataFrame with `start`, `alarm_count`, `uuid`, `source_uuid` |
-| `alarm_duration_stats()` | Compute statistics on how long the alarm stays active (ON duration) | DataFrame with `alarm_count` and `min_`/`avg_`/`max_`/`total_duration_seconds` |
+| `alarm_duration_statistics()` | Compute statistics on how long the alarm stays active (ON duration) | DataFrame with `alarm_count` and `min_`/`avg_`/`max_`/`total_duration_seconds` |
 | `chattering_detection(min_transitions=5, window='10min')` | Detect chattering alarms that toggle rapidly within a short window | DataFrame with `start`, `end`, `transition_count`, `uuid`, `source_uuid` |
 | `standing_alarms(min_duration='1h')` | Find alarms that remain active beyond a threshold, indicating stale or ignored alarms | DataFrame with `start`, `end`, `duration_seconds`, `uuid`, `source_uuid` |
 

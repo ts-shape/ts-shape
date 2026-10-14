@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from ts_shape.events.quality.statistical_process_control import (
-    StatisticalProcessControlRuleBased,
+    StatisticalProcessControlEvents,
 )
 
 
@@ -25,7 +25,7 @@ def _spc(actual):
             "value_double": actual,
         }
     )
-    return StatisticalProcessControlRuleBased(
+    return StatisticalProcessControlEvents(
         pd.concat([tol, act]), "value_double", "tol", "act", "evt"
     )
 
@@ -41,7 +41,7 @@ def spc():
 
 @pytest.fixture()
 def limits(spc):
-    return spc.calculate_control_limits()
+    return spc.control_limits()
 
 
 def test_control_limits(limits):
@@ -81,7 +81,7 @@ def test_rule_8_eight_within_1sigma(spc, limits):
 
 def test_apply_rules_vectorized_and_interpret():
     spc = _spc([10.0] * 5 + [15.0] + [10.0] * 5)
-    v = spc.apply_rules_vectorized(selected_rules=["rule_1"])
+    v = spc.detect_rule_violations(selected_rules=["rule_1"])
     assert list(v["rule"].unique()) == ["rule_1"]
     assert v["value"].iloc[0] == 15.0
     out = spc.interpret_violations(v)
@@ -92,7 +92,7 @@ def test_apply_rules_vectorized_and_interpret():
 @pytest.mark.parametrize("method", ["moving_range", "ewma"])
 def test_dynamic_control_limits(method):
     vals = list(10 + np.sin(np.arange(30)))
-    out = _spc(vals).calculate_dynamic_control_limits(method=method, window=5)
+    out = _spc(vals).dynamic_control_limits(method=method, window=5)
     assert len(out) == 30
     finite = out.dropna().iloc[1:]  # the first row has no spread yet
     assert (finite["3sigma_upper"] > finite["mean"]).all()

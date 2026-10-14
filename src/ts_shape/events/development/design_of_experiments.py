@@ -22,6 +22,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,9 @@ class DesignOfExperimentsEvents(Base):
 
         return out
 
-    def compute_effects(
+    compute_effects = deprecated_method("effects")
+
+    def effects(
         self,
         response_uuid: str,
         *,

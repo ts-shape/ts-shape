@@ -45,7 +45,7 @@ def _events(df, **kw):
 
 
 def test_measurements_use_the_tolerance_set_before_them():
-    out = _events(_df()).process_and_group_data_with_events()
+    out = _events(_df()).detect_deviations()
     # 12 >= 10 (09:30 group) and 16 >= 15 (10:30 group): two events, 2 rows each.
     assert len(out) == 4
     assert sorted(out["systime"].dt.strftime("%H:%M")) == [
@@ -59,7 +59,7 @@ def test_measurements_use_the_tolerance_set_before_them():
 def test_capability_single_tolerance_is_one_sided():
     df = _df()
     df.loc[df["uuid"] == "act", "value_double"] = [11.0, 12.0, 13.0, 12.0]
-    res = _events(df).compute_capability_indices()
+    res = _events(df).capability_indices()
     assert res["usl"] == 15.0  # the latest tolerance, not the first
     assert np.isnan(res["Cp"]) and np.isnan(res["lsl"])
     assert res["Cpk"] == pytest.approx(
@@ -71,4 +71,4 @@ def test_capability_single_tolerance_is_one_sided():
 def test_capability_single_measurement_raises():
     df = _df().iloc[:2]
     with pytest.raises(ValueError, match="undefined"):
-        _events(df).compute_capability_indices()
+        _events(df).capability_indices()

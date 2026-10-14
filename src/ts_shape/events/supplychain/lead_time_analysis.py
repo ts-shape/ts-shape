@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class LeadTimeAnalysisEvents(Base):
 
     Example usage:
         analyzer = LeadTimeAnalysisEvents(df)
-        lead_times = analyzer.calculate_lead_times('order_signal', 'delivery_signal')
+        lead_times = analyzer.lead_times('order_signal', 'delivery_signal')
         stats = analyzer.lead_time_statistics('order_signal', 'delivery_signal')
         anomalies = analyzer.detect_lead_time_anomalies('order_signal', 'delivery_signal')
     """
@@ -47,7 +48,9 @@ class LeadTimeAnalysisEvents(Base):
         self.event_uuid = event_uuid
         self.time_column = time_column
 
-    def calculate_lead_times(
+    calculate_lead_times = deprecated_method("lead_times")
+
+    def lead_times(
         self,
         order_uuid: str,
         delivery_uuid: str,
@@ -191,7 +194,7 @@ class LeadTimeAnalysisEvents(Base):
             "count",
         ]
 
-        lt = self.calculate_lead_times(order_uuid, delivery_uuid, value_column)
+        lt = self.lead_times(order_uuid, delivery_uuid, value_column)
 
         if lt.empty:
             return pd.DataFrame(columns=empty_cols)
@@ -244,7 +247,7 @@ class LeadTimeAnalysisEvents(Base):
             "z_score",
         ]
 
-        lt = self.calculate_lead_times(order_uuid, delivery_uuid, value_column)
+        lt = self.lead_times(order_uuid, delivery_uuid, value_column)
 
         if lt.empty or len(lt) < 2:
             return pd.DataFrame(columns=empty_cols)

@@ -23,7 +23,7 @@ from ts_shape.events.supplychain.lead_time_analysis import LeadTimeAnalysisEvent
 analyzer = LeadTimeAnalysisEvents(dataframe=orders_df)
 
 # Match order placement to delivery events by PO number
-lead_times = analyzer.calculate_lead_times(
+lead_times = analyzer.lead_times(
     order_uuid="po_placed",
     delivery_uuid="po_received",
 )
@@ -46,7 +46,7 @@ print(f"Anomalous deliveries: {len(anomalies)}")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `calculate_lead_times()` | Match orders to deliveries and compute durations | DataFrame with `order_time`, `delivery_time`, `lead_time_seconds`, `lead_time_hours`, `order_id` |
+| `lead_times()` | Match orders to deliveries and compute durations | DataFrame with `order_time`, `delivery_time`, `lead_time_seconds`, `lead_time_hours`, `order_id` |
 | `lead_time_statistics()` | Summary statistics of lead times | Single-row DataFrame with `mean_hours`, `std_hours`, `min_hours`, `max_hours`, `p95_hours`, `count` |
 | `detect_lead_time_anomalies()` | Flag lead times above mean + `threshold_factor` * std | DataFrame with `order_time`, `delivery_time`, `lead_time_hours`, `z_score` |
 

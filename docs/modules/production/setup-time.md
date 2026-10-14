@@ -1,4 +1,4 @@
-# SetupTimeTracking
+# SetupTimeEvents
 
 > Track and analyze setup/changeover durations for SMED analysis.
 
@@ -16,9 +16,9 @@ Use for SMED (Single-Minute Exchange of Dies) analysis. Tracks setup durations a
 ## Quick Example
 
 ```python
-from ts_shape.events.production.setup_time_tracking import SetupTimeTracking
+from ts_shape.events.production.setup_time_tracking import SetupTimeEvents
 
-tracker = SetupTimeTracking(production_df)
+tracker = SetupTimeEvents(production_df)
 
 # List every setup event with duration
 # (state signal in value_string; rows equal to setup_value count as setup)

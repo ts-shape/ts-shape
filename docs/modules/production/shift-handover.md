@@ -1,4 +1,4 @@
-# ShiftHandoverReport
+# ShiftHandoverEvents
 
 > Generate automated shift handover reports combining production, quality, and downtime.
 
@@ -16,9 +16,9 @@ Use to generate automated shift handover reports for shift meetings. Combines pr
 ## Quick Example
 
 ```python
-from ts_shape.events.production.shift_handover import ShiftHandoverReport
+from ts_shape.events.production.shift_handover import ShiftHandoverEvents
 
-report = ShiftHandoverReport(production_df)
+report = ShiftHandoverEvents(production_df)
 
 # Generate from raw signals (one row per shift for the latest date)
 targets = {"shift_1": 450, "shift_2": 450, "shift_3": 400}
@@ -36,10 +36,10 @@ thresholds = {"production_achievement_pct": 95.0, "quality_pct": 98.0, "availabi
 issues = report.highlight_issues(report_df=handover, thresholds=thresholds)
 
 # Or build from pre-computed shift-level DataFrames
-handover = ShiftHandoverReport.from_shift_data(
-    production_df=shift_production,   # e.g. ShiftReporting.shift_production()
-    quality_df=shift_quality,         # e.g. QualityTracking.nok_by_shift()
-    downtime_df=shift_downtime,       # e.g. DowntimeTracking.downtime_by_shift()
+handover = ShiftHandoverEvents.from_shift_data(
+    production_df=shift_production,   # e.g. ShiftReportEvents.shift_production()
+    quality_df=shift_quality,         # e.g. QualityEvents.nok_by_shift()
+    downtime_df=shift_downtime,       # e.g. DowntimeEvents.downtime_by_shift()
     targets=targets,
 )
 ```

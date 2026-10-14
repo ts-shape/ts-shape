@@ -16,11 +16,11 @@ flowchart TB
     end
 
     subgraph TRACK["<b>Daily Tracking</b><br/><i>events → shift-level KPIs</i>"]
-        PT["PartProductionTracking"]
-        CT["CycleTimeTracking"]
-        DT["DowntimeTracking"]
-        QT["QualityTracking"]
-        SR["ShiftReporting"]
+        PT["PartProductionEvents"]
+        CT["CycleTimeEvents"]
+        DT["DowntimeEvents"]
+        QT["QualityEvents"]
+        SR["ShiftReportEvents"]
     end
 
     MS -->|"run/idle intervals"| DT
@@ -158,9 +158,9 @@ analytics = flow.flow_constraint_analytics(
 Track production quantities by part number with time-based aggregation.
 
 ```python
-from ts_shape.events.production.part_tracking import PartProductionTracking
+from ts_shape.events.production.part_tracking import PartProductionEvents
 
-tracker = PartProductionTracking(df)
+tracker = PartProductionEvents(df)
 
 # Hourly production by part
 hourly = tracker.production_by_part(
@@ -219,9 +219,9 @@ resets = tracker.detect_resets(
 Analyze cycle times with trend detection and slow cycle identification.
 
 ```python
-from ts_shape.events.production.cycle_time_tracking import CycleTimeTracking
+from ts_shape.events.production.cycle_time_tracking import CycleTimeEvents
 
-tracker = CycleTimeTracking(df)
+tracker = CycleTimeEvents(df)
 
 # Statistics by part (min, avg, max, std, median)
 stats = tracker.cycle_time_statistics(
@@ -252,9 +252,9 @@ trend = tracker.cycle_time_trend(
 Track machine downtime by shift, reason, and availability trends.
 
 ```python
-from ts_shape.events.production.downtime_tracking import DowntimeTracking
+from ts_shape.events.production.downtime_tracking import DowntimeEvents
 
-tracker = DowntimeTracking(df)
+tracker = DowntimeEvents(df)
 
 # Downtime per shift with availability
 shift_downtime = tracker.downtime_by_shift(
@@ -288,9 +288,9 @@ trend = tracker.availability_trend(
 Track defective parts, first-pass yield, and defect reasons.
 
 ```python
-from ts_shape.events.production.quality_tracking import QualityTracking
+from ts_shape.events.production.quality_tracking import QualityEvents
 
-tracker = QualityTracking(df, shift_definitions={
+tracker = QualityEvents(df, shift_definitions={
     "day": ("06:00", "14:00"),
     "afternoon": ("14:00", "22:00"),
     "night": ("22:00", "06:00"),
@@ -321,9 +321,9 @@ reasons = tracker.nok_by_reason(
 Compare shift performance and track against targets.
 
 ```python
-from ts_shape.events.production.shift_reporting import ShiftReporting
+from ts_shape.events.production.shift_reporting import ShiftReportEvents
 
-reporter = ShiftReporting(df)
+reporter = ShiftReportEvents(df)
 
 # Production per shift
 shift_prod = reporter.shift_production(
@@ -349,12 +349,12 @@ results = reporter.best_and_worst_shifts(counter_uuid='counter_signal')
 
 | From | To | Merge Key | Purpose |
 |------|----|-----------|---------|
-| `MachineStateEvents` | `DowntimeTracking` | run/idle intervals | Calculate downtime from state changes |
-| `LineThroughputEvents` | `PartProductionTracking` | part counts per window | Aggregate to daily/shift totals |
-| `ChangeoverEvents` | `CycleTimeTracking` | product change timestamps | Exclude changeover time from cycle analysis |
-| `DowntimeTracking` | `ShiftReporting` | `date`, `shift` | Feed downtime into shift report |
-| `PartProductionTracking` | `ShiftReporting` | `date`, `shift` | Feed production counts into shift report |
-| `QualityTracking` | `ShiftReporting` | `date`, `shift` | Feed quality metrics into shift report |
+| `MachineStateEvents` | `DowntimeEvents` | run/idle intervals | Calculate downtime from state changes |
+| `LineThroughputEvents` | `PartProductionEvents` | part counts per window | Aggregate to daily/shift totals |
+| `ChangeoverEvents` | `CycleTimeEvents` | product change timestamps | Exclude changeover time from cycle analysis |
+| `DowntimeEvents` | `ShiftReportEvents` | `date`, `shift` | Feed downtime into shift report |
+| `PartProductionEvents` | `ShiftReportEvents` | `date`, `shift` | Feed production counts into shift report |
+| `QualityEvents` | `ShiftReportEvents` | `date`, `shift` | Feed quality metrics into shift report |
 
 ---
 

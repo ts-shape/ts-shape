@@ -14,7 +14,7 @@ The full set of rules is codified in [Event labelling standard](#event-labelling
 | Detector method | `ocel:activity` |
 |---|---|
 | `OutlierDetectionEvents.detect_outliers_zscore` | `quality.outlier.zscore` |
-| `StatisticalProcessControlRuleBased.process` | `quality.spc.rule_violation` |
+| `StatisticalProcessControlEvents.process` | `quality.spc.rule_violation` |
 | `MachineStateEvents.detect_run_idle` | `production.machine_state.{state}` |
 | `MachineStateEvents.transition_events` | `production.machine_state.transition_{transition}` |
 | `SetpointChangeEvents.detect_setpoint_steps` | `engineering.setpoint.step_{change_type}` |
@@ -218,7 +218,7 @@ LabelRule(
 )
 ```
 
-And for an aggregate KPI like `CycleTimeTracking.cycle_time_statistics`:
+And for an aggregate KPI like `CycleTimeEvents.cycle_time_statistics`:
 
 ```python
 LabelRule(

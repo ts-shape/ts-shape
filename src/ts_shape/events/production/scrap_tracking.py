@@ -17,12 +17,13 @@ from ts_shape.events._windows import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class ScrapTracking(Base):
+class ScrapEvents(Base):
     """Track material scrap and waste.
 
     Each UUID represents one signal:
@@ -35,15 +36,15 @@ class ScrapTracking(Base):
 
     Pipeline example::
 
-        scrap = ScrapTracking(df)
+        scrap = ScrapEvents(df)
         shift_scrap = scrap.scrap_by_shift('scrap_weight')
-        # → merge with ShiftReporting.shift_production() on [date, shift]
-        # → merge with QualityTracking.nok_by_shift() on [date, shift]
+        # → merge with ShiftReportEvents.shift_production() on [date, shift]
+        # → merge with QualityEvents.nok_by_shift() on [date, shift]
         cost = scrap.scrap_cost('scrap_weight', 'part_id', {'A': 12.5})
-        # → merge with QualityTracking.quality_by_part() on [part_number]
+        # → merge with QualityEvents.quality_by_part() on [part_number]
 
     Example usage:
-        tracker = ScrapTracking(df)
+        tracker = ScrapEvents(df)
 
         # Scrap per shift
         shift_scrap = tracker.scrap_by_shift(scrap_uuid='scrap_weight')
@@ -434,3 +435,7 @@ class ScrapTracking(Base):
             results.append(row)
 
         return add_period_window(pd.DataFrame(results, columns=columns), window)
+
+
+#: Deprecated name, removed in 1.0.
+ScrapTracking = deprecated_class(ScrapEvents, "ScrapTracking")

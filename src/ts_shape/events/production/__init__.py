@@ -32,53 +32,53 @@ Event Detection Classes:
   - flow_constraint_analytics: Blocked and starved events with severity and summary statistics.
 
 Daily Production Tracking Classes:
-- PartProductionTracking: Track production quantities by part number.
+- PartProductionEvents: Track production quantities by part number.
   - production_by_part: Production quantity per time window.
   - daily_production_summary: Daily totals by part.
   - production_totals: Totals over date ranges.
   - detect_resets: Find the points in time where the counter was reset.
 
-- CycleTimeTracking: Analyze cycle times by part number.
+- CycleTimeEvents: Analyze cycle times by part number.
   - cycle_time_by_part: Calculate cycle times.
   - cycle_time_statistics: Statistical analysis (min/avg/max/std).
   - detect_slow_cycles: Anomaly detection.
   - cycle_time_trend: Trend analysis.
   - hourly_cycle_time_summary: Hourly summary of cycle times by part.
 
-- ShiftReporting: Shift-based performance analysis.
+- ShiftReportEvents: Shift-based performance analysis.
   - shift_production: Production per shift.
   - shift_comparison: Compare shift performance.
   - shift_targets: Target vs actual analysis.
   - best_and_worst_shifts: Performance ranking.
 
-- DowntimeTracking: Machine availability and downtime analysis.
+- DowntimeEvents: Machine availability and downtime analysis.
   - downtime_by_shift: Downtime and availability per shift.
   - downtime_by_reason: Root cause analysis.
   - top_downtime_reasons: Pareto analysis (80/20 rule).
   - availability_trend: Track availability over time.
 
-- QualityTracking: NOK (defective parts) and quality metrics.
+- QualityEvents: NOK (defective parts) and quality metrics.
   - nok_by_shift: NOK parts and First Pass Yield per shift.
   - quality_by_part: Quality metrics by part number.
   - nok_by_reason: Defect type analysis.
   - daily_quality_summary: Daily quality rollup.
 
 OEE and Advanced Analytics:
-- OEECalculator: Overall Equipment Effectiveness (Availability x Performance x Quality).
-  - calculate_availability: Availability % from run/idle intervals.
-  - calculate_performance: Actual vs ideal throughput.
-  - calculate_quality: Good parts / total parts.
-  - calculate_oee: Combined daily OEE metric.
+- OEEEvents: Overall Equipment Effectiveness (Availability x Performance x Quality).
+  - availability: Availability % from run/idle intervals.
+  - performance: Actual vs ideal throughput.
+  - quality: Good parts / total parts.
+  - oee: Combined daily OEE metric.
 
 - AlarmManagementEvents: ISA-18.2 style alarm analysis.
   - alarm_frequency: Alarm activations per time window.
-  - alarm_duration_stats: Min/avg/max/total duration of alarm ON states.
+  - alarm_duration_statistics: Min/avg/max/total duration of alarm ON states.
   - chattering_detection: Detect nuisance chattering alarms.
   - standing_alarms: Identify alarms that stay active too long.
 
 - BatchTrackingEvents: Batch/recipe production tracking.
   - detect_batches: Detect batch start/end from value changes.
-  - batch_duration_stats: Duration statistics per batch type.
+  - batch_duration_statistics: Duration statistics per batch type.
   - batch_yield: Production quantity per batch.
   - batch_transition_matrix: Batch-to-batch transition frequencies.
 
@@ -95,7 +95,7 @@ OEE and Advanced Analytics:
   - micro_stop_patterns: Group micro-stops by hour-of-day.
 
 - DutyCycleEvents: Analyze on/off patterns from boolean signals.
-  - duty_cycle_per_window: On-time percentage per window.
+  - duty_cycle_by_window: On-time percentage per window.
   - on_off_intervals: List every on/off interval with duration.
   - cycle_count: Transition counts per window.
   - excessive_cycling: Flag windows with too many transitions.
@@ -129,19 +129,19 @@ Traceability:
   - routing_paths: Path frequency analysis with parallel flag.
 
 Setup, Rework, and Operator Tracking:
-- SetupTimeTracking: Analyze changeover/setup durations for SMED improvement.
+- SetupTimeEvents: Analyze changeover/setup durations for SMED improvement.
   - setup_durations: List every setup interval with duration.
   - setup_by_product: Setup time by product transition (from → to).
   - setup_statistics: Overall setup time stats (count, avg, median, std, % of available time).
   - setup_trend: Track setup time improvement over time.
 
-- OperatorPerformanceTracking: Compare production output and quality across operators.
+- OperatorPerformanceEvents: Compare production output and quality across operators.
   - production_by_operator: Parts produced per operator.
   - operator_efficiency: Operator efficiency vs per-shift target.
   - quality_by_operator: Quality metrics (FPY) per operator.
   - operator_comparison: Ranked operator performance comparison.
 
-- ReworkTracking: Track parts requiring rework (re-processing).
+- ReworkEvents: Track parts requiring rework (re-processing).
   - rework_by_shift: Rework count per shift.
   - rework_by_reason: Rework by reason code.
   - rework_rate: Rework rate as % of total production.
@@ -149,18 +149,18 @@ Setup, Rework, and Operator Tracking:
   - rework_trend: Rework trend over time.
 
 Performance and Target Tracking:
-- PerformanceLossTracking: Track speed losses against target cycle times.
+- PerformanceLossEvents: Track speed losses against target cycle times.
   - performance_by_shift: Performance % per shift.
   - slow_periods: Identify windows below target performance.
   - performance_trend: Performance trend over time.
 
-- ScrapTracking: Track material scrap and waste.
+- ScrapEvents: Track material scrap and waste.
   - scrap_by_shift: Scrap quantity per shift.
   - scrap_by_reason: Scrap by reason code.
   - scrap_cost: Convert scrap to monetary cost.
   - scrap_trend: Scrap trend over time.
 
-- TargetTracking: Compare any metric to targets.
+- TargetEvents: Compare any metric to targets.
   - compare_to_target: Actual vs per-shift targets.
   - target_achievement_summary: Daily target achievement.
   - target_hit_rate: Percentage of days meeting targets.
@@ -170,12 +170,12 @@ Performance and Target Tracking:
   - deviation_events: Events for periods breaching the deviation bands.
   - adherence_summary: Roll-up across the scheduled horizon.
 
-- ShiftHandoverReport: Automated shift handover report generation.
+- ShiftHandoverEvents: Automated shift handover report generation.
   - generate_report: Full shift report with production, quality, downtime.
   - highlight_issues: Auto-identify metrics below thresholds.
   - from_shift_data: Build a handover report from pre-computed shift-level DataFrames.
 
-- PeriodSummary: Weekly/monthly summary aggregation.
+- PeriodSummaryEvents: Weekly/monthly summary aggregation.
   - weekly_summary: Roll up daily metrics to weekly.
   - monthly_summary: Roll up daily metrics to monthly.
   - compare_periods: Period-over-period comparison.
@@ -183,7 +183,7 @@ Performance and Target Tracking:
 
 - OperatingStateEvents: Infer operating states from continuous signals.
   - infer_states: Cluster the signal into N operating states.
-  - state_duration_stats: Duration statistics per inferred state.
+  - state_duration_statistics: Duration statistics per inferred state.
   - unusual_state_sequence: Detect unexpected state transitions.
   - dwell_time_violation: Find intervals exceeding max allowed duration in a state.
 """
@@ -196,8 +196,14 @@ from .changeover import ChangeoverEvents
 
 # Traceability
 from .continuous_process_alignment import ContinuousProcessAlignmentEvents
-from .cycle_time_tracking import CycleTimeTracking
-from .downtime_tracking import DowntimeTracking
+from .cycle_time_tracking import (
+    CycleTimeEvents,
+    CycleTimeTracking,  # deprecated alias
+)
+from .downtime_tracking import (
+    DowntimeEvents,
+    DowntimeTracking,  # deprecated alias
+)
 from .duty_cycle import DutyCycleEvents
 from .flow_constraints import FlowConstraintEvents
 from .line_throughput import LineThroughputEvents
@@ -207,28 +213,64 @@ from .micro_stop_detection import MicroStopEvents
 from .multi_process_traceability import MultiProcessTraceabilityEvents
 
 # OEE and Advanced Analytics
-from .oee_calculator import OEECalculator
+from .oee_calculator import (
+    OEECalculator,  # deprecated alias
+    OEEEvents,
+)
 
 # Setup, Rework, and Operator Tracking
 from .operating_state import OperatingStateEvents
-from .operator_performance import OperatorPerformanceTracking
+from .operator_performance import (
+    OperatorPerformanceEvents,
+    OperatorPerformanceTracking,  # deprecated alias
+)
 from .order_traceability import OrderTraceabilityEvents, ValueTraceabilityEvents
 
 # Daily Production Tracking Classes
-from .part_tracking import PartProductionTracking
+from .part_tracking import (
+    PartProductionEvents,
+    PartProductionTracking,  # deprecated alias
+)
 
 # Performance, Target, and Reporting
-from .performance_loss import PerformanceLossTracking
-from .period_summary import PeriodSummary
-from .quality_tracking import QualityTracking
-from .rework_tracking import ReworkTracking
+from .performance_loss import (
+    PerformanceLossEvents,
+    PerformanceLossTracking,  # deprecated alias
+)
+from .period_summary import (
+    PeriodSummary,  # deprecated alias
+    PeriodSummaryEvents,
+)
+from .quality_tracking import (
+    QualityEvents,
+    QualityTracking,  # deprecated alias
+)
+from .rework_tracking import (
+    ReworkEvents,
+    ReworkTracking,  # deprecated alias
+)
 from .routing_traceability import RoutingTraceabilityEvents
 from .schedule_adherence import ProductionScheduleAdherenceEvents
-from .scrap_tracking import ScrapTracking
-from .setup_time_tracking import SetupTimeTracking
-from .shift_handover import ShiftHandoverReport
-from .shift_reporting import ShiftReporting
-from .target_tracking import TargetTracking
+from .scrap_tracking import (
+    ScrapEvents,
+    ScrapTracking,  # deprecated alias
+)
+from .setup_time_tracking import (
+    SetupTimeEvents,
+    SetupTimeTracking,  # deprecated alias
+)
+from .shift_handover import (
+    ShiftHandoverEvents,
+    ShiftHandoverReport,  # deprecated alias
+)
+from .shift_reporting import (
+    ShiftReportEvents,
+    ShiftReporting,  # deprecated alias
+)
+from .target_tracking import (
+    TargetEvents,
+    TargetTracking,  # deprecated alias
+)
 
 __all__ = [
     "OperatingStateEvents",
@@ -239,13 +281,19 @@ __all__ = [
     "ChangeoverEvents",
     "FlowConstraintEvents",
     # Daily Production Tracking
-    "PartProductionTracking",
-    "CycleTimeTracking",
-    "ShiftReporting",
-    "DowntimeTracking",
-    "QualityTracking",
+    "PartProductionEvents",
+    "PartProductionTracking",  # deprecated alias
+    "CycleTimeEvents",
+    "CycleTimeTracking",  # deprecated alias
+    "ShiftReportEvents",
+    "ShiftReporting",  # deprecated alias
+    "DowntimeEvents",
+    "DowntimeTracking",  # deprecated alias
+    "QualityEvents",
+    "QualityTracking",  # deprecated alias
     # OEE and Advanced Analytics
-    "OEECalculator",
+    "OEEEvents",
+    "OEECalculator",  # deprecated alias
     "AlarmManagementEvents",
     "BatchTrackingEvents",
     # Bottleneck, Micro-Stop, and Duty Cycle Analysis
@@ -259,14 +307,22 @@ __all__ = [
     "RoutingTraceabilityEvents",
     "MultiProcessTraceabilityEvents",
     # Setup, Rework, and Operator Tracking
-    "SetupTimeTracking",
-    "OperatorPerformanceTracking",
-    "ReworkTracking",
+    "SetupTimeEvents",
+    "SetupTimeTracking",  # deprecated alias
+    "OperatorPerformanceEvents",
+    "OperatorPerformanceTracking",  # deprecated alias
+    "ReworkEvents",
+    "ReworkTracking",  # deprecated alias
     # Performance, Target, and Reporting
-    "PerformanceLossTracking",
+    "PerformanceLossEvents",
+    "PerformanceLossTracking",  # deprecated alias
     "ProductionScheduleAdherenceEvents",
-    "ScrapTracking",
-    "TargetTracking",
-    "ShiftHandoverReport",
-    "PeriodSummary",
+    "ScrapEvents",
+    "ScrapTracking",  # deprecated alias
+    "TargetEvents",
+    "TargetTracking",  # deprecated alias
+    "ShiftHandoverEvents",
+    "ShiftHandoverReport",  # deprecated alias
+    "PeriodSummaryEvents",
+    "PeriodSummary",  # deprecated alias
 ]

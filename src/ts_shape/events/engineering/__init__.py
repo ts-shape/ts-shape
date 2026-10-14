@@ -83,7 +83,7 @@ Classes:
   - detect_balance_exceedance: Sustained imbalance events.
   - contribution_breakdown: Each signal's share of total input/output.
 
-- ProcessStabilityIndex: Single 0-100 stability score per shift/day.
+- ProcessStabilityIndexEvents: Single 0-100 stability score per shift/day.
   - stability_score: Composite 0-100 score per window.
   - score_trend: Is stability improving or degrading?
   - worst_periods: N worst-scoring windows.
@@ -102,7 +102,10 @@ from .control_loop_health import ControlLoopHealthEvents  # re-export
 from .disturbance_recovery import DisturbanceRecoveryEvents  # re-export
 from .material_balance import MaterialBalanceEvents  # re-export
 from .operating_range import OperatingRangeEvents  # re-export
-from .process_stability_index import ProcessStabilityIndex  # re-export
+from .process_stability_index import (
+    ProcessStabilityIndex,  # deprecated alias
+    ProcessStabilityIndexEvents,  # re-export
+)
 from .process_window import ProcessWindowEvents  # re-export
 from .rate_of_change import RateOfChangeEvents  # re-export
 from .setpoint_events import SetpointChangeEvents  # re-export
@@ -126,6 +129,7 @@ __all__ = [
     "ControlLoopHealthEvents",
     "DisturbanceRecoveryEvents",
     "MaterialBalanceEvents",
-    "ProcessStabilityIndex",
+    "ProcessStabilityIndexEvents",
+    "ProcessStabilityIndex",  # deprecated alias
     "TimeToThresholdEvents",
 ]

@@ -19,6 +19,7 @@ from ts_shape.events._windows import (
 )
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ _SHIFT_COLS = [
 _TREND_COLS = ["period", "availability_pct", "uptime_minutes", "downtime_minutes"]
 
 
-class DowntimeTracking(Base):
+class DowntimeEvents(Base):
     """Track machine downtimes by shift and reason.
 
     Each UUID represents one signal:
@@ -45,14 +46,14 @@ class DowntimeTracking(Base):
 
     Pipeline example::
 
-        downtime = DowntimeTracking(df)
+        downtime = DowntimeEvents(df)
         shift_dt = downtime.downtime_by_shift('machine_state')
-        # → merge with QualityTracking.nok_by_shift() on [date, shift]
-        # → merge with ShiftReporting.shift_production() on [date, shift]
-        # → feed into ShiftHandoverReport.from_shift_data()
+        # → merge with QualityEvents.nok_by_shift() on [date, shift]
+        # → merge with ShiftReportEvents.shift_production() on [date, shift]
+        # → feed into ShiftHandoverEvents.from_shift_data()
 
     Example usage:
-        tracker = DowntimeTracking(df)
+        tracker = DowntimeEvents(df)
 
         # Downtime per shift
         shift_downtime = tracker.downtime_by_shift(
@@ -531,3 +532,7 @@ class DowntimeTracking(Base):
             )
 
         return add_period_window(pd.DataFrame(results, columns=_TREND_COLS), window)
+
+
+#: Deprecated name, removed in 1.0.
+DowntimeTracking = deprecated_class(DowntimeEvents, "DowntimeTracking")

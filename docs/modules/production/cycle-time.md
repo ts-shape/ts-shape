@@ -1,4 +1,4 @@
-# CycleTimeTracking
+# CycleTimeEvents
 
 > Track cycle times by part number from part-ID and cycle-trigger signals.
 
@@ -16,7 +16,7 @@ Use to track individual cycle durations and identify slow cycles. Essential for 
 ## Quick Example
 
 ```python
-from ts_shape.events.production.cycle_time_tracking import CycleTimeTracking
+from ts_shape.events.production.cycle_time_tracking import CycleTimeEvents
 import pandas as pd
 import numpy as np
 
@@ -37,7 +37,7 @@ parts = pd.DataFrame({
 })
 df = pd.concat([pulses, parts], ignore_index=True)
 
-ct = CycleTimeTracking(df)
+ct = CycleTimeEvents(df)
 ids = dict(part_id_uuid="line1:part_number", cycle_trigger_uuid="line1:cycle_complete")
 by_part = ct.cycle_time_by_part(**ids, max_cycle_gap="5min")
 stats = ct.cycle_time_statistics(**ids)

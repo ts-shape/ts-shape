@@ -2,7 +2,7 @@
 
 import pandas as pd  # type: ignore
 
-from ts_shape.events.production.downtime_tracking import DowntimeTracking
+from ts_shape.events.production.downtime_tracking import DowntimeEvents
 
 
 def _frame():
@@ -23,7 +23,7 @@ def _frame():
 
 
 def test_downtime_by_reason_excludes_running_time():
-    dt = DowntimeTracking(_frame())
+    dt = DowntimeEvents(_frame())
     result = dt.downtime_by_reason("state", "reason", stopped_value="Stopped")
     by_reason = result.set_index("reason")["total_minutes"].to_dict()
     # ReasonA lasted 08:00 -> 08:10 = 10 minutes (NOT 60).

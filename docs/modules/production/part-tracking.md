@@ -1,4 +1,4 @@
-# PartProductionTracking
+# PartProductionEvents
 
 > Track production quantities by part number from part-ID and counter signals.
 
@@ -18,7 +18,7 @@ Use for part-level production reporting. Tracks how many of each part number wer
 The tracker reads long-format timeseries data: one row per signal reading, identified by a `uuid` column. The part number lives in a string signal (`value_string`) and the production count in a counter signal (`value_integer`).
 
 ```python
-from ts_shape.events.production.part_tracking import PartProductionTracking
+from ts_shape.events.production.part_tracking import PartProductionEvents
 import pandas as pd
 import numpy as np
 
@@ -37,7 +37,7 @@ counter = pd.DataFrame({
 })
 df = pd.concat([parts, counter], ignore_index=True)
 
-pt = PartProductionTracking(df, time_column="systime")
+pt = PartProductionEvents(df, time_column="systime")
 hourly = pt.production_by_part(part_id_uuid="part_id", counter_uuid="part_counter", window="1h")
 daily = pt.daily_production_summary(part_id_uuid="part_id", counter_uuid="part_counter")
 totals = pt.production_totals(part_id_uuid="part_id", counter_uuid="part_counter")

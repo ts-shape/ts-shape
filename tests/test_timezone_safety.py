@@ -29,7 +29,7 @@ def _assert_berlin(series):
 def test_find_gaps_keeps_local_time(berlin_signal):
     df = berlin_signal([1.0, 2.0, 3.0], start="2024-01-01 00:00", freq="1min")
     df.loc[2, "systime"] = df.loc[1, "systime"] + pd.Timedelta(hours=1)
-    out = DataGapAnalysisEvents(df, "sig").find_gaps(min_gap="10min")
+    out = DataGapAnalysisEvents(df, "sig").detect_gaps(min_gap="10min")
     _assert_berlin(out["start"])
     assert out["start"].iloc[0] == pd.Timestamp("2024-01-01 00:01", tz=BERLIN)
 

@@ -2,7 +2,7 @@
 
 Common classes are re-exported at the top level so you can write::
 
-    from ts_shape import OutlierDetectionEvents, OEECalculator, to_event_log
+    from ts_shape import OutlierDetectionEvents, OEEEvents, to_event_log
 
 Imports are lazy (PEP 562): ``import ts_shape`` stays cheap and a
 submodule is only imported the first time one of its names is accessed.
@@ -29,6 +29,22 @@ except PackageNotFoundError:  # running from a source tree, not installed
 # Keep this in sync with the event-detector packs, the eventlog API, and
 # the loaders; tests/test_public_api.py guards it against drift.
 _LAZY: dict[str, str] = {
+    "CycleTimeTracking": "ts_shape.events.production.cycle_time_tracking",  # deprecated alias of CycleTimeEvents
+    "DowntimeTracking": "ts_shape.events.production.downtime_tracking",  # deprecated alias of DowntimeEvents
+    "OperatorPerformanceTracking": "ts_shape.events.production.operator_performance",  # deprecated alias of OperatorPerformanceEvents
+    "PartProductionTracking": "ts_shape.events.production.part_tracking",  # deprecated alias of PartProductionEvents
+    "PerformanceLossTracking": "ts_shape.events.production.performance_loss",  # deprecated alias of PerformanceLossEvents
+    "QualityTracking": "ts_shape.events.production.quality_tracking",  # deprecated alias of QualityEvents
+    "ReworkTracking": "ts_shape.events.production.rework_tracking",  # deprecated alias of ReworkEvents
+    "ScrapTracking": "ts_shape.events.production.scrap_tracking",  # deprecated alias of ScrapEvents
+    "SetupTimeTracking": "ts_shape.events.production.setup_time_tracking",  # deprecated alias of SetupTimeEvents
+    "TargetTracking": "ts_shape.events.production.target_tracking",  # deprecated alias of TargetEvents
+    "OEECalculator": "ts_shape.events.production.oee_calculator",  # deprecated alias of OEEEvents
+    "PeriodSummary": "ts_shape.events.production.period_summary",  # deprecated alias of PeriodSummaryEvents
+    "ShiftReporting": "ts_shape.events.production.shift_reporting",  # deprecated alias of ShiftReportEvents
+    "ShiftHandoverReport": "ts_shape.events.production.shift_handover",  # deprecated alias of ShiftHandoverEvents
+    "ProcessStabilityIndex": "ts_shape.events.engineering.process_stability_index",  # deprecated alias of ProcessStabilityIndexEvents
+    "StatisticalProcessControlRuleBased": "ts_shape.events.quality.statistical_process_control",  # deprecated alias of StatisticalProcessControlEvents
     # -- events.quality --------------------------------------------------
     "AnomalyClassificationEvents": "ts_shape.events.quality.anomaly_classification",
     "CapabilityTrendingEvents": "ts_shape.events.quality.capability_trending",
@@ -44,7 +60,7 @@ _LAZY: dict[str, str] = {
     "OutlierDetectionEvents": "ts_shape.events.quality.outlier_detection",
     "SensorDriftEvents": "ts_shape.events.quality.sensor_drift",
     "SignalQualityEvents": "ts_shape.events.quality.signal_quality",
-    "StatisticalProcessControlRuleBased": "ts_shape.events.quality.statistical_process_control",
+    "StatisticalProcessControlEvents": "ts_shape.events.quality.statistical_process_control",
     "ToleranceDeviationEvents": "ts_shape.events.quality.tolerance_deviation",
     "ValueDistributionEvents": "ts_shape.events.quality.value_distribution",
     # -- events.production ----------------------------------------------
@@ -53,8 +69,8 @@ _LAZY: dict[str, str] = {
     "BottleneckDetectionEvents": "ts_shape.events.production.bottleneck_detection",
     "ChangeoverEvents": "ts_shape.events.production.changeover",
     "ContinuousProcessAlignmentEvents": "ts_shape.events.production.continuous_process_alignment",
-    "CycleTimeTracking": "ts_shape.events.production.cycle_time_tracking",
-    "DowntimeTracking": "ts_shape.events.production.downtime_tracking",
+    "CycleTimeEvents": "ts_shape.events.production.cycle_time_tracking",
+    "DowntimeEvents": "ts_shape.events.production.downtime_tracking",
     "DutyCycleEvents": "ts_shape.events.production.duty_cycle",
     "FlowConstraintEvents": "ts_shape.events.production.flow_constraints",
     "FlowMetricsEvents": "ts_shape.events.production.flow_metrics",
@@ -65,30 +81,30 @@ _LAZY: dict[str, str] = {
     "OperatingStateEvents": "ts_shape.events.production.operating_state",
     "MicroStopEvents": "ts_shape.events.production.micro_stop_detection",
     "MultiProcessTraceabilityEvents": "ts_shape.events.production.multi_process_traceability",
-    "OEECalculator": "ts_shape.events.production.oee_calculator",
-    "OperatorPerformanceTracking": "ts_shape.events.production.operator_performance",
+    "OEEEvents": "ts_shape.events.production.oee_calculator",
+    "OperatorPerformanceEvents": "ts_shape.events.production.operator_performance",
     "ValueTraceabilityEvents": "ts_shape.events.production.order_traceability",
     # OrderTraceabilityEvents is a backwards-compatible alias of the above.
     "OrderTraceabilityEvents": "ts_shape.events.production.order_traceability",
-    "PartProductionTracking": "ts_shape.events.production.part_tracking",
-    "PerformanceLossTracking": "ts_shape.events.production.performance_loss",
-    "PeriodSummary": "ts_shape.events.production.period_summary",
+    "PartProductionEvents": "ts_shape.events.production.part_tracking",
+    "PerformanceLossEvents": "ts_shape.events.production.performance_loss",
+    "PeriodSummaryEvents": "ts_shape.events.production.period_summary",
     "ProductionScheduleAdherenceEvents": "ts_shape.events.production.schedule_adherence",
-    "QualityTracking": "ts_shape.events.production.quality_tracking",
-    "ReworkTracking": "ts_shape.events.production.rework_tracking",
+    "QualityEvents": "ts_shape.events.production.quality_tracking",
+    "ReworkEvents": "ts_shape.events.production.rework_tracking",
     "RoutingTraceabilityEvents": "ts_shape.events.production.routing_traceability",
     "RuntimeAccountingEvents": "ts_shape.events.production.runtime_accounting",
-    "ScrapTracking": "ts_shape.events.production.scrap_tracking",
-    "SetupTimeTracking": "ts_shape.events.production.setup_time_tracking",
-    "ShiftHandoverReport": "ts_shape.events.production.shift_handover",
-    "ShiftReporting": "ts_shape.events.production.shift_reporting",
-    "TargetTracking": "ts_shape.events.production.target_tracking",
+    "ScrapEvents": "ts_shape.events.production.scrap_tracking",
+    "SetupTimeEvents": "ts_shape.events.production.setup_time_tracking",
+    "ShiftHandoverEvents": "ts_shape.events.production.shift_handover",
+    "ShiftReportEvents": "ts_shape.events.production.shift_reporting",
+    "TargetEvents": "ts_shape.events.production.target_tracking",
     # -- events.engineering ---------------------------------------------
     "ControlLoopHealthEvents": "ts_shape.events.engineering.control_loop_health",
     "DisturbanceRecoveryEvents": "ts_shape.events.engineering.disturbance_recovery",
     "MaterialBalanceEvents": "ts_shape.events.engineering.material_balance",
     "OperatingRangeEvents": "ts_shape.events.engineering.operating_range",
-    "ProcessStabilityIndex": "ts_shape.events.engineering.process_stability_index",
+    "ProcessStabilityIndexEvents": "ts_shape.events.engineering.process_stability_index",
     "ProcessWindowEvents": "ts_shape.events.engineering.process_window",
     "RateOfChangeEvents": "ts_shape.events.engineering.rate_of_change",
     "TimeToThresholdEvents": "ts_shape.events.engineering.time_to_threshold",

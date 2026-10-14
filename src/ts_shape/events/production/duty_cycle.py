@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._output import empty_event_df
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ class DutyCycleEvents(Base):
     interval listing, transition counts, and excessive cycling detection.
 
     Methods:
-    - duty_cycle_per_window: On-time percentage per time window.
+    - duty_cycle_by_window: On-time percentage per time window.
     - on_off_intervals: List every on and off interval with duration.
     - cycle_count: Number of on/off transitions per window.
     - excessive_cycling: Flag windows with too many transitions.
@@ -105,7 +106,9 @@ class DutyCycleEvents(Base):
         out.insert(4, "source_uuid", self.signal_uuid)
         return out
 
-    def duty_cycle_per_window(
+    duty_cycle_per_window = deprecated_method("duty_cycle_by_window")
+
+    def duty_cycle_by_window(
         self, window: str = "1h", *, time_weighted: bool = False
     ) -> pd.DataFrame:
         """Percentage of time the signal is True per window.

@@ -41,7 +41,7 @@ TEMPORAL_SHAPES = {"point", "interval", "summary"}
 KNOWN_SHAPES = TEMPORAL_SHAPES | {"static"}
 
 # Sorted, stable list of registry entries with readable ids like
-# "OEECalculator.calculate_oee".
+# "OEEEvents.oee".
 _ENTRIES = sorted(REGISTRY.items(), key=lambda kv: (kv[0][0], kv[0][1]))
 _IDS = [f"{cls}.{method}" for (cls, method), _ in _ENTRIES]
 

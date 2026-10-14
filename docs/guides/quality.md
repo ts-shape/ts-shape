@@ -79,9 +79,9 @@ print(outliers_mad[['systime', 'value_double', 'severity']])
 Full Western Electric Rules and CUSUM shift detection per ISA/IEC standards.
 
 ```python
-from ts_shape.events.quality.statistical_process_control import StatisticalProcessControlRuleBased
+from ts_shape.events.quality.statistical_process_control import StatisticalProcessControlEvents
 
-spc = StatisticalProcessControlRuleBased(
+spc = StatisticalProcessControlEvents(
     dataframe=df,
     value_column="value_double",
     tolerance_uuid="control_limits",
@@ -90,23 +90,23 @@ spc = StatisticalProcessControlRuleBased(
 )
 
 # Calculate control limits
-limits = spc.calculate_control_limits()
+limits = spc.control_limits()
 print(f"Mean: {limits['mean'][0]:.2f}")
 print(f"UCL (3s): {limits['3sigma_upper'][0]:.2f}")
 print(f"LCL (3s): {limits['3sigma_lower'][0]:.2f}")
 
 # Dynamic control limits (adapts over time)
-dynamic_limits = spc.calculate_dynamic_control_limits(method='ewma', window=20)
+dynamic_limits = spc.dynamic_control_limits(method='ewma', window=20)
 ```
 
 ### Western Electric Rules
 
 ```python
 # Apply all 8 Western Electric Rules
-violations = spc.apply_rules_vectorized()
+violations = spc.detect_rule_violations()
 
 # Or select specific rules
-violations = spc.apply_rules_vectorized(
+violations = spc.detect_rule_violations(
     selected_rules=['rule_1', 'rule_2', 'rule_3']
 )
 
@@ -153,7 +153,7 @@ tolerance_checker = ToleranceDeviationEvents(
     warning_threshold=0.8  # 80% of tolerance = warning zone
 )
 
-capability = tolerance_checker.compute_capability_indices()
+capability = tolerance_checker.capability_indices()
 print(f"Cp:  {capability['Cp']:.3f}")   # Potential capability
 print(f"Cpk: {capability['Cpk']:.3f}")  # Actual capability
 

@@ -9,7 +9,7 @@
 | Machine state | `machine_state_str` | `value_string` | "Running", "Stopped", "Idle" |
 | Downtime reason | `downtime_reason` | `value_string` | Reason code (e.g., "Tool_Change", "Material_Shortage") |
 
-**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [DowntimeTracking](../reference/ts_shape/events/production/downtime_tracking.md)
+**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [DowntimeEvents](../reference/ts_shape/events/production/downtime_tracking.md)
 
 ---
 
@@ -79,7 +79,7 @@ signal; every `.detect` step branches off a downtime table.
 from ts_shape import Pipeline
 from ts_shape.loader.context.context_enricher import ContextEnricher
 from ts_shape.transform.harmonization import DataHarmonizer
-from ts_shape.events.production.downtime_tracking import DowntimeTracking
+from ts_shape.events.production.downtime_tracking import DowntimeEvents
 
 pipe = (
     Pipeline(name="downtime-pareto")
@@ -92,25 +92,25 @@ pipe = (
     .transform(DataHarmonizer, "fill_gaps", strategy="ffill", max_gap="120s")
 
     # -- downtime analysis --
-    .detect(DowntimeTracking, "downtime_by_shift", name="shift_downtime",
+    .detect(DowntimeEvents, "downtime_by_shift", name="shift_downtime",
             shift_definitions=SHIFT_DEFINITIONS,
             state_uuid="machine_state_str", running_value="Running")
-    .detect(DowntimeTracking, "downtime_by_reason", name="reason_analysis",
+    .detect(DowntimeEvents, "downtime_by_reason", name="reason_analysis",
             shift_definitions=SHIFT_DEFINITIONS,
             state_uuid="machine_state_str", reason_uuid="downtime_reason",
             stopped_value="Stopped")
-    .detect(DowntimeTracking, "top_downtime_reasons", name="top_reasons",
+    .detect(DowntimeEvents, "top_downtime_reasons", name="top_reasons",
             shift_definitions=SHIFT_DEFINITIONS,
             state_uuid="machine_state_str", reason_uuid="downtime_reason",
             top_n=5, stopped_value="Stopped")
-    .detect(DowntimeTracking, "availability_trend", name="availability",
+    .detect(DowntimeEvents, "availability_trend", name="availability",
             shift_definitions=SHIFT_DEFINITIONS,
             state_uuid="machine_state_str", running_value="Running",
             window="1D")
 )
 ```
 
-`shift_definitions` is routed to the `DowntimeTracking` constructor; the
+`shift_definitions` is routed to the `DowntimeEvents` constructor; the
 remaining keyword arguments reach each method.
 
 !!! tip "State signal continuity"

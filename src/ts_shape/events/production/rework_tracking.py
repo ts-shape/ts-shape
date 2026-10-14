@@ -19,12 +19,13 @@ from ts_shape.events._windows import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class ReworkTracking(Base):
+class ReworkEvents(Base):
     """Track parts that require rework (re-processing through a station).
 
     Each UUID represents one signal:
@@ -38,15 +39,15 @@ class ReworkTracking(Base):
 
     Pipeline example::
 
-        rework = ReworkTracking(df)
+        rework = ReworkEvents(df)
         shift_rework = rework.rework_by_shift('rework_counter')
-        # → merge with ShiftReporting.shift_production() on [date, shift]
-        # → merge with QualityTracking.nok_by_shift() on [date, shift]
+        # → merge with ShiftReportEvents.shift_production() on [date, shift]
+        # → merge with QualityEvents.nok_by_shift() on [date, shift]
         rate = rework.rework_rate('rework_counter', 'total_counter')
-        # → merge with ShiftReporting.shift_production() on [date, shift]
+        # → merge with ShiftReportEvents.shift_production() on [date, shift]
 
     Example usage:
-        tracker = ReworkTracking(df)
+        tracker = ReworkEvents(df)
 
         # Rework per shift
         shift_rework = tracker.rework_by_shift(rework_uuid='rework_counter')
@@ -555,3 +556,7 @@ class ReworkTracking(Base):
             results.append(row)
 
         return add_period_window(pd.DataFrame(results, columns=columns), window)
+
+
+#: Deprecated name, removed in 1.0.
+ReworkTracking = deprecated_class(ReworkEvents, "ReworkTracking")

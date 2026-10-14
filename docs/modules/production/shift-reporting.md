@@ -1,4 +1,4 @@
-# ShiftReporting
+# ShiftReportEvents
 
 > Simple shift-based production reporting from counter and part-ID signals.
 
@@ -16,9 +16,9 @@ Use for daily shift performance reporting. Computes production quantities per sh
 ## Quick Example
 
 ```python
-from ts_shape.events.production.shift_reporting import ShiftReporting
+from ts_shape.events.production.shift_reporting import ShiftReportEvents
 
-reporter = ShiftReporting(
+reporter = ShiftReportEvents(
     production_df,
     shift_definitions={
         "morning": ("06:00", "14:00"),

@@ -1,9 +1,9 @@
-"""Reset-aware behaviour of TargetTracking comparisons."""
+"""Reset-aware behaviour of TargetEvents comparisons."""
 
 import pandas as pd  # type: ignore
 import pytest
 
-from ts_shape.events.production.target_tracking import TargetTracking
+from ts_shape.events.production.target_tracking import TargetEvents
 
 
 @pytest.fixture
@@ -23,14 +23,14 @@ def reset_target_data():
 
 
 def test_compare_to_target_default_under_reports(reset_target_data):
-    tracker = TargetTracking(reset_target_data)
+    tracker = TargetEvents(reset_target_data)
     result = tracker.compare_to_target("target_counter", targets={"shift_1": 300})
     assert "resets" not in result.columns
     assert result["actual"].iloc[0] == 150
 
 
 def test_compare_to_target_handles_resets(reset_target_data):
-    tracker = TargetTracking(reset_target_data)
+    tracker = TargetEvents(reset_target_data)
     result = tracker.compare_to_target(
         "target_counter", targets={"shift_1": 300}, handle_resets=True
     )
@@ -41,14 +41,14 @@ def test_compare_to_target_handles_resets(reset_target_data):
 
 
 def test_achievement_summary_default_under_reports(reset_target_data):
-    tracker = TargetTracking(reset_target_data)
+    tracker = TargetEvents(reset_target_data)
     result = tracker.target_achievement_summary("target_counter", daily_target=300)
     assert "resets" not in result.columns
     assert result["actual"].iloc[0] == 150
 
 
 def test_achievement_summary_handles_resets(reset_target_data):
-    tracker = TargetTracking(reset_target_data)
+    tracker = TargetEvents(reset_target_data)
     result = tracker.target_achievement_summary(
         "target_counter", daily_target=300, handle_resets=True
     )

@@ -4,7 +4,7 @@ One call instead of crawling the registry, the archetype table and the
 override table by hand::
 
     from ts_shape.eventlog import describe
-    describe("OEECalculator.calculate_oee")
+    describe("OEEEvents.oee")
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any
 
 from . import adapters
 from .archetypes import ARCHETYPE_BY_METHOD
-from .taxonomy import REGISTRY
+from .taxonomy import REGISTRY, resolve
 
 
 def describe(detector: str) -> dict[str, Any]:
@@ -37,7 +37,7 @@ def describe(detector: str) -> dict[str, Any]:
     """
     if "." not in detector:
         raise ValueError(f"detector must be 'ClassName.method_name', got {detector!r}")
-    class_name, method_name = detector.split(".", 1)
+    class_name, method_name = resolve(*detector.split(".", 1))
     key = (class_name, method_name)
     rule = REGISTRY.get(key)
     if rule is None:

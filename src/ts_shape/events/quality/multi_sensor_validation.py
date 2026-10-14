@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class MultiSensorValidationEvents(Base):
     - detect_disagreement: Flag windows where sensor spread exceeds threshold.
     - pairwise_bias: Mean difference between each sensor pair per window.
     - consensus_score: Per-window measurement consensus across sensors.
-    - identify_outlier_sensor: Find the sensor furthest from the group.
+    - detect_outlier_sensor: Find the sensor furthest from the group.
     """
 
     def __init__(
@@ -235,7 +236,9 @@ class MultiSensorValidationEvents(Base):
             window=window,
         )
 
-    def identify_outlier_sensor(
+    identify_outlier_sensor = deprecated_method("detect_outlier_sensor")
+
+    def detect_outlier_sensor(
         self, window: str = "1h", method: str = "median"
     ) -> pd.DataFrame:
         """Identify the sensor furthest from the group per window.

@@ -18,6 +18,7 @@ from ts_shape.events._windows import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_increments, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ _QUALITY_COLS = [
 ]
 
 
-class QualityTracking(Base):
+class QualityEvents(Base):
     """Track NOK (defective) parts and quality metrics.
 
     Each UUID represents one signal:
@@ -44,11 +45,11 @@ class QualityTracking(Base):
     Merge keys: [date, shift] for shift-level, [date] for daily, [part_number] for part-level.
 
     Pipeline outputs include ``quality_pct`` (alias for ``first_pass_yield_pct``)
-    so downstream modules (ShiftHandoverReport, PeriodSummary, OEECalculator)
+    so downstream modules (ShiftHandoverEvents, PeriodSummaryEvents, OEEEvents)
     can join on a consistent column name.
 
     Example usage:
-        tracker = QualityTracking(df)
+        tracker = QualityEvents(df)
 
         # NOK parts per shift
         shift_nok = tracker.nok_by_shift(
@@ -63,7 +64,7 @@ class QualityTracking(Base):
             part_id_uuid='part_number'
         )
 
-        # Pipeline: feed into PeriodSummary
+        # Pipeline: feed into PeriodSummaryEvents
         daily = tracker.daily_quality_summary('good', 'bad')
         # daily has [date, ok_parts, nok_parts, total_parts, quality_pct, ...]
     """
@@ -679,3 +680,7 @@ class QualityTracking(Base):
         daily["quality_pct"] = daily["first_pass_yield_pct"]
 
         return add_day_window(daily, data_tz(self.dataframe[self.time_column]))
+
+
+#: Deprecated name, removed in 1.0.
+QualityTracking = deprecated_class(QualityEvents, "QualityTracking")

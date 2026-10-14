@@ -30,11 +30,11 @@ tdev = ToleranceDeviationEvents(
 )
 
 # Apply tolerance checks with severity classification
-events = tdev.process_and_group_data_with_events()
+events = tdev.detect_deviations()
 print(events[["systime", "deviation_abs", "deviation_pct", "severity"]].head())
 
 # Compute process capability indices against the latest spec limits
-capability = tdev.compute_capability_indices(target_value=50.0)
+capability = tdev.capability_indices(target_value=50.0)
 print(f"Cpk: {capability['Cpk']:.2f}, Ppk: {capability['Ppk']:.2f}")
 ```
 
@@ -44,8 +44,8 @@ print(f"Cpk: {capability['Cpk']:.2f}, Ppk: {capability['Ppk']:.2f}")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `process_and_group_data_with_events()` | Apply tolerance checks, group out-of-tolerance samples within `time_threshold` into events (first and last row per event) | DataFrame with `systime`, `uuid`, `deviation_abs`, `deviation_pct`, `severity` (`minor`, `major`, `critical`) |
-| `compute_capability_indices(target_value=None)` | Calculate Cp, Cpk, Pp, Ppk capability indices | Dictionary with `Cp`, `Cpk`, `Pp`, `Ppk`, `mean`, `std`, `usl`, `lsl`, `target` |
+| `detect_deviations()` | Apply tolerance checks, group out-of-tolerance samples within `time_threshold` into events (first and last row per event) | DataFrame with `systime`, `uuid`, `deviation_abs`, `deviation_pct`, `severity` (`minor`, `major`, `critical`) |
+| `capability_indices(target_value=None)` | Calculate Cp, Cpk, Pp, Ppk capability indices | Dictionary with `Cp`, `Cpk`, `Pp`, `Ppk`, `mean`, `std`, `usl`, `lsl`, `target` |
 
 ---
 

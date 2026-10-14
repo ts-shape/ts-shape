@@ -115,7 +115,7 @@ class TestIdentifyOutlierSensor:
             three_sensor_df,
             ["sensor_1", "sensor_2", "sensor_3"],
         )
-        result = msv.identify_outlier_sensor(window="2h", method="median")
+        result = msv.detect_outlier_sensor(window="2h", method="median")
         assert len(result) > 0
         assert all(s == "sensor_3" for s in result["outlier_sensor"].tolist())
 
@@ -124,14 +124,14 @@ class TestIdentifyOutlierSensor:
             three_sensor_df,
             ["sensor_1", "sensor_2", "sensor_3"],
         )
-        result = msv.identify_outlier_sensor(window="2h", method="mean")
+        result = msv.detect_outlier_sensor(window="2h", method="mean")
         assert len(result) > 0
         assert all(s == "sensor_3" for s in result["outlier_sensor"].tolist())
 
     def test_empty(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_double"])
         msv = MultiSensorValidationEvents(df, ["s1", "s2"])
-        assert len(msv.identify_outlier_sensor()) == 0
+        assert len(msv.detect_outlier_sensor()) == 0
 
 
 class TestConstructorValidation:

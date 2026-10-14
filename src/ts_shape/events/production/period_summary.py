@@ -17,11 +17,12 @@ import pandas as pd  # type: ignore
 from ts_shape.events._windows import add_day_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 
 logger = logging.getLogger(__name__)
 
 
-class PeriodSummary(Base):
+class PeriodSummaryEvents(Base):
     """Aggregate daily metrics into weekly/monthly summaries.
 
     Merge keys: [week_start, week_end] for weekly, [year, month] for monthly.
@@ -30,21 +31,21 @@ class PeriodSummary(Base):
 
     **Pattern A — from raw signals:**
 
-        summary = PeriodSummary(df)
+        summary = PeriodSummaryEvents(df)
         weekly = summary.weekly_summary(counter_uuid='prod')
 
     **Pattern B — pipeline (compose from upstream modules):**
 
         # Build a daily DataFrame from any combination of upstream modules
-        quality = QualityTracking(df).daily_quality_summary('ok', 'nok')
-        downtime = DowntimeTracking(df).availability_trend('state', window='1D')
+        quality = QualityEvents(df).daily_quality_summary('ok', 'nok')
+        downtime = DowntimeEvents(df).availability_trend('state', window='1D')
 
         # Merge on date
         daily = quality.merge(downtime.rename(columns={'period': 'date'}), on='date')
 
         # Roll up to weekly/monthly
-        weekly = PeriodSummary.from_daily_data(daily, freq='W')
-        monthly = PeriodSummary.from_daily_data(daily, freq='MS')
+        weekly = PeriodSummaryEvents.from_daily_data(daily, freq='W')
+        monthly = PeriodSummaryEvents.from_daily_data(daily, freq='MS')
     """
 
     def __init__(
@@ -109,8 +110,8 @@ class PeriodSummary(Base):
         """Roll up a pre-computed daily DataFrame to weekly or monthly.
 
         This is the **pipeline-friendly** entry-point.  It accepts any daily
-        DataFrame (e.g. merged output of QualityTracking, DowntimeTracking,
-        OEECalculator) and aggregates numeric columns.
+        DataFrame (e.g. merged output of QualityEvents, DowntimeEvents,
+        OEEEvents) and aggregates numeric columns.
 
         Numeric columns are aggregated as follows:
         - Columns containing ``_pct`` or ``pct``: averaged (mean).
@@ -134,8 +135,8 @@ class PeriodSummary(Base):
 
         Example::
 
-            quality = QualityTracking(df).daily_quality_summary('ok', 'nok')
-            weekly = PeriodSummary.from_daily_data(quality, freq='W')
+            quality = QualityEvents(df).daily_quality_summary('ok', 'nok')
+            weekly = PeriodSummaryEvents.from_daily_data(quality, freq='W')
             # → [start, end, days, ok_parts, nok_parts,
             #    total_parts, quality_pct, ...]
         """
@@ -536,3 +537,7 @@ class PeriodSummary(Base):
             )
 
         return pd.DataFrame(rows)
+
+
+#: Deprecated name, removed in 1.0.
+PeriodSummary = deprecated_class(PeriodSummaryEvents, "PeriodSummary")

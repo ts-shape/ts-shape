@@ -5,6 +5,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class OperatingStateEvents(Base):
 
     Methods:
     - infer_states: Cluster the signal into N operating states.
-    - state_duration_stats: How long does each state typically last?
+    - state_duration_statistics: How long does each state typically last?
     - unusual_state_sequence: Did states occur in an unexpected order?
     - dwell_time_violation: Did the machine stay in a state too long?
     """
@@ -130,7 +131,9 @@ class OperatingStateEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
-    def state_duration_stats(self, n_states: int = 2) -> pd.DataFrame:
+    state_duration_stats = deprecated_method("state_duration_statistics")
+
+    def state_duration_statistics(self, n_states: int = 2) -> pd.DataFrame:
         """How long does each inferred state typically last?
 
         Args:

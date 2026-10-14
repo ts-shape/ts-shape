@@ -16,6 +16,7 @@ from ts_shape.events._windows import (
     data_tz,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ _TREND_COLS = [
 ]
 
 
-class PerformanceLossTracking(Base):
+class PerformanceLossEvents(Base):
     """Track performance and speed losses against target cycle times.
 
     Identifies hidden losses where the machine is running but slower than
@@ -63,14 +64,14 @@ class PerformanceLossTracking(Base):
 
     Pipeline example::
 
-        perf = PerformanceLossTracking(df)
+        perf = PerformanceLossEvents(df)
         shift_perf = perf.performance_by_shift('cycle', target_cycle_time=45)
-        # → merge with DowntimeTracking.downtime_by_shift() on [date, shift]
-        # → merge with QualityTracking.nok_by_shift() on [date, shift]
-        # → feed into ShiftHandoverReport.from_shift_data()
+        # → merge with DowntimeEvents.downtime_by_shift() on [date, shift]
+        # → merge with QualityEvents.nok_by_shift() on [date, shift]
+        # → feed into ShiftHandoverEvents.from_shift_data()
 
     Example usage:
-        tracker = PerformanceLossTracking(df)
+        tracker = PerformanceLossEvents(df)
 
         # Performance by shift
         perf = tracker.performance_by_shift(
@@ -371,3 +372,9 @@ class PerformanceLossTracking(Base):
             )
 
         return add_period_window(pd.DataFrame(results, columns=_TREND_COLS), window)
+
+
+#: Deprecated name, removed in 1.0.
+PerformanceLossTracking = deprecated_class(
+    PerformanceLossEvents, "PerformanceLossTracking"
+)

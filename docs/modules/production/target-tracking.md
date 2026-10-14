@@ -1,4 +1,4 @@
-# TargetTracking
+# TargetEvents
 
 > Compare any production metric to targets — every plant has daily/shift targets.
 
@@ -16,9 +16,9 @@ Use as a generic target vs actual comparison module. Works with any production m
 ## Quick Example
 
 ```python
-from ts_shape.events.production.target_tracking import TargetTracking
+from ts_shape.events.production.target_tracking import TargetEvents
 
-tracker = TargetTracking(
+tracker = TargetEvents(
     production_df,
     shift_definitions={
         "morning": ("06:00", "14:00"),

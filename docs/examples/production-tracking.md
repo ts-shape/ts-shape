@@ -4,7 +4,7 @@ Demonstrates daily production tracking modules: part tracking, cycle times, down
 
 **Run it:** `python examples/production_tracking_demo.py`
 
-**Modules demonstrated:** `PartProductionTracking`, `CycleTimeTracking`, `DowntimeTracking`, `QualityTracking`, `ShiftReporting`
+**Modules demonstrated:** `PartProductionEvents`, `CycleTimeEvents`, `DowntimeEvents`, `QualityEvents`, `ShiftReportEvents`
 
 **Related guides:** [Production Monitoring](../guides/production.md) | [Shift Reports & KPIs](../guides/reporting.md)
 

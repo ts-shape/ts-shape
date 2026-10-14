@@ -1,4 +1,4 @@
-"""Tests for OEECalculator, AlarmManagementEvents, and BatchTrackingEvents."""
+"""Tests for OEEEvents, AlarmManagementEvents, and BatchTrackingEvents."""
 
 from datetime import timedelta
 
@@ -8,7 +8,7 @@ import pytest
 from ts_shape.events.production import (
     AlarmManagementEvents,
     BatchTrackingEvents,
-    OEECalculator,
+    OEEEvents,
 )
 
 # ============================================================================
@@ -32,7 +32,7 @@ def _empty_df():
 
 
 # ============================================================================
-# OEECalculator fixtures and tests
+# OEEEvents fixtures and tests
 # ============================================================================
 
 
@@ -133,15 +133,15 @@ class TestOEECalculator:
 
     def test_empty_dataframe(self):
         df = _empty_df()
-        oee = OEECalculator(df)
-        assert oee.calculate_availability("machine_state").empty
-        assert oee.calculate_performance("counter", 60.0).empty
-        assert oee.calculate_quality("total", "reject").empty
-        assert oee.calculate_oee("state", "counter", 60.0).empty
+        oee = OEEEvents(df)
+        assert oee.availability("machine_state").empty
+        assert oee.performance("counter", 60.0).empty
+        assert oee.quality("total", "reject").empty
+        assert oee.oee("state", "counter", 60.0).empty
 
     def test_calculate_availability(self, oee_data):
-        oee = OEECalculator(oee_data)
-        result = oee.calculate_availability("machine_state")
+        oee = OEEEvents(oee_data)
+        result = oee.availability("machine_state")
 
         assert not result.empty
         assert "start" in result.columns
@@ -153,8 +153,8 @@ class TestOEECalculator:
         assert 80.0 < avail < 90.0, f"Expected ~83%, got {avail}%"
 
     def test_calculate_availability_with_planned_time(self, oee_data):
-        oee = OEECalculator(oee_data)
-        result = oee.calculate_availability("machine_state", planned_time_hours=24.0)
+        oee = OEEEvents(oee_data)
+        result = oee.availability("machine_state", planned_time_hours=24.0)
 
         assert not result.empty
         # With 24h planned, availability should be lower
@@ -162,9 +162,9 @@ class TestOEECalculator:
         assert avail < 80.0
 
     def test_calculate_performance(self, oee_data):
-        oee = OEECalculator(oee_data)
+        oee = OEEEvents(oee_data)
         # ideal_cycle_time = 60s means 1 part per minute is 100%
-        result = oee.calculate_performance(
+        result = oee.performance(
             "part_counter", ideal_cycle_time=60.0, run_state_uuid="machine_state"
         )
 
@@ -175,8 +175,8 @@ class TestOEECalculator:
         assert perf > 90.0, f"Expected ~100%, got {perf}%"
 
     def test_calculate_quality(self, oee_data):
-        oee = OEECalculator(oee_data)
-        result = oee.calculate_quality("total_counter", "reject_counter")
+        oee = OEEEvents(oee_data)
+        result = oee.quality("total_counter", "reject_counter")
 
         assert not result.empty
         assert "quality_pct" in result.columns
@@ -185,8 +185,8 @@ class TestOEECalculator:
         assert qual > 95.0, f"Expected ~99%, got {qual}%"
 
     def test_calculate_oee_full(self, oee_data):
-        oee = OEECalculator(oee_data)
-        result = oee.calculate_oee(
+        oee = OEEEvents(oee_data)
+        result = oee.oee(
             run_state_uuid="machine_state",
             counter_uuid="part_counter",
             ideal_cycle_time=60.0,
@@ -208,8 +208,8 @@ class TestOEECalculator:
         assert oee_val > 0.0
 
     def test_calculate_oee_without_quality(self, oee_data):
-        oee = OEECalculator(oee_data)
-        result = oee.calculate_oee(
+        oee = OEEEvents(oee_data)
+        result = oee.oee(
             run_state_uuid="machine_state",
             counter_uuid="part_counter",
             ideal_cycle_time=60.0,
@@ -220,8 +220,8 @@ class TestOEECalculator:
         assert result["quality_pct"].iloc[0] == 100.0
 
     def test_missing_uuid_returns_empty(self, oee_data):
-        oee = OEECalculator(oee_data)
-        result = oee.calculate_availability("nonexistent_uuid")
+        oee = OEEEvents(oee_data)
+        result = oee.availability("nonexistent_uuid")
         assert result.empty
 
 
@@ -286,7 +286,7 @@ class TestAlarmManagementEvents:
         df = _empty_df()
         alarms = AlarmManagementEvents(df, alarm_uuid="temp_alarm")
         assert alarms.alarm_frequency().empty
-        assert alarms.alarm_duration_stats().empty
+        assert alarms.alarm_duration_statistics().empty
         assert alarms.chattering_detection().empty
         assert alarms.standing_alarms().empty
 
@@ -303,7 +303,7 @@ class TestAlarmManagementEvents:
 
     def test_alarm_duration_stats(self, alarm_data):
         alarms = AlarmManagementEvents(alarm_data, alarm_uuid="temp_alarm")
-        result = alarms.alarm_duration_stats()
+        result = alarms.alarm_duration_statistics()
 
         assert not result.empty
         assert len(result) == 1
@@ -411,7 +411,7 @@ class TestBatchTrackingEvents:
         df = _empty_df()
         tracker = BatchTrackingEvents(df, batch_uuid="batch_signal")
         assert tracker.detect_batches().empty
-        assert tracker.batch_duration_stats().empty
+        assert tracker.batch_duration_statistics().empty
         assert tracker.batch_yield("counter").empty
         assert tracker.batch_transition_matrix().empty
 
@@ -435,7 +435,7 @@ class TestBatchTrackingEvents:
 
     def test_batch_duration_stats(self, batch_data):
         tracker = BatchTrackingEvents(batch_data, batch_uuid="batch_signal")
-        result = tracker.batch_duration_stats()
+        result = tracker.batch_duration_statistics()
 
         assert not result.empty
         assert "batch_id" in result.columns

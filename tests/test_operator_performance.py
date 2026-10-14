@@ -1,8 +1,8 @@
-"""Tests for OperatorPerformanceTracking module."""
+"""Tests for OperatorPerformanceEvents module."""
 
 import pandas as pd
 
-from ts_shape.events.production.operator_performance import OperatorPerformanceTracking
+from ts_shape.events.production.operator_performance import OperatorPerformanceEvents
 
 
 def _make_operator_df():
@@ -31,7 +31,7 @@ class TestOperatorPerformanceTracking:
 
     def test_production_by_operator(self):
         df = _make_operator_df()
-        tracker = OperatorPerformanceTracking(df)
+        tracker = OperatorPerformanceEvents(df)
         result = tracker.production_by_operator(
             operator_uuid="operator_id",
             counter_uuid="part_counter",
@@ -45,7 +45,7 @@ class TestOperatorPerformanceTracking:
 
     def test_operator_efficiency(self):
         df = _make_operator_df()
-        tracker = OperatorPerformanceTracking(df)
+        tracker = OperatorPerformanceEvents(df)
         result = tracker.operator_efficiency(
             operator_uuid="operator_id",
             counter_uuid="part_counter",
@@ -57,7 +57,7 @@ class TestOperatorPerformanceTracking:
 
     def test_quality_by_operator(self):
         df = _make_operator_df()
-        tracker = OperatorPerformanceTracking(df)
+        tracker = OperatorPerformanceEvents(df)
         result = tracker.quality_by_operator(
             operator_uuid="operator_id",
             ok_uuid="ok_parts",
@@ -71,7 +71,7 @@ class TestOperatorPerformanceTracking:
 
     def test_operator_comparison(self):
         df = _make_operator_df()
-        tracker = OperatorPerformanceTracking(df)
+        tracker = OperatorPerformanceEvents(df)
         result = tracker.operator_comparison(
             operator_uuid="operator_id",
             counter_uuid="part_counter",
@@ -85,7 +85,7 @@ class TestOperatorPerformanceTracking:
 
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_string", "value_integer"])
-        tracker = OperatorPerformanceTracking(df)
+        tracker = OperatorPerformanceEvents(df)
         assert tracker.production_by_operator("x", "y").empty
         assert tracker.operator_efficiency("x", "y", 100).empty
         assert tracker.quality_by_operator("x", "y", "z").empty

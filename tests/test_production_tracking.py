@@ -2,9 +2,9 @@ import pandas as pd  # type: ignore
 import pytest
 
 from ts_shape.events.production import (
-    CycleTimeTracking,
-    PartProductionTracking,
-    ShiftReporting,
+    CycleTimeEvents,
+    PartProductionEvents,
+    ShiftReportEvents,
 )
 
 # ============================================================================
@@ -143,13 +143,13 @@ def sample_shift_data():
 
 
 # ============================================================================
-# PartProductionTracking Tests
+# PartProductionEvents Tests
 # ============================================================================
 
 
 def test_production_by_part_basic(sample_production_data):
     """Test basic production tracking by part number."""
-    tracker = PartProductionTracking(sample_production_data)
+    tracker = PartProductionEvents(sample_production_data)
     result = tracker.production_by_part(
         part_id_uuid="part_number", counter_uuid="production_counter", window="1h"
     )
@@ -163,7 +163,7 @@ def test_production_by_part_basic(sample_production_data):
 
 def test_production_by_part_custom_window(sample_production_data):
     """Test production tracking with different window sizes."""
-    tracker = PartProductionTracking(sample_production_data)
+    tracker = PartProductionEvents(sample_production_data)
 
     # 30-minute window
     result_30m = tracker.production_by_part(
@@ -183,7 +183,7 @@ def test_production_by_part_custom_window(sample_production_data):
 
 def test_daily_production_summary(sample_production_data):
     """Test daily production summary."""
-    tracker = PartProductionTracking(sample_production_data)
+    tracker = PartProductionEvents(sample_production_data)
     result = tracker.daily_production_summary(
         part_id_uuid="part_number", counter_uuid="production_counter"
     )
@@ -199,7 +199,7 @@ def test_daily_production_summary(sample_production_data):
 
 def test_production_totals(sample_production_data):
     """Test production totals over date range."""
-    tracker = PartProductionTracking(sample_production_data)
+    tracker = PartProductionEvents(sample_production_data)
     result = tracker.production_totals(
         part_id_uuid="part_number",
         counter_uuid="production_counter",
@@ -219,7 +219,7 @@ def test_production_tracking_empty_data():
     df_empty = pd.DataFrame(
         columns=["uuid", "systime", "value_string", "value_integer", "is_delta"]
     )
-    tracker = PartProductionTracking(df_empty)
+    tracker = PartProductionEvents(df_empty)
 
     result = tracker.production_by_part(
         part_id_uuid="part_number", counter_uuid="production_counter"
@@ -264,7 +264,7 @@ def sample_reset_data():
 
 def test_production_by_part_loses_production_without_reset_handling(sample_reset_data):
     """Without reset handling, windows containing a reset under-report."""
-    tracker = PartProductionTracking(sample_reset_data)
+    tracker = PartProductionEvents(sample_reset_data)
     result = tracker.production_by_part(
         part_id_uuid="part_number",
         counter_uuid="production_counter",
@@ -281,7 +281,7 @@ def test_production_by_part_loses_production_without_reset_handling(sample_reset
 
 def test_production_by_part_handles_resets(sample_reset_data):
     """With reset handling, production after a reset is counted correctly."""
-    tracker = PartProductionTracking(sample_reset_data)
+    tracker = PartProductionEvents(sample_reset_data)
     result = tracker.production_by_part(
         part_id_uuid="part_number",
         counter_uuid="production_counter",
@@ -305,7 +305,7 @@ def test_production_by_part_handles_resets(sample_reset_data):
 
 def test_detect_resets(sample_reset_data):
     """detect_resets returns the timestamp and magnitude of each reset."""
-    tracker = PartProductionTracking(sample_reset_data)
+    tracker = PartProductionEvents(sample_reset_data)
     resets = tracker.detect_resets(
         part_id_uuid="part_number", counter_uuid="production_counter"
     )
@@ -337,7 +337,7 @@ def test_detect_resets(sample_reset_data):
 
 def test_detect_resets_none_when_monotonic(sample_production_data):
     """A monotonic counter produces no reset events."""
-    tracker = PartProductionTracking(sample_production_data)
+    tracker = PartProductionEvents(sample_production_data)
     resets = tracker.detect_resets(
         part_id_uuid="part_number", counter_uuid="production_counter"
     )
@@ -346,7 +346,7 @@ def test_detect_resets_none_when_monotonic(sample_production_data):
 
 def test_daily_summary_and_totals_with_resets(sample_reset_data):
     """Daily summary and totals expose reset counts and corrected quantities."""
-    tracker = PartProductionTracking(sample_reset_data)
+    tracker = PartProductionEvents(sample_reset_data)
 
     daily = tracker.daily_production_summary(
         part_id_uuid="part_number",
@@ -368,13 +368,13 @@ def test_daily_summary_and_totals_with_resets(sample_reset_data):
 
 
 # ============================================================================
-# CycleTimeTracking Tests
+# CycleTimeEvents Tests
 # ============================================================================
 
 
 def test_cycle_time_by_part_basic(sample_cycle_data):
     """Test basic cycle time tracking by part."""
-    tracker = CycleTimeTracking(sample_cycle_data)
+    tracker = CycleTimeEvents(sample_cycle_data)
     result = tracker.cycle_time_by_part(
         part_id_uuid="part_number", cycle_trigger_uuid="cycle_trigger"
     )
@@ -391,7 +391,7 @@ def test_cycle_time_by_part_basic(sample_cycle_data):
 
 def test_cycle_time_statistics(sample_cycle_data):
     """Test cycle time statistics by part."""
-    tracker = CycleTimeTracking(sample_cycle_data)
+    tracker = CycleTimeEvents(sample_cycle_data)
     result = tracker.cycle_time_statistics(
         part_id_uuid="part_number", cycle_trigger_uuid="cycle_trigger"
     )
@@ -413,7 +413,7 @@ def test_cycle_time_statistics(sample_cycle_data):
 
 def test_detect_slow_cycles(sample_cycle_data):
     """Test detection of slow cycles."""
-    tracker = CycleTimeTracking(sample_cycle_data)
+    tracker = CycleTimeEvents(sample_cycle_data)
     result = tracker.detect_slow_cycles(
         part_id_uuid="part_number",
         cycle_trigger_uuid="cycle_trigger",
@@ -437,7 +437,7 @@ def test_detect_slow_cycles(sample_cycle_data):
 
 def test_cycle_time_trend(sample_cycle_data):
     """Test cycle time trend analysis."""
-    tracker = CycleTimeTracking(sample_cycle_data)
+    tracker = CycleTimeEvents(sample_cycle_data)
     result = tracker.cycle_time_trend(
         part_id_uuid="part_number",
         cycle_trigger_uuid="cycle_trigger",
@@ -458,7 +458,7 @@ def test_cycle_time_trend(sample_cycle_data):
 
 def test_hourly_cycle_time_summary(sample_cycle_data):
     """Test hourly cycle time summary."""
-    tracker = CycleTimeTracking(sample_cycle_data)
+    tracker = CycleTimeEvents(sample_cycle_data)
     result = tracker.hourly_cycle_time_summary(
         part_id_uuid="part_number", cycle_trigger_uuid="cycle_trigger"
     )
@@ -501,7 +501,7 @@ def test_cycle_tracking_with_integer_trigger():
     )
 
     df = pd.concat([df_parts, df_trigger], ignore_index=True)
-    tracker = CycleTimeTracking(df)
+    tracker = CycleTimeEvents(df)
 
     result = tracker.cycle_time_by_part(
         part_id_uuid="part_number",
@@ -514,13 +514,13 @@ def test_cycle_tracking_with_integer_trigger():
 
 
 # ============================================================================
-# ShiftReporting Tests
+# ShiftReportEvents Tests
 # ============================================================================
 
 
 def test_shift_production_default_shifts(sample_shift_data):
     """Test shift production with default shift definitions."""
-    reporter = ShiftReporting(sample_shift_data)
+    reporter = ShiftReportEvents(sample_shift_data)
     result = reporter.shift_production(counter_uuid="production_counter")
 
     assert not result.empty
@@ -538,7 +538,7 @@ def test_shift_production_custom_shifts(sample_shift_data):
         "afternoon": ("14:00", "22:00"),
         "night": ("22:00", "06:00"),
     }
-    reporter = ShiftReporting(sample_shift_data, shift_definitions=custom_shifts)
+    reporter = ShiftReportEvents(sample_shift_data, shift_definitions=custom_shifts)
     result = reporter.shift_production(counter_uuid="production_counter")
 
     assert not result.empty
@@ -571,7 +571,7 @@ def test_shift_production_with_parts():
     )
 
     df = pd.concat([df_parts, df_counter], ignore_index=True)
-    reporter = ShiftReporting(df)
+    reporter = ShiftReportEvents(df)
 
     result = reporter.shift_production(
         counter_uuid="production_counter", part_id_uuid="part_number"
@@ -592,7 +592,7 @@ def test_shift_comparison(sample_shift_data):
         multi_day_data.append(day_data)
 
     df = pd.concat(multi_day_data, ignore_index=True)
-    reporter = ShiftReporting(df)
+    reporter = ShiftReportEvents(df)
 
     result = reporter.shift_comparison(counter_uuid="production_counter", days=3)
 
@@ -608,7 +608,7 @@ def test_shift_comparison(sample_shift_data):
 
 def test_shift_targets(sample_shift_data):
     """Test shift performance against targets."""
-    reporter = ShiftReporting(sample_shift_data)
+    reporter = ShiftReportEvents(sample_shift_data)
     targets = {
         "shift_1": 500,
         "shift_2": 450,
@@ -664,7 +664,7 @@ def test_best_and_worst_shifts():
         }
     )
 
-    reporter = ShiftReporting(df)
+    reporter = ShiftReportEvents(df)
     result = reporter.best_and_worst_shifts(counter_uuid="production_counter", days=3)
 
     assert "best" in result
@@ -681,7 +681,7 @@ def test_best_and_worst_shifts():
 def test_shift_reporting_empty_data():
     """Test shift reporting with empty data."""
     df_empty = pd.DataFrame(columns=["uuid", "systime", "value_integer", "is_delta"])
-    reporter = ShiftReporting(df_empty)
+    reporter = ShiftReportEvents(df_empty)
 
     result = reporter.shift_production(counter_uuid="production_counter")
     assert result.empty
@@ -701,7 +701,7 @@ def test_overnight_shift_boundary():
         }
     )
 
-    reporter = ShiftReporting(df)
+    reporter = ShiftReportEvents(df)
     result = reporter.shift_production(counter_uuid="production_counter")
 
     assert not result.empty
@@ -717,14 +717,14 @@ def test_overnight_shift_boundary():
 def test_complete_production_workflow(sample_production_data, sample_cycle_data):
     """Test a complete production analysis workflow using all three modules."""
     # 1. Production tracking
-    prod_tracker = PartProductionTracking(sample_production_data)
+    prod_tracker = PartProductionEvents(sample_production_data)
     daily_prod = prod_tracker.daily_production_summary(
         part_id_uuid="part_number", counter_uuid="production_counter"
     )
     assert not daily_prod.empty
 
     # 2. Cycle time analysis
-    cycle_tracker = CycleTimeTracking(sample_cycle_data)
+    cycle_tracker = CycleTimeEvents(sample_cycle_data)
     cycle_stats = cycle_tracker.cycle_time_statistics(
         part_id_uuid="part_number", cycle_trigger_uuid="cycle_trigger"
     )
@@ -739,11 +739,11 @@ def test_complete_production_workflow(sample_production_data, sample_cycle_data)
 def test_module_imports():
     """Test that all modules can be imported correctly."""
     from ts_shape.events.production import (
-        CycleTimeTracking,
-        PartProductionTracking,
-        ShiftReporting,
+        CycleTimeEvents,
+        PartProductionEvents,
+        ShiftReportEvents,
     )
 
-    assert PartProductionTracking is not None
-    assert CycleTimeTracking is not None
-    assert ShiftReporting is not None
+    assert PartProductionEvents is not None
+    assert CycleTimeEvents is not None
+    assert ShiftReportEvents is not None

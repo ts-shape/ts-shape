@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,9 @@ class ToleranceDeviationEvents(Base):
 
         return "minor"
 
-    def process_and_group_data_with_events(self) -> pd.DataFrame:
+    process_and_group_data_with_events = deprecated_method("detect_deviations")
+
+    def detect_deviations(self) -> pd.DataFrame:
         """
         Processes DataFrame to apply tolerance checks, group events by time, and generate an events DataFrame.
 
@@ -427,9 +430,9 @@ class ToleranceDeviationEvents(Base):
 
         return events_df
 
-    def compute_capability_indices(
-        self, target_value: float | None = None
-    ) -> dict[str, float]:
+    compute_capability_indices = deprecated_method("capability_indices")
+
+    def capability_indices(self, target_value: float | None = None) -> dict[str, float]:
         """
         Calculate process capability indices (Cp, Cpk, Pp, Ppk).
 

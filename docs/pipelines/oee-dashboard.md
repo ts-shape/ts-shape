@@ -11,7 +11,7 @@
 | Total counter | `total_counter` | `value_integer` | Total parts (good + bad) |
 | Reject counter | `reject_counter` | `value_integer` | Rejected parts counter |
 
-**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [MachineStateEvents](../reference/ts_shape/events/production/machine_state.md) | [OEECalculator](../reference/ts_shape/events/production/oee_calculator.md) | [ShiftReporting](../reference/ts_shape/events/production/shift_reporting.md)
+**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [MachineStateEvents](../reference/ts_shape/events/production/machine_state.md) | [OEEEvents](../reference/ts_shape/events/production/oee_calculator.md) | [ShiftReportEvents](../reference/ts_shape/events/production/shift_reporting.md)
 
 ---
 
@@ -89,8 +89,8 @@ from ts_shape import Pipeline
 from ts_shape.loader.context.context_enricher import ContextEnricher
 from ts_shape.transform.harmonization import DataHarmonizer
 from ts_shape.events.production.machine_state import MachineStateEvents
-from ts_shape.events.production.oee_calculator import OEECalculator
-from ts_shape.events.production.shift_reporting import ShiftReporting
+from ts_shape.events.production.oee_calculator import OEEEvents
+from ts_shape.events.production.shift_reporting import ShiftReportEvents
 
 pipe = (
     Pipeline(name="oee-dashboard")
@@ -107,32 +107,32 @@ pipe = (
             run_state_uuid="machine_run_state", min_duration="5s")
 
     # -- OEE components --
-    .detect(OEECalculator, "calculate_availability", name="availability",
+    .detect(OEEEvents, "availability", name="availability",
             run_state_uuid="machine_run_state")
-    .detect(OEECalculator, "calculate_performance", name="performance",
+    .detect(OEEEvents, "performance", name="performance",
             counter_uuid="part_counter", ideal_cycle_time=IDEAL_CYCLE_TIME,
             run_state_uuid="machine_run_state")
-    .detect(OEECalculator, "calculate_quality", name="quality",
+    .detect(OEEEvents, "quality", name="quality",
             total_uuid="total_counter", reject_uuid="reject_counter")
-    .detect(OEECalculator, "calculate_oee", name="daily_oee",
+    .detect(OEEEvents, "oee", name="daily_oee",
             run_state_uuid="machine_run_state", counter_uuid="part_counter",
             ideal_cycle_time=IDEAL_CYCLE_TIME, total_uuid="total_counter",
             reject_uuid="reject_counter")
 
     # -- shift reports --
-    .detect(ShiftReporting, "shift_production", name="shift_prod",
+    .detect(ShiftReportEvents, "shift_production", name="shift_prod",
             shift_definitions=SHIFT_DEFINITIONS, counter_uuid="part_counter")
-    .detect(ShiftReporting, "shift_comparison", name="shift_comparison",
+    .detect(ShiftReportEvents, "shift_comparison", name="shift_comparison",
             shift_definitions=SHIFT_DEFINITIONS, counter_uuid="part_counter",
             days=7)
-    .detect(ShiftReporting, "shift_targets", name="shift_targets",
+    .detect(ShiftReportEvents, "shift_targets", name="shift_targets",
             shift_definitions=SHIFT_DEFINITIONS, counter_uuid="part_counter",
             targets={"day": 500, "afternoon": 480, "night": 450})
 )
 ```
 
 Keyword arguments are routed automatically: `run_state_uuid` reaches the
-detector method, `shift_definitions` reaches the `ShiftReporting` constructor.
+detector method, `shift_definitions` reaches the `ShiftReportEvents` constructor.
 `detect_gaps` is a `.detect` step — it reports gaps without changing the
 signal — while `fill_gaps` is a `.transform` that every later step builds on.
 

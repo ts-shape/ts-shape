@@ -2,8 +2,8 @@
 
 import pandas as pd  # type: ignore
 
-from ts_shape.events.production.shift_reporting import ShiftReporting
-from ts_shape.events.production.target_tracking import TargetTracking
+from ts_shape.events.production.shift_reporting import ShiftReportEvents
+from ts_shape.events.production.target_tracking import TargetEvents
 
 
 def _counter_frame():
@@ -21,7 +21,7 @@ def _counter_frame():
 
 
 def test_target_tracking_overnight_split_without_production_day():
-    tt = TargetTracking(_counter_frame())
+    tt = TargetEvents(_counter_frame())
     naive = tt.compare_to_target("counter", {"shift_3": 800}, production_day=False)
     # Jan 1 shift_3 group spans 00:00-06:00 AND 22:00-23:59 -> last-first sweeps
     # in the whole day, hugely overstating achievement.
@@ -33,7 +33,7 @@ def test_target_tracking_overnight_split_without_production_day():
 
 
 def test_target_tracking_production_day_contiguous_shift():
-    tt = TargetTracking(_counter_frame())
+    tt = TargetEvents(_counter_frame())
     fixed = tt.compare_to_target("counter", {"shift_3": 800}, production_day=True)
     # With production_day, the night shift starting 2024-01-01 22:00 runs to
     # 2024-01-02 06:00 as one group: 22:00->05:00 counter delta = ~700.
@@ -47,7 +47,7 @@ def test_target_tracking_production_day_contiguous_shift():
 
 
 def test_shift_reporting_production_day_merges_night_shift():
-    sr = ShiftReporting(_counter_frame())
+    sr = ShiftReportEvents(_counter_frame())
     naive = sr.shift_production("counter")
     fixed = sr.shift_production("counter", production_day=True)
     # Naive splits the night shift across two calendar dates; production_day

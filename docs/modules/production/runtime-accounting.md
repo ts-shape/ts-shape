@@ -21,7 +21,7 @@ from ts_shape.events.production.runtime_accounting import RuntimeAccountingEvent
 rt = RuntimeAccountingEvents(df, "comp2:motor_running")
 
 rt.runtime_summary(max_gap="15min")
-rt.runtime_per_window("1D", max_gap="15min")
+rt.runtime_by_window("1D", max_gap="15min")
 
 meter = rt.operating_hours_meter("1h", max_gap="15min")
 print(meter[["start", "cumulative_run_hours"]].tail())
@@ -34,7 +34,7 @@ print(meter[["start", "cumulative_run_hours"]].tail())
 | Method | Shape | Returns |
 |---|---|---|
 | `runtime_summary(max_gap)` | summary | one row: `start`, `end`, `duration_seconds`, `run_seconds`, `run_hours`, `idle_seconds`, `start_count`, `longest_run_seconds`, `mean_run_seconds`, `utilization_pct` |
-| `runtime_per_window(window, max_gap)` | summary | per window: `start`, `end`, `duration_seconds`, `run_seconds`, `run_hours`, `start_count`, `utilization_pct` |
+| `runtime_by_window(window, max_gap)` | summary | per window: `start`, `end`, `duration_seconds`, `run_seconds`, `run_hours`, `start_count`, `utilization_pct` |
 | `operating_hours_meter(window, max_gap)` | summary | per window: `start`, `end`, `duration_seconds`, `run_seconds`, `cumulative_run_hours` |
 
 ## Notes

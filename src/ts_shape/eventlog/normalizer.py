@@ -62,7 +62,8 @@ def to_event_log(
     """
     if "." not in detector:
         raise ValueError(f"detector must be 'ClassName.method_name', got {detector!r}")
-    class_name, method_name = detector.split(".", 1)
+    class_name, method_name = taxonomy.resolve(*detector.split(".", 1))
+    detector = f"{class_name}.{method_name}"  # current names in the output
 
     rule = taxonomy.get(class_name, method_name)
     if rule is None:

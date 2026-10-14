@@ -24,7 +24,7 @@ doe = DesignOfExperimentsEvents(
 
 runs = doe.detect_runs(min_duration="10min", stability_tol=0.02)
 
-effects = doe.compute_effects(
+effects = doe.effects(
     "pilot1:melt_viscosity",
     statistic="settled",    # mean of the last third of each run
     min_duration="10min",
@@ -39,7 +39,7 @@ print(effects.sort_values("main_effect"))
 | Method | Shape | Returns |
 |---|---|---|
 | `detect_runs(min_duration, stability_tol, n_levels)` | interval | `start`, `end`, `duration_seconds`, `uuid`, `run_id`, one `factor__<uuid>_level` column per factor |
-| `compute_effects(response_uuid, statistic, min_duration, stability_tol, n_levels)` | summary | one row per factor and level: `factor`, `level`, `n_runs`, `response_mean`, `response_std`, `main_effect` |
+| `effects(response_uuid, statistic, min_duration, stability_tol, n_levels)` | summary | one row per factor and level: `factor`, `level`, `n_runs`, `response_mean`, `response_std`, `main_effect` |
 
 ## Notes
 

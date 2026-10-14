@@ -44,7 +44,7 @@ def test_runtime_summary_canonical_columns():
 
 def test_runtime_per_window_totals():
     df = _run_signal([(True, 7200), (False, 3600), (True, 3600)])
-    pw = RuntimeAccountingEvents(df, run_uuid="m").runtime_per_window(window="1D")
+    pw = RuntimeAccountingEvents(df, run_uuid="m").runtime_by_window(window="1D")
     assert pw["run_hours"].sum() == pytest.approx(3.0)
     assert pw["start_count"].sum() == 2
 
@@ -60,7 +60,7 @@ def test_operating_hours_meter_is_monotonic():
 def test_empty_input_returns_empty(empty_df):
     rt = RuntimeAccountingEvents(empty_df, run_uuid="m")
     assert rt.runtime_summary().empty
-    assert rt.runtime_per_window().empty
+    assert rt.runtime_by_window().empty
     assert rt.operating_hours_meter().empty
 
 

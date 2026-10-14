@@ -6,6 +6,41 @@ while you migrate. Deprecated names still function but emit a
 authoritative, dated record is the [Changelog](changelog.md) — this page is the
 quick old → new lookup.
 
+## Renamed classes and methods (old names deprecated, removed in 1.0)
+
+Detector classes all end in `Events`. Event classes no longer use `calculate_` / `compute_` / `process_`: methods that find events start with `detect_`, and metrics are nouns (see [Naming & Output Conventions](naming.md)).
+
+The old names still work. They emit a `DeprecationWarning`, and the event log accepts them too: for example, `to_event_log(df, "OEECalculator.calculate_oee")` is resolved to `OEEEvents.oee`.
+
+| Old | New |
+|---|---|
+| `CycleTimeTracking` | `CycleTimeEvents` |
+| `DowntimeTracking` | `DowntimeEvents` |
+| `OperatorPerformanceTracking` | `OperatorPerformanceEvents` |
+| `PartProductionTracking` | `PartProductionEvents` |
+| `PerformanceLossTracking` | `PerformanceLossEvents` |
+| `QualityTracking` | `QualityEvents` |
+| `ReworkTracking` | `ReworkEvents` |
+| `ScrapTracking` | `ScrapEvents` |
+| `SetupTimeTracking` | `SetupTimeEvents` |
+| `TargetTracking` | `TargetEvents` |
+| `OEECalculator` (`calculate_availability`, `calculate_performance`, `calculate_quality`, `calculate_oee`) | `OEEEvents` (`availability`, `performance`, `quality`, `oee`) |
+| `PeriodSummary` | `PeriodSummaryEvents` |
+| `ShiftReporting` | `ShiftReportEvents` |
+| `ShiftHandoverReport` | `ShiftHandoverEvents` |
+| `ProcessStabilityIndex` | `ProcessStabilityIndexEvents` |
+| `StatisticalProcessControlRuleBased` (`process`, `apply_rules_vectorized`, `calculate_control_limits`, `calculate_dynamic_control_limits`) | `StatisticalProcessControlEvents` (`detect_violations`, `detect_rule_violations`, `control_limits`, `dynamic_control_limits`) |
+| `ToleranceDeviationEvents.process_and_group_data_with_events` / `.compute_capability_indices` | `.detect_deviations` / `.capability_indices` |
+| `DataGapAnalysisEvents.find_gaps` | `.detect_gaps` |
+| `MultiSensorValidationEvents.identify_outlier_sensor` | `.detect_outlier_sensor` |
+| `LeadTimeAnalysisEvents.calculate_lead_times` | `.lead_times` |
+| `EnvironmentalCompensationEvents.estimate_sensitivity` | `.sensitivity` |
+| `DesignOfExperimentsEvents.compute_effects` | `.effects` |
+| `*.alarm_duration_stats`, `*.batch_duration_stats`, `*.state_duration_stats` | `*_statistics` |
+| `DutyCycleEvents.duty_cycle_per_window`, `RuntimeAccountingEvents.runtime_per_window` | `*_by_window` |
+
+To find every remaining old name in your code, run your tests with `-W error::DeprecationWarning`.
+
 ## Every detector output carries its time bounds
 
 Each detector returns the canonical columns of its shape (see [Naming & Output Conventions](naming.md)):

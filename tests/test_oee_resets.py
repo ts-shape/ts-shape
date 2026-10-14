@@ -1,9 +1,9 @@
-"""Reset-aware behaviour of OEECalculator.calculate_performance / calculate_quality."""
+"""Reset-aware behaviour of OEEEvents.performance / quality."""
 
 import pandas as pd  # type: ignore
 import pytest
 
-from ts_shape.events.production import OEECalculator
+from ts_shape.events.production import OEEEvents
 
 
 def _counter_rows(uuid, times, values):
@@ -37,26 +37,24 @@ def reset_oee_data():
 
 
 def test_performance_default_under_reports(reset_oee_data):
-    oee = OEECalculator(reset_oee_data)
-    result = oee.calculate_performance("part_counter", ideal_cycle_time=60.0)
+    oee = OEEEvents(reset_oee_data)
+    result = oee.performance("part_counter", ideal_cycle_time=60.0)
     assert "resets" not in result.columns
     # naive last - first loses the production before the reset
     assert result["actual_parts"].iloc[0] == 120
 
 
 def test_performance_handles_resets(reset_oee_data):
-    oee = OEECalculator(reset_oee_data)
-    result = oee.calculate_performance(
-        "part_counter", ideal_cycle_time=60.0, handle_resets=True
-    )
+    oee = OEEEvents(reset_oee_data)
+    result = oee.performance("part_counter", ideal_cycle_time=60.0, handle_resets=True)
     assert "resets" in result.columns
     assert result["actual_parts"].iloc[0] == 270
     assert result["resets"].iloc[0] == 1
 
 
 def test_quality_default_under_reports(reset_oee_data):
-    oee = OEECalculator(reset_oee_data)
-    result = oee.calculate_quality("total_counter", "reject_counter")
+    oee = OEEEvents(reset_oee_data)
+    result = oee.quality("total_counter", "reject_counter")
     assert "resets" not in result.columns
     assert result["total_parts"].iloc[0] == 120
     assert result["reject_parts"].iloc[0] == 1
@@ -64,10 +62,8 @@ def test_quality_default_under_reports(reset_oee_data):
 
 
 def test_quality_handles_resets(reset_oee_data):
-    oee = OEECalculator(reset_oee_data)
-    result = oee.calculate_quality(
-        "total_counter", "reject_counter", handle_resets=True
-    )
+    oee = OEEEvents(reset_oee_data)
+    result = oee.quality("total_counter", "reject_counter", handle_resets=True)
     assert "resets" in result.columns
     assert result["total_parts"].iloc[0] == 270
     assert result["reject_parts"].iloc[0] == 3

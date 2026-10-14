@@ -1,4 +1,4 @@
-# DowntimeTracking
+# DowntimeEvents
 
 > Track machine downtimes by shift and reason from state and reason-code signals.
 
@@ -16,7 +16,7 @@ Use for downtime Pareto analysis. Categorizes downtime by reason code and shift 
 ## Quick Example
 
 ```python
-from ts_shape.events.production.downtime_tracking import DowntimeTracking
+from ts_shape.events.production.downtime_tracking import DowntimeEvents
 import pandas as pd
 import numpy as np
 
@@ -32,7 +32,7 @@ df = pd.concat([
     pd.DataFrame({"systime": times, "uuid": "line1:reason", "value_string": reasons}),
 ], ignore_index=True)
 
-dt = DowntimeTracking(df)  # default shifts: 06-14, 14-22, 22-06
+dt = DowntimeEvents(df)  # default shifts: 06-14, 14-22, 22-06
 by_shift = dt.downtime_by_shift(state_uuid="line1:state", running_value="Running")
 by_reason = dt.downtime_by_reason(
     state_uuid="line1:state", reason_uuid="line1:reason", stopped_value="Stopped"

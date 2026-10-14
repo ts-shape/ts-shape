@@ -11,6 +11,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class BatchTrackingEvents(Base):
         batches = BatchTrackingEvents(df, batch_uuid='batch_id_signal')
 
         detected = batches.detect_batches()
-        stats = batches.batch_duration_stats()
+        stats = batches.batch_duration_statistics()
         yields = batches.batch_yield('part_counter')
         transitions = batches.batch_transition_matrix()
     """
@@ -121,7 +122,9 @@ class BatchTrackingEvents(Base):
     # Duration statistics
     # ------------------------------------------------------------------
 
-    def batch_duration_stats(self) -> pd.DataFrame:
+    batch_duration_stats = deprecated_method("batch_duration_statistics")
+
+    def batch_duration_statistics(self) -> pd.DataFrame:
         """Compute duration statistics grouped by batch type (batch_id).
 
         Returns:

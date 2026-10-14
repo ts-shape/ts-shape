@@ -105,7 +105,7 @@ class TestEstimateSensitivity:
             "sensor_1",
             env_uuid="thermocouple",
         )
-        result = ec.estimate_sensitivity(window="8h")
+        result = ec.sensitivity(window="8h")
         assert len(result) > 0
         # Coefficient should be close to 0.5
         assert abs(result.iloc[0]["coefficient"] - 0.5) < 0.1
@@ -117,7 +117,7 @@ class TestEstimateSensitivity:
             "sensor_1",
             env_uuid="thermocouple",
         )
-        result = ec.estimate_sensitivity(window="4h")
+        result = ec.sensitivity(window="4h")
         assert len(result) > 0
         # R² should be low
         assert result.iloc[0]["r_squared"] < 0.5

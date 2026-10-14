@@ -1,5 +1,5 @@
 {
- "AlarmManagementEvents.alarm_duration_stats": {
+ "AlarmManagementEvents.alarm_duration_statistics": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -104,7 +104,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "BatchTrackingEvents.batch_duration_stats": {
+ "BatchTrackingEvents.batch_duration_statistics": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -342,35 +342,35 @@
   "shape": "n/a: no rule for required parameter 'per_run_df'",
   "tz": "n/a: no rule for required parameter 'per_run_df'"
  },
- "CycleTimeTracking.cycle_time_by_part": {
+ "CycleTimeEvents.cycle_time_by_part": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "CycleTimeTracking.cycle_time_statistics": {
+ "CycleTimeEvents.cycle_time_statistics": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "CycleTimeTracking.cycle_time_trend": {
+ "CycleTimeEvents.cycle_time_trend": {
   "empty": "n/a: no rule for required parameter 'part_number'",
   "empty_schema": "n/a: no rule for required parameter 'part_number'",
   "extra_uuid": "n/a: no rule for required parameter 'part_number'",
   "shape": "n/a: no rule for required parameter 'part_number'",
   "tz": "n/a: no rule for required parameter 'part_number'"
  },
- "CycleTimeTracking.detect_slow_cycles": {
+ "CycleTimeEvents.detect_slow_cycles": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "CycleTimeTracking.hourly_cycle_time_summary": {
+ "CycleTimeEvents.hourly_cycle_time_summary": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -384,7 +384,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "DataGapAnalysisEvents.find_gaps": {
+ "DataGapAnalysisEvents.detect_gaps": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -454,7 +454,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "DesignOfExperimentsEvents.compute_effects": {
+ "DesignOfExperimentsEvents.effects": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -510,28 +510,28 @@
   "shape": "ok",
   "tz": "ok"
  },
- "DowntimeTracking.availability_trend": {
+ "DowntimeEvents.availability_trend": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "DowntimeTracking.downtime_by_reason": {
+ "DowntimeEvents.downtime_by_reason": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "DowntimeTracking.downtime_by_shift": {
+ "DowntimeEvents.downtime_by_shift": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "DowntimeTracking.top_downtime_reasons": {
+ "DowntimeEvents.top_downtime_reasons": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -545,7 +545,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "DutyCycleEvents.duty_cycle_per_window": {
+ "DutyCycleEvents.duty_cycle_by_window": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -678,7 +678,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "EnvironmentalCompensationEvents.estimate_sensitivity": {
+ "EnvironmentalCompensationEvents.sensitivity": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -839,7 +839,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "LeadTimeAnalysisEvents.calculate_lead_times": {
+ "LeadTimeAnalysisEvents.lead_times": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1091,7 +1091,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "MultiSensorValidationEvents.identify_outlier_sensor": {
+ "MultiSensorValidationEvents.detect_outlier_sensor": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1126,28 +1126,28 @@
   "shape": "ok",
   "tz": "ok"
  },
- "OEECalculator.calculate_availability": {
+ "OEEEvents.availability": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "OEECalculator.calculate_oee": {
+ "OEEEvents.oee": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "OEECalculator.calculate_performance": {
+ "OEEEvents.performance": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "OEECalculator.calculate_quality": {
+ "OEEEvents.quality": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1196,7 +1196,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "OperatingStateEvents.state_duration_stats": {
+ "OperatingStateEvents.state_duration_statistics": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1210,28 +1210,28 @@
   "shape": "ok",
   "tz": "ok"
  },
- "OperatorPerformanceTracking.operator_comparison": {
+ "OperatorPerformanceEvents.operator_comparison": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "OperatorPerformanceTracking.operator_efficiency": {
+ "OperatorPerformanceEvents.operator_efficiency": {
   "empty": "n/a: no rule for required parameter 'target_per_shift'",
   "empty_schema": "n/a: no rule for required parameter 'target_per_shift'",
   "extra_uuid": "n/a: no rule for required parameter 'target_per_shift'",
   "shape": "n/a: no rule for required parameter 'target_per_shift'",
   "tz": "n/a: no rule for required parameter 'target_per_shift'"
  },
- "OperatorPerformanceTracking.production_by_operator": {
+ "OperatorPerformanceEvents.production_by_operator": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "OperatorPerformanceTracking.quality_by_operator": {
+ "OperatorPerformanceEvents.quality_by_operator": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1294,105 +1294,105 @@
   "shape": "ok",
   "tz": "ok"
  },
- "PartProductionTracking.daily_production_summary": {
+ "PartProductionEvents.daily_production_summary": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "PartProductionTracking.detect_resets": {
+ "PartProductionEvents.detect_resets": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "PartProductionTracking.production_by_part": {
+ "PartProductionEvents.production_by_part": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "PartProductionTracking.production_totals": {
+ "PartProductionEvents.production_totals": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "PerformanceLossTracking.performance_by_shift": {
+ "PerformanceLossEvents.performance_by_shift": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "PerformanceLossTracking.performance_trend": {
+ "PerformanceLossEvents.performance_trend": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "PerformanceLossTracking.slow_periods": {
+ "PerformanceLossEvents.slow_periods": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "PeriodSummary.compare_periods": {
+ "PeriodSummaryEvents.compare_periods": {
   "empty": "n/a: no rule for required parameter 'period1'",
   "empty_schema": "n/a: no rule for required parameter 'period1'",
   "extra_uuid": "n/a: no rule for required parameter 'period1'",
   "shape": "n/a: no rule for required parameter 'period1'",
   "tz": "n/a: no rule for required parameter 'period1'"
  },
- "PeriodSummary.from_daily_data": {
+ "PeriodSummaryEvents.from_daily_data": {
   "empty": "n/a: classmethod without a dataframe first parameter",
   "empty_schema": "n/a: classmethod without a dataframe first parameter",
   "extra_uuid": "n/a: classmethod without a dataframe first parameter",
   "shape": "n/a: classmethod without a dataframe first parameter",
   "tz": "n/a: classmethod without a dataframe first parameter"
  },
- "PeriodSummary.monthly_summary": {
+ "PeriodSummaryEvents.monthly_summary": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "PeriodSummary.weekly_summary": {
+ "PeriodSummaryEvents.weekly_summary": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ProcessStabilityIndex.score_trend": {
+ "ProcessStabilityIndexEvents.score_trend": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ProcessStabilityIndex.stability_comparison": {
+ "ProcessStabilityIndexEvents.stability_comparison": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ProcessStabilityIndex.stability_score": {
+ "ProcessStabilityIndexEvents.stability_score": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ProcessStabilityIndex.worst_periods": {
+ "ProcessStabilityIndexEvents.worst_periods": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1448,28 +1448,28 @@
   "shape": "ok",
   "tz": "ok"
  },
- "QualityTracking.daily_quality_summary": {
+ "QualityEvents.daily_quality_summary": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "QualityTracking.nok_by_reason": {
+ "QualityEvents.nok_by_reason": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "QualityTracking.nok_by_shift": {
+ "QualityEvents.nok_by_shift": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "QualityTracking.quality_by_part": {
+ "QualityEvents.quality_by_part": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1532,35 +1532,35 @@
   "shape": "ok",
   "tz": "ok"
  },
- "ReworkTracking.rework_by_reason": {
+ "ReworkEvents.rework_by_reason": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ReworkTracking.rework_by_shift": {
+ "ReworkEvents.rework_by_shift": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ReworkTracking.rework_cost": {
+ "ReworkEvents.rework_cost": {
   "empty": "n/a: no rule for mapping parameter 'rework_costs'",
   "empty_schema": "n/a: no rule for mapping parameter 'rework_costs'",
   "extra_uuid": "n/a: no rule for mapping parameter 'rework_costs'",
   "shape": "n/a: no rule for mapping parameter 'rework_costs'",
   "tz": "n/a: no rule for mapping parameter 'rework_costs'"
  },
- "ReworkTracking.rework_rate": {
+ "ReworkEvents.rework_rate": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ReworkTracking.rework_trend": {
+ "ReworkEvents.rework_trend": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1623,7 +1623,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "RuntimeAccountingEvents.runtime_per_window": {
+ "RuntimeAccountingEvents.runtime_by_window": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1665,28 +1665,28 @@
   "shape": "ok",
   "tz": "ok"
  },
- "ScrapTracking.scrap_by_reason": {
+ "ScrapEvents.scrap_by_reason": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ScrapTracking.scrap_by_shift": {
+ "ScrapEvents.scrap_by_shift": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ScrapTracking.scrap_cost": {
+ "ScrapEvents.scrap_cost": {
   "empty": "n/a: no rule for mapping parameter 'material_costs'",
   "empty_schema": "n/a: no rule for mapping parameter 'material_costs'",
   "extra_uuid": "n/a: no rule for mapping parameter 'material_costs'",
   "shape": "n/a: no rule for mapping parameter 'material_costs'",
   "tz": "n/a: no rule for mapping parameter 'material_costs'"
  },
- "ScrapTracking.scrap_trend": {
+ "ScrapEvents.scrap_trend": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
@@ -1791,70 +1791,70 @@
   "shape": "ok",
   "tz": "ok"
  },
- "SetupTimeTracking.setup_by_product": {
+ "SetupTimeEvents.setup_by_product": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "SetupTimeTracking.setup_durations": {
+ "SetupTimeEvents.setup_durations": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "SetupTimeTracking.setup_statistics": {
+ "SetupTimeEvents.setup_statistics": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "SetupTimeTracking.setup_trend": {
+ "SetupTimeEvents.setup_trend": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ShiftHandoverReport.from_shift_data": {
+ "ShiftHandoverEvents.from_shift_data": {
   "empty": "n/a: classmethod without a dataframe first parameter",
   "empty_schema": "n/a: classmethod without a dataframe first parameter",
   "extra_uuid": "n/a: classmethod without a dataframe first parameter",
   "shape": "n/a: classmethod without a dataframe first parameter",
   "tz": "n/a: classmethod without a dataframe first parameter"
  },
- "ShiftHandoverReport.generate_report": {
+ "ShiftHandoverEvents.generate_report": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ShiftReporting.best_and_worst_shifts": {
+ "ShiftReportEvents.best_and_worst_shifts": {
   "empty": "ok",
   "empty_schema": "fail: not a DataFrame",
   "extra_uuid": "ok",
   "shape": "fail: returns dict, not a DataFrame",
   "tz": "ok"
  },
- "ShiftReporting.shift_comparison": {
+ "ShiftReportEvents.shift_comparison": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ShiftReporting.shift_production": {
+ "ShiftReportEvents.shift_production": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "ShiftReporting.shift_targets": {
+ "ShiftReportEvents.shift_targets": {
   "empty": "n/a: no rule for mapping parameter 'targets'",
   "empty_schema": "n/a: no rule for mapping parameter 'targets'",
   "extra_uuid": "n/a: no rule for mapping parameter 'targets'",
@@ -1987,98 +1987,98 @@
   "shape": "n/a: no rule for mapping parameter 'phases'",
   "tz": "n/a: no rule for mapping parameter 'phases'"
  },
- "StatisticalProcessControlRuleBased.apply_rules_vectorized": {
+ "StatisticalProcessControlEvents.detect_rule_violations": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "StatisticalProcessControlRuleBased.calculate_control_limits": {
+ "StatisticalProcessControlEvents.control_limits": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "StatisticalProcessControlRuleBased.calculate_dynamic_control_limits": {
+ "StatisticalProcessControlEvents.dynamic_control_limits": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "StatisticalProcessControlRuleBased.detect_cusum_shifts": {
+ "StatisticalProcessControlEvents.detect_cusum_shifts": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "StatisticalProcessControlRuleBased.interpret_violations": {
+ "StatisticalProcessControlEvents.interpret_violations": {
   "empty": "n/a: no rule for required parameter 'violations_df'",
   "empty_schema": "n/a: no rule for required parameter 'violations_df'",
   "extra_uuid": "n/a: no rule for required parameter 'violations_df'",
   "shape": "n/a: no rule for required parameter 'violations_df'",
   "tz": "n/a: no rule for required parameter 'violations_df'"
  },
- "StatisticalProcessControlRuleBased.process": {
+ "StatisticalProcessControlEvents.detect_violations": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",
   "shape": "ok",
   "tz": "ok"
  },
- "StatisticalProcessControlRuleBased.rule_1": {
+ "StatisticalProcessControlEvents.rule_1": {
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
   "shape": "n/a: dataframe handled by caller",
   "tz": "n/a: dataframe handled by caller"
  },
- "StatisticalProcessControlRuleBased.rule_2": {
+ "StatisticalProcessControlEvents.rule_2": {
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
   "shape": "n/a: dataframe handled by caller",
   "tz": "n/a: dataframe handled by caller"
  },
- "StatisticalProcessControlRuleBased.rule_3": {
+ "StatisticalProcessControlEvents.rule_3": {
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
   "shape": "n/a: dataframe handled by caller",
   "tz": "n/a: dataframe handled by caller"
  },
- "StatisticalProcessControlRuleBased.rule_4": {
+ "StatisticalProcessControlEvents.rule_4": {
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
   "shape": "n/a: dataframe handled by caller",
   "tz": "n/a: dataframe handled by caller"
  },
- "StatisticalProcessControlRuleBased.rule_5": {
+ "StatisticalProcessControlEvents.rule_5": {
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
   "shape": "n/a: dataframe handled by caller",
   "tz": "n/a: dataframe handled by caller"
  },
- "StatisticalProcessControlRuleBased.rule_6": {
+ "StatisticalProcessControlEvents.rule_6": {
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
   "shape": "n/a: dataframe handled by caller",
   "tz": "n/a: dataframe handled by caller"
  },
- "StatisticalProcessControlRuleBased.rule_7": {
+ "StatisticalProcessControlEvents.rule_7": {
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
   "shape": "n/a: dataframe handled by caller",
   "tz": "n/a: dataframe handled by caller"
  },
- "StatisticalProcessControlRuleBased.rule_8": {
+ "StatisticalProcessControlEvents.rule_8": {
   "empty": "n/a: dataframe handled by caller",
   "empty_schema": "n/a: dataframe handled by caller",
   "extra_uuid": "n/a: dataframe handled by caller",
@@ -2106,14 +2106,14 @@
   "shape": "ok",
   "tz": "ok"
  },
- "TargetTracking.compare_to_target": {
+ "TargetEvents.compare_to_target": {
   "empty": "n/a: no rule for mapping parameter 'targets'",
   "empty_schema": "n/a: no rule for mapping parameter 'targets'",
   "extra_uuid": "n/a: no rule for mapping parameter 'targets'",
   "shape": "n/a: no rule for mapping parameter 'targets'",
   "tz": "n/a: no rule for mapping parameter 'targets'"
  },
- "TargetTracking.target_achievement_summary": {
+ "TargetEvents.target_achievement_summary": {
   "empty": "n/a: no rule for required parameter 'daily_target'",
   "empty_schema": "n/a: no rule for required parameter 'daily_target'",
   "extra_uuid": "n/a: no rule for required parameter 'daily_target'",
@@ -2176,7 +2176,7 @@
   "shape": "ok",
   "tz": "ok"
  },
- "ToleranceDeviationEvents.process_and_group_data_with_events": {
+ "ToleranceDeviationEvents.detect_deviations": {
   "empty": "ok",
   "empty_schema": "ok",
   "extra_uuid": "ok",

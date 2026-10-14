@@ -12,6 +12,7 @@ import pandas as pd  # type: ignore
 from ts_shape.events._output import finalize_interval_df
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class AlarmManagementEvents(Base):
         alarms = AlarmManagementEvents(df, alarm_uuid='temp_high_alarm')
 
         freq = alarms.alarm_frequency(window='1h')
-        stats = alarms.alarm_duration_stats()
+        stats = alarms.alarm_duration_statistics()
         chatter = alarms.chattering_detection(min_transitions=5, window='10min')
         standing = alarms.standing_alarms(min_duration='1h')
     """
@@ -176,7 +177,9 @@ class AlarmManagementEvents(Base):
         counts["source_uuid"] = self.alarm_uuid
         return counts
 
-    def alarm_duration_stats(self) -> pd.DataFrame:
+    alarm_duration_stats = deprecated_method("alarm_duration_statistics")
+
+    def alarm_duration_statistics(self) -> pd.DataFrame:
         """Compute min / avg / max / total duration of alarm-ON states.
 
         Returns:

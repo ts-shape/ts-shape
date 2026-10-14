@@ -10,7 +10,7 @@
 | Actual value | `temperature_actual` | `value_double` | Measured process value (PV) |
 | Controller output | `temperature_output` | `value_double` | Control valve position / PID output |
 
-**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [SetpointChangeEvents](../reference/ts_shape/events/engineering/setpoint_events.md) | [StartupDetectionEvents](../reference/ts_shape/events/engineering/startup_events.md) | [SteadyStateDetectionEvents](../reference/ts_shape/events/engineering/steady_state_detection.md) | [ControlLoopHealthEvents](../reference/ts_shape/events/engineering/control_loop_health.md) | [ProcessStabilityIndex](../reference/ts_shape/events/engineering/process_stability_index.md)
+**Modules used:** [Pipeline](../reference/ts_shape/pipeline.md) | [AzureBlobParquetLoader](../reference/ts_shape/loader/timeseries/azure_blob_loader.md) | [MetadataJsonLoader](../reference/ts_shape/loader/metadata/metadata_json_loader.md) | [ContextEnricher](../reference/ts_shape/loader/context/context_enricher.md) | [DataHarmonizer](../reference/ts_shape/transform/harmonization.md) | [SetpointChangeEvents](../reference/ts_shape/events/engineering/setpoint_events.md) | [StartupDetectionEvents](../reference/ts_shape/events/engineering/startup_events.md) | [SteadyStateDetectionEvents](../reference/ts_shape/events/engineering/steady_state_detection.md) | [ControlLoopHealthEvents](../reference/ts_shape/events/engineering/control_loop_health.md) | [ProcessStabilityIndexEvents](../reference/ts_shape/events/engineering/process_stability_index.md)
 
 ---
 
@@ -75,7 +75,7 @@ print(f"Loaded {len(df):,} rows, {df['uuid'].nunique()} signals")
 One `Pipeline` captures the whole workflow. `.transform` steps clean the
 signal; every `.detect` step branches off an analysis table.
 
-`ProcessStabilityIndex` takes a `target` argument, which collides with the
+`ProcessStabilityIndexEvents` takes a `target` argument, which collides with the
 pipeline's own `target` parameter — so its three steps are wrapped in small
 `df -> df` helper functions, the plain-callable step form.
 
@@ -89,25 +89,25 @@ from ts_shape.events.engineering.steady_state_detection import (
     SteadyStateDetectionEvents,
 )
 from ts_shape.events.engineering.control_loop_health import ControlLoopHealthEvents
-from ts_shape.events.engineering.process_stability_index import ProcessStabilityIndex
+from ts_shape.events.engineering.process_stability_index import ProcessStabilityIndexEvents
 
 
 def stability_scores(df):
-    return ProcessStabilityIndex(
+    return ProcessStabilityIndexEvents(
         df, signal_uuid="temperature_actual", target=TARGET_VALUE,
         upper_spec=UPPER_SPEC, lower_spec=LOWER_SPEC,
     ).stability_score(window="8h")
 
 
 def stability_trend(df):
-    return ProcessStabilityIndex(
+    return ProcessStabilityIndexEvents(
         df, signal_uuid="temperature_actual", target=TARGET_VALUE,
         upper_spec=UPPER_SPEC, lower_spec=LOWER_SPEC,
     ).score_trend(window="8h")
 
 
 def stability_worst_periods(df):
-    return ProcessStabilityIndex(
+    return ProcessStabilityIndexEvents(
         df, signal_uuid="temperature_actual", target=TARGET_VALUE,
         upper_spec=UPPER_SPEC, lower_spec=LOWER_SPEC,
     ).worst_periods(window="8h", n=3)

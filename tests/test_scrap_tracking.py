@@ -1,8 +1,8 @@
-"""Tests for ScrapTracking module."""
+"""Tests for ScrapEvents module."""
 
 import pandas as pd
 
-from ts_shape.events.production.scrap_tracking import ScrapTracking
+from ts_shape.events.production.scrap_tracking import ScrapEvents
 
 
 def _make_scrap_df():
@@ -42,7 +42,7 @@ class TestScrapTracking:
 
     def test_scrap_by_shift(self):
         df = _make_scrap_df()
-        tracker = ScrapTracking(df)
+        tracker = ScrapEvents(df)
         result = tracker.scrap_by_shift(scrap_uuid="scrap_weight")
         assert not result.empty
         assert "scrap_quantity" in result.columns
@@ -50,7 +50,7 @@ class TestScrapTracking:
 
     def test_scrap_by_reason(self):
         df = _make_scrap_df()
-        tracker = ScrapTracking(df)
+        tracker = ScrapEvents(df)
         result = tracker.scrap_by_reason(
             scrap_uuid="scrap_weight",
             reason_uuid="scrap_reason",
@@ -61,7 +61,7 @@ class TestScrapTracking:
 
     def test_scrap_cost(self):
         df = _make_scrap_df()
-        tracker = ScrapTracking(df)
+        tracker = ScrapEvents(df)
         result = tracker.scrap_cost(
             scrap_uuid="scrap_weight",
             part_id_uuid="part_number",
@@ -73,13 +73,13 @@ class TestScrapTracking:
 
     def test_scrap_trend(self):
         df = _make_scrap_df()
-        tracker = ScrapTracking(df)
+        tracker = ScrapEvents(df)
         result = tracker.scrap_trend(scrap_uuid="scrap_weight")
         assert not result.empty
         assert "period" in result.columns
 
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_double"])
-        tracker = ScrapTracking(df)
+        tracker = ScrapEvents(df)
         assert tracker.scrap_by_shift(scrap_uuid="x").empty
         assert tracker.scrap_by_reason(scrap_uuid="x", reason_uuid="y").empty

@@ -11,7 +11,7 @@ value) - for example at a shift change, a part change, or a controller
 restart. A naive ``last - first`` calculation silently loses all of the
 production that happened in a window where a reset occurred. Pass
 ``handle_resets=True`` to account for these resets, and use
-:meth:`PartProductionTracking.detect_resets` to inspect when they happened.
+:meth:`PartProductionEvents.detect_resets` to inspect when they happened.
 """
 
 import logging
@@ -21,11 +21,12 @@ import pandas as pd  # type: ignore
 from ts_shape.events._windows import add_day_window, data_tz, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
+from ts_shape.utils.deprecation import deprecated_class
 
 logger = logging.getLogger(__name__)
 
 
-class PartProductionTracking(Base):
+class PartProductionEvents(Base):
     """Track production quantities by part number.
 
     Each UUID represents one signal:
@@ -38,7 +39,7 @@ class PartProductionTracking(Base):
     instead of being discarded.
 
     Example usage:
-        tracker = PartProductionTracking(df)
+        tracker = PartProductionEvents(df)
 
         # Hourly production by part, accounting for counter resets
         hourly = tracker.production_by_part(
@@ -487,3 +488,9 @@ class PartProductionTracking(Base):
         totals = daily.groupby("part_number").agg(**agg).reset_index()
 
         return totals
+
+
+#: Deprecated name, removed in 1.0.
+PartProductionTracking = deprecated_class(
+    PartProductionEvents, "PartProductionTracking"
+)

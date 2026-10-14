@@ -124,7 +124,9 @@ def test_pack_docstring_lists_importable_classes(pack):
     exported = {  # aliases of a listed class need no entry of their own
         n
         for n in getattr(pack, "__all__", [])
-        if n[:1].isupper() and id(getattr(pack, n, None)) not in listed_objs
+        if n[:1].isupper()
+        and id(getattr(pack, n, None)) not in listed_objs
+        and not hasattr(getattr(pack, n, None), "__deprecated_alias_of__")
     }
     if exported - listed:
         problems.append(f"exported but not listed: {sorted(exported - listed)}")
@@ -151,6 +153,8 @@ def test_pack_exports_resolve(pack):
                 raise
             continue
         assert obj.__name__ == name
+        if hasattr(obj, "__deprecated_alias_of__"):
+            continue  # old name kept for compatibility, not documented
         assert name in (
             mod.__doc__ or ""
         ), f"{pack} exports {name} but its docstring does not mention it"

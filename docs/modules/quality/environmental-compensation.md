@@ -31,7 +31,7 @@ env = EnvironmentalCompensationEvents(
 )
 
 env.detect_correlation(window="4h")
-sens = env.estimate_sensitivity(window="8h")
+sens = env.sensitivity(window="8h")
 
 corrected = env.compensated_signal()   # coefficient estimated from all data
 env.detect_env_exceedance(valid_range=(15.0, 30.0), window="1h")
@@ -44,7 +44,7 @@ env.detect_env_exceedance(valid_range=(15.0, 30.0), window="1h")
 | Method | Shape | Returns |
 |---|---|---|
 | `detect_correlation(window)` | summary | per window: `window_start`, `correlation`, `p_value`, `significant` |
-| `estimate_sensitivity(window)` | summary | per window: `window_start`, `coefficient`, `intercept`, `r_squared`, `unit_change_per_degree` |
+| `sensitivity(window)` | summary | per window: `window_start`, `coefficient`, `intercept`, `r_squared`, `unit_change_per_degree` |
 | `compensated_signal(coefficient)` | point | per sample: `systime`, `uuid`, `value_double` (measured), `compensated_value`, `correction_applied` |
 | `detect_env_exceedance(valid_range, window)` | interval | windows outside the range: `window_start`, `window_end`, `env_mean`, `env_min`, `env_max`, `exceedance_type` (`high`/`low`/`both`), `severity` |
 

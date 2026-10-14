@@ -5,6 +5,7 @@ import pandas as pd  # type: ignore
 from scipy import stats  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 
 class EnvironmentalCompensationEvents(Base):
@@ -17,7 +18,7 @@ class EnvironmentalCompensationEvents(Base):
 
     Methods:
     - detect_correlation: Pearson correlation per window.
-    - estimate_sensitivity: Linear regression coefficient per window.
+    - sensitivity: Linear regression coefficient per window.
     - compensated_signal: Apply compensation model to signal.
     - detect_env_exceedance: Flag out-of-range environmental conditions.
     """
@@ -123,7 +124,9 @@ class EnvironmentalCompensationEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
-    def estimate_sensitivity(self, window: str = "8h") -> pd.DataFrame:
+    estimate_sensitivity = deprecated_method("sensitivity")
+
+    def sensitivity(self, window: str = "8h") -> pd.DataFrame:
         """Estimate environmental sensitivity coefficient per window.
 
         Fits measurement = a × env + b per window.

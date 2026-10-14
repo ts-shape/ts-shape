@@ -1,4 +1,4 @@
-# ScrapTracking
+# ScrapEvents
 
 > Track material scrap and waste from scrap and reason-code signals.
 
@@ -16,9 +16,9 @@ Use for scrap/waste tracking and cost accounting. Converts scrap quantities to m
 ## Quick Example
 
 ```python
-from ts_shape.events.production.scrap_tracking import ScrapTracking
+from ts_shape.events.production.scrap_tracking import ScrapEvents
 
-tracker = ScrapTracking(production_df)
+tracker = ScrapEvents(production_df)
 
 # Scrap quantity per shift (cumulative scrap signal in value_double by default)
 by_shift = tracker.scrap_by_shift(scrap_uuid="line1:scrap")

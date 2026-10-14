@@ -1,4 +1,4 @@
-# PerformanceLossTracking
+# PerformanceLossEvents
 
 > Track performance and speed losses against target cycle times.
 
@@ -16,9 +16,9 @@ Use to identify hidden speed losses where the machine runs but slower than targe
 ## Quick Example
 
 ```python
-from ts_shape.events.production.performance_loss import PerformanceLossTracking
+from ts_shape.events.production.performance_loss import PerformanceLossEvents
 
-tracker = PerformanceLossTracking(production_df)
+tracker = PerformanceLossEvents(production_df)
 
 # Performance percentage per shift (cycle_uuid is a part counter or cycle trigger)
 perf = tracker.performance_by_shift(

@@ -1,4 +1,4 @@
-# QualityTracking
+# QualityEvents
 
 > Track NOK (defective) parts and quality metrics from OK/NOK counter signals.
 
@@ -16,7 +16,7 @@ Use for quality tracking on production lines. Computes scrap rates, first-pass y
 ## Quick Example
 
 ```python
-from ts_shape.events.production.quality_tracking import QualityTracking
+from ts_shape.events.production.quality_tracking import QualityEvents
 import pandas as pd
 import numpy as np
 
@@ -36,7 +36,7 @@ df = pd.concat([
                       ["SCRATCH", "DIMENSION", "CRACK", "COSMETIC"], size=480)}),
 ], ignore_index=True)
 
-qt = QualityTracking(df)
+qt = QualityEvents(df)
 by_shift = qt.nok_by_shift(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok")
 by_part = qt.quality_by_part(
     ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok", part_id_uuid="line1:part_id"

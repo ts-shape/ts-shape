@@ -1,4 +1,4 @@
-# ReworkTracking
+# ReworkEvents
 
 > Track parts that require rework from rework counter and reason-code signals.
 
@@ -16,9 +16,9 @@ Use to track rework events and their cost. Identifies which parts and reasons dr
 ## Quick Example
 
 ```python
-from ts_shape.events.production.rework_tracking import ReworkTracking
+from ts_shape.events.production.rework_tracking import ReworkEvents
 
-tracker = ReworkTracking(production_df)
+tracker = ReworkEvents(production_df)
 
 # Rework counts per shift
 by_shift = tracker.rework_by_shift(rework_uuid="line1:rework")

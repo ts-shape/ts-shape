@@ -199,7 +199,7 @@ class PowerIntegrator(Base):
         df = df[df["seconds"] > 0]
 
         if max_gap is not None:
-            # Repo convention (see OEECalculator.max_gap): an over-long gap is
+            # Repo convention (see OEEEvents.max_gap): an over-long gap is
             # a logging outage, not a state that persisted. Drop it entirely
             # rather than billing energy for a machine whose power is unknown.
             cap = pd.to_timedelta(max_gap).total_seconds()

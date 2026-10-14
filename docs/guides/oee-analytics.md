@@ -50,26 +50,26 @@ flowchart LR
 Compute daily OEE from raw machine signals.
 
 ```python
-from ts_shape.events.production.oee_calculator import OEECalculator
+from ts_shape.events.production.oee_calculator import OEEEvents
 
-oee = OEECalculator(df)
+oee = OEEEvents(df)
 
 # Individual factors
-availability = oee.calculate_availability(
+availability = oee.availability(
     run_state_uuid='machine_running', planned_time_hours=8.0
 )
 
-performance = oee.calculate_performance(
+performance = oee.performance(
     counter_uuid='part_counter', ideal_cycle_time=30.0,
     run_state_uuid='machine_running'
 )
 
-quality = oee.calculate_quality(
+quality = oee.quality(
     total_uuid='total_parts', reject_uuid='reject_parts'
 )
 
 # All-in-one daily OEE
-daily_oee = oee.calculate_oee(
+daily_oee = oee.oee(
     run_state_uuid='machine_running',
     counter_uuid='part_counter',
     ideal_cycle_time=30.0,
@@ -127,7 +127,7 @@ alarms = AlarmManagementEvents(df, alarm_uuid='temperature_high_alarm')
 frequency = alarms.alarm_frequency(window='1h')
 
 # Duration statistics (min / avg / max / total)
-durations = alarms.alarm_duration_stats()
+durations = alarms.alarm_duration_statistics()
 
 # Chattering detection (>5 transitions in 10 minutes)
 chattering = alarms.chattering_detection(min_transitions=5, window='10min')
@@ -151,7 +151,7 @@ batches = BatchTrackingEvents(df, batch_uuid='batch_id_signal')
 detected = batches.detect_batches()
 
 # Duration statistics by batch type
-stats = batches.batch_duration_stats()
+stats = batches.batch_duration_statistics()
 
 # Production yield per batch
 yield_df = batches.batch_yield(counter_uuid='part_counter')
@@ -225,7 +225,7 @@ duty = DutyCycleEvents(df, signal_uuid='compressor_running')
 intervals = duty.on_off_intervals()
 
 # Duty cycle percentage per hour
-pct = duty.duty_cycle_per_window(window='1h')
+pct = duty.duty_cycle_by_window(window='1h')
 
 # Transition count per hour
 count = duty.cycle_count(window='1h')

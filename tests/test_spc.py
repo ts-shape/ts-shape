@@ -1,7 +1,7 @@
 import pandas as pd  # type: ignore
 
 from ts_shape.events.quality.statistical_process_control import (
-    StatisticalProcessControlRuleBased,
+    StatisticalProcessControlEvents,
 )
 
 
@@ -21,17 +21,17 @@ def test_spc_rule_1_violation_and_process():
         }
     )
 
-    spc = StatisticalProcessControlRuleBased(
+    spc = StatisticalProcessControlEvents(
         df,
         value_column="value_double",
         tolerance_uuid=tol_uuid,
         actual_uuid=act_uuid,
         event_uuid=event_uuid,
     )
-    limits = spc.calculate_control_limits()
+    limits = spc.control_limits()
     assert {"mean", "1sigma_upper", "3sigma_upper"}.issubset(limits.columns)
 
-    processed = spc.process(selected_rules=["rule_1"])
+    processed = spc.detect_violations(selected_rules=["rule_1"])
     # Should flag the clear outlier at value 20
     assert event_uuid in processed["uuid"].unique()
 
@@ -47,7 +47,7 @@ def _spc(values, *, tol_uuid="tol", act_uuid="act", event_uuid="evt"):
             "is_delta": [True] * (2 * n),
         }
     )
-    return StatisticalProcessControlRuleBased(
+    return StatisticalProcessControlEvents(
         df,
         value_column="value_double",
         tolerance_uuid=tol_uuid,
@@ -76,5 +76,5 @@ def test_spc_rule_4_process_does_not_crash():
     # Regression: rule_4 used to call Series.shift() on a NumPy array
     # inside rolling.apply(raw=True), raising AttributeError.
     spc = _spc([0.0, 1.0] * 12)
-    processed = spc.process(selected_rules=["rule_4"])
+    processed = spc.detect_violations(selected_rules=["rule_4"])
     assert isinstance(processed, pd.DataFrame)

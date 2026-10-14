@@ -1,4 +1,4 @@
-# ProcessStabilityIndex
+# ProcessStabilityIndexEvents
 
 > Generate a single 0-100 stability score per shift/day for a signal.
 
@@ -16,9 +16,9 @@ Use as a single-number KPI for process health dashboards. Answers "is my process
 ## Quick Example
 
 ```python
-from ts_shape.events.engineering.process_stability_index import ProcessStabilityIndex
+from ts_shape.events.engineering.process_stability_index import ProcessStabilityIndexEvents
 
-scorer = ProcessStabilityIndex(
+scorer = ProcessStabilityIndexEvents(
     dataframe=process_data,
     signal_uuid="reactor_temperature_01",
     target=180.0,        # optional; defaults to the signal mean

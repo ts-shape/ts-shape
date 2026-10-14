@@ -114,7 +114,7 @@ class TestDesignOfExperimentsEvents:
     def test_compute_effects_ranks_factor_impact(self):
         df = self._build_doe_dataset()
         det = DesignOfExperimentsEvents(df, factor_uuids=["factor:F1", "factor:F2"])
-        effects = det.compute_effects(
+        effects = det.effects(
             response_uuid="response:Y",
             statistic="mean",
             min_duration="2min",

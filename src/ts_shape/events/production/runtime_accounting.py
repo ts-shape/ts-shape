@@ -8,7 +8,7 @@ Computes operating-time metrics from a single boolean run signal:
 - a cumulative operating-hours meter (like a physical hour meter).
 
 Per-sample duration is the gap to the next sample, summed over ``True``
-samples -- the same approach as ``OEECalculator.calculate_availability``.
+samples -- the same approach as ``OEEEvents.availability``.
 This is distinct from ``DutyCycleEvents`` (duty *percentage* and cycle
 counts): here the focus is *absolute* run time and an hour-meter reading.
 """
@@ -20,6 +20,7 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class RuntimeAccountingEvents(Base):
 
         rt = RuntimeAccountingEvents(df, run_uuid="machine:running")
         rt.runtime_summary()
-        rt.runtime_per_window(window="1D")
+        rt.runtime_by_window(window="1D")
         rt.operating_hours_meter(window="1h")
     """
 
@@ -170,7 +171,9 @@ class RuntimeAccountingEvents(Base):
         }
         return finalize_summary_df(pd.DataFrame([row]))
 
-    def runtime_per_window(
+    runtime_per_window = deprecated_method("runtime_by_window")
+
+    def runtime_by_window(
         self, window: str = "1D", *, max_gap: str | None = None
     ) -> pd.DataFrame:
         """Run time per calendar window.

@@ -13,11 +13,12 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_class
 
 logger = logging.getLogger(__name__)
 
 
-class CycleTimeTracking(Base):
+class CycleTimeEvents(Base):
     """Track cycle times by part number.
 
     Each UUID represents one signal:
@@ -25,7 +26,7 @@ class CycleTimeTracking(Base):
     - cycle_trigger_uuid: boolean/integer signal for cycle completion
 
     Example usage:
-        tracker = CycleTimeTracking(df)
+        tracker = CycleTimeEvents(df)
 
         # Get cycle times by part
         cycles = tracker.cycle_time_by_part(
@@ -488,3 +489,7 @@ class CycleTimeTracking(Base):
         )
 
         return hourly
+
+
+#: Deprecated name, removed in 1.0.
+CycleTimeTracking = deprecated_class(CycleTimeEvents, "CycleTimeTracking")

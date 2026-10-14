@@ -127,7 +127,7 @@ Pick the stage that matches where you are in your analysis.
 
     Outlier detection (Z-score, IQR, MAD, IsolationForest), Western Electric Rules, CUSUM shifts, and Cp/Cpk capability indices.
 
-    `OutlierDetectionEvents` | `StatisticalProcessControlRuleBased` | `ToleranceDeviationEvents`
+    `OutlierDetectionEvents` | `StatisticalProcessControlEvents` | `ToleranceDeviationEvents`
 
 -   :material-factory:{ .lg .middle } **[Production Monitoring](production.md)**
 
@@ -135,7 +135,7 @@ Pick the stage that matches where you are in your analysis.
 
     Machine states, line throughput, changeovers, downtime, cycle times, shift reporting, and quality tracking on the shop floor.
 
-    `MachineStateEvents` | `DowntimeTracking` | `ShiftReporting` | `CycleTimeTracking` | +5 more
+    `MachineStateEvents` | `DowntimeEvents` | `ShiftReportEvents` | `CycleTimeEvents` | +5 more
 
 -   :material-gauge:{ .lg .middle } **[OEE & Plant Analytics](oee-analytics.md)**
 
@@ -143,7 +143,7 @@ Pick the stage that matches where you are in your analysis.
 
     Overall Equipment Effectiveness, alarm management (ISA-18.2), batch tracking, bottleneck detection, micro-stops, and duty cycles.
 
-    `OEECalculator` | `AlarmManagementEvents` | `BatchTrackingEvents` | `BottleneckDetectionEvents` | +2 more
+    `OEEEvents` | `AlarmManagementEvents` | `BatchTrackingEvents` | `BottleneckDetectionEvents` | +2 more
 
 -   :material-transit-connection-variant:{ .lg .middle } **[Product Traceability](traceability.md)**
 
@@ -167,7 +167,7 @@ Pick the stage that matches where you are in your analysis.
 
     Performance loss, scrap costs, target tracking, setup time (SMED), operator comparison, rework analysis, and auto-generated shift handover reports.
 
-    `PerformanceLossTracking` | `ScrapTracking` | `TargetTracking` | `SetupTimeTracking` | +4 more
+    `PerformanceLossEvents` | `ScrapEvents` | `TargetEvents` | `SetupTimeEvents` | +4 more
 
 -   :material-graph-outline:{ .lg .middle } **[Event Log (XES & OCEL)](eventlog/index.md)**
 
@@ -201,16 +201,16 @@ flowchart TB
     end
 
     subgraph TRACKING["<b>Daily Tracking</b>"]
-        PT["PartProductionTracking"]
-        DT["DowntimeTracking"]
-        CT["CycleTimeTracking"]
-        QT["QualityTracking"]
+        PT["PartProductionEvents"]
+        DT["DowntimeEvents"]
+        CT["CycleTimeEvents"]
+        QT["QualityEvents"]
     end
 
     subgraph KPI["<b>KPIs & Reports</b>"]
-        OEE["OEECalculator"]
-        SR["ShiftReporting"]
-        SH["ShiftHandoverReport"]
+        OEE["OEEEvents"]
+        SR["ShiftReportEvents"]
+        SH["ShiftHandoverEvents"]
     end
 
     S1 --> MS

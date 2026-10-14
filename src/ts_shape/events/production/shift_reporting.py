@@ -15,12 +15,13 @@ import pandas as pd  # type: ignore
 from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class ShiftReporting(Base):
+class ShiftReportEvents(Base):
     """Simple shift-based production reporting.
 
     Each UUID represents one signal:
@@ -31,14 +32,14 @@ class ShiftReporting(Base):
 
     Pipeline example::
 
-        reporter = ShiftReporting(df)
+        reporter = ShiftReportEvents(df)
         prod = reporter.shift_production('counter')
-        # → merge with QualityTracking.nok_by_shift() on [date, shift]
-        # → merge with DowntimeTracking.downtime_by_shift() on [date, shift]
-        # → feed combined DataFrame into ShiftHandoverReport.from_shift_data()
+        # → merge with QualityEvents.nok_by_shift() on [date, shift]
+        # → merge with DowntimeEvents.downtime_by_shift() on [date, shift]
+        # → feed combined DataFrame into ShiftHandoverEvents.from_shift_data()
 
     Example usage:
-        reporter = ShiftReporting(df, shift_definitions={
+        reporter = ShiftReportEvents(df, shift_definitions={
             "day": ("06:00", "14:00"),
             "afternoon": ("14:00", "22:00"),
             "night": ("22:00", "06:00"),
@@ -518,3 +519,7 @@ class ShiftReporting(Base):
         worst = worst_rows[key_cols]
 
         return {"best": best, "worst": worst}
+
+
+#: Deprecated name, removed in 1.0.
+ShiftReporting = deprecated_class(ShiftReportEvents, "ShiftReporting")

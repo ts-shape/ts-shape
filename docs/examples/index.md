@@ -8,9 +8,9 @@ Runnable demo scripts covering every ts-shape module. Each example generates syn
 
 | Example | Modules Demonstrated | Run Command |
 |---------|---------------------|-------------|
-| [Quality Events](quality-events.md) | `OutlierDetectionEvents`, `StatisticalProcessControlRuleBased`, `ToleranceDeviationEvents` | `python examples/quality_events_demo.py` |
+| [Quality Events](quality-events.md) | `OutlierDetectionEvents`, `StatisticalProcessControlEvents`, `ToleranceDeviationEvents` | `python examples/quality_events_demo.py` |
 | [Production Events](production-events.md) | `MachineStateEvents`, `LineThroughputEvents`, `ChangeoverEvents`, `FlowConstraintEvents` | `python examples/production_events_demo.py` |
-| [Production Tracking](production-tracking.md) | `PartProductionTracking`, `CycleTimeTracking`, `DowntimeTracking`, `QualityTracking`, `ShiftReporting` | `python examples/production_tracking_demo.py` |
+| [Production Tracking](production-tracking.md) | `PartProductionEvents`, `CycleTimeEvents`, `DowntimeEvents`, `QualityEvents`, `ShiftReportEvents` | `python examples/production_tracking_demo.py` |
 | [Engineering Events](engineering-events.md) | `SetpointChangeEvents` (advanced usage) | `python examples/setpoint_events_advanced_usage.py` |
 | [Maintenance Events](maintenance-events.md) | `DegradationDetectionEvents`, `FailurePredictionEvents`, `VibrationAnalysisEvents` | `python examples/maintenance_events_demo.py` |
 | [Energy Events](energy-events.md) | `EnergyConsumptionEvents`, `EnergyEfficiencyEvents` | `python examples/energy_events_demo.py` |

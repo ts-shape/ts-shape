@@ -1,4 +1,4 @@
-# OperatorPerformanceTracking
+# OperatorPerformanceEvents
 
 > Track and compare operator performance from operator-ID and counter signals.
 
@@ -16,9 +16,9 @@ Use for fair operator performance comparison. Tracks production output, efficien
 ## Quick Example
 
 ```python
-from ts_shape.events.production.operator_performance import OperatorPerformanceTracking
+from ts_shape.events.production.operator_performance import OperatorPerformanceEvents
 
-tracker = OperatorPerformanceTracking(production_df)
+tracker = OperatorPerformanceEvents(production_df)
 
 # Parts produced per operator
 by_operator = tracker.production_by_operator(

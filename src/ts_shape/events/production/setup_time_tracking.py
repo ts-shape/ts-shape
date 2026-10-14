@@ -13,12 +13,13 @@ import pandas as pd  # type: ignore
 
 from ts_shape.events._windows import add_period_window
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class SetupTimeTracking(Base):
+class SetupTimeEvents(Base):
     """Track and analyze setup/changeover durations.
 
     Each UUID represents one signal:
@@ -30,14 +31,14 @@ class SetupTimeTracking(Base):
 
     Pipeline example::
 
-        setup = SetupTimeTracking(df)
+        setup = SetupTimeEvents(df)
         durations = setup.setup_durations('machine_state', setup_value='Setup')
-        # → merge with ShiftReporting.shift_production() on [date, shift]
+        # → merge with ShiftReportEvents.shift_production() on [date, shift]
         stats = setup.setup_statistics('machine_state')
         # → standalone KPI reporting
 
     Example usage:
-        tracker = SetupTimeTracking(df)
+        tracker = SetupTimeEvents(df)
 
         # List all setup events
         events = tracker.setup_durations(state_uuid='machine_state')
@@ -417,3 +418,7 @@ class SetupTimeTracking(Base):
             )
 
         return add_period_window(pd.DataFrame(results, columns=trend_cols), window)
+
+
+#: Deprecated name, removed in 1.0.
+SetupTimeTracking = deprecated_class(SetupTimeEvents, "SetupTimeTracking")

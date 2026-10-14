@@ -8,7 +8,7 @@ from ts_shape.events.engineering.steady_state_detection import (
     SteadyStateDetectionEvents,
 )
 from ts_shape.events.quality.statistical_process_control import (
-    StatisticalProcessControlRuleBased,
+    StatisticalProcessControlEvents,
 )
 from ts_shape.events.supplychain.demand_pattern import DemandPatternEvents
 
@@ -20,7 +20,7 @@ def _spc(tol_values):
     act = pd.DataFrame(
         {"systime": t_act, "uuid": "act", "value_double": [10.0, 11.0] * 5}
     )
-    return StatisticalProcessControlRuleBased(
+    return StatisticalProcessControlEvents(
         pd.concat([tol, act]), "value_double", "tol", "act", "evt"
     )
 
@@ -34,7 +34,7 @@ def test_cusum_with_constant_tolerance_reports_nothing(caplog):
 
 def test_control_limits_single_row_warns(caplog):
     with caplog.at_level(logging.WARNING):
-        limits = _spc([10.0]).calculate_control_limits()
+        limits = _spc([10.0]).control_limits()
     assert limits["3sigma_upper"].isna().all()
     assert "degenerate" in caplog.text
 

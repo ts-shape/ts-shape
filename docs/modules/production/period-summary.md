@@ -1,4 +1,4 @@
-# PeriodSummary
+# PeriodSummaryEvents
 
 > Aggregate daily metrics into weekly/monthly summaries.
 
@@ -16,9 +16,9 @@ Use to roll up daily production data into weekly or monthly summaries. Enables p
 ## Quick Example
 
 ```python
-from ts_shape.events.production.period_summary import PeriodSummary
+from ts_shape.events.production.period_summary import PeriodSummaryEvents
 
-summarizer = PeriodSummary(production_df)
+summarizer = PeriodSummaryEvents(production_df)
 
 # Weekly summary from raw signals
 weekly = summarizer.weekly_summary(
@@ -38,7 +38,7 @@ comparison = summarizer.compare_periods(
 )
 
 # Or roll up an existing daily DataFrame (must have a "date" column)
-monthly_from_df = PeriodSummary.from_daily_data(
+monthly_from_df = PeriodSummaryEvents.from_daily_data(
     daily_df=daily_metrics,
     freq="MS",
 )

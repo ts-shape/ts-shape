@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from ts_shape.events.maintenance.reliability import ReliabilityEvents
-from ts_shape.events.production.oee_calculator import OEECalculator
+from ts_shape.events.production.oee_calculator import OEEEvents
 
 T0 = pd.Timestamp("2024-03-30 12:00", tz="Europe/Berlin")
 
@@ -183,8 +183,8 @@ def test_oee_iso22400_reference_example():
     ]
     df = pd.DataFrame(rows, columns=["systime", "uuid", "value_bool", "value_integer"])
     row = (
-        OEECalculator(df)
-        .calculate_oee("run", "parts", 6.0, "total", "reject", planned_time_hours=8)
+        OEEEvents(df)
+        .oee("run", "parts", 6.0, "total", "reject", planned_time_hours=8)
         .iloc[0]
     )
     assert row["availability_pct"] == pytest.approx(75.0, abs=0.01)

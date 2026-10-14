@@ -150,7 +150,7 @@ Detect anomalies and process deviations in sensor data.
 
 ```python
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
-from ts_shape.events.quality.statistical_process_control import StatisticalProcessControlRuleBased
+from ts_shape.events.quality.statistical_process_control import StatisticalProcessControlEvents
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 
 # Outlier detection (Z-score, IQR, MAD, Isolation Forest)
@@ -158,14 +158,14 @@ outliers = OutlierDetectionEvents(df, value_column="value_double")
 result = outliers.detect_outliers_zscore(threshold=3.0)
 
 # Statistical Process Control -- 8 Western Electric rules
-spc = StatisticalProcessControlRuleBased(
+spc = StatisticalProcessControlEvents(
     df,
     value_column="value_double",
     tolerance_uuid="limit",
     actual_uuid="sensor",
     event_uuid="spc_violation",
 )
-violations = spc.process()
+violations = spc.detect_violations()
 
 # Tolerance deviation with severity classification
 tol = ToleranceDeviationEvents(
@@ -176,7 +176,7 @@ tol = ToleranceDeviationEvents(
     tolerance_uuid="limit",
     event_uuid="tolerance_deviation",
 )
-deviations = tol.process_and_group_data_with_events()
+deviations = tol.detect_deviations()
 ```
 
 ### Production Events
@@ -184,8 +184,8 @@ Track production performance, equipment states, and operational metrics.
 
 ```python
 from ts_shape.events.production.machine_state import MachineStateEvents
-from ts_shape.events.production.oee_calculator import OEECalculator
-from ts_shape.events.production.shift_reporting import ShiftReporting
+from ts_shape.events.production.oee_calculator import OEEEvents
+from ts_shape.events.production.shift_reporting import ShiftReportEvents
 from ts_shape.events.production.alarm_management import AlarmManagementEvents
 from ts_shape.events.production.batch_tracking import BatchTrackingEvents
 
@@ -194,8 +194,8 @@ mse = MachineStateEvents(df, run_state_uuid="machine:running")
 intervals = mse.detect_run_idle(min_duration="30s")
 
 # OEE calculation (Availability x Performance x Quality)
-oee = OEECalculator(df)
-result = oee.calculate_oee(
+oee = OEEEvents(df)
+result = oee.oee(
     run_state_uuid="machine:state",
     counter_uuid="parts:count",
     ideal_cycle_time=10.0,
@@ -356,7 +356,7 @@ from ts_shape.events.development import (
 # Recover DOE run structure from a continuous trace
 doe = DesignOfExperimentsEvents(df, factor_uuids=["factor:F1", "factor:F2"])
 runs = doe.detect_runs(min_duration="5min", stability_tol=0.01)
-effects = doe.compute_effects(response_uuid="response:Y", statistic="settled")
+effects = doe.effects(response_uuid="response:Y", statistic="settled")
 
 # Multivariate qualified operating window
 ds = DesignSpaceEvents(qualification_df, cpp_uuids=["cpp:temp", "cpp:ph"]).fit_box()
@@ -393,7 +393,7 @@ prediction = inv.stockout_prediction(consumption_rate_window="4h")
 
 # Lead time analysis
 lt = LeadTimeAnalysisEvents(df)
-lead_times = lt.calculate_lead_times(order_uuid="order:placed", delivery_uuid="order:delivered")
+lead_times = lt.lead_times(order_uuid="order:placed", delivery_uuid="order:delivered")
 anomalies = lt.detect_lead_time_anomalies(order_uuid="order:placed", delivery_uuid="order:delivered")
 
 # Demand patterns and seasonality

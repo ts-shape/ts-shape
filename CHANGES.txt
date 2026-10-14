@@ -1,4 +1,11 @@
 # October 14, 2026 (round 4)
+change: one name per concept (docs/naming.md). Detector classes end in
+  Events (DowntimeTracking -> DowntimeEvents, OEECalculator -> OEEEvents, 16
+  classes); event classes drop calculate_/compute_/process_ verbs (14
+  methods, e.g. calculate_oee -> oee, find_gaps -> detect_gaps) and use
+  _statistics / _by_window suffixes. Old names are deprecated aliases that
+  warn and are removed in 1.0; the event log resolves them
+  (taxonomy.resolve). See docs/migration.md.
 fix: every detector output now carries the canonical columns of its shape
   (intervals start/end/duration_seconds/uuid/source_uuid, summaries
   start/end/duration_seconds, points systime/uuid/source_uuid): 276 of 277

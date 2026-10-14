@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from ts_shape.events.production.downtime_tracking import DowntimeTracking
+from ts_shape.events.production.downtime_tracking import DowntimeEvents
 from ts_shape.events.production.machine_state import MachineStateEvents
 from ts_shape.signals import infer_specs
 
@@ -42,9 +42,9 @@ def test_downtime_by_shift_takes_max_gap_from_spec():
     df = pd.DataFrame(
         {"systime": t, "uuid": "st", "value_string": ["Running", "Running", "Stopped"]}
     )
-    plain = DowntimeTracking(df).downtime_by_shift("st")
+    plain = DowntimeEvents(df).downtime_by_shift("st")
     specs = infer_specs(df, overrides={"st": {"max_gap": "1h"}})
-    capped = DowntimeTracking(df, specs=specs).downtime_by_shift("st")
+    capped = DowntimeEvents(df, specs=specs).downtime_by_shift("st")
     # Without a cap the 3.5 h outage after 07:30 counts as uptime.
     assert plain["uptime_minutes"].iloc[0] > capped["uptime_minutes"].iloc[0]
     assert capped["uptime_minutes"].iloc[0] == 30.0

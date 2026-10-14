@@ -7,6 +7,7 @@ from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class DataGapAnalysisEvents(Base):
     coverage, and interpolation-candidate identification.
 
     Methods:
-    - find_gaps: Locate all gaps longer than a threshold.
+    - detect_gaps: Locate all gaps longer than a threshold.
     - gap_summary: Aggregate statistics across all gaps.
     - coverage_by_period: Data coverage percentage per time window.
     - interpolation_candidates: Gaps small enough to interpolate safely.
@@ -53,7 +54,9 @@ class DataGapAnalysisEvents(Base):
     # Public methods
     # ------------------------------------------------------------------
 
-    def find_gaps(self, min_gap: str = "5s") -> pd.DataFrame:
+    find_gaps = deprecated_method("detect_gaps")
+
+    def detect_gaps(self, min_gap: str = "5s") -> pd.DataFrame:
         """Locate all gaps longer than *min_gap*.
 
         Args:
@@ -120,7 +123,7 @@ class DataGapAnalysisEvents(Base):
             "data_span_seconds",
             "gap_fraction",
         ]
-        gaps = self.find_gaps(min_gap=min_gap)
+        gaps = self.detect_gaps(min_gap=min_gap)
         if gaps.empty:
             return pd.DataFrame(
                 [{c: 0 if c != "gap_fraction" else 0.0 for c in cols}],
@@ -204,7 +207,7 @@ class DataGapAnalysisEvents(Base):
             min_gap = str(positive.median() * 2) if len(positive) else "1s"
 
         # Get gaps for context
-        all_gaps = self.find_gaps(min_gap=min_gap)
+        all_gaps = self.detect_gaps(min_gap=min_gap)
 
         counts = sig[self.value_column].resample(freq).count()
 

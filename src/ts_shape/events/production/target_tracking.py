@@ -12,12 +12,13 @@ import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
+from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import production_dates
 
 logger = logging.getLogger(__name__)
 
 
-class TargetTracking(Base):
+class TargetEvents(Base):
     """Compare any production metric to targets.
 
     Every plant has daily/shift targets.  This module provides a generic way to
@@ -27,14 +28,14 @@ class TargetTracking(Base):
 
     Pipeline example::
 
-        target = TargetTracking(df)
+        target = TargetEvents(df)
         result = target.compare_to_target('counter', {'shift_1': 450})
-        # → merge with PerformanceLossTracking.performance_by_shift() on [date, shift]
-        # → merge with QualityTracking.nok_by_shift() on [date, shift]
+        # → merge with PerformanceLossEvents.performance_by_shift() on [date, shift]
+        # → merge with QualityEvents.nok_by_shift() on [date, shift]
         # → result['status'] column enables filtering/alerting
 
     Example usage:
-        tracker = TargetTracking(df)
+        tracker = TargetEvents(df)
 
         # Compare counter to fixed target
         result = tracker.compare_to_target(
@@ -298,3 +299,7 @@ class TargetTracking(Base):
             "hit_rate_pct": round(hit_rate, 1),
             "avg_achievement_pct": round(avg_achievement, 1),
         }
+
+
+#: Deprecated name, removed in 1.0.
+TargetTracking = deprecated_class(TargetEvents, "TargetTracking")

@@ -4,11 +4,12 @@ import numpy as np
 import pandas as pd  # type: ignore
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import deprecated_class, deprecated_method
 
 logger = logging.getLogger(__name__)
 
 
-class StatisticalProcessControlRuleBased(Base):
+class StatisticalProcessControlEvents(Base):
     """
     Inherits from Base and applies SPC rules (Western Electric Rules) to a DataFrame for event detection.
     Processes data based on control limit UUIDs, actual value UUIDs, and generates events with an event UUID.
@@ -23,7 +24,7 @@ class StatisticalProcessControlRuleBased(Base):
         event_uuid: str,
     ) -> None:
         """
-        Initializes StatisticalProcessControlRuleBased with UUIDs for tolerance, actual, and event values.
+        Initializes StatisticalProcessControlEvents with UUIDs for tolerance, actual, and event values.
         Inherits the sorted dataframe from the Base class.
 
         Args:
@@ -43,7 +44,9 @@ class StatisticalProcessControlRuleBased(Base):
             self._validate_uuid(self.dataframe, tolerance_uuid)
             self._validate_uuid(self.dataframe, actual_uuid)
 
-    def calculate_control_limits(self) -> pd.DataFrame:
+    calculate_control_limits = deprecated_method("control_limits")
+
+    def control_limits(self) -> pd.DataFrame:
         """
         Calculate the control limits (mean ± 1σ, 2σ, 3σ) for the tolerance values.
 
@@ -77,7 +80,9 @@ class StatisticalProcessControlRuleBased(Base):
 
         return pd.DataFrame([control_limits])
 
-    def calculate_dynamic_control_limits(
+    calculate_dynamic_control_limits = deprecated_method("dynamic_control_limits")
+
+    def dynamic_control_limits(
         self, method: str = "moving_range", window: int = 20
     ) -> pd.DataFrame:
         """
@@ -315,7 +320,9 @@ class StatisticalProcessControlRuleBased(Base):
 
         return rule_2, rule_7, rule_8
 
-    def apply_rules_vectorized(
+    apply_rules_vectorized = deprecated_method("detect_rule_violations")
+
+    def detect_rule_violations(
         self, selected_rules: list[str] | None = None
     ) -> pd.DataFrame:
         """
@@ -335,7 +342,7 @@ class StatisticalProcessControlRuleBased(Base):
         df["systime"] = pd.to_datetime(df["systime"])
         df = df.sort_values(by="systime").reset_index(drop=True)
 
-        limits = self.calculate_control_limits()
+        limits = self.control_limits()
 
         if selected_rules is None:
             selected_rules = [
@@ -607,7 +614,7 @@ class StatisticalProcessControlRuleBased(Base):
 
         Args:
             violations_df (pd.DataFrame): DataFrame with rule violations
-                (output from apply_rules_vectorized or process methods)
+                (output from detect_rule_violations or process methods)
 
         Returns:
             pd.DataFrame: Enhanced DataFrame with interpretation and recommendation columns.
@@ -700,7 +707,9 @@ class StatisticalProcessControlRuleBased(Base):
 
         return result
 
-    def process(
+    process = deprecated_method("detect_violations")
+
+    def detect_violations(
         self, selected_rules: list[str] | None = None, include_severity: bool = False
     ) -> pd.DataFrame:
         """
@@ -722,7 +731,7 @@ class StatisticalProcessControlRuleBased(Base):
         df["systime"] = pd.to_datetime(df["systime"])
         df = df.sort_values(by="systime")
 
-        limits = self.calculate_control_limits()
+        limits = self.control_limits()
 
         # Dictionary of rule functions
         rules = {
@@ -790,3 +799,9 @@ class StatisticalProcessControlRuleBased(Base):
             return events[
                 ["systime", self.value_column, "uuid", "source_uuid"]
             ].drop_duplicates()
+
+
+#: Deprecated name, removed in 1.0.
+StatisticalProcessControlRuleBased = deprecated_class(
+    StatisticalProcessControlEvents, "StatisticalProcessControlRuleBased"
+)

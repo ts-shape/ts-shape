@@ -2,9 +2,9 @@
 
 import pandas as pd  # type: ignore
 
-from ts_shape.events.production.cycle_time_tracking import CycleTimeTracking
-from ts_shape.events.production.downtime_tracking import DowntimeTracking
-from ts_shape.events.production.performance_loss import PerformanceLossTracking
+from ts_shape.events.production.cycle_time_tracking import CycleTimeEvents
+from ts_shape.events.production.downtime_tracking import DowntimeEvents
+from ts_shape.events.production.performance_loss import PerformanceLossEvents
 
 
 def test_downtime_by_shift_max_gap_excludes_logger_outage():
@@ -20,7 +20,7 @@ def test_downtime_by_shift_max_gap_excludes_logger_outage():
             for t, v in rows
         ]
     )
-    dt = DowntimeTracking(df)
+    dt = DowntimeEvents(df)
 
     naive = dt.downtime_by_shift("state")
     capped = dt.downtime_by_shift("state", max_gap="15min")
@@ -48,7 +48,7 @@ def test_cycle_time_max_cycle_gap_drops_idle_interval():
             }
         )
     df = pd.DataFrame(rows)
-    ct = CycleTimeTracking(df)
+    ct = CycleTimeEvents(df)
 
     naive = ct.cycle_time_by_part("part", "trig")  # no part signal -> UNKNOWN
     capped = ct.cycle_time_by_part("part", "trig", max_cycle_gap="5min")
@@ -66,7 +66,7 @@ def test_performance_by_shift_max_cycle_gap():
         {"uuid": "c", "systime": t, "value_integer": i} for i, t in enumerate(times)
     ]
     df = pd.DataFrame(rows)
-    pl = PerformanceLossTracking(df)
+    pl = PerformanceLossEvents(df)
 
     naive = pl.performance_by_shift("c", target_cycle_time=45.0)
     capped = pl.performance_by_shift("c", target_cycle_time=45.0, max_cycle_gap="5min")

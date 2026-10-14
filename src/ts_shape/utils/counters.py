@@ -9,7 +9,7 @@ window where the reset happened.
 
 These helpers treat any decrease in the counter as a reset and count the
 post-reset value as new production, mirroring the approach in
-:class:`ts_shape.events.production.part_tracking.PartProductionTracking`.
+:class:`ts_shape.events.production.part_tracking.PartProductionEvents`.
 Use them wherever a quantity is derived from a cumulative counter so the
 behaviour is consistent across the library.
 

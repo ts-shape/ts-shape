@@ -21,7 +21,7 @@ the right one based on the complexity of the operation:
 - The domain workflow has a natural setup phase before analysis
   (e.g. compute control limits, then apply SPC rules).
 - Examples: ``DataHarmonizer``, ``OutlierDetectionEvents``,
-  ``MachineStateEvents``, ``OEECalculator``, all event classes.
+  ``MachineStateEvents``, ``OEEEvents``, all event classes.
 
 **Pipeline** — use when chaining multiple steps:
 

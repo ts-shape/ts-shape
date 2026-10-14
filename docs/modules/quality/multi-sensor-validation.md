@@ -30,7 +30,7 @@ disagreements = validator.detect_disagreement(threshold=0.5, window="5min")
 bias = validator.pairwise_bias(window="1h")
 
 # Identify which sensor deviates most from the group
-outlier = validator.identify_outlier_sensor(window="1h", method="median")
+outlier = validator.detect_outlier_sensor(window="1h", method="median")
 print(outlier[["start", "outlier_sensor", "deviation"]].head())
 ```
 
@@ -43,7 +43,7 @@ print(outlier[["start", "outlier_sensor", "deviation"]].head())
 | `detect_disagreement(threshold, window='5min')` | Flag windows where sensor spread exceeds threshold | DataFrame with `start`, `end`, `max_spread`, `sensor_high`, `sensor_low`, `duration` |
 | `pairwise_bias(window='1h')` | Mean difference between all sensor pairs per window | DataFrame with `start`, `sensor_a`, `sensor_b`, `bias`, `abs_bias` |
 | `consensus_score(window='1h')` | Measurement consensus (1.0 = perfect agreement) across all sensors | DataFrame with `start`, `consensus_mean`, `spread_std`, `consensus_score` |
-| `identify_outlier_sensor(window='1h', method='median')` | Identify the sensor furthest from group consensus | DataFrame with `start`, `outlier_sensor`, `deviation`, `other_sensors_mean` |
+| `detect_outlier_sensor(window='1h', method='median')` | Identify the sensor furthest from group consensus | DataFrame with `start`, `outlier_sensor`, `deviation`, `other_sensors_mean` |
 
 ---
 
