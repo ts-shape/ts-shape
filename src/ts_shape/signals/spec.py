@@ -36,6 +36,7 @@ Encoding = Literal["sampled", "change_encoded"]
 
 KINDS: tuple[str, ...] = ("continuous", "counter", "state", "event")
 ENCODINGS: tuple[str, ...] = ("sampled", "change_encoded")
+RESET_POLICIES: tuple[str, ...] = ("reset_to_zero", "none")
 _VALUE_COLUMNS = ("value_double", "value_integer", "value_bool", "value_string")
 
 
@@ -85,10 +86,31 @@ class SignalSpec:
             raise ValueError(
                 f"value_column must be one of {_VALUE_COLUMNS}, got {self.value_column!r}"
             )
+        if self.reset_policy not in RESET_POLICIES:
+            raise ValueError(
+                f"reset_policy must be one of {RESET_POLICIES}, "
+                f"got {self.reset_policy!r}"
+            )
         for name in ("nominal_period", "max_gap"):
             value = getattr(self, name)
             if value is not None and not isinstance(value, pd.Timedelta):
-                object.__setattr__(self, name, pd.Timedelta(value))
+                try:
+                    value = pd.Timedelta(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"{name} must be a duration such as '5min', got {value!r}"
+                    ) from exc
+                object.__setattr__(self, name, value)
+            if value is not None and (pd.isna(value) or value < pd.Timedelta(0)):
+                raise ValueError(f"{name} must be >= 0, got {value!r}")
+        if self.tz is not None:
+            try:
+                pd.Timestamp(0).tz_localize(self.tz)
+            except Exception as exc:  # noqa: BLE001 -- any parse failure
+                raise ValueError(
+                    f"tz must be a timezone name such as 'Europe/Berlin', "
+                    f"got {self.tz!r}"
+                ) from exc
 
     @property
     def is_change_encoded(self) -> bool:
@@ -111,7 +133,20 @@ class SignalSpec:
         return "next_change" if self.holds_value else "last_sample"
 
     def with_(self, **changes: Any) -> SignalSpec:
-        """Return a copy with ``changes`` applied (validated)."""
+        """Return a copy with ``changes`` applied (validated).
+
+        Args:
+            **changes: New field values.
+
+        Returns:
+            The new spec.
+
+        Raises:
+            ValueError: For unknown field names or invalid values.
+        """
+        unknown = set(changes) - set(self.__dataclass_fields__)
+        if unknown:
+            raise ValueError(f"Unknown SignalSpec field(s): {sorted(unknown)}")
         return replace(self, **changes)
 
     def to_dict(self) -> dict[str, Any]:
@@ -184,6 +219,12 @@ class SignalSpecs(Mapping[str, SignalSpec]):
         Args:
             changes: Mapping of uuid to ``{field: value}``; the fields replace those of
                 the existing spec (see `SignalSpec.with_`).
+
+        Returns:
+            New :class:`SignalSpecs`.
+
+        Raises:
+            ValueError: For unknown field names or invalid values.
         """
         merged = dict(self._specs)
         for uuid, fields in changes.items():

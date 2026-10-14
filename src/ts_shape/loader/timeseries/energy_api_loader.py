@@ -3,6 +3,10 @@
 Load timeseries data from energy data REST APIs and normalize into the
 standard ts_shape DataFrame schema (systime, uuid, value_double, is_delta).
 
+``systime`` is tz-aware UTC: timestamps with an offset are converted, those
+without one are taken as UTC (the same convention as
+:class:`~ts_shape.loader.timeseries.azure_blob_energy_loader.AzureBlobEnergyLoader`).
+
 Classes:
 - EnergyAPILoader: Fetch energy data from REST APIs and return DataFrames.
 """
@@ -22,7 +26,7 @@ else:
         requests = None
 
 from ts_shape.errors import DataQualityWarning
-from ts_shape.loader._utils import require_optional
+from ts_shape.loader._utils import parse_utc_times, require_optional
 from ts_shape.utils.coerce import to_numeric_checked
 
 logger = logging.getLogger(__name__)
@@ -202,7 +206,7 @@ class EnergyAPILoader:
 
         # Map time column
         if time_key in df.columns:
-            df["systime"] = pd.to_datetime(df[time_key])
+            df["systime"] = parse_utc_times(df[time_key])
         else:
             warnings.warn(
                 f"{uuid_value}: none of the {len(df)} API record(s) has the time "

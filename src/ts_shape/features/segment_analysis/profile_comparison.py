@@ -5,7 +5,9 @@ import pandas as pd
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import pdist, squareform
 
+from ts_shape.errors import ColumnNotFoundError
 from ts_shape.utils.base import Base
+from ts_shape.utils.frames import require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +52,32 @@ class ProfileComparison(Base):
             if c not in non_metric and pd.api.types.is_numeric_dtype(df[c])
         ]
         if metric_columns is not None:
+            require_columns(df, metric_columns, where="ProfileComparison")
             missing = set(metric_columns) - set(available)
             if missing:
-                raise ValueError(f"Columns not found or not numeric: {missing}")
+                raise ValueError(f"Columns not numeric: {missing}")
             return metric_columns
         return available
+
+    @staticmethod
+    def _segment_key(df: pd.DataFrame, group_column: str | None, where: str) -> str:
+        """The column that identifies a segment in a profile frame.
+
+        ``None`` picks ``segment_index`` when the frame has it, otherwise
+        ``segment_value`` (the default group of
+        ``SegmentProcessor.compute_metric_profiles``).
+        """
+        if group_column is not None:
+            require_columns(df, [group_column], where=where)
+            return group_column
+        for candidate in ("segment_index", "segment_value"):
+            if candidate in df.columns:
+                return candidate
+        raise ColumnNotFoundError(
+            f"{where}: no segment column found (looked for 'segment_index' and "
+            f"'segment_value'); pass group_column=... . "
+            f"Available columns: {list(df.columns)}"
+        )
 
     @classmethod
     def compute_distance_matrix(
@@ -79,9 +102,17 @@ class ProfileComparison(Base):
             normalize: Z-normalize metrics before computing distances.
 
         Returns:
-            Square DataFrame indexed by group values with pairwise distances.
+            Square DataFrame indexed by group values with pairwise distances;
+                empty for empty profiles.
         """
+        require_columns(
+            metric_profiles,
+            [group_column],
+            where="ProfileComparison.compute_distance_matrix",
+        )
         cols = cls._get_metric_columns(metric_profiles, metric_columns)
+        if metric_profiles.empty:
+            return pd.DataFrame(dtype="float64")
         agg = metric_profiles.groupby(group_column)[cols].mean()
         labels = agg.index.tolist()
         matrix = agg.values.astype(float)
@@ -214,7 +245,7 @@ class ProfileComparison(Base):
         cls,
         metric_profiles: pd.DataFrame,
         uuid_column: str = "uuid",
-        group_column: str = "segment_index",
+        group_column: str | None = None,
         metric_columns: list[str] | None = None,
         normalize: bool = True,
     ) -> pd.DataFrame:
@@ -226,13 +257,22 @@ class ProfileComparison(Base):
         Args:
             metric_profiles: Output from SegmentProcessor.compute_metric_profiles.
             uuid_column: Column identifying each timeseries.
-            group_column: Column ordering the segments (e.g. 'segment_index').
+            group_column: Column ordering the segments. ``None`` (default)
+                uses ``segment_index`` when the profiles have it, otherwise
+                ``segment_value``.
             metric_columns: Which metric columns to use. None auto-detects.
             normalize: Z-normalize metrics before computing change scores.
 
         Returns:
             DataFrame with columns [uuid, <group_column>, change_score].
+
+        Raises:
+            ColumnNotFoundError: If the uuid column or the segment column is
+                missing.
         """
+        where = "ProfileComparison.detect_changes"
+        group_column = cls._segment_key(metric_profiles, group_column, where)
+        require_columns(metric_profiles, [uuid_column], where=where)
         cols = cls._get_metric_columns(metric_profiles, metric_columns)
         rows = []
 
@@ -258,7 +298,13 @@ class ProfileComparison(Base):
                 )
 
         if not rows:
-            return pd.DataFrame(columns=[uuid_column, group_column, "change_score"])
+            return pd.DataFrame(
+                {
+                    uuid_column: pd.Series(dtype=object),
+                    group_column: pd.Series(dtype=metric_profiles[group_column].dtype),
+                    "change_score": pd.Series(dtype="float64"),
+                }
+            )
         return pd.DataFrame(rows).reset_index(drop=True)
 
     @classmethod
@@ -266,7 +312,7 @@ class ProfileComparison(Base):
         cls,
         metric_profiles: pd.DataFrame,
         uuid_column: str = "uuid",
-        group_column: str = "segment_value",
+        group_column: str | None = None,
         metric_columns: list[str] | None = None,
         normalize: bool = True,
         top_k: int = 10,
@@ -279,14 +325,23 @@ class ProfileComparison(Base):
         Args:
             metric_profiles: Output from SegmentProcessor.compute_metric_profiles.
             uuid_column: Column identifying each timeseries.
-            group_column: Column identifying each segment.
+            group_column: Column identifying each segment. ``None`` (default)
+                uses ``segment_index`` when the profiles have it, otherwise
+                ``segment_value``.
             metric_columns: Which metric columns to use. None auto-detects.
             normalize: Z-normalize metrics before computing distances.
             top_k: Number of closest pairs to return.
 
         Returns:
             DataFrame with columns [uuid_a, group_a, uuid_b, group_b, distance, rank].
+
+        Raises:
+            ColumnNotFoundError: If the uuid column or the segment column is
+                missing.
         """
+        where = "ProfileComparison.find_similar_pairs"
+        group_column = cls._segment_key(metric_profiles, group_column, where)
+        require_columns(metric_profiles, [uuid_column], where=where)
         cols = cls._get_metric_columns(metric_profiles, metric_columns)
         matrix = metric_profiles[cols].values.astype(float)
         matrix = np.nan_to_num(matrix, nan=0.0)
@@ -304,15 +359,16 @@ class ProfileComparison(Base):
 
         k = min(top_k, len(condensed))
         if k == 0:
+            group_dtype = metric_profiles[group_column].dtype
             return pd.DataFrame(
-                columns=[
-                    "uuid_a",
-                    "group_a",
-                    "uuid_b",
-                    "group_b",
-                    "distance",
-                    "rank",
-                ]
+                {
+                    "uuid_a": pd.Series(dtype=object),
+                    "group_a": pd.Series(dtype=group_dtype),
+                    "uuid_b": pd.Series(dtype=object),
+                    "group_b": pd.Series(dtype=group_dtype),
+                    "distance": pd.Series(dtype="float64"),
+                    "rank": pd.Series(dtype="int64"),
+                }
             )
 
         if len(condensed) <= top_k:

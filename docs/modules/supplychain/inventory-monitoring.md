@@ -34,6 +34,6 @@ print(inv.stockout_prediction(consumption_rate_window="24h").tail(3))
 ## Notes
 
 - `handle_refills=True` (default) sums only level decreases, so a refill is treated like a counter reset. With `False` consumption is first − last level per window, so a refill cancels consumption (100 → 40 → 100 → 40 reads as 0).
-- `stockout_prediction` projects the time to zero from the consumption rate over the preceding `consumption_rate_window`.
+- `stockout_prediction` projects the time to zero from the consumption rate over the preceding `consumption_rate_window`. Where the level is not falling, `estimated_stockout_time_hours` is NaN (no stockout projected).
 - `safety_stock` must be at most `reorder_level`.
 - Low-stock intervals end at the next sample after the level recovers (`interval_end="next_change"`, default) or at the last low sample (`"last_sample"`).

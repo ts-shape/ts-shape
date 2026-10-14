@@ -322,6 +322,9 @@ class InventoryMonitoringEvents(Base):
             DataFrame with columns: systime, uuid, source_uuid, is_delta,
             current_level,
             consumption_rate, estimated_stockout_time_hours.
+            ``estimated_stockout_time_hours`` is NaN where the level is not
+            falling (no consumption in the window): no stockout is
+            projected.
         """
         empty_cols = [
             "systime",
@@ -352,7 +355,7 @@ class InventoryMonitoringEvents(Base):
                 elapsed_hours > 0, (values[lo] - values[hi]) / elapsed_hours, 0.0
             )
             rate = np.where(hi - lo + 1 < 2, 0.0, rate)
-            est_hours = np.where(rate > 0, values / rate, np.inf)
+            est_hours = np.where(rate > 0, values / rate, np.nan)
 
         return pd.DataFrame(
             {

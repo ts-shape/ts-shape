@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ts_shape.errors import DataQualityWarning
+from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.features.export import FeatureMatrixExporter
 from ts_shape.utils.base import Base
 
@@ -129,13 +129,13 @@ def test_feature_matrix_with_group_col():
 
 def test_feature_matrix_missing_uuid_col_raises():
     df = pd.DataFrame({"value_double": [1.0, 2.0]})
-    with pytest.raises(ValueError, match="uuid_col"):
+    with pytest.raises(ColumnNotFoundError, match="'uuid'"):
         FeatureMatrixExporter.to_feature_matrix(df)
 
 
 def test_feature_matrix_missing_value_col_raises():
     df = _make_signal_df()
-    with pytest.raises(ValueError, match="value_cols not found"):
+    with pytest.raises(ColumnNotFoundError, match="nonexistent"):
         FeatureMatrixExporter.to_feature_matrix(df, value_cols=["nonexistent"])
 
 

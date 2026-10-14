@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 
 
@@ -81,10 +82,22 @@ def test_capability_single_tolerance_is_one_sided():
     )
 
 
-def test_capability_single_measurement_raises():
-    df = _df().iloc[:2]
-    with pytest.raises(ValueError, match="undefined"):
-        _events(df).capability_indices().iloc[0]
+@pytest.mark.parametrize(
+    "values",
+    [[12.0], [12.0, 12.0, 12.0, 12.0], [np.nan, np.nan, np.nan, np.nan]],
+    ids=["single", "constant", "all_nan"],
+)
+def test_capability_without_spread_is_nan_with_warning(values):
+    # Aligned with CapabilityTrendingEvents: NaN indices, not an error.
+    df = _df()
+    act = df.index[df["uuid"] == "act"]
+    df = df.drop(index=act[len(values) :])
+    df.loc[df["uuid"] == "act", "value_double"] = values
+    with pytest.warns(DataQualityWarning, match="without spread"):
+        res = _events(df).capability_indices().iloc[0]
+    assert np.isnan(res["Cpk"]) and np.isnan(res["Ppk"])
+    assert res["usl"] == 15.0
+    assert pd.notna(res["start"])
 
 
 def test_detect_deviations_keeps_value_and_single_sample_events():

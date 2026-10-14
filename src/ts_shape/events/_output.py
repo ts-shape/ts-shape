@@ -168,6 +168,21 @@ def empty_event_df(shape: Shape, extra_cols: Sequence[str] = ()) -> pd.DataFrame
     return pd.DataFrame(columns=cols)
 
 
+def drop_duplicate_events(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop event rows identical in every column, keeping the first.
+
+    Duplicated input samples (same timestamp, uuid and value) otherwise
+    produce the same event twice. Rows that differ in any column are kept.
+    """
+    if len(df) < 2:
+        return df
+    try:
+        dup = df.duplicated()
+    except TypeError:  # unhashable cells (lists, dicts)
+        dup = df.astype(str).duplicated()
+    return df[~dup.to_numpy()] if bool(dup.any()) else df
+
+
 def _reorder(df: pd.DataFrame, leading: Iterable[str]) -> pd.DataFrame:
     """Move ``leading`` columns to the front, keep remaining order."""
     leading_present = [c for c in leading if c in df.columns]

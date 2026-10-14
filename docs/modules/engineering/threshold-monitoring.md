@@ -23,7 +23,7 @@ print(tm.time_above_threshold(85.0, window="1h").tail())
 | Method | Returns |
 |---|---|
 | `multi_level_threshold(levels, direction='above')` | intervals per level: `start`, `end`, `duration`, `level`, `peak_value` |
-| `threshold_with_hysteresis(upper_limit, lower_limit)` | alarm intervals: `start`, `end`, `duration`, `peak_value` |
+| `threshold_with_hysteresis(upper_limit, lower_limit, max_gap=None)` | alarm intervals: `start`, `end`, `duration`, `peak_value`. With `max_gap` (e.g. `"15min"`) an alarm ends at its last sample before a longer gap; after the gap the signal must reach `upper_limit` again |
 | `time_above_threshold(threshold, window='1h')` | per window: `time_above`, `pct_above`, `exceedance_count` |
 | `threshold_exceedance_trend(threshold, window='1D')` | per window: `exceedance_count`, `total_duration`, `trend_direction` |
 

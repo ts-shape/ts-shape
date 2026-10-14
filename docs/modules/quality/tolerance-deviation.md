@@ -38,3 +38,4 @@ capability = tdev.capability_indices(target_value=50.0)
 - Two-sided spec: pass both `upper_tolerance_uuid` and `lower_tolerance_uuid`. With only one the spec is one-sided: Cp/Pp are NaN, Cpk/Ppk are CPU or CPL, and `deviation_pct` is relative to the single limit.
 - σ is the overall sample standard deviation (the data has no subgroups), so Cp/Cpk equal Pp/Ppk. `Cpm = Cp / sqrt(1 + ((mean − target) / σ)²)` is computed only with `target_value`; otherwise `target` reports the spec midpoint.
 - `actual_uuid` is required. The single `tolerance_uuid` (compared through `compare_func`) is deprecated; a single upper limit is `upper_tolerance_uuid` alone. `capability_indices(..., as_frame=False)` returns the deprecated dict.
+- Measurements without spread (constant values, a single measurement or only missing values) give NaN capability indices and a `DataQualityWarning`, as in `CapabilityTrendingEvents`.

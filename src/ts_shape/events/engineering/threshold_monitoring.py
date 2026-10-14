@@ -133,7 +133,11 @@ class ThresholdMonitoringEvents(Base):
 
     @renamed_kwargs(high="upper_limit", low="lower_limit")
     def threshold_with_hysteresis(
-        self, upper_limit: float, lower_limit: float
+        self,
+        upper_limit: float,
+        lower_limit: float,
+        *,
+        max_gap: str | pd.Timedelta | None = None,
     ) -> pd.DataFrame:
         """Alarm intervals with hysteresis to prevent chattering.
 
@@ -143,6 +147,11 @@ class ThresholdMonitoringEvents(Base):
         Args:
             upper_limit: Upper threshold to enter alarm state.
             lower_limit: Lower threshold to exit alarm state.
+            max_gap: Longest time between two samples an alarm may span (e.g.
+                ``"15min"``). A longer gap is "no data": an open alarm ends
+                at its last sample before the gap, and after the gap the
+                signal must reach ``upper_limit`` again to start a new one.
+                ``None`` (default): no limit.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -164,6 +173,10 @@ class ThresholdMonitoringEvents(Base):
         in_alarm = False
         alarm_start = None
         peak = -np.inf
+        gap_after: np.ndarray = np.zeros(len(values), dtype=bool)
+        if max_gap is not None:
+            steps = sig[self.time_column].diff().shift(-1)
+            gap_after = (steps > pd.Timedelta(max_gap)).to_numpy(dtype=bool)
 
         for i in range(len(values)):
             v = values[i]
@@ -186,6 +199,18 @@ class ThresholdMonitoringEvents(Base):
                     )
                     in_alarm = False
                     peak = -np.inf
+            if in_alarm and gap_after[i]:
+                # No data across the gap: close the alarm at its last sample.
+                events.append(
+                    {
+                        "start": pd.Timestamp(alarm_start),
+                        "end": pd.Timestamp(times[i]),
+                        "duration": pd.Timestamp(times[i]) - pd.Timestamp(alarm_start),
+                        "peak_value": float(peak),
+                    }
+                )
+                in_alarm = False
+                peak = -np.inf
 
         # Close open alarm at end of data
         if in_alarm and alarm_start is not None:

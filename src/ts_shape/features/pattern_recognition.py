@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.fft import fft, ifft
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,12 @@ class PatternRecognition(Base):
     Discover motifs, discords, and template matches using Matrix Profile
     and Dynamic Time Warping approaches.
 
+    Every method reads one signal: rows are put in time order (when the frame
+    has ``time_column``), and a frame with several uuids needs ``uuid=`` to
+    pick one. Positions in the results (``index_a``, ``start_index``, ...)
+    count samples of that time-ordered signal. A window that contains a
+    missing value is skipped.
+
     Methods:
     - discover_motifs: Find top-k recurring subsequence patterns.
     - discover_discords: Find top-k anomalous subsequences.
@@ -22,6 +29,92 @@ class PatternRecognition(Base):
     - template_match: Find all occurrences of a reference template.
     - compute_distance_profile: Distance from query to every subsequence.
     """
+
+    # ------------------------------------------------------------------
+    # Input
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _signal(
+        cls,
+        dataframe: pd.DataFrame,
+        value_column: str,
+        time_column: str,
+        uuid: str | None,
+        where: str,
+    ) -> tuple[np.ndarray, pd.Series | None]:
+        """Values (float64) and times of the selected signal, in time order.
+
+        Raises:
+            ColumnNotFoundError: If ``value_column`` is missing.
+            ValueError: If the frame holds several uuids and ``uuid`` is not
+                given, or ``uuid`` is not in the frame.
+        """
+        where = f"PatternRecognition.{where}"
+        require_columns(dataframe, [value_column], where=where)
+        df = dataframe
+        if "uuid" in df.columns and not df.empty:
+            if uuid is not None:
+                cls._validate_uuid(df, uuid)
+                df = df[df["uuid"] == uuid]
+            else:
+                present = sorted(str(u) for u in df["uuid"].dropna().unique())
+                if len(present) > 1:
+                    raise ValueError(
+                        f"{where}: the frame holds {len(present)} signals; pass "
+                        f"uuid=... to pick one. Available UUIDs: {present}"
+                    )
+        times: pd.Series | None = None
+        if time_column in df.columns:
+            parsed = as_datetime(df[time_column], where=where)
+            # Stable time order; NaT sorts last.
+            order = np.argsort(parsed.to_numpy(dtype="datetime64[ns]"), kind="stable")
+            df = df.iloc[order]
+            times = parsed.iloc[order].reset_index(drop=True)
+        values = pd.to_numeric(df[value_column], errors="coerce")
+        series = np.asarray(
+            values.to_numpy(dtype="float64", na_value=np.nan), dtype="float64"
+        )
+        return series, times
+
+    @staticmethod
+    def _query(query: np.ndarray, name: str) -> np.ndarray:
+        q = np.asarray(query, dtype="float64").copy()
+        if q.ndim != 1 or len(q) == 0:
+            raise ValueError(f"{name} must be a non-empty 1-D array")
+        if np.isnan(q).any():
+            raise ValueError(f"{name} contains NaN")
+        return q
+
+    @staticmethod
+    def _valid_windows(series: np.ndarray, m: int) -> np.ndarray:
+        """True for each window of length ``m`` without a missing value."""
+        n = len(series)
+        if n < m:
+            return np.zeros(0, dtype=bool)
+        missing = np.r_[0, np.cumsum(np.isnan(series))]
+        result: np.ndarray = (missing[m:] - missing[: n - m + 1]) == 0
+        return result
+
+    @staticmethod
+    def _frame(
+        rows: list[dict[str, object]],
+        schema: dict[str, str],
+        times: pd.Series | None,
+        time_fields: list[str],
+    ) -> pd.DataFrame:
+        """Result frame with typed columns; time fields only with times."""
+        columns: dict[str, pd.Series] = {}
+        for name, dtype in schema.items():
+            columns[name] = pd.Series([r[name] for r in rows], dtype=dtype)
+        if times is not None:
+            for name in time_fields:
+                columns[name] = pd.Series([r[name] for r in rows], dtype=times.dtype)
+        return pd.DataFrame(columns)
+
+    # ------------------------------------------------------------------
+    # Distances
+    # ------------------------------------------------------------------
 
     @classmethod
     def _mass(cls, series: np.ndarray, query: np.ndarray) -> np.ndarray:
@@ -32,7 +125,8 @@ class PatternRecognition(Base):
             query: The query subsequence.
 
         Returns:
-            1D array of distances for each position.
+            1D array of distances for each position; NaN for a window with a
+            missing value.
         """
         n = len(series)
         m = len(query)
@@ -40,19 +134,22 @@ class PatternRecognition(Base):
         if n < m:
             return np.array([])
 
+        valid = cls._valid_windows(series, m)
+        filled = np.where(np.isnan(series), 0.0, series)
+
         # Pad query for FFT
         q_reversed = query[::-1]
         q_padded = np.zeros(n)
         q_padded[:m] = q_reversed
 
         # Sliding dot product via FFT
-        QT = np.real(ifft(fft(series) * fft(q_padded)))
+        QT = np.real(ifft(fft(filled) * fft(q_padded)))
         QT = QT[m - 1 :]
 
         # Rolling statistics
-        s = pd.Series(series)
-        rolling_mean = s.rolling(window=m).mean().values[m - 1 :]
-        rolling_std = s.rolling(window=m).std(ddof=0).values[m - 1 :]
+        s = pd.Series(filled)
+        rolling_mean = s.rolling(window=m).mean().to_numpy()[m - 1 :]
+        rolling_std = s.rolling(window=m).std(ddof=0).to_numpy()[m - 1 :]
 
         q_mean = query.mean()
         q_std = query.std(ddof=0)
@@ -65,8 +162,29 @@ class PatternRecognition(Base):
             2 * m * (1 - (QT - m * q_mean * rolling_mean) / (m * q_std * rolling_std))
         )
         dist_sq = np.maximum(dist_sq, 0)
-        dist: np.ndarray = np.sqrt(dist_sq)
+        dist: np.ndarray = np.where(valid, np.sqrt(dist_sq), np.nan)
         return dist
+
+    @classmethod
+    def _euclidean(cls, series: np.ndarray, query: np.ndarray) -> np.ndarray:
+        """Plain (not normalized) Euclidean distance profile; NaN windows NaN."""
+        n = len(series)
+        m = len(query)
+        if n < m:
+            return np.array([])
+        valid = cls._valid_windows(series, m)
+        filled = np.where(np.isnan(series), 0.0, series)
+        windows = np.lib.stride_tricks.sliding_window_view(filled, m)
+        dist: np.ndarray = np.sqrt(((windows - query) ** 2).sum(axis=1))
+        return np.where(valid, dist, np.nan)
+
+    @classmethod
+    def _profile(
+        cls, series: np.ndarray, query: np.ndarray, normalize: bool
+    ) -> np.ndarray:
+        if normalize:
+            return cls._mass(series, query)
+        return cls._euclidean(series, query)
 
     @classmethod
     def _compute_matrix_profile(
@@ -83,29 +201,39 @@ class PatternRecognition(Base):
             exclusion_zone: Number of indices to exclude around a match.
 
         Returns:
-            Tuple of (matrix_profile, matrix_profile_index).
+            Tuple of (matrix_profile, matrix_profile_index). A window with a
+            missing value, or without any comparable window, has profile
+            ``inf`` and index ``-1``.
         """
         n = len(series)
-        profile_len = n - window_size + 1
+        profile_len = max(n - window_size + 1, 0)
         mp = np.full(profile_len, np.inf)
         mpi = np.full(profile_len, -1, dtype=int)
+        valid = cls._valid_windows(series, window_size)
 
         for i in range(profile_len):
+            if not valid[i]:
+                continue
             query = series[i : i + window_size]
             dist_profile = cls._mass(series, query)
+            dist_profile = np.where(np.isnan(dist_profile), np.inf, dist_profile)
 
             # Apply exclusion zone
             ez_start = max(0, i - exclusion_zone)
             ez_end = min(profile_len, i + exclusion_zone + 1)
             dist_profile[ez_start:ez_end] = np.inf
 
-            min_idx = np.argmin(dist_profile)
+            min_idx = int(np.argmin(dist_profile))
             min_val = dist_profile[min_idx]
-
-            mp[i] = min_val
-            mpi[i] = min_idx
+            if np.isfinite(min_val):
+                mp[i] = min_val
+                mpi[i] = min_idx
 
         return mp, mpi
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     @classmethod
     def discover_motifs(
@@ -116,6 +244,8 @@ class PatternRecognition(Base):
         top_k: int = 5,
         exclusion_zone: int | None = None,
         time_column: str = "systime",
+        *,
+        uuid: str | None = None,
     ) -> pd.DataFrame:
         """Find the top-k recurring subsequence patterns (motifs).
 
@@ -126,18 +256,29 @@ class PatternRecognition(Base):
             top_k: Number of motif pairs to return.
             exclusion_zone: Indices to exclude around matches. Defaults to window_size // 2.
             time_column: Column containing timestamps.
+            uuid: Signal to analyze when the frame holds several uuids.
 
         Returns:
-            DataFrame with motif_rank, index_a, index_b, distance, time_a, time_b.
+            DataFrame with motif_rank, index_a, index_b, distance, time_a, time_b
+                (the time columns only when the frame has ``time_column``; they
+                keep its timezone). Empty, with these columns, when the signal
+                is shorter than ``window_size``.
+
+        Raises:
+            ColumnNotFoundError: If ``value_column`` is missing.
+            ValueError: If the frame holds several uuids and ``uuid`` is not
+                given.
         """
-        series = dataframe[value_column].values.astype(float)
+        series, times = cls._signal(
+            dataframe, value_column, time_column, uuid, "discover_motifs"
+        )
         if exclusion_zone is None:
             exclusion_zone = window_size // 2
 
         mp, mpi = cls._compute_matrix_profile(series, window_size, exclusion_zone)
 
         # Find top-k motifs (smallest MP values)
-        sorted_indices = np.argsort(mp)
+        sorted_indices = np.argsort(mp, kind="stable")
         results: list[dict[str, object]] = []
         used: set[tuple[int, int]] = set()
 
@@ -145,10 +286,12 @@ class PatternRecognition(Base):
             if len(results) >= top_k:
                 break
             partner = int(mpi[idx])
+            if partner < 0 or not np.isfinite(mp[idx]):
+                continue
             pair = (min(int(idx), partner), max(int(idx), partner))
             if pair in used:
                 continue
-            if abs(idx - partner) <= exclusion_zone:
+            if abs(int(idx) - partner) <= exclusion_zone:
                 continue
             used.add(pair)
 
@@ -158,14 +301,23 @@ class PatternRecognition(Base):
                 "index_b": pair[1],
                 "distance": float(mp[idx]),
             }
-            if time_column in dataframe.columns:
-                times = dataframe[time_column].values
-                row["time_a"] = times[pair[0]]
-                row["time_b"] = times[pair[1]]
+            if times is not None:
+                row["time_a"] = times.iloc[pair[0]]
+                row["time_b"] = times.iloc[pair[1]]
 
             results.append(row)
 
-        return pd.DataFrame(results)
+        return cls._frame(
+            results,
+            {
+                "motif_rank": "int64",
+                "index_a": "int64",
+                "index_b": "int64",
+                "distance": "float64",
+            },
+            times,
+            ["time_a", "time_b"],
+        )
 
     @classmethod
     def discover_discords(
@@ -176,6 +328,8 @@ class PatternRecognition(Base):
         top_k: int = 5,
         exclusion_zone: int | None = None,
         time_column: str = "systime",
+        *,
+        uuid: str | None = None,
     ) -> pd.DataFrame:
         """Find the top-k anomalous subsequences (discords).
 
@@ -186,26 +340,40 @@ class PatternRecognition(Base):
             top_k: Number of discords to return.
             exclusion_zone: Indices to exclude around matches. Defaults to window_size // 2.
             time_column: Column containing timestamps.
+            uuid: Signal to analyze when the frame holds several uuids.
 
         Returns:
-            DataFrame with discord_rank, start_index, distance, start_time.
+            DataFrame with discord_rank, start_index, distance, start_time (the
+                time column only when the frame has ``time_column``). Windows
+                with a missing value are never discords. Empty, with these
+                columns, when the signal is shorter than ``window_size``.
+
+        Raises:
+            ColumnNotFoundError: If ``value_column`` is missing.
+            ValueError: If the frame holds several uuids and ``uuid`` is not
+                given.
         """
-        series = dataframe[value_column].values.astype(float)
+        series, times = cls._signal(
+            dataframe, value_column, time_column, uuid, "discover_discords"
+        )
         if exclusion_zone is None:
             exclusion_zone = window_size // 2
 
         mp, _ = cls._compute_matrix_profile(series, window_size, exclusion_zone)
 
-        # Find top-k discords (largest MP values)
-        sorted_indices = np.argsort(mp)[::-1]
+        # Find top-k discords (largest MP values); skipped windows are inf.
+        finite = np.where(np.isfinite(mp), mp, -np.inf)
+        sorted_indices = np.argsort(-finite, kind="stable")
         results: list[dict[str, object]] = []
         used_zones: list[int] = []
 
         for idx in sorted_indices:
             if len(results) >= top_k:
                 break
+            if not np.isfinite(mp[idx]):
+                continue
             # Check exclusion zone against already selected discords
-            if any(abs(idx - u) <= exclusion_zone for u in used_zones):
+            if any(abs(int(idx) - u) <= exclusion_zone for u in used_zones):
                 continue
             used_zones.append(int(idx))
 
@@ -214,12 +382,17 @@ class PatternRecognition(Base):
                 "start_index": int(idx),
                 "distance": float(mp[idx]),
             }
-            if time_column in dataframe.columns:
-                row["start_time"] = dataframe[time_column].values[idx]
+            if times is not None:
+                row["start_time"] = times.iloc[int(idx)]
 
             results.append(row)
 
-        return pd.DataFrame(results)
+        return cls._frame(
+            results,
+            {"discord_rank": "int64", "start_index": "int64", "distance": "float64"},
+            times,
+            ["start_time"],
+        )
 
     @classmethod
     def _dtw_distance(cls, a: np.ndarray, b: np.ndarray) -> float:
@@ -235,6 +408,33 @@ class PatternRecognition(Base):
 
         return float(np.sqrt(D[n, m]))
 
+    @staticmethod
+    def _znorm(values: np.ndarray) -> np.ndarray:
+        std = float(values.std())
+        if std > 1e-10:
+            scaled: np.ndarray = (values - float(values.mean())) / std
+            return scaled
+        return values
+
+    @classmethod
+    def _dtw_profile(
+        cls, series: np.ndarray, query: np.ndarray, normalize: bool
+    ) -> np.ndarray:
+        """DTW distance of ``query`` to every window; NaN windows NaN."""
+        m = len(query)
+        n = len(series)
+        if n < m:
+            return np.array([])
+        q = cls._znorm(query) if normalize else query
+        valid = cls._valid_windows(series, m)
+        distances = np.full(n - m + 1, np.nan)
+        for i in np.flatnonzero(valid):
+            subseq = series[i : i + m].copy()
+            if normalize:
+                subseq = cls._znorm(subseq)
+            distances[i] = cls._dtw_distance(q, subseq)
+        return distances
+
     @classmethod
     def similarity_search(
         cls,
@@ -244,6 +444,8 @@ class PatternRecognition(Base):
         top_k: int = 5,
         normalize: bool = True,
         time_column: str = "systime",
+        *,
+        uuid: str | None = None,
     ) -> pd.DataFrame:
         """Find the top-k most similar subsequences to a query using DTW.
 
@@ -254,40 +456,43 @@ class PatternRecognition(Base):
             top_k: Number of matches to return.
             normalize: Whether to z-normalize before comparison.
             time_column: Column containing timestamps.
+            uuid: Signal to analyze when the frame holds several uuids.
 
         Returns:
-            DataFrame with rank, start_index, dtw_distance, start_time.
+            DataFrame with rank, start_index, dtw_distance, start_time (the
+                time column only when the frame has ``time_column``). Empty,
+                with these columns, when the signal is shorter than the query.
+
+        Raises:
+            ColumnNotFoundError: If ``value_column`` is missing.
+            ValueError: If the frame holds several uuids and ``uuid`` is not
+                given, or ``query`` is empty or contains NaN.
         """
-        series = dataframe[value_column].values.astype(float)
-        m = len(query)
-        n = len(series)
+        series, times = cls._signal(
+            dataframe, value_column, time_column, uuid, "similarity_search"
+        )
+        q = cls._query(query, "query")
+        profile = cls._dtw_profile(series, q, normalize)
+        candidates = np.flatnonzero(~np.isnan(profile))
+        ranked = candidates[np.argsort(profile[candidates], kind="stable")]
 
-        if n < m:
-            return pd.DataFrame(
-                columns=["rank", "start_index", "dtw_distance", "start_time"]
-            )
-
-        q = query.astype(float).copy()
-        if normalize and q.std() > 1e-10:
-            q = (q - q.mean()) / q.std()
-
-        distances = []
-        for i in range(n - m + 1):
-            subseq = series[i : i + m].copy()
-            if normalize and subseq.std() > 1e-10:
-                subseq = (subseq - subseq.mean()) / subseq.std()
-            d = cls._dtw_distance(q, subseq)
-            distances.append((i, d))
-
-        distances.sort(key=lambda x: x[1])
-        results = []
-        for rank, (idx, dist) in enumerate(distances[:top_k], 1):
-            row = {"rank": rank, "start_index": idx, "dtw_distance": dist}
-            if time_column in dataframe.columns:
-                row["start_time"] = dataframe[time_column].values[idx]
+        results: list[dict[str, object]] = []
+        for rank, idx in enumerate(ranked[:top_k], 1):
+            row: dict[str, object] = {
+                "rank": rank,
+                "start_index": int(idx),
+                "dtw_distance": float(profile[idx]),
+            }
+            if times is not None:
+                row["start_time"] = times.iloc[int(idx)]
             results.append(row)
 
-        return pd.DataFrame(results)
+        return cls._frame(
+            results,
+            {"rank": "int64", "start_index": "int64", "dtw_distance": "float64"},
+            times,
+            ["start_time"],
+        )
 
     @classmethod
     def template_match(
@@ -298,6 +503,8 @@ class PatternRecognition(Base):
         threshold: float | None = None,
         normalize: bool = True,
         time_column: str = "systime",
+        *,
+        uuid: str | None = None,
     ) -> pd.DataFrame:
         """Find all occurrences of a template pattern in the time series.
 
@@ -305,45 +512,59 @@ class PatternRecognition(Base):
             dataframe: Input DataFrame.
             template: Reference pattern as numpy array.
             value_column: Column containing numeric values.
-            threshold: Maximum distance to consider a match. None = adaptive.
-            normalize: Whether to z-normalize before comparison.
+            threshold: Maximum distance to consider a match. None = adaptive
+                (mean minus two standard deviations of the distance profile).
+            normalize: Whether to z-normalize before comparison. With
+                ``False`` the distance is the plain Euclidean distance, so the
+                level and scale of the template matter.
             time_column: Column containing timestamps.
+            uuid: Signal to analyze when the frame holds several uuids.
 
         Returns:
-            DataFrame with start_index, distance, start_time, end_time.
+            DataFrame with start_index, distance, start_time, end_time (the
+                time columns only when the frame has ``time_column``). Empty,
+                with these columns, when nothing matches.
+
+        Raises:
+            ColumnNotFoundError: If ``value_column`` is missing.
+            ValueError: If the frame holds several uuids and ``uuid`` is not
+                given, or ``template`` is empty or contains NaN.
         """
-        series = dataframe[value_column].values.astype(float)
-        m = len(template)
-        t = template.astype(float).copy()
+        series, times = cls._signal(
+            dataframe, value_column, time_column, uuid, "template_match"
+        )
+        t = cls._query(template, "template")
+        m = len(t)
+        dist_profile = cls._profile(series, t, normalize)
+        finite = dist_profile[~np.isnan(dist_profile)]
 
-        if normalize and t.std() > 1e-10:
-            t = (t - t.mean()) / t.std()
-            # Normalize series subsequences via MASS
-            dist_profile = cls._mass(series, t)
-        else:
-            dist_profile = cls._mass(series, t)
+        results: list[dict[str, object]] = []
+        if len(finite):
+            if threshold is None:
+                threshold = float(np.mean(finite) - 2 * np.std(finite))
+                threshold = max(threshold, 0)
 
-        if len(dist_profile) == 0:
-            return pd.DataFrame(
-                columns=["start_index", "distance", "start_time", "end_time"]
+            matches = np.flatnonzero(
+                ~np.isnan(dist_profile)
+                & (np.nan_to_num(dist_profile, nan=np.inf) <= threshold)
             )
+            for idx in matches:
+                row: dict[str, object] = {
+                    "start_index": int(idx),
+                    "distance": float(dist_profile[idx]),
+                }
+                if times is not None:
+                    row["start_time"] = times.iloc[int(idx)]
+                    end_idx = min(int(idx) + m - 1, len(times) - 1)
+                    row["end_time"] = times.iloc[end_idx]
+                results.append(row)
 
-        if threshold is None:
-            threshold = float(np.mean(dist_profile) - 2 * np.std(dist_profile))
-            threshold = max(threshold, 0)
-
-        matches = np.where(dist_profile <= threshold)[0]
-        results = []
-        for idx in matches:
-            row = {"start_index": int(idx), "distance": float(dist_profile[idx])}
-            if time_column in dataframe.columns:
-                times = dataframe[time_column].values
-                row["start_time"] = times[idx]
-                end_idx = min(idx + m - 1, len(times) - 1)
-                row["end_time"] = times[end_idx]
-            results.append(row)
-
-        return pd.DataFrame(results)
+        return cls._frame(
+            results,
+            {"start_index": "int64", "distance": "float64"},
+            times,
+            ["start_time", "end_time"],
+        )
 
     @classmethod
     def compute_distance_profile(
@@ -353,6 +574,9 @@ class PatternRecognition(Base):
         value_column: str = "value_double",
         metric: str = "euclidean",
         normalize: bool = True,
+        *,
+        time_column: str = "systime",
+        uuid: str | None = None,
     ) -> np.ndarray:
         """Compute distance from query to every subsequence of same length.
 
@@ -361,28 +585,31 @@ class PatternRecognition(Base):
             query: Query subsequence.
             value_column: Column containing numeric values.
             metric: 'euclidean' (FFT-based) or 'dtw'.
-            normalize: Whether to z-normalize.
+            normalize: Whether to z-normalize. With ``False`` the Euclidean
+                distance is the plain distance of the raw values.
+            time_column: Rows are put in the order of this column (when the
+                frame has it).
+            uuid: Signal to analyze when the frame holds several uuids.
 
         Returns:
-            1D numpy array of distances.
-        """
-        series = dataframe[value_column].values.astype(float)
-        q = query.astype(float).copy()
-        m = len(q)
+            1D numpy array of distances, one per window start; NaN for a
+                window with a missing value. Empty when the signal is shorter
+                than the query.
 
-        if normalize and q.std() > 1e-10:
-            q = (q - q.mean()) / q.std()
+        Raises:
+            ColumnNotFoundError: If ``value_column`` is missing.
+            ValueError: For an unknown ``metric``, several uuids without
+                ``uuid``, or a query that is empty or contains NaN.
+        """
+        if metric not in ("euclidean", "dtw"):
+            raise ValueError(f"Unknown metric: {metric}. Use 'euclidean' or 'dtw'.")
+        series, _ = cls._signal(
+            dataframe, value_column, time_column, uuid, "compute_distance_profile"
+        )
+        q = cls._query(query, "query")
 
         if metric == "euclidean":
-            return cls._mass(series, q)
-        elif metric == "dtw":
-            n = len(series)
-            distances = np.zeros(n - m + 1)
-            for i in range(n - m + 1):
-                subseq = series[i : i + m].copy()
-                if normalize and subseq.std() > 1e-10:
-                    subseq = (subseq - subseq.mean()) / subseq.std()
-                distances[i] = cls._dtw_distance(q, subseq)
-            return distances
-        else:
-            raise ValueError(f"Unknown metric: {metric}. Use 'euclidean' or 'dtw'.")
+            if normalize:
+                q = cls._znorm(q)
+            return cls._profile(series, q, normalize)
+        return cls._dtw_profile(series, q, normalize)

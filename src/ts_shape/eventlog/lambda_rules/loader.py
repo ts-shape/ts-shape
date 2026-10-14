@@ -24,8 +24,9 @@ from typing import Any
 from ...loader._utils import missing_optional
 from ..archetypes import ARCHETYPE_BY_METHOD
 from ..schema import STANDARD_ATTR_KEYS
-from ..taxonomy import REGISTRY, LabelRule
+from ..taxonomy import REGISTRY, LabelRule, resolve
 from .detector import LambdaDetector
+from .expression import compile_expression
 from .spec import RuleSpec, TriggerSpec
 
 # Required ``standard_attrs`` keys per archetype, mirroring the contract
@@ -66,11 +67,22 @@ def _validate_standard_attrs(spec: RuleSpec) -> None:
 def register_lambda_rule(spec: RuleSpec) -> LambdaDetector:
     """Register ``spec`` in REGISTRY + ARCHETYPE_BY_METHOD; return runnable detector.
 
-    Raises :class:`ValueError` if the spec is malformed, the
-    ``standard_attrs`` mapping uses unknown keys, the archetype's
-    required keys are missing, or a rule with the same
-    ``(class_name, method_name)`` is already registered.
+    The trigger expression is compiled here, so a bad expression fails at
+    registration rather than at the first evaluation.
+
+    Args:
+        spec: The rule to register.
+
+    Returns:
+        The runnable :class:`LambdaDetector`.
+
+    Raises:
+        ValueError: If the spec is malformed, the expression does not compile
+            (:class:`UnsafeExpression`), the ``standard_attrs`` mapping uses
+            unknown keys, the archetype's required keys are missing, or a rule
+            with the same ``(class_name, method_name)`` is already registered.
     """
+    compile_expression(spec.trigger.expression)
     _validate_standard_attrs(spec)
     key = (spec.class_name, spec.method_name)
     if key in REGISTRY:
@@ -95,15 +107,49 @@ def unregister_lambda_rule(class_name: str, method_name: str) -> None:
     """Remove a rule previously installed by :func:`register_lambda_rule`.
 
     Used by tests to keep the global REGISTRY clean between cases. No-op
-    if the rule was not registered.
+    if the rule was not registered. Deprecated class / method names resolve
+    to their current names, as in the registry lookup.
+
+    Args:
+        class_name: The rule's class name.
+        method_name: The rule's method name.
     """
-    key = (class_name, method_name)
+    key = resolve(class_name, method_name)
     REGISTRY.pop(key, None)
     ARCHETYPE_BY_METHOD.pop(key, None)
 
 
-def _spec_from_dict(entry: Mapping[str, Any]) -> RuleSpec:
-    trigger_raw = dict(entry.get("trigger", {}))
+_REQUIRED_FIELDS = (
+    "id",
+    "class_name",
+    "method_name",
+    "pack",
+    "shape",
+    "archetype",
+    "template",
+    "trigger",
+)
+
+
+def _spec_from_dict(entry: Mapping[str, Any], position: int) -> RuleSpec:
+    if not isinstance(entry, Mapping):
+        raise ValueError(f"rule #{position} must be a mapping, got {type(entry)}")
+    where = f"rule #{position} ({entry.get('id', '?')!r})"
+    missing = [k for k in _REQUIRED_FIELDS if k not in entry]
+    if missing:
+        raise ValueError(f"{where} is missing required field(s) {missing}")
+    trigger_raw = entry["trigger"]
+    if not isinstance(trigger_raw, Mapping) or "expression" not in trigger_raw:
+        raise ValueError(
+            f"{where}: 'trigger' must be a mapping with an 'expression', "
+            f"got {trigger_raw!r}"
+        )
+    group_by = trigger_raw.get("group_by") or ()
+    if isinstance(group_by, str):
+        group_by = (group_by,)
+    produces = entry.get("produces_objects", ("asset",))
+    if isinstance(produces, str):
+        produces = (produces,)
     trigger = TriggerSpec(
         expression=str(trigger_raw["expression"]),
         min_duration_s=(
@@ -111,7 +157,7 @@ def _spec_from_dict(entry: Mapping[str, Any]) -> RuleSpec:
             if trigger_raw.get("min_duration_s") is not None
             else None
         ),
-        group_by=tuple(trigger_raw.get("group_by", ())),
+        group_by=tuple(str(g) for g in group_by),
     )
     return RuleSpec(
         id=str(entry["id"]),
@@ -122,7 +168,7 @@ def _spec_from_dict(entry: Mapping[str, Any]) -> RuleSpec:
         archetype=str(entry["archetype"]),
         template=str(entry["template"]),
         trigger=trigger,
-        produces_objects=tuple(entry.get("produces_objects", ("asset",))),
+        produces_objects=tuple(produces),
         severity_field=entry.get("severity_field"),
         value_field=entry.get("value_field"),
         standard_attrs=dict(entry.get("standard_attrs") or {}),
@@ -130,8 +176,42 @@ def _spec_from_dict(entry: Mapping[str, Any]) -> RuleSpec:
 
 
 def load_dicts(entries: Iterable[Mapping[str, Any]]) -> list[LambdaDetector]:
-    """Compile + register an iterable of dict rules."""
-    return [register_lambda_rule(_spec_from_dict(e)) for e in entries]
+    """Compile and register an iterable of dict rules, all or nothing.
+
+    Every rule is validated and its trigger compiled before any is
+    registered; if one fails, the rules registered by this call are removed
+    again and the error is raised.
+
+    Args:
+        entries: Rule mappings with the :class:`RuleSpec` fields; ``trigger``
+            is a mapping with ``expression`` (and optional ``min_duration_s``,
+            ``group_by`` -- a column name or a list of them).
+
+    Returns:
+        One :class:`LambdaDetector` per rule, in input order.
+
+    Raises:
+        ValueError: For a malformed rule, a duplicate registration or an
+            expression that does not compile (:class:`UnsafeExpression`).
+    """
+    specs = [_spec_from_dict(e, i) for i, e in enumerate(entries)]
+    for spec in specs:
+        compile_expression(spec.trigger.expression)
+        _validate_standard_attrs(spec)
+    keys = [(s.class_name, s.method_name) for s in specs]
+    dup = {k for k in keys if keys.count(k) > 1}
+    if dup:
+        raise ValueError(f"rules registered twice in one batch: {sorted(dup)}")
+    done: list[RuleSpec] = []
+    try:
+        for spec in specs:
+            done.append(spec)
+            register_lambda_rule(spec)
+    except Exception:
+        for spec in done[:-1]:
+            unregister_lambda_rule(spec.class_name, spec.method_name)
+        raise
+    return [LambdaDetector(spec) for spec in specs]
 
 
 def load_yaml(path: str | Path) -> list[LambdaDetector]:
@@ -142,8 +222,15 @@ def load_yaml(path: str | Path) -> list[LambdaDetector]:
     detectors. Install ``ts-shape[yaml]`` to enable this loader, or use
     :func:`load_dicts` with a hand-built list.
 
+    Args:
+        path: Path to a YAML file with a top-level ``rules:`` list.
+
+    Returns:
+        One :class:`LambdaDetector` per rule (see :func:`load_dicts`).
+
     Raises:
         ImportError: When PyYAML is not installed.
+        ValueError: When the file has no ``rules:`` list or a rule is invalid.
     """
     try:
         import yaml

@@ -40,11 +40,32 @@ def evaluate(spec: RuleSpec, df: pd.DataFrame) -> pd.DataFrame:
     * ``shape="point" | "summary"``: original rows with a ``systime``-like
       timestamp column preserved (no renaming).
     * ``shape="interval"``: rows with ``start``, ``end``, ``source_uuid``
-      (if grouped), plus value/severity columns averaged over the run.
+      (if present), the ``group_by`` columns, the value column (mean over the
+      run), the severity column (max) and ``sample_count``. A run is
+      half-open: it ends at the next sample after its last True row (at the
+      last True row when no sample follows), like
+      :func:`ts_shape.signals.primitives.intervals`.
     * ``shape="static"``: a single row carrying summary fields.
+
+    Args:
+        spec: The rule.
+        df: Input frame the trigger is evaluated on.
+
+    Returns:
+        The detector frame; an empty (typed, for interval rules) frame when
+        nothing triggers.
+
+    Raises:
+        ColumnNotFoundError: When the trigger names a column ``df`` lacks.
+        ValueError: When the trigger is not boolean, or an interval rule finds
+            no time column.
     """
-    if df is None or len(df) == 0:
-        return df.iloc[0:0].copy() if df is not None else pd.DataFrame()
+    if df is None:
+        return pd.DataFrame()
+    if spec.shape == "interval" and len(df) == 0:
+        return _empty_interval_frame(df, spec, _pick_time_col(df))
+    if len(df) == 0:
+        return df.iloc[0:0].copy()
 
     mask_fn = compile_expression(spec.trigger.expression)
     mask = mask_fn(df)
@@ -58,6 +79,40 @@ def evaluate(spec: RuleSpec, df: pd.DataFrame) -> pd.DataFrame:
     if spec.shape == "static":
         return _evaluate_static(df, mask, spec)
     raise ValueError(f"unsupported shape {spec.shape!r}")  # pragma: no cover
+
+
+def _interval_columns(df: pd.DataFrame, spec: RuleSpec) -> list[str]:
+    cols = ["start", "end", *spec.trigger.group_by]
+    for field in (spec.value_field, spec.severity_field):
+        if field and field in df.columns and field not in cols:
+            cols.append(field)
+    if "source_uuid" in df.columns and "source_uuid" not in cols:
+        cols.append("source_uuid")
+    cols.append("sample_count")
+    return cols
+
+
+def _empty_interval_frame(
+    df: pd.DataFrame, spec: RuleSpec, time_col: str | None
+) -> pd.DataFrame:
+    """Zero-row interval frame with the columns a non-empty result has."""
+    time_dtype: Any = (
+        df[time_col].dtype
+        if time_col is not None
+        and pd.api.types.is_datetime64_any_dtype(df[time_col].dtype)
+        else "datetime64[ns]"
+    )
+    out: dict[str, pd.Series] = {}
+    for col in _interval_columns(df, spec):
+        if col in ("start", "end"):
+            out[col] = pd.Series(dtype=time_dtype)
+        elif col == "sample_count":
+            out[col] = pd.Series(dtype="int64")
+        elif col in (spec.value_field, spec.severity_field):
+            out[col] = pd.Series(dtype="float64")
+        else:
+            out[col] = pd.Series(dtype=df[col].dtype if col in df.columns else object)
+    return pd.DataFrame(out)
 
 
 def _evaluate_point(df: pd.DataFrame, mask: pd.Series) -> pd.DataFrame:
@@ -107,13 +162,18 @@ def _evaluate_interval(
         iterator = iter([((), work)])
 
     for key, sub in iterator:
-        sub = sub.sort_values(time_col).reset_index(drop=True)
+        sub = sub.sort_values(time_col, kind="stable").reset_index(drop=True)
+        times = sub[time_col]
         run_id = (sub["_mask"] != sub["_mask"].shift()).cumsum()
         for _, run in sub.groupby(run_id, sort=False):
             if not bool(run["_mask"].iloc[0]):
                 continue
             start_ts = pd.Timestamp(run[time_col].iloc[0])
-            end_ts = pd.Timestamp(run[time_col].iloc[-1])
+            # Half-open: the run lasts until the next sample of its group.
+            after = int(run.index[-1]) + 1
+            end_ts = pd.Timestamp(
+                times.iloc[after] if after < len(sub) else run[time_col].iloc[-1]
+            )
             duration_s = (end_ts - start_ts).total_seconds()
             if (
                 spec.trigger.min_duration_s is not None
@@ -138,7 +198,9 @@ def _evaluate_interval(
             row["sample_count"] = int(len(run))
             rows.append(row)
 
-    return pd.DataFrame(rows)
+    if not rows:
+        return _empty_interval_frame(df, spec, time_col)
+    return pd.DataFrame(rows).reindex(columns=_interval_columns(df, spec))
 
 
 def _evaluate_summary(

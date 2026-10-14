@@ -17,10 +17,12 @@ table (the new value in a column named after ``ocel:field``); pass
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import pandas as pd
 
+from ..errors import DataQualityWarning
 from . import schema
 from .model import EventLog
 
@@ -47,7 +49,17 @@ def to_event_log_ocel(eventlog: EventLog, *, pm4py: bool = False) -> OCEL2Tables
     ``relations`` gains ``ocel:activity`` and ``ocel:timestamp`` of each
     event, and ``object_changes`` is widened — ``ocel:value`` is replaced by
     one column per distinct ``ocel:field`` holding the new value on that
-    field's rows. The other tables are unchanged.
+    field's rows (a field named like a base column, e.g. ``ocel:type``,
+    gets the column ``<name>_field`` and a
+    :class:`~ts_shape.errors.DataQualityWarning`). The other tables are
+    unchanged.
+
+    Args:
+        eventlog: The event log to export.
+        pm4py: Reshape ``relations`` and ``object_changes`` for pm4py.
+
+    Returns:
+        The five tables as :class:`OCEL2Tables` (copies).
     """
     if pm4py:
         return OCEL2Tables(
@@ -92,10 +104,20 @@ def _pm4py_object_changes(changes: pd.DataFrame) -> pd.DataFrame:
         return out
     fields = changes[schema.OCEL_FIELD].astype(object)
     for name in pd.unique(fields):
-        if pd.isna(name) or str(name) in base:
+        if pd.isna(name):
             continue
+        column = str(name)
+        if column in base:
+            # A field named like a base column would overwrite it: keep both.
+            column = f"{column}_field"
+            warnings.warn(
+                f"object_changes field {name!r} has the name of a base column; "
+                f"its values are in column {column!r}",
+                DataQualityWarning,
+                stacklevel=3,
+            )
         mask = (fields == name).to_numpy()
         col = pd.Series(pd.NA, index=changes.index, dtype=object)
         col[mask] = changes.loc[mask, schema.OCEL_VALUE]
-        out[str(name)] = col
+        out[column] = col
     return out

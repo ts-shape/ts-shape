@@ -2,8 +2,8 @@
 
 Walks every ``(class, method)`` pair of
 :data:`ts_shape.eventlog.taxonomy.REGISTRY`, synthesises constructor and
-method arguments from parameter names, and checks three invariants on a
-small synthetic plant dataset:
+method arguments from parameter names, and checks invariants on a small
+synthetic plant dataset and variants of it:
 
 ``empty``
     An empty frame (correct columns, zero rows) must not raise.
@@ -26,23 +26,55 @@ small synthetic plant dataset:
 ``dtypes``
     The same data with pandas nullable dtypes, with pyarrow dtypes, and with
     numbers stored as text gives the same result as with NumPy dtypes.
+``determinism``
+    Running the same call twice on the same frame gives identical results.
+``no_mutation``
+    Constructing the detector and calling the method leaves the input frame,
+    its index and its dtypes unchanged.
+``shuffle``
+    Shuffled input rows (original index kept) give the same result, up to
+    row order.
+``output_sanity``
+    The result on the plant data has no ``inf`` in numeric columns, no
+    negative ``duration_seconds``, no ``end`` before ``start`` and no
+    missing ``systime`` / ``start`` / ``uuid`` / ``source_uuid``.
+``all_nan``
+    With every numeric value (``value_double``, ``value_integer``) missing
+    the call must not raise.
+``single_row``
+    With one row per signal the call must not raise.
+``dtypes_nan``
+    With about 5 % of the numeric values missing, the nullable and pyarrow
+    variants give the same result as NumPy with ``NaN``.
+``dup_ts``
+    With every 7th row duplicated (same timestamp, uuid and value) the call
+    must not raise and its result must pass ``output_sanity``.
 
 Each check yields a status string: ``"ok"``, ``"fail: <reason>"``, or
 ``"n/a: <reason>"`` (the harness could not build a valid call -- e.g. a
 method that needs the output of another method). The current statuses are
 pinned in ``baseline.json``: the test fails when a status changes in either
 direction, so regressions are caught and fixes must update the baseline
-(a ratchet). Regenerate with::
+(a ratchet). A documented exception to ``output_sanity`` / ``dup_ts`` goes
+into :data:`SANITY_EXEMPT` with its reason. Regenerate with (``src`` first
+on the path, so the checkout's own package is tested)::
 
-    python -m tests.invariants.harness --update
+    PYTHONPATH=src python -m tests.invariants.harness --update
+
+The registry is checked in worker processes (``TS_SHAPE_HARNESS_JOBS``,
+default up to 4); results do not depend on their number.
 """
 
 from __future__ import annotations
 
+import functools
 import inspect
 import json
+import multiprocessing
+import os
 import sys
 import warnings
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +86,22 @@ from ts_shape.eventlog.taxonomy import REGISTRY
 
 BASELINE = Path(__file__).with_name("baseline.json")
 BERLIN = "Europe/Berlin"
-CHECKS = ("empty", "tz", "extra_uuid", "shape", "empty_schema", "dtypes")
+CHECKS = (
+    "empty",
+    "tz",
+    "extra_uuid",
+    "shape",
+    "empty_schema",
+    "dtypes",
+    "determinism",
+    "no_mutation",
+    "shuffle",
+    "output_sanity",
+    "all_nan",
+    "single_row",
+    "dtypes_nan",
+    "dup_ts",
+)
 
 CONT, CONT2, STATE, COUNTER, SETPOINT, TEXT = (
     "sig:cont",
@@ -114,6 +161,40 @@ def plant_frame(tz: str | None = None) -> pd.DataFrame:
             df[col] = np.nan
     df["is_delta"] = True
     return df.sort_values(["systime", "uuid"]).reset_index(drop=True)
+
+
+def shuffled(df: pd.DataFrame) -> pd.DataFrame:
+    """The same rows in random order, each keeping its index label."""
+    return df.sample(frac=1.0, random_state=7)
+
+
+def all_nan(df: pd.DataFrame) -> pd.DataFrame:
+    """Every numeric value missing (``value_double`` and ``value_integer``)."""
+    out = df.copy()
+    out["value_double"] = np.nan
+    out["value_integer"] = np.nan
+    return out
+
+
+def single_row(df: pd.DataFrame) -> pd.DataFrame:
+    """The first row of every signal."""
+    return df.groupby("uuid", sort=False).head(1).reset_index(drop=True)
+
+
+def with_nans(df: pd.DataFrame, fraction: float = 0.05) -> pd.DataFrame:
+    """About ``fraction`` of the numeric values replaced by ``NaN``."""
+    rng = np.random.default_rng(5)
+    out = df.copy()
+    for col in ("value_double", "value_integer"):
+        hit = out[col].notna().to_numpy() & (rng.random(len(out)) < fraction)
+        out[col] = out[col].astype("float64").mask(hit)
+    return out
+
+
+def with_duplicates(df: pd.DataFrame, every: int = 7) -> pd.DataFrame:
+    """Every ``every``-th row twice (exact duplicate rows)."""
+    out = pd.concat([df, df.iloc[::every]], ignore_index=True)
+    return out.sort_values(["systime", "uuid"], kind="stable").reset_index(drop=True)
 
 
 def with_noise(df: pd.DataFrame) -> pd.DataFrame:
@@ -472,6 +553,95 @@ def _shape_problem(result: Any, shape: str) -> str | None:
     return None
 
 
+def _identical(a: Any, b: Any) -> bool:
+    """Exact equality of two results (frames compared cell by cell)."""
+    fa, fb = _frames(a), _frames(b)
+    if len(fa) != len(fb) or type(a) is not type(b):
+        return False
+    for x, y in zip(fa, fb, strict=True):
+        try:
+            pd.testing.assert_frame_equal(x, y, check_exact=True)
+        except (AssertionError, TypeError, ValueError):
+            return False
+    if not fa:
+        return _same(a, b)
+    return True
+
+
+def _canonical(frame: pd.DataFrame) -> pd.DataFrame:
+    """``frame`` in a canonical row order, index dropped."""
+    frame = frame.reset_index(drop=True)
+    if frame.empty:
+        return frame
+    # Round floats so float noise does not change the order.
+    parts = []
+    for i in range(frame.shape[1]):
+        col = frame.iloc[:, i]
+        if pd.api.types.is_float_dtype(col):
+            col = col.round(6)
+        parts.append([str(v) for v in col.astype(object)])
+    key = np.array(["|".join(row) for row in zip(*parts, strict=True)])
+    order = np.argsort(key, kind="stable")
+    return frame.iloc[order].reset_index(drop=True)
+
+
+def _sort_rows(result: Any) -> Any:
+    """Each frame of ``result`` in a canonical row order."""
+    if isinstance(result, pd.DataFrame):
+        return _canonical(result)
+    if isinstance(result, pd.Series):
+        return _canonical(result.to_frame())
+    if isinstance(result, dict):
+        return {
+            k: _canonical(v) if isinstance(v, pd.DataFrame) else v
+            for k, v in result.items()
+        }
+    return result
+
+
+#: Columns that identify an event; a missing value there is a broken row.
+_NOT_NULL = ("systime", "start", "uuid", "source_uuid")
+
+#: Documented exceptions to ``output_sanity`` / ``dup_ts``:
+#: ``(class, method)`` -> reason.
+SANITY_EXEMPT: dict[tuple[str, str], str] = {}
+
+
+def _sanity_problem(result: Any) -> str | None:
+    for frame in _frames(result):
+        if frame.empty:
+            continue
+        for col in frame.columns:
+            s = frame[col]
+            if pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s):
+                values = pd.to_numeric(s, errors="coerce").to_numpy(dtype=float)
+                if np.isinf(values).any():
+                    return f"inf in {str(col)!r}"
+        if "duration_seconds" in frame.columns:
+            dur = pd.to_numeric(frame["duration_seconds"], errors="coerce")
+            if bool((dur < 0).any()):
+                return "negative duration_seconds"
+        if "start" in frame.columns and "end" in frame.columns:
+            try:
+                before = pd.to_datetime(frame["end"]) < pd.to_datetime(frame["start"])
+            except (TypeError, ValueError):
+                before = pd.Series(False, index=frame.index)
+            if bool(before.any()):
+                return "end before start"
+        for col in _NOT_NULL:
+            if col in frame.columns and bool(frame[col].isna().any()):
+                return f"missing {col}"
+    return None
+
+
+def _sanity(cls_name: str, method: str, result: Any) -> str:
+    reason = SANITY_EXEMPT.get((cls_name, method))
+    if reason is not None:
+        return f"n/a: exempt ({reason})"
+    problem = _sanity_problem(result)
+    return f"fail: {problem}" if problem else "ok"
+
+
 def dtype_variants(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     """The same data in the dtype backends users load it with."""
     text = df.copy()
@@ -484,21 +654,94 @@ def dtype_variants(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     }
 
 
+def _frame_unchanged(frame: pd.DataFrame, snapshot: pd.DataFrame) -> bool:
+    return (
+        list(frame.columns) == list(snapshot.columns)
+        and list(frame.dtypes) == list(snapshot.dtypes)
+        and frame.index.equals(snapshot.index)
+        and frame.equals(snapshot)
+    )
+
+
+@functools.cache
+def _cached_inputs() -> dict[str, pd.DataFrame]:
+    """Every input variant, built once per process (copied before each use)."""
+    base = plant_frame()
+    holey = with_nans(base)
+    frames = {
+        "base": base,
+        "tz": plant_frame(BERLIN),
+        "noise": with_noise(base),
+        "shuffled": shuffled(base),
+        "all_nan": all_nan(base),
+        "single_row": single_row(base),
+        "dup_ts": with_duplicates(base),
+        "nan:numpy": holey,
+        "nan:nullable": holey.convert_dtypes(dtype_backend="numpy_nullable"),
+        "nan:pyarrow": holey.convert_dtypes(dtype_backend="pyarrow"),
+    }
+    for name, variant in dtype_variants(base).items():
+        frames[f"dtype:{name}"] = variant
+    return frames
+
+
+def _input(name: str) -> pd.DataFrame:
+    return _cached_inputs()[name].copy()
+
+
 def check(cls_name: str, method: str) -> dict[str, str]:
     cls = getattr(ts_shape, cls_name)
-    base = plant_frame()
+    base = _input("base")
+    snapshot = base.copy(deep=True)
     status: dict[str, str] = {}
 
     empty = base.iloc[0:0]
     status["empty"], empty_result = _run(cls, method, empty)
 
-    tz_status, tz_result = _run(cls, method, plant_frame(BERLIN))
+    tz_status, tz_result = _run(cls, method, _input("tz"))
     if tz_status == "ok":
         naive = _naive_datetime_columns(tz_result)
         tz_status = f"fail: tz stripped in {sorted(set(naive))[:4]}" if naive else "ok"
     status["tz"] = tz_status
 
     plain_status, plain = _run(cls, method, base)
+    if plain_status == "ok":
+        again_status, again = _run(cls, method, base)
+        status["no_mutation"] = (
+            "ok" if _frame_unchanged(base, snapshot) else "fail: input changed"
+        )
+        if again_status != "ok":
+            status["determinism"] = again_status
+        else:
+            status["determinism"] = (
+                "ok" if _identical(plain, again) else "fail: result changed"
+            )
+        status["output_sanity"] = _sanity(cls_name, method, plain)
+        sh_status, sh_result = _run(cls, method, _input("shuffled"))
+        if sh_status != "ok":
+            status["shuffle"] = sh_status
+        else:
+            status["shuffle"] = (
+                "ok"
+                if _same(_sort_rows(plain), _sort_rows(sh_result))
+                else "fail: result changed"
+            )
+        status["dtypes_nan"] = _dtypes_nan(cls, method)
+    else:
+        for chk in (
+            "determinism",
+            "no_mutation",
+            "shuffle",
+            "output_sanity",
+            "dtypes_nan",
+        ):
+            status[chk] = plain_status
+    status["all_nan"], _ = _run(cls, method, _input("all_nan"))
+    status["single_row"], _ = _run(cls, method, _input("single_row"))
+    dup_status, dup_result = _run(cls, method, _input("dup_ts"))
+    status["dup_ts"] = (
+        _sanity(cls_name, method, dup_result) if dup_status == "ok" else dup_status
+    )
     shape = REGISTRY[(cls_name, method)].shape
     if plain_status != "ok":
         status["shape"] = status["empty_schema"] = plain_status
@@ -521,7 +764,7 @@ def check(cls_name: str, method: str) -> dict[str, str]:
     if plain_status != "ok":
         status["extra_uuid"] = plain_status
     else:
-        noisy_status, noisy = _run(cls, method, with_noise(base))
+        noisy_status, noisy = _run(cls, method, _input("noise"))
         if noisy_status != "ok":
             status["extra_uuid"] = noisy_status
         else:
@@ -532,8 +775,8 @@ def check(cls_name: str, method: str) -> dict[str, str]:
         status["dtypes"] = plain_status
     else:
         status["dtypes"] = "ok"
-        for name, variant in dtype_variants(base).items():
-            v_status, v_result = _run(cls, method, variant)
+        for name in dtype_variants(base.iloc[0:0]):
+            v_status, v_result = _run(cls, method, _input(f"dtype:{name}"))
             if v_status != "ok":
                 status["dtypes"] = f"{v_status} ({name})"
                 break
@@ -543,12 +786,54 @@ def check(cls_name: str, method: str) -> dict[str, str]:
     return status
 
 
+def _dtypes_nan(cls: Any, method: str) -> str:
+    ref_status, ref = _run(cls, method, _input("nan:numpy"))
+    if ref_status != "ok":
+        return f"{ref_status} (numpy)"
+    for name in ("nullable", "pyarrow"):
+        v_status, v_result = _run(cls, method, _input(f"nan:{name}"))
+        if v_status != "ok":
+            return f"{v_status} ({name})"
+        if not _same(ref, v_result):
+            return f"fail: result changed ({name})"
+    return "ok"
+
+
 def entries() -> list[tuple[str, str]]:
     return sorted(REGISTRY)
 
 
+def _check_pair(pair: tuple[str, str]) -> dict[str, str]:
+    return check(*pair)
+
+
+def _jobs() -> int:
+    """Worker processes: ``TS_SHAPE_HARNESS_JOBS`` or up to 4 CPUs."""
+    env = os.environ.get("TS_SHAPE_HARNESS_JOBS")
+    if env:
+        return max(1, int(env))
+    return max(1, min(4, os.cpu_count() or 1))
+
+
+def check_many(
+    pairs: list[tuple[str, str]], jobs: int | None = None
+) -> dict[str, dict[str, str]]:
+    """:func:`check` for every pair, in worker processes when there are many.
+
+    Each check runs about 15 detector calls; the registry takes minutes on
+    one core. Results do not depend on the number of workers.
+    """
+    jobs = _jobs() if jobs is None else jobs
+    if jobs <= 1 or len(pairs) < 40:
+        return {f"{c}.{m}": check(c, m) for c, m in pairs}
+    ctx = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=jobs, mp_context=ctx) as pool:
+        statuses = list(pool.map(_check_pair, pairs, chunksize=4))
+    return {f"{c}.{m}": st for (c, m), st in zip(pairs, statuses, strict=True)}
+
+
 def run_all() -> dict[str, dict[str, str]]:
-    return {f"{c}.{m}": check(c, m) for c, m in entries()}
+    return check_many(entries())
 
 
 def load_baseline() -> dict[str, dict[str, str]]:
@@ -564,7 +849,7 @@ def _summary(results: dict[str, dict[str, str]]) -> str:
         ok = sum(v == "ok" for v in values)
         fail = sum(v.startswith("fail") for v in values)
         na = sum(v.startswith("n/a") for v in values)
-        lines.append(f"{chk:>11}: {ok} ok, {fail} fail, {na} n/a")
+        lines.append(f"{chk:>13}: {ok} ok, {fail} fail, {na} n/a")
     return "\n".join(lines)
 
 

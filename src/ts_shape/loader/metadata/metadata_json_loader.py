@@ -1,9 +1,12 @@
 import json
 import logging
+import warnings
 from collections.abc import Iterable
 from typing import Any
 
 import pandas as pd
+
+from ts_shape.errors import DataQualityWarning
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +31,14 @@ class MetadataJsonLoader:
                 maps (``{"uuid": {"0": ...}, "label": {...}, "config": {...}}``),
                 a dict of columns with lists (``{"uuid": [...], ...}``), or a
                 list of records (``[{"uuid": ..., "label": ..., "config": {...}}]``).
-            strict: If True, enforce presence of required keys and unique UUIDs.
+            strict: If True, enforce presence of required keys, a label on
+                every record and unique UUIDs, and reject empty input.
+
+        Raises:
+            ValueError: For columnar input without ``config``, missing or
+                duplicate UUIDs, a record without label (strict), or empty
+                input (strict).
+            TypeError: For an unsupported structure (strict).
         """
         self.json_data = json_data
         self.strict = strict
@@ -76,8 +86,19 @@ class MetadataJsonLoader:
         # Normalize multiple input shapes into list-of-records with uuid, label, config
         records = self._normalize_to_records(data)
         if not records:
-            # Graceful empty
+            if self.strict:
+                raise ValueError(
+                    "metadata is empty: no records with uuid / label / config "
+                    "(pass strict=False to accept empty metadata)"
+                )
             return pd.DataFrame(columns=["label"]).rename_axis("uuid")
+        if self.strict:
+            unlabeled = [r["uuid"] for r in records if r.get("label") is None]
+            if unlabeled:
+                raise ValueError(
+                    f"{len(unlabeled)} record(s) have no label in strict mode, "
+                    f"e.g. uuid {unlabeled[:3]}; pass strict=False to allow it"
+                )
 
         # Build DataFrame
         base = pd.DataFrame.from_records(records)
@@ -128,12 +149,40 @@ class MetadataJsonLoader:
         """
         # Case 1: list of records
         if isinstance(data, list):
+            skipped = sum(1 for rec in data if not isinstance(rec, dict))
+            if skipped:
+                warnings.warn(
+                    f"{skipped} metadata record(s) are not JSON objects (dicts) "
+                    "and are skipped",
+                    DataQualityWarning,
+                    stacklevel=4,
+                )
             return [
                 self._normalize_record(rec) for rec in data if isinstance(rec, dict)
             ]
 
         # Case 2: dict inputs
         if isinstance(data, dict):
+            columnar = bool(data) and (
+                all(isinstance(v, list) for v in data.values())
+                or all(isinstance(v, dict) for v in data.values())
+            )
+            if columnar and "uuid" in data:
+                needed = ["config"] + (["label"] if self.strict else [])
+                missing = [k for k in needed if k not in data]
+                if missing:
+                    raise ValueError(
+                        f"columnar metadata needs the keys uuid, label and config; "
+                        f"missing {missing} (got {sorted(data)})"
+                    )
+                for key in ("label",):
+                    if key not in data:
+                        filler: Any = (
+                            [None] * len(data["uuid"])
+                            if isinstance(data["uuid"], list)
+                            else {k: None for k in data["uuid"]}
+                        )
+                        data = {**data, key: filler}
             # 2a: dict of lists (columnar)
             if all(isinstance(v, list) for v in data.values()) and {
                 "uuid",
@@ -190,6 +239,8 @@ class MetadataJsonLoader:
                 return [self._normalize_record(data)]
 
         # Unknown shape
+        if isinstance(data, dict | list) and not data:
+            return []  # empty: _to_dataframe decides (strict raises ValueError)
         if self.strict:
             raise TypeError("Unsupported JSON structure for metadata")
         return []
@@ -258,15 +309,18 @@ class MetadataJsonLoader:
         """
         Retrieve a row by UUID as a dictionary.
 
+        UUIDs are compared as text, so ``get_by_uuid(1)`` finds ``"1"``.
+
         Args:
             uuid: UUID key (index) to look up.
 
         Returns:
             Row as a dict, or None if not present.
         """
-        if uuid not in self.df.index:
+        matches = self.df.index.astype(str) == str(uuid)
+        if not matches.any():
             return None
-        row: dict[str, Any] = self.df.loc[uuid].to_dict()
+        row: dict[str, Any] = self.df[matches].iloc[0].to_dict()
         return row
 
     def get_by_label(self, label: str) -> dict[str, Any] | None:

@@ -2,6 +2,7 @@ import logging
 
 import pandas as pd
 
+from ts_shape.errors import ColumnNotFoundError
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,10 @@ class CustomFilter(Base):
         Returns:
             pd.DataFrame: A DataFrame containing only the rows that meet the specified conditions.
 
+        Raises:
+            ColumnNotFoundError: If ``conditions`` names a column the frame
+                does not have.
+
         Example:
             >>> import pandas as pd
             >>> from ts_shape.transform.filter.custom_filter import CustomFilter
@@ -39,4 +44,10 @@ class CustomFilter(Base):
             Ensure that the column names and values used in conditions match those in the DataFrame.
             Complex expressions and functions available in pandas query syntax can also be used.
         """
-        return dataframe.query(conditions)
+        try:
+            return dataframe.query(conditions)
+        except pd.errors.UndefinedVariableError as exc:
+            raise ColumnNotFoundError(
+                f"CustomFilter.filter_custom_conditions: {exc}. "
+                f"Available columns: {list(dataframe.columns)}"
+            ) from exc

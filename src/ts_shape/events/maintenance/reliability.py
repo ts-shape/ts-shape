@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import math
+import warnings
 from collections.abc import Sequence
 from typing import Any
 
@@ -37,6 +38,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
@@ -46,6 +48,7 @@ from ts_shape.signals.primitives import intervals, windows
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
+from ts_shape.utils.normalize import _caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +80,11 @@ _CURVE_COLS = [
     "failure_probability",
     "hazard_per_hour",
 ]
+
+
+#: A fitted shape above this means the times between failures have
+#: (almost) no spread; the likelihood has no finite maximum there.
+_MAX_BETA = 1e3
 
 
 def _pattern(beta: float) -> str:
@@ -330,6 +338,10 @@ class ReliabilityEvents(Base):
             ``n_censored`` and ``failure_pattern`` (``infant_mortality``
             for beta < 0.9, ``random`` up to 1.1, else ``wear_out``).
             Empty when fewer than two failure intervals are available.
+            When the times between failures (almost) all have the same
+            length, the model has no finite fit: the parameters are NaN,
+            ``failure_pattern`` is ``"unknown"`` and a
+            :class:`~ts_shape.errors.DataQualityWarning` is emitted.
         """
         ep = self._episodes
         keep = ep if include_initial else ep[~ep["first_observed"].astype(bool)]
@@ -339,14 +351,23 @@ class ReliabilityEvents(Base):
         right = np.array([censored]) if censored > 0 else np.array([])
         if len(tbf) < 2:
             return pd.DataFrame(columns=_WEIBULL_COLS)
-        data = stats.CensoredData(uncensored=tbf, right=right)
-        try:
-            beta, _, eta = stats.weibull_min.fit(data, floc=0)
-        except (ValueError, RuntimeError, FloatingPointError) as exc:
-            logger.warning("Weibull fit failed: %s", exc)
-            beta, eta = np.nan, np.nan
+        beta, eta = np.nan, np.nan
+        if float(np.ptp(tbf)) > 1e-9 * float(tbf.max()):
+            data = stats.CensoredData(uncensored=tbf, right=right)
+            try:
+                with np.errstate(all="ignore"):
+                    beta, _, eta = stats.weibull_min.fit(data, floc=0)
+            except (ValueError, RuntimeError, FloatingPointError) as exc:
+                logger.warning("Weibull fit failed: %s", exc)
         beta, eta = float(beta), float(eta)
-        ok = np.isfinite(beta) and np.isfinite(eta) and beta > 0
+        ok = bool(np.isfinite(beta) and np.isfinite(eta) and 0 < beta <= _MAX_BETA)
+        if not ok:
+            warnings.warn(
+                f"weibull_fit: no finite Weibull fit for {len(tbf)} times between "
+                "failures (e.g. all of the same length); the parameters are NaN",
+                DataQualityWarning,
+                stacklevel=_caller_stacklevel(),
+            )
         return pd.DataFrame(
             [
                 {
@@ -386,10 +407,11 @@ class ReliabilityEvents(Base):
             One row per value of ``hours``: ``hours``, ``age_hours``,
             ``reliability``, ``failure_probability`` and
             ``hazard_per_hour`` (instantaneous failure rate at age + t).
-            Empty when the model cannot be fitted.
+            Empty when there are too few failures to fit; NaN values when
+            the fit is degenerate (see :meth:`weibull_fit`).
         """
         fit = self.weibull_fit(include_initial=include_initial)
-        if fit.empty or not np.isfinite(fit["beta"].iloc[0]):
+        if fit.empty:
             return pd.DataFrame(columns=_CURVE_COLS)
         beta, eta = float(fit["beta"].iloc[0]), float(fit["eta_hours"].iloc[0])
         t = np.asarray(list(hours), dtype=float)
@@ -397,8 +419,12 @@ class ReliabilityEvents(Base):
         def surv(x: np.ndarray | float) -> np.ndarray:
             return np.exp(-((np.asarray(x) / eta) ** beta))
 
-        rel = surv(age_hours + t) / surv(age_hours)
-        hazard = beta / eta * ((age_hours + t) / eta) ** (beta - 1)
+        with np.errstate(all="ignore"):
+            rel = surv(age_hours + t) / surv(age_hours)
+            hazard = beta / eta * ((age_hours + t) / eta) ** (beta - 1)
+        # A degenerate fit (NaN parameters) or an overflow gives NaN, never inf.
+        rel = np.where(np.isfinite(rel), rel, np.nan)
+        hazard = np.where(np.isfinite(hazard), hazard, np.nan)
         return pd.DataFrame(
             {
                 "hours": t,

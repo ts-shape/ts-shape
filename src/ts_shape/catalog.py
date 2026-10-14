@@ -9,6 +9,9 @@ loaders from a REPL or notebook instead of scanning the docs::
 
 from __future__ import annotations
 
+import importlib
+import inspect
+
 import pandas as pd
 
 
@@ -25,8 +28,22 @@ def _category_for(module: str) -> str:
     return parts[1] if len(parts) > 1 else module
 
 
+def _is_listed_class(name: str, module: str) -> bool:
+    """Whether a re-exported name is a current (not deprecated) class."""
+    try:
+        obj = getattr(importlib.import_module(module), name)
+    except ImportError:
+        # An optional backend is missing; decide by the naming convention.
+        return name[:1].isupper() and not name.isupper()
+    return inspect.isclass(obj) and not hasattr(obj, "__deprecated_alias_of__")
+
+
 def list_detectors(category: str | None = None) -> pd.DataFrame:
     """Return a catalog of ts-shape's top-level public classes.
+
+    Only classes are listed -- detectors, loaders and the event-log classes
+    -- not functions (``profile``, ``to_event_log``), constants or deprecated
+    class aliases.
 
     Args:
         category: Optional filter matched as a prefix against the ``category``
@@ -41,6 +58,7 @@ def list_detectors(category: str | None = None) -> pd.DataFrame:
     rows = [
         {"name": name, "category": _category_for(module), "module": module}
         for name, module in _LAZY.items()
+        if _is_listed_class(name, module)
     ]
     df = (
         pd.DataFrame(rows, columns=["name", "category", "module"])

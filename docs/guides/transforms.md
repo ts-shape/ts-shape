@@ -28,11 +28,11 @@ valid = DoubleFilter.filter_value_double_between(df, "value_double", min_value=9
 valid = DoubleFilter.filter_nan_value_double(valid, "value_double")
 
 early_shift = DateTimeFilter.filter_between_datetimes(
-    df, "systime", "2024-06-03 06:00:00", "2024-06-03 14:00:00"
+    df, "2024-06-03 06:00:00", "2024-06-03 14:00:00", time_column="systime"
 )
 
-line1 = StringFilter.filter_string_contains(df, "line1:", column_name="uuid")   # literal substring
-temp2 = StringFilter.filter_value_string_match(df, "line2:temp", column_name="uuid")
+line1 = StringFilter.filter_string_contains(df, "line1:", value_column="uuid")   # literal substring
+temp2 = StringFilter.filter_value_string_match(df, "line2:temp", value_column="uuid")
 
 hot = CustomFilter.filter_custom_conditions(df, "value_double > 101 and uuid == 'line1:temp'")
 
@@ -42,7 +42,11 @@ selected = df[df["uuid"].isin(["line1:temp", "line2:temp"])]
 
 Also available: `IntegerFilter`, `BooleanFilter`, `IsDeltaFilter`
 (`ts_shape.transform.filter`), and `DateTimeFilter.filter_after_date`,
-`filter_before_date`, `filter_between_dates`.
+`filter_before_date`, `filter_between_dates`. The value or time column of a
+filter is `value_column=` / `time_column=` (`column_name=` is deprecated). Edge
+and change filters (`BooleanFilter`, `StringFilter.detect_changes_in_string`)
+compare each sample with the previous sample of the same uuid in time order; a
+missing boolean holds the previous state.
 
 ## Time zones and timestamps
 
@@ -84,13 +88,15 @@ from ts_shape.transform.harmonization import DataHarmonizer
 line1_signals = df[df["uuid"].str.startswith("line1:")]
 harmonizer = DataHarmonizer(line1_signals)
 wide = harmonizer.pivot_to_wide()                       # one column per uuid
-grid = harmonizer.resample_to_uniform(freq="5min")      # wide, on a 5-minute grid
-gaps = harmonizer.detect_gaps(threshold="5min")         # gap_start, gap_end per uuid
+grid = harmonizer.resample_to_uniform(window="5min")    # wide, on a 5-minute grid
+gaps = harmonizer.detect_gaps(threshold="5min")         # start, end, duration_seconds per gap
 filled = harmonizer.fill_gaps(strategy="interpolate", max_gap="1h")
 ```
 
 `align_asof(left_uuid, right_uuid, tolerance=..., direction="backward")`
-attaches the latest value of one signal to each sample of another.
+attaches the latest value of one signal to each sample of another (an unknown
+uuid warns). `fill_gaps(max_gap=...)` measures a gap from the valid sample
+before it to the valid sample after it.
 
 ## Descriptive statistics
 
@@ -103,7 +109,7 @@ NumericStatistics.summary_as_dataframe(temp, "value_double")   # min, max, mean,
 NumericStatistics.column_quantile(temp, "value_double", 0.95)
 
 hourly = TimeGroupedStatistics.calculate_statistic(
-    df, time_column="systime", value_column="value_double", freq="1h", stat_method="mean"
+    df, time_column="systime", value_column="value_double", window="1h", stat_method="mean"
 )   # one row per uuid and hour
 ```
 

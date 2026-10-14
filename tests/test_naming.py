@@ -1,19 +1,24 @@
 """Naming lint: every detector signature follows docs/naming.md.
 
 * no retired parameter names (they live on only as deprecated keyword
-  aliases, which are not part of the signature);
-* optional arguments are keyword-only;
+  aliases, which are not part of the signature) -- in the detectors and in
+  every public class of ``ts_shape.transform`` and ``ts_shape.features``;
+* optional arguments of detectors are keyword-only;
 * ``event_uuid`` defaults look like ``"<pack>:<name>"`` and are unique.
 """
 
 from __future__ import annotations
 
+import importlib
 import inspect
+import pkgutil
 import re
 
 import pytest
 
 import ts_shape
+import ts_shape.features
+import ts_shape.transform
 from ts_shape.eventlog.taxonomy import CLASS_ALIASES, REGISTRY
 
 #: retired name -> canonical name (docs/naming.md)
@@ -49,11 +54,41 @@ RETIRED = {
     "counter_column": "value_column_counter",
     "energy_column": "value_column_energy",
     "state_column": "value_column_state",
+    "value_cols": "value_columns",
+    "cycle_uuid_col": "cycle_uuid_column",
+    "group_col": "group_column",
 }
+
+#: Retired only in transform/features (event classes still name a frame
+#: argument ``df`` in internal-style helpers such as the SPC rules).
+RETIRED_TRANSFORM_FEATURES = {**RETIRED, "df": "dataframe"}
 
 CLASSES = sorted(
     {c for c, _ in REGISTRY if c in dir(ts_shape) and c not in CLASS_ALIASES}
 )
+
+
+def _public_classes(package):
+    """Public classes defined in ``package`` and its submodules."""
+    found = {}
+    for info in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
+        if any(part.startswith("_") for part in info.name.split(".")):
+            continue
+        module = importlib.import_module(info.name)
+        for name, obj in vars(module).items():
+            if (
+                inspect.isclass(obj)
+                and obj.__module__ == module.__name__
+                and not name.startswith("_")
+            ):
+                found[f"{module.__name__}.{name}"] = obj
+    return found
+
+
+TRANSFORM_FEATURE_CLASSES = {
+    **_public_classes(ts_shape.transform),
+    **_public_classes(ts_shape.features),
+}
 
 
 def _callables(cls):
@@ -83,6 +118,23 @@ def test_no_retired_parameter_names(cls_name):
         if p.name in RETIRED
     ]
     assert not bad, "\n".join(bad)
+
+
+@pytest.mark.parametrize("qualname", sorted(TRANSFORM_FEATURE_CLASSES))
+def test_no_retired_parameter_names_in_transform_and_features(qualname):
+    cls = TRANSFORM_FEATURE_CLASSES[qualname]
+    bad = [
+        f"{qualname}.{name}({p.name}) -> {RETIRED_TRANSFORM_FEATURES[p.name]}"
+        for name, fn in _callables(cls)
+        for p in _params(fn)
+        if p.name in RETIRED_TRANSFORM_FEATURES
+    ]
+    assert not bad, "\n".join(bad)
+
+
+def test_transform_and_features_classes_are_linted():
+    names = {qualname.rsplit(".", 1)[1] for qualname in TRANSFORM_FEATURE_CLASSES}
+    assert {"DateTimeFilter", "NumericStatistics", "CycleDataProcessor"} <= names
 
 
 @pytest.mark.parametrize("cls_name", CLASSES)

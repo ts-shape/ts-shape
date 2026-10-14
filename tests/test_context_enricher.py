@@ -182,7 +182,7 @@ class TestContextEnricher:
             }
         )
         enricher = ContextEnricher(df, uuid_column="signal_id")
-        result = enricher.enrich_with_metadata(meta, metadata_uuid_col="signal_id")
+        result = enricher.enrich_with_metadata(meta, metadata_uuid_column="signal_id")
         assert "description" in result.columns
         assert (
             result.loc[result["signal_id"] == "sig:a", "description"].iloc[0]

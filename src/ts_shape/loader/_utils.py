@@ -33,6 +33,44 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+#: Columns of a long-format signal frame, in their usual order.
+SIGNAL_COLUMNS: tuple[str, ...] = (
+    "systime",
+    "uuid",
+    "value_bool",
+    "value_integer",
+    "value_double",
+    "value_string",
+    "is_delta",
+)
+
+
+def empty_signal_frame(tz: str | None = None) -> pd.DataFrame:
+    """A zero-row long-format frame with the standard columns and dtypes.
+
+    Value columns use the nullable dtypes ``boolean`` / ``Int64`` /
+    ``float64`` / ``object``, as :func:`ts_shape.datasets.make_timeseries`.
+
+    Args:
+        tz: Timezone of ``systime``; None for naive.
+
+    Returns:
+        The empty frame.
+    """
+    time_dtype = f"datetime64[ns, {tz}]" if tz else "datetime64[ns]"
+    return pd.DataFrame(
+        {
+            "systime": pd.Series(dtype=time_dtype),
+            "uuid": pd.Series(dtype=object),
+            "value_bool": pd.Series(dtype="boolean"),
+            "value_integer": pd.Series(dtype="Int64"),
+            "value_double": pd.Series(dtype="float64"),
+            "value_string": pd.Series(dtype=object),
+            "is_delta": pd.Series(dtype="bool"),
+        }
+    )
+
+
 def validate_local_path(path: str | Path, *, must_be_dir: bool = False) -> Path:
     """Validate that a local filesystem path exists.
 
@@ -184,11 +222,81 @@ def hourly_slots(
         Hour-aligned timestamps, one per hour folder to visit; empty when
         ``start`` is after ``end``.
     """
-    start = pd.to_datetime(start_timestamp)
-    end = pd.to_datetime(end_timestamp)
+    start, end = same_tz_bounds(start_timestamp, end_timestamp)
     if start > end:
         return pd.DatetimeIndex([], tz=start.tz)
     return pd.date_range(start=start.floor("h"), end=end.floor("h"), freq="h")
+
+
+def parse_utc_times(values: pd.Series) -> pd.Series:
+    """Parse timestamps to tz-aware UTC.
+
+    Strings with an offset (``2024-01-01T00:00:00+01:00``) are converted to
+    UTC; strings without one are taken as UTC. A column that mixes both
+    (or mixes ISO layouts) is parsed value by value.
+
+    Args:
+        values: Timestamps as text, numbers or datetimes.
+
+    Returns:
+        ``datetime64[ns, UTC]`` values.
+    """
+    try:
+        return pd.to_datetime(values, utc=True)
+    except (TypeError, ValueError):
+        return pd.to_datetime(values, utc=True, format="mixed")
+
+
+def same_tz_bounds(
+    start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
+) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """Parse two range bounds so they can be compared.
+
+    When one bound is tz-aware and the other naive, the naive one is read in
+    the timezone of the aware one.
+
+    Args:
+        start_timestamp: Range start (anything ``pd.Timestamp`` accepts).
+        end_timestamp: Range end.
+
+    Returns:
+        ``(start, end)`` as Timestamps with the same timezone handling.
+    """
+    start = pd.Timestamp(start_timestamp)
+    end = pd.Timestamp(end_timestamp)
+    if start.tzinfo is None and end.tzinfo is not None:
+        start = start.tz_localize(end.tz)
+    elif end.tzinfo is None and start.tzinfo is not None:
+        end = end.tz_localize(start.tz)
+    return start, end
+
+
+def utc_folder_hours(
+    start_timestamp: str | pd.Timestamp,
+    end_timestamp: str | pd.Timestamp,
+    freq: str = "h",
+) -> pd.DatetimeIndex:
+    """Folder slots covering ``[start, end]`` for a layout written in UTC.
+
+    The start is floored to ``freq`` (``09:30 .. 11:00`` gives ``09, 10, 11``).
+    tz-aware bounds are converted to UTC first; naive bounds are taken as
+    UTC. The result is naive, ready for ``strftime``.
+
+    Args:
+        start_timestamp: Range start.
+        end_timestamp: Range end, inclusive.
+        freq: Folder granularity (default hourly).
+
+    Returns:
+        Naive UTC timestamps, one per folder; empty when start is after end.
+    """
+    start, end = same_tz_bounds(start_timestamp, end_timestamp)
+    if start.tzinfo is not None:
+        start = start.tz_convert("UTC").tz_localize(None)
+        end = end.tz_convert("UTC").tz_localize(None)
+    if start > end:
+        return pd.DatetimeIndex([])
+    return pd.date_range(start=start.floor(freq), end=end, freq=freq)
 
 
 def _align_bound(bound: pd.Timestamp, column: pd.Series) -> pd.Timestamp:

@@ -39,6 +39,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
+from ts_shape.utils.frames import require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,10 @@ class CycleExtractor(Base):
         start_uuid: str,
         end_uuid: str | None = None,
         value_change_threshold: float = 0.0,
-    ):
+        *,
+        time_column: str = "systime",
+        uuid_column: str = "uuid",
+    ) -> None:
         """Initializes the class with the data and the UUIDs for cycle start and end.
 
         Args:
@@ -87,8 +91,18 @@ class CycleExtractor(Base):
             start_uuid: UUID for cycle start variable
             end_uuid: UUID for cycle end variable (defaults to start_uuid)
             value_change_threshold: Minimum threshold for considering a value change significant (default: 0.0)
+            time_column: Timestamp column. Default ``"systime"``.
+            uuid_column: Signal identifier column. Default ``"uuid"``. A frame
+                without it is taken as one pre-filtered signal.
+
+        Raises:
+            ColumnNotFoundError: If ``dataframe`` has no ``time_column``.
+            ValueError: If ``start_uuid`` is not a string.
         """
-        super().__init__(dataframe)
+        require_columns(dataframe, [time_column], where="CycleExtractor")
+        super().__init__(dataframe, time_column=time_column)
+        self.time_column = time_column
+        self.uuid_column = uuid_column
 
         # Validate input types (Base already guards the DataFrame type).
         if not isinstance(start_uuid, str):
@@ -121,14 +135,14 @@ class CycleExtractor(Base):
         """
         signal_uuid = self.start_uuid if signal_uuid is None else signal_uuid
         df = self.df
-        if "systime" not in df.columns:
+        if self.time_column not in df.columns:
             return df.iloc[0:0]
-        if "uuid" in df.columns and not df.empty:
-            match = df["uuid"] == signal_uuid
+        if self.uuid_column in df.columns and not df.empty:
+            match = df[self.uuid_column] == signal_uuid
             if match.any():
                 df = df[match]
             else:
-                present = sorted(str(u) for u in df["uuid"].dropna().unique())
+                present = sorted(str(u) for u in df[self.uuid_column].dropna().unique())
                 if len(present) == 1:
                     warnings.warn(
                         f"CycleExtractor: uuid {signal_uuid!r} not found; the frame "
@@ -144,7 +158,7 @@ class CycleExtractor(Base):
                         stacklevel=4,
                     )
                     return df.iloc[0:0]
-        return df[df["systime"].notna()]
+        return df[df[self.time_column].notna()]
 
     @staticmethod
     def _bool_state(frame: pd.DataFrame) -> pd.Series:
@@ -153,33 +167,31 @@ class CycleExtractor(Base):
             return pd.Series(pd.NA, index=frame.index, dtype="boolean")
         return frame["value_bool"].astype("boolean")
 
-    @classmethod
-    def _bool_edges(cls, frame: pd.DataFrame) -> tuple[pd.Series, pd.Series, bool]:
+    def _bool_edges(self, frame: pd.DataFrame) -> tuple[pd.Series, pd.Series, bool]:
         """Rising and falling edge times of ``value_bool``.
 
         A missing sample holds the previous state. Returns the rising-edge
         times, the falling-edge times, and whether the signal was already True
         at its first known sample (the first rising edge is then not seen).
         """
-        raw = cls._bool_state(frame)
+        raw = self._bool_state(frame)
         known = raw.dropna()
         initially_true = bool(len(known)) and bool(known.iloc[0])
         state = raw.ffill().fillna(False).astype(bool)
         prev = state.shift(fill_value=False)
-        times = frame["systime"]
+        times = frame[self.time_column]
         return times[state & ~prev], times[~state & prev], initially_true
 
-    @classmethod
-    def _bool_events(cls, frame: pd.DataFrame) -> tuple[pd.Series, bool]:
+    def _bool_events(self, frame: pd.DataFrame) -> tuple[pd.Series, bool]:
         """Times of the True events of a pulse signal.
 
         A signal that is never False is an event log: every True row is an
         event. Otherwise a held True counts once, at its rising edge.
         """
-        raw = cls._bool_state(frame)
+        raw = self._bool_state(frame)
         if not raw.eq(False).fillna(False).any():
-            return frame["systime"][raw.eq(True).fillna(False)], False
-        rising, _, initially_true = cls._bool_edges(frame)
+            return frame[self.time_column][raw.eq(True).fillna(False)], False
+        rising, _, initially_true = self._bool_edges(frame)
         return rising, initially_true
 
     # ------------------------------------------------------------------
@@ -193,6 +205,10 @@ class CycleExtractor(Base):
         falling edge (True -> False), i.e. at the first False sample. A missing
         sample holds the previous state. A signal already True at its first
         sample gives a first cycle with ``is_complete = False``.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         frame = self._signal_frame()
         starts, ends, initially_true = self._bool_edges(frame)
@@ -200,7 +216,7 @@ class CycleExtractor(Base):
             starts,
             ends,
             method="persistent",
-            partial_start=frame["systime"].iloc[0] if initially_true else None,
+            partial_start=frame[self.time_column].iloc[0] if initially_true else None,
         )
 
     def process_trigger_cycle(self) -> pd.DataFrame:
@@ -210,6 +226,10 @@ class CycleExtractor(Base):
         a rising edge (False -> True); for a signal that is never False (an
         event log of True rows) every row is a trigger. The last trigger gives
         an incomplete cycle.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         frame = self._signal_frame()
         starts, initially_true = self._bool_events(frame)
@@ -218,7 +238,7 @@ class CycleExtractor(Base):
             starts,
             method="trigger",
             same_rows=True,
-            partial_start=frame["systime"].iloc[0] if initially_true else None,
+            partial_start=frame[self.time_column].iloc[0] if initially_true else None,
         )
 
     def process_separate_start_end_cycle(self) -> pd.DataFrame:
@@ -230,11 +250,15 @@ class CycleExtractor(Base):
         counts). An end closes the open cycle; a second start aborts it. When
         ``end_uuid`` equals ``start_uuid`` (or the frame has no ``uuid``
         column), each event closes the previous cycle and opens the next.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         start_frame = self._signal_frame(self.start_uuid)
         starts, start_initially = self._bool_events(start_frame)
-        partial = start_frame["systime"].iloc[0] if start_initially else None
-        if "uuid" not in self.df.columns or self.start_uuid == self.end_uuid:
+        partial = start_frame[self.time_column].iloc[0] if start_initially else None
+        if self.uuid_column not in self.df.columns or self.start_uuid == self.end_uuid:
             return self._generate_cycle_dataframe(
                 starts,
                 starts,
@@ -272,12 +296,12 @@ class CycleExtractor(Base):
             raw = pd.Series(np.nan, index=frame.index, dtype="float64")
         step = raw.ffill()
         entered = step.notna() & step.ne(step.shift())
-        times = frame["systime"]
+        times = frame[self.time_column]
         starts = times[entered & (step == start_step)]
         ends = times[entered & (step == end_step)]
         known = raw.dropna()
         partial = (
-            frame["systime"].iloc[0]
+            frame[self.time_column].iloc[0]
             if len(known) and known.iloc[0] == start_step
             else None
         )
@@ -295,9 +319,13 @@ class CycleExtractor(Base):
         Every sample of the signal is a boundary: a cycle runs from one sample
         to the next later one. The first cycle starts at the first sample,
         whose state began before the data, so it is marked incomplete.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         frame = self._signal_frame()
-        times = frame["systime"]
+        times = frame[self.time_column]
         return self._generate_cycle_dataframe(
             times,
             times,
@@ -314,6 +342,10 @@ class CycleExtractor(Base):
         (compared sample to sample), bools and strings by any change. A missing
         value holds the previous one. The first sample is a boundary too; its
         cycle began before the data and is marked incomplete.
+
+        Returns:
+            One row per cycle (see the module docstring); empty, with the
+                full column set, when no cycle is found.
         """
         frame = self._signal_frame()
         change = pd.Series(False, index=frame.index)
@@ -331,7 +363,7 @@ class CycleExtractor(Base):
                 change |= (held.ne(prev) & held.notna() & prev.notna()).astype(bool)
         if len(change):
             change.iloc[0] = True
-        times = frame["systime"][change.to_numpy(dtype=bool)]
+        times = frame[self.time_column][change.to_numpy(dtype=bool)]
         return self._generate_cycle_dataframe(
             times,
             times,
@@ -345,8 +377,8 @@ class CycleExtractor(Base):
     # ------------------------------------------------------------------
 
     def _time_dtype(self) -> Any:
-        if "systime" in self.df.columns:
-            return self.df["systime"].dtype
+        if self.time_column in self.df.columns:
+            return self.df[self.time_column].dtype
         return pd.Series(dtype="datetime64[ns]").dtype
 
     def _empty_cycles(self) -> pd.DataFrame:

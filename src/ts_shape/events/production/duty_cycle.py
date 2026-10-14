@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.events._output import empty_event_df
@@ -69,8 +70,17 @@ class DutyCycleEvents(Base):
         )
         self.series[self.time_column] = pd.to_datetime(self.series[self.time_column])
 
-    def on_off_intervals(self) -> pd.DataFrame:
+    def on_off_intervals(
+        self, *, max_gap: str | pd.Timedelta | None = None
+    ) -> pd.DataFrame:
         """List every on and off interval with duration.
+
+        Args:
+            max_gap: Longest time between two samples an interval may span
+                (e.g. ``"15min"``). A longer gap is "no data": the interval
+                before it ends at its last sample and a new interval starts
+                after the gap, even if the state is unchanged. ``None``
+                (default): no limit.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds (float),
@@ -83,13 +93,16 @@ class DutyCycleEvents(Base):
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s["state"] = s[self.value_column].fillna(False).astype(bool)
-        intervals = state_intervals(
-            s,
-            time_column=self.time_column,
-            state_column="state",
-            interval_end=self.interval_end,
-            data_end=self.data_end,
-        )
+        if max_gap is None:
+            intervals = state_intervals(
+                s,
+                time_column=self.time_column,
+                state_column="state",
+                interval_end=self.interval_end,
+                data_end=self.data_end,
+            )
+        else:
+            intervals = self._intervals_split_at_gaps(s, pd.Timedelta(max_gap))
         if intervals.empty:
             return empty_event_df("interval", cols)
 
@@ -111,6 +124,35 @@ class DutyCycleEvents(Base):
         out.insert(3, "uuid", self.event_uuid)
         out.insert(4, "source_uuid", self.signal_uuid)
         return out
+
+    def _intervals_split_at_gaps(
+        self, s: pd.DataFrame, max_gap: pd.Timedelta
+    ) -> pd.DataFrame:
+        """:func:`state_intervals`, with a new interval after each long gap."""
+        s = s.reset_index(drop=True)
+        times = s[self.time_column]
+        gap_after = ((times.shift(-1) - times) > max_gap).to_numpy(dtype=bool)
+        gap_before = np.r_[False, gap_after[:-1]]
+        changed = (s["state"] != s["state"].shift()).to_numpy(dtype=bool)
+        s["_segment"] = np.cumsum(changed | gap_before)
+        intervals = state_intervals(
+            s,
+            time_column=self.time_column,
+            state_column="_segment",
+            interval_end=self.interval_end,
+            data_end=self.data_end,
+        )
+        grouped = s.groupby("_segment", sort=True)
+        last_sample = grouped[self.time_column].last().reset_index(drop=True)
+        ends_at_gap = (
+            pd.Series(gap_after).groupby(s["_segment"]).last().to_numpy(dtype=bool)
+        )
+        intervals["state"] = grouped["state"].first().to_numpy()
+        intervals["end"] = intervals["end"].where(~ends_at_gap, last_sample)
+        intervals["duration_seconds"] = (
+            intervals["end"] - intervals["start"]
+        ).dt.total_seconds()
+        return intervals
 
     duty_cycle_per_window = deprecated_method("duty_cycle_by_window")
 

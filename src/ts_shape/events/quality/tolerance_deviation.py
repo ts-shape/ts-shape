@@ -7,9 +7,12 @@ from typing import Any, Literal, overload
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._compat import summary_bounds, warn_dict_return
+from ts_shape.events._output import drop_duplicate_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
+from ts_shape.utils.normalize import _caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -307,7 +310,8 @@ class ToleranceDeviationEvents(Base):
 
         # Every event row is about the actual measurement signal.
         df["source_uuid"] = self.actual_uuid
-        return df
+        # Duplicated input samples would report the same row twice.
+        return drop_duplicate_events(df)
 
     def _process_single_tolerance(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -565,6 +569,11 @@ class ToleranceDeviationEvents(Base):
         are NaN and Cpk/Ppk are the one-sided index (CPU or CPL); the
         missing limit is reported as NaN.
 
+        Measurements without spread (constant values, a single measurement or
+        only missing values) give NaN indices and a
+        :class:`~ts_shape.errors.DataQualityWarning`, as in
+        :class:`CapabilityTrendingEvents`.
+
         Args:
             target_value: Target/nominal value for the process. If None, the
                 midpoint of the tolerances (or the single limit of a
@@ -640,21 +649,27 @@ class ToleranceDeviationEvents(Base):
         actual_rows = df[df["uuid"] == self.actual_uuid]
         actual_data = actual_rows[self.actual_column].dropna()
 
-        if actual_data.empty:
+        if actual_rows.empty:
             raise ValueError(
                 f"No actual measurement data found for uuid: {self.actual_uuid}"
             )
 
         # Calculate statistics
-        process_mean = actual_data.mean()
-        process_std = actual_data.std(ddof=1)  # Sample standard deviation
+        process_mean = float(actual_data.mean()) if len(actual_data) else np.nan
+        # Sample standard deviation; NaN for fewer than two measurements.
+        process_std = float(actual_data.std(ddof=1)) if len(actual_data) else np.nan
 
-        # NaN (a single measurement) must not slip past the zero check.
+        # Like CapabilityTrendingEvents: no spread (constant values, a single
+        # or no measurement) gives NaN indices instead of an error.
         if not process_std > 0:
-            raise ValueError(
-                "Process standard deviation is zero or undefined (fewer than two "
-                "measurements) - cannot calculate capability indices"
+            warnings.warn(
+                f"capability_indices: {len(actual_data)} measurement(s) without "
+                "spread (constant, single or missing values); the capability "
+                "indices are NaN",
+                DataQualityWarning,
+                stacklevel=_caller_stacklevel(),
             )
+            process_std = np.nan
 
         # Determine target value
         target_given = target_value is not None
@@ -696,7 +711,10 @@ class ToleranceDeviationEvents(Base):
             result["Cpm"] = float(cpm)
         if not as_frame:
             return result
-        start, end, span = summary_bounds(actual_rows.loc[actual_data.index, "systime"])
+        measured = (
+            actual_rows.loc[actual_data.index] if len(actual_data) else actual_rows
+        )
+        start, end, span = summary_bounds(measured["systime"])
         row = {
             "start": start,
             "end": end,

@@ -3,9 +3,28 @@ from zoneinfo import available_timezones
 
 import pandas as pd
 
-from ts_shape.utils.base import Base  # Import Base from the specified path
+from ts_shape.utils.base import Base
+from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
+
+
+def _valid_timezone(name: str, *, what: str = "timezone") -> str:
+    """Return the IANA name for ``name``; ``"utc"`` in any case is ``"UTC"``.
+
+    Raises:
+        ValueError: If ``name`` is not a known timezone.
+    """
+    if isinstance(name, str) and name.strip().upper() == "UTC":
+        return "UTC"
+    if name not in available_timezones():
+        raise ValueError(f"Invalid {what}: {name}")
+    return name
+
+
+def _times(dataframe: pd.DataFrame, column: str, where: str) -> pd.Series:
+    require_columns(dataframe, [column], where=f"TimezoneShift.{where}")
+    return as_datetime(dataframe[column], where=f"TimezoneShift.{where}")
 
 
 class TimezoneShift(Base):
@@ -42,21 +61,20 @@ class TimezoneShift(Base):
             pd.DataFrame: A copy of the DataFrame with timestamps converted to
             the target timezone (the input frame is not modified).
         """
-        # Validate timezones
-        if input_timezone not in available_timezones():
-            raise ValueError(f"Invalid input timezone: {input_timezone}")
-        if target_timezone not in available_timezones():
-            raise ValueError(f"Invalid target timezone: {target_timezone}")
-
-        # Ensure the time column is in datetime format
-        if not pd.api.types.is_datetime64_any_dtype(dataframe[time_column]):
+        input_timezone = _valid_timezone(input_timezone, what="input timezone")
+        target_timezone = _valid_timezone(target_timezone, what="target timezone")
+        require_columns(dataframe, [time_column], where="TimezoneShift.shift_timezone")
+        values = dataframe[time_column]
+        if values.notna().any() and not (
+            pd.api.types.is_datetime64_any_dtype(values.dtype)
+        ):
             raise ValueError(f"Column '{time_column}' must contain datetime values.")
 
         # Work on a copy: the caller's frame must not be mutated.
         dataframe = dataframe.copy()
 
         # Localize to the specified input timezone if timestamps are naive
-        dataframe[time_column] = pd.to_datetime(dataframe[time_column])
+        dataframe[time_column] = _times(dataframe, time_column, "shift_timezone")
         if dataframe[time_column].dt.tz is None:
             dataframe[time_column] = dataframe[time_column].dt.tz_localize(
                 input_timezone, ambiguous=ambiguous, nonexistent=nonexistent
@@ -92,6 +110,10 @@ class TimezoneShift(Base):
         Returns:
             pd.DataFrame: A DataFrame with an additional column for the shifted timezone.
         """
+        require_columns(
+            dataframe, [time_column], where="TimezoneShift.add_timezone_column"
+        )
+        target_timezone = _valid_timezone(target_timezone, what="target timezone")
         # Duplicate the DataFrame to prevent modifying the original column
         df_copy = dataframe.copy()
 
@@ -130,7 +152,10 @@ class TimezoneShift(Base):
         Returns:
             bool: True if the column is timezone-aware, False otherwise.
         """
-        return dataframe[time_column].dt.tz is not None
+        return (
+            _times(dataframe, time_column, "detect_timezone_awareness").dt.tz
+            is not None
+        )
 
     @classmethod
     def revert_to_original_timezone(
@@ -147,13 +172,13 @@ class TimezoneShift(Base):
         Returns:
             pd.DataFrame: A DataFrame with timestamps reverted to the original timezone.
         """
-        # Validate the original timezone
-        if original_timezone not in available_timezones():
-            raise ValueError(f"Invalid original timezone: {original_timezone}")
-
-        # Convert to the original timezone
-        dataframe[time_column] = dataframe[time_column].dt.tz_convert(original_timezone)
-
+        original_timezone = _valid_timezone(original_timezone, what="original timezone")
+        times = _times(dataframe, time_column, "revert_to_original_timezone")
+        if times.dt.tz is None and times.isna().all():
+            times = times.dt.tz_localize("UTC")
+        # Work on a copy: the caller's frame must not be mutated.
+        dataframe = dataframe.copy()
+        dataframe[time_column] = times.dt.tz_convert(original_timezone)
         return dataframe
 
     @classmethod
@@ -171,9 +196,11 @@ class TimezoneShift(Base):
         Returns:
             pd.Series: A Series with the time differences in seconds.
         """
+        start = _times(dataframe, start_column, "calculate_time_difference")
+        end = _times(dataframe, end_column, "calculate_time_difference")
         # Check if both columns are timezone-aware or both are timezone-naive
-        start_is_aware = dataframe[start_column].dt.tz is not None
-        end_is_aware = dataframe[end_column].dt.tz is not None
+        start_is_aware = start.dt.tz is not None
+        end_is_aware = end.dt.tz is not None
 
         if start_is_aware != end_is_aware:
             raise ValueError(
@@ -182,13 +209,13 @@ class TimezoneShift(Base):
 
         # If timezone-aware, convert both columns to UTC for comparison
         if start_is_aware:
-            start_times = dataframe[start_column].dt.tz_convert("UTC")
-            end_times = dataframe[end_column].dt.tz_convert("UTC")
+            start_times = start.dt.tz_convert("UTC")
+            end_times = end.dt.tz_convert("UTC")
         else:
-            start_times = dataframe[start_column]
-            end_times = dataframe[end_column]
+            start_times = start
+            end_times = end
 
         # Calculate the difference in seconds
-        time_difference = (end_times - start_times).dt.total_seconds()
+        time_difference = (end_times - start_times).dt.total_seconds().astype("float64")
 
         return time_difference

@@ -28,8 +28,8 @@ Event classes do not use the prefixes `calculate_`, `compute_`, `get_` or `proce
 |---|---|---|
 | The input frame | `dataframe` | `df`, `data` |
 | Timestamp column | `time_column` (default `"systime"`) | `column_name`, `timestamp_column`, `systime_col` |
-| Value column | `value_column`; per role `value_column_<role>` (`value_column_counter`, `value_column_state`) | `value_col`, `column`, `counter_column`, `<role>_value_column` |
-| Signal identifier column | `uuid_column` | `uuid_col`, `id_column` |
+| Value column | `value_column`; per role `value_column_<role>` (`value_column_counter`, `value_column_state`); several: `value_columns` | `column_name`, `value_col`, `value_cols`, `column`, `metric`, `counter_column`, `<role>_value_column` |
+| Signal identifier column | `uuid_column` (also `cycle_uuid_column`, `metadata_uuid_column`, ...) | `uuid_col`, `*_uuid_col`, `id_column` |
 | The one signal a detector analyzes | `signal_uuid`, or a role name when the role matters: `setpoint_uuid`, `run_state_uuid`, `counter_uuid` | `uuid`, `sensor_uuid` |
 | Several signals | `signal_uuids` | `sensor_uuids`, `uuid_list`, `uuids` |
 | Run / idle state signal | `run_state_uuid` | `run_uuid`, `state_uuid` |
@@ -79,11 +79,12 @@ Every detector returns a `pandas.DataFrame` in one of four shapes (`ts_shape.eve
 | The uuid column is missing (non-empty frame) | `ColumnNotFoundError` |
 | A value column argument names a column the frame does not have | `ColumnNotFoundError` naming the column |
 | A signal uuid argument (`*_uuid`, `*_uuids`) is not in a non-empty frame | `DataQualityWarning` listing the available uuids; the result is empty. A few detectors (alarm, batch, degradation, line balancing, ...) also raise `ValueError` |
-| Too little data for a statistic | empty result or NaN |
+| Too little data for a statistic | empty result or NaN, never `inf` and never a placeholder such as `0.0` or `0 %`; a mode of no data is `None` |
+| A code that a mapping table does not know | kept unchanged, with a `DataQualityWarning` counting them |
 | Input rows are skipped (non-numeric values, unreadable files, malformed spec entries) | `DataQualityWarning` saying what was skipped; never silent |
 | A deprecated name is used | `DeprecationWarning` naming the replacement |
 
-The uuid and column checks are applied to every detector in `ts_shape.events` by its base class, so they behave the same in every pack. They report the call you made, not the detector's internal calls. A missing *value* column (`value_column`, `value_column_<role>`, ...) raises `ColumnNotFoundError` naming the column when the method looks it up.
+The uuid and column checks are applied to every detector in `ts_shape.events` by its base class, so they behave the same in every pack. Transforms, features, signals, the event log and the context helpers use the same checks (`ts_shape.utils.frames`), and contract tests run every public function on empty, tz-aware, nullable and pyarrow input. They report the call you made, not the detector's internal calls. A missing *value* column (`value_column`, `value_column_<role>`, ...) raises `ColumnNotFoundError` naming the column when the method looks it up.
 
 ## Wording
 

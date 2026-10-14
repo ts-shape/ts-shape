@@ -69,7 +69,7 @@ def demo_unit_conversion():
         }
     )
     out = UnitConverter.convert_column(
-        df, "bar", "psi", column_name="value_double", target_column="value_psi"
+        df, "bar", "psi", value_column="value_double", target_column="value_psi"
     )
     print(out[["systime", "value_double", "value_psi"]].round(2).to_string(index=False))
     print()

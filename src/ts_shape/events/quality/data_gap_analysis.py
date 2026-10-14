@@ -62,7 +62,8 @@ class DataGapAnalysisEvents(Base):
 
         Args:
             min_gap: Minimum gap duration to report (e.g. ``'5s'``,
-                ``'1min'``, ``'1h'``).
+                ``'1min'``, ``'1h'``). A zero-length step (duplicate
+                timestamp) is never a gap, even with ``min_gap="0s"``.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -89,7 +90,8 @@ class DataGapAnalysisEvents(Base):
         events: list[dict[str, Any]] = []
         for i, d in enumerate(diffs):
             gap = pd.Timedelta(d)
-            if gap >= threshold:
+            # A zero step (duplicate timestamp) is never a gap.
+            if gap >= threshold and gap > pd.Timedelta(0):
                 events.append(
                     {
                         "start": pd.Timestamp(times[i]),
@@ -263,6 +265,7 @@ class DataGapAnalysisEvents(Base):
         Args:
             max_gap: Maximum gap duration to consider for interpolation.
             min_gap: Minimum gap duration (ignore trivially small gaps).
+                A zero-length step (duplicate timestamp) is never a gap.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -298,7 +301,7 @@ class DataGapAnalysisEvents(Base):
         events: list[dict[str, Any]] = []
         for i, d in enumerate(diffs):
             gap = pd.Timedelta(d)
-            if gap < min_td or gap > max_td:
+            if gap <= pd.Timedelta(0) or gap < min_td or gap > max_td:
                 continue
 
             val_before = float(values[i]) if not np.isnan(values[i]) else None

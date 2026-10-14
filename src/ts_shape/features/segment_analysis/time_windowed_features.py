@@ -7,11 +7,29 @@ from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
 from ts_shape.features.segment_analysis.segment_processor import ALL_METRICS
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.frames import as_datetime
 
 logger = logging.getLogger(__name__)
 
 #: Canonical window columns added after the metrics by ``compute_long``.
 _WINDOW_COLUMNS = ["start", "end", "duration_seconds"]
+
+
+def _typed_empty(
+    columns: list[str], time_dtype: object, keys: list[str]
+) -> pd.DataFrame:
+    """Empty result with the column dtypes of a real result."""
+    data: dict[str, pd.Series] = {}
+    for col in columns:
+        if col in ("time_window", "start", "end"):
+            data[col] = pd.Series(dtype=time_dtype)
+        elif col in keys:
+            data[col] = pd.Series(dtype=object)
+        elif col == "sample_count":
+            data[col] = pd.Series(dtype="int64")
+        else:
+            data[col] = pd.Series(dtype="float64")
+    return pd.DataFrame(data)
 
 
 class TimeWindowedFeatureTable(Base):
@@ -86,12 +104,15 @@ class TimeWindowedFeatureTable(Base):
         metric_cols = [m for m in ALL_METRICS if m in wanted]
         columns = [*leading, "sample_count", *metric_cols, *_WINDOW_COLUMNS]
 
+        df = dataframe.copy()
+        df[time_column] = as_datetime(
+            df[time_column], where="TimeWindowedFeatureTable.compute_long"
+        )
+        keys = leading[1:]
+        empty = _typed_empty(columns, df[time_column].dtype, keys)
         if dataframe.empty:
             logger.warning("Empty DataFrame provided.")
-            return pd.DataFrame(columns=columns)
-
-        df = dataframe.copy()
-        df[time_column] = pd.to_datetime(df[time_column])
+            return empty
         # Stable time order: the window grouper then labels rows reliably.
         df = df.iloc[np.argsort(df[time_column].to_numpy(), kind="stable")]
 
@@ -102,7 +123,7 @@ class TimeWindowedFeatureTable(Base):
         result = summarize_groups(df, grouper, value_column)
         if result.empty:
             logger.warning("No windows with sufficient data (>= 2 non-NaN values).")
-            return pd.DataFrame(columns=columns)
+            return empty
         result.columns = [*leading, *result.columns[len(leading) :]]
         result["start"] = result["time_window"]
         result["end"] = result["time_window"] + pd.tseries.frequencies.to_offset(window)
@@ -167,7 +188,7 @@ class TimeWindowedFeatureTable(Base):
             index_cols.append(segment_column)
 
         if long_df.empty:
-            return pd.DataFrame(columns=index_cols)
+            return long_df[index_cols].reset_index(drop=True)
 
         # Identify metric columns to pivot (window bounds are not metrics)
         value_cols = [

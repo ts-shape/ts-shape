@@ -63,6 +63,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from ..errors import ColumnNotFoundError, DataQualityWarning
+from ..utils.frames import require_columns
 from . import schema
 from .concat import concat
 from .model import EventLog
@@ -75,6 +76,9 @@ _END = "end"
 _DURATION = "duration_seconds"
 _UUID = "uuid"
 _SOURCE = "source_uuid"
+
+#: Value columns that can carry an object id.
+_ID_VALUE_COLUMNS: tuple[str, ...] = ("value_string", "value_integer", "value_double")
 
 #: Columns of the interval table that are not object attributes.
 _RESERVED: tuple[str, ...] = (_OID, _TYPE, _START, _END, _DURATION, _UUID, _SOURCE)
@@ -183,12 +187,24 @@ def _segments(
         # removed and its neighbours close over it (and merge when they carry
         # the same id). The final run is open-ended (its true duration is
         # unknown), and empty / missing runs are boundaries — neither is
-        # dropped.
+        # dropped. Blips are removed shortest first and equal neighbours are
+        # merged before the next check, so in A-X-A a short X is removed
+        # and the merged A is judged on its full length.
         threshold = pd.Timedelta(min_duration).value
-        is_final = np.zeros(len(c), dtype=bool)
-        is_final[-1] = True
-        keep = ~((c >= 0) & ((e - s) < threshold) & ~is_final)
-        if not keep.all():
+        while len(c) > 1:
+            dur = e - s
+            short = (c >= 0) & (dur < threshold)
+            short[-1] = False
+            if not short.any():
+                break
+            # Drop the short runs that are no longer than a short neighbour
+            # (local minima); the shortest one always qualifies.
+            big = np.iinfo(np.int64).max
+            d = np.where(short, dur, big)
+            left = np.append(big, d[:-1])
+            right = np.append(d[1:], big)
+            drop = short & (d < left) & (d <= right)
+            keep = ~drop
             c, s, last, first = c[keep], s[keep], e[keep], first[keep]
             c, s, e, k = _rle(c, s, last)
             first = first[k]
@@ -197,13 +213,21 @@ def _segments(
     return c[ids], s[ids], e[ids], first[ids], uniques
 
 
+def _id_text(value: object) -> str:
+    """An object id as text; an integral float renders without ``.0``."""
+    if isinstance(value, float | np.floating) and float(value).is_integer():
+        return str(int(value))
+    return str(value)
+
+
 def _render_oids(values: pd.Index, template: str, object_type: str) -> pd.Series:
+    texts = [_id_text(v) for v in values]
     if template == "{value}":
-        out = [str(v) for v in values]
+        out = texts
     elif template == "{type}:{value}":
-        out = [f"{object_type}:{v}" for v in values]
+        out = [f"{object_type}:{v}" for v in texts]
     else:
-        out = [template.format(value=v, type=object_type) for v in values]
+        out = [template.format(value=v, type=object_type) for v in texts]
     return pd.Series(out, dtype="string")
 
 
@@ -241,13 +265,7 @@ class ObjectSpec:
 
 
 def _check_frame(df: pd.DataFrame, uuid_column: str, time_column: str) -> None:
-    if df.empty:
-        return
-    for col in (uuid_column, time_column):
-        if col not in df.columns:
-            raise ColumnNotFoundError(
-                f"column {col!r} not found; available columns: {list(df.columns)}"
-            )
+    require_columns(df, (uuid_column, time_column), where="object detection")
 
 
 def _detect(
@@ -478,6 +496,23 @@ def detect_objects(
     hierarchy, overlapping objects of different types get the honest,
     symmetric ``co_occurs`` qualifier instead. Set ``infer_o2o=False`` to skip
     object-to-object relations entirely.
+
+    Args:
+        df: Long-format frame with the id signals.
+        specs: Which signal carries which object type.
+        uuid_column: Signal identifier column.
+        time_column: Timestamp column.
+        hierarchy: Child type -> parent type for ``part_of`` relations.
+        infer_o2o: Derive object-to-object relations.
+        validate: Check the result against the canonical schema.
+
+    Returns:
+        An :class:`EventLog` with ``objects``, ``o2o`` and ``object_changes``
+        and no events.
+
+    Raises:
+        ColumnNotFoundError: When ``df`` lacks the uuid, time or a spec's
+            value column.
     """
     intervals, extra = _detect(
         df, specs, uuid_column=uuid_column, time_column=time_column
@@ -516,6 +551,20 @@ def attach_objects(
     object-interval table via :func:`object_intervals`, then relates the events
     to it. When you already hold an interval/object table, call :func:`relate`
     directly and skip the raw signals.
+
+    Args:
+        event_log: The events to link.
+        df: Long-format frame with the id signals.
+        specs: Which signal carries which object type.
+        qualifiers: Relation qualifier per object type.
+        uuid_column: Signal identifier column.
+        time_column: Timestamp column.
+        hierarchy: Child type -> parent type for ``part_of`` relations.
+        infer_o2o: Derive object-to-object relations.
+        validate: Check the result against the canonical schema.
+
+    Returns:
+        ``event_log`` merged with the detected objects and the new relations.
     """
     intervals, extra = _detect(
         df, specs, uuid_column=uuid_column, time_column=time_column
@@ -565,6 +614,22 @@ def relate(
 
     Unlike :func:`attach_objects`, no raw signals or :class:`ObjectSpec` are
     needed -- you bring the two lists, ts-shape derives the relationships.
+
+    Args:
+        event_log: The events to link.
+        intervals: Object table with ``oid``, ``type`` and optionally
+            ``start`` / ``end`` and attribute columns.
+        hierarchy: Child type -> parent type for ``part_of`` relations.
+        qualifiers: Relation qualifier per object type.
+        key_columns: Event columns that name an object id directly.
+        infer_o2o: Derive object-to-object relations.
+        validate: Check the result against the canonical schema.
+
+    Returns:
+        The validated five-table :class:`EventLog`.
+
+    Raises:
+        ColumnNotFoundError: When ``intervals`` lacks ``oid`` or ``type``.
     """
     return _relate(
         event_log,
@@ -622,8 +687,14 @@ def derive_o2o(
     (child type -> parent type) yields ``part_of`` from each child presence to
     the parent presence it overlaps longest; without one, overlapping objects
     of different types get the symmetric ``co_occurs`` qualifier (one row per
-    pair, the type that sorts first in ``ocel:oid``). Returns the OCEL 2.0
-    ``o2o`` table, de-duplicated.
+    pair, the type that sorts first in ``ocel:oid``).
+
+    Args:
+        intervals: Object table with ``oid``, ``type``, ``start``, ``end``.
+        hierarchy: Child type -> parent type.
+
+    Returns:
+        The OCEL 2.0 ``o2o`` table, de-duplicated.
     """
     return _infer_o2o(_normalize_intervals(intervals), hierarchy)
 
@@ -642,6 +713,22 @@ def object_specs_from_metadata(
     tagging metadata, not by writing code. The uuid may be the index or a
     column; the type/value-column fields are matched directly or with a
     ``config_`` / ``config.`` prefix (mkdocs metadata flattening).
+
+    Args:
+        metadata: Metadata table, one row per signal.
+        type_field: Field naming the object type of a signal; rows without
+            one are skipped.
+        value_column_field: Field naming the signal's id column (default
+            ``value_string``); must be one of ``value_string``,
+            ``value_integer`` or ``value_double``.
+        uuid_column: Column (or index name) holding the signal uuid.
+
+    Returns:
+        One :class:`ObjectSpec` per tagged signal; empty when the table has
+        no uuid or type field.
+
+    Raises:
+        ValueError: When a value-column entry is not an id column.
     """
     md = metadata.reset_index() if metadata.index.name == uuid_column else metadata
 
@@ -665,6 +752,11 @@ def object_specs_from_metadata(
         value_column = "value_string"
         if valcol_col is not None and not pd.isna(row.get(valcol_col)):
             value_column = str(row[valcol_col])
+        if value_column not in _ID_VALUE_COLUMNS:
+            raise ValueError(
+                f"signal {row[uuid_col]!r}: {valcol_col} is {value_column!r}; "
+                f"an id signal's value column must be one of {_ID_VALUE_COLUMNS}"
+            )
         specs.append(
             ObjectSpec(
                 uuid=str(row[uuid_col]),
@@ -1044,9 +1136,31 @@ def link_events_to_objects(
       whose ``oid`` equals the value in one of the event's ``key_columns`` --
       for events that already name their object (e.g. a ``batch`` attribute).
 
-    ``qualifiers`` maps an object ``type`` to the relation qualifier to stamp
-    (e.g. ``{"batch": "processed_in"}``); unmapped types get ``<NA>``.
+    Args:
+        events: OCEL events table with ``ocel:eid`` (and ``ocel:timestamp``
+            for temporal linking).
+        intervals: Object table with ``oid``, ``type`` and, for temporal
+            linking, ``start`` / ``end``.
+        qualifiers: Maps an object ``type`` to the relation qualifier to stamp
+            (e.g. ``{"batch": "processed_in"}``); unmapped types get ``<NA>``.
+        key_columns: Event columns whose value is an object id. Integral
+            floats (an integer id column with gaps) match ``"1"``, not
+            ``"1.0"``.
+        contain: Link by temporal containment.
+
+    Returns:
+        The OCEL 2.0 ``relations`` table.
+
+    Raises:
+        ColumnNotFoundError: When ``events`` lacks ``ocel:eid`` (or
+            ``ocel:timestamp`` with ``contain``) or ``intervals`` lacks
+            ``oid`` / ``type``.
     """
+    require_columns(events, (schema.OCEL_EID,), where="link_events_to_objects")
+    if contain:
+        require_columns(
+            events, (schema.OCEL_TIMESTAMP,), where="link_events_to_objects"
+        )
     if events.empty:
         return schema.empty_relations()
     iv = _normalize_intervals(intervals)
@@ -1092,7 +1206,7 @@ def link_events_to_objects(
         for col in [c for c in key_columns if c in events.columns]:
             vals = events[col]
             ok = vals.notna().to_numpy(dtype=bool)
-            keys = pd.Series([str(v) for v in vals[ok]], dtype="string")
+            keys = pd.Series([_id_text(v) for v in vals[ok]], dtype="string")
             types = keys.map(oid_to_type)
             hit = types.notna().to_numpy(dtype=bool)
             if hit.any():
