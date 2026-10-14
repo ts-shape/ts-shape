@@ -168,10 +168,9 @@ class Base:
             if time_columns:
                 column_name = time_columns[0]
 
-        # Detectors compute on NumPy-backed dtypes: nullable, pyarrow and
+        # Every class computes on NumPy-backed dtypes: nullable, pyarrow and
         # text-number columns are converted once here (utils.normalize).
-        if type(self).__module__.startswith("ts_shape.events."):
-            normalize_signal_frame(self.dataframe, time_column=column_name)
+        normalize_signal_frame(self.dataframe, time_column=column_name)
 
         # Sort by time; rows with the same timestamp keep a fixed order (by
         # uuid), so a result never depends on the order rows arrived in.
