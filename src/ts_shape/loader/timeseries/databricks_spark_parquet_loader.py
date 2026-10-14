@@ -29,6 +29,7 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.errors import LoaderError
+from ts_shape.loader._utils import utc_folder_hours
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +81,19 @@ class DatabricksSparkParquetLoader:
     # ---- Pure path building (no Spark required) ----
     @staticmethod
     def _as_uuid_list(uuids: str | Sequence[str]) -> list[str]:
-        """Accept a single UUID or a sequence and normalize to a list."""
-        if isinstance(uuids, str):
-            return [uuids]
-        return list(uuids)
+        """Accept a single UUID or a sequence and normalize to a list.
+
+        Raises:
+            ValueError: For an empty or blank uuid.
+        """
+        items = [uuids] if isinstance(uuids, str) else list(uuids)
+        blank = [u for u in items if not str(u).strip()]
+        if blank:
+            raise ValueError(
+                f"uuids must be non-empty strings; got {uuids!r}. Pass the "
+                "signal uuid(s) to read."
+            )
+        return [str(u) for u in items]
 
     def build_paths(
         self,
@@ -96,10 +106,13 @@ class DatabricksSparkParquetLoader:
         """Build the explicit parquet paths covering ``[start, end]`` per UUID.
 
         This is the reusable, testable core: it mirrors what Spark will read,
-        with one path per (hour, uuid) pair. Hours are inclusive of both ends.
+        with one path per (hour, uuid) pair. Hours are inclusive of both ends:
+        the start is floored to the folder granularity, so ``09:30 .. 11:00``
+        reads the 09, 10 and 11 folders. The folders are in UTC: tz-aware
+        bounds are converted to UTC, naive bounds are taken as UTC.
 
         Args:
-            start_timestamp: Window start (parsed by ``pandas.to_datetime``).
+            start_timestamp: Window start (parsed by ``pandas.Timestamp``).
             end_timestamp: Window end (inclusive).
             uuids: A single UUID or a sequence of UUIDs.
             freq: Folder granularity; defaults to hourly (``"h"``).
@@ -109,15 +122,12 @@ class DatabricksSparkParquetLoader:
 
         Raises:
             LoaderError: If no UUIDs are supplied.
+            ValueError: For an empty or blank uuid.
         """
         uuid_list = self._as_uuid_list(uuids)
         if not uuid_list:
             raise LoaderError("At least one uuid is required.")
-        slots = pd.date_range(
-            start=pd.to_datetime(start_timestamp),
-            end=pd.to_datetime(end_timestamp),
-            freq=freq,
-        )
+        slots = utc_folder_hours(start_timestamp, end_timestamp, freq)
         paths: list[str] = []
         for ts in slots:
             hour_dir = ts.strftime(self.hour_pattern)

@@ -15,8 +15,10 @@ from ts_shape.loader._utils import (
     describe_failures,
     is_not_found,
     missing_optional,
+    parse_utc_times,
     read_errors,
     report_failures,
+    utc_folder_hours,
 )
 from ts_shape.utils.coerce import to_numeric_checked
 
@@ -396,12 +398,12 @@ class AzureBlobEnergyLoader:
         start: Union[str, "pd.Timestamp"],
         end: Union[str, "pd.Timestamp"],
     ) -> list[str]:
-        """Return list of day-level blob prefixes: csv/YYYY/MM/DD/"""
-        dates = pd.date_range(
-            start=pd.to_datetime(start).normalize(),
-            end=pd.to_datetime(end).normalize(),
-            freq="D",
-        )
+        """Return list of day-level blob prefixes: csv/YYYY/MM/DD/.
+
+        Day folders are UTC days: tz-aware bounds are converted to UTC, naive
+        bounds are taken as UTC.
+        """
+        dates = utc_folder_hours(start, end, "D")
         return [
             self._full_path(
                 f"{_CSV_PREFIX}{ts.year}/{str(ts.month).zfill(2)}/{str(ts.day).zfill(2)}/"
@@ -462,6 +464,10 @@ class AzureBlobEnergyLoader:
         Input columns: time, value
         Output columns: systime, uuid, value_double, is_delta
 
+        ``systime`` is tz-aware UTC: times with an offset are converted, times
+        without one are taken as UTC; a column mixing both is parsed value by
+        value.
+
         Raises:
             ValueError: When a non-empty CSV lacks the ``time`` or ``value``
                 column.
@@ -476,7 +482,7 @@ class AzureBlobEnergyLoader:
             )
 
         out = pd.DataFrame()
-        out["systime"] = pd.to_datetime(raw["time"], utc=True)
+        out["systime"] = parse_utc_times(raw["time"])
         out["uuid"] = series_id
         out["value_double"] = to_numeric_checked(
             raw["value"], what=f"series {series_id!r}"

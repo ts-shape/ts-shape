@@ -44,7 +44,10 @@ temperature = ParquetLoader.load_files_by_time_range_and_uuids(
 
 `ParquetLoader` selects whole hour folders: the second call returns the 07:00
 and 08:00 folders completely (07:00 to 08:59). Filter the rows afterwards if you
-need an exact range.
+need an exact range. A start in the middle of an hour includes that hour's
+folder. Folder hours are UTC: tz-aware bounds are converted to UTC, naive
+bounds are taken as UTC (the same for `DatabricksSparkParquetLoader`). A file
+matches a uuid only when its name is exactly `<uuid>.parquet`.
 
 ## Azure Blob Storage
 

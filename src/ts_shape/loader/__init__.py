@@ -66,8 +66,11 @@ _CLASSES = {
     "AzureBlobEnergyLoader": "ts_shape.loader.timeseries.azure_blob_energy_loader",
     "AzureBlobParquetLoader": "ts_shape.loader.timeseries.azure_blob_loader",
     "DataIntegratorHybrid": "ts_shape.loader.combine.integrator",
+    "DatapointAPI": "ts_shape.loader.metadata.metadata_api_loader",
+    "DatapointDB": "ts_shape.loader.metadata.metadata_db_loader",
     "MetadataJsonLoader": "ts_shape.loader.metadata.metadata_json_loader",
     "ParquetLoader": "ts_shape.loader.timeseries.parquet_loader",
+    "S3ProxyDataAccess": "ts_shape.loader.timeseries.s3proxy_parquet_loader",
     "TimescaleDBDataAccess": "ts_shape.loader.timeseries.timescale_loader",
 }
 
