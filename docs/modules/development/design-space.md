@@ -1,57 +1,39 @@
 # DesignSpaceEvents
 
-> Fit a multivariate design space (qualified operating window) from development data and flag when commercial operation leaves it or comes close to its edge.
+Fits a multivariate design space (the region of critical process parameters that qualification runs showed to deliver acceptable quality, as in ICH Q8) as a per-axis box or a convex hull, and flags where production operation leaves it or comes close to its edge. For a single parameter use [ProcessWindowEvents](../engineering/process-windows.md) or [OperatingRangeEvents](../engineering/operating-range.md).
 
-**Module:** `ts_shape.events.development.design_space`
+`ts_shape.events.development.design_space` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/development/design_space.md)
 
----
-
-## When to Use
-
-The design space is the region of critical process parameters (CPPs) that development or characterization runs showed to deliver acceptable quality (ICH Q8 in pharma; equally useful in any process where several parameters interact). Use this class to:
-
-- fit that region from qualification data, either as a per-axis box or as a convex hull that also captures correlation between the CPPs;
-- find the intervals in production data where operation left it;
-- warn about samples still inside the box but close to an edge.
-
-For a single parameter use [Process Windows](../engineering/process-windows.md) instead.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.development.design_space import DesignSpaceEvents
 
-cpps = ["gran1:inlet_air_temp", "gran1:spray_rate", "gran1:atomization_pressure"]
+cpps = ["gran1:inlet_air_temp", "gran1:spray_rate", "gran1:atomization_bar"]
+qualification = ts_shape.make_timeseries(cpps, n_points=500, freq="1min", noise=2.0, seed=1)
+operation = ts_shape.make_timeseries(cpps, n_points=500, freq="1min", noise=2.0, drift=8.0, seed=2)
 
-ds = DesignSpaceEvents(qualification_df, cpps)
-ds.fit_box(quantiles=(0.05, 0.95))
-
-excursions = ds.detect_excursions(operation_df)
-near_edge = ds.boundary_proximity(operation_df, warn_margin=0.1)
-
-# Tighter region that follows correlated CPPs
-ds.fit_hull()
-hull_excursions = ds.detect_excursions(operation_df)
+ds = DesignSpaceEvents(qualification, cpps).fit_box(quantiles=(0.05, 0.95))
+print(ds.detect_excursions(operation).head())
+near_edge = ds.boundary_proximity(operation, warn_margin=0.1)
+hull_excursions = ds.fit_hull().detect_excursions(operation)
 ```
 
----
+## Methods
 
-## Key Methods
-
-| Method | Shape | Returns |
-|---|---|---|
-| `fit_box(quantiles)` | static | `self`, with per-axis bounds at the given quantiles of the qualification data |
-| `fit_hull()` | static | `self`, with a convex hull around the qualification points |
-| `detect_excursions(operation_df)` | interval | `start`, `end`, `duration_seconds`, `uuid`, `excursion_mode` (`box`/`hull`) |
-| `boundary_proximity(operation_df, warn_margin)` | point | `systime`, `uuid`, `signed_margin`, `closest_axis` |
+| Method | Returns |
+|---|---|
+| `fit_box(quantiles=(0.05, 0.95))` | `self`, with per-axis bounds at those quantiles of the qualification data |
+| `fit_hull()` | `self`, with a convex hull around the qualification points |
+| `detect_excursions(operation_df)` | intervals outside the space: `start`, `end`, `duration_seconds`, `excursion_mode` (`box`/`hull`) |
+| `boundary_proximity(operation_df, warn_margin=0.1)` | samples inside the box but near an edge: `systime`, `signed_margin`, `closest_axis` |
 
 ## Notes
 
-- The constructor's DataFrame is the qualification data; production data is passed to the detection methods. Both are pivoted to wide form on the timestamps of the CPP signals and forward-filled, so the CPPs should share a time base or be sampled densely.
+- The constructor's DataFrame is the qualification data; production data goes to the detection methods. Both are pivoted to wide form on the CPP timestamps and forward-filled, so the CPPs should share a time base or be sampled densely.
 - At least two `cpp_uuids` are required (`ValueError` otherwise). Call `fit_box()` or `fit_hull()` before detecting (`RuntimeError` otherwise); the last fit wins.
-- `fit_box(quantiles=(0.0, 1.0))` uses the absolute min/max. The default (0.05, 0.95) trims outliers in the qualification data and is conservative.
-- `fit_hull()` needs scipy and at least `len(cpp_uuids) + 1` qualification points in general position.
-- `boundary_proximity` works only after `fit_box()`. The margin per axis is the distance to the nearer bound as a fraction of that axis's span; a sample is reported when its smallest margin is between 0 and `warn_margin`. Samples outside the box are not reported here; use `detect_excursions`.
+- `quantiles=(0.0, 1.0)` uses the absolute min/max; the default trims outliers in the qualification data and is conservative.
+- `fit_hull()` needs scipy and at least `len(cpp_uuids) + 1` qualification points in general position. It captures correlation between CPPs that a box cannot.
+- `boundary_proximity` works only after `fit_box()`. The margin per axis is the distance to the nearer bound as a fraction of the axis span; a sample is reported when its smallest margin is between 0 and `warn_margin`. Samples outside the box are left to `detect_excursions`.
 - Excursion `start`/`end` are the first and last outside samples, so a single outside sample has zero duration.

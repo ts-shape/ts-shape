@@ -1,73 +1,36 @@
 # WarmUpCoolDownEvents
 
-> Detect and characterize warm-up and cool-down curves for ovens, extruders, molds, hydraulic systems.
+Warm-up and cool-down ramps of a signal (ovens, extruders, molds, hydraulics), their consistency, and the time from each ramp start to a target value.
 
-**Module:** `ts_shape.events.engineering.warmup_analysis`  
-**Guide:** [Process Engineering](../../guides/engineering.md)
+`ts_shape.events.engineering.warmup_analysis` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/engineering/warmup_analysis.md)
 
----
-
-## When to Use
-
-Use for thermal equipment (ovens, extruders, molds) where warm-up and cool-down phases impact production planning and energy consumption. Tracks warm-up consistency over time to detect degrading heating elements or insulation, and measures time-to-target for scheduling.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape.events.engineering.warmup_analysis import WarmUpCoolDownEvents
 
-analyzer = WarmUpCoolDownEvents(
-    dataframe=oven_data,
-    signal_uuid="oven_temperature_zone1",
-)
+t = pd.date_range("2024-01-01 05:00", periods=600, freq="10s")
+temp = np.interp(np.arange(600), [0, 30, 210, 400, 520, 599], [20, 20, 185, 185, 40, 40])
+df = pd.DataFrame({"systime": t, "uuid": "oven_zone1", "value_double": temp})
 
-# Detect warm-up intervals (rising at least 50 deg over 1+ min)
-warmups = analyzer.detect_warmup(min_rise=50.0, min_duration="1min")
-
-# Detect cool-down intervals
-cooldowns = analyzer.detect_cooldown(min_fall=30.0, min_duration="1min")
-
-# Check consistency of warm-up curves across days
-consistency = analyzer.warmup_consistency(
-    min_rise=50.0,
-    min_duration="1min"
-)
-
-# Time from each rising ramp start to 180 °C operating temperature
-time_to_temp = analyzer.time_to_target(
-    target_value=180.0,
-    direction="rising"
-)
+wu = WarmUpCoolDownEvents(df, "oven_zone1")
+print(wu.detect_warmup(50.0, min_duration="1min"))
+cooldowns = wu.detect_cooldown(30.0, min_duration="1min")
+time_to_temp = wu.time_to_target(180.0, direction="rising")
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `detect_warmup(min_rise, min_duration='1min', max_pause=0)` | `start`, `end`, `start_value`, `end_value`, `rise`, `duration_seconds`, `avg_rate` |
+| `detect_cooldown(min_fall, min_duration='1min', max_pause=0)` | same with `fall` |
+| `warmup_consistency(min_rise, min_duration='1min')` | per warm-up: `warmup_index`, `avg_rate`, `deviation_from_median_duration` |
+| `time_to_target(target_value, direction='rising')` | per ramp: `target_reached_at`, `time_to_target_seconds`, `overshoot` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_warmup(min_rise, min_duration='1min', max_pause=0)` | Warm-up interval detection | DataFrame: `start`, `end`, `start_value`, `end_value`, `rise`, `duration_seconds`, `avg_rate`, ... |
-| `detect_cooldown(min_fall, min_duration='1min', max_pause=0)` | Cool-down interval detection | DataFrame: `start`, `end`, `start_value`, `end_value`, `fall`, `duration_seconds`, `avg_rate`, ... |
-| `warmup_consistency(min_rise, min_duration='1min')` | Warm-up curve consistency | DataFrame: `warmup_index`, `start`, `duration_seconds`, `avg_rate`, `deviation_from_median_duration` |
-| `time_to_target(target_value, direction='rising')` | Time to reach a target value | DataFrame: `start`, `target_reached_at`, `time_to_target_seconds`, `overshoot` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Track warm-up consistency for predictive maintenance"
-    A gradually increasing time-to-target across weeks indicates degrading heating elements, fouled heat exchangers, or deteriorating insulation. Plot `warmup_consistency()` output over time to set up early maintenance alerts.
-
-!!! info "Related modules"
-    - [Startup Detection](startup-detection.md) — detect the initial startup event that triggers a warm-up
-    - [Rate of Change](rate-of-change.md) — monitor the ramp rate during warm-up
-    - [Steady State Detection](steady-state.md) — detect when the warm-up phase ends and steady state begins
-
----
-
-## See Also
-
-- [Process Engineering Guide](../../guides/engineering.md)
-- [API Reference](../../reference/ts_shape/events/engineering/warmup_analysis.md)
+- A ramp is a run of rising (or falling) steps with a total change of at least `min_rise` / `min_fall` lasting `min_duration`. `max_pause` is the number of consecutive flat or reversed steps tolerated inside a ramp; with the default 0 any pause ends it, so noisy signals need a pause allowance or smoothing.
+- A time-to-target that grows over weeks points to degrading heaters, fouling or insulation.

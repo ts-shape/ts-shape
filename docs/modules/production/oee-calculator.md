@@ -1,81 +1,43 @@
 # OEEEvents
 
-> Calculate Overall Equipment Effectiveness from timeseries signals: Availability x Performance x Quality.
+Daily OEE = Availability × Performance × Quality from a boolean run signal, a part counter with an ideal cycle time, and optional total/reject counters.
 
-**Module:** `ts_shape.events.production.oee_calculator`
-**Guide:** [OEE Analytics](../../guides/oee-analytics.md)
+`ts_shape.events.production.oee_calculator` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/oee_calculator.md)
 
----
-
-## When to Use
-
-Use for daily OEE reporting. Combines availability (from machine state), performance (from part counters vs ideal cycle time), and quality (from good/reject counters) into the standard OEE metric. World-class OEE is typically 85% or above; this module helps identify which of the three factors is the biggest loss.
-
----
-
-## Quick Example
+## Example
 
 ```python
-from ts_shape.events.production.oee_calculator import OEEEvents
-import pandas as pd
 import numpy as np
+import pandas as pd
+from ts_shape.events.production.oee_calculator import OEEEvents
 
-# Long format: run state (bool), part counter and reject counter (integer)
-np.random.seed(42)
-times = pd.date_range("2024-01-01 06:00", periods=480, freq="1min")
+t = pd.date_range("2024-01-01 06:00", periods=480, freq="1min")
 df = pd.concat([
-    pd.DataFrame({"systime": times, "uuid": "line1:running",
-                  "value_bool": [True] * 400 + [False] * 30 + [True] * 50}),
-    pd.DataFrame({"systime": times, "uuid": "line1:part_counter",
-                  "value_integer": np.arange(1, 481)}),
-    pd.DataFrame({"systime": times, "uuid": "line1:reject_counter",
-                  "value_integer": np.cumsum(np.random.choice([0, 1], size=480, p=[0.97, 0.03]))}),
+    pd.DataFrame({"systime": t, "uuid": "line1:running", "value_bool": np.arange(480) % 60 < 52}),
+    pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.arange(480)}),
+    pd.DataFrame({"systime": t, "uuid": "line1:rejects", "value_integer": np.arange(480) // 40}),
 ], ignore_index=True)
 
-oee = OEEEvents(df)
-availability = oee.availability(run_state_uuid="line1:running", planned_time_hours=8)
-performance = oee.performance(
-    counter_uuid="line1:part_counter", ideal_cycle_time=55.0, run_state_uuid="line1:running"
-)
-quality = oee.quality(total_uuid="line1:part_counter", reject_uuid="line1:reject_counter")
-daily = oee.oee(
-    run_state_uuid="line1:running",
-    counter_uuid="line1:part_counter",
-    ideal_cycle_time=55.0,  # seconds per part
-    total_uuid="line1:part_counter",
-    reject_uuid="line1:reject_counter",
-    planned_time_hours=8,
-)
+daily = OEEEvents(df).oee(run_state_uuid="line1:running", counter_uuid="line1:parts",
+                          ideal_cycle_time=55.0, total_uuid="line1:parts",
+                          reject_uuid="line1:rejects", max_gap="15min")
 print(daily[["start", "availability_pct", "performance_pct", "quality_pct", "oee_pct"]])
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns (one row per day) |
+|---|---|
+| `availability(run_state_uuid, planned_time_hours=None, max_gap=None)` | `run_seconds`, `planned_seconds`, `availability_pct`, `excluded_seconds` |
+| `performance(counter_uuid, ideal_cycle_time, run_state_uuid=None)` | `actual_parts`, `ideal_parts`, `run_seconds`, `performance_pct` (+ `resets`) |
+| `quality(total_uuid, reject_uuid)` | `total_parts`, `reject_parts`, `good_parts`, `quality_pct` (+ `resets`) |
+| `oee(run_state_uuid, counter_uuid, ideal_cycle_time, total_uuid=None, reject_uuid=None, planned_time_hours=None)` | `availability_pct`, `performance_pct`, `quality_pct`, `oee_pct`, then the basis: `run_seconds`, `planned_seconds`, `excluded_seconds`, `actual_parts`, `ideal_parts`, `total_parts`, `reject_parts`, `good_parts`, `resets` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `availability(run_state_uuid, planned_time_hours=None, max_gap=None)` | Compute daily availability from a boolean run-state signal (planned time defaults to the data span per day) | DataFrame per day with `start`, `end`, `duration_seconds`, `run_seconds`, `planned_seconds`, `availability_pct`, `excluded_seconds` (time `max_gap` removed as no data) |
-| `performance(counter_uuid, ideal_cycle_time, run_state_uuid=None, handle_resets=True)` | Compute daily performance: actual output vs theoretical maximum at the ideal cycle time (seconds per part) | DataFrame per day with `actual_parts`, `ideal_parts`, `run_seconds`, `performance_pct` |
-| `quality(total_uuid, reject_uuid, handle_resets=True)` | Compute daily quality: good parts divided by total parts produced | DataFrame per day with `total_parts`, `reject_parts`, `good_parts`, `quality_pct` |
-| `oee(run_state_uuid, counter_uuid, ideal_cycle_time, total_uuid=None, reject_uuid=None, planned_time_hours=None)` | Compute daily OEE as Availability x Performance x Quality (quality is 100% without `total_uuid`/`reject_uuid`) | DataFrame per day with `start`, `end`, `duration_seconds`, `availability_pct`, `performance_pct`, `quality_pct`, `oee_pct`, then the basis: `run_seconds`, `planned_seconds`, `excluded_seconds`, `actual_parts`, `ideal_parts`, `total_parts`, `reject_parts`, `good_parts` (NaN without quality counters), `resets` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Validate each factor independently"
-    Always check availability, performance, and quality separately before looking at the combined OEE number. A single factor can mask improvement in the others.
-
-!!! info "Related modules"
-    - [Machine State](machine-state.md) — provides the run/idle signal for availability
-    - [Line Throughput](line-throughput.md) — provides part counts for performance
-    - [Quality Tracking](quality-tracking.md) — provides OK/NOK counts for quality
-    - [Micro-Stop Detection](micro-stops.md) — uncovers hidden availability losses
-
----
-
-## See Also
-
-- [OEE Analytics Guide](../../guides/oee-analytics.md)
-- [API Reference](../../reference/ts_shape/events/production/oee_calculator.md)
+- Rows are calendar days: `start` is midnight, `duration_seconds` the real day length (23 h or 25 h on DST days with tz-aware data).
+- Availability = run time / planned time. Without `planned_time_hours` the planned time is each day's first-to-last-sample span.
+- Performance = actual parts × `ideal_cycle_time` (seconds per part) / run time. Without `run_state_uuid`, `performance` uses the day's span as run time.
+- `max_gap` (e.g. `"15min"`) treats a longer gap between readings as no data and removes it from run and planned time; without it, a logging gap while the last state was running counts as run time. `excluded_seconds` is the removed time.
+- Counters are reset-aware by default (`handle_resets=True`): a decreasing counter is a reset and the production after it is counted; increments are booked to the day of the reading that reports them.
+- Without `total_uuid`/`reject_uuid`, quality is 100 % and the quality basis columns are NaN.

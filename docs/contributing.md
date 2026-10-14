@@ -1,60 +1,44 @@
 # Contributing
 
-Thank you for your interest in contributing to **ts-shape**! This page covers the licensing landscape of the project and its dependencies so that contributors can make informed decisions when adding or updating packages.
+Contributions are accepted under the project's MIT license
+([`LICENSE.txt`](https://github.com/ts-shape/ts-shape/blob/main/LICENSE.txt)).
+Setup, tests, linting and the release process are described in
+[Development](insiders/development.md); naming and output rules for new
+detectors in [Naming and output conventions](naming.md).
 
-For development setup, building, testing, and publishing workflows, see the [Development Guide](insiders/development.md).
+## Dependencies and their licenses
 
----
+Runtime dependencies (`dependencies` in `pyproject.toml`):
 
-## Project License
+| Package | Version | License |
+|---|---|---|
+| pandas | >= 2.1.0 | BSD-3-Clause |
+| numpy | >= 1.26.4 | BSD-3-Clause |
+| scipy | >= 1.13.1 | BSD-3-Clause |
 
-ts-shape is released under the **MIT License**. See the full license text in [`LICENSE.txt`](https://github.com/ts-shape/ts-shape/blob/main/LICENSE.txt).
+Optional extras, installed only on request and imported lazily:
 
-All contributions to this repository are accepted under the same MIT License.
-
----
-
-## Third-Party Dependency Licenses
-
-The table below lists every runtime dependency declared in `pyproject.toml`, its license, and what it is used for in ts-shape.
-
-| Dependency | Version | License | Purpose |
+| Package | Version | License | Extra |
 |---|---|---|---|
-| **pandas** | >= 2.1.0 | BSD-3-Clause | Core dataframe operations |
-| **numpy** | >= 1.26.4 | BSD-3-Clause | Numerical computations |
-| **scipy** | >= 1.13.1 | BSD-3-Clause | Scientific and statistical functions |
-| **sqlalchemy** | >= 2.0.32 | MIT | Database connectivity (TimescaleDB loader) |
-| **azure-storage-blob** | >= 12.19.1 | MIT | Azure Blob Storage loader |
-| **s3fs** | >= 2024.10.0 | BSD-3-Clause | S3 file system access |
-| **requests** | >= 2.32.3 | Apache-2.0 | HTTP requests |
+| pyarrow | >= 15.0 | Apache-2.0 | `parquet`, `s3`, `azure` |
+| s3fs | >= 2024.10.0 | BSD-3-Clause | `s3` |
+| azure-storage-blob | >= 12.19.1 | MIT | `azure` |
+| requests | >= 2.32.3 | Apache-2.0 | `api` |
+| sqlalchemy | >= 2.0.32 | MIT | `sql`, `postgres` |
+| psycopg2-binary | >= 2.9.9 | LGPL-3.0-or-later (with exceptions) | `postgres` |
+| pyyaml | >= 6.0 | MIT | `yaml` |
+| pint | >= 0.24 | BSD-3-Clause | `units` |
+| scikit-learn | >= 1.3.0 | BSD-3-Clause | `ml` |
 
-### Optional Dependency Licenses
+All are compatible with distributing ts-shape under MIT. psycopg2-binary is
+LGPL, but it is a separately installed, dynamically loaded database driver
+that ts-shape neither bundles nor redistributes. SQLAlchemy works with any
+DB-API driver, so users can install psycopg, pg8000 or another driver instead.
 
-The packages below are **not installed by default**. They are declared as optional extras in `pyproject.toml` and are imported lazily via guarded `try/except ImportError` blocks, so they do not affect the license footprint of a base `pip install ts-shape`.
+## Adding a dependency
 
-| Dependency | Version | License | Extra | Purpose |
-|---|---|---|---|---|
-| **pint** | >= 0.24 | BSD-3-Clause | `units` / `dev` | Engineering unit conversion (`UnitConverter`) |
-| **scikit-learn** | >= 1.3.0 | BSD-3-Clause | `ml` | Optional ML-based detectors (e.g. Isolation Forest outliers) |
-| **psycopg2-binary** | >= 2.9.9 | LGPL-3.0-or-later (with exceptions) | `postgres` | PostgreSQL / TimescaleDB driver |
-
-`psycopg2-binary` is LGPL-licensed, but it is a separately installed, dynamically linked database driver — ts-shape neither bundles nor redistributes it, so its LGPL terms do not extend to ts-shape itself.
-
-### License Compatibility
-
-All dependencies are **compatible with the MIT License** and use permissive licenses:
-
-- **BSD-3-Clause** (pandas, numpy, scipy, s3fs, pint, scikit-learn) — permissive, no restrictions beyond attribution.
-- **MIT** (sqlalchemy, azure-storage-blob) — same terms as ts-shape itself.
-- **Apache-2.0** (requests) — permissive, compatible with MIT distribution.
-
-PostgreSQL connectivity is handled through SQLAlchemy, which supports any DB-API 2.0 compatible driver. Users can install the driver of their choice (e.g. `pip install ts-shape[postgres]` for psycopg2-binary, or install psycopg, pg8000, etc.).
-
-### Guidelines for Adding New Dependencies
-
-When proposing a new dependency, please consider:
-
-1. **License compatibility** — MIT, BSD, and Apache-2.0 are preferred. Avoid GPL-licensed packages as they are incompatible with MIT distribution.
-2. **Necessity** — prefer the standard library or existing dependencies where possible.
-3. **Maintenance** — choose well-maintained packages with active communities.
-4. **Update `pyproject.toml`** — add direct dependencies there, then run `python scripts/requirements.py compile` to pin versions (see [Development Guide](insiders/development.md#6-manage-requirements-pip-tools)).
+1. Prefer the standard library or an existing dependency.
+2. Use MIT, BSD or Apache-2.0 licensed packages; GPL packages cannot be used.
+3. Prefer an optional extra over a core dependency, and import it lazily.
+4. Add it to `pyproject.toml` and run `python scripts/requirements.py compile`
+   (see [Development](insiders/development.md#requirements-pip-tools)).

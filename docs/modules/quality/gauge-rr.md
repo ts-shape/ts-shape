@@ -1,71 +1,41 @@
 # GaugeRepeatabilityEvents
 
-> Measurement System Analysis (MSA) for inline sensors. Evaluates repeatability and reproducibility using repeated measurements.
+Gauge R&R (measurement system analysis) for an inline sensor from repeated measurements of reference parts: equipment variation (repeatability), appraiser variation (reproducibility), %GRR, ndc and bias against reference values.
 
-**Module:** `ts_shape.events.quality.gauge_repeatability`  
-**Guide:** [Quality Control & SPC](../../guides/quality.md)
+`ts_shape.events.quality.gauge_repeatability` · [Quality guide](../../guides/quality.md) · [API reference](../../reference/ts_shape/events/quality/gauge_repeatability.md)
 
----
-
-## When to Use
-
-Use for Measurement System Analysis when qualifying inline sensors. Required by IATF 16949 and other quality standards. Evaluates whether measurement variation comes from the equipment (repeatability) or the operator/condition (reproducibility). Run during sensor installation, after calibration, or on a periodic qualification schedule.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape.events.quality.gauge_repeatability import GaugeRepeatabilityEvents
 
-# df: long-format rows for one gauge signal, with extra
-# "part_id" and "operator" columns identifying each trial
-grr = GaugeRepeatabilityEvents(
-    df,
-    signal_uuid="inline_gauge_01",
-    part_column="part_id",
-    operator_column="operator",
-)
+rng = np.random.default_rng(0)
+parts, operators, trials = [f"P{i}" for i in range(10)], ["A", "B", "C"], 3
+rows = [(p, o, 10 + i * 0.5 + 0.02 * j + rng.normal(0, 0.05)) for i, p in enumerate(parts)
+        for j, o in enumerate(operators) for _ in range(trials)]
+df = pd.DataFrame(rows, columns=["value_string", "operator", "value_double"])
+df["systime"], df["uuid"] = pd.date_range("2024-01-01", periods=len(df), freq="1min"), "gauge_01"
 
-# Equipment Variation (repeatability)
-ev = grr.repeatability(n_trials=3)
-
-# Appraiser Variation (reproducibility)
-av = grr.reproducibility()
-
-# Full GR&R summary with tolerance range
-summary = grr.gauge_rr_summary(tolerance_range=10.0)
-pct = summary["pct_GRR_tolerance"].iloc[0]
-print(f"GR&R % of tolerance: {pct:.1f}%")
-print(f"Acceptable: {pct < 10}")
+grr = GaugeRepeatabilityEvents(df, "gauge_01", operator_column="operator")
+print(grr.gauge_rr_summary(tolerance_range=10.0))
+bias = grr.measurement_bias({"P0": 10.0, "P1": 10.5})
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `repeatability(n_trials=None)` | per part: `mean`, `range`, `repeatability_std`, `EV` |
+| `reproducibility()` | per operator: `mean`, `reproducibility_std`, `AV` (needs `operator_column`) |
+| `gauge_rr_summary(tolerance_range=None)` | one row: `EV`, `AV`, `GRR`, `PV`, `TV`, `pct_GRR`, `pct_PV`, `ndc` (+ `pct_GRR_tolerance`) |
+| `measurement_bias(reference_values)` | per part: `measured_mean`, `reference`, `bias`, `bias_pct` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `repeatability(n_trials=None)` | Equipment Variation (EV) — within-operator, within-part variation | DataFrame with `part`, `mean`, `range`, `repeatability_std`, `EV` |
-| `reproducibility()` | Appraiser Variation (AV) — between-operator variation (requires `operator_column`) | DataFrame with `operator`, `mean`, `reproducibility_std`, `AV` |
-| `gauge_rr_summary(tolerance_range=None)` | Full GR&R summary: EV, AV, GRR, PV, TV, %GRR, %PV, ndc | Single-row DataFrame with `EV`, `AV`, `GRR`, `PV`, `TV`, `pct_GRR`, `pct_PV`, `ndc` (plus `pct_GRR_tolerance` when `tolerance_range` is given) |
-| `measurement_bias(reference_values)` | Compare measurements to known reference standards | DataFrame with `part`, `measured_mean`, `reference`, `bias`, `bias_pct` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Interpret %GR&R against AIAG guidelines"
-    A %GR&R below 10% is generally acceptable, 10-30% may be acceptable depending on the application, and above 30% indicates the measurement system needs improvement. Always provide the `tolerance_range` to get %GR&R relative to the specification width.
-
-!!! info "Related modules"
-    - [Multi-Sensor Validation](multi-sensor-validation.md) — cross-validate redundant sensors in production
-    - [Sensor Drift](sensor-drift.md) — monitor calibration drift between MSA studies
-    - [Capability Trending](capability-trending.md) — ensure measurement system supports required Cpk
-
----
-
-## See Also
-
-- [Quality Control & SPC Guide](../../guides/quality.md) — narrative overview
-- [API Reference](../../reference/ts_shape/events/quality/gauge_repeatability.md) — full parameter docs
+- The part ID is read from `part_column` (default `value_string`) and the measurement from `value_column` (`value_double`); `operator_column` names an optional operator or station column.
+- With `operator_column`, ranges and standard deviations are taken within each operator × part cell and averaged per part (AIAG average-and-range method).
+- `AV = sqrt((X_diff · K2)² − EV² / (n · r))` with `X_diff` the range of operator means, `n` parts and `r` trials; a negative radicand gives `AV = 0`.
+- `n_trials=None` detects the number of trials from the data.
+- `pct_GRR_tolerance` (needs `tolerance_range` = USL − LSL) is the share of the tolerance used by the gauge. Under AIAG guidance below 10 % is acceptable, 10-30 % may be acceptable, above 30 % is not.

@@ -1,78 +1,42 @@
 # ReworkEvents
 
-> Track parts that require rework from rework counter and reason-code signals.
+Rework counts per shift, per reason and over time, the rework rate against total production, and rework cost per part number, from a cumulative rework counter.
 
-**Module:** `ts_shape.events.production.rework_tracking`
-**Guide:** [Reporting Guide](../../guides/reporting.md)
+`ts_shape.events.production.rework_tracking` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/rework_tracking.md)
 
----
-
-## When to Use
-
-Use to track rework events and their cost. Identifies which parts and reasons drive the most rework, enabling targeted process improvements. Especially valuable for plants where rework is a significant cost driver and management needs visibility into root causes and financial impact.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
+import ts_shape
 from ts_shape.events.production.rework_tracking import ReworkEvents
 
-tracker = ReworkEvents(production_df)
+t = pd.date_range("2024-01-01 06:00", periods=960, freq="1min")
+df = pd.concat([
+    pd.DataFrame({"systime": t, "uuid": "line1:rework", "value_integer": np.arange(960) // 40}),
+    pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.arange(960)}),
+    ts_shape.make_id_signal("line1:part_id", ["PN-100", "PN-200"], hold=480, freq="1min", start="2024-01-01 06:00"),
+], ignore_index=True)
 
-# Rework counts per shift
-by_shift = tracker.rework_by_shift(rework_uuid="line1:rework")
-
-# Rework breakdown by reason code
-by_reason = tracker.rework_by_reason(
-    rework_uuid="line1:rework",
-    reason_uuid="line1:rework_reason"
-)
-
-# Rework rate as percentage of total production
-rate = tracker.rework_rate(
-    rework_uuid="line1:rework",
-    total_production_uuid="line1:parts"
-)
-
-# Monetary cost of rework by part type
-rework_costs = {"PN-100": 12.50, "PN-200": 8.75, "PN-300": 22.00}
-cost = tracker.rework_cost(
-    rework_uuid="line1:rework",
-    part_id_uuid="line1:part_id",
-    rework_costs=rework_costs
-)
+rw = ReworkEvents(df)
+print(rw.rework_rate(rework_uuid="line1:rework", total_production_uuid="line1:parts"))
+cost = rw.rework_cost(rework_uuid="line1:rework", part_id_uuid="line1:part_id",
+                      rework_costs={"PN-100": 12.50, "PN-200": 8.75})
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `rework_by_shift(rework_uuid)` | `date`, `shift`, `rework_count` |
+| `rework_by_reason(rework_uuid, reason_uuid)` | `reason`, `rework_count`, `pct_of_total` |
+| `rework_rate(rework_uuid, total_production_uuid)` | per shift: `total_produced`, `rework_count`, `rework_rate_pct` |
+| `rework_cost(rework_uuid, part_id_uuid, rework_costs)` | per part: `rework_count`, `cost_per_rework`, `total_cost` |
+| `rework_trend(rework_uuid, window='1D')` | `period`, `rework_count` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `rework_by_shift(rework_uuid)` | Rework count per shift | `DataFrame` with `date`, `shift`, `rework_count` |
-| `rework_by_reason(rework_uuid, reason_uuid)` | Rework count grouped by reason code | `DataFrame` with `reason`, `rework_count`, `pct_of_total` |
-| `rework_rate(rework_uuid, total_production_uuid)` | Rework rate as percentage of total production per shift | `DataFrame` with `date`, `shift`, `total_produced`, `rework_count`, `rework_rate_pct` |
-| `rework_cost(rework_uuid, part_id_uuid, rework_costs)` | Monetary cost of rework by part number | `DataFrame` with `part_number`, `rework_count`, `cost_per_rework`, `total_cost` |
-| `rework_trend(rework_uuid, window='1D')` | Rework counts per time period | `DataFrame` with `period`, `rework_count` |
+## Notes
 
-All methods count rework across counter resets by default (`handle_resets=True`); `rework_by_shift`, `rework_by_reason`, `rework_cost` and `rework_trend` add a `resets` column. Pass `handle_resets=False` for the plain `max(0, last - first)` quantity.
-
----
-
-## Tips & Hints
-
-!!! tip "Combine with Pareto analysis"
-    Sort `rework_by_reason` results by count descending to build a Pareto chart. Typically 20% of reason codes drive 80% of rework volume, giving you clear improvement targets.
-
-!!! info "Related modules"
-    - [Scrap Tracking](scrap-tracking.md) — track scrap/waste that cannot be reworked
-    - [Quality Tracking](quality-tracking.md) — overall quality metrics including FPY
-    - [Operator Performance](operator-performance.md) — quality by operator
-
----
-
-## See Also
-
-- [Reporting Guide](../../guides/reporting.md)
-- [API Reference](../../reference/ts_shape/events/production/rework_tracking.md)
+- With `handle_resets=True` (default) a decreasing counter is a reset and the rework after it still counts. Increments are computed once over the whole signal and booked to the shift, reason or part of the reading that reports them, so groups add up to the counter total. All methods except `rework_rate` add a `resets` column. `handle_resets=False` uses `max(0, last - first)` per group.
+- `rework_costs` maps part numbers (values of the `part_id_uuid` signal) to the cost of one rework.
+- Default shifts are 06-14, 14-22, 22-06; a night shift belongs to its start date (`production_day=True`).

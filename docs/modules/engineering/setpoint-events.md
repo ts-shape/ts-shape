@@ -1,79 +1,47 @@
 # SetpointChangeEvents
 
-> Detect step/ramp changes on a setpoint signal and compute follow-up KPIs like time-to-settle and overshoot.
+Setpoint steps and ramps, and the response of the actual value after each change: settling time, rise time, overshoot and undershoot, decay rate and oscillation frequency.
 
-**Module:** `ts_shape.events.engineering.setpoint_events`  
-**Guide:** [Process Engineering](../../guides/engineering.md)
+`ts_shape.events.engineering.setpoint_events` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/engineering/setpoint_events.md)
 
----
-
-## When to Use
-
-Use when analyzing PID or setpoint-based control systems. Detects recipe changes and computes ISA/control-engineering KPIs like settling time, rise time, and overshoot. Ideal for evaluating controller tuning and recipe transition performance.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape.events.engineering.setpoint_events import SetpointChangeEvents
 
-# process_data holds both the setpoint and the actual signal
-detector = SetpointChangeEvents(
-    dataframe=process_data,
-    setpoint_uuid="temperature_setpoint_01",
-)
+t = pd.date_range("2024-01-01", periods=3600, freq="1s")
+sp = np.where(np.arange(3600) < 1200, 150.0, 170.0)
+pv = sp - 20.0 * (np.arange(3600) >= 1200) * np.exp(-np.clip(np.arange(3600) - 1200, 0, None) / 60)
+df = pd.concat([pd.DataFrame({"systime": t, "uuid": "temp_sp", "value_double": sp}),
+                pd.DataFrame({"systime": t, "uuid": "temp_pv", "value_double": pv})])
 
-# Detect all setpoint step changes
-steps = detector.detect_setpoint_steps(min_delta=5.0, min_hold="30s")
-
-# Measure how quickly the actual signal settles after each change
-# (settle_pct=0.02 means within 2% of the step size; it overrides tol)
-settling = detector.time_to_settle(
-    actual_uuid="temperature_actual_01",
-    settle_pct=0.02,
-    hold="30s",
-)
-
-# Get comprehensive control quality metrics
-quality = detector.control_quality_metrics(
-    actual_uuid="temperature_actual_01",
-    tol=0.5,
-)
+sc = SetpointChangeEvents(df, setpoint_uuid="temp_sp")
+steps = sc.detect_setpoint_steps(min_delta=5.0, min_hold="30s")
+settle = sc.time_to_settle("temp_pv", settle_pct=0.02, hold="30s", lookahead="15min")
+print(sc.control_quality_metrics("temp_pv", tol=0.5, lookahead="15min").T)
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns (one row per setpoint change) |
+|---|---|
+| `detect_setpoint_steps(min_delta, min_hold='0s')` | `magnitude`, `prev_level`, `new_level` |
+| `detect_setpoint_ramps(min_rate, min_duration='0s')` | ramp intervals: `avg_rate`, `delta` |
+| `detect_setpoint_changes(min_delta=0.0, min_rate=None)` | steps and ramps in one table with `change_type` |
+| `time_to_settle(actual_uuid, tol=0.0, settle_pct=None, hold='0s', lookahead='10min')` | `t_settle_seconds`, `settled` |
+| `time_to_settle_derivative(actual_uuid, rate_threshold=0.01)` | `t_settle_seconds`, `settled`, `final_rate` |
+| `rise_time(actual_uuid, start_pct=0.1, end_pct=0.9)` | `rise_time_seconds`, `reached_end` |
+| `overshoot_metrics(actual_uuid, window='10min')` | `overshoot_abs`, `overshoot_pct`, `t_peak_seconds`, `undershoot_abs`, `undershoot_pct`, `oscillation_count`, `oscillation_amplitude` |
+| `decay_rate(actual_uuid, lookahead='10min')` | `decay_rate_lambda`, `fit_quality_r2` |
+| `oscillation_frequency(actual_uuid, window='10min')` | `oscillation_freq_hz`, `period_seconds` |
+| `control_quality_metrics(actual_uuid, tol=0.0)` | all of the above per change |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_setpoint_steps(min_delta, min_hold='0s')` | Point events at setpoint changes | DataFrame: `start`, `end`, `change_type`, `magnitude`, `prev_level`, `new_level`, ... |
-| `detect_setpoint_ramps(min_rate, min_duration='0s')` | Interval events for ramps | DataFrame of ramp intervals |
-| `detect_setpoint_changes(min_delta=0.0, min_rate=None)` | Unified step+ramp table | DataFrame of all changes |
-| `time_to_settle(actual_uuid, tol=0.0, settle_pct=None)` | Settling time after each change | DataFrame: `start`, `t_settle_seconds`, `settled`, ... |
-| `time_to_settle_derivative(actual_uuid, rate_threshold=0.01)` | Settling time based on rate of change | DataFrame: `start`, `t_settle_seconds`, `settled`, `final_rate`, ... |
-| `overshoot_metrics(actual_uuid, window='10min')` | Overshoot/undershoot per change | DataFrame with overshoot stats |
-| `rise_time(actual_uuid, start_pct=0.1, end_pct=0.9)` | Rise time (10-90% by default) | DataFrame: `start`, `rise_time_seconds`, `reached_end`, ... |
-| `decay_rate(actual_uuid, lookahead='10min')` | Exponential decay rate | DataFrame: `start`, `decay_rate_lambda`, `fit_quality_r2`, ... |
-| `oscillation_frequency(actual_uuid, window='10min')` | Oscillation frequency | DataFrame: `start`, `oscillation_freq_hz`, `period_seconds`, ... |
-| `control_quality_metrics(actual_uuid, tol=0.0)` | Comprehensive control quality | DataFrame with combined KPIs |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Combine steps and ramps for full coverage"
-    Use `detect_setpoint_changes()` instead of calling steps and ramps separately. This gives you a unified table that captures both instantaneous recipe changes and gradual ramp profiles.
-
-!!! info "Related modules"
-    - [Control Loop Health](control-loop-health.md) — ongoing loop monitoring between setpoint changes
-    - [Signal Comparison](signal-comparison.md) — setpoint vs actual divergence detection
-    - [Steady State Detection](steady-state.md) — identify when the process has settled
-
----
-
-## See Also
-
-- [Process Engineering Guide](../../guides/engineering.md)
-- [API Reference](../../reference/ts_shape/events/engineering/setpoint_events.md)
+- A step is a change of at least `min_delta` whose new level holds for `min_hold` (no further change within it). `filter_noise=True` drops changes below `noise_threshold`.
+- A ramp is a run where |dS/dt| ≥ `min_rate` (setpoint units per second) lasting at least `min_duration`.
+- Settled means the actual value stays within ±`tol` of the new setpoint for `hold`. `settle_pct` (fraction of the step size, e.g. 0.02) takes precedence over `tol`. The search ends after `lookahead`.
+- `decay_rate` fits error(t) = A · exp(−λ t).
+- The actual signal must be in the same frame as the setpoint signal.

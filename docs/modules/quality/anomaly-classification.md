@@ -1,60 +1,37 @@
 # AnomalyClassificationEvents
 
-> Classify anomalies in a numeric signal by type: spike, drift, oscillation, flatline, or level shift.
+Finds anomalous windows in a numeric signal and labels them spike, drift, oscillation, flatline or level shift; each type also has its own detector.
 
-**Module:** `ts_shape.events.quality.anomaly_classification`  
-**Guide:** [Quality Control & SPC](../../guides/quality.md)
+`ts_shape.events.quality.anomaly_classification` · [Quality guide](../../guides/quality.md) · [API reference](../../reference/ts_shape/events/quality/anomaly_classification.md)
 
----
-
-## When to Use
-
-Use after initial anomaly detection to understand the nature of anomalies. Goes beyond "is this an outlier?" to tell you what kind of anomaly it is, enabling targeted corrective action. Works best when combined with an upstream outlier detection step to narrow the signal regions of interest.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.quality.anomaly_classification import AnomalyClassificationEvents
 
-classifier = AnomalyClassificationEvents(df, signal_uuid="temperature_sensor")
+df = ts_shape.make_timeseries(["oven:temp"], n_points=2000, freq="10s", drift=15.0, n_outliers=5)
 
-# Full multi-type classification in one pass
-classified = classifier.classify_anomalies(window="10min", n_sigma=3.0)
-
-# Or detect specific anomaly types individually
-flatlines = classifier.detect_flatline(min_duration="1min", tolerance=1e-6)
-oscillations = classifier.detect_oscillation(window="1min", min_crossings=6)
-drifts = classifier.detect_drift(window="1h", min_slope=0.01)
+ac = AnomalyClassificationEvents(df, signal_uuid="oven:temp")
+print(ac.classify_anomalies(window="10min", n_sigma=3.0)[["start", "anomaly_type", "severity", "details"]])
+flatlines = ac.detect_flatline(min_duration="1min", tolerance=1e-6)
+drifts = ac.detect_drift(window="1h", min_slope=0.0005)
 ```
 
----
+## Methods
 
-## Key Methods
+All arguments are keyword-only.
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_flatline(min_duration='1min', tolerance=1e-6, interval_end='next_change')` | Detect stuck/frozen signal segments; a run ends at the next differing sample, so a deadband historian (one row per change) still reports a stuck sensor (`interval_end='last_sample'` ends it at its own last sample) | DataFrame with `start`, `end`, `duration`, `stuck_value` |
-| `detect_oscillation(window='1min', min_crossings=6)` | Detect excessive oscillation (e.g., control valve hunting) | DataFrame with `start`, `end`, `crossing_count`, `amplitude` |
-| `detect_drift(window='1h', min_slope=0.01, slope_per='second')` | Detect gradual drift in signal mean; `slope`/`min_slope` are in units per second, independent of the sampling rate (`slope_per='sample'` makes them units per sample) | DataFrame with `start`, `end`, `slope`, `direction` |
-| `classify_anomalies(window='10min', n_sigma=3.0, slope_per='second')` | Multi-type classification: spike, drift, oscillation, flatline, level shift (the drift slope in `details` is per second) | DataFrame with `start`, `end`, `anomaly_type`, `severity`, `details` |
+| Method | Returns |
+|---|---|
+| `classify_anomalies(window='10min', n_sigma=3.0, slope_per='second')` | anomalous windows: `start`, `end`, `anomaly_type`, `severity` (`warning`/`critical`), `details` |
+| `detect_flatline(min_duration='1min', tolerance=1e-6, interval_end='next_change')` | stuck intervals: `start`, `end`, `duration`, `stuck_value` |
+| `detect_oscillation(window='1min', min_crossings=6)` | windows with at least `min_crossings` zero-crossings of the detrended signal: `crossing_count`, `amplitude` |
+| `detect_drift(window='1h', min_slope=0.01, slope_per='second')` | non-overlapping windows whose least-squares slope exceeds `min_slope`: `slope`, `direction` |
 
----
+## Notes
 
-## Tips & Hints
-
-!!! tip "Run outlier detection first, then classify"
-    Use [OutlierDetectionEvents](outlier-detection.md) to flag anomalous regions, then restrict the input DataFrame to those regions before running `classify_anomalies()` for root-cause identification. This two-step approach reduces false positives and makes classification more meaningful.
-
-!!! info "Related modules"
-    - [Outlier Detection](outlier-detection.md) — detect anomalies before classifying them
-    - [Sensor Drift](sensor-drift.md) — specialized drift detection for calibration monitoring
-    - [Signal Quality](signal-quality.md) — distinguish data quality issues from true process anomalies
-
----
-
-## See Also
-
-- [Quality Control & SPC Guide](../../guides/quality.md) — narrative overview
-- [API Reference](../../reference/ts_shape/events/quality/anomaly_classification.md) — full parameter docs
+- A flatline run continues while each step is within `tolerance`. With `interval_end="next_change"` (default) it ends at the next differing sample, so a deadband historian (one row, then nothing until the value moves) still reports a stuck sensor; a single-sample run counts only when the gap after it is longer than the median sampling interval. `"last_sample"` ends the run at its own last sample.
+- `slope_per="second"` (default) fits against elapsed time, so slopes are in signal units per second whatever the sampling rate. `slope_per="sample"` fits against the sample index.
+- In `classify_anomalies` a window is a drift when its slope exceeds 0.1 × the signal's overall std per sample (per median sampling interval with `slope_per="second"`). A spike is a window with 1 to max(3, 10 % of samples) z-scores above `n_sigma`; it is critical when the largest z-score exceeds 2 × `n_sigma`.
+- Value column defaults to `value_double`.

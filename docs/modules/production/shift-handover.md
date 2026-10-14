@@ -1,76 +1,43 @@
 # ShiftHandoverEvents
 
-> Generate automated shift handover reports combining production, quality, and downtime.
+A shift handover report (production against target, quality, availability, downtime; one row per shift) and the list of metrics below threshold, from raw signals or from shift tables computed by other modules.
 
-**Module:** `ts_shape.events.production.shift_handover`
-**Guide:** [Reporting Guide](../../guides/reporting.md)
+`ts_shape.events.production.shift_handover` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/shift_handover.md)
 
----
-
-## When to Use
-
-Use to generate automated shift handover reports for shift meetings. Combines production, quality, and downtime data into a single summary with issue highlighting. Replaces manual handover notes with a structured, data-driven report that ensures nothing is missed between shifts.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape.events.production.shift_handover import ShiftHandoverEvents
 
-report = ShiftHandoverEvents(production_df)
+t = pd.date_range("2024-01-15 06:00", periods=1440, freq="1min")
+n = np.arange(1440)
+ints = {"line1:parts": n, "line1:ok": n - n // 40, "line1:nok": n // 40}
+df = pd.concat([pd.DataFrame({"systime": t, "uuid": u, "value_integer": v}) for u, v in ints.items()]
+               + [pd.DataFrame({"systime": t, "uuid": "line1:running", "value_bool": n % 60 < 50})],
+               ignore_index=True)
 
-# Generate from raw signals (one row per shift for the latest date)
-targets = {"shift_1": 450, "shift_2": 450, "shift_3": 400}
-handover = report.generate_report(
-    counter_uuid="line1:parts",
-    ok_counter_uuid="line1:ok",
-    nok_counter_uuid="line1:nok",
-    state_uuid="line1:state",
-    targets=targets,
-    report_date="2024-01-15",
-)
-
-# Highlight issues that need attention (list of dicts)
-thresholds = {"production_achievement_pct": 95.0, "quality_pct": 98.0, "availability_pct": 90.0}
-issues = report.highlight_issues(report_df=handover, thresholds=thresholds)
-
-# Or build from pre-computed shift-level DataFrames
-handover = ShiftHandoverEvents.from_shift_data(
-    production_df=shift_production,   # e.g. ShiftReportEvents.shift_production()
-    quality_df=shift_quality,         # e.g. QualityEvents.nok_by_shift()
-    downtime_df=shift_downtime,       # e.g. DowntimeEvents.downtime_by_shift()
-    targets=targets,
-)
+report = ShiftHandoverEvents(df)
+handover = report.generate_report(counter_uuid="line1:parts", ok_counter_uuid="line1:ok",
+                                  nok_counter_uuid="line1:nok", state_uuid="line1:running",
+                                  targets={"shift_1": 450, "shift_2": 450, "shift_3": 400})
+print(report.highlight_issues(report_df=handover))
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `generate_report(counter_uuid, ok_counter_uuid, nok_counter_uuid, state_uuid, targets=None, report_date=None)` | one row per shift of `report_date` (default: latest date) |
+| `from_shift_data(production_df, quality_df=None, downtime_df=None, targets=None, report_date=None)` (static) | the same report from `ShiftReportEvents.shift_production()`, `QualityEvents.nok_by_shift()` and `DowntimeEvents.downtime_by_shift()` outputs |
+| `highlight_issues(report_df=None, thresholds=None)` | one row per metric below threshold: `date`, `shift`, `metric`, `value`, `threshold`, `severity` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `from_shift_data(production_df, quality_df=None, downtime_df=None, targets=None, report_date=None)` | Build report from pre-computed shift-level DataFrames (static method) | `DataFrame` |
-| `generate_report(counter_uuid, ok_counter_uuid, nok_counter_uuid, state_uuid, targets=None)` | Generate report from raw signal UUIDs | `DataFrame` |
-| `highlight_issues(report_df=None, thresholds=None)` | Identify metrics below thresholds, from a report DataFrame or from raw signal UUIDs | `DataFrame`, one row per issue, with `start`, `end`, `duration_seconds` (the report row's shift window), `date`, `shift`, `metric`, `value`, `threshold`, `severity`. `as_frame=False` returns the deprecated `list[dict]` |
+Report columns: `date`, `shift`, `production`, `production_target`, `production_achievement_pct`, `ok_parts`, `nok_parts`, `quality_pct`, `availability_pct`, `downtime_seconds`, `downtime_minutes` (+ `resets` from `generate_report`).
 
-Both report methods return one row per shift with `date`, `shift`, `production`, `production_target`, `production_achievement_pct`, `ok_parts`, `nok_parts`, `quality_pct`, `availability_pct`, `downtime_minutes`, `downtime_seconds`. The run state may be a string signal (`running_value='Running'` in `value_string`) or a boolean run signal (`value_bool`, True = running). `highlight_issues` defaults to thresholds of `production_achievement_pct=95`, `quality_pct=98`, `availability_pct=90`; `severity` is `"warning"` within 5% of the threshold, otherwise `"critical"`.
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Customize thresholds per line"
-    Different production lines have different normal operating ranges. Set per-line thresholds in `highlight_issues` so that alerts are meaningful and not ignored due to false positives.
-
-!!! info "Related modules"
-    - [Shift Reporting](shift-reporting.md) — production totals feeding into handover reports
-    - [Quality Tracking](quality-tracking.md) — quality data for the handover
-    - [Downtime Tracking](downtime.md) — downtime data for the handover
-
----
-
-## See Also
-
-- [Reporting Guide](../../guides/reporting.md)
-- [API Reference](../../reference/ts_shape/events/production/shift_handover.md)
+- The run state may be a string signal (`running_value='Running'` in `value_string`) or a boolean run signal (`value_bool`, True = running); the boolean is used when the state rows carry no `value_string`.
+- `highlight_issues` default thresholds: `production_achievement_pct=95`, `quality_pct=98`, `availability_pct=90`. `severity` is `"warning"` within 5 % of the threshold, otherwise `"critical"`. Without `report_df` it builds the report from the UUID arguments. `as_frame=False` returns the deprecated `list[dict]`.
+- Counters are reset-aware by default; increments are computed over the whole signal before `report_date` is selected and booked to the shift of the reading that reports them.
+- Default shifts are `shift_1` 06-14, `shift_2` 14-22, `shift_3` 22-06; `targets` keys must match the shift names. A night shift belongs to its start date.

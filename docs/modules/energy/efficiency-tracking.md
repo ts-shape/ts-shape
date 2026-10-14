@@ -1,65 +1,41 @@
 # EnergyEfficiencyEvents
 
-> Track energy efficiency metrics against production and machine state.
+Energy efficiency against production and machine state: output per kWh over time, energy used while the machine is idle, specific energy consumption (kWh per unit), and a comparison across shifts.
 
-**Module:** `ts_shape.events.energy.efficiency_tracking`
-**Guide:** [Production Guide](../../guides/production.md)
+`ts_shape.events.energy.efficiency_tracking` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/energy/efficiency_tracking.md)
 
----
-
-## When to Use
-
-Use to track energy efficiency over time and identify waste. Detects energy consumed during idle periods and compares efficiency across shifts or production runs. Essential for continuous improvement programs targeting energy reduction.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape.events.energy.efficiency_tracking import EnergyEfficiencyEvents
 
-# df: systime | uuid | value_double (kWh deltas) | value_integer | value_bool
-tracker = EnergyEfficiencyEvents(df)
+t = pd.date_range("2024-01-01", periods=7 * 96, freq="15min")
+running = (t.hour >= 6) & (t.hour < 22)
+df = pd.concat([
+    pd.DataFrame({"systime": t, "uuid": "meter:main", "value_double": np.where(running, 12.0, 3.0)}),  # kWh deltas
+    pd.DataFrame({"systime": t, "uuid": "counter:parts", "value_integer": np.cumsum(running * 30)}),
+    pd.DataFrame({"systime": t, "uuid": "machine:running", "value_bool": running}),
+], ignore_index=True)
 
-# Rolling energy efficiency (units per kWh)
-trend = tracker.efficiency_trend("meter:main", "counter:parts", window="1D")
-
-# Detect energy waste while the machine is idle (state: True = running)
-waste = tracker.idle_energy_waste("meter:main", "machine:running", window="1h")
-print(f"Total idle waste: {waste['waste_energy'].sum():.1f} kWh")
-
-# Specific energy consumption (kWh per unit) per day
-sec = tracker.specific_energy_consumption("meter:main", "counter:parts", window="1D")
-
-# Compare efficiency across shifts (default: three 8-hour shifts from 06:00)
-comparison = tracker.efficiency_comparison("meter:main", "counter:parts")
+ee = EnergyEfficiencyEvents(df)
+waste = ee.idle_energy_waste("meter:main", "machine:running", window="1h")
+print(f"Idle energy: {waste['waste_energy'].sum():.1f} kWh")
+sec = ee.specific_energy_consumption("meter:main", "counter:parts", window="1D")
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `efficiency_trend(meter_uuid, counter_uuid, window='1h', trend_window=24)` | per window: `energy`, `units`, `efficiency` (units per kWh), `rolling_avg_efficiency`, `trend_direction` |
+| `idle_energy_waste(meter_uuid, state_uuid, window='15min', idle_threshold=0.0)` | per window: `energy_consumed`, `machine_running_pct`, `machine_running_ratio`, `is_idle_waste`, `waste_energy` |
+| `specific_energy_consumption(meter_uuid, counter_uuid, window='1D')` | per window: `total_energy`, `total_output`, `sec` (kWh per unit), `sec_trend` |
+| `efficiency_comparison(meter_uuid, counter_uuid, shift_definitions=None)` | per shift: `avg_energy`, `avg_output`, `avg_efficiency`, `total_energy`, `total_output` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `efficiency_trend(meter_uuid, counter_uuid)` | Rolling energy efficiency over time (`trend_window` windows) | `start`, `uuid`, `source_uuid`, `is_delta`, `energy`, `units`, `efficiency`, `rolling_avg_efficiency`, `trend_direction` |
-| `idle_energy_waste(meter_uuid, state_uuid)` | Energy consumed while the machine ran less than 10 % of the window (run state held until the next change; `time_weighted=False` averages samples) | `start`, `uuid`, `source_uuid`, `is_delta`, `energy_consumed`, `machine_running_pct` (0-100), `machine_running_ratio` (0-1), `is_idle_waste`, `waste_energy` |
-| `specific_energy_consumption(meter_uuid, counter_uuid)` | SEC (kWh per unit) per period (default `window="1D"`) | `start`, `uuid`, `source_uuid`, `is_delta`, `total_energy`, `total_output`, `sec`, `sec_trend` |
-| `efficiency_comparison(meter_uuid, counter_uuid)` | Compare efficiency across shifts (`shift_definitions`) | `shift`, `avg_energy`, `avg_output`, `avg_efficiency`, `total_energy`, `total_output` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Track idle waste to find quick wins"
-    `idle_energy_waste()` often reveals the lowest-hanging fruit for energy savings. Machines left running during breaks or changeovers can account for 10-20% of total consumption.
-
-!!! info "Related modules"
-    - [`EnergyConsumptionEvents`](consumption-analysis.md) - Raw consumption analysis and peak demand detection
-    - [`SignalCorrelationEvents`](../correlation/signal-correlation.md) - Correlate efficiency changes with process variables
-
----
-
-## See Also
-
-- [Production Guide](../../guides/production.md)
-- [API Reference](../../reference/ts_shape/events/energy/efficiency_tracking.md)
+- The meter must carry kWh deltas (see [PowerIntegrator](power-integration.md) for kW signals). The state signal is boolean, True = running; counters are reset-aware.
+- `idle_energy_waste` books a window's energy as waste when the machine ran less than 10 % of it and it consumed more than `idle_threshold`. The run state is held until the next change (`time_weighted=True`); `time_weighted=False` averages the samples.
+- `efficiency_comparison` defaults to three 8-hour shifts from 06:00.

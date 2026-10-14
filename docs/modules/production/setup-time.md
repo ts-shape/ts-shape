@@ -1,68 +1,43 @@
 # SetupTimeEvents
 
-> Track and analyze setup/changeover durations for SMED analysis.
+Setup (changeover) durations, statistics per product transition and trends, from a machine-state string signal in which setup rows carry a given value (default `"Setup"`).
 
-**Module:** `ts_shape.events.production.setup_time_tracking`
-**Guide:** [Reporting Guide](../../guides/reporting.md)
+`ts_shape.events.production.setup_time_tracking` · [Production guide](../../guides/production.md) · [API reference](../../reference/ts_shape/events/production/setup_time_tracking.md)
 
----
-
-## When to Use
-
-Use for SMED (Single-Minute Exchange of Dies) analysis. Tracks setup durations and analyzes them by product transition to identify which changeovers take longest. Essential for lean manufacturing initiatives aimed at reducing changeover time and increasing available production time.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import pandas as pd
+import ts_shape
 from ts_shape.events.production.setup_time_tracking import SetupTimeEvents
 
-tracker = SetupTimeEvents(production_df)
+df = pd.concat([
+    ts_shape.make_id_signal("line1:state", ["Running", "Setup", "Running", "Setup", "Running"],
+                            hold=60, freq="1min", start="2024-01-01 06:00"),
+    ts_shape.make_id_signal("line1:part_id", ["PN-100", "PN-200", "PN-300"],
+                            hold=100, freq="1min", start="2024-01-01 06:00"),
+], ignore_index=True)
 
-# List every setup event with duration
-# (state signal in value_string; rows equal to setup_value count as setup)
-setups = tracker.setup_durations(state_uuid="line1:state", setup_value="Setup")
-
-# Setup statistics grouped by product transition
-by_product = tracker.setup_by_product(
-    state_uuid="line1:state",
-    part_id_uuid="line1:part_id"
-)
-
-# Overall setup time statistics
-stats = tracker.setup_statistics(state_uuid="line1:state")
-
-# Weekly trend of setup durations
-trend = tracker.setup_trend(state_uuid="line1:state", window="1W")
+st = SetupTimeEvents(df)
+print(st.setup_durations(state_uuid="line1:state", setup_value="Setup"))
+by_product = st.setup_by_product(state_uuid="line1:state", part_id_uuid="line1:part_id")
+stats = st.setup_statistics(state_uuid="line1:state")
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `setup_durations(state_uuid, setup_value='Setup')` | one row per setup: `start`, `end`, `duration_seconds`, `date`, `shift` |
+| `setup_by_product(state_uuid, part_id_uuid, setup_value='Setup')` | per `from_product` → `to_product`: `avg_seconds`, `min_seconds`, `max_seconds`, `count` |
+| `setup_statistics(state_uuid, setup_value='Setup')` | one row: `total_setups`, `total_seconds`, `avg_seconds`, `median_seconds`, `std_seconds`, `pct_of_available_time` |
+| `setup_trend(state_uuid, setup_value='Setup', window='1W')` | per `period`: `avg_setup_seconds`, `setup_count`, `total_setup_seconds` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `setup_durations(state_uuid, setup_value='Setup')` | List every setup event with start, end, and duration | `DataFrame` with `start`, `end`, `duration_seconds`, `duration_minutes`, `date`, `shift` |
-| `setup_by_product(state_uuid, part_id_uuid, setup_value='Setup')` | Setup time statistics grouped by product transition pair | `DataFrame` with `from_product`, `to_product`, `avg_minutes`, `avg_seconds`, `min_minutes`, `min_seconds`, `max_minutes`, `max_seconds`, `count` |
-| `setup_statistics(state_uuid, setup_value='Setup')` | Overall setup time statistics (single row) | `DataFrame` with `total_setups`, `total_minutes`, `total_seconds`, `avg_minutes`, `avg_seconds`, `median_minutes`, `median_seconds`, `std_minutes`, `std_seconds`, `pct_of_available_time` |
-| `setup_trend(state_uuid, setup_value='Setup', window='1W')` | Setup durations per time period | `DataFrame` with `period`, `avg_setup_minutes`, `avg_setup_seconds`, `setup_count`, `total_setup_minutes`, `total_setup_seconds` |
+Every `*_seconds` column has a `*_minutes` twin.
 
----
+## Notes
 
-## Tips & Hints
-
-!!! tip "Separate internal and external setup tasks"
-    SMED distinguishes between internal setup (machine stopped) and external setup (done while running). If your state signal encodes both, filter for internal-only to get the true changeover impact.
-
-!!! info "Related modules"
-    - [Changeover](changeover.md) — changeover event detection from state transitions
-    - [Performance Loss](performance-loss.md) — speed losses that may occur after setup
-    - [OEE Calculator](oee-calculator.md) — setup time feeds into availability losses
-
----
-
-## See Also
-
-- [Reporting Guide](../../guides/reporting.md)
-- [API Reference](../../reference/ts_shape/events/production/setup_time_tracking.md)
+- A setup is a contiguous run of samples equal to `setup_value`. It ends at the next non-setup sample, or at its last sample at the end of the data; zero-length setups are dropped.
+- If the state signal encodes both internal (machine stopped) and external setup, filter to the internal setup value to measure lost machine time.
+- `setup_trend` with `window='1W'` bins Monday to Monday; `period` is the pandas bin label (the week's Sunday).
+- Default shifts are 06-14, 14-22, 22-06; a night shift belongs to its start date (`production_day=True`).

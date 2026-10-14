@@ -1,98 +1,45 @@
 # Installation
 
-## Requirements
-
-- Python 3.11 or higher
-- pandas >= 2.1.0
-- numpy >= 1.26.4
-- scipy >= 1.13.1
-
-## Install from PyPI
+ts-shape needs Python 3.11 or later. The core install depends only on pandas,
+numpy and scipy.
 
 ```bash
 pip install ts-shape
+python -c "import ts_shape; print(ts_shape.__version__)"
 ```
 
-## Install from Source
+## Optional extras
+
+Loader backends and a few detectors need extra packages. A loader whose
+backend is missing raises an `ImportError` that names the extra to install.
+
+| Extra | Installs | Needed for |
+|---|---|---|
+| `parquet` | pyarrow | reading and writing parquet files |
+| `s3` | s3fs, pyarrow | `S3ProxyDataAccess` and other S3 loaders |
+| `azure` | azure-storage-blob, pyarrow | `AzureBlobParquetLoader`, `AzureBlobFlexibleFileLoader` |
+| `api` | requests | REST metadata and energy API loaders |
+| `sql` | sqlalchemy | TimescaleDB and SQL metadata loaders |
+| `postgres` | sqlalchemy, psycopg2-binary | `sql` plus the PostgreSQL driver |
+| `yaml` | pyyaml | `SignalSpecs.from_yaml`, `ts_shape.eventlog.load_yaml` |
+| `units` | pint | `UnitConverter` |
+| `ml` | scikit-learn | `OutlierDetectionEvents.detect_outliers_isolation_forest` |
+| `all` | all of the above | |
+
+```bash
+pip install "ts-shape[parquet,azure]"
+```
+
+For Azure AAD authentication, also install `azure-identity`.
+
+## From source
 
 ```bash
 git clone https://github.com/ts-shape/ts-shape.git
 cd ts-shape
-pip install -e .
-```
-
-## Verify Installation
-
-```python
-import ts_shape
-from ts_shape.transform.filter.numeric_filter import DoubleFilter
-
-print("ts-shape installed successfully!")
-```
-
-## Optional Dependencies
-
-The core install needs only pandas, numpy and scipy. Loader backends are
-extras; a loader whose backend is missing raises an `ImportError` naming the
-extra to install.
-
-```bash
-# Parquet support (recommended)
-pip install pyarrow
-
-pip install ts-shape[s3]        # S3 / S3-compatible proxy (s3fs)
-pip install ts-shape[azure]     # Azure Blob Storage
-pip install ts-shape[api]       # REST metadata / energy APIs (requests)
-pip install ts-shape[sql]       # TimescaleDB / SQL metadata (sqlalchemy)
-pip install ts-shape[postgres]  # sql + psycopg2 driver
-pip install ts-shape[yaml]      # SignalSpecs.from_yaml
-pip install ts-shape[all]       # s3 + azure + api + sql + yaml (no psycopg2)
-pip install ts-shape[units]     # UnitConverter (pint)
-pip install ts-shape[ml]        # Isolation Forest outlier detection (scikit-learn)
-```
-
-## Development Installation
-
-For contributing:
-
-```bash
-git clone https://github.com/ts-shape/ts-shape.git
-cd ts-shape
-
-# Install in development mode
-pip install -e .
-
-# Install dev dependencies (tests, linters, all loader backends)
-pip install -e ".[dev]"
-
-# Run tests
+pip install -e ".[dev]"   # editable install with test and lint tools
 pytest
-
-# Format code
-black src/
 ```
 
-## Troubleshooting
-
-**ImportError for ts_shape**
-```bash
-# Check your environment
-which python
-pip list | grep ts-shape
-```
-
-**pandas version conflict**
-```bash
-pip install --upgrade pandas
-```
-
-**Performance with large datasets**
-```bash
-pip install pyarrow  # Faster parquet loading
-```
-
-## Next Steps
-
-- [Quick Start](quick_start.md) - Get started in 5 minutes
-- [Guides](../guides/index.md) - Topic-focused guides from data acquisition to shift reports
-- [Concept Guide](../concept.md) - Architecture overview
+See [Development](../insiders/development.md) for linting, the docs build and
+the release process.

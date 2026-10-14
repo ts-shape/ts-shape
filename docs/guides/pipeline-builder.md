@@ -1,23 +1,17 @@
-# Pipeline
+# Pipelines
 
-> Chain transforms and detectors into one reusable, declarative definition.
-
-**Module:** `ts_shape.pipeline` — top-level export: `ts_shape.Pipeline`
-
----
-
-## Why a Pipeline?
-
-A typical ts-shape workflow chains several classes by hand: call a transform,
-pass its output to a detector constructor, call the detector method, repeat.
-Intermediate variables pile up and the wiring is re-written for every dataset.
-
-`Pipeline` captures that wiring **once** and re-runs it on any DataFrame:
+`ts_shape.Pipeline` chains transforms and detectors into one definition that
+you can run on many DataFrames, print, and debug step by step. Use it when the
+same sequence of steps runs on several datasets or on a schedule.
 
 ```python
+import pandas as pd
+import ts_shape
 from ts_shape import Pipeline
 from ts_shape.transform.calculator.numeric_calc import IntegerCalc
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
+
+df = ts_shape.make_timeseries(["sensor:temp"], n_points=1000, n_outliers=4)
 
 pipe = (
     Pipeline(name="sensor-quality")
@@ -26,156 +20,110 @@ pipe = (
             name="outliers", value_column="value_double", threshold=3.0)
 )
 
-result = pipe.run(df)          # reusable — call .run() on many DataFrames
-result.data                    # final transformed signal
-result.events["outliers"]      # detector output
-result.to_event_log()          # normalized, combined OCEL event log
+result = pipe.run(df)
+result.data                 # the signal after all transforms
+result.events["outliers"]   # the detector output
+result.to_event_log()       # all detector outputs as one OCEL event log
 ```
 
----
+## Step kinds
 
-## Kinds of step
+The pipeline is linear. You declare the role of each step:
 
-The pipeline is **linear single-channel**. You declare each step's role —
-it is never inferred:
-
-| Method | What it does |
-|--------|--------------|
-| `.source(...)` | *Optional, first step only.* Calls a loader that **produces** the pipeline's first DataFrame. |
-| `.transform(...)` | Output **replaces** the working signal — the signal flows on. |
-| `.detect(...)` | Output is **stored** under a name in `result.events`; the working signal is left untouched (detectors branch off). |
-
----
+| Method | Effect |
+|---|---|
+| `.source(...)` | optional, first step only: loads the first DataFrame |
+| `.transform(...)` | the output replaces the working DataFrame |
+| `.detect(...)` | the output is stored in `result.events[name]`; the working DataFrame is unchanged |
 
 ## Step targets
 
-A step target can be supplied two ways:
-
-**Plain callable** — anything `df -> df`:
+A step is either a plain callable `df -> df`:
 
 ```python
-pipe.transform(lambda df: df[df["uuid"].isin(["temperature", "pressure"])],
-               name="select_signals")
+pipe = Pipeline(name="select").transform(
+    lambda d: d[d["uuid"].isin(["sensor:temp"])], name="select_signals"
+)
 ```
 
-**`(class, "method")` pair** — the pipeline inspects the class and does the
-right thing:
+or a `(class, "method")` pair. A classmethod or staticmethod (the filters,
+`IntegerCalc`) is called on the class; for an instance method (detectors,
+`DataHarmonizer`) the class is instantiated first. Keyword arguments are
+passed flat and routed to the constructor or the method by parameter name. An
+unknown keyword raises a `ValueError` listing what both accept.
 
-- a `@classmethod` / `@staticmethod` (stateless transforms like `IntegerCalc`,
-  the filters) is called directly on the class;
-- an instance method (detectors, `DataHarmonizer`, …) instantiates the class
-  first.
+## Loading inside the pipeline
 
-Keyword arguments are routed between the constructor and the method
-automatically by parameter name, so you pass them all flat:
-
-```python
-pipe.detect(OutlierDetectionEvents, "detect_outliers_zscore",
-            name="outliers",
-            value_column="value_double",   # -> OutlierDetectionEvents.__init__
-            threshold=3.0)                 # -> detect_outliers_zscore(...)
-```
-
-An unknown keyword argument raises a `ValueError` that lists what the
-constructor and the method accept.
-
----
-
-## Loading data within the pipeline — the source step
-
-By default a pipeline is **DataFrame-driven**: you load the data yourself and
-pass it to `run(df)`. Add an optional `.source(...)` step and the pipeline
-becomes **source-bound** — it loads its own data and `run()` takes no argument.
-This makes the whole *source → transform → detect* definition self-contained
-and reusable for scheduled or templated jobs.
+With a `.source(...)` step the pipeline loads its own data and is run as
+`run()`, with no argument. The source can be a loader classmethod, a
+`(class, "method")` pair or a plain callable:
 
 ```python
-from ts_shape import Pipeline
-from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
-
 pipe = (
-    Pipeline(name="quality-from-parquet")
-    .source(ParquetLoader, "load_by_time_range",
-            base_path="/data/timeseries", start_time=start, end_time=end)
+    Pipeline(name="quality-from-source")
+    .source(ts_shape.make_timeseries, uuids=["sensor:temp"], n_points=500, n_outliers=3)
     .detect(OutlierDetectionEvents, "detect_outliers_zscore",
             name="outliers", value_column="value_double", threshold=3.0)
 )
-
-result = pipe.run()            # no DataFrame — the source produces it
+result = pipe.run()
 ```
 
-A source target uses the same forms as any other step — a plain callable
-returning a DataFrame, or a `(class, "method")` pair — except **no DataFrame is
-injected**: the loader builds the first frame from its kwargs alone. For an
-instance-method loader (e.g. `AzureBlobParquetLoader`), kwargs are routed
-between the constructor and the method by name, exactly as elsewhere.
+For files, use for example
+`.source(ParquetLoader, "load_by_time_range", base_path=..., start_time=..., end_time=...)`.
+There is at most one source step and it must come first. Passing a DataFrame
+to `run()` of a pipeline with a source raises `TypeError`; a loader error is
+raised as a `RuntimeError` naming step 0.
 
-Rules:
+## Steps that need two DataFrames
 
-- a source step must be the **first** step, and there is **at most one**
-  (otherwise `.source(...)` raises `ValueError`);
-- a source-bound pipeline must be run as `run()`; passing a DataFrame raises
-  `TypeError`. A pipeline without a source must still be run as `run(df)`;
-- the `$input` / `$prev` sentinels are not allowed in a source step — there is
-  no prior data to reference;
-- a loader failure (e.g. a network error) is wrapped in a `RuntimeError` that
-  names step 0.
+Any keyword value can be a sentinel: `"$input"` is the DataFrame passed to
+`run()`, `"$prev"` the current working DataFrame. If the keyword names the
+step's own DataFrame parameter (such as `dataframe`), the sentinel replaces the
+automatically passed working frame.
 
----
-
-## Wiring two DataFrames — sentinels
-
-Most steps just pass the working DataFrame forward. Some need a *second*
-DataFrame. Any keyword-argument value may be a sentinel string:
-
-- `"$input"` — the DataFrame originally passed to `run()`;
-- `"$prev"` — the current working DataFrame.
+The recipe below cuts process signals into order segments and computes a
+feature table with one row per order and 15-minute window:
 
 ```python
-pipe = (
-    Pipeline(name="segmented")
+from ts_shape.features.segment_analysis.segment_extractor import SegmentExtractor
+from ts_shape.features.segment_analysis.segment_processor import SegmentProcessor
+from ts_shape.features.segment_analysis.time_windowed_features import TimeWindowedFeatureTable
+
+process = ts_shape.make_timeseries(["temperature", "pressure"], n_points=180, freq="1min")
+orders = pd.DataFrame({
+    "systime": pd.to_datetime(["2025-01-01 00:00", "2025-01-01 01:00", "2025-01-01 02:00"]),
+    "uuid": "order_number",
+    "value_string": ["Order-A", "Order-B", "Order-C"],
+})
+data = pd.concat([process, orders], ignore_index=True)
+
+features = (
+    Pipeline(name="feature-table")
     .transform(SegmentExtractor, "extract_time_ranges", segment_uuid="order_number")
     .transform(SegmentProcessor, "apply_ranges",
-               dataframe="$input",      # the original raw data
-               time_ranges="$prev")     # the ranges from the previous step
+               dataframe="$input", time_ranges="$prev", target_uuids=["temperature", "pressure"])
+    .transform(TimeWindowedFeatureTable, "compute", freq="15min", metrics=["mean", "std", "max"])
 )
+table = features.run(data).data   # time_window, segment_value, temperature__mean, ...
 ```
 
-If a kwarg names the step's own DataFrame parameter (like `dataframe` above),
-that value is used instead of the auto-injected working signal. Unknown
-`$`-sentinels are rejected at build time.
+[Cycles and segments](feature-extraction.md) explains the segment classes.
 
----
-
-## Running and debugging
+## Inspecting and debugging
 
 ```python
-print(pipe.describe())     # preview every step (and its kwargs) without running
+print(features.describe())      # every step with its arguments, without running
 
-result = pipe.run(df)      # -> PipelineResult(.data, .events, .to_event_log())
-
-steps = pipe.run_steps(df) # dict of every intermediate DataFrame:
-steps["input"]             #   the original frame
-steps["scale_column"]      #   the signal after that transform
-steps["outliers"]          #   that detector's events
+steps = features.run_steps(data)
+steps["input"]                  # the original frame
+steps["extract_time_ranges"]    # the output of each step, by step name
 ```
 
-If a step raises, the error names the failing step (index and name). A step
-that returns a non-DataFrame raises a `TypeError`.
-
----
+An exception inside a step names the failing step (index and name). A step
+that does not return a DataFrame raises `TypeError`.
 
 ## Event-log export
 
-Because the pipeline records each detector step's `"Class.method"` identity,
-`PipelineResult.to_event_log()` normalizes every detector output into one
-canonical OCEL `EventLog` (via `ts_shape.eventlog.to_event_log` + `concat`).
-Pass `concat=False` for a per-step `dict`.
-
----
-
-## Next steps
-
-- [Feature Extraction](feature-extraction.md) — cycles vs segments
-- [Event Log (XES & OCEL)](eventlog/index.md) — what `to_event_log()` produces
-- [API Reference](../reference/ts_shape/pipeline.md) — full parameter docs
+`PipelineResult.to_event_log()` normalizes the output of every `.detect` step
+into one canonical event log (see [Event log](eventlog/index.md)). Pass
+`concat=False` for a dict with one log per step.

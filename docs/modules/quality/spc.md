@@ -1,71 +1,43 @@
 # StatisticalProcessControlEvents
 
-> Applies SPC rules (Western Electric Rules) to a DataFrame for event detection using control limit UUIDs and actual value UUIDs.
+Shewhart control-chart rules (the eight Nelson tests, including the Western Electric zone rules), dynamic control limits and CUSUM shift detection. Control limits come from reference rows of one signal (`tolerance_uuid`); the rules are checked on the rows of another (`actual_uuid`).
 
-**Module:** `ts_shape.events.quality.statistical_process_control`  
-**Guide:** [Quality Control & SPC](../../guides/quality.md)
+`ts_shape.events.quality.statistical_process_control` · [Quality guide](../../guides/quality.md) · [API reference](../../reference/ts_shape/events/quality/statistical_process_control.md)
 
----
-
-## When to Use
-
-Use for real-time quality monitoring when you have a process signal and corresponding control limits. Ideal for detecting shifts, trends, and patterns that indicate a process is going out of control per the 8 Western Electric rules. Requires long-format data with the monitored values under `actual_uuid` and reference values under `tolerance_uuid`, from which the mean and 1/2/3 sigma control limits are calculated.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import pandas as pd
+import ts_shape
 from ts_shape.events.quality.statistical_process_control import StatisticalProcessControlEvents
 
-# Control limits are computed from the "limit:temp" reference rows;
-# the rules are checked against the "sensor:temp" rows.
-spc = StatisticalProcessControlEvents(
-    df,
-    value_column="value_double",
-    tolerance_uuid="limit:temp",
-    actual_uuid="sensor:temp",
-    event_uuid="spc:temp",
-)
+df = pd.concat([
+    ts_shape.make_timeseries(["limit:temp"], n_points=200, seed=1),  # in-control reference
+    ts_shape.make_timeseries(["sensor:temp"], n_points=500, drift=3.0, n_outliers=3, seed=2),
+], ignore_index=True)
 
-# Run the full SPC pipeline (calculates limits + applies all rules)
-result = spc.detect_violations()  # includes triggered_rule and severity
-
-# Or apply specific rules only
-limits = spc.control_limits()
-violations = spc.detect_rule_violations(selected_rules=["rule_1", "rule_2", "rule_5"])
-summary = spc.interpret_violations(violations)
+spc = StatisticalProcessControlEvents(df, value_column="value_double", tolerance_uuid="limit:temp",
+                                      actual_uuid="sensor:temp", event_uuid="spc:temp")
+violations = spc.detect_violations()
+print(violations["triggered_rule"].value_counts())
+shifts = spc.detect_cusum_shifts(k=0.5, h=5.0)
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `control_limits()` | center line and ±1σ/2σ/3σ limits from the reference rows |
+| `detect_violations(selected_rules=None, include_severity=True)` | one row per violating point: `systime`, value, `triggered_rule`, `severity` |
+| `detect_rule_violations(selected_rules=None)` | one row per point and rule: `systime`, `value`, `rule`, `severity` |
+| `dynamic_control_limits(method='moving_range', window_size=20)` | rolling limits per `systime`: `mean`, `1sigma_upper` … `3sigma_lower`; `method='ewma'` uses an EWMA with span `window_size` |
+| `detect_cusum_shifts(target=None, k=0.5, h=5.0)` | `systime`, value, `cusum_high`, `cusum_low`, `shift_direction`, `severity` |
+| `interpret_violations(violations_df)` | adds `interpretation`, `meaning`, `recommendation` |
+| `rule_1(df, limits)` … `rule_8(df, limits)` | the violating rows with a boolean rule column; the input is not modified |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `control_limits()` | Calculate mean and 1/2/3 sigma limits | DataFrame with control limits |
-| `dynamic_control_limits(method='moving_range', window_size=20)` | Adaptive control limits for non-stationary processes | DataFrame with dynamic limits |
-| `detect_rule_violations(selected_rules=None)` | Apply selected Western Electric rules (e.g. `["rule_1", "rule_3"]`) efficiently | DataFrame of violations with `rule` and `severity` |
-| `detect_cusum_shifts(target=None, k=0.5, h=5.0)` | CUSUM shift detection for small sustained shifts | DataFrame with `systime`, `value`, `cusum_high`, `cusum_low`, `shift_detected`, `shift_direction` |
-| `interpret_violations(violations_df)` | Add human-readable interpretations to violations | DataFrame with added `interpretation`, `meaning`, `recommendation` |
-| `detect_violations(selected_rules=None, include_severity=True)` | Full SPC pipeline: limits + rules | Violation events with `systime`, value column, `uuid`, `triggered_rule`, `severity`, `source_uuid` (`include_severity=False` drops `triggered_rule` and `severity`) |
-| `rule_1` through `rule_8` | Individual rule checks: the eight Nelson (1984) tests, which include the Western Electric zone rules (same-side counts include points beyond the next zone; run lengths count points). They do not modify the input frame | Violating rows with a boolean rule column |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Start with the detect_violations() method"
-    The `detect_violations()` method runs the complete pipeline and is the easiest entry point. Use individual rules or `detect_rule_violations(selected_rules=...)` only when you need to tune which rules apply to your specific process.
-
-!!! info "Related modules"
-    - [Tolerance Deviation](tolerance-deviation.md) — specification-limit-based deviation tracking with Cp/Cpk
-    - [Capability Trending](capability-trending.md) — track capability indices over time
-    - [Outlier Detection](outlier-detection.md) — statistical outlier detection as a preprocessing step
-
----
-
-## See Also
-
-- [Quality Control & SPC Guide](../../guides/quality.md) — narrative overview
-- [API Reference](../../reference/ts_shape/events/quality/statistical_process_control.md) — full parameter docs
+- The rules follow Nelson (1984): rule 1 a point beyond 3σ; rule 2 nine points on one side of the center line; rule 3 six points steadily rising or falling; rule 4 fourteen points alternating up and down; rule 5 two of three beyond 2σ on one side; rule 6 four of five beyond 1σ on one side; rule 7 fifteen points within 1σ; rule 8 eight points with none within 1σ. Points beyond the next zone count for rules 5 and 6. An unchanged value breaks the runs of rules 3 and 4.
+- Severity per rule: rule 1 `critical`, rule 5 `high`, rules 2, 3, 4, 6 `medium`, rules 7 and 8 `low`. `detect_violations` reports a point that violates several rules once, with the first selected rule.
+- CUSUM: `k` and `h` are in multiples of the reference σ; `target` defaults to the reference mean. It is skipped (empty result) when the reference has fewer than two rows or zero spread.
+- `selected_rules` takes names such as `["rule_1", "rule_5"]`.

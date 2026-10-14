@@ -1,67 +1,36 @@
 # FailurePredictionEvents
 
-> Predict remaining useful life and detect escalating failure patterns.
+Remaining useful life by linear extrapolation of the recent trend to a failure threshold, escalating warning/critical exceedances per window, and time to a threshold from the current rate of change.
 
-**Module:** `ts_shape.events.maintenance.failure_prediction`
-**Guide:** [Quality Guide](../../guides/quality.md)
+`ts_shape.events.maintenance.failure_prediction` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/maintenance/failure_prediction.md)
 
----
-
-## When to Use
-
-Use when a degradation trend has been identified and you need to estimate how much time remains before a failure threshold is reached. Pairs well with `DegradationDetectionEvents` for a complete predictive maintenance pipeline.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import ts_shape
 from ts_shape.events.maintenance.failure_prediction import FailurePredictionEvents
 
-predictor = FailurePredictionEvents(
-    dataframe=sensor_df,
-    signal_uuid="bearing_temp",
-)
+df = ts_shape.make_timeseries(["bearing_temp"], n_points=4320, freq="1min", baseline=60.0, noise=0.5, drift=25.0)
 
-# Estimate remaining useful life via linear extrapolation to 95 degrees
-# (degradation_rate is a fallback slope in units per second; positive = rising)
-rul = predictor.remaining_useful_life(degradation_rate=0.0001, failure_threshold=95.0)
+fp = FailurePredictionEvents(df, "bearing_temp")
+rul = fp.remaining_useful_life(degradation_rate=0.0001, failure_threshold=95.0)
 print(rul[["systime", "current_value", "rul_hours", "confidence"]].tail())
-
-# Detect escalating warning/critical breaches per rolling window
-exceedances = predictor.detect_exceedance_pattern(
-    warning_threshold=80.0, critical_threshold=90.0, window="1D"
-)
-
-# Time estimate to reach the critical threshold
-tte = predictor.time_to_threshold(threshold=95.0, direction="increasing")
-print(tte[["systime", "estimated_time_seconds"]].tail())
+pattern = fp.detect_exceedance_pattern(80.0, 82.0, window="1D")
+tte = fp.time_to_threshold(95.0, direction="increasing")
 ```
 
----
+## Methods
 
-## Key Methods
+| Method | Returns |
+|---|---|
+| `remaining_useful_life(degradation_rate, failure_threshold)` | per sample: `current_value`, `rul_seconds`, `rul_hours`, `confidence` |
+| `detect_exceedance_pattern(warning_threshold, critical_threshold, window='1h')` | per window: `warning_count`, `critical_count`, `escalation_detected` |
+| `time_to_threshold(threshold, direction='increasing')` | per sample: `current_value`, `rate_of_change`, `estimated_time_seconds` |
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `remaining_useful_life()` | RUL via linear extrapolation to a failure threshold | DataFrame with `systime`, `current_value`, `rul_seconds`, `rul_hours`, `confidence` (`rul_*` is None when no failure is projected) |
-| `detect_exceedance_pattern()` | Escalating warning/critical breaches over time | DataFrame with `start`, `warning_count`, `critical_count`, `escalation_detected` |
-| `time_to_threshold()` | Time estimate to reach a given threshold | DataFrame with `systime`, `current_value`, `rate_of_change`, `estimated_time_seconds` |
+## Notes
 
----
-
-## Tips & Hints
-
-!!! tip "Combine with degradation detection"
-    Run `DegradationDetectionEvents.detect_trend_degradation()` first to confirm a real trend exists. Calling `remaining_useful_life()` on a stationary signal will return unreliable estimates.
-
-!!! info "Related modules"
-    - [`DegradationDetectionEvents`](degradation-detection.md) - Detect degradation trends before estimating RUL
-    - [`VibrationAnalysisEvents`](vibration-analysis.md) - Vibration-specific failure indicators for rotating equipment
-
----
-
-## See Also
-
-- [Quality Guide](../../guides/quality.md)
-- [API Reference](../../reference/ts_shape/events/maintenance/failure_prediction.md)
+- `degradation_rate` (units per second) is the fallback slope when no local slope can be computed; its sign gives the failure direction (positive: failure when the value rises to the threshold).
+- `rul_*` is 0 once the threshold is reached and None when no failure is projected (flat trend or a trend moving away from the threshold).
+- Exceedances compare the absolute value with the thresholds; `escalation_detected` marks increasing counts.
+- On a signal without a real trend the RUL estimate is meaningless; confirm the trend first, e.g. with [DegradationDetectionEvents](degradation-detection.md).
+- For a forecast with a fit quality and named thresholds see [TimeToThresholdEvents](../engineering/time-to-threshold.md).

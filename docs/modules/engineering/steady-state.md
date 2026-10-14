@@ -1,71 +1,40 @@
 # SteadyStateDetectionEvents
 
-> Identify when a process signal has settled into a steady operating state versus transient/dynamic periods.
+Steady-state intervals (rolling standard deviation below a threshold) and transient intervals of a signal, the share of time steady, and the operating band of each steady interval.
 
-**Module:** `ts_shape.events.engineering.steady_state_detection`  
-**Guide:** [Process Engineering](../../guides/engineering.md)
+`ts_shape.events.engineering.steady_state_detection` · [Engineering guide](../../guides/engineering.md) · [API reference](../../reference/ts_shape/events/engineering/steady_state_detection.md)
 
----
-
-## When to Use
-
-Use to segment process data into steady-state vs transient periods. Essential for valid statistical analysis — SPC and capability indices are only meaningful on steady-state data. Also useful for filtering out startup, shutdown, and transition periods before computing KPIs.
-
----
-
-## Quick Example
+## Example
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape.events.engineering.steady_state_detection import SteadyStateDetectionEvents
 
-detector = SteadyStateDetectionEvents(
-    dataframe=process_data,
-    signal_uuid="reactor_temperature_01",
-)
+t = pd.date_range("2024-01-01", periods=7200, freq="1s")
+level = np.interp(np.arange(7200), [0, 1800, 2400, 5400, 6000, 7199], [150, 150, 180, 180, 160, 160])
+df = pd.DataFrame({"systime": t, "uuid": "reactor_temp",
+                   "value_double": level + np.random.default_rng(0).normal(0, 0.3, 7200)})
 
-# Detect steady-state intervals
-steady = detector.detect_steady_state(
-    window="5min",
-    std_threshold=1.0,
-    min_duration="10min"
-)
-
-# Get transient periods (inverse of steady state)
-transients = detector.detect_transient_periods(
-    window="5min",
-    std_threshold=1.0
-)
-
-# Identify distinct operating bands within steady state
-bands = detector.steady_state_value_bands(window="5min")
+ss = SteadyStateDetectionEvents(df, "reactor_temp")
+print(ss.detect_steady_state(window="5min", std_threshold=1.0, min_duration="10min"))
+summary = ss.steady_state_statistics(window="5min", std_threshold=1.0)
+bands = ss.steady_state_value_bands(window="5min", std_threshold=1.0)
 ```
 
----
+## Methods
 
-## Key Methods
+All arguments are keyword-only.
 
-| Method | Purpose | Returns |
-|--------|---------|---------|
-| `detect_steady_state(window='5min', std_threshold=1.0, min_duration='10min')` | Steady-state intervals | DataFrame: `start`, `end`, `mean_value`, `std_value`, `duration_seconds`, ... |
-| `detect_transient_periods(window='5min', std_threshold=1.0)` | Transient/dynamic intervals | DataFrame: `start`, `end`, `max_std`, `duration_seconds`, ... |
-| `steady_state_statistics(window='5min', std_threshold=1.0, min_duration='10min')` | Summary statistics | One-row DataFrame: `start`, `end`, `duration_seconds`, `uuid`, `source_uuid`, `total_steady_seconds`, `total_transient_seconds`, `steady_pct`, `num_steady_periods`, `avg_steady_duration_seconds`. `as_frame=False` returns the deprecated dict |
-| `steady_state_value_bands(window='5min')` | Distinct operating bands | DataFrame: `start`, `end`, `mean_value`, `lower_band`, `upper_band`, `duration_seconds` |
+| Method | Returns |
+|---|---|
+| `detect_steady_state(window='5min', std_threshold=1.0, min_duration='10min')` | `start`, `end`, `mean_value`, `std_value`, `duration_seconds` |
+| `detect_transient_periods(window='5min', std_threshold=1.0)` | `start`, `end`, `max_std`, `duration_seconds` |
+| `steady_state_statistics(window='5min', std_threshold=1.0, min_duration='10min')` | one row: `total_steady_seconds`, `total_transient_seconds`, `steady_pct`, `num_steady_periods`, `avg_steady_duration_seconds` |
+| `steady_state_value_bands(window='5min', std_threshold=1.0, min_duration='10min')` | per steady interval: `mean_value`, `lower_band`, `upper_band` (mean ± std), `duration_seconds` |
 
----
+## Notes
 
-## Tips & Hints
-
-!!! tip "Tune std_threshold to your process noise"
-    The default `std_threshold=1.0` works for many signals, but noisy sensors may need a higher value. Start by looking at `steady_state_statistics()` output and adjust until the detected intervals match your engineering judgment.
-
-!!! info "Related modules"
-    - [Process Windows](process-windows.md) — windowed statistics that pair well with steady-state filtering
-    - [Setpoint Events](setpoint-events.md) — detect the setpoint changes that cause transient periods
-    - [Operating Range](operating-range.md) — analyze the envelope within steady-state periods
-
----
-
-## See Also
-
-- [Process Engineering Guide](../../guides/engineering.md)
-- [API Reference](../../reference/ts_shape/events/engineering/steady_state_detection.md)
+- `std_threshold` is in signal units; set it above the sensor noise.
+- Intervals end at the next sample after the condition stops holding by default (`interval_end="next_change"`), so change-only signals keep their duration; `"last_sample"` ends them at the last flagged sample.
+- `steady_state_statistics(..., as_frame=False)` returns the deprecated dict.

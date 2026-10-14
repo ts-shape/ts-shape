@@ -1,203 +1,106 @@
-# Concept
+# Data model and layers
 
-ts-shape is a lightweight toolkit for shaping timeseries data into analysis-ready DataFrames.
+ts-shape is a set of pandas functions and classes. There is no runtime, store
+or scheduler: every step takes a DataFrame and returns one, so you can start
+at any layer with data you already have.
 
-## Architecture
+## The input format
 
-A layered, abstract view of the pipeline. The detection layer is intentionally pluggable — see [Lambda Rules](guides/lambda-rules.md) for the user-authored path.
+All signals live in one long-format DataFrame, one row per sample:
 
-```mermaid
-flowchart TB
-    subgraph IN["Sources"]
-        S1[Time-series stores<br/><i>Parquet · S3/Azure · TimescaleDB</i>]
-        S2[Object &amp; context<br/><i>batches · shifts · assets</i>]
-    end
-    subgraph LOAD["Load &amp; Enrich"]
-        L1[Loaders]
-        L2[Transforms · Features · Statistics]
-    end
-    subgraph DETECT["Detection Layer"]
-        D1["Built-in detectors<br/>(80+ detector classes, 300+ methods)"]
-        D2["Lambda rules<br/>(YAML / DSL)"]
-        D3["Gen-AI authoring<br/><i>roadmap</i>"]
-    end
-    subgraph EVENTLOG["Canonical EventLog (OCEL 2.0)"]
-        E1[Events]
-        E2[Objects]
-        E3[Relations]
-    end
-    subgraph OUT["Consumers"]
-        O1[XES / pm4py]
-        O2[OCEL viewers]
-        O3[KPIs &amp; reports]
-    end
-    IN --> LOAD --> DETECT
-    D1 --> EVENTLOG
-    D2 --> EVENTLOG
-    D3 -.-> D2
-    EVENTLOG --> OUT
-    style DETECT fill:#0f2a3d,stroke:#38bdf8,color:#e0f2fe
-    style EVENTLOG fill:#3d2a0f,stroke:#fbbf24,color:#fef3c7
-    style D3 stroke-dasharray: 4 3
-```
+| Column | Type | Content |
+|---|---|---|
+| `systime` | datetime (tz-aware recommended) | sample timestamp |
+| `uuid` | string | signal identifier, for example `line1:running` |
+| `value_double` | float | measured values |
+| `value_integer` | int | counters, codes |
+| `value_bool` | bool | run states, flags |
+| `value_string` | string | part numbers, order ids, state names |
+| `is_delta` | bool, optional | whether the row is a change (delta) or a snapshot |
 
-## Full library architecture
+A signal uses one `value_*` column; the others stay empty. Not every column
+has to be present, only `systime`, `uuid` and the value columns the
+detector reads. Detectors take the column names as arguments
+(`time_column`, `value_column`, ...), so other layouts work too.
 
-For the prose explanation of each layer (input, output, when to use it)
-see [Architecture](guides/architecture.md). For the interactive
-full-screen graph of every package, class, and detector method see
-[Architecture Map](guides/architecture-map.md).
+Signal metadata (name, unit, configuration) is a second frame keyed by
+`uuid`. [`DataIntegratorHybrid`](guides/loading.md#combining-timeseries-with-metadata)
+joins the two.
 
-[Open the interactive architecture map →](guides/architecture-map.md){ .md-button .md-button--primary }
+What a signal *is* (a counter that resets, a change-encoded state, a sampled
+measurement) changes how it must be aggregated. [Signal semantics and
+profiling](guides/signals.md) describes how to declare this once as a
+`SignalSpec` and let detectors follow it.
 
-## Core Principles
+## Layers
 
-| Principle | Description |
-|-----------|-------------|
-| **DataFrame-First** | Every operation accepts and returns Pandas DataFrames |
-| **Modular** | Use only what you need - all components are decoupled |
-| **Composable** | Chain operations together like building blocks |
-| **Consistent Schema** | Simple, predictable data structure |
+| Layer | Package | Input | Output | Examples |
+|---|---|---|---|---|
+| Load | `ts_shape.loader` | parquet, S3, Azure Blob, Databricks, TimescaleDB, JSON | long-format frame | `ParquetLoader`, `AzureBlobParquetLoader`, `MetadataJsonLoader` |
+| Transform | `ts_shape.transform` | long frame | long frame | `DoubleFilter`, `DateTimeFilter`, `TimezoneShift`, `DataHarmonizer` |
+| Features | `ts_shape.features` | long frame | statistics, cycles, segments, feature tables | `NumericStatistics`, `CycleExtractor`, `SegmentExtractor` |
+| Detect | `ts_shape.events` | long frame | event or KPI table | `MachineStateEvents`, `OEEEvents`, `OutlierDetectionEvents` |
+| Event log | `ts_shape.eventlog` | detector output | OCEL 2.0 tables, XES-style frame | `to_event_log`, `to_event_log_xes`, `to_event_log_ocel` |
 
-## Data Model
+`ts_shape.Pipeline` chains transforms and detectors into one reusable
+definition ([Pipelines](guides/pipeline-builder.md)).
 
-### Timeseries DataFrame
+## Detectors
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `uuid` | string | Signal/sensor identifier |
-| `systime` | datetime | Timestamp (tz-aware recommended) |
-| `value_double` | float | Numeric measurements |
-| `value_integer` | int | Counter/integer values |
-| `value_string` | string | Categorical data |
-| `value_bool` | bool | Binary states |
-| `is_delta` | bool | Delta vs absolute (optional) |
+Detectors are grouped into packs under `ts_shape.events`: `quality`,
+`production`, `engineering`, `maintenance`, `energy`, `correlation`,
+`supplychain` and `development`. Each detector is a class named `...Events`
+that inherits from `ts_shape.utils.base.Base`. The base class:
 
-### Metadata DataFrame
+- copies the input frame, converts the time column to datetime and sorts by it;
+- converts nullable, pyarrow and text-number value columns to NumPy dtypes once;
+- raises `ColumnNotFoundError` when the time or uuid column is missing, and
+  warns with `DataQualityWarning` when a signal uuid you pass is not in the
+  data.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `uuid` | string | Signal identifier (join key) |
-| `label` | string | Human-readable name |
-| `unit` | string | Measurement unit |
-| `config.*` | any | Additional configuration |
-
-## Detector & module reference
-
-The full, always-current catalog of loaders, transforms, features, and
-every detector class lives in the dedicated reference docs rather than
-being duplicated here:
-
-- **[Module Reference](modules/index.md)** — one hand-written page per detector
-  (when to use it, quick example, key methods).
-- **[API Reference](reference/index.md)** — signatures auto-generated from the source docstrings.
-- **[Architecture Map](guides/architecture-map.md)** — interactive graph of every class and method.
-
-From a REPL, `ts_shape.list_detectors("events.quality")` lists the same
-catalog programmatically.
-
-## Pipeline Pattern
+You configure the detector in the constructor and call its methods:
 
 ```python
-# 1. LOAD
-from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
-from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
+import ts_shape
 
-ts_df = ParquetLoader.load_all_files("data/")
-meta_df = MetadataJsonLoader.from_file("config/signals.json").to_df()
-
-# 2. COMBINE
-from ts_shape.loader.combine.integrator import DataIntegratorHybrid
-
-df = DataIntegratorHybrid.combine_data(
-    timeseries_sources=[ts_df],
-    metadata_sources=[meta_df],
-    join_key="uuid"
-)
-
-# 3. TRANSFORM
-from ts_shape.transform.filter.datetime_filter import DateTimeFilter
-from ts_shape.transform.filter.numeric_filter import DoubleFilter
-
-df = DateTimeFilter.filter_after_date(df, "systime", "2024-01-01")
-df = DoubleFilter.filter_nan_value_double(df, "value_double")
-
-# 4. ANALYZE
-from ts_shape.features.stats.numeric_stats import NumericStatistics
-from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
-
-stats = NumericStatistics(df, "value_double")
-outliers = OutlierDetectionEvents(
-    df, value_column="value_double", group_by_uuid=True
-).detect_outliers_zscore(threshold=3.0)
+df = ts_shape.make_timeseries(["line1:running"], n_points=500, freq="1min", value_column="value_bool")
+state = ts_shape.MachineStateEvents(df, run_state_uuid="line1:running")
+intervals = state.detect_run_idle(min_duration="2min")
 ```
 
-## Design Decisions
+`ts_shape.list_detectors()` lists every detector class, and
+`ts_shape.list_detectors("events.quality")` one pack.
 
-### Why DataFrames?
+## Output shapes
 
-- **Universal**: Understood by all data scientists
-- **Ecosystem**: Works with matplotlib, scikit-learn, etc.
-- **Debuggable**: Easy to inspect intermediate results
-- **Exportable**: Save to CSV, parquet, database
+Every detector method returns a DataFrame in one of four shapes:
 
-### Why Modular?
+| Shape | Required columns | Used for |
+|---|---|---|
+| point | `systime`, `uuid`, `source_uuid` | something that happened at an instant (an outlier, a rule violation) |
+| interval | `start`, `end`, `duration_seconds`, `uuid`, `source_uuid` | something that lasted (a run, a downtime, a batch) |
+| summary | `start`, `end`, `duration_seconds` | a value per time window (OEE per day, parts per shift) |
+| static | none | a table not tied to time (statistics by reason, a fitted model) |
 
-- **Lightweight**: Import only what you need
-- **Testable**: Each component works independently
-- **Extensible**: Add custom modules easily
-- **Maintainable**: Clear separation of concerns
+`uuid` is the event type the detector emits (for example `quality:outlier`)
+and `source_uuid` the signal it was found on. Column naming, units and
+error behavior are specified in [Naming and output
+conventions](naming.md).
 
-### Why This Schema?
+Because the shapes are fixed, any detector output can be normalized into
+one event log. See [Event log](guides/eventlog/index.md).
 
-- **Flexible**: Not all columns required
-- **Multi-type**: Handles numeric, string, boolean values
-- **Joinable**: UUID enables metadata enrichment
-- **Sparse-friendly**: Nulls are fine
+## Extending
 
-## Extending ts-shape
+- A plain function `df -> df` can be a step in a [Pipeline](guides/pipeline-builder.md).
+- A threshold or interval rule can be declared in YAML as a
+  [lambda rule](guides/lambda-rules.md); it then works with the event log like
+  a built-in detector.
+- A new detector class subclasses `Base`, returns one of the shapes above and
+  registers a label rule ([Adding a detector method](guides/eventlog/taxonomy.md#adding-a-new-detector-method)).
 
-### Custom Loader
+## Scope
 
-```python
-class MyDatabaseLoader:
-    def __init__(self, connection: str):
-        self.conn = connection
-
-    def fetch_data_as_dataframe(self, start: str, end: str) -> pd.DataFrame:
-        # Query database, return DataFrame with uuid, systime, value_*
-        return df
-```
-
-### Custom Transform
-
-```python
-class MyFilter:
-    @staticmethod
-    def filter_business_hours(df: pd.DataFrame, column: str) -> pd.DataFrame:
-        hours = pd.to_datetime(df[column]).dt.hour
-        return df[(hours >= 9) & (hours < 17)]
-```
-
-### Custom Feature
-
-```python
-class MyMetrics:
-    def __init__(self, df: pd.DataFrame, column: str):
-        self.data = df[column].dropna()
-
-    def coefficient_of_variation(self) -> float:
-        return self.data.std() / self.data.mean()
-```
-
-## When to Use ts-shape
-
-| Use Case | ts-shape? |
-|----------|-----------|
-| Load parquet/S3/Azure/DB into DataFrames | Yes |
-| Filter and transform timeseries | Yes |
-| Compute statistics on signals | Yes |
-| Detect outliers and events | Yes |
-| Real-time streaming | No (use Kafka/Flink) |
-| Sub-millisecond latency | No (use specialized libs) |
-| GPU acceleration | No (use cuDF/Rapids) |
+ts-shape runs in memory on pandas. It is meant for batch analysis of
+historian, data-lake and database extracts, not for stream processing or
+low-latency control.

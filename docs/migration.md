@@ -1,17 +1,90 @@
-# Migration & Deprecations
+# Migration and deprecations
 
-A running list of renames, deprecated aliases and behavior changes. Deprecated
+Renames, deprecated aliases and behavior changes. Deprecated
 names still work and emit a `DeprecationWarning`; they are removed only in a
-future major release. The
-authoritative, dated record is the [Changelog](changelog.md); this page is the
-quick old → new lookup.
+future major release. To find every deprecated name your code still uses, run
+your tests with `-W error::DeprecationWarning`. The dated record is the
+[Changelog](changelog.md).
 
-## Correct by default (October 2026)
+## October 2026, round 6: consistent outputs
 
-This release makes the correct behavior the default and returns full-precision numbers.
-Your code keeps running: no name was removed. But **results change** wherever
-your data has counter resets, change-encoded signals, uneven sampling or
-several signals in one frame. Each old behavior is still one argument away.
+### Summary methods return a DataFrame
+
+Like `best_and_worst_shifts` (round 5), these methods take `as_frame: bool = True`. The default returns a DataFrame whose columns are the old keys, plus `start` / `end` / `duration_seconds` for the data the summary covers. `as_frame=False` returns the old dict or list and emits a `DeprecationWarning`; that form will be removed in the next major release. To keep old code working unchanged, pass `as_frame=False`. Alternatively, read a one-row result with `.iloc[0]`, which supports the same `["key"]` access.
+
+| Method | Default DataFrame |
+|---|---|
+| `SteadyStateDetectionEvents.steady_state_statistics` | one row; the dict keys plus `uuid`, `source_uuid` |
+| `MachineStateEvents.state_quality_metrics` | one row; the dict keys plus `uuid`, `source_uuid` |
+| `TargetEvents.target_hit_rate` | one row; `start` / `end` span the analysed days |
+| `ToleranceDeviationEvents.capability_indices` | one row; `Cpm` is always a column (NaN without `target_value`), plus `sample_count` |
+| `BottleneckDetectionEvents.throughput_constraint_summary` | one row per station: `bottleneck_count`, `bottleneck_pct`, `avg_utilization_pct`, `most_frequent_bottleneck` |
+| `FlowConstraintEvents.flow_constraint_analytics` | one row per `constraint_type` (`blocked`, `starved`): `event_count`, `total_duration_seconds`, `avg_duration_seconds`, `minor_count`, `moderate_count`, `severe_count`, `time_alignment_quality`. The event lists come from `blocked_events` / `starved_events`. |
+| `ShiftHandoverEvents.highlight_issues` | one row per issue, with the report row's shift window and `date` |
+
+### KPI percentages carry their basis
+
+New columns; none were removed:
+
+| Method | New columns |
+|---|---|
+| `OEEEvents.oee` | `run_seconds`, `planned_seconds`, `excluded_seconds`, `actual_parts`, `ideal_parts`, `total_parts`, `reject_parts`, `good_parts` (NaN without quality counters), `resets` |
+| `OEEEvents.availability` | `excluded_seconds` (time `max_gap` removed as no data) |
+| `LineThroughputEvents.throughput_oee` | `run_seconds`, `planned_seconds`, `resets` (with `handle_resets=True`) |
+| `DowntimeEvents.downtime_by_shift` / `availability_trend` | `excluded_seconds` |
+| `PerformanceLossEvents` (all three methods) | `run_seconds` |
+
+### Durations in seconds
+
+Each `*_minutes` or `*_s` duration column now has a `*_seconds` twin right after it: `total_seconds`, `downtime_seconds`, `uptime_seconds`, `avg_seconds` (downtime), `avg_cycle_time_seconds`, `target_cycle_time_seconds`, `loss_seconds` (performance loss), `avg_seconds`, `min_seconds`, `max_seconds`, `median_seconds`, `std_seconds`, `avg_setup_seconds`, `total_setup_seconds` (setup time), `downtime_seconds` (shift handover, also in `OUTPUT_COLUMNS`). The old columns stay as a convenience. Their removal would be a breaking change and is left for a future major release; new code should read the `*_seconds` columns. In recipe-phase specs `duration_seconds` is the new spelling of the `duration_s` criterion; `duration_s` is still accepted.
+
+### Run state as string or boolean
+
+`DowntimeEvents` and `ShiftHandoverEvents` read either a string state signal (`running_value="Running"` in `value_string`) or a boolean run signal (`value_bool`, True = running). The boolean signal is used when the state rows carry no `value_string`, or when `running_value` / `stopped_value` is a bool. Both forms give the same downtime. Before this change, a boolean run signal was compared with `"Running"` and therefore reported 100 % downtime.
+
+### Fixes
+
+`FlowConstraintEvents.flow_constraint_analytics` applies its `warning_threshold` / `critical_threshold` to the severity counts and to the event lists. Before, it accepted them but classified with the 5 s / 30 s defaults.
+
+### Same numbers for any data source, totals that add up
+
+- **Dtypes no longer change results.** Value columns with pandas nullable,
+  pyarrow or text-number dtypes are converted once when a detector is built.
+  Text that is not a number is reported with a `DataQualityWarning` at
+  construction, not when a method runs. Counter totals on nullable or pyarrow
+  data were too high (the first reading counted as production): they now
+  match NumPy data.
+- **Group totals add up to the counter total.** Per shift, day, operator,
+  part, reason, batch and schedule period, the part made between the last
+  reading of one group and the first reading of the next now counts in the
+  later group (`utils.counters.counter_by_group`). Quantities can grow by one
+  increment per group boundary; `resets` can grow by one when a reset falls on
+  a group boundary. Per-operator/part/reason totals no longer double count
+  when those groups alternate. `shift_production(date=...)` includes the
+  increment into the day's first reading. `batch_yield` books production
+  between two batches to the earlier batch. `handle_resets=False` is
+  unchanged.
+- **`FlowConstraintEvents`** intervals end at the next change
+  (`interval_end="next_change"`); pass `interval_end="last_sample"` for the
+  previous, shorter durations.
+- **`MultiSensorValidationEvents.detect_outlier_sensor`** needs three sensors
+  to name an outlier; with two it skips the window and warns.
+- **`ToleranceDeviationEvents.capability_indices`** on empty data returns an
+  empty frame with the full schema; `CapabilityTrendingEvents` uses the spec
+  limits in force in each window.
+- **Energy methods with `window="W"` / `"ME"`** report the real week or month
+  (`end` was `start` + 1 day).
+- **Shift labels:** a row with a missing timestamp gets the shift `"unknown"`.
+- **Degenerate inputs:** duplicate timestamps give `NaN` rates (with a
+  warning) instead of `inf`; `detect_oscillation(window<=0)` raises.
+
+## October 2026, round 5: correct by default
+
+The correct behavior is now the default, and results are returned at full
+precision. No name was removed, so your code keeps running, but **results
+change** wherever your data has counter resets, change-encoded signals, uneven
+sampling or several signals in one frame. Each old behavior is one argument
+away.
 
 ### Defaults that changed
 
@@ -65,68 +138,6 @@ To compare old and new numbers, pass the old default explicitly, for example `oe
 
 - `OutlierDetectionEvents(signal_uuids=[...])` restricts the analysis to some signals.
 - `pip install ts-shape[parquet]` installs pyarrow (also pulled in by `[s3]` and `[azure]`); `[all]` now installs every optional feature.
-
-### Consistent outputs (round 6)
-
-**Summary methods return a DataFrame.** Following `best_and_worst_shifts`, these methods take `as_frame: bool = True`. The default returns a DataFrame whose columns are the old keys, plus `start` / `end` / `duration_seconds` for the data the summary covers. `as_frame=False` returns the old dict or list and emits a `DeprecationWarning`; that form will be removed in the next major release. To keep old code working unchanged, pass `as_frame=False`. Alternatively, read a one-row result with `.iloc[0]`, which supports the same `["key"]` access.
-
-| Method | Default DataFrame |
-|---|---|
-| `SteadyStateDetectionEvents.steady_state_statistics` | one row; the dict keys plus `uuid`, `source_uuid` |
-| `MachineStateEvents.state_quality_metrics` | one row; the dict keys plus `uuid`, `source_uuid` |
-| `TargetEvents.target_hit_rate` | one row; `start` / `end` span the analysed days |
-| `ToleranceDeviationEvents.capability_indices` | one row; `Cpm` is always a column (NaN without `target_value`), plus `sample_count` |
-| `BottleneckDetectionEvents.throughput_constraint_summary` | one row per station: `bottleneck_count`, `bottleneck_pct`, `avg_utilization_pct`, `most_frequent_bottleneck` |
-| `FlowConstraintEvents.flow_constraint_analytics` | one row per `constraint_type` (`blocked`, `starved`): `event_count`, `total_duration_seconds`, `avg_duration_seconds`, `minor_count`, `moderate_count`, `severe_count`, `time_alignment_quality`. The event lists come from `blocked_events` / `starved_events`. |
-| `ShiftHandoverEvents.highlight_issues` | one row per issue, with the report row's shift window and `date` |
-
-**KPI percentages carry their basis** (new columns; none were removed):
-
-| Method | New columns |
-|---|---|
-| `OEEEvents.oee` | `run_seconds`, `planned_seconds`, `excluded_seconds`, `actual_parts`, `ideal_parts`, `total_parts`, `reject_parts`, `good_parts` (NaN without quality counters), `resets` |
-| `OEEEvents.availability` | `excluded_seconds` (time `max_gap` removed as no data) |
-| `LineThroughputEvents.throughput_oee` | `run_seconds`, `planned_seconds`, `resets` (with `handle_resets=True`) |
-| `DowntimeEvents.downtime_by_shift` / `availability_trend` | `excluded_seconds` |
-| `PerformanceLossEvents` (all three methods) | `run_seconds` |
-
-**Durations in seconds.** Each `*_minutes` or `*_s` duration column now has a `*_seconds` twin right after it: `total_seconds`, `downtime_seconds`, `uptime_seconds`, `avg_seconds` (downtime), `avg_cycle_time_seconds`, `target_cycle_time_seconds`, `loss_seconds` (performance loss), `avg_seconds`, `min_seconds`, `max_seconds`, `median_seconds`, `std_seconds`, `avg_setup_seconds`, `total_setup_seconds` (setup time), `downtime_seconds` (shift handover, also in `OUTPUT_COLUMNS`). The old columns stay as a convenience. Their removal would be a breaking change and is left for a future major release; new code should read the `*_seconds` columns. In recipe-phase specs `duration_seconds` is the new spelling of the `duration_s` criterion; `duration_s` is still accepted.
-
-**Run state as string or boolean.** `DowntimeEvents` and `ShiftHandoverEvents` read either a string state signal (`running_value="Running"` in `value_string`) or a boolean run signal (`value_bool`, True = running). The boolean signal is used when the state rows carry no `value_string`, or when `running_value` / `stopped_value` is a bool. Both forms give the same downtime. Before this change, a boolean run signal was compared with `"Running"` and therefore reported 100 % downtime.
-
-**Fix:** `FlowConstraintEvents.flow_constraint_analytics` applies its `warning_threshold` / `critical_threshold` to the severity counts and to the event lists. Before, it accepted them but classified with the 5 s / 30 s defaults.
-
-### Same numbers for any data source, totals that add up (round 6)
-
-- **Dtypes no longer change results.** Value columns with pandas nullable,
-  pyarrow or text-number dtypes are converted once when a detector is built.
-  Text that is not a number is reported with a `DataQualityWarning` at
-  construction, not when a method runs. Counter totals on nullable or pyarrow
-  data were too high (the first reading counted as production): they now
-  match NumPy data.
-- **Group totals add up to the counter total.** Per shift, day, operator,
-  part, reason, batch and schedule period, the part made between the last
-  reading of one group and the first reading of the next now counts in the
-  later group (`utils.counters.counter_by_group`). Quantities can grow by one
-  increment per group boundary; `resets` can grow by one when a reset falls on
-  a group boundary. Per-operator/part/reason totals no longer double count
-  when those groups alternate. `shift_production(date=...)` includes the
-  increment into the day's first reading. `batch_yield` books production
-  between two batches to the earlier batch. `handle_resets=False` is
-  unchanged.
-- **`FlowConstraintEvents`** intervals end at the next change
-  (`interval_end="next_change"`); pass `interval_end="last_sample"` for the
-  previous, shorter durations.
-- **`MultiSensorValidationEvents.detect_outlier_sensor`** needs three sensors
-  to name an outlier; with two it skips the window and warns.
-- **`ToleranceDeviationEvents.capability_indices`** on empty data returns an
-  empty frame with the full schema; `CapabilityTrendingEvents` uses the spec
-  limits in force in each window.
-- **Energy methods with `window="W"` / `"ME"`** report the real week or month
-  (`end` was `start` + 1 day).
-- **Shift labels:** a row with a missing timestamp gets the shift `"unknown"`.
-- **Degenerate inputs:** duplicate timestamps give `NaN` rates (with a
-  warning) instead of `inf`; `detect_oscillation(window<=0)` raises.
 
 ## Renamed parameters (old keywords deprecated)
 
@@ -189,8 +200,6 @@ The old names still work. They emit a `DeprecationWarning`, and the event log ac
 | `*.alarm_duration_stats`, `*.batch_duration_stats`, `*.state_duration_stats` | `*_statistics` |
 | `DutyCycleEvents.duty_cycle_per_window`, `RuntimeAccountingEvents.runtime_per_window` | `*_by_window` |
 
-To find every remaining old name in your code, run your tests with `-W error::DeprecationWarning`.
-
 ## Behavior fixes that change results
 
 These change output because the old output was wrong or contradicted the documentation. Each one has a regression test.
@@ -232,8 +241,10 @@ The new columns were added next to the old ones; none was removed or renamed. Tw
 - **Merging two summaries on `date` or `(date, shift)`** now finds `start`, `end` and `duration_seconds` on both sides, and pandas suffixes them `_x` / `_y`. Merge on the window instead, or select your columns first:
 
 ```python
-quality = QualityTracking(df).daily_quality_summary("line1:ok", "line1:nok")
-production = PartProductionTracking(df).daily_production_summary("line1:part", "line1:count")
+from ts_shape import PartProductionEvents, QualityEvents
+
+quality = QualityEvents(df).daily_quality_summary("line1:ok", "line1:nok")
+production = PartProductionEvents(df).daily_production_summary("line1:part", "line1:count")
 daily = quality.merge(production, on=["start", "end", "duration_seconds"])
 ```
 
@@ -281,12 +292,6 @@ Per the XES standard `org:resource` is the performing resource, so it is now
 populated only from an `operator`-type object relation, and **omitted** when
 the log has no operators. Supply one via `objects={"operator": ...}` if you
 need it.
-
-## Class aliases
-
-| Alias (back-compat) | Canonical name | Notes |
-|---|---|---|
-| `OrderTraceabilityEvents` | `ValueTraceabilityEvents` | Deprecated (warns): single-ID traceability is not order-specific. |
 
 ## Standardized detector output (May 2026)
 
