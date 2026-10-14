@@ -1,4 +1,12 @@
 # October 14, 2026
+add: ChangePointEvents (events/quality/change_point.py) -- offline
+  change-point detection: exact PELT (Killick et al. 2012) and binary
+  segmentation in plain numpy, Gaussian mean or mean+variance costs, BIC
+  penalty; detect_change_points (point) and segment_statistics (interval).
+add: MultivariateSPCEvents (events/quality/multivariate_spc.py) -- Hotelling
+  T² with Phase I (beta) and Phase II (F) limits on a reference period,
+  per-variable contributions, and out-of-control runs with the top
+  contributor. Signals aligned backward with an optional max_gap.
 fix: Gauge R&R follows the AIAG average-and-range method: AV subtracts the
   repeatability share EV^2/(n*r) (a negative radicand gives AV = 0), and AV
   and PV use K2/K3 = 1/d2* (g = 1) instead of the large-sample d2. Before,

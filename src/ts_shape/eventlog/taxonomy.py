@@ -2058,6 +2058,52 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:confidence": "r_squared",
         },
     ),
+    ("ChangePointEvents", "detect_change_points"): _r(
+        "quality.change_point.shift",
+        _Q,
+        P,
+        objs=("signal",),
+        standard_attrs={"ts_shape:method": "pelt", "ts_shape:direction": "shift"},
+    ),
+    ("ChangePointEvents", "segment_statistics"): _r(
+        "quality.change_point.segment",
+        _Q,
+        I,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "pelt",
+            "ts_shape:sample_count": "sample_count",
+        },
+    ),
+    ("MultivariateSPCEvents", "hotelling_t2"): _r(
+        "quality.mspc.t2",
+        _Q,
+        P,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "hotelling_t2",
+            "ts_shape:direction": "above",
+            "ts_shape:threshold_high": "ucl",
+        },
+    ),
+    ("MultivariateSPCEvents", "contributions"): _r(
+        "quality.mspc.contribution",
+        _Q,
+        P,
+        objs=("signal",),
+        standard_attrs={"ts_shape:method": "t2_contribution"},
+    ),
+    ("MultivariateSPCEvents", "detect_out_of_control"): _r(
+        "quality.mspc.out_of_control",
+        _Q,
+        I,
+        objs=("signal",),
+        standard_attrs={
+            "ts_shape:method": "hotelling_t2",
+            "ts_shape:direction": "above",
+            "ts_shape:threshold_high": "ucl",
+        },
+    ),
     ("GaugeRepeatabilityEvents", "gauge_rr_summary"): _r(
         "quality.gauge_rr.summary",
         _Q,

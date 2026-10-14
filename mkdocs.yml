@@ -72,6 +72,8 @@ nav:
     - Multi-Sensor Validation: modules/quality/multi-sensor-validation.md
     - Gauge R&R: modules/quality/gauge-rr.md
     - Capability Trending: modules/quality/capability-trending.md
+    - Change-Point Detection: modules/quality/change-point.md
+    - Multivariate SPC (Hotelling T²): modules/quality/multivariate-spc.md
   - Production:
     - Event Detection:
       - Machine State: modules/production/machine-state.md

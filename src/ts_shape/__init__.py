@@ -32,6 +32,7 @@ _LAZY: dict[str, str] = {
     # -- events.quality --------------------------------------------------
     "AnomalyClassificationEvents": "ts_shape.events.quality.anomaly_classification",
     "CapabilityTrendingEvents": "ts_shape.events.quality.capability_trending",
+    "ChangePointEvents": "ts_shape.events.quality.change_point",
     "DataGapAnalysisEvents": "ts_shape.events.quality.data_gap_analysis",
     "GaugeRepeatabilityEvents": "ts_shape.events.quality.gauge_repeatability",
     "CalibrationValidationEvents": "ts_shape.events.quality.calibration_validation",
@@ -39,6 +40,7 @@ _LAZY: dict[str, str] = {
     "MeasurementUncertaintyEvents": "ts_shape.events.quality.measurement_uncertainty",
     "SamplingResolutionEvents": "ts_shape.events.quality.sampling_resolution",
     "MultiSensorValidationEvents": "ts_shape.events.quality.multi_sensor_validation",
+    "MultivariateSPCEvents": "ts_shape.events.quality.multivariate_spc",
     "OutlierDetectionEvents": "ts_shape.events.quality.outlier_detection",
     "SensorDriftEvents": "ts_shape.events.quality.sensor_drift",
     "SignalQualityEvents": "ts_shape.events.quality.signal_quality",

@@ -61,6 +61,15 @@ Classes:
   - gauge_rr_summary: Full Gauge R&R table with %GRR and ndc.
   - measurement_bias: Compare measurements to known reference values.
 
+- ChangePointEvents: Offline change-point detection (PELT, binary segmentation).
+  - detect_change_points: Level (and spread) shifts with before/after stats.
+  - segment_statistics: Stable segments between change points.
+
+- MultivariateSPCEvents: Hotelling T² multivariate SPC.
+  - hotelling_t2: T² with Phase I / Phase II control limits.
+  - contributions: Per-variable T² decomposition.
+  - detect_out_of_control: Out-of-control runs with the top contributor.
+
 - MeasurementUncertaintyEvents: GUM-based measurement uncertainty estimation.
   - type_a_uncertainty: Statistical (Type A) uncertainty per window.
   - type_b_uncertainty: Uncertainty from external sources (calibration, resolution).

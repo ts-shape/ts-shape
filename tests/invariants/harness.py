@@ -1,8 +1,9 @@
 """Registry-wide invariant harness for every ts-shape detector method.
 
-Walks :data:`ts_shape.eventlog.taxonomy.REGISTRY` (284 ``(class, method)``
-pairs), synthesises constructor and method arguments from parameter names,
-and checks three invariants on a small synthetic plant dataset:
+Walks every ``(class, method)`` pair of
+:data:`ts_shape.eventlog.taxonomy.REGISTRY`, synthesises constructor and
+method arguments from parameter names, and checks three invariants on a
+small synthetic plant dataset:
 
 ``empty``
     An empty frame (correct columns, zero rows) must not raise.
