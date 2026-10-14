@@ -52,9 +52,9 @@ handover = ShiftHandoverEvents.from_shift_data(
 |--------|---------|---------|
 | `from_shift_data(production_df, quality_df=None, downtime_df=None, targets=None, report_date=None)` | Build report from pre-computed shift-level DataFrames (static method) | `DataFrame` |
 | `generate_report(counter_uuid, ok_counter_uuid, nok_counter_uuid, state_uuid, targets=None)` | Generate report from raw signal UUIDs | `DataFrame` |
-| `highlight_issues(report_df=None, thresholds=None)` | Identify metrics below thresholds, from a report DataFrame or from raw signal UUIDs | `list[dict]` with `shift`, `metric`, `value`, `threshold`, `severity` |
+| `highlight_issues(report_df=None, thresholds=None)` | Identify metrics below thresholds, from a report DataFrame or from raw signal UUIDs | `DataFrame`, one row per issue, with `start`, `end`, `duration_seconds` (the report row's shift window), `date`, `shift`, `metric`, `value`, `threshold`, `severity`. `as_frame=False` returns the deprecated `list[dict]` |
 
-Both report methods return one row per shift with `date`, `shift`, `production`, `production_target`, `production_achievement_pct`, `ok_parts`, `nok_parts`, `quality_pct`, `availability_pct`, `downtime_minutes`. `highlight_issues` defaults to thresholds of `production_achievement_pct=95`, `quality_pct=98`, `availability_pct=90`; `severity` is `"warning"` within 5% of the threshold, otherwise `"critical"`.
+Both report methods return one row per shift with `date`, `shift`, `production`, `production_target`, `production_achievement_pct`, `ok_parts`, `nok_parts`, `quality_pct`, `availability_pct`, `downtime_minutes`, `downtime_seconds`. The run state may be a string signal (`running_value='Running'` in `value_string`) or a boolean run signal (`value_bool`, True = running). `highlight_issues` defaults to thresholds of `production_achievement_pct=95`, `quality_pct=98`, `availability_pct=90`; `severity` is `"warning"` within 5% of the threshold, otherwise `"critical"`.
 
 ---
 

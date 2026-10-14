@@ -153,7 +153,7 @@ tolerance_checker = ToleranceDeviationEvents(
     warning_threshold=0.8  # 80% of tolerance = warning zone
 )
 
-capability = tolerance_checker.capability_indices()
+capability = tolerance_checker.capability_indices().iloc[0]  # one-row DataFrame
 print(f"Cp:  {capability['Cp']:.3f}")   # Potential capability
 print(f"Cpk: {capability['Cpk']:.3f}")  # Actual capability
 

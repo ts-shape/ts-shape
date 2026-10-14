@@ -48,7 +48,7 @@ bands = detector.steady_state_value_bands(window="5min")
 |--------|---------|---------|
 | `detect_steady_state(window='5min', std_threshold=1.0, min_duration='10min')` | Steady-state intervals | DataFrame: `start`, `end`, `mean_value`, `std_value`, `duration_seconds`, ... |
 | `detect_transient_periods(window='5min', std_threshold=1.0)` | Transient/dynamic intervals | DataFrame: `start`, `end`, `max_std`, `duration_seconds`, ... |
-| `steady_state_statistics(window='5min', std_threshold=1.0, min_duration='10min')` | Summary statistics | dict: `total_steady_seconds`, `total_transient_seconds`, `steady_pct`, `num_steady_periods`, `avg_steady_duration_seconds` |
+| `steady_state_statistics(window='5min', std_threshold=1.0, min_duration='10min')` | Summary statistics | One-row DataFrame: `start`, `end`, `duration_seconds`, `uuid`, `source_uuid`, `total_steady_seconds`, `total_transient_seconds`, `steady_pct`, `num_steady_periods`, `avg_steady_duration_seconds`. `as_frame=False` returns the deprecated dict |
 | `steady_state_value_bands(window='5min')` | Distinct operating bands | DataFrame: `start`, `end`, `mean_value`, `lower_band`, `upper_band`, `duration_seconds` |
 
 ---

@@ -42,7 +42,7 @@ print(intervals.head())
 | `detect_run_idle(min_duration='0s', interval_end=None, data_end=None)` | Identify contiguous run and idle intervals, optionally filtering by minimum duration | DataFrame with `start`, `end`, `uuid`, `source_uuid`, `is_delta`, `state` (`run`/`idle`), `duration_seconds` |
 | `transition_events()` | Generate point events at each run-to-idle or idle-to-run transition | DataFrame with `systime`, `uuid`, `source_uuid`, `is_delta`, `transition` (`idle_to_run`/`run_to_idle`), `time_since_last_transition_seconds` |
 | `detect_rapid_transitions(threshold='5s', min_count=3)` | Flag suspicious rapid state changes that may indicate sensor noise or PLC faults | DataFrame with `start`, `end`, `transition_count`, `duration_seconds` |
-| `state_quality_metrics(interval_end=None)` | Compute state-data quality metrics: transitions, average run/idle durations, gaps, rapid transitions (`interval_end=None` resolves as in `detect_run_idle`; `run_idle_ratio` is NaN when there is no idle time) | Dict with `total_transitions`, `avg_run_duration`, `avg_idle_duration`, `run_idle_ratio`, `data_gaps_detected`, `rapid_transitions_detected` |
+| `state_quality_metrics(interval_end=None)` | Compute state-data quality metrics: transitions, average run/idle durations, gaps, rapid transitions (`interval_end=None` resolves as in `detect_run_idle`; `run_idle_ratio` is NaN when there is no idle time) | One-row `DataFrame` with `start`, `end`, `duration_seconds`, `uuid`, `source_uuid`, `total_transitions`, `avg_run_duration`, `avg_idle_duration`, `run_idle_ratio`, `data_gaps_detected`, `rapid_transitions_detected`. `as_frame=False` returns the deprecated dict |
 
 ---
 

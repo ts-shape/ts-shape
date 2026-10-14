@@ -48,14 +48,19 @@ print(pareto)
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `downtime_by_shift(state_uuid, running_value='Running', max_gap=None)` | Aggregate downtime per date and shift | DataFrame with `date`, `shift`, `total_minutes`, `downtime_minutes`, `uptime_minutes`, `availability_pct` |
-| `downtime_by_reason(state_uuid, reason_uuid, stopped_value='Stopped')` | Break down downtime by reason code with duration totals | DataFrame with `reason`, `occurrences`, `total_minutes`, `avg_minutes`, `pct_of_total` |
-| `top_downtime_reasons(state_uuid, reason_uuid, top_n=5)` | Pareto analysis of the top N downtime reasons by cumulative duration | DataFrame with `reason`, `total_minutes`, `pct_of_total`, `cumulative_pct` (sorted by duration) |
-| `availability_trend(state_uuid, window='1D', max_gap=None)` | Track availability over time windows for trend analysis | DataFrame with `period`, `availability_pct`, `uptime_minutes`, `downtime_minutes` |
+| `downtime_by_shift(state_uuid, running_value='Running', max_gap=None)` | Aggregate downtime per date and shift | DataFrame with `date`, `shift`, `total_minutes`, `total_seconds`, `downtime_minutes`, `downtime_seconds`, `uptime_minutes`, `uptime_seconds`, `availability_pct`, `excluded_seconds` |
+| `downtime_by_reason(state_uuid, reason_uuid, stopped_value='Stopped')` | Break down downtime by reason code with duration totals | DataFrame with `reason`, `occurrences`, `total_minutes`, `total_seconds`, `avg_minutes`, `avg_seconds`, `pct_of_total` |
+| `top_downtime_reasons(state_uuid, reason_uuid, top_n=5)` | Pareto analysis of the top N downtime reasons by cumulative duration | DataFrame with `reason`, `total_minutes`, `total_seconds`, `pct_of_total`, `cumulative_pct` (sorted by duration) |
+| `availability_trend(state_uuid, window='1D', max_gap=None)` | Track availability over time windows for trend analysis | DataFrame with `period`, `availability_pct`, `uptime_minutes`, `uptime_seconds`, `downtime_minutes`, `downtime_seconds`, `excluded_seconds` |
 
 ---
 
+Durations are reported in seconds (`*_seconds`); the `*_minutes` columns are kept as a convenience. `excluded_seconds` is the time `max_gap` removed as "no data" (0 without a cap).
+
 ## Tips & Hints
+
+!!! tip "String or boolean run state"
+    The state signal may be a string signal in `value_string` (`running_value='Running'`, `stopped_value='Stopped'`) or a boolean run signal in `value_bool` (True = running). The boolean signal is used automatically when the state rows carry no `value_string`; passing `running_value=True` (or `stopped_value=False`) selects it explicitly. Both forms give the same downtime.
 
 !!! tip "Define shifts in your configuration"
     Shift boundaries default to 06:00-14:00, 14:00-22:00, 22:00-06:00. Pass `shift_definitions={"day": ("06:00", "18:00"), "night": ("18:00", "06:00")}` to match your plant's actual schedule. Misaligned shift definitions will attribute downtime to the wrong crew.

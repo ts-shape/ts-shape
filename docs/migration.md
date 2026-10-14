@@ -66,6 +66,36 @@ To compare old and new numbers, pass the old default explicitly, for example `oe
 - `OutlierDetectionEvents(signal_uuids=[...])` restricts the analysis to some signals.
 - `pip install ts-shape[parquet]` installs pyarrow (also pulled in by `[s3]` and `[azure]`); `[all]` now installs every optional feature.
 
+### Consistent outputs (round 7)
+
+**Summary methods return a DataFrame.** Following `best_and_worst_shifts`, these methods take `as_frame: bool = True`. The default returns a DataFrame whose columns are the old keys, plus `start` / `end` / `duration_seconds` for the data the summary covers. `as_frame=False` returns the old dict or list and emits a `DeprecationWarning`; that form will be removed in the next major release. To keep old code working unchanged, pass `as_frame=False`. Alternatively, read a one-row result with `.iloc[0]`, which supports the same `["key"]` access.
+
+| Method | Default DataFrame |
+|---|---|
+| `SteadyStateDetectionEvents.steady_state_statistics` | one row; the dict keys plus `uuid`, `source_uuid` |
+| `MachineStateEvents.state_quality_metrics` | one row; the dict keys plus `uuid`, `source_uuid` |
+| `TargetEvents.target_hit_rate` | one row; `start` / `end` span the analysed days |
+| `ToleranceDeviationEvents.capability_indices` | one row; `Cpm` is always a column (NaN without `target_value`), plus `sample_count` |
+| `BottleneckDetectionEvents.throughput_constraint_summary` | one row per station: `bottleneck_count`, `bottleneck_pct`, `avg_utilization_pct`, `most_frequent_bottleneck` |
+| `FlowConstraintEvents.flow_constraint_analytics` | one row per `constraint_type` (`blocked`, `starved`): `event_count`, `total_duration_seconds`, `avg_duration_seconds`, `minor_count`, `moderate_count`, `severe_count`, `time_alignment_quality`. The event lists come from `blocked_events` / `starved_events`. |
+| `ShiftHandoverEvents.highlight_issues` | one row per issue, with the report row's shift window and `date` |
+
+**KPI percentages carry their basis** (new columns; none were removed):
+
+| Method | New columns |
+|---|---|
+| `OEEEvents.oee` | `run_seconds`, `planned_seconds`, `excluded_seconds`, `actual_parts`, `ideal_parts`, `total_parts`, `reject_parts`, `good_parts` (NaN without quality counters), `resets` |
+| `OEEEvents.availability` | `excluded_seconds` (time `max_gap` removed as no data) |
+| `LineThroughputEvents.throughput_oee` | `run_seconds`, `planned_seconds`, `resets` (with `handle_resets=True`) |
+| `DowntimeEvents.downtime_by_shift` / `availability_trend` | `excluded_seconds` |
+| `PerformanceLossEvents` (all three methods) | `run_seconds` |
+
+**Durations in seconds.** Each `*_minutes` or `*_s` duration column now has a `*_seconds` twin right after it: `total_seconds`, `downtime_seconds`, `uptime_seconds`, `avg_seconds` (downtime), `avg_cycle_time_seconds`, `target_cycle_time_seconds`, `loss_seconds` (performance loss), `avg_seconds`, `min_seconds`, `max_seconds`, `median_seconds`, `std_seconds`, `avg_setup_seconds`, `total_setup_seconds` (setup time), `downtime_seconds` (shift handover, also in `OUTPUT_COLUMNS`). The old columns stay as a convenience. Their removal would be a breaking change and is left for a future major release; new code should read the `*_seconds` columns. In recipe-phase specs `duration_seconds` is the new spelling of the `duration_s` criterion; `duration_s` is still accepted.
+
+**Run state as string or boolean.** `DowntimeEvents` and `ShiftHandoverEvents` read either a string state signal (`running_value="Running"` in `value_string`) or a boolean run signal (`value_bool`, True = running). The boolean signal is used when the state rows carry no `value_string`, or when `running_value` / `stopped_value` is a bool. Both forms give the same downtime. Before this change, a boolean run signal was compared with `"Running"` and therefore reported 100 % downtime.
+
+**Fix:** `FlowConstraintEvents.flow_constraint_analytics` applies its `warning_threshold` / `critical_threshold` to the severity counts and to the event lists. Before, it accepted them but classified with the 5 s / 30 s defaults.
+
 ## Renamed parameters (old keywords deprecated)
 
 Parameter names follow [Naming & Output Conventions](naming.md). The old keyword still works, but emits a `DeprecationWarning`.

@@ -220,6 +220,17 @@ METHOD_OVERRIDES: dict[str, dict[str, Any]] = {
 }
 
 
+#: Optional method arguments a method needs to run at all (keyed by method).
+OPTIONAL_METHOD_ARGS: dict[tuple[str, str], dict[str, Any]] = {
+    ("ShiftHandoverEvents", "highlight_issues"): {
+        "counter_uuid": COUNTER,
+        "ok_counter_uuid": COUNTER,
+        "nok_counter_uuid": COUNTER,
+        "state_uuid": STATE,
+    },
+}
+
+
 def _span(df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp]:
     times = pd.to_datetime(df["systime"]) if len(df) else plant_frame()["systime"]
     return times.min(), times.max()
@@ -325,6 +336,8 @@ def build_call(cls: Any, method: str, df: pd.DataFrame) -> Any:
             if name in overrides
             else _value_for(name, param)
         )
+    for name, value in OPTIONAL_METHOD_ARGS.get((cls.__name__, method), {}).items():
+        m_kwargs[name] = _resolve(value, df)
 
     if is_cm:
         return lambda: fn(df, **m_kwargs)

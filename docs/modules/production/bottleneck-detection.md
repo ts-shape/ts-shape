@@ -48,7 +48,7 @@ print(bottleneck)
 | `station_utilization(station_uuids, window='1h', time_weighted=True)` | Compute per-station uptime percentage per window | DataFrame with `start`, `uuid`, `utilization_pct` |
 | `detect_bottleneck(station_uuids, window='1h', time_weighted=True)` | Identify the bottleneck station (highest utilization) per window | DataFrame with `start`, `end`, `bottleneck_uuid`, `utilization_pct` |
 | `shifting_bottleneck(station_uuids, window='1h', time_weighted=True)` | Detect when the bottleneck shifts from one station to another | DataFrame with `systime`, `from_uuid`, `to_uuid`, `previous_utilization`, `new_utilization` |
-| `throughput_constraint_summary(station_uuids, window='1h', time_weighted=True)` | Aggregate summary of how often each station is the bottleneck | Dict with `bottleneck_counts`, `bottleneck_percentages`, `most_frequent_bottleneck`, `avg_utilization_per_station` |
+| `throughput_constraint_summary(station_uuids, window='1h', time_weighted=True)` | Aggregate summary of how often each station is the bottleneck | `DataFrame`, one row per station: `start`, `end`, `duration_seconds` (the analysed span), `uuid`, `source_uuid`, `bottleneck_count`, `bottleneck_pct`, `avg_utilization_pct`, `most_frequent_bottleneck` (bool). `as_frame=False` returns the deprecated dict |
 
 ---
 

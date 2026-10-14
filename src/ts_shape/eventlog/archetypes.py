@@ -27,6 +27,13 @@ correlation    Cross-signal pair metric: lag, rolling correlation, cascade.
 from __future__ import annotations
 
 ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
+    ("SteadyStateDetectionEvents", "steady_state_statistics"): "aggregate",
+    ("BottleneckDetectionEvents", "throughput_constraint_summary"): "aggregate",
+    ("FlowConstraintEvents", "flow_constraint_analytics"): "aggregate",
+    ("MachineStateEvents", "state_quality_metrics"): "aggregate",
+    ("TargetEvents", "target_hit_rate"): "aggregate",
+    ("ToleranceDeviationEvents", "capability_indices"): "aggregate",
+    ("ShiftHandoverEvents", "highlight_issues"): "aggregate",
     # ---- correlation -------------------------------------------------------
     ("AnomalyCorrelationEvents", "cascade_detection"): "correlation",
     ("AnomalyCorrelationEvents", "coincident_anomalies"): "correlation",

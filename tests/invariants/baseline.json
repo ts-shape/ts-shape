@@ -175,6 +175,14 @@
   "shape": "ok",
   "tz": "ok"
  },
+ "BottleneckDetectionEvents.throughput_constraint_summary": {
+  "dtypes": "ok",
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "shape": "ok",
+  "tz": "ok"
+ },
  "CalibrationValidationEvents.calibration_curve": {
   "dtypes": "n/a: classmethod without a dataframe first parameter",
   "empty": "n/a: classmethod without a dataframe first parameter",
@@ -815,6 +823,14 @@
   "shape": "n/a: no rule for mapping parameter 'roles'",
   "tz": "n/a: no rule for mapping parameter 'roles'"
  },
+ "FlowConstraintEvents.flow_constraint_analytics": {
+  "dtypes": "n/a: no rule for mapping parameter 'roles'",
+  "empty": "n/a: no rule for mapping parameter 'roles'",
+  "empty_schema": "n/a: no rule for mapping parameter 'roles'",
+  "extra_uuid": "n/a: no rule for mapping parameter 'roles'",
+  "shape": "n/a: no rule for mapping parameter 'roles'",
+  "tz": "n/a: no rule for mapping parameter 'roles'"
+ },
  "FlowConstraintEvents.starved_events": {
   "dtypes": "n/a: no rule for mapping parameter 'roles'",
   "empty": "n/a: no rule for mapping parameter 'roles'",
@@ -1072,6 +1088,14 @@
   "tz": "ok"
  },
  "MachineStateEvents.detect_run_idle": {
+  "dtypes": "ok",
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "shape": "ok",
+  "tz": "ok"
+ },
+ "MachineStateEvents.state_quality_metrics": {
   "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",
@@ -2063,6 +2087,14 @@
   "shape": "ok",
   "tz": "ok"
  },
+ "ShiftHandoverEvents.highlight_issues": {
+  "dtypes": "ok",
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "shape": "ok",
+  "tz": "ok"
+ },
  "ShiftReportEvents.best_and_worst_shifts": {
   "dtypes": "ok",
   "empty": "ok",
@@ -2367,6 +2399,14 @@
   "shape": "ok",
   "tz": "ok"
  },
+ "SteadyStateDetectionEvents.steady_state_statistics": {
+  "dtypes": "ok",
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "shape": "ok",
+  "tz": "ok"
+ },
  "SteadyStateDetectionEvents.steady_state_value_bands": {
   "dtypes": "ok",
   "empty": "ok",
@@ -2384,6 +2424,14 @@
   "tz": "n/a: no rule for mapping parameter 'targets'"
  },
  "TargetEvents.target_achievement_summary": {
+  "dtypes": "n/a: no rule for required parameter 'daily_target'",
+  "empty": "n/a: no rule for required parameter 'daily_target'",
+  "empty_schema": "n/a: no rule for required parameter 'daily_target'",
+  "extra_uuid": "n/a: no rule for required parameter 'daily_target'",
+  "shape": "n/a: no rule for required parameter 'daily_target'",
+  "tz": "n/a: no rule for required parameter 'daily_target'"
+ },
+ "TargetEvents.target_hit_rate": {
   "dtypes": "n/a: no rule for required parameter 'daily_target'",
   "empty": "n/a: no rule for required parameter 'daily_target'",
   "empty_schema": "n/a: no rule for required parameter 'daily_target'",
@@ -2448,6 +2496,14 @@
   "tz": "ok"
  },
  "TimeToThresholdEvents.time_to_threshold_windows": {
+  "dtypes": "ok",
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "shape": "ok",
+  "tz": "ok"
+ },
+ "ToleranceDeviationEvents.capability_indices": {
   "dtypes": "ok",
   "empty": "ok",
   "empty_schema": "ok",

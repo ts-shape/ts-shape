@@ -2,14 +2,36 @@ import logging
 import operator
 import warnings
 from collections.abc import Callable
+from typing import Any, Literal, overload
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
+
+
+_CAPABILITY_COLUMNS = [
+    "start",
+    "end",
+    "duration_seconds",
+    "uuid",
+    "source_uuid",
+    "Cp",
+    "Cpk",
+    "Pp",
+    "Ppk",
+    "Cpm",
+    "mean",
+    "std",
+    "usl",
+    "lsl",
+    "target",
+    "sample_count",
+]
 
 
 class ToleranceDeviationEvents(Base):
@@ -483,8 +505,29 @@ class ToleranceDeviationEvents(Base):
 
     compute_capability_indices = deprecated_method("capability_indices")
 
+    @overload
+    def capability_indices(
+        self,
+        target_value: float | None = ...,
+        *,
+        as_frame: Literal[True] = ...,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def capability_indices(
+        self,
+        target_value: float | None = ...,
+        *,
+        as_frame: Literal[False],
+    ) -> dict[str, float]: ...
+
     @keyword_only(1)
-    def capability_indices(self, target_value: float | None = None) -> dict[str, float]:
+    def capability_indices(
+        self,
+        target_value: float | None = None,
+        *,
+        as_frame: bool = True,
+    ) -> pd.DataFrame | dict[str, float]:
         """
         Calculate process capability indices (Cp, Cpk, Pp, Ppk and Cpm).
 
@@ -510,9 +553,20 @@ class ToleranceDeviationEvents(Base):
                 midpoint of the tolerances (or the single limit of a
                 one-sided spec) is reported as ``target`` and no ``Cpm`` is
                 computed.
+            as_frame: When True (default), return a one-row DataFrame (see
+                below). ``as_frame=False`` returns the dictionary form; it is
+                deprecated, emits a ``DeprecationWarning`` and will be removed
+                in the next major release.
 
         Returns:
-            Dictionary containing:
+            With ``as_frame=True`` (default), a one-row summary DataFrame with
+            columns start, end, duration_seconds (first to last actual
+            measurement), uuid (event uuid), source_uuid (actual uuid), Cp,
+            Cpk, Pp, Ppk, Cpm (always present; NaN unless ``target_value``
+            is given), mean, std, usl, lsl, target, and sample_count (the
+            number of measurements the indices are computed from).
+
+            With ``as_frame=False`` (deprecated), a dictionary containing:
                 - 'Cp': Process capability
                 - 'Cpk': Process capability index
                 - 'Pp': Process performance (equal to Cp, see above)
@@ -529,6 +583,12 @@ class ToleranceDeviationEvents(Base):
             - Values > 1.33 are generally considered acceptable
             - Values > 1.67 are considered good
         """
+        if not as_frame:
+            warn_dict_return("ToleranceDeviationEvents.capability_indices")
+        if as_frame and self.dataframe.empty:
+            # No data at all: an empty result with the full schema, like every
+            # other detector. Missing limits on real data still raise.
+            return pd.DataFrame(columns=_CAPABILITY_COLUMNS)
         df = self.dataframe.copy()
         df["systime"] = pd.to_datetime(df["systime"])
         df = df.sort_values(by="systime", kind="stable")
@@ -560,7 +620,8 @@ class ToleranceDeviationEvents(Base):
             usl, lsl = limits["upper"], limits["lower"]
 
         # Get actual measurements
-        actual_data = df[df["uuid"] == self.actual_uuid][self.actual_column].dropna()
+        actual_rows = df[df["uuid"] == self.actual_uuid]
+        actual_data = actual_rows[self.actual_column].dropna()
 
         if actual_data.empty:
             raise ValueError(
@@ -601,7 +662,7 @@ class ToleranceDeviationEvents(Base):
         pp = cp
         ppk = cpk
 
-        result = {
+        result: dict[str, Any] = {
             "Cp": float(cp),
             "Cpk": float(cpk),
             "Pp": float(pp),
@@ -616,4 +677,18 @@ class ToleranceDeviationEvents(Base):
             # Taguchi index (Chan, Cheng & Spiring 1988, JQT 20(3)).
             cpm = cp / np.sqrt(1 + ((process_mean - target_value) / process_std) ** 2)
             result["Cpm"] = float(cpm)
-        return result
+        if not as_frame:
+            return result
+        start, end, span = summary_bounds(actual_rows.loc[actual_data.index, "systime"])
+        row = {
+            "start": start,
+            "end": end,
+            "duration_seconds": span,
+            "uuid": self.event_uuid,
+            "source_uuid": self.actual_uuid,
+            **{k: result[k] for k in ("Cp", "Cpk", "Pp", "Ppk")},
+            "Cpm": result.get("Cpm", float("nan")),
+            **{k: result[k] for k in ("mean", "std", "usl", "lsl", "target")},
+            "sample_count": int(len(actual_data)),
+        }
+        return pd.DataFrame([row], columns=_CAPABILITY_COLUMNS)

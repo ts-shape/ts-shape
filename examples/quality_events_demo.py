@@ -379,7 +379,7 @@ def demo_tolerance_deviation():
     # --- Process capability indices ---
     print("\n--- Process capability indices ---")
     try:
-        capability = tol.compute_capability_indices()
+        capability = tol.capability_indices().iloc[0]
         print(f"  Cp  = {capability['Cp']:.4f}  (potential capability)")
         print(f"  Cpk = {capability['Cpk']:.4f}  (actual capability)")
         print(f"  Pp  = {capability['Pp']:.4f}  (process performance)")

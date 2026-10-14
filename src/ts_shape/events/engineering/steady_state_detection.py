@@ -1,8 +1,9 @@
 import logging
-from typing import Any
+from typing import Any, Literal, overload
 
 import pandas as pd
 
+from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
@@ -19,7 +20,7 @@ class SteadyStateDetectionEvents(Base):
     Methods:
     - detect_steady_state: Intervals where rolling std stays below threshold.
     - detect_transient_periods: Inverse — intervals where signal is changing.
-    - steady_state_statistics: Summary of steady vs transient time.
+    - steady_state_statistics: Summary of steady vs transient time (one row).
     - steady_state_value_bands: Operating band (mean +/- std) per steady interval.
     """
 
@@ -207,13 +208,35 @@ class SteadyStateDetectionEvents(Base):
 
         return pd.DataFrame(events, columns=cols)
 
+    @overload
+    def steady_state_statistics(
+        self,
+        window: str = ...,
+        std_threshold: float = ...,
+        min_duration: str = ...,
+        *,
+        as_frame: Literal[True] = ...,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def steady_state_statistics(
+        self,
+        window: str = ...,
+        std_threshold: float = ...,
+        min_duration: str = ...,
+        *,
+        as_frame: Literal[False],
+    ) -> dict[str, Any]: ...
+
     @keyword_only(1)
     def steady_state_statistics(
         self,
         window: str = "5min",
         std_threshold: float = 1.0,
         min_duration: str = "10min",
-    ) -> dict[str, Any]:
+        *,
+        as_frame: bool = True,
+    ) -> pd.DataFrame | dict[str, Any]:
         """Summary statistics of steady vs transient time.
 
         Args:
@@ -222,11 +245,43 @@ class SteadyStateDetectionEvents(Base):
             std_threshold: Maximum rolling std, in signal units, to consider the
                 signal steady.
             min_duration: Minimum duration of a steady interval.
+            as_frame: When True (default), return a one-row DataFrame (see
+                below). ``as_frame=False`` returns the dictionary form; it is
+                deprecated, emits a ``DeprecationWarning`` and will be removed
+                in the next major release.
 
         Returns:
-            Dict with: total_steady_seconds, total_transient_seconds,
-            steady_pct, num_steady_periods, avg_steady_duration_seconds.
+            With ``as_frame=True`` (default), a one-row summary DataFrame with
+            columns: start, end, duration_seconds (the span of the signal;
+            NaT / 0 without data), uuid (event uuid), source_uuid (signal
+            uuid), total_steady_seconds, total_transient_seconds, steady_pct,
+            num_steady_periods, avg_steady_duration_seconds.
+
+            With ``as_frame=False`` (deprecated), a dict with the same keys
+            from total_steady_seconds on.
         """
+        if not as_frame:
+            warn_dict_return("SteadyStateDetectionEvents.steady_state_statistics")
+        stats = self._steady_state_stats(window, std_threshold, min_duration)
+        if not as_frame:
+            return stats
+        start, end, span = summary_bounds(self.signal[self.time_column])
+        return pd.DataFrame(
+            [
+                {
+                    "start": start,
+                    "end": end,
+                    "duration_seconds": span,
+                    "uuid": self.event_uuid,
+                    "source_uuid": self.signal_uuid,
+                    **stats,
+                }
+            ]
+        )
+
+    def _steady_state_stats(
+        self, window: str, std_threshold: float, min_duration: str
+    ) -> dict[str, Any]:
         if self.signal.empty or len(self.signal) < 2:
             return {
                 "total_steady_seconds": 0.0,

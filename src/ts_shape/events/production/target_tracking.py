@@ -7,9 +7,12 @@ Generic module for comparing any metric to targets:
 """
 
 import logging
+from typing import Literal, overload
 
 import pandas as pd
 
+from ts_shape.events._compat import warn_dict_return
+from ts_shape.events._windows import data_tz
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import count_resets, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
@@ -247,49 +250,105 @@ class TargetEvents(Base):
 
         return pd.DataFrame(results, columns=base_columns)
 
+    @overload
+    def target_hit_rate(
+        self,
+        metric_uuid: str,
+        daily_target: float,
+        *,
+        value_column: str = ...,
+        as_frame: Literal[True] = ...,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def target_hit_rate(
+        self,
+        metric_uuid: str,
+        daily_target: float,
+        *,
+        value_column: str = ...,
+        as_frame: Literal[False],
+    ) -> dict[str, float | int]: ...
+
     def target_hit_rate(
         self,
         metric_uuid: str,
         daily_target: float,
         *,
         value_column: str = "value_integer",
-    ) -> dict[str, float | int]:
+        as_frame: bool = True,
+    ) -> pd.DataFrame | dict[str, float | int]:
         """How often are targets met?
 
         Args:
             metric_uuid: UUID of the metric signal (counter).
             daily_target: Daily production target.
             value_column: Column containing metric values.
+            as_frame: When True (default), return a one-row DataFrame (see
+                below). ``as_frame=False`` returns the dictionary form; it is
+                deprecated, emits a ``DeprecationWarning`` and will be removed
+                in the next major release.
 
         Returns:
-            Dict with:
+            With ``as_frame=True`` (default), a one-row summary DataFrame with
+            columns:
+            - start, end, duration_seconds: first analysed day's midnight to
+                the midnight after the last day (tz-aware in the data's tz;
+                NaT / 0 without data)
             - total_days: Number of days analyzed.
             - days_on_target: Days where target was met.
             - hit_rate_pct: Percentage of days meeting target.
             - avg_achievement_pct: Average achievement across days.
+
+            With ``as_frame=False`` (deprecated), a dict with the keys
+            total_days, days_on_target, hit_rate_pct, avg_achievement_pct.
         """
+        if not as_frame:
+            warn_dict_return("TargetEvents.target_hit_rate")
         summary = self.target_achievement_summary(
             metric_uuid, daily_target, value_column=value_column
         )
         if summary.empty:
-            return {
+            rate: dict[str, float | int] = {
                 "total_days": 0,
                 "days_on_target": 0,
                 "hit_rate_pct": 0.0,
                 "avg_achievement_pct": 0.0,
             }
+        else:
+            total_days = len(summary)
+            days_on_target = int((summary["achievement_pct"] >= 100).sum())
+            hit_rate = days_on_target / total_days * 100 if total_days > 0 else 0.0
+            avg_achievement = summary["achievement_pct"].mean()
+            rate = {
+                "total_days": total_days,
+                "days_on_target": days_on_target,
+                "hit_rate_pct": hit_rate,
+                "avg_achievement_pct": avg_achievement,
+            }
+        if not as_frame:
+            return rate
 
-        total_days = len(summary)
-        days_on_target = int((summary["achievement_pct"] >= 100).sum())
-        hit_rate = days_on_target / total_days * 100 if total_days > 0 else 0.0
-        avg_achievement = summary["achievement_pct"].mean()
-
-        return {
-            "total_days": total_days,
-            "days_on_target": days_on_target,
-            "hit_rate_pct": hit_rate,
-            "avg_achievement_pct": avg_achievement,
-        }
+        if summary.empty:
+            start, end, span = pd.NaT, pd.NaT, 0.0
+        else:
+            tz = data_tz(
+                self.dataframe.loc[
+                    self.dataframe["uuid"] == metric_uuid, self.time_column
+                ]
+            )
+            first = pd.Timestamp(min(summary["date"]))
+            last = pd.Timestamp(max(summary["date"])) + pd.Timedelta(days=1)
+            if tz is not None:
+                first = first.tz_localize(
+                    tz, nonexistent="shift_forward", ambiguous=True
+                )
+                last = last.tz_localize(tz, nonexistent="shift_forward", ambiguous=True)
+            start, end = first, last
+            span = (end - start).total_seconds()
+        return pd.DataFrame(
+            [{"start": start, "end": end, "duration_seconds": span, **rate}]
+        )
 
 
 #: Deprecated name, removed in the next major release.

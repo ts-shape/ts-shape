@@ -1,8 +1,9 @@
 import logging
-from typing import Any
+from typing import Any, Literal, overload
 
 import pandas as pd
 
+from ts_shape.events._compat import warn_dict_return
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import renamed_kwargs
 
@@ -316,6 +317,50 @@ class FlowConstraintEvents(Base):
         else:
             return "severe"
 
+    _ANALYTICS_COLUMNS = [
+        "start",
+        "end",
+        "duration_seconds",
+        "uuid",
+        "source_uuid",
+        "constraint_type",
+        "event_count",
+        "total_duration_seconds",
+        "avg_duration_seconds",
+        "minor_count",
+        "moderate_count",
+        "severe_count",
+        "time_alignment_quality",
+    ]
+
+    @overload
+    def flow_constraint_analytics(
+        self,
+        *,
+        roles: dict[str, str],
+        tolerance: str = ...,
+        tolerance_before: str | None = ...,
+        tolerance_after: str | None = ...,
+        min_duration: str = ...,
+        warning_threshold: str = ...,
+        critical_threshold: str = ...,
+        as_frame: Literal[True] = ...,
+    ) -> pd.DataFrame: ...
+
+    @overload
+    def flow_constraint_analytics(
+        self,
+        *,
+        roles: dict[str, str],
+        tolerance: str = ...,
+        tolerance_before: str | None = ...,
+        tolerance_after: str | None = ...,
+        min_duration: str = ...,
+        warning_threshold: str = ...,
+        critical_threshold: str = ...,
+        as_frame: Literal[False],
+    ) -> dict[str, Any]: ...
+
     @renamed_kwargs(
         minor_threshold="warning_threshold", moderate_threshold="critical_threshold"
     )
@@ -329,7 +374,8 @@ class FlowConstraintEvents(Base):
         min_duration: str = "0s",
         warning_threshold: str = "5s",
         critical_threshold: str = "30s",
-    ) -> dict[str, Any]:
+        as_frame: bool = True,
+    ) -> pd.DataFrame | dict[str, Any]:
         """Generate comprehensive analytics for flow constraints (blockages and starvations).
 
         Args:
@@ -342,9 +388,36 @@ class FlowConstraintEvents(Base):
             warning_threshold: Duration below which an event is 'minor'.
             critical_threshold: Duration below which an event is 'moderate'
                 (at or above it, 'severe').
+            as_frame: When True (default), return a summary DataFrame (see
+                below). ``as_frame=False`` returns the dictionary form; it is
+                deprecated, emits a ``DeprecationWarning`` and will be removed
+                in the next major release.
 
         Returns:
-            Dictionary containing analytics for both blocked and starved events:
+            With ``as_frame=True`` (default), a summary DataFrame with two
+            rows, ``constraint_type`` ``"blocked"`` then ``"starved"``, and
+            columns:
+
+            - start, end, duration_seconds: first event start to last event
+                end of that type (NaT / 0 when there is none)
+            - uuid: the event uuid; source_uuid: the upstream (blocked) or
+                downstream (starved) run signal
+            - constraint_type
+            - event_count, total_duration_seconds, avg_duration_seconds
+                (0 when there is no event)
+            - minor_count, moderate_count, severe_count: the severity
+                breakdown
+            - time_alignment_quality: share of samples aligned between the two
+                signals (0 when there is no event)
+
+            The totals of the dict form are the column sums:
+            ``total_constraint_events`` is ``event_count.sum()`` and
+            ``overall_alignment_quality`` is ``time_alignment_quality.mean()``.
+            The events themselves come from :meth:`blocked_events` and
+            :meth:`starved_events`.
+
+            With ``as_frame=False`` (deprecated), a dictionary containing
+            analytics for both blocked and starved events:
             - blocked_events: DataFrame of blocked events
             - starved_events: DataFrame of starved events
             - summary: Dictionary with statistics including:
@@ -363,6 +436,8 @@ class FlowConstraintEvents(Base):
             >>> analytics = flow.flow_constraint_analytics(roles=roles)
             >>> print(analytics['summary']['blocked_count'])
         """
+        if not as_frame:
+            warn_dict_return("FlowConstraintEvents.flow_constraint_analytics")
         # Get blocked and starved events
         blocked_df = self.blocked_events(
             roles=roles,
@@ -379,6 +454,19 @@ class FlowConstraintEvents(Base):
             tolerance_after=tolerance_after,
             min_duration=min_duration,
         )
+
+        # The detectors classify severity with the default thresholds; apply
+        # the thresholds given here.
+        for events in (blocked_df, starved_df):
+            if not events.empty:
+                events["severity"] = [
+                    self._calculate_severity(
+                        d,
+                        warning_threshold=warning_threshold,
+                        critical_threshold=critical_threshold,
+                    )
+                    for d in events["duration"]
+                ]
 
         # Calculate summary statistics
         summary: dict[str, Any] = {}
@@ -442,8 +530,43 @@ class FlowConstraintEvents(Base):
             summary["blocked_count"] + summary["starved_count"]
         )
 
-        return {
-            "blocked_events": blocked_df,
-            "starved_events": starved_df,
-            "summary": summary,
-        }
+        if not as_frame:
+            return {
+                "blocked_events": blocked_df,
+                "starved_events": starved_df,
+                "summary": summary,
+            }
+
+        rows = []
+        for kind, events, source, quality in (
+            ("blocked", blocked_df, roles["upstream_run"], blocked_alignment_quality),
+            ("starved", starved_df, roles["downstream_run"], starved_alignment_quality),
+        ):
+            breakdown = summary[f"{kind}_severity_breakdown"]
+            if events.empty:
+                start, end, span = pd.NaT, pd.NaT, 0.0
+            else:
+                start, end = events["start"].min(), events["end"].max()
+                span = (end - start).total_seconds()
+            rows.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "duration_seconds": span,
+                    "uuid": self.event_uuid,
+                    "source_uuid": source,
+                    "constraint_type": kind,
+                    "event_count": int(summary[f"{kind}_count"]),
+                    "total_duration_seconds": pd.Timedelta(
+                        summary[f"{kind}_total_duration"]
+                    ).total_seconds(),
+                    "avg_duration_seconds": pd.Timedelta(
+                        summary[f"{kind}_avg_duration"]
+                    ).total_seconds(),
+                    "minor_count": int(breakdown.get("minor", 0)),
+                    "moderate_count": int(breakdown.get("moderate", 0)),
+                    "severe_count": int(breakdown.get("severe", 0)),
+                    "time_alignment_quality": float(quality),
+                }
+            )
+        return pd.DataFrame(rows, columns=self._ANALYTICS_COLUMNS)

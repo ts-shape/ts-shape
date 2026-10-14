@@ -18,8 +18,8 @@ Use when a batch recipe runs as named phases and development has defined what ea
 from ts_shape.events.development.recipe_phase_adherence import RecipePhaseAdherenceEvents
 
 spec = {
-    "HEAT_UP": {"duration_s": (1200, 1800), "ramp_rate_max": 0.05},
-    "HOLD": {"duration_s": (3600, 3900), "hold_value": (79.0, 81.0), "peak_value": (79.0, 82.0)},
+    "HEAT_UP": {"duration_seconds": (1200, 1800), "ramp_rate_max": 0.05},
+    "HOLD": {"duration_seconds": (3600, 3900), "hold_value": (79.0, 81.0), "peak_value": (79.0, 82.0)},
     "COOL_DOWN": {"trough_value": (20.0, 30.0)},
 }
 
@@ -48,7 +48,7 @@ All keys are optional per phase; ranges are inclusive `(min, max)` tuples.
 
 | Key | Checks |
 |---|---|
-| `duration_s` | phase duration in seconds |
+| `duration_seconds` | phase duration in seconds (`duration_s` is the legacy spelling, still accepted) |
 | `hold_value` | mean value during the phase |
 | `peak_value` | maximum value during the phase |
 | `trough_value` | minimum value during the phase |

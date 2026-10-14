@@ -74,7 +74,7 @@ def _tde(values, usl=None, lsl=None):
 def test_montgomery_cp_cpk_cpm_example():
     """Montgomery, Introduction to SQC, Sec. 8.3: mu 53, sigma 2, specs 38-62, T 50."""
     x = _with_moments(50, 53.0, 2.0)
-    res = _tde(x, usl=62.0, lsl=38.0).capability_indices(target_value=50.0)
+    res = _tde(x, usl=62.0, lsl=38.0).capability_indices(target_value=50.0).iloc[0]
     assert res["mean"] == pytest.approx(53.0)
     assert res["std"] == pytest.approx(2.0)
     assert res["Cp"] == pytest.approx(2.0)
@@ -90,18 +90,18 @@ def test_montgomery_cp_cpk_cpm_example():
 def test_montgomery_one_sided_cpu():
     """One-sided upper spec: Cpk is CPU = (USL - mu) / 3 sigma = 1.5; Cp undefined."""
     x = _with_moments(50, 53.0, 2.0)
-    res = _tde(x, usl=62.0).capability_indices()
+    res = _tde(x, usl=62.0).capability_indices().iloc[0]
     assert np.isnan(res["Cp"]) and np.isnan(res["Pp"])
     assert res["Cpk"] == pytest.approx(1.5)
     assert res["Ppk"] == pytest.approx(1.5)
     assert np.isnan(res["lsl"])
     assert res["target"] == 62.0
-    assert "Cpm" not in res
+    assert np.isnan(res["Cpm"])  # no target_value: Cpm not computed
 
 
 def test_one_sided_lower_cpl():
     x = _with_moments(50, 53.0, 2.0)
-    res = _tde(x, lsl=38.0).capability_indices()
+    res = _tde(x, lsl=38.0).capability_indices().iloc[0]
     assert res["Cpk"] == pytest.approx(2.5)  # CPL = (53 - 38) / 6
 
 
@@ -110,7 +110,7 @@ def test_hand_computed_small_dataset():
     x = np.array([10.12, 9.87, 10.31, 10.05, 9.94, 10.21, 10.08, 9.79, 10.17, 10.02])
     usl, lsl, target = 11.0, 9.0, 10.0
     mu, s = x.mean(), x.std(ddof=1)
-    res = _tde(x, usl=usl, lsl=lsl).capability_indices(target_value=target)
+    res = _tde(x, usl=usl, lsl=lsl).capability_indices(target_value=target).iloc[0]
     assert res["Cp"] == pytest.approx((usl - lsl) / (6 * s))
     assert res["Cpk"] == pytest.approx(min(usl - mu, mu - lsl) / (3 * s))
     assert res["Cpm"] == pytest.approx(
@@ -140,7 +140,7 @@ def test_latest_spec_is_used():
         upper_tolerance_uuid="usl",
         lower_tolerance_uuid="lsl",
     )
-    assert tde.capability_indices()["Cpk"] == pytest.approx(1.5)
+    assert tde.capability_indices().iloc[0]["Cpk"] == pytest.approx(1.5)
 
 
 # ---------------------------------------------------------------------------

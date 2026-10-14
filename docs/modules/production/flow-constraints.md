@@ -34,7 +34,7 @@ blocked = fc.blocked_events(roles=roles, tolerance="1s", min_duration="1min")
 starved = fc.starved_events(roles=roles, tolerance="1s", min_duration="1min")
 analytics = fc.flow_constraint_analytics(roles=roles, tolerance="1s")
 print(blocked.head())
-print(analytics["summary"]["blocked_count"])
+print(analytics[["constraint_type", "event_count", "total_duration_seconds"]])
 ```
 
 ---
@@ -47,7 +47,7 @@ print(analytics["summary"]["blocked_count"])
 |--------|---------|---------|
 | `blocked_events(roles=..., tolerance='200ms', min_duration='0s')` | Detect intervals where upstream is running but downstream is stopped (blocked condition) | DataFrame with `start`, `end`, `uuid`, `source_uuid`, `is_delta`, `type`, `time_alignment_quality`, `duration`, `severity` |
 | `starved_events(roles=..., tolerance='200ms', min_duration='0s')` | Detect intervals where downstream is running while upstream is stopped (starved condition) | Same columns as `blocked_events` |
-| `flow_constraint_analytics(roles=..., warning_threshold='5s', critical_threshold='30s')` | Combined analytics for blocked and starved events, with severity classification | Dict with `blocked_events`, `starved_events` (DataFrames) and `summary` (counts, total/avg durations, severity breakdowns, alignment quality) |
+| `flow_constraint_analytics(roles=..., warning_threshold='5s', critical_threshold='30s')` | Combined analytics for blocked and starved events, with severity classification | `DataFrame` with one row per `constraint_type` (`blocked`, `starved`): `start`, `end`, `duration_seconds`, `uuid`, `source_uuid`, `event_count`, `total_duration_seconds`, `avg_duration_seconds`, `minor_count`, `moderate_count`, `severe_count`, `time_alignment_quality`. `as_frame=False` returns the deprecated dict (`blocked_events`, `starved_events`, `summary`) |
 
 ---
 

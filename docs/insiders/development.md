@@ -28,17 +28,11 @@ mypy                        # type checking (config in pyproject.toml)
 
 All three are blocking in CI.
 
-### Incremental strict typing
+### Strict typing
 
 `mypy` runs the whole tree with `disallow_untyped_defs`,
-`disallow_incomplete_defs`, `warn_return_any` and `warn_unused_ignores` on
-globally, so every new function needs full annotations.
-
-A single **strict exemptions** override block in `pyproject.toml` lists the few
-modules that do not pass those flags yet. To pay one off, delete its entry,
-run `mypy` to see what it needs, and fix the reported errors (per-module
-settings win over command-line flags, so the module must leave the list before
-mypy reports on it).
+`disallow_incomplete_defs`, `warn_return_any` and `warn_unused_ignores` on, with
+no exempt modules, so every function needs full annotations.
 
 pandas ships no type information here, so pandas results are `Any`. Where a
 function returns one under a narrower declared type, annotate a local

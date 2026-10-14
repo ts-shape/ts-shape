@@ -72,7 +72,7 @@ def test_measurements_use_the_tolerance_set_before_them():
 def test_capability_single_tolerance_is_one_sided():
     df = _df()
     df.loc[df["uuid"] == "act", "value_double"] = [11.0, 12.0, 13.0, 12.0]
-    res = _events(df).capability_indices()
+    res = _events(df).capability_indices().iloc[0]
     assert res["usl"] == 15.0  # the latest tolerance, not the first
     assert np.isnan(res["Cp"]) and np.isnan(res["lsl"])
     assert res["Cpk"] == pytest.approx(
@@ -84,7 +84,7 @@ def test_capability_single_tolerance_is_one_sided():
 def test_capability_single_measurement_raises():
     df = _df().iloc[:2]
     with pytest.raises(ValueError, match="undefined"):
-        _events(df).capability_indices()
+        _events(df).capability_indices().iloc[0]
 
 
 def test_detect_deviations_keeps_value_and_single_sample_events():
@@ -155,8 +155,8 @@ def test_capability_cpm_only_with_target():
         upper_tolerance_uuid="usl",
         lower_tolerance_uuid="lsl",
     )
-    assert "Cpm" not in ev.capability_indices()
-    res = ev.capability_indices(target_value=10.0)
+    assert np.isnan(ev.capability_indices().iloc[0]["Cpm"])
+    res = ev.capability_indices(target_value=10.0).iloc[0]
     sigma = pd.Series([11.0, 12.0, 13.0, 12.0]).std()
     cp = 12.0 / (6 * sigma)
     assert res["Cpm"] == pytest.approx(
@@ -164,7 +164,7 @@ def test_capability_cpm_only_with_target():
     )
     assert res["Pp"] == res["Cp"] and res["Ppk"] == res["Cpk"]
     # On target, Cpm equals Cp.
-    assert ev.capability_indices(target_value=12.0)["Cpm"] == res["Cp"]
+    assert ev.capability_indices(target_value=12.0).iloc[0]["Cpm"] == res["Cp"]
 
 
 def test_upper_tolerance_alone_is_one_sided():
@@ -201,7 +201,7 @@ def test_lower_tolerance_alone_is_one_sided():
     )
     out = ev.detect_deviations()
     assert list(out["value_double"]) == [9.0]
-    res = ev.capability_indices()
+    res = ev.capability_indices().iloc[0]
     assert np.isnan(res["usl"]) and np.isnan(res["Cp"])
     sigma = pd.Series([9.0, 11.0, 12.0]).std()
     assert res["Cpk"] == pytest.approx((32.0 / 3 - 10.0) / (3 * sigma))
@@ -209,8 +209,8 @@ def test_lower_tolerance_alone_is_one_sided():
 
 def test_capability_upper_only_matches_single_tolerance():
     df = _df()
-    single = _events(df).capability_indices()
-    upper = _upper_only(df).capability_indices()
+    single = _events(df).capability_indices().iloc[0]
+    upper = _upper_only(df).capability_indices().iloc[0]
     assert upper["Cpk"] == pytest.approx(single["Cpk"])
     assert np.isnan(upper["Cp"]) and np.isnan(upper["lsl"])
 

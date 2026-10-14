@@ -29,11 +29,12 @@ All classes work with a standard timeseries DataFrame whose columns are:
 Each class filters by uuid to isolate specific signals from the shared DataFrame.
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import sys
 import os
+import sys
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
 
 # ---------------------------------------------------------------------------
 # Allow import when running from the examples/ directory
@@ -41,18 +42,18 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from ts_shape.events.production import (
-    MachineStateEvents,
-    LineThroughputEvents,
-    ChangeoverEvents,
-    FlowConstraintEvents,
-    PartProductionEvents,
-    CycleTimeEvents,
-    ShiftReportEvents,
-    DowntimeEvents,
-    QualityEvents,
-    OEEEvents,
     AlarmManagementEvents,
     BatchTrackingEvents,
+    ChangeoverEvents,
+    CycleTimeEvents,
+    DowntimeEvents,
+    FlowConstraintEvents,
+    LineThroughputEvents,
+    MachineStateEvents,
+    OEEEvents,
+    PartProductionEvents,
+    QualityEvents,
+    ShiftReportEvents,
 )
 
 # ---------------------------------------------------------------------------
@@ -337,7 +338,7 @@ def demo_machine_state(df: pd.DataFrame) -> None:
 
     # state_quality_metrics
     _subheader("state_quality_metrics()")
-    metrics = machine.state_quality_metrics()
+    metrics = machine.state_quality_metrics().iloc[0]
     for k, v in metrics.items():
         print(f"  {k}: {v}")
 
@@ -462,13 +463,14 @@ def demo_flow_constraints(df: pd.DataFrame) -> None:
     _subheader("flow_constraint_analytics()")
     analytics = flow.flow_constraint_analytics(roles=roles, tolerance="10s",
                                                 min_duration="10s")
-    s = analytics["summary"]
-    print(f"  Total constraint events : {s['total_constraint_events']}")
-    print(f"  Blocked count / duration: {s['blocked_count']} / "
-          f"{s['blocked_total_duration']}")
-    print(f"  Starved count / duration: {s['starved_count']} / "
-          f"{s['starved_total_duration']}")
-    print(f"  Alignment quality       : {s['overall_alignment_quality']:.2f}")
+    s = analytics.set_index("constraint_type")
+    print(f"  Total constraint events : {s['event_count'].sum()}")
+    print(f"  Blocked count / duration: {s.loc['blocked', 'event_count']} / "
+          f"{s.loc['blocked', 'total_duration_seconds']:.0f} s")
+    print(f"  Starved count / duration: {s.loc['starved', 'event_count']} / "
+          f"{s.loc['starved', 'total_duration_seconds']:.0f} s")
+    print(f"  Alignment quality       : "
+          f"{s['time_alignment_quality'].mean():.2f}")
 
 
 def demo_part_production_tracking(df: pd.DataFrame) -> None:

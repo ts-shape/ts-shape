@@ -43,10 +43,10 @@ trend = tracker.setup_trend(state_uuid="line1:state", window="1W")
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `setup_durations(state_uuid, setup_value='Setup')` | List every setup event with start, end, and duration | `DataFrame` with `start`, `end`, `duration_minutes`, `date`, `shift` |
-| `setup_by_product(state_uuid, part_id_uuid, setup_value='Setup')` | Setup time statistics grouped by product transition pair | `DataFrame` with `from_product`, `to_product`, `avg_minutes`, `min_minutes`, `max_minutes`, `count` |
-| `setup_statistics(state_uuid, setup_value='Setup')` | Overall setup time statistics (single row) | `DataFrame` with `total_setups`, `total_minutes`, `avg_minutes`, `median_minutes`, `std_minutes`, `pct_of_available_time` |
-| `setup_trend(state_uuid, setup_value='Setup', window='1W')` | Setup durations per time period | `DataFrame` with `period`, `avg_setup_minutes`, `setup_count`, `total_setup_minutes` |
+| `setup_durations(state_uuid, setup_value='Setup')` | List every setup event with start, end, and duration | `DataFrame` with `start`, `end`, `duration_seconds`, `duration_minutes`, `date`, `shift` |
+| `setup_by_product(state_uuid, part_id_uuid, setup_value='Setup')` | Setup time statistics grouped by product transition pair | `DataFrame` with `from_product`, `to_product`, `avg_minutes`, `avg_seconds`, `min_minutes`, `min_seconds`, `max_minutes`, `max_seconds`, `count` |
+| `setup_statistics(state_uuid, setup_value='Setup')` | Overall setup time statistics (single row) | `DataFrame` with `total_setups`, `total_minutes`, `total_seconds`, `avg_minutes`, `avg_seconds`, `median_minutes`, `median_seconds`, `std_minutes`, `std_seconds`, `pct_of_available_time` |
+| `setup_trend(state_uuid, setup_value='Setup', window='1W')` | Setup durations per time period | `DataFrame` with `period`, `avg_setup_minutes`, `avg_setup_seconds`, `setup_count`, `total_setup_minutes`, `total_setup_seconds` |
 
 ---
 

@@ -47,9 +47,9 @@ trend = tracker.performance_trend(
 
 | Method | Purpose | Returns |
 |--------|---------|---------|
-| `performance_by_shift(cycle_uuid, target_cycle_time, max_cycle_gap=None)` | Performance percentage per shift (ideal / actual) | `DataFrame` with `date`, `shift`, `actual_parts`, `avg_cycle_time_s`, `target_cycle_time_s`, `performance_pct`, `loss_minutes` |
-| `slow_periods(cycle_uuid, target_cycle_time, threshold_pct=90.0, window='1h', max_cycle_gap=None)` | Time windows where performance fell below threshold | `DataFrame` with `start`, `end`, `actual_parts`, `avg_cycle_time_s`, `performance_pct`, `loss_minutes` |
-| `performance_trend(cycle_uuid, target_cycle_time, window='1D', max_cycle_gap=None)` | Performance percentage per time period | `DataFrame` with `period`, `actual_parts`, `avg_cycle_time_s`, `performance_pct`, `loss_minutes` |
+| `performance_by_shift(cycle_uuid, target_cycle_time, max_cycle_gap=None)` | Performance percentage per shift (ideal / actual) | `DataFrame` with `date`, `shift`, `actual_parts`, `avg_cycle_time_s`, `avg_cycle_time_seconds`, `target_cycle_time_s`, `target_cycle_time_seconds`, `performance_pct`, `loss_minutes`, `loss_seconds`, `run_seconds` |
+| `slow_periods(cycle_uuid, target_cycle_time, threshold_pct=90.0, window='1h', max_cycle_gap=None)` | Time windows where performance fell below threshold | `DataFrame` with `start`, `end`, `actual_parts`, `avg_cycle_time_s`, `avg_cycle_time_seconds`, `performance_pct`, `loss_minutes`, `loss_seconds`, `run_seconds` |
+| `performance_trend(cycle_uuid, target_cycle_time, window='1D', max_cycle_gap=None)` | Performance percentage per time period | `DataFrame` with `period`, `actual_parts`, `avg_cycle_time_s`, `avg_cycle_time_seconds`, `performance_pct`, `loss_minutes`, `loss_seconds`, `run_seconds` |
 
 ---
 

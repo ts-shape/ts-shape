@@ -141,8 +141,16 @@ class OEEEvents(Base):
             - run_seconds
             - planned_seconds
             - availability_pct
+            - excluded_seconds: time removed by ``max_gap`` as "no data"
+                (booked to the day of the reading before the gap; 0 without
+                ``max_gap``)
         """
-        avail_extra = ["run_seconds", "planned_seconds", "availability_pct"]
+        avail_extra = [
+            "run_seconds",
+            "planned_seconds",
+            "availability_pct",
+            "excluded_seconds",
+        ]
         state_data = (
             self.dataframe[self.dataframe["uuid"] == run_state_uuid]
             .copy()
@@ -163,11 +171,14 @@ class OEEEvents(Base):
 
         # Treat over-long gaps as "no data" so they inflate neither run nor
         # planned time.
+        excluded_by_day: dict = {}
         if max_gap is not None:
             cap_seconds = pd.to_timedelta(max_gap).total_seconds()
-            state_data.loc[state_data["duration"] > cap_seconds, "duration"] = float(
-                "nan"
+            over_gap = state_data["duration"] > cap_seconds
+            excluded_by_day = (
+                state_data.loc[over_gap].groupby("date")["duration"].sum().to_dict()
             )
+            state_data.loc[over_gap, "duration"] = float("nan")
 
         # Drop last row per day (NaN duration at boundaries handled by groupby)
         state_data = state_data[state_data["duration"].notna()]
@@ -193,6 +204,7 @@ class OEEEvents(Base):
                     "run_seconds": run_seconds,
                     "planned_seconds": planned_seconds,
                     "availability_pct": min(availability, 100.0),
+                    "excluded_seconds": float(excluded_by_day.get(date, 0.0)),
                 }
             )
 
@@ -464,6 +476,19 @@ class OEEEvents(Base):
             - performance_pct
             - quality_pct
             - oee_pct
+
+            followed by the basis each percentage was computed from, taken
+            from the components (a day missing from a component reports 0):
+
+            - run_seconds, planned_seconds, excluded_seconds: from
+                :meth:`availability` (``excluded_seconds`` is the time
+                ``max_gap`` removed as "no data")
+            - actual_parts, ideal_parts: from :meth:`performance`
+            - total_parts, reject_parts, good_parts: from :meth:`quality`;
+                NaN when ``total_uuid`` / ``reject_uuid`` are not given
+                (quality is then assumed to be 100 %)
+            - resets (only when ``handle_resets=True``): counter resets of
+                the part counter plus the total / reject counters
         """
         oee_extra = [
             "availability_pct",
@@ -471,6 +496,12 @@ class OEEEvents(Base):
             "quality_pct",
             "oee_pct",
         ]
+        avail_basis = ["run_seconds", "planned_seconds", "excluded_seconds"]
+        perf_basis = ["actual_parts", "ideal_parts"]
+        qual_basis = ["total_parts", "reject_parts", "good_parts"]
+        basis = avail_basis + perf_basis + qual_basis
+        if handle_resets:
+            basis.append("resets")
         avail_df = self.availability(
             run_state_uuid, planned_time_hours=planned_time_hours, max_gap=max_gap
         )
@@ -488,26 +519,46 @@ class OEEEvents(Base):
             qual_df = None
 
         if avail_df.empty and perf_df.empty:
-            return empty_event_df("summary", extra_cols=oee_extra)
+            return empty_event_df("summary", extra_cols=oee_extra + basis)
 
         # Merge on canonical day boundaries (start/end/duration_seconds)
         key_cols = [COL_START, COL_END, COL_DURATION_S]
-        merged = avail_df[key_cols + ["availability_pct"]].copy()
+        perf_resets = ["resets"] if handle_resets else []
+        merged = avail_df[key_cols + ["availability_pct"] + avail_basis].copy()
         if not perf_df.empty:
-            merged = merged.merge(
-                perf_df[key_cols + ["performance_pct"]], on=key_cols, how="outer"
+            perf_part = perf_df[key_cols + ["performance_pct"] + perf_basis]
+            perf_part = perf_part.assign(
+                _perf_resets=perf_df["resets"] if perf_resets else 0
             )
+            merged = merged.merge(perf_part, on=key_cols, how="outer")
         else:
             merged["performance_pct"] = 0.0
+            for col in perf_basis:
+                merged[col] = 0.0
+            merged["_perf_resets"] = 0
 
+        has_quality = qual_df is not None
         if qual_df is not None and not qual_df.empty:
-            merged = merged.merge(
-                qual_df[key_cols + ["quality_pct"]], on=key_cols, how="outer"
+            qual_part = qual_df[key_cols + ["quality_pct"] + qual_basis]
+            qual_part = qual_part.assign(
+                _qual_resets=qual_df["resets"] if handle_resets else 0
             )
+            merged = merged.merge(qual_part, on=key_cols, how="outer")
         else:
             merged["quality_pct"] = 100.0
+            for col in qual_basis:
+                merged[col] = 0.0
+            merged["_qual_resets"] = 0
 
         merged = merged.fillna(0.0)
+        if not has_quality:
+            # Quality was not measured: the 100 % is an assumption, not a count.
+            for col in qual_basis:
+                merged[col] = float("nan")
+        if handle_resets:
+            merged["resets"] = (merged["_perf_resets"] + merged["_qual_resets"]).astype(
+                int
+            )
 
         merged["oee_pct"] = (
             merged["availability_pct"]
@@ -517,7 +568,9 @@ class OEEEvents(Base):
         )
 
         return (
-            merged[key_cols + oee_extra].sort_values(COL_START).reset_index(drop=True)
+            merged[key_cols + oee_extra + basis]
+            .sort_values(COL_START)
+            .reset_index(drop=True)
         )
 
 

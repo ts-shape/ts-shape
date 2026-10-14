@@ -58,7 +58,7 @@ transitions = state.transition_events()
 rapid = state.detect_rapid_transitions(threshold='5s', min_count=3)
 
 # Quality metrics for the state signal itself
-metrics = state.state_quality_metrics()
+metrics = state.state_quality_metrics().iloc[0]  # one-row DataFrame
 print(f"Run/Idle ratio: {metrics['run_idle_ratio']:.2f}")
 ```
 

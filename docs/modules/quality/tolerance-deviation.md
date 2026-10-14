@@ -34,7 +34,7 @@ events = tdev.detect_deviations()
 print(events[["systime", "deviation_abs", "deviation_pct", "severity"]].head())
 
 # Compute process capability indices against the latest spec limits
-capability = tdev.capability_indices(target_value=50.0)
+capability = tdev.capability_indices(target_value=50.0).iloc[0]
 print(f"Cpk: {capability['Cpk']:.2f}, Ppk: {capability['Ppk']:.2f}")
 ```
 
@@ -45,7 +45,7 @@ print(f"Cpk: {capability['Cpk']:.2f}, Ppk: {capability['Ppk']:.2f}")
 | Method | Purpose | Returns |
 |--------|---------|---------|
 | `detect_deviations()` | Apply tolerance checks, group out-of-tolerance samples within `time_threshold` into events (first and last row per event; a single-sample event is one row; the actual value column keeps the measured value) | DataFrame with `systime`, `uuid`, `deviation_abs`, `deviation_pct`, `severity` (`minor`, `major`, `critical`) |
-| `capability_indices(target_value=None)` | Calculate Cp, Cpk, Pp, Ppk capability indices | Dictionary with `Cp`, `Cpk`, `Pp`, `Ppk`, `mean`, `std`, `usl`, `lsl`, `target` (plus `Cpm` when `target_value` is given) |
+| `capability_indices(target_value=None)` | Calculate Cp, Cpk, Pp, Ppk capability indices | One-row DataFrame with `start`, `end`, `duration_seconds`, `uuid`, `source_uuid`, `Cp`, `Cpk`, `Pp`, `Ppk`, `Cpm` (NaN unless `target_value` is given), `mean`, `std`, `usl`, `lsl`, `target`, `sample_count`. `as_frame=False` returns the deprecated dict |
 
 ---
 

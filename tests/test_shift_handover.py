@@ -85,11 +85,9 @@ class TestShiftHandoverReport:
                 "availability_pct": 95,
             },
         )
-        assert isinstance(issues, list)
-        for issue in issues:
-            assert "shift" in issue
-            assert "metric" in issue
-            assert "severity" in issue
+        assert isinstance(issues, pd.DataFrame)
+        assert list(issues.columns) == ShiftHandoverEvents.ISSUE_COLUMNS
+        assert issues["severity"].isin(["warning", "critical"]).all()
 
     def test_highlight_issues_from_report_df(self):
         """Test highlight_issues with a pre-built report DataFrame."""
@@ -106,7 +104,10 @@ class TestShiftHandoverReport:
             report_df=report_df,
             thresholds={"quality_pct": 99, "availability_pct": 95},
         )
-        assert isinstance(issues, list)
+        assert isinstance(issues, pd.DataFrame)
+        # The shift window of the report row travels with each issue.
+        if not issues.empty:
+            assert issues["start"].notna().all()
 
     def test_from_shift_data_pipeline(self):
         """Test the pipeline entry-point: from_shift_data()."""
@@ -207,7 +208,8 @@ class TestShiftHandoverReport:
             nok_counter_uuid="z",
             state_uuid="w",
         )
-        assert issues == []
+        assert issues.empty
+        assert list(issues.columns) == ShiftHandoverEvents.ISSUE_COLUMNS
 
 
 def test_highlight_issues_without_report_or_uuids_raises():
@@ -222,3 +224,23 @@ def test_highlight_issues_without_report_or_uuids_raises():
         )
     with pytest.raises(ValueError, match="report_df"):
         report.highlight_issues(thresholds={"quality_pct": 99.0})
+
+
+def test_from_shift_data_with_string_dates_merges_quality_and_downtime():
+    import pandas as pd
+
+    from ts_shape.events.production.shift_handover import ShiftHandoverEvents
+
+    prod = pd.DataFrame({"date": ["2024-01-15"], "shift": ["A"], "quantity": [100]})
+    quality = pd.DataFrame(
+        {"date": ["2024-01-15"], "shift": ["A"], "ok_parts": [95], "nok_parts": [5]}
+    )
+    downtime = pd.DataFrame(
+        {"date": ["2024-01-15"], "shift": ["A"], "downtime_minutes": [12.0]}
+    )
+    for report_date in (None, "2024-01-15"):
+        out = ShiftHandoverEvents.from_shift_data(
+            prod, quality_df=quality, downtime_df=downtime, report_date=report_date
+        )
+        assert out["nok_parts"].iloc[0] == 5
+        assert out["downtime_seconds"].iloc[0] == 720.0

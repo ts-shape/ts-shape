@@ -35,7 +35,8 @@ def _to_seconds(value: _Number | None) -> float | None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    return pd.to_timedelta(value).total_seconds()
+    seconds: float = pd.to_timedelta(value).total_seconds()
+    return seconds
 
 
 class LineBalancingEvents(Base):

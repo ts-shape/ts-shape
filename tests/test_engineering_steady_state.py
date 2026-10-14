@@ -67,7 +67,7 @@ def test_steady_state_statistics():
     det = SteadyStateDetectionEvents(df, "temp")
     stats = det.steady_state_statistics(
         window="1m", std_threshold=1.0, min_duration="5m"
-    )
+    ).iloc[0]
     assert stats["num_steady_periods"] > 0
     assert stats["steady_pct"] > 0
 
@@ -105,4 +105,5 @@ def test_empty_dataframe():
     assert det.detect_steady_state().empty
     assert det.detect_transient_periods().empty
     stats = det.steady_state_statistics()
-    assert stats["num_steady_periods"] == 0
+    assert len(stats) == 1
+    assert stats["num_steady_periods"].iloc[0] == 0

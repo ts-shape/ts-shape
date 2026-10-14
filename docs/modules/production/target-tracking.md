@@ -55,7 +55,7 @@ hit_rate = tracker.target_hit_rate(
 |--------|---------|---------|
 | `compare_to_target(metric_uuid, targets)` | Actual vs target per shift with variance and percentage | `DataFrame` with `date`, `shift`, `actual`, `target`, `variance`, `achievement_pct`, `status` |
 | `target_achievement_summary(metric_uuid, daily_target)` | Daily achievement percentage over the analysis period | `DataFrame` with `date`, `actual`, `target`, `variance`, `achievement_pct`, `status` |
-| `target_hit_rate(metric_uuid, daily_target)` | Share of days where the daily target was met or exceeded | `dict` with `total_days`, `days_on_target`, `hit_rate_pct`, `avg_achievement_pct` |
+| `target_hit_rate(metric_uuid, daily_target)` | Share of days where the daily target was met or exceeded | One-row `DataFrame` with `start`, `end`, `duration_seconds` (the analysed days), `total_days`, `days_on_target`, `hit_rate_pct`, `avg_achievement_pct`. `as_frame=False` returns the deprecated `dict` |
 
 `compare_to_target` and `target_achievement_summary` count production across counter resets by default (`handle_resets=True`) and add a `resets` column; pass `handle_resets=False` for the plain `max(0, last - first)` quantity. Without `shift_definitions`, shifts are named `shift_1`, `shift_2`, `shift_3`.
 
