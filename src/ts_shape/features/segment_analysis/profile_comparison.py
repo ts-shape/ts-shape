@@ -298,7 +298,13 @@ class ProfileComparison(Base):
                 )
 
         if not rows:
-            return pd.DataFrame(columns=[uuid_column, group_column, "change_score"])
+            return pd.DataFrame(
+                {
+                    uuid_column: pd.Series(dtype=object),
+                    group_column: pd.Series(dtype=metric_profiles[group_column].dtype),
+                    "change_score": pd.Series(dtype="float64"),
+                }
+            )
         return pd.DataFrame(rows).reset_index(drop=True)
 
     @classmethod
@@ -353,15 +359,16 @@ class ProfileComparison(Base):
 
         k = min(top_k, len(condensed))
         if k == 0:
+            group_dtype = metric_profiles[group_column].dtype
             return pd.DataFrame(
-                columns=[
-                    "uuid_a",
-                    "group_a",
-                    "uuid_b",
-                    "group_b",
-                    "distance",
-                    "rank",
-                ]
+                {
+                    "uuid_a": pd.Series(dtype=object),
+                    "group_a": pd.Series(dtype=group_dtype),
+                    "uuid_b": pd.Series(dtype=object),
+                    "group_b": pd.Series(dtype=group_dtype),
+                    "distance": pd.Series(dtype="float64"),
+                    "rank": pd.Series(dtype="int64"),
+                }
             )
 
         if len(condensed) <= top_k:

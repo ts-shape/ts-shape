@@ -277,8 +277,18 @@ class SegmentProcessor(Base):
         wanted = metrics if metrics is not None else ALL_METRICS
         metric_cols = [m for m in ALL_METRICS if m in wanted]
         columns = [uuid_column, group_column, "sample_count", *metric_cols]
+        empty = pd.DataFrame(
+            {
+                uuid_column: pd.Series(dtype=object),
+                group_column: pd.Series(dtype=dataframe[group_column].dtype),
+                "sample_count": pd.Series(dtype="int64"),
+                **{m: pd.Series(dtype="float64") for m in metric_cols},
+            }
+        )
         if dataframe.empty:
-            return pd.DataFrame(columns=columns)
+            return empty
         result = summarize_groups(dataframe, [uuid_column, group_column], value_column)
+        if result.empty:
+            return empty
         result.columns = [uuid_column, group_column, *result.columns[2:]]
         return result[columns]
