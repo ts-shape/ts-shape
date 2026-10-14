@@ -4,7 +4,7 @@ Demonstrates data transformation: numeric filtering, string filtering, datetime 
 
 **Run it:** `python examples/transform_operations_demo.py`
 
-**Modules demonstrated:** `NumericFilter`, `StringFilter`, `DateTimeFilter`, `BooleanFilter`, `NumericCalc`
+**Modules demonstrated:** `DoubleFilter`, `IntegerFilter`, `StringFilter`, `DateTimeFilter`, `BooleanFilter`, `IntegerCalc`
 
 **Related guides:** [Signal Conditioning](../guides/transforms.md)
 

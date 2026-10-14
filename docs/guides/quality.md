@@ -36,14 +36,16 @@ Four detection methods, each suited to different signal distributions.
 ### Basic outlier detection
 
 ```python
-from ts_shape.events.quality.outlier_detection import OutlierDetection
+from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
-# Z-score (values > 3 std from mean)
-outliers = OutlierDetection.detect_zscore_outliers(df, "value_double", threshold=3.0)
-print(f"Found {len(outliers)} outliers")
+detector = OutlierDetectionEvents(df, value_column="value_double", group_by_uuid=True)
 
-# IQR-based
-outliers = OutlierDetection.detect_iqr_outliers(df, "value_double", multiplier=1.5)
+# Z-score (values > 3 std from the signal's mean)
+outliers = detector.detect_outliers_zscore(threshold=3.0)
+print(f"Found {len(outliers)} outlier rows")
+
+# IQR-based (lower, upper multipliers)
+outliers = detector.detect_outliers_iqr(threshold=(1.5, 1.5))
 ```
 
 ### Advanced outlier detection with severity scores
@@ -131,11 +133,8 @@ Check values against specification limits and compute Cp/Cpk indices.
 ### Simple tolerance check
 
 ```python
-from ts_shape.events.quality.tolerance_deviation import ToleranceDeviation
-
-deviations = ToleranceDeviation.detect_out_of_tolerance(
-    df, column="value_double", upper_limit=100, lower_limit=0
-)
+# Fixed limits need no detector: a boolean mask is enough
+out_of_tolerance = df[(df["value_double"] > 100) | (df["value_double"] < 0)]
 ```
 
 ### Process Capability Indices (Cp/Cpk)

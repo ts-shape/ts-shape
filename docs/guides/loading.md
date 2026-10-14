@@ -19,10 +19,10 @@ flowchart LR
 
     subgraph LOAD["<b>ts-shape Loaders</b>"]
         PL["ParquetLoader"]
-        S3L["S3ProxyParquetLoader"]
+        S3L["S3ProxyDataAccess"]
         AZL["AzureBlobParquetLoader"]
         TSL["TimescaleLoader"]
-        MDL["MetadataLoader"]
+        MDL["MetadataJsonLoader"]
     end
 
     subgraph OUT["<b>Output</b>"]
@@ -163,12 +163,20 @@ results = loader.fetch_files_by_time_range(
 ## Loading from S3-Compatible Storage
 
 ```python
-from ts_shape.loader.timeseries.s3proxy_parquet_loader import S3ProxyParquetLoader
+from ts_shape.loader.timeseries.s3proxy_parquet_loader import S3ProxyDataAccess
 
-loader = S3ProxyParquetLoader(
-    endpoint_url="https://s3.example.com",
-    bucket="data-lake",
-    prefix="timeseries/"
+loader = S3ProxyDataAccess(
+    start_timestamp="2024-01-01 00:00:00",
+    end_timestamp="2024-01-31 23:59:59",
+    uuids=["temperature", "pressure"],
+    s3_config={
+        "endpoint_url": "https://s3.example.com",
+        "key": "...",
+        "secret": "...",
+        "use_ssl": True,
+        "version_aware": False,
+        "s3_path_base": "data-lake/timeseries/",
+    },
 )
 df = loader.fetch_data_as_dataframe()
 ```
@@ -262,9 +270,9 @@ loader.build_paths("2026-06-19 06:00", "2026-06-19 08:00", ["ABC"])
 Signal metadata (names, units, configuration) stored in JSON files.
 
 ```python
-from ts_shape.loader.metadata.metadata_json_loader import MetadataLoader
+from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
 
-meta = MetadataLoader("config/signals.json").to_df()
+meta = MetadataJsonLoader.from_file("config/signals.json").to_df()
 
 print(meta)
 #          uuid         label    unit

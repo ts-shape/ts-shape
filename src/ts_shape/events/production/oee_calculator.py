@@ -56,7 +56,8 @@ class OEECalculator(Base):
     Combines availability (from run/idle state), performance (from part counters
     and ideal cycle time), and quality (from total/reject counters) into a single
     OEE metric per day. Each daily row uses the canonical summary schema:
-    ``start`` (midnight) / ``end`` (next midnight) / ``duration_seconds`` = 86400.
+    ``start`` (midnight) / ``end`` (next midnight) / ``duration_seconds`` (the
+    real day length: 86400, or 23 h / 25 h on DST days with tz-aware data).
 
     Example usage:
         oee = OEECalculator(df)
@@ -130,7 +131,7 @@ class OEECalculator(Base):
 
         Returns:
             Summary-shape DataFrame with columns:
-            - start, end, duration_seconds (canonical day boundaries; 86400)
+            - start, end, duration_seconds (canonical day boundaries; real day length)
             - run_seconds
             - planned_seconds
             - availability_pct

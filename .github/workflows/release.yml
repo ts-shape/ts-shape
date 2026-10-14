@@ -111,7 +111,9 @@ jobs:
           pip install ".[docs]"
 
       - name: Build MkDocs documentation
-        run: mkdocs build
+        env:
+          DISABLE_MKDOCS_2_WARNING: 'true'
+        run: mkdocs build --strict
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3

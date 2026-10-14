@@ -7,6 +7,9 @@ site_dir: "site"
 copyright: Copyright &copy; 2024 Jakob Gabriel
 edit_uri: edit/main/docs/
 
+not_in_nav: |
+  /reference/index.md
+
 validation:
   omitted_files: warn
   absolute_links: warn
@@ -19,6 +22,9 @@ nav:
   - Migration & Deprecations: migration.md
   - Changelog: changelog.md
   - Roadmap: roadmap.md
+  - Gap screening (production): production_gap_screening.md
+  - Gap screening (other packs): gap_screening_other_packs.md
+  - Manufacturing operations research: research/manufacturing-operations-research.md
   - License: license.md
 - Getting Started:
   - Installation: user_guide/installation.md

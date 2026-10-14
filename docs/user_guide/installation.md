@@ -24,7 +24,7 @@ pip install -e .
 
 ```python
 import ts_shape
-from ts_shape.transform.filter.numeric_filter import NumericFilter
+from ts_shape.transform.filter.numeric_filter import DoubleFilter
 
 print("ts-shape installed successfully!")
 ```

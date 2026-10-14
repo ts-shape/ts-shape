@@ -23,7 +23,7 @@ class StatisticalProcessControlRuleBased(Base):
         event_uuid: str,
     ) -> None:
         """
-        Initializes the SPCMonitor with UUIDs for tolerance, actual, and event values.
+        Initializes StatisticalProcessControlRuleBased with UUIDs for tolerance, actual, and event values.
         Inherits the sorted dataframe from the Base class.
 
         Args:

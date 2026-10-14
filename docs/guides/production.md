@@ -129,7 +129,7 @@ windows = changeover.changeover_window(
 Detect blockages (downstream full) and starvation (upstream empty) between stations.
 
 ```python
-from ts_shape.events.production.flow_constraint import FlowConstraintEvents
+from ts_shape.events.production.flow_constraints import FlowConstraintEvents
 
 flow = FlowConstraintEvents(df)
 

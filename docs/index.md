@@ -87,12 +87,15 @@ pip install ts-shape
 </div>
 
 ```python
+import pandas as pd
 from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
 from ts_shape.events.production.machine_state import MachineStateEvents
 from ts_shape.eventlog import to_event_log, to_event_log_ocel
 
 # 1. Load raw signals
-df = ParquetLoader.load_by_uuids("data/", ["machine-state"], "2024-01-01", "2024-01-31")
+df = ParquetLoader.load_files_by_time_range_and_uuids(
+    "data/", pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-31"), ["machine-state"]
+)
 
 # 2. Detect events
 intervals = MachineStateEvents(df, run_state_uuid="machine-state").detect_run_idle(min_duration="30s")

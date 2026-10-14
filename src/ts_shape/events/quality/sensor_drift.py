@@ -1,3 +1,9 @@
+"""Sensor drift: slow calibration loss of a measurement against a reference.
+
+Detects zero (offset) drift and span (gain) drift against a reference,
+tracks the drift trend per window, and scores overall calibration health.
+"""
+
 import logging
 from typing import Any
 

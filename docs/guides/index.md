@@ -87,7 +87,7 @@ Pick the stage that matches where you are in your analysis.
 
     Connect to historians, data lakes, and metadata stores. Load Parquet, S3, Azure Blob, or TimescaleDB into DataFrames.
 
-    `ParquetLoader` | `AzureBlobParquetLoader` | `S3ProxyParquetLoader` | `MetadataLoader` | `DataIntegratorHybrid`
+    `ParquetLoader` | `AzureBlobParquetLoader` | `S3ProxyDataAccess` | `MetadataJsonLoader` | `DataIntegratorHybrid`
 
 -   :material-filter-variant:{ .lg .middle } **[Signal Conditioning](transforms.md)**
 
@@ -95,7 +95,7 @@ Pick the stage that matches where you are in your analysis.
 
     Clean and prepare raw signals. Filter by range, time window, pattern, or boolean flag. Convert timezones and compute derived values.
 
-    `NumericFilter` | `DateTimeFilter` | `StringFilter` | `TimezoneShift` | `NumericCalc`
+    `DoubleFilter` | `DateTimeFilter` | `StringFilter` | `TimezoneShift` | `IntegerCalc`
 
 -   :material-table-pivot:{ .lg .middle } **[Feature Extraction](feature-extraction.md)**
 
@@ -127,7 +127,7 @@ Pick the stage that matches where you are in your analysis.
 
     Outlier detection (Z-score, IQR, MAD, IsolationForest), Western Electric Rules, CUSUM shifts, and Cp/Cpk capability indices.
 
-    `OutlierDetection` | `StatisticalProcessControl` | `ToleranceDeviation`
+    `OutlierDetectionEvents` | `StatisticalProcessControlRuleBased` | `ToleranceDeviationEvents`
 
 -   :material-factory:{ .lg .middle } **[Production Monitoring](production.md)**
 

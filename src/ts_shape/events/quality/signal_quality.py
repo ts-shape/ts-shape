@@ -1,3 +1,10 @@
+"""Signal quality: is the data itself trustworthy?
+
+Finds missing data (gaps longer than the expected period), measures
+sampling regularity, flags out-of-range values, and reports data
+completeness per calendar window (real window lengths on DST days).
+"""
+
 import logging
 from typing import Any
 

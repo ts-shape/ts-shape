@@ -1,4 +1,10 @@
 # October 14, 2026
+docs: every page now shows only names that exist (NumericFilter,
+  OutlierDetection, MetadataLoader, S3ProxyParquetLoader, NumericCalc and
+  wrong module paths replaced with the real API); tests/docs checks every
+  ts_shape import and attribute in the docs' code blocks. CI builds the docs
+  with mkdocs build --strict (38 warnings fixed). Python 3.14 classifier;
+  README and the development guide describe the real CI/release pipeline.
 fix: eventlog static-shape event ids hashed the export time, so re-exporting
   the same detector output gave different ocel:eid values; they are now
   stable (ported from the open PR #60).

@@ -131,7 +131,7 @@ class ScrapTracking(Base):
             DataFrame with columns:
             - date, shift, scrap_quantity
             - resets: Number of counter resets in the shift (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         columns = ["date", "shift", "scrap_quantity"]
         if handle_resets:
@@ -201,7 +201,7 @@ class ScrapTracking(Base):
             DataFrame with columns:
             - reason, scrap_quantity, pct_of_total
             - resets: Number of counter resets for the reason (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         columns = ["reason", "scrap_quantity", "pct_of_total"]
         if handle_resets:
@@ -300,7 +300,7 @@ class ScrapTracking(Base):
             DataFrame with columns:
             - part_number, scrap_quantity, cost_per_unit, total_cost
             - resets: Number of counter resets for the part (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         columns = ["part_number", "scrap_quantity", "cost_per_unit", "total_cost"]
         if handle_resets:
@@ -383,7 +383,7 @@ class ScrapTracking(Base):
             DataFrame with columns:
             - period, scrap_quantity
             - resets: Number of counter resets in the period (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
         """
         columns = ["period", "scrap_quantity"]
         if handle_resets:

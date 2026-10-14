@@ -194,7 +194,7 @@ class PartProductionTracking(Base):
             - first_count: Counter value at window start
             - last_count: Counter value at window end
             - resets: Number of counter resets in window (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
 
         Example:
             >>> production_by_part('part_id', 'counter', window='1h')
@@ -347,7 +347,7 @@ class PartProductionTracking(Base):
             - total_quantity: Total parts produced that day
             - hours_active: Number of hours with production
             - resets: Number of counter resets that day (only when
-              ``handle_resets=True``)
+                ``handle_resets=True``)
 
         Example:
             >>> daily_production_summary('part_id', 'counter')

@@ -441,7 +441,7 @@ Extract statistical features and detect cycles.
 
 ```python
 from ts_shape.features.stats.numeric_stats import NumericStatistics
-from ts_shape.features.stats.time_stats_numeric import TimeGroupedStatistics
+from ts_shape.features.time_stats.time_stats_numeric import TimeGroupedStatistics
 from ts_shape.features.cycles.cycles_extractor import CycleExtractor
 
 # Descriptive statistics
@@ -540,15 +540,13 @@ The project uses GitHub Actions for continuous integration and deployment:
 
 | Workflow | Trigger | Description |
 |----------|---------|-------------|
-| **CI** | Push / PR | Runs tests on Python 3.10, 3.11, 3.12 |
-| **Release** | Push to `main` / Tag `v*` | Build docs, deploy to GitHub Pages, publish to PyPI |
+| **CI** | Push / PR | Lint (black, ruff, mypy), strict docs build, tests on Python 3.11-3.14 |
+| **Release** | Push to `main` | Tests, then bumps the patch tag, builds and deploys the docs to GitHub Pages, and publishes to PyPI |
 
-Versioning is managed with `setuptools-scm` -- version numbers are derived automatically from git tags. To release:
-
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
+Every merge to `main` is a release: the pipeline takes the latest `X.Y.Z`
+tag, increments the patch number, tags the commit and builds the package with
+that version. For a minor or major bump, push the new `X.Y.0` tag yourself
+before merging; the next release increments from it.
 
 ---
 

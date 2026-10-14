@@ -411,15 +411,15 @@ class PowerIntegrator(Base):
             coverage, sample_count (plus ``uuid`` when ``total=False``).
 
             - ``kwh`` -- integrated energy in the window. Net of any negative
-              (exported/regenerated) power.
+                (exported/regenerated) power.
             - ``avg_kw`` -- time-weighted mean power over the *covered* time,
-              i.e. ``kwh`` divided by the hours actually logged. With full
-              coverage and ``freq='1h'`` this equals ``kwh``.
+                i.e. ``kwh`` divided by the hours actually logged. With full
+                coverage and ``freq='1h'`` this equals ``kwh``.
             - ``coverage`` -- fraction of the window backed by data (with
-              ``total=True``, that of the least-covered signal). Anything below
-              1.0 means the window is under-reported.
+                ``total=True``, that of the least-covered signal). Anything below
+                1.0 means the window is under-reported.
             - ``sample_count`` -- sample intervals contributing to the window.
-              One interval straddling a boundary counts in both windows.
+                One interval straddling a boundary counts in both windows.
 
             Windows with no data at all are omitted rather than reported as
             0.0 kWh, so "not measured" never renders as "used nothing".

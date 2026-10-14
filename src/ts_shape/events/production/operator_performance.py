@@ -188,7 +188,7 @@ class OperatorPerformanceTracking(Base):
             DataFrame with columns:
             - operator, total_produced, shifts_worked, avg_per_shift
             - resets: Number of counter resets across the operator's shifts
-              (only when ``handle_resets=True``)
+                (only when ``handle_resets=True``)
         """
         columns = ["operator", "total_produced", "shifts_worked", "avg_per_shift"]
         if handle_resets:
@@ -313,7 +313,7 @@ class OperatorPerformanceTracking(Base):
             DataFrame with columns:
             - operator, ok_count, nok_count, first_pass_yield_pct
             - resets: Number of counter resets across the operator's OK and
-              NOK counters (only when ``handle_resets=True``)
+                NOK counters (only when ``handle_resets=True``)
         """
         columns = ["operator", "ok_count", "nok_count", "first_pass_yield_pct"]
         if handle_resets:
