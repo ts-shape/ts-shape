@@ -222,8 +222,12 @@ class DisturbanceRecoveryEvents(Base):
         """Measure recovery time after each disturbance.
 
         Args:
+            baseline_window: Window for the rolling baseline and rolling std
+                (pandas offset string). Ignored for the baseline when a
+                ``setpoint_uuid`` was given; the setpoint is used instead.
+            n_sigma: Deviation threshold in multiples of the rolling std.
             recovery_pct: Signal must return to within (1 - recovery_pct)
-                          of peak deviation to be considered recovered.
+                of peak deviation to be considered recovered.
             max_recovery: Maximum time to look for recovery.
 
         Returns:
@@ -317,6 +321,13 @@ class DisturbanceRecoveryEvents(Base):
     ) -> pd.DataFrame:
         """Count disturbances per time window.
 
+        Args:
+            window: Counting window as a pandas offset string (e.g. '8h' per shift,
+                '1D' per day).
+            baseline_window: Window for the rolling baseline and rolling std used
+                by :meth:`detect_disturbances`.
+            n_sigma: Deviation threshold in multiples of the rolling std.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds,
             disturbance_count, total_disturbance_seconds, pct_time_disturbed,
@@ -397,6 +408,14 @@ class DisturbanceRecoveryEvents(Base):
         comparison_window: str = "5min",
     ) -> pd.DataFrame:
         """Compare process statistics before vs after each disturbance.
+
+        Args:
+            baseline_window: Window for the rolling baseline and rolling std used
+                by :meth:`detect_disturbances`.
+            n_sigma: Deviation threshold in multiples of the rolling std.
+            comparison_window: Length of the span compared just before the
+                disturbance start and just after its end. Disturbances with fewer
+                than two samples on either side are skipped.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,

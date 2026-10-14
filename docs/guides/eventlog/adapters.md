@@ -2,7 +2,7 @@
 
 How a detector's raw DataFrame becomes a canonical `EventLog`. This is the
 mechanics companion to the [Event Log overview](index.md) (the schema and
-exports) and the [Labelling standard & taxonomy](taxonomy.md) (the naming and
+exports) and the [Labeling standard & taxonomy](taxonomy.md) (the naming and
 attribute rules).
 
 ---

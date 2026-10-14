@@ -51,6 +51,9 @@ class ProcessWindowEvents(Base):
     def windowed_statistics(self, window: str = "1h") -> pd.DataFrame:
         """Per-window descriptive statistics.
 
+        Args:
+            window: Resample window (pandas offset string, e.g. '1h', '8h').
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, count, mean, std, min, max, median, p25, p75, range.
@@ -122,6 +125,11 @@ class ProcessWindowEvents(Base):
 
         A shift is detected when |current_mean - prev_mean| > sensitivity * prev_std.
 
+        Args:
+            window: Resample window passed to :meth:`windowed_statistics`.
+            sensitivity: Minimum shift between consecutive window means, in
+                multiples of the previous window's std, to flag a window.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, is_delta, prev_mean, current_mean, shift_sigma.
@@ -173,6 +181,11 @@ class ProcessWindowEvents(Base):
         A change is detected when (current_std / prev_std) > ratio_threshold
         or < (1 / ratio_threshold).
 
+        Args:
+            window: Resample window passed to :meth:`windowed_statistics`.
+            ratio_threshold: Std ratio (current / previous) at or above which, or
+                at or below whose reciprocal, a window is flagged. Should be > 1.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, is_delta, prev_std, current_std, variance_ratio.
@@ -222,6 +235,11 @@ class ProcessWindowEvents(Base):
     @keyword_only(1)
     def window_comparison(self, window: str = "1h") -> pd.DataFrame:
         """Compare each window mean to the overall baseline.
+
+        Args:
+            window: Resample window passed to :meth:`windowed_statistics`. A window
+                is anomalous when its mean is more than 2 std of the window means
+                away from their average.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,

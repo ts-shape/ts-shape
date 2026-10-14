@@ -260,7 +260,7 @@ The table below maps each identified industry challenge to the corresponding ts-
   the fused row names the `dominant_failure_mode` and
   `signal_contributions` ranks the signals by the health they cost the asset.
   This is attribution from the configured mapping, not classification of an
-  unlabelled fault.
+  unlabeled fault.
 - **Maintenance horizon** — `maintenance_forecast` extrapolates the index to a
   critical threshold and reports days-to-intervention, suppressed when the
   trend fit is too weak to support a date.
@@ -600,7 +600,7 @@ Operations detectors answer "is my running line in spec?" R&D detectors answer d
 - "Did every recipe phase meet its acceptance criteria?" (recipe adherence)
 - "Which input parameters are statistically linked to yield?" (CPP ranking)
 
-These questions appear in process development for pharma (ICH Q8 design space, IQ/OQ/PQ validation), biotech (golden-batch concept for upstream/downstream), specialty chemicals (campaign DOE for new product introduction), food & beverage (recipe validation), and semiconductors (FOUP-level characterisation runs). The market is smaller than mainline operations but the unit value per detector is higher: a single DOE-effect estimation can save weeks of pilot-plant time.
+These questions appear in process development for pharma (ICH Q8 design space, IQ/OQ/PQ validation), biotech (golden-batch concept for upstream/downstream), specialty chemicals (campaign DOE for new product introduction), food & beverage (recipe validation), and semiconductors (FOUP-level characterization runs). The market is smaller than mainline operations but the unit value per detector is higher: a single DOE-effect estimation can save weeks of pilot-plant time.
 
 ### 7.2 Implemented Detectors
 
@@ -617,7 +617,7 @@ These questions appear in process development for pharma (ICH Q8 design space, I
 - **Zero-ML, scipy-only** -- consistent with the wider ts-shape philosophy. DTW is a pure-numpy implementation with a Sakoe-Chiba band; ANOVA and correlation calls go through `scipy.stats`; the convex hull uses `scipy.spatial.ConvexHull`.
 - **No new schema** -- every method returns canonical `point`, `interval`, `summary`, or `static` shapes via the same `_output.py` helpers used by the other 7 packs.
 - **Compositional with existing detectors** -- `RecipePhaseAdherenceEvents` builds on the same phase-segmentation idea as `BatchTrackingEvents`; `DesignSpaceEvents` complements the univariate `ProcessWindowEvents`; `GoldenBatchDeviationEvents` complements the cross-segment clustering in `features.segment_analysis.ProfileComparison`.
-- **Not duplicated work** -- step-response characterisation (time constant, overshoot, rise time, settling time) already lives in `SetpointChangeEvents` and is intentionally not re-implemented in this pack.
+- **Not duplicated work** -- step-response characterization (time constant, overshoot, rise time, settling time) already lives in `SetpointChangeEvents` and is intentionally not re-implemented in this pack.
 
 ### 7.4 Gaps Closed
 
@@ -637,7 +637,7 @@ Methods deliberately left out of the initial pack but worth revisiting:
 - **Higher-order effect estimation** (two-way interactions, response surface fitting via least-squares).
 - **Bayesian online change-point detection** for run-segmentation when factor changes are not stepwise.
 - **Process validation IQ/OQ/PQ workflow** -- requires a richer notion of "validation campaign" beyond per-run aggregation.
-- **Multivariate SPC (Hotelling T²)** -- proposed in §4 under the operations roadmap; would also serve R&D characterisation studies.
+- **Multivariate SPC (Hotelling T²)** -- proposed in §4 under the operations roadmap; would also serve R&D characterization studies.
 - **Accelerated life test / Weibull fitting** -- niche but high-value in reliability engineering R&D.
 
 ---

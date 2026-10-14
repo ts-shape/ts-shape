@@ -49,7 +49,7 @@ nav:
   - Event Log (XES & OCEL):
     - Overview: guides/eventlog/index.md
     - Object Detection: guides/eventlog/objects.md
-    - Labelling Standard & Taxonomy: guides/eventlog/taxonomy.md
+    - Labeling Standard & Taxonomy: guides/eventlog/taxonomy.md
     - Adapter Anatomy & Custom Adapters: guides/eventlog/adapters.md
   - Event Handling — Visual Overview: guides/event-handling-flow.md
   - Lambda Rules: guides/lambda-rules.md

@@ -292,18 +292,23 @@ class MachineStateEvents(Base):
     ) -> dict[str, Any]:
         """Return quality metrics for the state data.
 
-        - interval_end / data_end: forwarded to :meth:`detect_run_idle`. Pass
-          ``interval_end="next_change"`` for change-encoded signals so the
-          run/idle durations are measured to the next transition rather than
-          collapsing to zero.
+        Args:
+            interval_end: Forwarded to :meth:`detect_run_idle`. Pass
+                ``"next_change"`` for change-encoded signals so the run/idle
+                durations are measured to the next transition rather than
+                collapsing to zero. Default ``"last_sample"``.
+            data_end: Forwarded to :meth:`detect_run_idle`; optional bound for
+                the final, still-open interval.
 
-        Returns dictionary with:
-        - total_transitions: total number of state transitions
-        - avg_run_duration: average duration of run states in seconds
-        - avg_idle_duration: average duration of idle states in seconds
-        - run_idle_ratio: ratio of run time to idle time
-        - data_gaps_detected: number of data gaps found
-        - rapid_transitions_detected: number of rapid transition events
+        Returns:
+            Dictionary with:
+
+            - total_transitions: total number of state transitions
+            - avg_run_duration: average duration of run states in seconds
+            - avg_idle_duration: average duration of idle states in seconds
+            - run_idle_ratio: ratio of run time to idle time
+            - data_gaps_detected: number of data gaps found
+            - rapid_transitions_detected: number of rapid transition events
         """
         transitions = self.transition_events()
         intervals = self.detect_run_idle(interval_end=interval_end, data_end=data_end)

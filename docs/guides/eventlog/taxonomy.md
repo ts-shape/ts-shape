@@ -1,4 +1,4 @@
-# Event Log: labelling standard & taxonomy
+# Event Log: labeling standard & taxonomy
 
 This page documents the rules that fill `ocel:activity` and the standard
 attributes every detector emits. It is the reference companion to the
@@ -9,7 +9,7 @@ attributes every detector emits. It is the reference companion to the
 
 ## Activity-name taxonomy
 
-The full set of rules is codified in [Event labelling standard](#event-labelling-standard). At a glance:
+The full set of rules is codified in [Event labeling standard](#event-labeling-standard). At a glance:
 
 | Detector method | `ocel:activity` |
 |---|---|
@@ -24,7 +24,7 @@ The full registry lives in `ts_shape.eventlog.taxonomy.REGISTRY` and is enforced
 
 ---
 
-## Event labelling standard
+## Event labeling standard
 
 These are the rules every `LabelRule` in
 `ts_shape.eventlog.taxonomy.REGISTRY` follows. Adhering to them keeps

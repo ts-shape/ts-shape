@@ -8,7 +8,7 @@ chemicals.
 
 This detector supports three comparison modes:
 
-* ``pointwise`` -- resample both batches to a common normalised batch
+* ``pointwise`` -- resample both batches to a common normalized batch
   time and report the maximum signed residual.
 * ``area``      -- numerical integral of the absolute residual using the
   trapezoid rule. Captures cumulative deviation.
@@ -76,7 +76,7 @@ class GoldenBatchDeviationEvents(Base):
     def _resample_to_grid(self, times: pd.Series, values: np.ndarray) -> np.ndarray:
         """Resample a batch trace to ``n_resample`` evenly-spaced batch-time points.
 
-        Batch time is normalised to [0, 1]; the trace is linearly
+        Batch time is normalized to [0, 1]; the trace is linearly
         interpolated onto an evenly spaced grid so two batches of
         different wall-clock durations are directly comparable.
         """
@@ -95,7 +95,7 @@ class GoldenBatchDeviationEvents(Base):
     def _dtw_distance(a: np.ndarray, b: np.ndarray, band: int) -> float:
         """Dynamic time warping distance with a Sakoe-Chiba band.
 
-        Pure-numpy O(n * band) implementation. Returns the *normalised*
+        Pure-numpy O(n * band) implementation. Returns the *normalized*
         DTW distance (total cost divided by warping-path length).
         """
         n, m = len(a), len(b)
@@ -176,7 +176,7 @@ class GoldenBatchDeviationEvents(Base):
         if mode == "pointwise":
             score = max_abs
         elif mode == "area":
-            # Trapezoid integral of |residual| on the normalised grid (0..1).
+            # Trapezoid integral of |residual| on the normalized grid (0..1).
             grid = np.linspace(0.0, 1.0, self.n_resample)
             score = float(np.trapezoid(np.abs(residual), grid))
         elif mode == "dtw":

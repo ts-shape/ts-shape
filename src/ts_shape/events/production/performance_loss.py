@@ -264,8 +264,11 @@ class PerformanceLossEvents(Base):
             cycle_uuid: UUID of cycle trigger or counter signal.
             target_cycle_time: Target cycle time in seconds.
             threshold_pct: Performance must be below this to flag (default 90%).
-            window: Rolling window size (default '1h').
+            window: Fixed time window per row (default '1h').
             value_column: Column with counter values.
+            max_cycle_gap: Optional cap (e.g. "5min"). Cycle intervals longer
+                than it are dropped as stops instead of counted as slow
+                cycles. None keeps every interval.
 
         Returns:
             DataFrame with columns:
@@ -330,6 +333,9 @@ class PerformanceLossEvents(Base):
             target_cycle_time: Target cycle time in seconds.
             window: Time window for aggregation (default '1D').
             value_column: Column with counter values.
+            max_cycle_gap: Optional cap (e.g. "5min"). Cycle intervals longer
+                than it are dropped as stops instead of counted as slow
+                cycles. None keeps every interval.
 
         Returns:
             DataFrame with columns:

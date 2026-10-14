@@ -242,7 +242,7 @@ class PowerIntegrator(Base):
         while grid[-1] < end.max():
             grid = grid.append(pd.DatetimeIndex([grid[-1] + offset]))
 
-        # Bucket of each segment's start, and the first boundary at/after its
+        # Window of each segment's start, and the first boundary at/after its
         # (exclusive) end: a segment ending exactly on a boundary does not
         # reach into the next window.
         i0 = grid.searchsorted(start, side="right") - 1
@@ -319,7 +319,7 @@ class PowerIntegrator(Base):
                 that span is unknown. Without a cap, one sample before a
                 three-hour outage bills three hours of energy at that power
                 level. Set it above the signal's normal logging cadence -- an
-                on-change tag on a steady machine can legitimately stay silent
+                on-change signal on a steady machine can legitimately stay silent
                 for a long time, and too tight a cap silently discards real
                 consumption (watch ``coverage``).
             power_unit: Unit of ``value_column`` -- 'W', 'kW' or 'MW'.
@@ -426,10 +426,10 @@ class PowerIntegrator(Base):
 
         Note:
             ``freq`` must be a *fixed* frequency ('15min', '1h', '1D'), and
-            windows are fixed-length buckets anchored on the floored sample
+            windows are fixed-length and anchored on the floored sample
             timestamp. Elapsed time and total energy are always correct on
-            tz-aware input, but a ``'1D'`` bucket spans 24 elapsed hours
-            rather than the 23/25-hour local day, so bucket labels drift by an
+            tz-aware input, but a ``'1D'`` window spans 24 elapsed hours
+            rather than the 23/25-hour local day, so window labels drift by an
             hour after a daylight-saving changeover. Use ``'1h'`` and
             aggregate to local days afterwards if that matters.
         """

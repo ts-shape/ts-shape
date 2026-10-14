@@ -191,6 +191,12 @@ class SetpointChangeEvents(Base):
         """
         Interval events where |dS/dt| >= min_rate for at least `min_duration`.
 
+        Args:
+            min_rate: Minimum absolute setpoint rate of change, in setpoint units
+                per second, for a sample-to-sample step to count as ramping.
+            min_duration: Minimum time from the first to the last ramping sample of
+                a contiguous run (pandas offset string). Default ``"0s"``.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, is_delta, change_type='ramp', avg_rate, delta.
@@ -252,6 +258,16 @@ class SetpointChangeEvents(Base):
     ) -> pd.DataFrame:
         """
         Unified setpoint change table (steps + ramps) with standardized columns.
+
+        Args:
+            min_delta: Minimum step magnitude, passed to
+                :meth:`detect_setpoint_steps`.
+            min_rate: Minimum ramp rate in setpoint units per second, passed to
+                :meth:`detect_setpoint_ramps`. None skips ramp detection.
+            min_hold: Minimum time a new step level must hold, passed to
+                :meth:`detect_setpoint_steps`.
+            min_duration: Minimum ramp duration, passed to
+                :meth:`detect_setpoint_ramps`.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -406,6 +422,11 @@ class SetpointChangeEvents(Base):
         """
         For each change, compute peak overshoot, undershoot, and oscillation metrics
         relative to the new setpoint within a lookahead window.
+
+        Args:
+            actual_uuid: UUID of the actual (process value) signal.
+            window: Lookahead window after each setpoint change in which the peak,
+                undershoot and oscillations are measured (pandas offset string).
 
         Returns:
             DataFrame with columns: start, end (start + the lookahead window),

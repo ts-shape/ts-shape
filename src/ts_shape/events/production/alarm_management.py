@@ -25,7 +25,7 @@ class AlarmManagementEvents(Base):
     """Analyze alarm signals following ISA-18.2 alarm management principles.
 
     Works with boolean alarm signals where True = alarm active, False = alarm
-    cleared.  Provides metrics for alarm rationalisation and nuisance alarm
+    cleared.  Provides metrics for alarm rationalization and nuisance alarm
     detection.
 
     Example usage:
@@ -46,7 +46,7 @@ class AlarmManagementEvents(Base):
         value_column: str = "value_bool",
         time_column: str = "systime",
     ) -> None:
-        """Initialize alarm management analyser.
+        """Initialize alarm management analyzer.
 
         Args:
             dataframe: Input DataFrame with timeseries data.

@@ -167,6 +167,12 @@ class StatisticalProcessControlEvents(Base):
         """
         Rule 1: One point beyond the 3σ control limits.
 
+        Args:
+            df: Rows of the actual signal, sorted by time. A boolean
+                ``rule_1`` column is added to it in place.
+            limits: Control limits as returned by :meth:`control_limits`;
+                only the first row is used.
+
         Returns:
             pd.DataFrame: Filtered DataFrame with rule violations.
         """
@@ -178,6 +184,11 @@ class StatisticalProcessControlEvents(Base):
     def rule_2(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 2: Nine consecutive points on one side of the mean.
+
+        Args:
+            df: Rows of the actual signal, sorted by time. A boolean
+                ``rule_2`` column and helper columns ``above_mean`` and
+                ``below_mean`` are added to it in place.
 
         Returns:
             pd.DataFrame: Filtered DataFrame with rule violations.
@@ -194,6 +205,11 @@ class StatisticalProcessControlEvents(Base):
         """
         Rule 3: Six consecutive points steadily increasing or decreasing.
 
+        Args:
+            df: Rows of the actual signal, sorted by time. A boolean
+                ``rule_3`` column and helper columns ``increasing`` and
+                ``decreasing`` are added to it in place.
+
         Returns:
             pd.DataFrame: Filtered DataFrame with rule violations.
         """
@@ -208,13 +224,18 @@ class StatisticalProcessControlEvents(Base):
         """
         Rule 4: Fourteen consecutive points alternating up and down.
 
+        Args:
+            df: Rows of the actual signal, sorted by time. A ``rule_4``
+                column (1.0 where the rule fires) and a helper column
+                ``alternating`` are added to it in place.
+
         Returns:
             pd.DataFrame: Filtered DataFrame with rule violations.
         """
         df["alternating"] = np.sign(df[self.value_column].diff())
         # In a 14-value window of difference-signs, an alternating run
         # means every adjacent pair differs. ``raw=True`` passes a NumPy
-        # array, so compare neighbours with array slicing rather than
+        # array, so compare neighbors with array slicing rather than
         # Series.shift(). Reject windows containing the leading NaN that
         # diff() produces.
         df["rule_4"] = (
@@ -230,6 +251,12 @@ class StatisticalProcessControlEvents(Base):
     def rule_5(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 5: Two out of three consecutive points near the control limit (beyond 2σ but within 3σ).
+
+        Args:
+            df: Rows of the actual signal, sorted by time. A boolean
+                ``rule_5`` column is added to it in place.
+            limits: Control limits as returned by :meth:`control_limits`;
+                only the first row is used.
 
         Returns:
             pd.DataFrame: Filtered DataFrame with rule violations.
@@ -249,6 +276,12 @@ class StatisticalProcessControlEvents(Base):
         """
         Rule 6: Four out of five consecutive points near the control limit (beyond 1σ but within 2σ).
 
+        Args:
+            df: Rows of the actual signal, sorted by time. A boolean
+                ``rule_6`` column is added to it in place.
+            limits: Control limits as returned by :meth:`control_limits`;
+                only the first row is used.
+
         Returns:
             pd.DataFrame: Filtered DataFrame with rule violations.
         """
@@ -267,6 +300,12 @@ class StatisticalProcessControlEvents(Base):
         """
         Rule 7: Fifteen consecutive points within 1σ of the centerline.
 
+        Args:
+            df: Rows of the actual signal, sorted by time. A boolean
+                ``rule_7`` column is added to it in place.
+            limits: Control limits as returned by :meth:`control_limits`;
+                only the first row is used.
+
         Returns:
             pd.DataFrame: Filtered DataFrame with rule violations.
         """
@@ -280,6 +319,12 @@ class StatisticalProcessControlEvents(Base):
     def rule_8(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 8: Eight consecutive points on both sides of the mean within 1σ.
+
+        Args:
+            df: Rows of the actual signal, sorted by time. A boolean
+                ``rule_8`` column is added to it in place.
+            limits: Control limits as returned by :meth:`control_limits`;
+                only the first row is used.
 
         Returns:
             pd.DataFrame: Filtered DataFrame with rule violations.

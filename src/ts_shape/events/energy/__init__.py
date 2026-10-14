@@ -12,7 +12,7 @@ Input units:
     These detectors treat their input values as energy *deltas* in kWh -- the
     amount consumed since the previous reading -- because they aggregate with
     ``sum()``. Feeding an instantaneous power signal (kW, e.g. a
-    ``*.Total_Active_Power-kW`` tag) in directly yields a number that scales
+    ``*.Total_Active_Power-kW`` signal) in directly yields a number that scales
     with the logging rate rather than with consumption. Integrate it first::
 
         from ts_shape.transform.calculator.power_integration import PowerIntegrator

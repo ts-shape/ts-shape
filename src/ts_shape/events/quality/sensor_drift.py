@@ -320,7 +320,7 @@ class SensorDriftEvents(Base):
         r_squared = r_value**2
 
         # Direction is "stable" unless there is both a meaningful slope
-        # AND a strong fit (R² > 0.8). This avoids labelling random noise
+        # AND a strong fit (R² > 0.8). This avoids labeling random noise
         # as trending.
         if r_squared < 0.8 or abs(slope) < 1e-10:
             direction = "stable"

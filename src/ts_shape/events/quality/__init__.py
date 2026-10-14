@@ -102,7 +102,7 @@ Classes:
   - detect_aliasing: Check for Nyquist violations via FFT.
   - sampling_jitter: Measure timing regularity of sampling.
 
-- DataGapAnalysisEvents: Analyse gaps and coverage in signal data.
+- DataGapAnalysisEvents: Analyze gaps and coverage in signal data.
   - detect_gaps: Locate all gaps longer than a threshold.
   - gap_summary: Aggregate statistics across all gaps.
   - coverage_by_period: Data coverage percentage per time window.

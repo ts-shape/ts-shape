@@ -77,7 +77,7 @@ class AssetHealthIndexEvents(Base):
         time_column: str = "systime",
         uuid_column: str = "uuid",
     ) -> None:
-        """Initialise the asset health index.
+        """Initialize the asset health index.
 
         Args:
             dataframe: Timeseries frame holding every configured signal.

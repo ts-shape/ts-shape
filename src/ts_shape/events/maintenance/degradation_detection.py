@@ -362,7 +362,7 @@ class DegradationDetectionEvents(Base):
 
         Args:
             window: Rolling window for current metrics.
-            baseline_window: Initial period used to establish baseline behaviour.
+            baseline_window: Initial period used to establish baseline behavior.
 
         Returns:
             DataFrame with columns: systime, uuid, source_uuid, is_delta,

@@ -129,7 +129,18 @@ class CycleExtractor(Base):
         return self._generate_cycle_dataframe(cycle_starts, cycle_ends)
 
     def process_step_sequence(self, start_step: int, end_step: int) -> pd.DataFrame:
-        """Processes cycles based on a step sequence, where specific integer values denote cycle start and end."""
+        """Processes cycles based on a step sequence, where specific integer values denote cycle start and end.
+
+        Args:
+            start_step: ``value_integer`` step that opens a cycle when the signal enters
+                it.
+            end_step: ``value_integer`` step that closes the open cycle when the signal
+                enters it.
+
+        Returns:
+            DataFrame with columns ``cycle_start``, ``cycle_end``, ``cycle_uuid`` and
+                ``is_complete``; ``cycle_end`` is NaT for a cycle that never closes.
+        """
         # A step held over several samples is entered once: only the first
         # sample of each run opens (or closes) a cycle.
         frame = self._signal_frame()

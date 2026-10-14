@@ -63,7 +63,7 @@ class RootCauseCorrelationEvents(Base):
         time_column: str = "systime",
         uuid_column: str = "uuid",
     ) -> None:
-        """Initialise the root-cause ranker.
+        """Initialize the root-cause ranker.
 
         Args:
             dataframe: Timeseries frame holding the candidate signals.
@@ -88,7 +88,7 @@ class RootCauseCorrelationEvents(Base):
 
         Raises:
             TypeError: If ``trigger_events`` is not a DataFrame.
-            ValueError: If no recognised onset column is present.
+            ValueError: If no recognized onset column is present.
         """
         if not isinstance(trigger_events, pd.DataFrame):
             raise TypeError(

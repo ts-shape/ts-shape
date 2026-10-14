@@ -285,7 +285,7 @@ trend = tracker.availability_trend(
 
 ## Quality Tracking (NOK/Scrap)
 
-Track defective parts, first-pass yield, and defect reasons.
+Track NOK parts, first-pass yield, and defect reasons.
 
 ```python
 from ts_shape.events.production.quality_tracking import QualityEvents

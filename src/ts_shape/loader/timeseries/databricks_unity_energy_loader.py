@@ -272,6 +272,14 @@ class DatabricksUnityEnergyLoader:
         With a ``start``/``end`` pair this delegates to :meth:`load_by_time_range`
         (visiting only the in-range day folders); with no bounds it loads every
         series under ``csv/``.
+
+        Args:
+            start: Start date/datetime (inclusive). Used only together with ``end``.
+            end: End date/datetime (inclusive). Used only together with ``start``.
+            series_ids: Series IDs to load. None loads every series.
+
+        Returns:
+            Standard schema DataFrame: systime | uuid | value_double | is_delta.
         """
         if start is not None and end is not None:
             return self.load_by_time_range(start, end, series_ids=series_ids)

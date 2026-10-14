@@ -216,6 +216,13 @@ class SteadyStateDetectionEvents(Base):
     ) -> dict[str, Any]:
         """Summary statistics of steady vs transient time.
 
+        Args:
+            window: Rolling window for the std computation (pandas offset string),
+                passed to :meth:`detect_steady_state`.
+            std_threshold: Maximum rolling std, in signal units, to consider the
+                signal steady.
+            min_duration: Minimum duration of a steady interval.
+
         Returns:
             Dict with: total_steady_seconds, total_transient_seconds,
             steady_pct, num_steady_periods, avg_steady_duration_seconds.
@@ -258,6 +265,13 @@ class SteadyStateDetectionEvents(Base):
         min_duration: str = "10min",
     ) -> pd.DataFrame:
         """Operating band (mean +/- std) for each steady-state interval.
+
+        Args:
+            window: Rolling window for the std computation (pandas offset string),
+                passed to :meth:`detect_steady_state`.
+            std_threshold: Maximum rolling std, in signal units, to consider the
+                signal steady.
+            min_duration: Minimum duration of a steady interval.
 
         Returns:
             DataFrame with columns: start, end, mean_value, lower_band,

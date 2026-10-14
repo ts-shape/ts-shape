@@ -38,7 +38,7 @@ class QualityEvents(Base):
 
     Each UUID represents one signal:
     - ok_counter_uuid: counter for good parts
-    - nok_counter_uuid: counter for defective parts
+    - nok_counter_uuid: counter for NOK parts
     - part_id_uuid: part number signal (optional)
     - defect_reason_uuid: defect reason code (optional)
 
@@ -128,7 +128,7 @@ class QualityEvents(Base):
 
         Args:
             ok_counter_uuid: UUID for good parts counter
-            nok_counter_uuid: UUID for defective parts counter
+            nok_counter_uuid: UUID of the NOK part counter
             value_column: Column containing counter values
             handle_resets: When True, treat a decreasing counter as a reset
                 and count the parts accumulated after the reset, for both the
@@ -137,6 +137,10 @@ class QualityEvents(Base):
                 counters). When False (default), each counter uses
                 ``max(0, last - first)`` and a shift containing a reset
                 reports too little (often 0).
+            production_day: Attribute an overnight shift's post-midnight
+                readings to the shift's start date, so a night shift is one
+                ``(date, shift)`` row (default). False groups by raw calendar
+                date, which splits a night shift across two rows.
 
         Returns:
             DataFrame with quality metrics by shift:
@@ -147,9 +151,9 @@ class QualityEvents(Base):
             - date: Production date
             - shift: Shift name
             - ok_parts: Good parts produced
-            - nok_parts: Defective parts
+            - nok_parts: NOK parts
             - total_parts: Total parts produced
-            - nok_rate_pct: Percentage of defective parts
+            - nok_rate_pct: Percentage of NOK parts
             - first_pass_yield_pct: Percentage of good parts
             - quality_pct: Same as first_pass_yield_pct
             - resets: Number of counter resets in the shift (only when
@@ -294,7 +298,7 @@ class QualityEvents(Base):
 
         Args:
             ok_counter_uuid: UUID for good parts counter
-            nok_counter_uuid: UUID for defective parts counter
+            nok_counter_uuid: UUID of the NOK part counter
             part_id_uuid: UUID for part number signal
             value_column_counter: Column containing counter values
             value_column_part: Column containing part numbers
@@ -314,9 +318,9 @@ class QualityEvents(Base):
             DataFrame with quality by part:
             - part_number: Part number/ID
             - ok_parts: Good parts produced
-            - nok_parts: Defective parts
+            - nok_parts: NOK parts
             - total_parts: Total parts produced
-            - nok_rate_pct: Percentage of defective parts
+            - nok_rate_pct: Percentage of NOK parts
             - first_pass_yield_pct: Percentage of good parts
             - quality_pct: Same as first_pass_yield_pct
             - resets: Number of counter resets for the part (only when
@@ -478,7 +482,7 @@ class QualityEvents(Base):
         """Analyze NOK parts by defect reason.
 
         Args:
-            nok_counter_uuid: UUID for defective parts counter
+            nok_counter_uuid: UUID of the NOK part counter
             defect_reason_uuid: UUID for defect reason signal
             value_column_counter: Column containing counter values
             value_column_reason: Column containing reason codes
@@ -496,7 +500,7 @@ class QualityEvents(Base):
         Returns:
             DataFrame with NOK by reason:
             - reason: Defect reason code
-            - nok_parts: Number of defective parts
+            - nok_parts: Number of NOK parts
             - pct_of_total: Percentage of total NOK
             - resets: Number of counter resets for the reason (only when
                 ``handle_resets=True``)
@@ -600,7 +604,7 @@ class QualityEvents(Base):
 
         Args:
             ok_counter_uuid: UUID for good parts counter
-            nok_counter_uuid: UUID for defective parts counter
+            nok_counter_uuid: UUID of the NOK part counter
             value_column: Column containing counter values
             handle_resets: When True, treat a decreasing counter as a reset
                 and count the parts accumulated after the reset (see
@@ -618,9 +622,9 @@ class QualityEvents(Base):
             - duration_seconds: Day length in seconds
             - date: Production date
             - ok_parts: Good parts produced
-            - nok_parts: Defective parts
+            - nok_parts: NOK parts
             - total_parts: Total parts produced
-            - nok_rate_pct: Percentage of defective parts
+            - nok_rate_pct: Percentage of NOK parts
             - first_pass_yield_pct: Percentage of good parts
             - resets: Number of counter resets that day (only when
                 ``handle_resets=True``)

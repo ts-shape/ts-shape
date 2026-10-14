@@ -223,6 +223,12 @@ class MultivariateSPCEvents(Base):
         broken relationship) behind the signal. ``z_score`` is the plain
         univariate deviation, for comparison.
 
+        Args:
+            reference_period: As in :meth:`hotelling_t2`.
+            alpha: As in :meth:`hotelling_t2`.
+            only_out_of_control: Keep only observations flagged out of control by
+                :meth:`hotelling_t2` (default). False returns every observation.
+
         Returns:
             Point events, one row per (observation, variable): ``systime``,
             ``uuid``, ``source_uuid`` (the variable), ``t2``,

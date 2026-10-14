@@ -68,7 +68,7 @@ class ProductionScheduleAdherenceEvents(Base):
         planned_qty_column: str = "planned_qty",
         order_id_column: str = "order_id",
     ) -> None:
-        """Initialise the adherence tracker.
+        """Initialize the adherence tracker.
 
         Args:
             dataframe: Timeseries frame holding the production counter.
@@ -109,7 +109,7 @@ class ProductionScheduleAdherenceEvents(Base):
     # ------------------------------------------------------------------
 
     def _prepare_schedule(self, schedule: pd.DataFrame) -> pd.DataFrame:
-        """Validate and normalise the planned-schedule frame."""
+        """Validate and normalize the planned-schedule frame."""
         required = (
             self.schedule_start_column,
             self.schedule_end_column,

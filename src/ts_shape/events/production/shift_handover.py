@@ -349,7 +349,7 @@ class ShiftHandoverEvents(Base):
         Args:
             counter_uuid: UUID of production counter.
             ok_counter_uuid: UUID of good parts counter.
-            nok_counter_uuid: UUID of defective parts counter.
+            nok_counter_uuid: UUID of the NOK part counter.
             state_uuid: UUID of machine state signal.
             targets: Per-shift production targets.
             quality_target_pct: Quality target percentage.
@@ -513,7 +513,7 @@ class ShiftHandoverEvents(Base):
         Args:
             counter_uuid: UUID of production counter (raw-signal mode).
             ok_counter_uuid: UUID of good parts counter (raw-signal mode).
-            nok_counter_uuid: UUID of defective parts counter (raw-signal mode).
+            nok_counter_uuid: UUID of the NOK part counter (raw-signal mode).
             state_uuid: UUID of machine state signal (raw-signal mode).
             report_df: Pre-computed report DataFrame (pipeline mode).
                 If provided, UUID arguments are ignored.

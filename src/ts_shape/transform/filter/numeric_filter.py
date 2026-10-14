@@ -19,7 +19,13 @@ class IntegerFilter(Base):
         column_name: str = "value_integer",
         integer_value: int = 0,
     ) -> pd.DataFrame:
-        """Filters rows where 'value_integer' matches the specified integer."""
+        """Filters rows where 'value_integer' matches the specified integer.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"value_integer"``.
+            integer_value: Value to keep. Default 0.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[dataframe[column_name] == integer_value]
 
@@ -30,7 +36,13 @@ class IntegerFilter(Base):
         column_name: str = "value_integer",
         integer_value: int = 0,
     ) -> pd.DataFrame:
-        """Filters rows where 'value_integer' does not match the specified integer."""
+        """Filters rows where 'value_integer' does not match the specified integer.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"value_integer"``.
+            integer_value: Value to drop. Default 0.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[dataframe[column_name] != integer_value]
 
@@ -42,7 +54,14 @@ class IntegerFilter(Base):
         min_value: int = 0,
         max_value: int = 100,
     ) -> pd.DataFrame:
-        """Filters rows where 'value_integer' is between the specified min and max values (inclusive)."""
+        """Filters rows where 'value_integer' is between the specified min and max values (inclusive).
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"value_integer"``.
+            min_value: Lower bound, inclusive. Default 0.
+            max_value: Upper bound, inclusive. Default 100.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[
             (dataframe[column_name] >= min_value)
@@ -60,7 +79,12 @@ class DoubleFilter(Base):
     def filter_nan_value_double(
         cls, dataframe: pd.DataFrame, column_name: str = "value_double"
     ) -> pd.DataFrame:
-        """Filters out rows where 'value_double' is NaN."""
+        """Filters out rows where 'value_double' is NaN.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"value_double"``.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[dataframe[column_name].notna()]
 
@@ -72,7 +96,14 @@ class DoubleFilter(Base):
         min_value: float = 0.0,
         max_value: float = 100.0,
     ) -> pd.DataFrame:
-        """Filters rows where 'value_double' is between the specified min and max values (inclusive)."""
+        """Filters rows where 'value_double' is between the specified min and max values (inclusive).
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"value_double"``.
+            min_value: Lower bound, inclusive. Default 0.0.
+            max_value: Upper bound, inclusive. Default 100.0.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[
             (dataframe[column_name] >= min_value)

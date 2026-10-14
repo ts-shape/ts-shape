@@ -39,6 +39,13 @@ class MicroStopEvents(Base):
         """Initialize the micro-stop detector.
 
         Args:
+            dataframe: Long-format input data.
+            run_state_uuid: UUID of the boolean run-state signal (True = running,
+                False = idle).
+            event_uuid: UUID assigned to generated events.
+            value_column: Column holding the run state. Missing values count
+                as idle.
+            time_column: Timestamp column.
             interval_end: How idle/run intervals are closed. ``"last_sample"``
                 (default) ends each interval at its last sample -- backward
                 compatible, but a change-encoded (``is_delta``) run-state signal

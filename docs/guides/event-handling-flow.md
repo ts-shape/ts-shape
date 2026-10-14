@@ -165,7 +165,7 @@ flowchart TB
 
 No natural time axis. Reference data, snapshots, top-N tables, gauge R&R results. One event per row, timestamped at the export moment so it still fits the canonical schema.
 
-**Representative scenario.** SPC control-limit calculation: produce a single snapshot per signal capturing UCL/LCL/centre line for downstream rule evaluation.
+**Representative scenario.** SPC control-limit calculation: produce a single snapshot per signal capturing UCL/LCL/center line for downstream rule evaluation.
 
 ```mermaid
 flowchart TB

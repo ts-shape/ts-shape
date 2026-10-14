@@ -3,7 +3,7 @@
 A DOE campaign sweeps one or more factor signals through discrete levels
 while a response signal is measured. This detector recovers the run
 structure from continuous process data: contiguous time intervals where
-every factor signal is stationary at a recognisable level. Each run is
+every factor signal is stationary at a recognizable level. Each run is
 tagged with its factor-level combination, and a follow-up method
 aggregates the response per factor level to expose main effects.
 

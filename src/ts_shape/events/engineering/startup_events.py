@@ -60,6 +60,16 @@ class StartupDetectionEvents(Base):
         and is valid only if the metric stays above the (exit) threshold for at
         least `min_above`.
 
+        Args:
+            threshold: Level in signal units; a startup starts where the signal
+                rises to or above it. Reported in the ``threshold`` column.
+            hysteresis: Optional ``(enter, exit)`` pair that replaces ``threshold``:
+                the rising edge is detected against ``enter`` and the dwell is
+                checked against ``exit``. None uses ``threshold`` for both.
+            min_above: Minimum time the signal must stay at or above the exit level
+                after the crossing (pandas offset string). It also sets ``end``
+                (``start + min_above``). Default ``"0s"``.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, is_delta, method, threshold.
@@ -120,6 +130,13 @@ class StartupDetectionEvents(Base):
         Startup intervals where per-second slope >= `min_slope` for at least
         `min_duration`. `slope_window` is accepted for API completeness but the
         current implementation uses instantaneous slope between samples.
+
+        Args:
+            min_slope: Minimum slope in signal units per second between consecutive
+                samples.
+            slope_window: Accepted for API completeness; currently unused.
+            min_duration: Minimum time from the first to the last sample of a
+                contiguous run at or above ``min_slope`` (pandas offset string).
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,

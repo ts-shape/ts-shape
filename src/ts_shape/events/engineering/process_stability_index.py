@@ -78,6 +78,10 @@ class ProcessStabilityIndexEvents(Base):
         - excursion_score: in-spec = high score
         - smoothness_score: low point-to-point jitter = high score
 
+        Args:
+            window: Scoring window (pandas offset string, e.g. '8h' per shift).
+                Windows with fewer than two samples are skipped.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, stability_score,
@@ -174,6 +178,10 @@ class ProcessStabilityIndexEvents(Base):
     ) -> pd.DataFrame:
         """Track whether stability is improving or degrading.
 
+        Args:
+            window: Scoring window passed to :meth:`stability_score`.
+            n_windows: Number of windows in the rolling average of the score.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, stability_score,
@@ -214,6 +222,10 @@ class ProcessStabilityIndexEvents(Base):
         n: int = 5,
     ) -> pd.DataFrame:
         """Return the N worst-scoring windows.
+
+        Args:
+            window: Scoring window passed to :meth:`stability_score`.
+            n: Number of lowest-scoring windows to return.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -258,6 +270,9 @@ class ProcessStabilityIndexEvents(Base):
     @keyword_only(1)
     def stability_comparison(self, window: str = "8h") -> pd.DataFrame:
         """Compare each window to the best-observed window.
+
+        Args:
+            window: Scoring window passed to :meth:`stability_score`.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,

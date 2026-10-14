@@ -197,6 +197,24 @@ class CriticalParameterRankingEvents(Base):
 
         Wraps :meth:`rank` and filters by significance. The result keeps
         the same column schema as :meth:`rank`.
+
+        Args:
+            per_run_df: One row per run, one column per candidate
+                parameter, plus an outcome column.
+            candidate_columns: Columns to evaluate as candidate CPPs.
+            outcome_column: Outcome (response) column.
+            method: ``"pearson"``, ``"spearman"``, or ``"anova_f"``.
+                Default ``"spearman"``.
+            k: Maximum number of significant parameters to return.
+            alpha: Significance level; only parameters with
+                ``p_value <= alpha`` are kept.
+            anova_bins: Only used for ``method="anova_f"``; number of
+                quantile bins per candidate column.
+
+        Returns:
+            Same columns as :meth:`rank` (``parameter``, ``method``,
+            ``statistic``, ``p_value``, ``abs_effect_size``, ``rank``),
+            limited to at most ``k`` significant rows.
         """
         full = self.rank(
             per_run_df,

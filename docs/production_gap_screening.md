@@ -10,21 +10,21 @@ found the **same class of gap recurring across the pack**, plus several
 adjacent correctness issues.
 
 Every finding below was reproduced with a concrete input. Fixes are
-**backward-compatible**: new behaviour is opt-in behind a keyword argument and
+**backward-compatible**: new behavior is opt-in behind a keyword argument and
 default output (values *and* column sets) is unchanged.
 
 ## Status legend
 
 - ✅ **Fixed** in this change.
 - 🔜 **Lined out** — verified and specified, scheduled as a focused follow-up
-  (behaviour-changing interval/semantic redesigns kept out of this change so
+  (behavior-changing interval/semantic redesigns kept out of this change so
   each ships with its own targeted tests).
 
 ---
 
 ## Theme A — Counter resets (the reference gap) ✅
 
-A monotonic counter (parts, scrap, rejects, cumulative total) is turned into a
+A monotonic counter (parts, scrap, NOK parts, cumulative total) is turned into a
 quantity via `max(0, last - first)` / `iloc[-1] - iloc[0]` / `max().diff()`
 with no reset handling. A reset inside the window makes the delta negative,
 which clamps to `0` and drops the post-reset production.
@@ -111,7 +111,7 @@ A duration taken as `next_time - time` (or `diff()` between events) blindly
 bridges logging gaps and inter-cycle stoppages.
 
 **Fix:** an opt-in `max_gap` / `max_cycle_gap` kwarg (default `None` = current
-behaviour); intervals exceeding it are excluded as "no data" rather than
+behavior); intervals exceeding it are excluded as "no data" rather than
 attributed to the preceding state/cycle.
 
 | Module | Method | Sev | Concrete effect | Status |
@@ -145,7 +145,7 @@ time. Default (`False`, sample-mean) is unchanged.
 |---|---|---|---|---|
 | `target_tracking.py` | `compare_to_target` | high | overnight shift (22:00–06:00) grouped by raw calendar date; the group spans 00:00–23:59 with a hole, so `last - first` attributes the **whole day** to the night shift (≈750 % achievement) | ✅ (opt-in `production_day`) |
 | `shift_reporting.py`, `shift_handover.py` | `_assign_shift` + calendar-date grouping | medium | an overnight shift is split across two calendar dates into two rows, dropping the midnight-crossing delta and double-comparing against the target | ✅ (opt-in `production_day`) |
-| `changeover.py` | `detect_changeover` | medium | `series.ne(series.shift())` flags the first reading (vs `NaN`) as a changeover, over-counting the initial product | ✅ (opt-in `include_initial`, default preserves behaviour) |
+| `changeover.py` | `detect_changeover` | medium | `series.ne(series.shift())` flags the first reading (vs `NaN`) as a changeover, over-counting the initial product | ✅ (opt-in `include_initial`, default preserves behavior) |
 | `line_balancing.py` | `balance_metrics` | medium | a fully stopped station has no cycle in the window and vanishes from the denominator, so a dead station reads as a perfectly balanced line (`efficiency 100 %`) | ✅ (opt-in `require_all_stations`) |
 | `alarm_management.py` | `alarm_frequency` | low | an alarm already active at the window start is counted as an activation | ✅ (opt-in `include_initial`) |
 
@@ -184,7 +184,7 @@ dead.
 |---|---|---|---|---|
 | `oee_calculator.py` | `calculate_oee` | high | did not thread `handle_resets` to its performance/quality components, so a day with a counter reset silently dragged the combined OEE toward zero even though the components could handle it | ✅ (`handle_resets` threaded) |
 | `oee_calculator.py` | `calculate_availability` / `calculate_performance` / `calculate_oee` | medium | availability had no gap cap: an overnight/logger gap while the last state was `running` was booked as run time, inflating availability (and the run-time denominator of performance) | ✅ (`max_gap`, threaded through OEE) |
-| `line_throughput.py` | `throughput_oee` | medium | (a) called `count_parts` without `handle_resets`; (b) the documented `availability_threshold` parameter was **accepted but never used** (dead) | ✅ (`handle_resets` threaded; `availability_threshold` now gates the availability proxy — default `0.0` reproduces the old "produced anything" behaviour) |
+| `line_throughput.py` | `throughput_oee` | medium | (a) called `count_parts` without `handle_resets`; (b) the documented `availability_threshold` parameter was **accepted but never used** (dead) | ✅ (`handle_resets` threaded; `availability_threshold` now gates the availability proxy — default `0.0` reproduces the old "produced anything" behavior) |
 | `runtime_accounting.py` | `runtime_summary`, `runtime_per_window`, `operating_hours_meter` | medium | per-sample duration (`shift(-1) - t`) had no gap cap, so a logging outage while `running` inflated run time, utilization, and the hour meter | ✅ (`max_gap` opt-in) |
 
 `calculate_quality` needs no gap cap (it is counter-only, already reset-aware).
@@ -211,6 +211,6 @@ screen — are complete. Every fix is opt-in and backward-compatible: default
 output (values *and* column sets) is unchanged, so existing pipelines are
 unaffected until they pass the new keyword. Shared helpers —
 `ts_shape.utils.counters`, `ts_shape.utils.intervals`, `ts_shape.utils.shifts`
-— keep the behaviour consistent across the pack.
+— keep the behavior consistent across the pack.
 
 No open gaps remain from this screen.

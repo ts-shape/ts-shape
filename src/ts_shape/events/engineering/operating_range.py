@@ -51,6 +51,9 @@ class OperatingRangeEvents(Base):
     def operating_envelope(self, window: str = "1h") -> pd.DataFrame:
         """Per-window operating envelope statistics.
 
+        Args:
+            window: Resample window (pandas offset string, e.g. '1h').
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, min_value, p5, mean_value, p95, max_value,
@@ -115,6 +118,12 @@ class OperatingRangeEvents(Base):
 
         A regime change is flagged when the window mean differs from the
         previous window mean by more than shift_threshold * pooled std.
+
+        Args:
+            window: Resample window (pandas offset string). Windows with fewer than
+                two samples are skipped.
+            shift_threshold: Minimum shift between consecutive window means, in
+                multiples of the two windows' average std, to flag a regime change.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -192,6 +201,12 @@ class OperatingRangeEvents(Base):
     ) -> pd.DataFrame:
         """Percentage of time within a defined range per window.
 
+        Args:
+            lower_limit: Lower bound of the range (inclusive), in signal units.
+            upper_limit: Upper bound of the range (inclusive), in signal units.
+            window: Resample window (pandas offset string). The percentages are
+                shares of samples in each window, not time-weighted.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, time_in_range_pct, time_below_pct, time_above_pct.
@@ -227,6 +242,10 @@ class OperatingRangeEvents(Base):
     @keyword_only(1)
     def value_distribution(self, n_bins: int = 10) -> pd.DataFrame:
         """Histogram of signal values.
+
+        Args:
+            n_bins: Number of equal-width histogram bins between the signal's
+                minimum and maximum.
 
         Returns:
             DataFrame with columns: bin_lower, bin_upper, count, pct,

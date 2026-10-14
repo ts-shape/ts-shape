@@ -177,6 +177,10 @@ class MaterialBalanceEvents(Base):
     def imbalance_trend(self, window: str = "1h") -> pd.DataFrame:
         """Track whether imbalance is growing, shrinking, or stable.
 
+        Args:
+            window: Resample window passed to :meth:`balance_check`. The rolling
+                average spans the last three windows.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds,
             imbalance_pct, rolling_avg_imbalance, trend_direction. ``end`` is
@@ -214,6 +218,12 @@ class MaterialBalanceEvents(Base):
         min_duration: str = "2h",
     ) -> pd.DataFrame:
         """Detect sustained imbalance events.
+
+        Args:
+            window: Resample window passed to :meth:`balance_check`.
+            tolerance_pct: Maximum acceptable imbalance percentage per window.
+            min_duration: Minimum length of a run of consecutive unbalanced
+                windows to report it as an event (pandas offset string).
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -290,6 +300,9 @@ class MaterialBalanceEvents(Base):
     @keyword_only(1)
     def contribution_breakdown(self, window: str = "1h") -> pd.DataFrame:
         """Each signal's contribution to total input/output per window.
+
+        Args:
+            window: Resample window (pandas offset string).
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,

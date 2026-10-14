@@ -39,6 +39,12 @@ class DutyCycleEvents(Base):
         """Initialize the duty-cycle analyzer.
 
         Args:
+            dataframe: Long-format input data.
+            signal_uuid: UUID of the boolean on/off signal (True = on).
+            event_uuid: UUID assigned to generated events.
+            value_column: Column holding the on/off state. Missing values
+                count as off.
+            time_column: Timestamp column.
             interval_end: How on/off intervals are closed. ``"last_sample"``
                 (default) ends each interval at its last sample -- backward
                 compatible, but a change-encoded (``is_delta``) signal logs one

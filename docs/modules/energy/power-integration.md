@@ -9,7 +9,7 @@
 
 ## When to Use
 
-Use when a meter or PLC gives you **instantaneous active power** — a tag like
+Use when a meter or PLC gives you **instantaneous active power** — a signal like
 `*.Total_Active_Power-kW` — and you need consumption, not demand.
 
 Active power (kW) is the real, working part of the draw: the part that becomes
@@ -30,7 +30,7 @@ both shortcuts are wrong:
 
 | Shortcut | Why it fails |
 |----------|--------------|
-| `sum()` of the kW samples | Scales with the logging rate, not with consumption — double the log rate and the "energy" doubles. This is what happens when a kW tag is fed straight into `EnergyConsumptionEvents`, whose methods assume kWh deltas. |
+| `sum()` of the kW samples | Scales with the logging rate, not with consumption — double the log rate and the "energy" doubles. This is what happens when a kW signal is fed straight into `EnergyConsumptionEvents`, whose methods assume kWh deltas. |
 | `mean()` of the kW samples | A *sample-count* average. A machine at 200 kW for 59 minutes that logs 40 samples around a 900 kW spike in the last minute reads far too high. |
 
 `PowerIntegrator` weights every sample by how long it was valid, splits segments
@@ -131,7 +131,7 @@ Windows with no data at all are **omitted**, never reported as `0.0` kWh, so
     1500 kWh. A segment longer than `max_gap` is dropped entirely — the power
     over that span is unknown — so it counts towards neither energy nor
     coverage. Set the cap *above* the signal's normal logging cadence: an
-    on-change tag on a steady machine can legitimately stay silent for a long
+    on-change signal on a steady machine can legitimately stay silent for a long
     time, and too tight a cap silently discards real consumption. Watch
     `coverage` to see when that is happening.
 
@@ -144,7 +144,7 @@ Windows with no data at all are **omitted**, never reported as `0.0` kWh, so
 
 !!! info "Confirm the unit before you trust the number"
     A `-kW` suffix is a naming convention, not a guarantee. Pass
-    `power_unit="W"` or `power_unit="MW"` when the tag is scaled differently;
+    `power_unit="W"` or `power_unit="MW"` when the signal is scaled differently;
     the result is always kWh. Then sanity-check a full day against the meter's
     own counter — they should agree within a percent or two.
 

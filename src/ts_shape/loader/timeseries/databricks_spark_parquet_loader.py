@@ -202,7 +202,20 @@ class DatabricksSparkParquetLoader:
         columns: Sequence[str] | None = None,
         filter_expr: str | None = None,
     ) -> pd.DataFrame:
-        """Pandas-returning convenience for ``Pipeline`` / ``DataIntegratorHybrid``."""
+        """Pandas-returning convenience for ``Pipeline`` / ``DataIntegratorHybrid``.
+
+        Args:
+            start_timestamp: Window start.
+            end_timestamp: Window end (inclusive).
+            uuids: A single UUID or a sequence of UUIDs.
+            columns: Optional columns to ``select`` (projection pushdown).
+            filter_expr: Optional Spark SQL predicate applied with ``.where``, e.g.
+                ``"value_integer > 0"``.
+
+        Returns:
+            Pandas DataFrame from `load_by_time_range_and_uuids` with
+                ``as_pandas=True``.
+        """
         return self.load_by_time_range_and_uuids(
             start_timestamp,
             end_timestamp,

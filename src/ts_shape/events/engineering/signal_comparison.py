@@ -155,6 +155,11 @@ class SignalComparisonEvents(Base):
     ) -> pd.DataFrame:
         """Per-window deviation statistics.
 
+        Args:
+            actual_uuid: UUID of the actual signal compared with the reference
+                signal. Deviation is actual minus reference.
+            window: Resample window (pandas offset string, e.g. '1h').
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, mae,
             max_error, rmse, bias. ``end`` is ``start`` + ``window``.
@@ -192,6 +197,11 @@ class SignalComparisonEvents(Base):
     ) -> pd.DataFrame:
         """Track whether deviation is growing or shrinking over time.
 
+        Args:
+            actual_uuid: UUID of the actual signal compared with the reference
+                signal.
+            window: Resample window passed to :meth:`deviation_statistics`.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, mae,
             trend_slope, trend_direction. ``end`` is ``start`` + ``window``.
@@ -221,6 +231,12 @@ class SignalComparisonEvents(Base):
         window: str = "1h",
     ) -> pd.DataFrame:
         """Per-window Pearson correlation between reference and actual.
+
+        Args:
+            actual_uuid: UUID of the actual signal compared with the reference
+                signal.
+            window: Resample window (pandas offset string). Windows with fewer than
+                two aligned samples are skipped.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds,

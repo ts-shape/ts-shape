@@ -64,7 +64,7 @@ class LineBalancingEvents(Base):
         value_column: str = "value_bool",
         time_column: str = "systime",
     ) -> None:
-        """Initialize the line-balancing analyser.
+        """Initialize the line-balancing analyzer.
 
         Args:
             dataframe: Input DataFrame with timeseries data.

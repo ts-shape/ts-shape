@@ -25,7 +25,7 @@ class OperatorPerformanceEvents(Base):
     Each UUID represents one signal:
     - operator_uuid: operator or team identifier signal
     - counter_uuid: production counter signal
-    - ok_uuid / nok_uuid: good/bad parts counters (optional, for quality)
+    - ok_uuid / nok_uuid: OK/NOK part counters (optional, for quality)
 
     Merge keys: [operator] for operator-level, [date, shift] for shift-level.
 
@@ -298,11 +298,11 @@ class OperatorPerformanceEvents(Base):
         Args:
             operator_uuid: UUID for operator/team identifier signal.
             ok_uuid: UUID for good parts counter.
-            nok_uuid: UUID for bad parts counter.
+            nok_uuid: UUID of the NOK part counter.
             value_column_operator: Column containing operator names.
             value_column_counter: Column containing counter values.
             handle_resets: When True, treat a decreasing counter as a reset
-                and count the good/bad parts accumulated after the reset, for
+                and count the OK/NOK parts accumulated after the reset, for
                 both the OK and NOK counters. Because the counts are taken
                 over the whole range, a single reset otherwise wipes out an
                 operator's entire tally. The result gains a ``resets`` column

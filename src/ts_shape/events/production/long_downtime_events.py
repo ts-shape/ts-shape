@@ -82,18 +82,24 @@ class LongDowntimeEvents(Base):
     ) -> pd.DataFrame:
         """Return idle/stopped intervals whose duration is >= min_gap.
 
-        - interval_end: how each downtime interval is closed.
-          ``"last_sample"`` (default) ends it at its last sample -- backward
-          compatible, but a change-encoded (``is_delta``) state signal logs one
-          row per transition, so a real multi-hour stop becomes a single
-          zero-duration row and is missed. ``"next_change"`` closes the
-          interval at the following transition, so change-encoded stops are
-          detected. The final, still-open downtime is bounded by ``data_end``
-          when given (otherwise it stays zero-length and is filtered out).
-        - data_end: optional bound for a downtime still open at the end of the
-          data (e.g. "now").
+        Args:
+            min_gap: Minimum downtime duration to report (pandas offset
+                string). Default ``"3h"``.
+            interval_end: How each downtime interval is closed.
+                ``"last_sample"`` (default) ends it at its last sample --
+                backward compatible, but a change-encoded (``is_delta``) state
+                signal logs one row per transition, so a real multi-hour stop
+                becomes a single zero-duration row and is missed.
+                ``"next_change"`` closes the interval at the following
+                transition, so change-encoded stops are detected. The final,
+                still-open downtime is bounded by ``data_end`` when given
+                (otherwise it stays zero-length and is filtered out).
+            data_end: Optional bound for a downtime still open at the end of
+                the data (e.g. "now").
 
-        Columns: start, end, duration_seconds, downtime_index, uuid, source_uuid, is_delta
+        Returns:
+            DataFrame with columns: start, end, duration_seconds,
+            downtime_index, uuid, source_uuid, is_delta.
         """
         empty = pd.DataFrame(
             columns=[

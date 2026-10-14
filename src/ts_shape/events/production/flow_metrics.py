@@ -60,7 +60,7 @@ class FlowMetricsEvents(Base):
         value_column: str = "value_bool",
         time_column: str = "systime",
     ) -> None:
-        """Initialize the flow-metrics analyser.
+        """Initialize the flow-metrics analyzer.
 
         Args:
             dataframe: Input DataFrame with timeseries data.

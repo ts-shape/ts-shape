@@ -2,7 +2,7 @@
 
 In process development the *design space* is the multidimensional region
 of input parameters that has been demonstrated -- through DOE or process
-characterisation runs -- to deliver acceptable output quality. ICH Q8
+characterization runs -- to deliver acceptable output quality. ICH Q8
 formalises the concept for pharma; it is equally useful in any process
 industry where multiple critical process parameters (CPPs) interact.
 
@@ -239,7 +239,7 @@ class DesignSpaceEvents(Base):
 
         Args:
             operation_df: Long-form signal DataFrame.
-            warn_margin: Normalised distance threshold (fraction of the
+            warn_margin: Normalized distance threshold (fraction of the
                 axis span). A sample is reported when its closest axis
                 margin is below this value while still inside the box.
 

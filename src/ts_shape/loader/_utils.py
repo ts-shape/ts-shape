@@ -11,7 +11,7 @@ REST APIs. The two cross-cutting concerns are:
   backoff before giving up.
 
 These helpers are intentionally backend-agnostic so every loader can reuse the
-same behaviour and error type.
+same behavior and error type.
 """
 
 from __future__ import annotations

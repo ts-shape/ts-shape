@@ -270,6 +270,12 @@ class WarmUpCoolDownEvents(Base):
     ) -> pd.DataFrame:
         """Compare warm-up curves for consistency in duration and rate.
 
+        Args:
+            min_rise: Minimum total value increase for a warm-up, passed to
+                :meth:`detect_warmup`.
+            min_duration: Minimum warm-up duration (pandas offset string), passed to
+                :meth:`detect_warmup`.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, warmup_index, avg_rate,

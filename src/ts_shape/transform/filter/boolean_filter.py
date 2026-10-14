@@ -16,7 +16,12 @@ class IsDeltaFilter(Base):
     def filter_is_delta_true(
         cls, dataframe: pd.DataFrame, column_name: str = "is_delta"
     ) -> pd.DataFrame:
-        """Filters rows where 'is_delta' is True."""
+        """Filters rows where 'is_delta' is True.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"is_delta"``.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[
             dataframe[column_name] == True  # noqa: E712 pandas-series-bool-comparison
@@ -26,7 +31,12 @@ class IsDeltaFilter(Base):
     def filter_is_delta_false(
         cls, dataframe: pd.DataFrame, column_name: str = "is_delta"
     ) -> pd.DataFrame:
-        """Filters rows where 'is_delta' is False."""
+        """Filters rows where 'is_delta' is False.
+
+        Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"is_delta"``.
+        """
         Base._validate_column(dataframe, column_name)
         return dataframe[
             dataframe[column_name] == False  # noqa: E712 pandas-series-bool-comparison
@@ -57,6 +67,8 @@ class BooleanFilter(Base):
         """Filters rows where 'value_bool' changes from True to False.
 
         Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"value_bool"``.
             group_by_uuid: Compare each row with the previous row of the same
                 ``uuid``. Default ``False`` compares with the previous row of
                 the frame, so on a multi-signal frame the last row of one uuid
@@ -83,6 +95,8 @@ class BooleanFilter(Base):
         """Filters rows where 'value_bool' changes from False to True.
 
         Args:
+            dataframe: Input DataFrame.
+            column_name: Name of the column to filter on. Default ``"value_bool"``.
             group_by_uuid: Compare each row with the previous row of the same
                 ``uuid``. Default ``False`` compares with the previous row of
                 the frame, so on a multi-signal frame the last row of one uuid

@@ -222,7 +222,7 @@ class PeriodSummaryEvents(Base):
         Args:
             counter_uuid: UUID of production counter.
             ok_counter_uuid: UUID of good parts counter (optional).
-            nok_counter_uuid: UUID of defective parts counter (optional).
+            nok_counter_uuid: UUID of the NOK part counter (optional).
             value_column: Column containing counter values.
             handle_resets: When True, treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it (a
@@ -348,7 +348,7 @@ class PeriodSummaryEvents(Base):
         Args:
             counter_uuid: UUID of production counter.
             ok_counter_uuid: UUID of good parts counter (optional).
-            nok_counter_uuid: UUID of defective parts counter (optional).
+            nok_counter_uuid: UUID of the NOK part counter (optional).
             value_column: Column containing counter values.
             handle_resets: When True, treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it. The

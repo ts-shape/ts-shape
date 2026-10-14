@@ -23,7 +23,7 @@ semantics row by row. See [Signal semantics & profiling](guides/signals.md).
 - Migrate the detectors pack by pack onto the primitives. Defaults come from
   the spec.
 - The opt-in correctness flags (`handle_resets`, `interval_end`, `max_gap`,
-  `time_weighted`, `group_by_uuid`) become the default behaviour.
+  `time_weighted`, `group_by_uuid`) become the default behavior.
   Deprecation path: one minor release with `DeprecationWarning`, then 1.0.
 - One enforced output contract (point / interval / summary) for every
   detector, and one API style with standard keyword names.
@@ -47,7 +47,7 @@ semantics row by row. See [Signal semantics & profiling](guides/signals.md).
 ## W4 — Scale and lean install
 - Core install: pandas, numpy and scipy only. Cloud and SQL loaders become
   extras.
-- Vectorise the remaining row loops.
+- Vectorize the remaining row loops.
 - After 1.0: backend-agnostic primitives (Polars / DuckDB) and
   TimescaleDB push-down. Publish benchmarks.
 
@@ -92,7 +92,7 @@ and can be ported in their own PRs. Reconcile each with the core first:
     - weighted KPI roll-up;
     - ISA-95 hierarchy;
     - benchmarking, scorecard and variance bridge;
-    - FX normalisation;
+    - FX normalization;
     - reporting coverage.
   - Reconcile:
     - build the calendar on `signals.windows` / `shift_windows` (DST-correct

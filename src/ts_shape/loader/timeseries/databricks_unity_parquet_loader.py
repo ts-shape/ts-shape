@@ -290,6 +290,11 @@ class DatabricksUnityParquetLoader:
         Volume is never scanned.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Whole hour folders are read; rows are not trimmed to the exact
+                timestamp.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
@@ -336,6 +341,11 @@ class DatabricksUnityParquetLoader:
         Databricks pipelines.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Whole hour folders are read; rows are not trimmed to the exact
+                timestamp.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
@@ -373,6 +383,13 @@ class DatabricksUnityParquetLoader:
         requested UUID (``<uuid>.parquet``, case-insensitive) are read.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Whole hour folders are read; rows are not trimmed to the exact
+                timestamp.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file
+                name, case-insensitively.
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
@@ -424,6 +441,13 @@ class DatabricksUnityParquetLoader:
         Yields ``(file_path, DataFrame)`` as they are read, keeping memory flat.
 
         Args:
+            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+                Whole hour folders are read; rows are not trimmed to the exact
+                timestamp.
+            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+                accepts).
+            uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file
+                name, case-insensitively.
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
@@ -507,6 +531,15 @@ class DatabricksUnityParquetLoader:
         With a ``start``/``end`` pair this delegates to :meth:`load_by_time_range`
         (visiting only the in-range hour folders); with no bounds it falls back to
         :meth:`load_all_files`.
+
+        Args:
+            start_timestamp: Start of the range. Used only together with
+                ``end_timestamp``; without both, every file is loaded.
+            end_timestamp: End of the range, inclusive. Used only together with
+                ``start_timestamp``.
+            columns: Subset of parquet columns to read; None reads all columns.
+            filters: pyarrow-style predicate pushdown in DNF form, e.g.
+                ``[("value_double", ">", 0.0)]``; None reads all rows.
         """
         if start_timestamp is not None and end_timestamp is not None:
             return self.load_by_time_range(

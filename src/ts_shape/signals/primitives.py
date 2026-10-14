@@ -257,7 +257,7 @@ def shift_windows(
     """One row per (production day, shift) overlapping ``[start, end)``.
 
     Overnight shifts (e.g. ``22:00 -> 06:00``) are a single window attributed
-    to the day they start; wall-clock shift times are localised in ``tz`` so
+    to the day they start; wall-clock shift times are localized in ``tz`` so
     a shift spanning a DST change has its real length (7 h or 9 h).
 
     Returns:

@@ -275,6 +275,14 @@ class ControlLoopHealthEvents(Base):
 
         Requires output_uuid in constructor.
 
+        Args:
+            upper_limit: Upper output limit, in the output signal's units. Samples
+                within 1% of the ``upper_limit - lower_limit`` range of it count as
+                saturated high. Default 100.0.
+            lower_limit: Lower output limit, in the output signal's units. Samples
+                within 1% of the range of it count as saturated low. Default 0.0.
+            window: Resample window as a pandas offset string (e.g. '1h').
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid (the output uuid), pct_time_at_high, pct_time_at_low,
@@ -337,6 +345,10 @@ class ControlLoopHealthEvents(Base):
     @keyword_only(1)
     def loop_health_summary(self, window: str = "8h") -> pd.DataFrame:
         """Shift-level report card combining all loop health metrics.
+
+        Args:
+            window: Report window as a pandas offset string (e.g. '8h' for a
+                shift). Used for the error integrals and the saturation share.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, iae, bias,

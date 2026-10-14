@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class DataGapAnalysisEvents(Base):
     """Quality: Data Gap Analysis
 
-    Answer the question "where are the holes in my data?" by analysing
+    Answer the question "where are the holes in my data?" by analyzing
     gaps in a numeric signal's timestamps.  Complements
     :class:`SignalQualityEvents` (which detects individual missing-data
     events) with pattern-level analysis: gap summaries, per-period

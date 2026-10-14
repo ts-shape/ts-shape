@@ -63,7 +63,7 @@ def to_event_log_xes(
     base = joined.rename(columns=rename)
     # org:resource is the operator that performed the activity, NOT the case
     # object. Populate it only from an actual operator relation; if the log has
-    # no operators, the column is omitted rather than mislabelling the case id.
+    # no operators, the column is omitted rather than mislabeling the case id.
     resource = _resource_map(eventlog)
     if resource is not None:
         base[schema.XES_RESOURCE] = base[schema.OCEL_EID].map(resource).astype("string")

@@ -46,7 +46,7 @@ class RuntimeAccountingEvents(Base):
         value_column: str = "value_bool",
         time_column: str = "systime",
     ) -> None:
-        """Initialize the runtime-accounting analyser.
+        """Initialize the runtime-accounting analyzer.
 
         Args:
             dataframe: Input DataFrame with timeseries data.

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class VibrationAnalysisEvents(Base):
     """
-    Analyse vibration signals from industrial equipment: RMS exceedance,
+    Analyze vibration signals from industrial equipment: RMS exceedance,
     amplitude growth, and bearing health indicators (kurtosis, crest factor).
     """
 

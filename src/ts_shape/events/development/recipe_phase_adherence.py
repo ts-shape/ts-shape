@@ -8,7 +8,7 @@ emits one event per phase carrying pass/fail plus which criterion failed.
 
 The spec format is intentionally a plain dict so it can be authored by a
 process engineer (or loaded from YAML/JSON) without inventing a new
-schema class -- see :meth:`evaluate` for the recognised keys.
+schema class -- see :meth:`evaluate` for the recognized keys.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class RecipePhaseAdherenceEvents(Base):
     """Evaluate batch recipe phases against a declarative spec.
 
-    The spec is a mapping ``{phase_name: criteria_dict}``. Recognised
+    The spec is a mapping ``{phase_name: criteria_dict}``. Recognized
     criteria keys (all optional) per phase:
 
     * ``duration_s``        -- ``(min, max)`` seconds.

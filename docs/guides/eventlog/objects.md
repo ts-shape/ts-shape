@@ -107,4 +107,4 @@ A full runnable walkthrough is in
 ## See also
 
 - [Event Log overview](index.md) — the five OCEL 2.0 tables.
-- [Labelling standard & taxonomy](taxonomy.md) — the object-type vocabulary.
+- [Labeling standard & taxonomy](taxonomy.md) — the object-type vocabulary.

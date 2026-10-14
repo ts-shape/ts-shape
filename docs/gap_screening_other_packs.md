@@ -96,7 +96,7 @@ Also `InventoryMonitoringEvents.consumption_rate(handle_refills=True)`: a refill
 
 | Module | Change |
 |---|---|
-| `quality/outlier_detection.py` | opt-in `group_by_uuid`. **Fixes:** z-score ignores NaN (one NaN had disabled detection); when MAD = 0 it falls back to the mean absolute deviation instead of eps (eps flagged every value of a quantised sensor that differed from the median); IsolationForest skips NaN rows. |
+| `quality/outlier_detection.py` | opt-in `group_by_uuid`. **Fixes:** z-score ignores NaN (one NaN had disabled detection); when MAD = 0 it falls back to the mean absolute deviation instead of eps (eps flagged every value of a quantized sensor that differed from the median); IsolationForest skips NaN rows. |
 | `transform/filter/boolean_filter.py`, `string_filter.py` | opt-in `group_by_uuid` on the edge and change filters: there was a false edge at uuid boundaries. |
 | `features/time_stats/time_stats_numeric.py` | opt-in `group_by_uuid`. Docstrings now say `'h'` (pandas 3 rejects `'H'`). |
 
@@ -135,7 +135,7 @@ The coverage tests found three more bugs, all ✅:
 | `quality/anomaly_classification.py` | `detect_flatline` | medium | a run started one sample late. Opt-in `interval_end="next_change"` detects a deadband historian's single-row stuck value. |
 | `quality/gauge_repeatability.py` | `repeatability` (→ `gauge_rr_summary`) | medium | with `operator_column`, EV now uses within operator × part ranges (AIAG); before, operator bias was folded into repeatability. |
 | `engineering/warmup_analysis.py` | `detect_warmup` / `detect_cooldown` | low | opt-in `max_pause` bridges flat or reversed steps inside a ramp; the docstring had claimed smoothing that did not exist |
-| `engineering/startup_events.py` | `detect_startup_adaptive` | low | `baseline_window` was accepted but ignored. It now defaults to `None` (unchanged behaviour); when set, it gives a time-based baseline of preceding samples. |
+| `engineering/startup_events.py` | `detect_startup_adaptive` | low | `baseline_window` was accepted but ignored. It now defaults to `None` (unchanged behavior); when set, it gives a time-based baseline of preceding samples. |
 | `engineering/setpoint_events.py` | `overshoot_metrics` | medium | undershoot was the minimum error over the whole window, i.e. the initial step (100 % on every step). Now it is the swing back past the setpoint after the setpoint is first reached. |
 | `energy/*` | cumulative kWh register | 📝 | no new parameter. Convert the register with `utils.counters.counter_increments` before passing it as interval energy (reset-aware; pinned by a test). |
 

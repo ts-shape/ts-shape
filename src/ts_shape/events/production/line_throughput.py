@@ -50,9 +50,17 @@ class LineThroughputEvents(Base):
         post-reset value counted as new production) and summed into each window,
         and a ``resets`` column reports the number of resets per window.
 
-        Returns columns: start, end (start + window), duration_seconds, uuid,
-        source_uuid, is_delta, count (plus ``resets`` when
-        ``handle_resets=True``)
+        Args:
+            counter_uuid: UUID of the part counter signal.
+            value_column: Column holding the counter value.
+            window: Count window (pandas offset string, e.g. '1min', '1h').
+            handle_resets: Count production across counter resets (see
+                above) and add a ``resets`` column. Default False.
+
+        Returns:
+            DataFrame with columns: start, end (start + window),
+            duration_seconds, uuid, source_uuid, is_delta, count (plus
+            ``resets`` when ``handle_resets=True``).
         """
         base_columns = [
             "start",
@@ -115,7 +123,20 @@ class LineThroughputEvents(Base):
         For boolean triggers: detect True rising edges as cycle boundaries.
         For integer steps: detect increments as cycle boundaries.
 
-        Returns: systime (at boundary), uuid, source_uuid, is_delta, cycle_time_seconds, violation
+        Args:
+            cycle_uuid: UUID of the cycle trigger signal.
+            value_column: Column holding the trigger. ``"value_bool"`` uses
+                rising edges as cycle boundaries; any other column uses every
+                change of value.
+            takt_time: Takt time (pandas offset string, e.g. '60s').
+            min_violation: How far a cycle must exceed ``takt_time`` to be a
+                violation. Default ``"0s"``: a cycle equal to the takt time
+                already counts.
+
+        Returns:
+            DataFrame with columns: systime (at the boundary that closes the
+            cycle), uuid, source_uuid, is_delta, cycle_time_seconds,
+            violation.
         """
         s = (
             self.dataframe[self.dataframe["uuid"] == cycle_uuid]
@@ -197,7 +218,7 @@ class LineThroughputEvents(Base):
                 the 95th percentile of observed counts
             availability_threshold: Fraction of ``target_rate`` a window must
                 reach to count as available (0.0-1.0). The default ``0.0`` keeps
-                the historical behaviour -- any window with at least one part is
+                the historical behavior -- any window with at least one part is
                 available. (Previously this argument was accepted but ignored.)
             handle_resets: When True, the part counter is treated as reset-aware
                 (see :meth:`count_parts`), so a window where the counter resets
@@ -241,7 +262,7 @@ class LineThroughputEvents(Base):
         # Availability proxy: a window is available when it produced something
         # AND reached at least availability_threshold of the target rate. With
         # the default threshold of 0.0 this reduces to "produced anything",
-        # matching the historical behaviour.
+        # matching the historical behavior.
         min_count = availability_threshold * (target_rate or 0.0)
         parts_df["availability"] = np.where(
             (parts_df["count"] > 0) & (parts_df["count"] >= min_count), 1.0, 0.0

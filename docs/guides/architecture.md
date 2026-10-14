@@ -77,7 +77,7 @@ the next docs build.
 | `transform` | Condition signals (filter, resample, harmonise) | long DataFrame | conditioned long DataFrame | yes | `RangeFilter`, `DataHarmonizer` |
 | `features` | Derive analytics (stats, cycles, segments) | long DataFrame | wide feature table | yes | `WindowedStats`, `CycleExtractor` |
 | `events` | Detect events | DataFrame (raw or feature-enriched) | canonical event DataFrame — `point` / `interval` / `summary` per `src/ts_shape/events/_output.py` | yes | `OEEEvents`, `OutlierDetectionEvents` |
-| `eventlog` | Normalise detector output to OCEL 2.0 | canonical event DataFrame | `EventLog(events, objects, relations)` | yes — only needed for XES/OCEL/process-mining | `to_event_log(df, detector=...)` |
+| `eventlog` | Normalize detector output to OCEL 2.0 | canonical event DataFrame | `EventLog(events, objects, relations)` | yes — only needed for XES/OCEL/process-mining | `to_event_log(df, detector=...)` |
 
 ## Three ways to enter the pipeline
 

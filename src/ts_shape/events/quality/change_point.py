@@ -99,9 +99,9 @@ def pelt(
     penalty: float | None = None,
     min_size: int = 2,
 ) -> list[int]:
-    """Optimal change points of ``x`` under a penalised Gaussian cost (PELT).
+    """Optimal change points of ``x`` under a penalized Gaussian cost (PELT).
 
-    Exact: returns the segmentation minimising total cost plus ``penalty``
+    Exact: returns the segmentation minimizing total cost plus ``penalty``
     per change. Runtime is near-linear when changes are frequent and
     quadratic when they are rare; for long series with few changes use
     :func:`binseg` or resample first.

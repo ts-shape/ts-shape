@@ -141,7 +141,7 @@ class EnergyPerformanceIndicatorEvents(Base):
         each window's energy with what the model expects for its output.
         ``baseline_enpi`` is that expected energy per unit and
         ``deviation_pct`` is ``(actual - expected) / expected`` energy, so
-        the comparison is normalised for production volume. Two columns are
+        the comparison is normalized for production volume. Two columns are
         added: ``expected_energy_kwh`` and ``energy_savings_kwh``
         (``expected - actual``; its cumulative sum is the CUSUM of savings).
 
