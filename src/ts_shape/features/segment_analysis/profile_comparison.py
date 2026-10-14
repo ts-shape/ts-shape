@@ -38,6 +38,10 @@ class ProfileComparison(Base):
             "segment_index",
             "window_start",
             "window_end",
+            "time_window",
+            "start",
+            "end",
+            "duration_seconds",
             "sample_count",
         }
         available = [

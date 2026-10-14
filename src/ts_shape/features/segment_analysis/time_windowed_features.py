@@ -1,12 +1,16 @@
 import logging
 
+import numpy as np
 import pandas as pd
 
+from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
 from ts_shape.features.segment_analysis.segment_processor import ALL_METRICS
-from ts_shape.features.stats.numeric_stats import NumericStatistics
 from ts_shape.utils.base import Base
 
 logger = logging.getLogger(__name__)
+
+#: Canonical window columns added after the metrics by ``compute_long``.
+_WINDOW_COLUMNS = ["start", "end", "duration_seconds"]
 
 
 class TimeWindowedFeatureTable(Base):
@@ -46,8 +50,18 @@ class TimeWindowedFeatureTable(Base):
                 Set to None to ignore segments entirely.
             metrics: Subset of metric names to compute. None uses all 19.
 
+        Windows are the bins of ``pd.Grouper(freq=freq)`` (for sub-daily
+        frequencies they start at midnight of the first day; on tz-aware data
+        they are wall-clock windows in the data's zone). A window that spans a
+        segment change gives one row per segment. Groups with fewer than 2
+        non-missing values are left out.
+
         Returns:
-            DataFrame with columns [time_window, uuid, segment_value?, sample_count, metric_1, ...].
+            DataFrame with columns [time_window, uuid, segment_value?,
+            sample_count, metric_1, ..., start, end, duration_seconds], one row
+            per (window, uuid, segment) sorted in that order. ``start`` is the
+            window start (= ``time_window``), ``end`` the next window start.
+            Empty (with these columns) when no group has 2 values.
         """
         cls._validate_column(dataframe, time_column)
         cls._validate_column(dataframe, uuid_column)
@@ -62,49 +76,37 @@ class TimeWindowedFeatureTable(Base):
                     f"Unknown metrics: {invalid}. Available: {ALL_METRICS}"
                 )
 
-        if dataframe.empty:
-            logger.warning("Empty DataFrame provided.")
-            return pd.DataFrame()
-
-        df = dataframe.copy()
-        df[time_column] = pd.to_datetime(df[time_column])
-
-        grouper = [pd.Grouper(key=time_column, freq=freq), uuid_column]
-        if segment_column is not None:
-            grouper.append(segment_column)
-
-        rows = []
-        for group_key, group in df.groupby(grouper):
-            numeric_data = group[value_column].dropna()
-            if len(numeric_data) < 2:
-                continue
-
-            stats = NumericStatistics.summary_as_dict(group, value_column)
-            if metrics is not None:
-                stats = {k: v for k, v in stats.items() if k in metrics}
-
-            if segment_column is not None:
-                window_ts, uuid_val, seg_val = group_key
-                stats[segment_column] = seg_val
-            else:
-                window_ts, uuid_val = group_key
-
-            stats["time_window"] = window_ts
-            stats[uuid_column] = uuid_val
-            stats["sample_count"] = len(numeric_data)
-            rows.append(stats)
-
-        if not rows:
-            logger.warning("No windows with sufficient data (>= 2 non-NaN values).")
-            return pd.DataFrame()
-
-        result = pd.DataFrame(rows)
         leading = ["time_window", uuid_column]
         if segment_column is not None:
             leading.append(segment_column)
-        leading.append("sample_count")
-        metric_cols = [c for c in result.columns if c not in leading]
-        result = result[leading + metric_cols].reset_index(drop=True)
+        wanted = metrics if metrics is not None else ALL_METRICS
+        metric_cols = [m for m in ALL_METRICS if m in wanted]
+        columns = [*leading, "sample_count", *metric_cols, *_WINDOW_COLUMNS]
+
+        if dataframe.empty:
+            logger.warning("Empty DataFrame provided.")
+            return pd.DataFrame(columns=columns)
+
+        df = dataframe.copy()
+        df[time_column] = pd.to_datetime(df[time_column])
+        # Stable time order: the window grouper then labels rows reliably.
+        df = df.iloc[np.argsort(df[time_column].to_numpy(), kind="stable")]
+
+        grouper: list[object] = [pd.Grouper(key=time_column, freq=freq), uuid_column]
+        if segment_column is not None:
+            grouper.append(segment_column)
+
+        result = summarize_groups(df, grouper, value_column)
+        if result.empty:
+            logger.warning("No windows with sufficient data (>= 2 non-NaN values).")
+            return pd.DataFrame(columns=columns)
+        result.columns = [*leading, *result.columns[len(leading) :]]
+        result["start"] = result["time_window"]
+        result["end"] = result["time_window"] + pd.tseries.frequencies.to_offset(freq)
+        result["duration_seconds"] = (
+            (result["end"] - result["start"]).dt.total_seconds().astype("float64")
+        )
+        result = result[columns]
 
         n_windows = result["time_window"].nunique()
         n_uuids = result[uuid_column].nunique()
@@ -155,15 +157,19 @@ class TimeWindowedFeatureTable(Base):
             metrics=metrics,
         )
 
-        if long_df.empty:
-            return pd.DataFrame()
-
         index_cols = ["time_window"]
         if segment_column is not None and segment_column in long_df.columns:
             index_cols.append(segment_column)
 
-        # Identify metric columns to pivot
-        value_cols = [c for c in long_df.columns if c not in index_cols + [uuid_column]]
+        if long_df.empty:
+            return pd.DataFrame(columns=index_cols)
+
+        # Identify metric columns to pivot (window bounds are not metrics)
+        value_cols = [
+            c
+            for c in long_df.columns
+            if c not in index_cols + [uuid_column] + _WINDOW_COLUMNS
+        ]
 
         pieces = []
         for col in value_cols:

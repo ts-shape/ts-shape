@@ -142,7 +142,12 @@ def production_dates(
     calendar = times.dt.date
     # A reading belongs to the previous day when its shift is overnight and its
     # time is before that shift's end (the small hours after midnight).
-    shifted = (times - pd.Timedelta(days=1)).dt.date
+    # Subtract one *calendar* day from the local date, not 24 hours: on
+    # tz-aware data the day after a DST change is 23 or 25 hours away, and
+    # ``time - 24h`` would land on the wrong date (e.g. 00:30 on the day
+    # after the spring change -> two days back).
+    wall = times.dt.tz_localize(None) if times.dt.tz is not None else times
+    shifted = (wall.dt.normalize() - pd.Timedelta(days=1)).dt.date
     tod = _time_of_day_us(times)
     names = shifts.to_numpy()
     mask = np.zeros(len(times), dtype=bool)

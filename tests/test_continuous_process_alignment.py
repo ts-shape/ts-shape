@@ -250,9 +250,8 @@ class TestSegmentByCut:
         assert "piece_id" in result.columns
         valid = result["piece_id"].dropna()
         assert len(valid) > 0
-        assert valid.dtype in [np.int64, np.float64, object] or np.issubdtype(
-            valid.dtype, np.number
-        )
+        # Nullable integer: material after the last cut has piece_id <NA>.
+        assert str(valid.dtype) == "Int64"
 
     def test_piece_id_assigned_int_counter(self, aligner):
         aligned = aligner.align_to_reference(station_uuids=["station:a"])

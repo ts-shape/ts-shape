@@ -36,6 +36,16 @@ _LAG_COLS = [
 ]
 
 
+def _time_dtype(aligned_df: pd.DataFrame) -> object:
+    """dtype of ``material_ref_time`` (datetime64[ns] when absent or empty)."""
+    if (
+        "material_ref_time" in aligned_df.columns
+        and pd.api.types.is_datetime64_any_dtype(aligned_df["material_ref_time"])
+    ):
+        return aligned_df["material_ref_time"].dtype
+    return np.dtype("datetime64[ns]")
+
+
 class ContinuousProcessAlignmentEvents(Base):
     """Align multi-station readings on a continuous production line.
 
@@ -139,22 +149,42 @@ class ContinuousProcessAlignmentEvents(Base):
             .reset_index(drop=True)
         )
 
+    def _valid_speed(self, speed_df: pd.DataFrame, speed_col: str) -> pd.DataFrame:
+        """Speed readings with a usable value, as ``[time, _speed_raw]``."""
+        speed = pd.DataFrame(
+            {
+                self.time_column: speed_df[self.time_column],
+                "_speed_raw": pd.to_numeric(speed_df[speed_col], errors="coerce")
+                .astype("float64")
+                .to_numpy(),
+            }
+        )
+        return speed.dropna().reset_index(drop=True)
+
     def _attach_speed(
         self,
         station_df: pd.DataFrame,
         speed_df: pd.DataFrame,
         speed_col: str = "value_double",
     ) -> pd.DataFrame:
-        """Backward-fill merge: attach most-recent speed reading to each station row."""
-        speed_subset = speed_df[[self.time_column, speed_col]].rename(
-            columns={speed_col: "_speed_raw"}
-        )
+        """Attach the line speed in effect at each station row.
+
+        The most recent valid speed reading is used (missing speed values are
+        skipped, so the last known speed is held). Rows before the first speed
+        reading take the first reading.
+        """
+        speed = self._valid_speed(speed_df, speed_col)
+        if speed.empty:
+            merged = station_df.copy()
+            merged["_speed_raw"] = np.nan
+            return merged
         merged = pd.merge_asof(
             station_df,
-            speed_subset,
+            speed,
             on=self.time_column,
             direction="backward",
         )
+        merged["_speed_raw"] = merged["_speed_raw"].fillna(speed["_speed_raw"].iloc[0])
         return merged
 
     def _lag_from_speed(self, merged: pd.DataFrame, offset_m: float) -> pd.Series:
@@ -176,7 +206,11 @@ class ContinuousProcessAlignmentEvents(Base):
     ) -> pd.DataFrame:
         """Shift each station reading backward by its transport lag.
 
-        This produces a common ``material_ref_time`` for all stations.
+        This produces a common ``material_ref_time`` for all stations:
+        ``systime - offset / speed``, with the most recent valid speed reading
+        at each station sample (missing speed values are skipped; samples
+        before the first speed reading use the first one), clamped to at
+        least ``min_speed``.
 
         Args:
             station_uuids: Subset of UUIDs to process. Defaults to all UUIDs in
@@ -254,8 +288,22 @@ class ContinuousProcessAlignmentEvents(Base):
         2. ``part_counter_uuid`` (integer/float): each step where the counter
            increases by ``delta`` counts as ``delta`` cuts, all attributed to
            the same timestamp when the signal resolution is coarser than the
-           cut rate.
+           cut rate. The first reading is the baseline; missing readings are
+           gaps.
         3. ``cut_length_uuid`` only: each row of the length signal = 1 cut.
+
+        Each cut time is shifted back to the reference point by the cutter's
+        own transport lag (when the cutter's uuid is in ``line_config``), the
+        same way `align_to_reference` shifts station readings.
+
+        Piece assignment: a cut finishes the piece whose material passed the
+        reference point since the previous cut. Rows with ``material_ref_time``
+        in ``(previous cut, this cut]`` get this cut's ``piece_id``; rows up to
+        and including the first cut belong to piece 1; rows after the last
+        cut are not cut yet and get ``piece_id`` <NA>, ``piece_length_m`` NaN
+        and ``piece_cut_ref_time`` NaT. Pieces cut at the same instant (a
+        counter step > 1) share one boundary, so the material goes to the
+        first of them and the others have no rows.
 
         Args:
             aligned_df: Output of `align_to_reference`.
@@ -264,7 +312,8 @@ class ContinuousProcessAlignmentEvents(Base):
             part_counter_uuid: UUID of a part-counter signal (boolean or
                 monotonically increasing integer).
             cut_value_column: Column holding the length value in
-                ``cut_length_uuid`` rows.
+                ``cut_length_uuid`` rows. With a counter, each cut takes the
+                latest length reported at or before it.
             handle_resets: When True (default) and a numeric ``part_counter_uuid`` is
                 used, a decreasing counter (a reset at a shift/part change or
                 PLC restart) is treated as new production: the post-reset
@@ -273,9 +322,10 @@ class ContinuousProcessAlignmentEvents(Base):
                 ignored and its post-reset pieces are not counted.
 
         Returns:
-            ``aligned_df`` augmented with ``piece_id`` (int, 1-based),
-                ``piece_length_m`` (float or NaN), and ``piece_cut_ref_time``
-                (Timestamp).
+            ``aligned_df`` augmented with ``piece_id`` (nullable ``Int64``,
+                1-based, numbered in cut order), ``piece_length_m`` (float or
+                NaN), and ``piece_cut_ref_time`` (the piece's cut at the
+                reference point, in the data's time zone).
 
         Raises:
             ValueError: If neither ``cut_length_uuid`` (nor the constructor
@@ -289,192 +339,152 @@ class ContinuousProcessAlignmentEvents(Base):
             )
 
         raw_df = self.dataframe
+        tcol = self.time_column
 
-        # ---- detect cut events ----
-        # Each entry: (systime, piece_length_m or NaN, n_pieces)
-        cut_events: list[tuple] = []
+        def _signal(uuid: str) -> pd.DataFrame:
+            rows = raw_df[raw_df[self.uuid_column] == uuid]
+            rows = rows[pd.to_datetime(rows[tcol]).notna()]
+            order = np.argsort(rows[tcol].to_numpy(), kind="stable")
+            return rows.iloc[order].reset_index(drop=True)
+
+        # ---- detect cut events: (time, piece_length_m, n_pieces) ----
+        cut_times = pd.Series(raw_df[tcol].iloc[:0])
+        cut_lengths = np.empty(0, dtype="float64")
+        cut_counts = np.empty(0, dtype=np.int64)
 
         if part_counter_uuid is not None:
-            counter_df = (
-                raw_df[raw_df[self.uuid_column] == part_counter_uuid]
-                .sort_values(self.time_column)
-                .reset_index(drop=True)
-            )
+            counter_df = _signal(part_counter_uuid)
             if not counter_df.empty:
-                # Detect boolean or numeric
-                bool_col = "value_bool"
-                int_col = "value_integer"
-                dbl_col = "value_double"
-
                 if (
-                    bool_col in counter_df.columns
-                    and counter_df[bool_col].notna().any()
+                    "value_bool" in counter_df.columns
+                    and counter_df["value_bool"].notna().any()
                 ):
-                    vals = counter_df[bool_col].fillna(False).astype(bool)
-                    for i, row in counter_df.iterrows():
-                        if vals.iloc[
-                            i if isinstance(i, int) else counter_df.index.get_loc(i)
-                        ]:
-                            cut_events.append((row[self.time_column], np.nan, 1))
+                    fired = (
+                        counter_df["value_bool"]
+                        .astype("boolean")
+                        .fillna(False)
+                        .to_numpy(dtype=bool)
+                    )
+                    cut_times = counter_df[tcol][fired]
+                    cut_counts = np.ones(int(fired.sum()), dtype=np.int64)
                 else:
-                    # Use integer or double counter
                     num_col = (
-                        int_col
-                        if int_col in counter_df.columns
-                        and counter_df[int_col].notna().any()
-                        else dbl_col
+                        "value_integer"
+                        if "value_integer" in counter_df.columns
+                        and counter_df["value_integer"].notna().any()
+                        else "value_double"
                     )
                     if num_col in counter_df.columns:
-                        counts = counter_df[num_col].ffill().fillna(0)
+                        counts = pd.to_numeric(
+                            counter_df[num_col], errors="coerce"
+                        ).astype("float64")
+                        # Missing readings are gaps, not a counter at 0.
+                        present = counts.notna().to_numpy()
+                        counts = counts[present].reset_index(drop=True)
+                        times = counter_df[tcol][present].reset_index(drop=True)
                         if handle_resets:
-                            # Reset-aware: a decreasing counter is treated as a
-                            # reset, so the post-reset value is new production.
+                            # Reset-aware: a decreasing counter is a reset, so
+                            # the post-reset value is new production.
                             increments = counter_increments(counts)
-                            for idx in range(1, len(counter_df)):
-                                n_pieces = int(round(increments.iloc[idx]))
-                                if n_pieces > 0:
-                                    ts = counter_df.iloc[idx][self.time_column]
-                                    cut_events.append((ts, np.nan, n_pieces))
                         else:
-                            prev = counts.iloc[0]
-                            for idx in range(1, len(counter_df)):
-                                curr = counts.iloc[idx]
-                                delta = int(round(curr - prev))
-                                if delta > 0:
-                                    ts = counter_df.iloc[idx][self.time_column]
-                                    cut_events.append((ts, np.nan, delta))
-                                prev = curr
+                            increments = counts.diff().fillna(0.0)
+                        n = np.rint(increments.to_numpy()).astype(np.int64)
+                        hit = n > 0
+                        cut_times = times[hit]
+                        cut_counts = n[hit]
+            cut_lengths = np.full(len(cut_counts), np.nan)
         else:
-            # No counter — each row of cut_length_uuid is a cut
-            length_df = (
-                raw_df[raw_df[self.uuid_column] == cut_length_uuid]
-                .sort_values(self.time_column)
-                .reset_index(drop=True)
-            )
-            for _, row in length_df.iterrows():
-                length_val = row.get(cut_value_column, np.nan)
-                cut_events.append((row[self.time_column], length_val, 1))
-
-        # ---- attach lengths when cut_length_uuid provided and counter used ----
-        if cut_length_uuid is not None and part_counter_uuid is not None and cut_events:
-            length_df = (
-                raw_df[raw_df[self.uuid_column] == cut_length_uuid]
-                .sort_values(self.time_column)
-                .reset_index(drop=True)
-            )
-            if not length_df.empty:
-                cut_times = pd.Series([e[0] for e in cut_events])
-                length_times = length_df[self.time_column].reset_index(drop=True)
-                length_vals = length_df[cut_value_column].reset_index(drop=True)
-                # backward-fill: for each cut event, find most recent length
-                indices = (
-                    np.searchsorted(length_times.values, cut_times.values, side="right")
-                    - 1
+            assert cut_length_uuid is not None
+            length_df = _signal(cut_length_uuid)
+            cut_times = length_df[tcol]
+            cut_counts = np.ones(len(length_df), dtype=np.int64)
+            if cut_value_column in length_df.columns:
+                cut_lengths = (
+                    pd.to_numeric(length_df[cut_value_column], errors="coerce")
+                    .astype("float64")
+                    .to_numpy()
                 )
-                new_events = []
-                for i, (ts, _, n) in enumerate(cut_events):
-                    idx = indices[i]
-                    length = (
-                        length_vals.iloc[idx] if 0 <= idx < len(length_vals) else np.nan
-                    )
-                    new_events.append((ts, length, n))
-                cut_events = new_events
-
-        if not cut_events:
-            result = aligned_df.copy()
-            result["piece_id"] = np.nan
-            result["piece_length_m"] = np.nan
-            result["piece_cut_ref_time"] = pd.NaT
-            return result
-
-        # ---- expand cut_events to per-piece rows, align to material_ref_time ----
-        piece_rows: list[dict] = []
-        piece_id = 1
-        for ts, length_m, n_pieces in cut_events:
-            # Determine material_ref_time of this cut event
-            # Look up the cutter's offset via cut_length_uuid or part_counter_uuid
-            cutter_uuid = part_counter_uuid or cut_length_uuid
-            offset_m = 0.0
-            if cutter_uuid in self._uuid_meta:
-                offset_m = self._uuid_meta[cutter_uuid][1]
-            elif cut_length_uuid in self._uuid_meta:
-                offset_m = self._uuid_meta[cut_length_uuid][1]
-
-            # Find speed at cut time
-            speed_df = self._get_speed_df()
-            if not speed_df.empty and offset_m > 0:
-                idx = (
-                    speed_df[self.time_column].array.searchsorted(ts, side="right") - 1
-                )
-                idx = max(0, min(idx, len(speed_df) - 1))
-                raw_speed = speed_df.iloc[idx][self.value_column]
-                speed_m_s = max(float(raw_speed) * self._speed_factor, self.min_speed)
-                lag_s = offset_m / speed_m_s
-                cut_ref_time = ts - pd.Timedelta(seconds=lag_s)
             else:
-                cut_ref_time = ts
+                cut_lengths = np.full(len(length_df), np.nan)
 
-            for _ in range(n_pieces):
-                piece_rows.append(
-                    {
-                        "_piece_id": piece_id,
-                        "_piece_length_m": length_m,
-                        "_piece_cut_ref_time": cut_ref_time,
-                    }
+        cut_times = pd.Series(pd.to_datetime(cut_times)).reset_index(drop=True)
+
+        # ---- attach lengths when a counter and a length signal are given ----
+        if (
+            cut_length_uuid is not None
+            and part_counter_uuid is not None
+            and len(cut_counts)
+        ):
+            length_df = _signal(cut_length_uuid)
+            if not length_df.empty and cut_value_column in length_df.columns:
+                # The length reported at or before each cut.
+                length_times = pd.DatetimeIndex(pd.to_datetime(length_df[tcol]))
+                idx = length_times.searchsorted(cut_times, side="right") - 1
+                vals = (
+                    pd.to_numeric(length_df[cut_value_column], errors="coerce")
+                    .astype("float64")
+                    .to_numpy()
                 )
-                piece_id += 1
-
-        # Build cut boundary array (material_ref_time of each cut)
-        _cut_ref_times = np.array(
-            [r["_piece_cut_ref_time"] for r in piece_rows], dtype="datetime64[ns]"
-        )
-        # Unique boundaries for searchsorted (first occurrence per piece)
-        _unique_cut_boundaries = np.array(
-            [piece_rows[0]["_piece_cut_ref_time"]]
-            + [
-                piece_rows[i]["_piece_cut_ref_time"]
-                for i in range(1, len(piece_rows))
-                if piece_rows[i]["_piece_cut_ref_time"]
-                != piece_rows[i - 1]["_piece_cut_ref_time"]
-            ],
-            dtype="datetime64[ns]",
-        )
-
-        # Build a piece lookup: boundary index -> piece_id, length, ref_time
-        # We need to map material_ref_time -> piece_id
-        # Each piece_row represents one piece; pieces with same cut_ref_time share boundary
-        # Build piece table indexed by piece_id (1-based)
-        piece_table = pd.DataFrame(piece_rows).rename(
-            columns={
-                "_piece_id": "piece_id",
-                "_piece_length_m": "piece_length_m",
-                "_piece_cut_ref_time": "piece_cut_ref_time",
-            }
-        )
-        # Build cut_ref_time -> first piece_id mapping (for assigning piece via boundary)
-        # Strategy: material is assigned to the piece cut after it passes
-        # i.e. material_ref_time in [cut[i-1], cut[i]) -> piece_id = i
-        # We use the unique cut_ref_times as boundaries
-        unique_cut_ref = piece_table.drop_duplicates("piece_cut_ref_time")[
-            ["piece_id", "piece_length_m", "piece_cut_ref_time"]
-        ].reset_index(drop=True)
-
-        cut_boundaries = unique_cut_ref["piece_cut_ref_time"].values.astype(
-            "datetime64[ns]"
-        )
-
-        mat_ref = aligned_df["material_ref_time"].values.astype("datetime64[ns]")
-        # searchsorted: index 0 = before first cut → piece_id = first piece
-        # index k = between cut[k-1] and cut[k] → piece_id row k-1 (0-based)
-        indices = np.searchsorted(cut_boundaries, mat_ref, side="right") - 1
-        indices = np.clip(indices, 0, len(unique_cut_ref) - 1)
+                cut_lengths = np.where(idx >= 0, vals[np.clip(idx, 0, None)], np.nan)
 
         result = aligned_df.copy()
-        result["piece_id"] = unique_cut_ref["piece_id"].iloc[indices].values
-        result["piece_length_m"] = unique_cut_ref["piece_length_m"].iloc[indices].values
-        result["piece_cut_ref_time"] = (
-            unique_cut_ref["piece_cut_ref_time"].iloc[indices].values
+        if not len(cut_counts):
+            result["piece_id"] = pd.array([pd.NA] * len(result), dtype="Int64")
+            result["piece_length_m"] = np.nan
+            result["piece_cut_ref_time"] = pd.Series(
+                pd.NaT, index=result.index, dtype=_time_dtype(aligned_df)
+            )
+            return result
+
+        # ---- cut times at the reference point (shift back by cutter lag) ----
+        cutter_uuid = part_counter_uuid or cut_length_uuid
+        offset_m = 0.0
+        if cutter_uuid in self._uuid_meta:
+            offset_m = self._uuid_meta[cutter_uuid][1]
+        elif cut_length_uuid in self._uuid_meta:
+            offset_m = self._uuid_meta[cut_length_uuid][1]
+        cut_ref = cut_times
+        speed_df = self._get_speed_df()
+        if offset_m != 0 and not speed_df.empty:
+            merged = self._attach_speed(
+                pd.DataFrame({tcol: cut_times}), speed_df, speed_col=self.value_column
+            )
+            lag = self._lag_from_speed(merged, offset_m)
+            cut_ref = cut_times - pd.to_timedelta(lag.to_numpy(), unit="s")
+
+        # ---- one row per piece; pieces of one counter step share a cut ----
+        piece_ref = pd.Series(
+            pd.DatetimeIndex(np.repeat(pd.DatetimeIndex(cut_ref), cut_counts))
         )
+        piece_len = np.repeat(cut_lengths, cut_counts)
+        piece_ids = np.arange(1, len(piece_ref) + 1, dtype=np.int64)
+
+        # Material that passed the reference point in (previous cut, this cut]
+        # belongs to the piece this cut finishes; material before the first
+        # cut belongs to the first piece; material after the last cut is not
+        # cut yet (piece_id <NA>). Pieces cut at the same instant (a counter
+        # step > 1) share one boundary: the material goes to the first of them.
+        bounds = pd.DatetimeIndex(piece_ref)
+        mat = pd.DatetimeIndex(pd.to_datetime(aligned_df["material_ref_time"]))
+        if (bounds.tz is None) != (mat.tz is None):
+            raise ValueError(
+                "material_ref_time and the cut signal must both be tz-aware or "
+                "both be naive."
+            )
+        b_i8 = np.maximum.accumulate(bounds.asi8)
+        first_of_bound = np.ones(len(b_i8), dtype=bool)
+        first_of_bound[1:] = b_i8[1:] != b_i8[:-1]
+        uniq_pos = np.flatnonzero(first_of_bound)
+        k = np.searchsorted(b_i8[uniq_pos], mat.asi8, side="left")
+        assigned = (k < len(uniq_pos)) & ~np.asarray(mat.isna())
+        piece_pos = uniq_pos[np.clip(k, 0, len(uniq_pos) - 1)]
+
+        ids = pd.array(piece_ids[piece_pos], dtype="Int64")
+        ids[~assigned] = pd.NA
+        result["piece_id"] = ids
+        result["piece_length_m"] = np.where(assigned, piece_len[piece_pos], np.nan)
+        ref_out = pd.Series(bounds[piece_pos], index=result.index)
+        result["piece_cut_ref_time"] = ref_out.where(assigned, pd.NaT)
         return result
 
     @keyword_only(1)
