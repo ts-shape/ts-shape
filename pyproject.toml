@@ -122,7 +122,11 @@ fallback_version = "0.0.0+unknown"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-v"
+# Scale checks (tests/test_scale.py) run on their own: pytest -m scale.
+addopts = "-v -m 'not scale'"
+markers = [
+    "scale: timing and memory checks at 200k-400k rows (run with -m scale)",
+]
 # A ts-shape deprecation outside a test that expects it fails the suite, so
 # the tests and examples keep using the current names.
 filterwarnings = [

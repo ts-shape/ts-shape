@@ -107,6 +107,13 @@ jobs:
           PYTHONDEVMODE: "1"
         run: pytest --cov=ts_shape --cov-report=xml --cov-report=term
 
+      # Timing and memory checks at 200k/400k rows (tests/test_scale.py, a few
+      # seconds). Left out of the run above, where coverage and dev mode skew
+      # timings; one Python version is enough.
+      - name: Run scale checks
+        if: matrix.python-version == '3.13'
+        run: pytest -m scale -q tests/test_scale.py
+
       - name: Upload coverage report
         if: always() && matrix.python-version == '3.13'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
