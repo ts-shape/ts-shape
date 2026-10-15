@@ -76,6 +76,16 @@ class DataHarmonizer(Base):
     def pivot_to_wide(self, aggfunc: str = "first") -> pd.DataFrame:
         """Pivot long-format DataFrame to wide-format with one column per UUID.
 
+        Memory: the wide frame is dense, one row per *distinct* timestamp of
+        any signal and one column per UUID, so it holds
+        ``timestamps x signals`` cells (8 bytes each for float values)
+        however sparse the long frame is. Signals sampled at their own
+        instants barely share rows: 100 such signals of 100,000 samples each
+        (10 million long rows, about 0.5 GB) pivot to 10 million x 100 cells,
+        8 GB, mostly NaN. Select the signals you need and resample or round
+        the timestamps onto a common grid before pivoting large data
+        (:meth:`resample_to_uniform` pivots too, then resamples).
+
         Args:
             aggfunc: Aggregation function for duplicate timestamps ('first', 'mean', 'last').
 
@@ -103,6 +113,10 @@ class DataHarmonizer(Base):
         fill_limit: int | None = None,
     ) -> pd.DataFrame:
         """Resample to a uniform time grid with interpolation.
+
+        Pivots first, so the full wide frame of :meth:`pivot_to_wide` (one
+        row per distinct timestamp, see its memory note) is built before it
+        is reduced to the grid.
 
         Args:
             window: Pandas frequency string (e.g. '1s', '100ms', '1min').
@@ -280,6 +294,9 @@ class DataHarmonizer(Base):
         method: str = "linear",
     ) -> pd.DataFrame:
         """End-to-end harmonization: pivot, filter, resample, interpolate.
+
+        The selected signals are pivoted before resampling: the memory of
+        :meth:`pivot_to_wide` applies to them (pass ``uuids`` to bound it).
 
         Args:
             uuids: Optional list of UUIDs to include. None means all.
