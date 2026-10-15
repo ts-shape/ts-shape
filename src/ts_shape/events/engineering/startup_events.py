@@ -215,8 +215,8 @@ class StartupDetectionEvents(Base):
         s["slope"] = s["dv"] / s["dt_s"].where(~dup)
         mask = s["slope"] >= float(min_slope)
 
-        if not s.index.is_unique:
-            return self._slope_events_by_labels(s, mask, min_slope, min_duration, cols)
+        # Positional throughout: index labels may repeat (e.g. chunks
+        # concatenated without ignore_index).
         runs = true_runs(mask.to_numpy(dtype=bool))
         times = s[self.time_column].array
         start_t, end_t = times[runs.starts], times[runs.last]
@@ -239,41 +239,6 @@ class StartupDetectionEvents(Base):
         return finalize_interval_df(
             events, uuid=self.event_uuid, source_uuid=self.target_uuid
         )
-
-    def _slope_events_by_labels(
-        self,
-        s: pd.DataFrame,
-        mask: pd.Series,
-        min_slope: float,
-        min_duration: str,
-        cols: list[str],
-    ) -> pd.DataFrame:
-        """Label-based run loop, kept for frames with duplicate index labels
-        (whose ``.loc`` lookups the vectorized version does not reproduce)."""
-        gid = (mask != mask.shift()).cumsum()
-        min_d = pd.to_timedelta(min_duration)
-        events: list[dict[str, Any]] = []
-        for _, seg in s.groupby(gid):
-            seg_mask = mask.loc[seg.index]
-            if not seg_mask.any():
-                continue
-            start_t = seg.loc[seg_mask, self.time_column].iloc[0]
-            end_t = seg.loc[seg_mask, self.time_column].iloc[-1]
-            if (end_t - start_t) < min_d:
-                continue
-            avg_slope = seg.loc[seg_mask, "slope"].mean()
-            events.append(
-                {
-                    "start": start_t,
-                    "end": end_t,
-                    "uuid": self.event_uuid,
-                    "is_delta": True,
-                    "method": "slope",
-                    "min_slope": float(min_slope),
-                    "avg_slope": float(avg_slope) if pd.notna(avg_slope) else None,
-                }
-            )
-        return self._intervals(events, cols)
 
     @keyword_only(2)
     def detect_startup_multi_signal(

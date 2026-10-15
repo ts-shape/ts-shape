@@ -292,12 +292,6 @@ def test_multi_signal_rejects_bad_settings(signals, logic, match):
         sd.detect_startup_multi_signal(signals, logic=logic)
 
 
-@pytest.mark.xfail(
-    raises=IndexError,
-    strict=True,
-    reason="library bug: the label-based run search of detect_startup_by_slope "
-    "indexes with a mask of the wrong length when index labels repeat",
-)
 def test_slope_startup_with_duplicate_index_labels():
     df = _startup_frame()
     signal = df[df["uuid"] == "oven:temp"].reset_index(drop=True)
@@ -308,3 +302,25 @@ def test_slope_startup_with_duplicate_index_labels():
         _chunked(signal, 60), "oven:temp"
     ).detect_startup_by_slope(min_slope=0.1, min_duration="1min")
     pd.testing.assert_frame_equal(got, expected)
+
+
+def test_slope_startup_repeated_labels_hand_built():
+    # Two 5-sample chunks concatenated without ignore_index: labels 0..4 twice.
+    # Used to raise IndexError (label-based run search, mask of wrong length).
+    t0 = pd.Timestamp("2024-01-01")
+    df = pd.DataFrame(
+        {
+            "systime": t0 + pd.to_timedelta(np.arange(10), unit="s"),
+            "uuid": "sig",
+            "value_double": [0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0, 4.0, 5.0, 6.0],
+        },
+        index=[0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
+    )
+    out = StartupDetectionEvents(df, "sig").detect_startup_by_slope(
+        min_slope=0.5, min_duration="1s"
+    )
+    assert out["start"].tolist() == [t0 + pd.Timedelta("2s"), t0 + pd.Timedelta("7s")]
+    assert out["end"].tolist() == [t0 + pd.Timedelta("4s"), t0 + pd.Timedelta("9s")]
+    assert out["duration_seconds"].tolist() == [2.0, 2.0]
+    assert out["avg_slope"].tolist() == [1.0, 1.0]
+    assert out["method"].tolist() == ["slope", "slope"]
