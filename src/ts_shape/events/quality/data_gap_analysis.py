@@ -3,11 +3,11 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
+from ts_shape.utils.frames import window_offset
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ class DataGapAnalysisEvents(Base):
             .copy()
             .set_index(self.time_column)
         )
-        offset = to_offset(window)
+        offset = window_offset(window)
 
         # Auto-detect a sensible min_gap if not provided. Duplicate timestamps
         # (zero intervals) are ignored: a zero median made every interval a gap.

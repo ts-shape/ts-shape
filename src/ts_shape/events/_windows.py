@@ -30,6 +30,7 @@ from ts_shape.events._output import (
     finalize_interval_df,
     finalize_summary_df,
 )
+from ts_shape.utils.frames import window_offset
 
 __all__ = [
     "WINDOW_COLS",
@@ -52,6 +53,15 @@ _RIGHT_LABELED = {"ME", "YE", "QE", "BME", "BYE", "BQE", "W"}
 
 Window: TypeAlias = "str | pd.Timedelta | pd.DateOffset"
 
+# A DST problem raises ValueError on pandas 3; pandas 2 raises pytz's
+# AmbiguousTimeError / NonExistentTimeError, which are not ValueErrors.
+try:  # pragma: no cover - depends on the pandas version
+    from pytz.exceptions import InvalidTimeError as _PytzInvalidTime
+
+    _TZ_ERRORS: tuple[type[Exception], ...] = (ValueError, _PytzInvalidTime)
+except ImportError:  # pragma: no cover
+    _TZ_ERRORS = (ValueError,)
+
 
 def floor_local(times: pd.Series, freq: Window) -> pd.Series:
     """``times.dt.floor(freq)`` that also works across a DST change.
@@ -71,7 +81,7 @@ def floor_local(times: pd.Series, freq: Window) -> pd.Series:
     """
     try:
         return times.dt.floor(freq)
-    except ValueError:
+    except _TZ_ERRORS:
         if times.dt.tz is None:
             raise
     is_dst = times.map(lambda t: bool(t.dst()) if pd.notna(t) else False)
@@ -92,7 +102,7 @@ def _right_labeled(window: Window) -> bool:
 
 
 def _step(window: Window) -> Any:
-    return to_offset(window) if isinstance(window, str) else window
+    return window_offset(window) if isinstance(window, str) else window
 
 
 def window_bounds(labels: pd.Series, window: Window) -> tuple[pd.Series, pd.Series]:

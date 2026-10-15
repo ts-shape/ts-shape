@@ -2,12 +2,12 @@ import logging
 from typing import Any, Literal, overload
 
 import pandas as pd
-from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._compat import warn_dict_return
 from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.frames import window_offset
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class BottleneckDetectionEvents(Base):
             station uuid), utilization_pct.
         """
         rows: list[dict[str, Any]] = []
-        offset = to_offset(window)
+        offset = window_offset(window)
 
         for uid in station_uuids:
             station = self.dataframe[self.dataframe["uuid"] == uid].copy()

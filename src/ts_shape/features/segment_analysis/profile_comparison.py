@@ -2,7 +2,7 @@ import logging
 
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import fcluster, linkage
+from scipy.cluster.hierarchy import cut_tree, fcluster, linkage
 from scipy.spatial.distance import pdist, squareform
 
 from ts_shape.errors import ColumnNotFoundError
@@ -168,7 +168,10 @@ class ProfileComparison(Base):
         if distance_threshold is not None:
             clusters = fcluster(Z, t=distance_threshold, criterion="distance")
         else:
-            clusters = fcluster(Z, t=n_clusters, criterion="maxclust")
+            # cut_tree, not fcluster(criterion="maxclust"): the latter can
+            # return fewer clusters than asked on some SciPy builds.
+            k = max(1, min(int(n_clusters), len(labels)))
+            clusters = cut_tree(Z, n_clusters=k).ravel() + 1
 
         return pd.DataFrame({"label": labels, "cluster": clusters.astype(int)})
 

@@ -26,6 +26,8 @@ from typing import Any, TypeVar
 
 import pandas as pd
 from pandas.api import types as ptypes
+from pandas.tseries.frequencies import to_offset
+from pandas.tseries.offsets import Tick
 
 from ts_shape.errors import ColumnNotFoundError
 from ts_shape.utils.normalize import normalize_signal_frame
@@ -36,6 +38,7 @@ __all__ = [
     "same_time_axis",
     "localize_like",
     "signal_frame_input",
+    "window_offset",
 ]
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -199,3 +202,23 @@ def signal_frame_input(
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+def window_offset(window: Any) -> Any:
+    """The pandas offset of ``window``, with ``"D"`` as a calendar day.
+
+    pandas 3 reads ``"1D"`` as a calendar day (23 h or 25 h on a DST
+    change); pandas 2 reads it as a fixed 24 h. Window ends are computed the
+    pandas-3 way on both, so a daily window on a DST day has its real length.
+
+    Args:
+        window: Offset string (``"1h"``, ``"1D"``, ``"MS"``) or offset.
+
+    Returns:
+        A pandas offset: ``pd.DateOffset(days=n)`` for a day frequency, else
+        ``to_offset(window)``.
+    """
+    offset = to_offset(window)
+    if isinstance(offset, Tick) and offset.rule_code == "D":
+        return pd.DateOffset(days=offset.n)
+    return offset

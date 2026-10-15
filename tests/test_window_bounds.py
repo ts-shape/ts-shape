@@ -48,8 +48,10 @@ def test_floor_local_across_fall_back_keeps_each_offset():
             "Europe/Berlin"
         )
     )
-    with pytest.raises(ValueError):
-        t.dt.floor("1h")  # what floor_local replaces
+    from ts_shape.events._windows import _TZ_ERRORS
+
+    with pytest.raises(_TZ_ERRORS):
+        t.dt.floor("1h")  # what floor_local replaces (pytz error on pandas 2)
     out = floor_local(t, "1h")
     assert out.iloc[1] == pd.Timestamp("2024-10-27 02:00+02:00")
     assert out.iloc[3] == pd.Timestamp("2024-10-27 02:00+01:00")

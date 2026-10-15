@@ -4,13 +4,13 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from pandas.tseries.frequencies import to_offset
 from scipy import stats
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
+from ts_shape.utils.frames import window_offset
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,7 @@ class CapabilityTrendingEvents(Base):
             if n < 2:
                 continue
 
-            usl, lsl = self._resolve_spec_limits(ts, ts + to_offset(window))
+            usl, lsl = self._resolve_spec_limits(ts, ts + window_offset(window))
             if np.isnan(usl) or np.isnan(lsl):
                 continue
 
@@ -426,7 +426,7 @@ class CapabilityTrendingEvents(Base):
             if n < 2:
                 continue
 
-            usl, lsl = self._resolve_spec_limits(ts, ts + to_offset(window))
+            usl, lsl = self._resolve_spec_limits(ts, ts + window_offset(window))
             if np.isnan(usl) or np.isnan(lsl):
                 continue
 

@@ -27,7 +27,6 @@ from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd
-from pandas.tseries.frequencies import to_offset
 
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.counters import counter_increments, counter_per_window
@@ -36,6 +35,7 @@ from ts_shape.utils.frames import (
     localize_like,
     require_columns,
     same_time_axis,
+    window_offset,
 )
 from ts_shape.utils.normalize import normalize_signal_frame
 from ts_shape.utils.shifts import DEFAULT_SHIFTS
@@ -416,7 +416,7 @@ def windows(
     """
     t0, t1 = _localize(pd.Timestamp(start), tz), _localize(pd.Timestamp(end), tz)
     t0, t1 = _same_tz(t0, t1)
-    offset = to_offset(freq)
+    offset = window_offset(freq)
     if t0 >= t1:
         starts = pd.DatetimeIndex([], tz=t0.tz)
     else:

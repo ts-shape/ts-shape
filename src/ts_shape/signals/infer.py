@@ -91,7 +91,14 @@ def parse_times(values: pd.Series) -> pd.Series:
     ):
         return pd.to_datetime(values.astype(object))
     try:
-        return pd.to_datetime(values, errors="coerce")
+        with warnings.catch_warnings():
+            # pandas 2 returns mixed offsets as objects with a FutureWarning;
+            # pandas 3 raises. Both end in the UTC conversion below.
+            warnings.simplefilter("ignore", FutureWarning)
+            parsed = pd.to_datetime(values, errors="coerce")
+        if pd.api.types.is_datetime64_any_dtype(parsed.dtype):
+            return parsed
+        raise ValueError("mixed UTC offsets")
     except (TypeError, ValueError):
         warnings.warn(
             f"time column {values.name!r} mixes UTC offsets; times are "
@@ -178,7 +185,7 @@ def infer_spec(
     require_columns(group, (time_column,), where="infer_spec")
     notes: dict[str, str] = {}
     g = group.sort_values(time_column)
-    times = pd.to_datetime(g[time_column]).dropna()
+    times = parse_times(g[time_column]).dropna()
     tz = str(times.dt.tz) if getattr(times.dt, "tz", None) is not None else None
     period, cv = _interval_stats(times)
 

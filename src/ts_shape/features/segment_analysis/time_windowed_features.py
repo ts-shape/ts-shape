@@ -7,7 +7,7 @@ from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
 from ts_shape.features.segment_analysis.segment_processor import ALL_METRICS
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import renamed_kwargs
-from ts_shape.utils.frames import as_datetime
+from ts_shape.utils.frames import as_datetime, window_offset
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ class TimeWindowedFeatureTable(Base):
             return empty
         result.columns = [*leading, *result.columns[len(leading) :]]
         result["start"] = result["time_window"]
-        result["end"] = result["time_window"] + pd.tseries.frequencies.to_offset(window)
+        result["end"] = result["time_window"] + window_offset(window)
         result["duration_seconds"] = (
             (result["end"] - result["start"]).dt.total_seconds().astype("float64")
         )
