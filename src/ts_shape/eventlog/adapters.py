@@ -12,6 +12,7 @@ for the few detectors whose frame layout does not fit any standard shape.
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import uuid as _uuid
 import warnings
 from collections.abc import Callable, Mapping
@@ -28,7 +29,13 @@ from ..utils.coerce import to_numeric_checked
 from ..utils.deprecation import renamed_kwargs
 from . import schema
 from .model import EventLog
-from .taxonomy import LabelRule, render_activity, resolve, template_fields
+from .taxonomy import (
+    LabelRule,
+    _is_missing,
+    render_activity,
+    resolve,
+    template_fields,
+)
 
 # ----------------------------------------------------------------------------
 # Registry of optional per-method overrides
@@ -152,6 +159,110 @@ def _stable(value: object) -> str:
     return str(value)
 
 
+_UNITS_PER_SECOND = {"s": 1, "ms": 10**3, "us": 10**6, "ns": 10**9}
+
+
+def _stable_datetimes(values: pd.Series) -> list[str] | None:
+    """:func:`_stable` of every cell of a datetime64 column, vectorized.
+
+    ``Timestamp.isoformat()`` in UTC: no fraction for whole seconds, else
+    six digits (nine with a sub-microsecond part), then ``+00:00``. Returns
+    None when the column falls outside what is rendered here (non-standard
+    unit, years outside 1000-9999); the caller then renders cell by cell.
+    """
+    if isinstance(values.dtype, pd.DatetimeTZDtype):
+        values = values.dt.tz_convert("UTC").dt.tz_localize(None)
+    arr = values.to_numpy()
+    unit = np.datetime_data(arr.dtype)[0]
+    per_second = _UNITS_PER_SECOND.get(unit)
+    if per_second is None:
+        return None
+    nat = np.isnat(arr)
+    ticks = arr.view("i8")
+    seconds = np.floor_divide(ticks, per_second)
+    frac_ns = (ticks - seconds * per_second) * (10**9 // per_second)
+    whole = np.where(nat, 0, seconds).astype("datetime64[s]")
+    years = whole.astype("datetime64[Y]").astype(np.int64) + 1970
+    if len(arr) and ((years < 1000) | (years > 9999))[~nat].any():
+        return None
+    base = np.datetime_as_string(whole, unit="s").tolist()
+    micro = (frac_ns // 1000).tolist()
+    nano = (frac_ns % 1000).tolist()
+    out = []
+    for b, is_nat, us, ns in zip(base, nat.tolist(), micro, nano, strict=True):
+        if is_nat:
+            out.append("\x00")
+        elif ns:
+            out.append(f"{b}.{us:06d}{ns:03d}+00:00")
+        elif us:
+            out.append(f"{b}.{us:06d}+00:00")
+        else:
+            out.append(f"{b}+00:00")
+    return out
+
+
+def _stable_column(values: pd.Series) -> list[str]:
+    """``[_stable(v) for v in values.tolist()]``, vectorized per dtype.
+
+    Columns whose rendering is not reproduced here exactly (mixed objects,
+    extension types other than strings, timedeltas) are rendered cell by
+    cell with :func:`_stable`, so every column renders exactly as before.
+    """
+    dtype = values.dtype
+    if isinstance(dtype, np.dtype):
+        if dtype.kind == "b":
+            return ["True" if v else "False" for v in values.to_numpy().tolist()]
+        if dtype.kind in "iu":
+            out: list[str] = values.to_numpy().astype(str).tolist()
+            return out
+        if dtype.kind == "f":
+            arr = values.to_numpy(dtype=np.float64)
+            nan = np.isnan(arr)
+            with np.errstate(invalid="ignore"):
+                integral = np.isfinite(arr) & (arr == np.floor(arr))
+                integral &= np.abs(arr) < 2.0**63
+            as_int = np.where(integral, arr, 0.0).astype(np.int64).astype(str)
+            return [
+                "\x00" if is_nan else (i if is_int else repr(f))
+                for f, is_nan, is_int, i in zip(
+                    arr.tolist(),
+                    nan.tolist(),
+                    integral.tolist(),
+                    as_int.tolist(),
+                    strict=True,
+                )
+            ]
+    if dtype.kind == "M":
+        rendered = _stable_datetimes(values)
+        if rendered is not None:
+            return rendered
+    elif dtype == np.dtype(object) or isinstance(dtype, pd.StringDtype):
+        if pd.api.types.infer_dtype(values, skipna=True) in ("string", "empty"):
+            # Text and missing markers only: str(v) is v itself.
+            missing = values.isna().to_numpy().tolist()
+            return [
+                "\x00" if m else str(v)
+                for v, m in zip(values.tolist(), missing, strict=True)
+            ]
+    return [_stable(v) for v in values.tolist()]
+
+
+def _uuid5_strings(names: list[str]) -> list[str]:
+    """``str(uuid.uuid5(_NAMESPACE, name))`` for each name, without building
+    ``UUID`` objects (the same SHA-1 digest, version and variant bits)."""
+    prefix = _NAMESPACE.bytes
+    sha1 = hashlib.sha1
+    variant = "89ab89ab89ab89ab"  # (nibble & 0x3) | 0x8, indexed by nibble
+    out = []
+    for name in names:
+        h = sha1(prefix + name.encode("utf-8")).hexdigest()
+        out.append(
+            f"{h[:8]}-{h[8:12]}-5{h[13:16]}-"
+            f"{variant[int(h[16], 16)]}{h[17:20]}-{h[20:32]}"
+        )
+    return out
+
+
 def _content_eids(
     detector: str,
     frame: pd.DataFrame,
@@ -168,31 +279,34 @@ def _content_eids(
     detector on two machines never collides, re-running gives the same ids,
     and concatenating identical logs in any row order deduplicates. Rows that
     are identical in every column get an occurrence suffix.
+
+    Every cell is rendered with :func:`_stable` (one column at a time, see
+    :func:`_stable_column`); the hash input of a row is
+    ``detector|source|start|end|activity|<col>=<value>|...`` with the payload
+    columns in sorted order, and the id is ``"e-" + uuid5(namespace, key)``.
     """
     n = len(frame)
     payload_cols = sorted(str(c) for c in frame.columns if c not in time_cols)
-    rendered = [[f"{c}={_stable(v)}" for v in frame[c].tolist()] for c in payload_cols]
+    rendered = [[f"{c}={v}" for v in _stable_column(frame[c])] for c in payload_cols]
     source = (
-        [_stable(v) for v in frame["source_uuid"].tolist()]
+        _stable_column(frame["source_uuid"])
         if "source_uuid" in frame.columns
         else ["\x00"] * n
     )
-    starts = [_stable(v) for v in ts_start.tolist()]
-    ends = [_stable(v) for v in ts_end.tolist()]
+    starts = _stable_column(ts_start)
+    ends = _stable_column(ts_end)
     acts = [str(a) for a in activities.tolist()]
+    head = detector + "|"
+    keys = [
+        head + "|".join(parts) for parts in zip(source, starts, ends, acts, *rendered)
+    ]
     seen: dict[str, int] = {}
-    out: list[str] = []
-    for i in range(n):
-        key = "|".join(
-            [detector, source[i], starts[i], ends[i], acts[i]]
-            + [col[i] for col in rendered]
-        )
+    for i, key in enumerate(keys):
         k = seen.get(key, 0)
         seen[key] = k + 1
         if k:
-            key = f"{key}|#{k}"
-        out.append("e-" + str(_uuid.uuid5(_NAMESPACE, key)))
-    return pd.Series(out, dtype="string")
+            keys[i] = f"{key}|#{k}"
+    return pd.Series(["e-" + u for u in _uuid5_strings(keys)], dtype="string")
 
 
 class MissingCanonicalColumn(ColumnNotFoundError, KeyError):
@@ -233,6 +347,83 @@ def _to_utc_ts(value: object) -> pd.Timestamp | pd._libs.tslibs.nattype.NaTType:
     else:
         ts = ts.tz_convert("UTC")
     return ts
+
+
+def _to_utc_column(values: pd.Series) -> pd.Series:
+    """``values.apply(_to_utc_ts)``, vectorized for datetime64 columns.
+
+    Naive times are localized to UTC, aware ones converted (same dtype and
+    unit as the element-wise path). Other columns (text, objects) and an
+    all-NaT column go through :func:`_to_utc_ts` element by element.
+    """
+    dtype = values.dtype
+    if dtype.kind == "M" and values.notna().any():
+        if isinstance(dtype, pd.DatetimeTZDtype):
+            return values.dt.tz_convert("UTC")
+        return values.dt.tz_localize("UTC")
+    return values.apply(_to_utc_ts)
+
+
+def _template_parts(template: str) -> list[tuple[bool, str]]:
+    """The scan of :func:`render_activity`: ``(is_field, text)`` in order."""
+    parts: list[tuple[bool, str]] = []
+    i = 0
+    while i < len(template):
+        j = template.find("{", i)
+        if j == -1:
+            parts.append((False, template[i:]))
+            break
+        parts.append((False, template[i:j]))
+        k = template.find("}", j + 1)
+        if k == -1:
+            parts.append((False, template[j:]))
+            break
+        parts.append((True, template[j + 1 : k]))
+        i = k + 1
+    return parts
+
+
+def _render_activities(rule: LabelRule, frame: pd.DataFrame) -> pd.Series:
+    """``frame.apply(lambda r: render_activity(rule, r), axis=1)`` as strings,
+    rendered one template field (column) at a time.
+
+    A row handed to ``apply`` holds the frame's values cast to one common
+    dtype (``frame.values``): an integer next to a float column renders as
+    ``5.0``. The same array is used here, so the text is identical. Frames
+    whose rows would be extension arrays or datetimes, or with duplicate
+    column names, take the row-wise path.
+    """
+    template = rule.template
+    n = len(frame)
+    if "{" not in template:
+        return pd.Series([template] * n, index=frame.index, dtype="string")
+    parts = _template_parts(template)
+    fields = {name for is_field, name in parts if is_field}
+    values = None
+    if any(f in frame.columns for f in fields):
+        row_wise = not frame.columns.is_unique or isinstance(
+            frame.iloc[0].dtype, pd.api.extensions.ExtensionDtype
+        )
+        values = None if row_wise else frame.values
+        if values is None or values.dtype.kind in "mM":
+            return frame.apply(lambda r: render_activity(rule, r), axis=1).astype(
+                "string"
+            )
+    rendered: dict[str, list[str]] = {}
+    for name in fields:
+        if values is None or name not in frame.columns:
+            rendered[name] = ["unknown"] * n
+            continue
+        column = values[:, frame.columns.get_loc(name)]
+        rendered[name] = [
+            "unknown" if v is None or _is_missing(v) else str(v) for v in column
+        ]
+    pieces = [rendered[name] if is_field else [name] * n for is_field, name in parts]
+    return pd.Series(
+        ["".join(row) for row in zip(*pieces, strict=True)],
+        index=frame.index,
+        dtype="string",
+    )
 
 
 def _classify_severity(value: object) -> str | None:
@@ -536,8 +727,8 @@ def adapt(
     # timestamps are read as UTC.
     if rule.shape in ("interval", "summary"):
         _require_columns(frame, (COL_START, COL_END), rule.shape, detector)
-        ts_end = frame[COL_END].apply(_to_utc_ts)
-        ts_start = frame[COL_START].apply(_to_utc_ts)
+        ts_end = _to_utc_column(frame[COL_END])
+        ts_start = _to_utc_column(frame[COL_START])
         time_cols_used = {COL_START, COL_END}
         backwards = (ts_end < ts_start).fillna(False).astype(bool)
         if backwards.any():
@@ -563,7 +754,7 @@ def adapt(
         ).dt.total_seconds()
     elif rule.shape == "point":
         _require_columns(frame, (COL_SYSTIME,), rule.shape, detector)
-        ts_end = frame[COL_SYSTIME].apply(_to_utc_ts)
+        ts_end = _to_utc_column(frame[COL_SYSTIME])
         ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
         duration = pd.Series([float("nan")] * n, dtype="float64")
         time_cols_used = {COL_SYSTIME}
@@ -591,9 +782,7 @@ def adapt(
             DataQualityWarning,
             stacklevel=caller_stacklevel(),
         )
-    activities = frame.apply(lambda r: render_activity(rule, r), axis=1).astype(
-        "string"
-    )
+    activities = _render_activities(rule, frame)
 
     # Content-based event ids: same row content -> same id, independent of
     # row position.
