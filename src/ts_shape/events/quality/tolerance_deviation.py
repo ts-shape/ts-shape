@@ -303,7 +303,26 @@ class ToleranceDeviationEvents(Base):
             holds the measured value), is_delta, deviation_abs,
             deviation_pct and severity.
         """
-        df = self.dataframe.copy()  # Inherited from Base class
+        # Only the actual signal and its tolerance signals take part: every
+        # event row is an actual-signal row, and the tolerance in force at a
+        # row is the last setting before it in time order, which rows of
+        # other signals never change. Narrowing first keeps the copy, the
+        # sort and the forward fill below proportional to those signals
+        # instead of the whole frame. (The fill stays positional rather than
+        # a merge_asof on systime: a setting stamped at the same instant but
+        # listed after a measurement does not apply to it.)
+        signals = [
+            u
+            for u in (
+                self.actual_uuid,
+                self.tolerance_uuid,
+                self.upper_tolerance_uuid,
+                self.lower_tolerance_uuid,
+            )
+            if u is not None
+        ]
+        source = self.dataframe  # Inherited from Base class
+        df = source[source["uuid"].isin(signals)].copy()
 
         # Sort chronologically so the forward-fill below hands each measurement
         # the tolerance most recently set *before* it (a descending sort made
