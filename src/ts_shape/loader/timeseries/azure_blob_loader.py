@@ -3,7 +3,7 @@ import warnings
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from io import BytesIO
-from typing import Any, TypeVar
+from typing import Any, Self, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -236,7 +236,7 @@ class AzureBlobParquetLoader:
         endpoint_suffix: str = "blob.core.windows.net",
         prefix: str = "",
         max_workers: int = 8,
-    ) -> "AzureBlobParquetLoader":
+    ) -> Self:
         """
         Construct a loader using AAD credentials with an account name.
 

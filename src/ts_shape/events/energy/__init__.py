@@ -17,7 +17,7 @@ Input units:
 
         from ts_shape.transform.calculator.power_integration import PowerIntegrator
 
-        deltas = PowerIntegrator.to_energy_deltas(power_df, freq="1h", max_gap="15min")
+        deltas = PowerIntegrator.to_energy_deltas(power_df, window="1h", max_gap="15min")
         EnergyConsumptionEvents(deltas).consumption_by_window(uuid, window="1h")
 
 Classes:

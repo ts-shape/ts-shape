@@ -21,7 +21,7 @@ from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.frames import require_columns
 from ts_shape.utils.normalize import _is_extension, _plain
 
-__all__ = ["infer_specs", "infer_spec"]
+__all__ = ["infer_specs", "infer_spec", "parse_times", "signal_groups"]
 
 _VALUE_COLUMNS = ("value_double", "value_integer", "value_bool", "value_string")
 
@@ -92,21 +92,20 @@ def parse_times(values: pd.Series) -> pd.Series:
         return pd.to_datetime(values.astype(object))
     try:
         with warnings.catch_warnings():
-            # pandas 2 returns mixed offsets as objects with a FutureWarning;
-            # pandas 3 raises. Both end in the UTC conversion below.
+            # pandas 2.x warns about mixed offsets and returns objects;
+            # pandas 3 raises. Both fall through to the UTC parse below.
             warnings.simplefilter("ignore", FutureWarning)
             parsed = pd.to_datetime(values, errors="coerce")
         if pd.api.types.is_datetime64_any_dtype(parsed.dtype):
             return parsed
-        raise ValueError("mixed UTC offsets")
     except (TypeError, ValueError):
-        warnings.warn(
-            f"time column {values.name!r} mixes UTC offsets; times are "
-            "converted to UTC",
-            DataQualityWarning,
-            stacklevel=caller_stacklevel(),
-        )
-        return pd.to_datetime(values, errors="coerce", utc=True, format="mixed")
+        pass
+    warnings.warn(
+        f"time column {values.name!r} mixes UTC offsets; times are converted to UTC",
+        DataQualityWarning,
+        stacklevel=caller_stacklevel(),
+    )
+    return pd.to_datetime(values, errors="coerce", utc=True, format="mixed")
 
 
 def signal_groups(

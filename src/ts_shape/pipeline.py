@@ -53,7 +53,7 @@ Example::
     pipe = (
         Pipeline(name="sensor-quality")
         .transform(IntegerCalc, "scale_column",
-                   column_name="value_double", factor=0.1)
+                   value_column="value_double", factor=0.1)
         .detect(OutlierDetectionEvents, "detect_outliers_zscore",
                 name="outliers", value_column="value_double", threshold=3.0)
     )

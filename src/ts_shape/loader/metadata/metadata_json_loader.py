@@ -2,7 +2,7 @@ import json
 import logging
 import warnings
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Self
 
 import pandas as pd
 
@@ -46,7 +46,7 @@ class MetadataJsonLoader:
         self.df = self._to_dataframe()
 
     @classmethod
-    def from_file(cls, filepath: str, *, strict: bool = True) -> "MetadataJsonLoader":
+    def from_file(cls, filepath: str, *, strict: bool = True) -> Self:
         """
         Create a loader from a JSON file on disk.
 
@@ -62,7 +62,7 @@ class MetadataJsonLoader:
         return cls(data, strict=strict)
 
     @classmethod
-    def from_str(cls, json_str: str, *, strict: bool = True) -> "MetadataJsonLoader":
+    def from_str(cls, json_str: str, *, strict: bool = True) -> Self:
         """
         Create a loader from a JSON string.
 
