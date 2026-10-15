@@ -1,6 +1,6 @@
 """Reset-aware behavior of LineThroughputEvents.count_parts."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 from ts_shape.events.production import LineThroughputEvents

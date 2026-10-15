@@ -1,6 +1,6 @@
 """Theme D: time-weighted utilisation for bottleneck + duty cycle."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.production.bottleneck_detection import BottleneckDetectionEvents
 from ts_shape.events.production.duty_cycle import DutyCycleEvents

@@ -1,6 +1,6 @@
 """Tests for UnitConverter (pint-backed engineering unit conversion)."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 import ts_shape

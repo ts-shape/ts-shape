@@ -6,7 +6,7 @@ downtime/micro-stop/duty-cycle analyses report nothing. The default
 'next_change' closes each interval at the following transition.
 """
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.production.duty_cycle import DutyCycleEvents
 from ts_shape.events.production.long_downtime_events import LongDowntimeEvents

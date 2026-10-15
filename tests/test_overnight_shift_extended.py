@@ -1,6 +1,6 @@
 """Overnight production_day extended to scrap/rework/quality/operator."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.production.quality_tracking import QualityEvents
 from ts_shape.events.production.scrap_tracking import ScrapEvents

@@ -14,7 +14,7 @@ Items:
 
 from datetime import timedelta
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 from ts_shape.events.production import MultiProcessTraceabilityEvents

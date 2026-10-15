@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 import ts_shape

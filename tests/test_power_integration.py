@@ -4,8 +4,8 @@ Every case here is hand-computable: the expected kWh is stated in the
 docstring or comment so a failure points at the physics, not at a fixture.
 """
 
-import pandas as pd  # type: ignore
-import pytest  # type: ignore
+import pandas as pd
+import pytest
 
 from ts_shape.events.energy.consumption_analysis import EnergyConsumptionEvents
 from ts_shape.transform.calculator.power_integration import PowerIntegrator

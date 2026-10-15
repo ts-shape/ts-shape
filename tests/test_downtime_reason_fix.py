@@ -1,6 +1,6 @@
 """Regression test: downtime_by_reason must not book running time as downtime."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.production.downtime_tracking import DowntimeEvents
 

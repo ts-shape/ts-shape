@@ -1,4 +1,4 @@
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.transform.filter.datetime_filter import DateTimeFilter
 from ts_shape.transform.filter.string_filter import StringFilter

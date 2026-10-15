@@ -1,6 +1,6 @@
 """Tests for the canonical event-output helpers in ``ts_shape.events._output``."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 from ts_shape.events._output import (

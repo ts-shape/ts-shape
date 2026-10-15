@@ -1,4 +1,4 @@
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.features.stats.boolean_stats import BooleanStatistics
 

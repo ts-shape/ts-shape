@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 from ts_shape.events.production import (

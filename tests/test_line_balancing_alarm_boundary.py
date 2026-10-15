@@ -1,6 +1,6 @@
 """Theme E: line-balancing missing-station denominator and alarm boundary."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.production.alarm_management import AlarmManagementEvents
 from ts_shape.events.production.line_balancing import LineBalancingEvents

@@ -1,6 +1,6 @@
 """Tests for the shift assignment / production-day helper."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.utils.shifts import (
     DEFAULT_SHIFTS,
@@ -47,7 +47,7 @@ def test_production_dates_day_only_unchanged():
 # Vectorized (Series) path
 # ---------------------------------------------------------------------------
 
-import numpy as np  # type: ignore  # noqa: E402
+import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
 _ODD_SHIFTS = {

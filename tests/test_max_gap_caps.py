@@ -1,6 +1,6 @@
 """Theme C: max-gap caps exclude durations that span data gaps / stoppages."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.production.cycle_time_tracking import CycleTimeEvents
 from ts_shape.events.production.downtime_tracking import DowntimeEvents

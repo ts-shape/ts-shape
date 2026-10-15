@@ -1,6 +1,6 @@
 """OEE-related gap fixes: handle_resets threading, max_gap, availability proxy."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.production.line_throughput import LineThroughputEvents
 from ts_shape.events.production.oee_calculator import OEEEvents
