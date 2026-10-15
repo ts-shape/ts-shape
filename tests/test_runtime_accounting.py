@@ -1,6 +1,6 @@
 """Tests for RuntimeAccountingEvents (operating-hours accounting)."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 import ts_shape

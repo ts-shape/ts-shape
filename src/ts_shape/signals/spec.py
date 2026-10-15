@@ -106,7 +106,7 @@ class SignalSpec:
         if self.tz is not None:
             try:
                 pd.Timestamp(0).tz_localize(self.tz)
-            except Exception as exc:  # noqa: BLE001 -- any parse failure
+            except Exception as exc:
                 raise ValueError(
                     f"tz must be a timezone name such as 'Europe/Berlin', "
                     f"got {self.tz!r}"

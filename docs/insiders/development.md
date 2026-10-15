@@ -12,12 +12,14 @@ pytest
 ## Lint and type check
 
 ```bash
-black --check src/ tests/   # formatting
-ruff check src/ tests/      # linting
-mypy                        # type checking (configured in pyproject.toml)
+black --check src tests examples scripts   # formatting
+ruff check src tests examples scripts      # linting
+mypy                                       # type checking (configured in pyproject.toml)
+pre-commit install                         # optional: black and ruff on every commit
 ```
 
-All three block CI. mypy runs on the whole tree with
+The `[dev]` extra pins black, ruff and mypy; CI installs it, and the
+pre-commit hook revs match the same versions. All three block CI. mypy checks `src/ts_shape` with
 `disallow_untyped_defs`, `disallow_incomplete_defs`, `warn_return_any` and
 `warn_unused_ignores` and no exempt modules, so every function needs full
 annotations. pandas results are typed `Any`; where a function returns one
@@ -49,10 +51,15 @@ upload by hand.
 
 Two GitHub Actions workflows:
 
-- `.github/workflows/ci.yml` runs on every pull request and on every push to a
-  branch other than `main`. It lints (black, ruff, mypy), builds the docs with
-  `mkdocs build --strict`, runs the tests on Python 3.11 to 3.14, and builds
-  the package (`twine check --strict`, no `0.0.0` version, the wheel imports).
+- `.github/workflows/ci.yml` runs on every pull request commit (once; there is
+  no separate push trigger) and can be started by hand. It lints (black, ruff,
+  mypy), builds the docs with `mkdocs build --strict`, runs the tests on
+  Python 3.11 to 3.14 and once with every core dependency pinned to its
+  declared minimum (`min-deps`), and builds the package (`twine check
+  --strict`, no `0.0.0` version, the wheel imports). A non-blocking `scan` job
+  runs `scripts/scan_deprecations.sh` (tests with DeprecationWarning as an
+  error, mypy `[deprecated]`, pip-audit, outdated packages) and uploads the
+  reports.
 - `.github/workflows/release.yml` runs on every push to `main`:
   1. it runs the full CI workflow;
   2. it decides the version (`.github/scripts/next_version.py`);
@@ -73,22 +80,15 @@ Release-As: 0.1.0        # an exact version, higher than the last release
 A manual run of the Release workflow (Actions, Release Pipeline, Run workflow)
 takes the same choice as inputs.
 
-One-time repository settings: allow "Read and write permissions" for GitHub
-Actions (Settings, Actions, General, Workflow permissions) and set the
-`PYPI_API_TOKEN` secret, or configure PyPI Trusted Publishing for
-`release.yml` and drop the token.
+One-time repository settings: set the `PYPI_API_TOKEN` secret (or configure
+PyPI Trusted Publishing for `release.yml` and drop the token). The workflows
+declare their token permissions per job, so the repository default
+(Settings, Actions, General, Workflow permissions) can stay read-only.
 
-## Requirements (pip-tools)
+## Dependencies
 
-Direct dependencies live in `pyproject.toml`; `requirements.txt` pins the core
-dependencies and is refreshed by Renovate.
-
-```bash
-python -m pip install --upgrade pip-tools
-python scripts/requirements.py compile   # pyproject.toml -> requirements.txt
-python scripts/requirements.py upgrade   # upgrade all pins
-python scripts/requirements.py sync      # make the virtualenv match requirements.txt exactly
-```
-
-Edit dependencies in `pyproject.toml`, not in `requirements.txt`. `sync` uses
-`pip-sync`, which uninstalls everything not listed in `requirements.txt`.
+Dependencies are declared only in `pyproject.toml`: the core ones under
+`[project].dependencies` (with minimum versions; CI tests those floors in the
+`min-deps` job) and the optional ones as extras. There are no requirements
+files; Renovate updates `pyproject.toml`, the pre-commit hooks and the
+GitHub Actions directly.

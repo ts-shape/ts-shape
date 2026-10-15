@@ -38,8 +38,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
-from ts_shape.utils.deprecation import keyword_only
-from ts_shape.utils.normalize import _caller_stacklevel
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +90,9 @@ class MultivariateSPCEvents(Base):
         >>> df.loc[150, "value_double"] += 8  # one disturbed temp sample
         >>> mspc = ts_shape.MultivariateSPCEvents(df, ["temp", "pressure"])
         >>> out = mspc.detect_out_of_control()
-        >>> out[["start", "max_t2", "ucl", "top_contributor"]].round(1)
+        >>> out[["start", "max_t2", "ucl", "top_contributor"]].round(
+        ...     {"max_t2": 1, "ucl": 1}
+        ... )
                         start  max_t2   ucl top_contributor
         0 2025-01-01 01:15:00    56.9  11.5            temp
     """
@@ -138,7 +139,6 @@ class MultivariateSPCEvents(Base):
                 uuid: to_numeric_checked(
                     rows[self.value_column],
                     what=f"{self.value_column!r} of signal {uuid!r}",
-                    stacklevel=6,
                 ),
             }
         ).dropna()
@@ -184,7 +184,7 @@ class MultivariateSPCEvents(Base):
             f"observation(s); at least {p + 2} are needed for {p} variables, "
             "so no T² is computed",
             DataQualityWarning,
-            stacklevel=_caller_stacklevel(),
+            stacklevel=caller_stacklevel(),
         )
         return True
 
@@ -204,9 +204,11 @@ class MultivariateSPCEvents(Base):
         cov = np.cov(ref_x, rowvar=False, ddof=1)
         inv = np.linalg.pinv(cov)
         if np.linalg.matrix_rank(cov) < p:
-            logger.warning(
+            warnings.warn(
                 "reference covariance is singular (constant or collinear "
-                "variables); T² uses the pseudo-inverse"
+                "variables); T² uses the pseudo-inverse",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
             )
         return x, ref, mean, inv
 

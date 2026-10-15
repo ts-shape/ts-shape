@@ -9,7 +9,13 @@ import pandas as pd
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
+from ts_shape.utils.deprecation import (
+    REMOVAL,
+    caller_stacklevel,
+    deprecated_method,
+    keyword_only,
+    renamed_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +59,12 @@ class MultiSensorValidationEvents(Base):
     @property
     def sensor_uuids(self) -> list[str]:
         """Deprecated alias of :attr:`signal_uuids` (read-only)."""
+        warnings.warn(
+            "MultiSensorValidationEvents.sensor_uuids is deprecated, use "
+            f".signal_uuids; the old name will be removed in {REMOVAL}",
+            DeprecationWarning,
+            stacklevel=caller_stacklevel(),
+        )
         return self.signal_uuids
 
     def _build_pivot(self) -> pd.DataFrame:
@@ -321,7 +333,7 @@ class MultiSensorValidationEvents(Base):
                 "window(s) had fewer than three sensors reporting; an outlier "
                 "sensor cannot be identified there and they were skipped.",
                 DataQualityWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         return (
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)

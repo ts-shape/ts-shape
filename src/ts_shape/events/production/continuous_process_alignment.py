@@ -8,8 +8,9 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_increments
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, keyword_only
 
 _SPEED_FACTORS: dict[str, float] = {
     "m/min": 1.0 / 60.0,
@@ -101,9 +102,9 @@ class ContinuousProcessAlignmentEvents(Base):
         self.line_config = line_config
         if ref_uuid is not None:
             warnings.warn(
-                "ref_uuid has no effect and will be removed in the next major release",
+                f"ref_uuid has no effect and will be removed in {REMOVAL}",
                 DeprecationWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         self.ref_uuid = ref_uuid
         self.cut_uuid = cut_uuid
@@ -154,7 +155,9 @@ class ContinuousProcessAlignmentEvents(Base):
         speed = pd.DataFrame(
             {
                 self.time_column: speed_df[self.time_column],
-                "_speed_raw": pd.to_numeric(speed_df[speed_col], errors="coerce")
+                "_speed_raw": to_numeric_checked(
+                    speed_df[speed_col], what=f"speed column {speed_col!r}"
+                )
                 .astype("float64")
                 .to_numpy(),
             }
@@ -375,8 +378,9 @@ class ContinuousProcessAlignmentEvents(Base):
                         else "value_double"
                     )
                     if num_col in counter_df.columns:
-                        counts = pd.to_numeric(
-                            counter_df[num_col], errors="coerce"
+                        counts = to_numeric_checked(
+                            counter_df[num_col],
+                            what=f"counter column {num_col!r}",
                         ).astype("float64")
                         # Missing readings are gaps, not a counter at 0.
                         present = counts.notna().to_numpy()
@@ -400,7 +404,10 @@ class ContinuousProcessAlignmentEvents(Base):
             cut_counts = np.ones(len(length_df), dtype=np.int64)
             if cut_value_column in length_df.columns:
                 cut_lengths = (
-                    pd.to_numeric(length_df[cut_value_column], errors="coerce")
+                    to_numeric_checked(
+                        length_df[cut_value_column],
+                        what=f"cut-length column {cut_value_column!r}",
+                    )
                     .astype("float64")
                     .to_numpy()
                 )
@@ -421,7 +428,10 @@ class ContinuousProcessAlignmentEvents(Base):
                 length_times = pd.DatetimeIndex(pd.to_datetime(length_df[tcol]))
                 idx = length_times.searchsorted(cut_times, side="right") - 1
                 vals = (
-                    pd.to_numeric(length_df[cut_value_column], errors="coerce")
+                    to_numeric_checked(
+                        length_df[cut_value_column],
+                        what=f"cut-length column {cut_value_column!r}",
+                    )
                     .astype("float64")
                     .to_numpy()
                 )
@@ -471,11 +481,11 @@ class ContinuousProcessAlignmentEvents(Base):
                 "material_ref_time and the cut signal must both be tz-aware or "
                 "both be naive."
             )
-        b_i8 = np.maximum.accumulate(bounds.asi8)
+        b_i8 = np.maximum.accumulate(bounds.as_unit("ns").asi8)
         first_of_bound = np.ones(len(b_i8), dtype=bool)
         first_of_bound[1:] = b_i8[1:] != b_i8[:-1]
         uniq_pos = np.flatnonzero(first_of_bound)
-        k = np.searchsorted(b_i8[uniq_pos], mat.asi8, side="left")
+        k = np.searchsorted(b_i8[uniq_pos], mat.as_unit("ns").asi8, side="left")
         assigned = (k < len(uniq_pos)) & ~np.asarray(mat.isna())
         piece_pos = uniq_pos[np.clip(k, 0, len(uniq_pos) - 1)]
 

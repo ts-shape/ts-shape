@@ -1,4 +1,4 @@
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
 

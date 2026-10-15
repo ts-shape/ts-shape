@@ -32,8 +32,7 @@ or `pip install -e ".[dev]"` in a clone.
 |---|---|
 | [`loader_usage_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/loader_usage_demo.py) | Timeseries and metadata from parquet and JSON, combined on `uuid` |
 | [`transform_operations_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/transform_operations_demo.py) | Filters, calculations and time-zone shifts |
-| [`statistics_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/statistics_demo.py) | Basic numeric, string, boolean and timestamp statistics |
-| [`features_statistics_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/features_statistics_demo.py) | Numeric, string, boolean and timestamp statistics, and time-grouped statistics |
+| [`features_statistics_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/features_statistics_demo.py) | Numeric, string, boolean and timestamp statistics (including missing values), feature tables, time-grouped statistics and cycle processing |
 | [`cycle_extractor_enhancements_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/cycle_extractor_enhancements_demo.py) | Cycle extraction, method suggestion and validation |
 | [`context_enricher_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/context_enricher_demo.py) | Enriching signals with descriptions, units, limits and value mappings |
 | [`pipeline_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/pipeline_demo.py) | Transforms and detectors chained in a `Pipeline` |

@@ -6,7 +6,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ class DataHarmonizer(Base):
                 f"Found {dupes.sum()} duplicate (time, uuid) entries; "
                 f"aggregating with '{aggfunc}'.",
                 DataQualityWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         return self._pivot(self.dataframe, aggfunc)
 
@@ -245,7 +245,7 @@ class DataHarmonizer(Base):
                     f"DataHarmonizer.align_asof: {name} {uid!r} not found. "
                     f"Available uuids: {sorted(str(u) for u in present)}",
                     DataQualityWarning,
-                    stacklevel=2,
+                    stacklevel=caller_stacklevel(),
                 )
         left = (
             self.dataframe[self.dataframe[self.uuid_column] == left_uuid][

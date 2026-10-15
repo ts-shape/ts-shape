@@ -9,11 +9,11 @@ import logging
 from typing import Any
 
 import pandas as pd
-from pandas.tseries.frequencies import to_offset
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.frames import window_offset
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -293,7 +293,7 @@ class SignalQualityEvents(Base):
             .set_index(self.time_column)
         )
         expected_td = pd.to_timedelta(expected_freq)
-        offset = to_offset(window)
+        offset = window_offset(window)
 
         counts = sig[self.value_column].resample(window).count()
 

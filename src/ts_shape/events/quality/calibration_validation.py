@@ -306,7 +306,7 @@ class CalibrationValidationEvents(Base):
         events: list[dict[str, Any]] = []
         bias_values = [b[1] for b in biases]
 
-        for i, (ts, bias) in enumerate(biases):
+        for i, (ts, _) in enumerate(biases):
             start = max(0, i - lookback + 1)
             window_biases = bias_values[start : i + 1]
 

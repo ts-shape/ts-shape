@@ -1,7 +1,8 @@
 """Events
 
 Extract events from shaped timeseries across quality, maintenance,
-production, energy, correlation, and supply chain domains.
+production, engineering, energy, correlation, supply chain and development
+domains.
 
 Subpackages:
 - quality: Outlier detection, SPC, tolerance deviation
@@ -11,4 +12,6 @@ Subpackages:
 - supplychain: Inventory monitoring, lead time analysis, demand patterns
 - energy: Consumption analysis, efficiency tracking
 - correlation: Signal correlation, anomaly correlation
+- development: Design of experiments, design space, golden batch, recipe
+  phase adherence, critical parameter ranking
 """

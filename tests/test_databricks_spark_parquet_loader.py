@@ -4,7 +4,7 @@ pyspark is not a dependency, so the Spark read is exercised with a small fake
 session that records what was requested and returns a stub DataFrame.
 """
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 from ts_shape.errors import LoaderError

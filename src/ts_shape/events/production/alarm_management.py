@@ -12,6 +12,7 @@ import pandas as pd
 from ts_shape.events._output import finalize_interval_df
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import (
     deprecated_method,
     keyword_only,
@@ -90,7 +91,7 @@ class AlarmManagementEvents(Base):
             .copy()
             .reset_index(drop=True)
         )
-        s["state"] = s[self.value_column].fillna(False).astype(bool)
+        s["state"] = bool_or_false(s[self.value_column])
         s["group"] = (s["state"] != s["state"].shift()).cumsum()
 
         rows: list[dict[str, Any]] = []
@@ -159,7 +160,7 @@ class AlarmManagementEvents(Base):
             )
 
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["state"] = s[self.value_column].fillna(False).astype(bool)
+        s["state"] = bool_or_false(s[self.value_column])
         s["prev"] = s["state"].shift(fill_value=False)
         # Rising edges = alarm activations
         s["activation"] = s["state"] & ~s["prev"]
@@ -262,7 +263,7 @@ class AlarmManagementEvents(Base):
             )
 
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["state"] = s[self.value_column].fillna(False).astype(bool)
+        s["state"] = bool_or_false(s[self.value_column])
         s["transition"] = (s["state"] != s["state"].shift()).astype(int)
         # First row is not a real transition
         s.iloc[0, s.columns.get_loc("transition")] = 0

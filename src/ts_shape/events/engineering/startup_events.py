@@ -12,7 +12,7 @@ from ts_shape.events._output import (
     finalize_point_df,
 )
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +201,7 @@ class StartupDetectionEvents(Base):
                 "timestamp with the previous sample; their slope is undefined "
                 "and they are not counted as ramping",
                 DataQualityWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         s["slope"] = s["dv"] / s["dt_s"].where(~dup)
         mask = s["slope"] >= float(min_slope)

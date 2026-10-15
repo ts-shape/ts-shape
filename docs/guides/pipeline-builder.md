@@ -75,7 +75,7 @@ result = pipe.run()
 ```
 
 For files, use for example
-`.source(ParquetLoader, "load_by_time_range", base_path=..., start_time=..., end_time=...)`.
+`.source(ParquetLoader, "load_by_time_range", base_path=..., start=..., end=...)`.
 There is at most one source step and it must come first. Passing a DataFrame
 to `run()` of a pipeline with a source raises `TypeError`; a loader error is
 raised as a `RuntimeError` naming step 0.

@@ -47,8 +47,7 @@ from ts_shape.events._output import (
 from ts_shape.signals.primitives import intervals, windows
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
-from ts_shape.utils.normalize import _caller_stacklevel
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -352,21 +351,24 @@ class ReliabilityEvents(Base):
         if len(tbf) < 2:
             return pd.DataFrame(columns=_WEIBULL_COLS)
         beta, eta = np.nan, np.nan
+        fit_error = ""
         if float(np.ptp(tbf)) > 1e-9 * float(tbf.max()):
             data = stats.CensoredData(uncensored=tbf, right=right)
             try:
                 with np.errstate(all="ignore"):
                     beta, _, eta = stats.weibull_min.fit(data, floc=0)
             except (ValueError, RuntimeError, FloatingPointError) as exc:
-                logger.warning("Weibull fit failed: %s", exc)
+                logger.debug("Weibull fit failed: %s", exc)
+                fit_error = f" (the fit failed: {type(exc).__name__}: {exc})"
         beta, eta = float(beta), float(eta)
         ok = bool(np.isfinite(beta) and np.isfinite(eta) and 0 < beta <= _MAX_BETA)
         if not ok:
             warnings.warn(
                 f"weibull_fit: no finite Weibull fit for {len(tbf)} times between "
-                "failures (e.g. all of the same length); the parameters are NaN",
+                "failures (e.g. all of the same length); the parameters are NaN"
+                f"{fit_error}",
                 DataQualityWarning,
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
         return pd.DataFrame(
             [

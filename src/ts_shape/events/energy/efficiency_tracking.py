@@ -5,7 +5,7 @@ import pandas as pd
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.coerce import bool_or_false, to_numeric_checked
 from ts_shape.utils.counters import counter_increments, counter_per_window
 from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.shifts import assign_shift
@@ -314,8 +314,7 @@ class EnergyEfficiencyEvents(Base):
             merged = energy_agg.join(state_agg, how="left").reset_index()
         else:
             state_agg = (
-                state[value_column_state]
-                .fillna(False)
+                bool_or_false(state[value_column_state])
                 .astype(float)
                 .resample(window)
                 .mean()

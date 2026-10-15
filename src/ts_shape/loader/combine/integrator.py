@@ -7,12 +7,13 @@ from pandas.api import types as ptypes
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.loader._utils import empty_signal_frame
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
 
 def _warn(message: str) -> None:
-    warnings.warn(message, DataQualityWarning, stacklevel=4)
+    warnings.warn(message, DataQualityWarning, stacklevel=caller_stacklevel())
 
 
 class DataIntegratorHybrid:

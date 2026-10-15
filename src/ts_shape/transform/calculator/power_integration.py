@@ -45,14 +45,18 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from pandas.tseries.frequencies import to_offset
 from pandas.tseries.offsets import Tick
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
-from ts_shape.utils.deprecation import renamed_kwargs
-from ts_shape.utils.frames import as_datetime, localize_like, require_columns
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
+from ts_shape.utils.frames import (
+    as_datetime,
+    localize_like,
+    require_columns,
+    window_offset,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -219,10 +223,10 @@ class PowerIntegrator(Base):
                 f"{bad_times} value(s) in time column {time_column!r} are not "
                 "timestamps; those rows are skipped.",
                 DataQualityWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
         power = to_numeric_checked(
-            src[value_column], what=f"power column {value_column!r}", stacklevel=4
+            src[value_column], what=f"power column {value_column!r}"
         )
         df = pd.DataFrame(
             {
@@ -290,7 +294,7 @@ class PowerIntegrator(Base):
         minutes to hour 01. Flooring the sample timestamp instead would book
         all ten minutes to hour 00.
         """
-        offset = to_offset(window)
+        offset = window_offset(window)
         start = segments["ts"]
         end = segments["end"]
         if start.empty:
@@ -525,7 +529,7 @@ class PowerIntegrator(Base):
         if parts.empty:
             return _empty_windows(parts["start"].dtype, total)
 
-        offset = to_offset(window)
+        offset = window_offset(window)
 
         def window_seconds(starts: pd.Series) -> pd.Series:
             # Real window length: calendar windows are 23 h / 25 h on DST days.

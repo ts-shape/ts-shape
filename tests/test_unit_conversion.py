@@ -1,6 +1,6 @@
 """Tests for UnitConverter (pint-backed engineering unit conversion)."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 import ts_shape
@@ -45,7 +45,7 @@ def test_convert_column_in_place_on_copy():
             "value_double": [1.0, 2.0, 3.0],
         }
     )
-    out = UnitConverter.convert_column(df, "bar", "psi", column_name="value_double")
+    out = UnitConverter.convert_column(df, "bar", "psi", value_column="value_double")
     assert out["value_double"].iloc[0] == pytest.approx(14.5037, rel=1e-4)
     # The input DataFrame is not mutated.
     assert df["value_double"].iloc[0] == 1.0
@@ -60,7 +60,7 @@ def test_convert_column_to_target_column():
         }
     )
     out = UnitConverter.convert_column(
-        df, "C", "F", column_name="value_double", target_column="value_fahrenheit"
+        df, "C", "F", value_column="value_double", target_column="value_fahrenheit"
     )
     assert "value_fahrenheit" in out.columns
     assert out["value_fahrenheit"].iloc[0] == pytest.approx(50.0)
@@ -79,7 +79,7 @@ def test_unknown_unit_raises_value_error():
 def test_missing_column_raises():
     df = pd.DataFrame({"value_double": [1.0]})
     with pytest.raises(ValueError):
-        UnitConverter.convert_column(df, "bar", "psi", column_name="missing")
+        UnitConverter.convert_column(df, "bar", "psi", value_column="missing")
 
 
 def test_exported_at_top_level():

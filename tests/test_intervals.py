@@ -1,6 +1,6 @@
 """Tests for the shared state-interval helper."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 from ts_shape.utils.intervals import state_intervals

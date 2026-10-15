@@ -3,7 +3,6 @@ import os
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Union
 
 import pandas as pd
 
@@ -16,6 +15,7 @@ from ts_shape.loader._utils import (
     report_failures,
 )
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ class DatabricksUnityEnergyLoader:
                 "Volume is mounted (default '/Volumes/<catalog>/<schema>/<volume>') "
                 "and that catalog/schema/volume/prefix are correct.",
                 LoaderConfigWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
 
     # ── Metadata ────────────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ class DatabricksUnityEnergyLoader:
                 f"Series metadata file {str(path)!r} does not exist; returning "
                 "an empty metadata table.",
                 LoaderConfigWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             return pd.DataFrame(columns=_META_COLUMNS)
         except read_errors() as exc:
@@ -192,8 +192,8 @@ class DatabricksUnityEnergyLoader:
 
     def load_by_time_range(
         self,
-        start: Union[str, "pd.Timestamp"],
-        end: Union[str, "pd.Timestamp"],
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         series_ids: list[str] | None = None,
         *,
         errors: ErrorsMode = "warn",
@@ -222,8 +222,8 @@ class DatabricksUnityEnergyLoader:
     def load_by_series_ids(
         self,
         series_ids: list[str],
-        start: Union[str, "pd.Timestamp"] | None = None,
-        end: Union[str, "pd.Timestamp"] | None = None,
+        start: str | pd.Timestamp | None = None,
+        end: str | pd.Timestamp | None = None,
         *,
         errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
@@ -258,8 +258,8 @@ class DatabricksUnityEnergyLoader:
 
     def stream_by_time_range(
         self,
-        start: Union[str, "pd.Timestamp"],
-        end: Union[str, "pd.Timestamp"],
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         series_ids: list[str] | None = None,
         *,
         errors: ErrorsMode = "warn",
@@ -314,8 +314,8 @@ class DatabricksUnityEnergyLoader:
 
     def fetch_data_as_dataframe(
         self,
-        start: Union[str, "pd.Timestamp"] | None = None,
-        end: Union[str, "pd.Timestamp"] | None = None,
+        start: str | pd.Timestamp | None = None,
+        end: str | pd.Timestamp | None = None,
         series_ids: list[str] | None = None,
         *,
         errors: ErrorsMode = "warn",
@@ -358,8 +358,8 @@ class DatabricksUnityEnergyLoader:
 
     def _day_dirs(
         self,
-        start: Union[str, "pd.Timestamp"],
-        end: Union[str, "pd.Timestamp"],
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
     ) -> list[Path]:
         """Return the day-level directories: <base>/csv/YYYY/MM/DD."""
         dates = pd.date_range(
@@ -389,7 +389,7 @@ class DatabricksUnityEnergyLoader:
                 f"Could not list {str(directory)!r} ({type(exc).__name__}: {exc}); "
                 "its CSV files are skipped.",
                 DataQualityWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
             return []
 
@@ -401,8 +401,8 @@ class DatabricksUnityEnergyLoader:
 
     def _list_csv_by_date_range(
         self,
-        start: Union[str, "pd.Timestamp"],
-        end: Union[str, "pd.Timestamp"],
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         ids_set: set | None,
     ) -> list[Path]:
         """List CSV files across the date range, optionally filtered by ids_set."""
@@ -419,8 +419,8 @@ class DatabricksUnityEnergyLoader:
 
     def _list_csv_open_range(
         self,
-        start: Union[str, "pd.Timestamp"] | None,
-        end: Union[str, "pd.Timestamp"] | None,
+        start: str | pd.Timestamp | None,
+        end: str | pd.Timestamp | None,
         ids_set: set | None,
     ) -> list[Path]:
         """List CSV files in day folders within an optionally open date range."""
@@ -443,7 +443,7 @@ class DatabricksUnityEnergyLoader:
         return paths
 
     @staticmethod
-    def _day_of_path(path: Path, csv_root: Path) -> "pd.Timestamp | None":
+    def _day_of_path(path: Path, csv_root: Path) -> pd.Timestamp | None:
         """Return the ``YYYY/MM/DD`` day folder of ``path``, or None if off-layout."""
         try:
             parts = path.relative_to(csv_root).parts
@@ -524,7 +524,7 @@ class DatabricksUnityEnergyLoader:
                 continue
             if not df.empty:
                 frames.append(df)
-        report_failures(failures, what="CSV file(s)", errors=errors, stacklevel=4)
+        report_failures(failures, what="CSV file(s)", errors=errors)
 
         if not frames:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)

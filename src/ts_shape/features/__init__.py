@@ -126,6 +126,13 @@ Classes:
   - detect_changes: Track metric shifts across consecutive segments.
   - find_similar_pairs: Find similar (UUID, segment) pairs across all data.
 
+- TimeWindowedFeatureTable: Statistical metrics per UUID within fixed time windows.
+  - compute_long: One row per window x UUID (x segment).
+  - compute: Wide table, one row per window (x segment).
+
+- DescriptiveFeatures: Descriptive statistics per UUID, by value type.
+  - compute: Overall and per-column statistics as a nested dict or a DataFrame.
+
 - FeatureMatrixExporter: Convert long-format timeseries to wide ML-ready feature matrices.
   - to_feature_matrix: Pivot by uuid × value column × agg into {uuid}__{col}__{agg} columns.
     Supports an optional group_column (cycle, batch, segment) as row index.
@@ -141,13 +148,18 @@ _CLASSES = {
     "CrossSignalAnalytics": "ts_shape.features.cross_signal",
     "CycleDataProcessor": "ts_shape.features.cycles.cycle_processor",
     "CycleExtractor": "ts_shape.features.cycles.cycles_extractor",
+    "DescriptiveFeatures": "ts_shape.features.stats.feature_table",
     "FeatureMatrixExporter": "ts_shape.features.export",
     "NumericStatistics": "ts_shape.features.stats.numeric_stats",
+    "PatternRecognition": "ts_shape.features.pattern_recognition",
     "ProfileComparison": "ts_shape.features.segment_analysis.profile_comparison",
     "SegmentExtractor": "ts_shape.features.segment_analysis.segment_extractor",
     "SegmentProcessor": "ts_shape.features.segment_analysis.segment_processor",
     "StringStatistics": "ts_shape.features.stats.string_stats",
     "TimeGroupedStatistics": "ts_shape.features.time_stats.time_stats_numeric",
+    "TimeWindowedFeatureTable": (
+        "ts_shape.features.segment_analysis.time_windowed_features"
+    ),
     "TimestampStatistics": "ts_shape.features.stats.timestamp_stats",
 }
 

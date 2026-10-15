@@ -68,10 +68,6 @@ class TargetEvents(Base):
             "shift_3": ("22:00", "06:00"),
         }
 
-    def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        """Assign shift based on time of day."""
-        return assign_shift(timestamp, self.shift_definitions)
-
     def compare_to_target(
         self,
         metric_uuid: str,

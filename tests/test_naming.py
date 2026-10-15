@@ -2,7 +2,8 @@
 
 * no retired parameter names (they live on only as deprecated keyword
   aliases, which are not part of the signature) -- in the detectors and in
-  every public class of ``ts_shape.transform`` and ``ts_shape.features``;
+  every public class of ``ts_shape.transform`` and ``ts_shape.features``,
+  and the loaders' time ranges (``start`` / ``end``);
 * optional arguments of detectors are keyword-only;
 * ``event_uuid`` defaults look like ``"<pack>:<name>"`` and are unique.
 """
@@ -18,6 +19,7 @@ import pytest
 
 import ts_shape
 import ts_shape.features
+import ts_shape.loader
 import ts_shape.transform
 from ts_shape.eventlog.taxonomy import CLASS_ALIASES, REGISTRY
 
@@ -62,6 +64,14 @@ RETIRED = {
 #: Retired only in transform/features (event classes still name a frame
 #: argument ``df`` in internal-style helpers such as the SPC rules).
 RETIRED_TRANSFORM_FEATURES = {**RETIRED, "df": "dataframe"}
+
+#: Retired time-range names in the loaders; a range is ``start`` / ``end``.
+RETIRED_LOADER = {
+    "start_timestamp": "start",
+    "end_timestamp": "end",
+    "start_time": "start",
+    "end_time": "end",
+}
 
 CLASSES = sorted(
     {c for c, _ in REGISTRY if c in dir(ts_shape) and c not in CLASS_ALIASES}
@@ -128,6 +138,21 @@ def test_no_retired_parameter_names_in_transform_and_features(qualname):
         for name, fn in _callables(cls)
         for p in _params(fn)
         if p.name in RETIRED_TRANSFORM_FEATURES
+    ]
+    assert not bad, "\n".join(bad)
+
+
+LOADER_CLASSES = _public_classes(ts_shape.loader)
+
+
+@pytest.mark.parametrize("qualname", sorted(LOADER_CLASSES))
+def test_loader_time_ranges_are_start_and_end(qualname):
+    cls = LOADER_CLASSES[qualname]
+    bad = [
+        f"{qualname}.{name}({p.name}) -> {RETIRED_LOADER[p.name]}"
+        for name, fn in _callables(cls)
+        for p in _params(fn)
+        if p.name in RETIRED_LOADER
     ]
     assert not bad, "\n".join(bad)
 

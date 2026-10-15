@@ -1,6 +1,6 @@
 """Tests for the shared reset-aware counter helpers."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 from ts_shape.errors import DataQualityWarning

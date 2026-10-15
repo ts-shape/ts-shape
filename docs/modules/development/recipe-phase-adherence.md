@@ -29,7 +29,7 @@ print(phases[["phase", "duration_seconds", "observed_ramp_per_s", "criteria_fail
 |---|---|
 | `evaluate(interval_end='next_change', data_end=None)` | one row per phase occurrence: `start`, `end`, `phase`, `mean_value`, `min_value`, `max_value`, `observed_ramp_per_s`, `criteria_failed` (list), `pass` |
 
-Spec keys per phase, all optional; ranges are inclusive `(min, max)` tuples: `duration_seconds` (`duration_s` is the legacy spelling), `hold_value` (phase mean), `peak_value` (phase max), `trough_value` (phase min), `ramp_rate_max` (absolute, value units per second).
+Spec keys per phase, all optional; ranges are inclusive `(min, max)` tuples: `duration_seconds` (`duration_s` is the deprecated spelling: it still works, with a `DeprecationWarning`, until the next major release), `hold_value` (phase mean), `peak_value` (phase max), `trough_value` (phase min), `ramp_rate_max` (absolute, value units per second).
 
 ## Notes
 

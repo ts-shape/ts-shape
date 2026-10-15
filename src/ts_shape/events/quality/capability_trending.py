@@ -4,14 +4,13 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from pandas.tseries.frequencies import to_offset
 from scipy import stats
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
-from ts_shape.utils.normalize import _caller_stacklevel
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
+from ts_shape.utils.frames import window_offset
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,8 @@ class CapabilityTrendingEvents(Base):
         >>> import ts_shape
         >>> df = ts_shape.make_timeseries(["dia"], n_points=960, freq="1min", drift=3.0)
         >>> cap = ts_shape.CapabilityTrendingEvents(df, "dia", upper_spec=105, lower_spec=95)
-        >>> cap.capability_over_time(window="8h")[["start", "cpk", "ppk"]].round(2)
+        >>> out = cap.capability_over_time(window="8h")
+        >>> out[["start", "cpk", "ppk"]].round({"cpk": 2, "ppk": 2})
                         start   cpk   ppk
         0 2025-01-01 00:00:00  1.33  1.08
         1 2025-01-01 08:00:00  0.83  0.71
@@ -174,7 +174,7 @@ class CapabilityTrendingEvents(Base):
                 "capability_over_time: the signal has no spread (constant, "
                 "single or missing values); the capability indices are NaN",
                 DataQualityWarning,
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
             overall_std = np.nan
 
@@ -185,7 +185,7 @@ class CapabilityTrendingEvents(Base):
             if n < 2:
                 continue
 
-            usl, lsl = self._resolve_spec_limits(ts, ts + to_offset(window))
+            usl, lsl = self._resolve_spec_limits(ts, ts + window_offset(window))
             if np.isnan(usl) or np.isnan(lsl):
                 continue
 
@@ -427,7 +427,7 @@ class CapabilityTrendingEvents(Base):
             if n < 2:
                 continue
 
-            usl, lsl = self._resolve_spec_limits(ts, ts + to_offset(window))
+            usl, lsl = self._resolve_spec_limits(ts, ts + window_offset(window))
             if np.isnan(usl) or np.isnan(lsl):
                 continue
 

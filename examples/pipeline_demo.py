@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Pipeline Orchestrator Demo for ts-shape
 ========================================

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Comprehensive demonstration of all production event classes in ts-shape.
 
@@ -29,17 +28,10 @@ All classes work with a standard timeseries DataFrame whose columns are:
 Each class filters by uuid to isolate specific signals from the shared DataFrame.
 """
 
-import os
-import sys
 from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
-
-# ---------------------------------------------------------------------------
-# Allow import when running from the examples/ directory
-# ---------------------------------------------------------------------------
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from ts_shape.events.production import (
     AlarmManagementEvents,
@@ -59,30 +51,39 @@ from ts_shape.events.production import (
 # ---------------------------------------------------------------------------
 # Constants: signal UUIDs used throughout the demo
 # ---------------------------------------------------------------------------
-UUID_MACHINE_STATE = "machine_run_state"       # bool: True = running
-UUID_PART_COUNTER = "part_counter"             # int: monotonic counter of produced parts
-UUID_CYCLE_TRIGGER = "cycle_trigger"           # bool: rising edge marks cycle end
-UUID_PRODUCT_ID = "product_id"                 # string: current product/recipe
-UUID_PART_NUMBER = "part_number_signal"        # string: current part type
-UUID_UPSTREAM_RUN = "upstream_run"             # bool: upstream station running
-UUID_DOWNSTREAM_RUN = "downstream_run"         # bool: downstream station running
-UUID_ALARM_TEMP = "alarm_temp_high"            # bool: temperature high alarm
-UUID_BATCH_ID = "batch_id_signal"              # string: current batch identifier
-UUID_MACHINE_STATE_STR = "machine_state_str"   # string: Running/Stopped/Idle
-UUID_DOWNTIME_REASON = "downtime_reason"       # string: reason code
-UUID_OK_COUNTER = "ok_parts_counter"           # int: good parts counter
-UUID_NOK_COUNTER = "nok_parts_counter"         # int: reject parts counter
-UUID_REJECT_COUNTER = "reject_counter"         # int: reject counter for OEE
-UUID_TOTAL_COUNTER = "total_counter"           # int: total counter for OEE
-UUID_DEFECT_REASON = "defect_reason"           # string: defect reason code
+UUID_MACHINE_STATE = "machine_run_state"  # bool: True = running
+UUID_PART_COUNTER = "part_counter"  # int: monotonic counter of produced parts
+UUID_CYCLE_TRIGGER = "cycle_trigger"  # bool: rising edge marks cycle end
+UUID_PRODUCT_ID = "product_id"  # string: current product/recipe
+UUID_PART_NUMBER = "part_number_signal"  # string: current part type
+UUID_UPSTREAM_RUN = "upstream_run"  # bool: upstream station running
+UUID_DOWNSTREAM_RUN = "downstream_run"  # bool: downstream station running
+UUID_ALARM_TEMP = "alarm_temp_high"  # bool: temperature high alarm
+UUID_BATCH_ID = "batch_id_signal"  # string: current batch identifier
+UUID_MACHINE_STATE_STR = "machine_state_str"  # string: Running/Stopped/Idle
+UUID_DOWNTIME_REASON = "downtime_reason"  # string: reason code
+UUID_OK_COUNTER = "ok_parts_counter"  # int: good parts counter
+UUID_NOK_COUNTER = "nok_parts_counter"  # int: reject parts counter
+UUID_REJECT_COUNTER = "reject_counter"  # int: reject counter for OEE
+UUID_TOTAL_COUNTER = "total_counter"  # int: total counter for OEE
+UUID_DEFECT_REASON = "defect_reason"  # string: defect reason code
 
 
 # ========================================================================
 # Data generation helpers
 # ========================================================================
 
-def _row(t, uuid, *, value_bool=None, value_integer=None,
-         value_double=None, value_string=None, is_delta=True):
+
+def _row(
+    t,
+    uuid,
+    *,
+    value_bool=None,
+    value_integer=None,
+    value_double=None,
+    value_string=None,
+    is_delta=True,
+):
     """Convenience helper to build a single data row."""
     return {
         "systime": t,
@@ -121,32 +122,48 @@ def generate_manufacturing_data(
             if running:
                 duration = int(rng.integers(180, 600))  # run 3-10 min
             else:
-                duration = int(rng.integers(30, 180))   # idle 0.5-3 min
+                duration = int(rng.integers(30, 180))  # idle 0.5-3 min
             for s in range(0, duration, 10):
-                rows.append(_row(t + timedelta(seconds=s), UUID_MACHINE_STATE,
-                                 value_bool=running))
+                rows.append(
+                    _row(
+                        t + timedelta(seconds=s), UUID_MACHINE_STATE, value_bool=running
+                    )
+                )
             t += timedelta(seconds=duration)
             running = not running
 
         # -- Machine string state (Running / Stopped) ----------------------
         t = day_start
         state = "Running"
-        reasons = ["Material_Shortage", "Tool_Change", "Quality_Issue",
-                    "Planned_Maintenance", "Operator_Break"]
+        reasons = [
+            "Material_Shortage",
+            "Tool_Change",
+            "Quality_Issue",
+            "Planned_Maintenance",
+            "Operator_Break",
+        ]
         while t < day_start + timedelta(days=1):
             if state == "Running":
                 dur = int(rng.integers(300, 900))  # 5-15 min running
             else:
-                dur = int(rng.integers(60, 300))   # 1-5 min stopped
+                dur = int(rng.integers(60, 300))  # 1-5 min stopped
             for s in range(0, dur, 30):
-                rows.append(_row(t + timedelta(seconds=s),
-                                 UUID_MACHINE_STATE_STR,
-                                 value_string=state))
+                rows.append(
+                    _row(
+                        t + timedelta(seconds=s),
+                        UUID_MACHINE_STATE_STR,
+                        value_string=state,
+                    )
+                )
                 # Attach a downtime reason when stopped
                 if state == "Stopped":
-                    rows.append(_row(t + timedelta(seconds=s),
-                                     UUID_DOWNTIME_REASON,
-                                     value_string=rng.choice(reasons)))
+                    rows.append(
+                        _row(
+                            t + timedelta(seconds=s),
+                            UUID_DOWNTIME_REASON,
+                            value_string=rng.choice(reasons),
+                        )
+                    )
             t += timedelta(seconds=dur)
             state = "Stopped" if state == "Running" else "Running"
 
@@ -156,8 +173,7 @@ def generate_manufacturing_data(
             t = day_start + timedelta(minutes=minute)
             increment = int(rng.integers(1, 6))
             counter += increment
-            rows.append(_row(t, UUID_PART_COUNTER,
-                             value_integer=int(counter)))
+            rows.append(_row(t, UUID_PART_COUNTER, value_integer=int(counter)))
 
         # -- Total / reject counters for OEE (every minute) -----------------
         total_ctr = 1000 + day_offset * 1400
@@ -167,10 +183,8 @@ def generate_manufacturing_data(
             total_ctr += int(rng.integers(1, 6))
             if rng.random() < 0.04:
                 reject_ctr += 1
-            rows.append(_row(t, UUID_TOTAL_COUNTER,
-                             value_integer=int(total_ctr)))
-            rows.append(_row(t, UUID_REJECT_COUNTER,
-                             value_integer=int(reject_ctr)))
+            rows.append(_row(t, UUID_TOTAL_COUNTER, value_integer=int(total_ctr)))
+            rows.append(_row(t, UUID_REJECT_COUNTER, value_integer=int(reject_ctr)))
 
         # -- OK / NOK counters (every minute) --------------------------------
         ok_ctr = 500 + day_offset * 1300
@@ -180,29 +194,31 @@ def generate_manufacturing_data(
             ok_ctr += int(rng.integers(1, 6))
             if rng.random() < 0.05:
                 nok_ctr += 1
-            rows.append(_row(t, UUID_OK_COUNTER,
-                             value_integer=int(ok_ctr)))
-            rows.append(_row(t, UUID_NOK_COUNTER,
-                             value_integer=int(nok_ctr)))
+            rows.append(_row(t, UUID_OK_COUNTER, value_integer=int(ok_ctr)))
+            rows.append(_row(t, UUID_NOK_COUNTER, value_integer=int(nok_ctr)))
 
         # -- Defect reason (changes occasionally) ---------------------------
-        defect_reasons = ["Dimension_Error", "Surface_Defect",
-                          "Wrong_Color", "Missing_Feature"]
+        defect_reasons = [
+            "Dimension_Error",
+            "Surface_Defect",
+            "Wrong_Color",
+            "Missing_Feature",
+        ]
         current_reason = rng.choice(defect_reasons)
         for minute in range(0, 24 * 60, 15):
             t = day_start + timedelta(minutes=minute)
             if rng.random() < 0.3:
                 current_reason = rng.choice(defect_reasons)
-            rows.append(_row(t, UUID_DEFECT_REASON,
-                             value_string=current_reason))
+            rows.append(_row(t, UUID_DEFECT_REASON, value_string=current_reason))
 
         # -- Boolean cycle trigger (rising edge every ~45 s) -----------------
         t = day_start
         while t < day_start + timedelta(days=1):
             cycle_time = max(20, 45 + rng.normal(0, 5))
             t += timedelta(seconds=cycle_time)
-            rows.append(_row(t - timedelta(seconds=1), UUID_CYCLE_TRIGGER,
-                             value_bool=False))
+            rows.append(
+                _row(t - timedelta(seconds=1), UUID_CYCLE_TRIGGER, value_bool=False)
+            )
             rows.append(_row(t, UUID_CYCLE_TRIGGER, value_bool=True))
 
         # -- Part number / product ID (changes every ~2 h) ------------------
@@ -215,10 +231,8 @@ def generate_manufacturing_data(
             if minute > 0 and minute % 120 == 0:
                 part_idx = (part_idx + 1) % len(parts)
                 prod_idx = (prod_idx + 1) % len(products)
-            rows.append(_row(t, UUID_PART_NUMBER,
-                             value_string=parts[part_idx]))
-            rows.append(_row(t, UUID_PRODUCT_ID,
-                             value_string=products[prod_idx]))
+            rows.append(_row(t, UUID_PART_NUMBER, value_string=parts[part_idx]))
+            rows.append(_row(t, UUID_PRODUCT_ID, value_string=products[prod_idx]))
 
         # -- Upstream / downstream flow states (5-second resolution) --------
         for i in range(0, 24 * 720, 1):  # every 5 s for 24 h = 17 280 pts
@@ -248,15 +262,17 @@ def generate_manufacturing_data(
                 # Stay on for 30 s - 2 h (some become standing alarms)
                 on_dur = int(rng.integers(30, 7200))
                 for s in range(0, on_dur, 10):
-                    rows.append(_row(t + timedelta(seconds=s),
-                                     UUID_ALARM_TEMP, value_bool=True))
+                    rows.append(
+                        _row(t + timedelta(seconds=s), UUID_ALARM_TEMP, value_bool=True)
+                    )
                 t += timedelta(seconds=on_dur)
                 alarm_on = False
                 # Insert chattering burst around hour 16
                 if 15.5 < (t - day_start).total_seconds() / 3600 < 16.5:
                     for chatter in range(12):
-                        rows.append(_row(t, UUID_ALARM_TEMP,
-                                         value_bool=bool(chatter % 2 == 0)))
+                        rows.append(
+                            _row(t, UUID_ALARM_TEMP, value_bool=bool(chatter % 2 == 0))
+                        )
                         t += timedelta(seconds=3)
             if not alarm_on:
                 rows.append(_row(t, UUID_ALARM_TEMP, value_bool=False))
@@ -268,8 +284,7 @@ def generate_manufacturing_data(
             t = day_start + timedelta(minutes=minute)
             if minute > 0 and minute % 240 == 0:
                 batch_idx = min(batch_idx + 1, len(batch_names) - 1)
-            rows.append(_row(t, UUID_BATCH_ID,
-                             value_string=batch_names[batch_idx]))
+            rows.append(_row(t, UUID_BATCH_ID, value_string=batch_names[batch_idx]))
 
     df = pd.DataFrame(rows)
     df["systime"] = pd.to_datetime(df["systime"])
@@ -279,6 +294,7 @@ def generate_manufacturing_data(
 # ========================================================================
 # Utility for printing section headers
 # ========================================================================
+
 
 def _header(title: str, char: str = "=", width: int = 72) -> None:
     print(f"\n{char * width}")
@@ -293,6 +309,7 @@ def _subheader(title: str) -> None:
 # ========================================================================
 # Demonstration functions -- one per class
 # ========================================================================
+
 
 def demo_machine_state(df: pd.DataFrame) -> None:
     """1. MachineStateEvents: detect_run_idle, transition_events,
@@ -312,8 +329,12 @@ def demo_machine_state(df: pd.DataFrame) -> None:
     if not intervals.empty:
         run = intervals[intervals["state"] == "run"]
         idle = intervals[intervals["state"] == "idle"]
-        print(f"  Run intervals : {len(run)}, avg {run['duration_seconds'].mean():.0f}s")
-        print(f"  Idle intervals: {len(idle)}, avg {idle['duration_seconds'].mean():.0f}s")
+        print(
+            f"  Run intervals : {len(run)}, avg {run['duration_seconds'].mean():.0f}s"
+        )
+        print(
+            f"  Idle intervals: {len(idle)}, avg {idle['duration_seconds'].mean():.0f}s"
+        )
         print(intervals[["start", "end", "state", "duration_seconds"]].head())
 
     # detect_run_idle -- with minimum duration filter
@@ -326,8 +347,11 @@ def demo_machine_state(df: pd.DataFrame) -> None:
     transitions = machine.transition_events()
     print(f"  Total transitions: {len(transitions)}")
     if not transitions.empty:
-        print(transitions[["systime", "transition",
-                           "time_since_last_transition_seconds"]].head())
+        print(
+            transitions[
+                ["systime", "transition", "time_since_last_transition_seconds"]
+            ].head()
+        )
 
     # detect_rapid_transitions
     _subheader("detect_rapid_transitions(threshold='30s', min_count=3)")
@@ -352,8 +376,9 @@ def demo_line_throughput(df: pd.DataFrame) -> None:
 
     # count_parts
     _subheader("count_parts(window='5min')")
-    parts = lt.count_parts(UUID_PART_COUNTER, value_column="value_integer",
-                           window="5min")
+    parts = lt.count_parts(
+        UUID_PART_COUNTER, value_column="value_integer", window="5min"
+    )
     print(f"  Windows: {len(parts)}")
     if not parts.empty:
         print(f"  Avg parts/window: {parts['count'].mean():.1f}")
@@ -361,47 +386,61 @@ def demo_line_throughput(df: pd.DataFrame) -> None:
 
     # takt_adherence
     _subheader("takt_adherence(takt_time='50s')")
-    takt = lt.takt_adherence(UUID_CYCLE_TRIGGER, value_column="value_bool",
-                             takt_time="50s")
+    takt = lt.takt_adherence(
+        UUID_CYCLE_TRIGGER, value_column="value_bool", takt_time="50s"
+    )
     print(f"  Cycles measured: {len(takt)}")
     if not takt.empty:
         violations = takt[takt["violation"]]
-        print(f"  Violations: {len(violations)} "
-              f"({len(violations) / len(takt) * 100:.1f}%)")
+        print(
+            f"  Violations: {len(violations)} "
+            f"({len(violations) / len(takt) * 100:.1f}%)"
+        )
         print(f"  Avg cycle time: {takt['cycle_time_seconds'].mean():.1f}s")
         print(takt[["systime", "cycle_time_seconds", "violation"]].head())
 
     # throughput_oee
     _subheader("throughput_oee(window='1h')")
-    oee = lt.throughput_oee(UUID_PART_COUNTER, value_column="value_integer",
-                            window="1h")
+    oee = lt.throughput_oee(
+        UUID_PART_COUNTER, value_column="value_integer", window="1h"
+    )
     if not oee.empty:
         print(f"  Avg OEE score: {oee['oee_score'].mean():.2f}")
-        print(oee[["start", "actual_count", "performance",
-                    "oee_score"]].head())
+        print(oee[["start", "actual_count", "performance", "oee_score"]].head())
 
     # throughput_trends
     _subheader("throughput_trends(window='1h', trend_window=6)")
-    trends = lt.throughput_trends(UUID_PART_COUNTER,
-                                  value_column="value_integer",
-                                  window="1h", trend_window=6)
+    trends = lt.throughput_trends(
+        UUID_PART_COUNTER, value_column="value_integer", window="1h", trend_window=6
+    )
     if not trends.empty:
         print(f"  Windows with trend data: {len(trends)}")
-        print(trends[["start", "count", "moving_avg",
-                       "trend_direction", "degradation_detected"]].head())
+        print(
+            trends[
+                [
+                    "start",
+                    "count",
+                    "moving_avg",
+                    "trend_direction",
+                    "degradation_detected",
+                ]
+            ].head()
+        )
 
     # cycle_quality_check
     _subheader("cycle_quality_check(tolerance_pct=0.15)")
-    cqc = lt.cycle_quality_check(UUID_CYCLE_TRIGGER,
-                                  value_column="value_bool",
-                                  tolerance_pct=0.15)
+    cqc = lt.cycle_quality_check(
+        UUID_CYCLE_TRIGGER, value_column="value_bool", tolerance_pct=0.15
+    )
     if not cqc.empty:
         print(f"  Cycles checked: {len(cqc)}")
         good = cqc[cqc["quality_flag"] == "good"]
-        print(f"  Good cycles: {len(good)} "
-              f"({len(good) / len(cqc) * 100:.1f}%)")
-        print(cqc[["systime", "cycle_time_seconds", "deviation_pct",
-                    "quality_flag"]].head())
+        print(f"  Good cycles: {len(good)} " f"({len(good) / len(cqc) * 100:.1f}%)")
+        print(
+            cqc[
+                ["systime", "cycle_time_seconds", "deviation_pct", "quality_flag"]
+            ].head()
+        )
 
 
 def demo_changeover(df: pd.DataFrame) -> None:
@@ -412,8 +451,7 @@ def demo_changeover(df: pd.DataFrame) -> None:
 
     # detect_changeover
     _subheader("detect_changeover()")
-    changes = co.detect_changeover(UUID_PRODUCT_ID,
-                                    value_column="value_string")
+    changes = co.detect_changeover(UUID_PRODUCT_ID, value_column="value_string")
     print(f"  Changeovers detected: {len(changes)}")
     if not changes.empty:
         print(changes[["systime", "new_value"]].head(10))
@@ -443,34 +481,34 @@ def demo_flow_constraints(df: pd.DataFrame) -> None:
 
     # blocked_events
     _subheader("blocked_events(min_duration='10s')")
-    blocked = flow.blocked_events(roles=roles, tolerance="10s",
-                                   min_duration="10s")
+    blocked = flow.blocked_events(roles=roles, tolerance="10s", min_duration="10s")
     print(f"  Blocked events: {len(blocked)}")
     if not blocked.empty:
-        print(blocked[["start", "end", "type", "severity",
-                        "duration"]].head())
+        print(blocked[["start", "end", "type", "severity", "duration"]].head())
 
     # starved_events
     _subheader("starved_events(min_duration='10s')")
-    starved = flow.starved_events(roles=roles, tolerance="10s",
-                                   min_duration="10s")
+    starved = flow.starved_events(roles=roles, tolerance="10s", min_duration="10s")
     print(f"  Starved events: {len(starved)}")
     if not starved.empty:
-        print(starved[["start", "end", "type", "severity",
-                        "duration"]].head())
+        print(starved[["start", "end", "type", "severity", "duration"]].head())
 
     # flow_constraint_analytics (combines both)
     _subheader("flow_constraint_analytics()")
-    analytics = flow.flow_constraint_analytics(roles=roles, tolerance="10s",
-                                                min_duration="10s")
+    analytics = flow.flow_constraint_analytics(
+        roles=roles, tolerance="10s", min_duration="10s"
+    )
     s = analytics.set_index("constraint_type")
     print(f"  Total constraint events : {s['event_count'].sum()}")
-    print(f"  Blocked count / duration: {s.loc['blocked', 'event_count']} / "
-          f"{s.loc['blocked', 'total_duration_seconds']:.0f} s")
-    print(f"  Starved count / duration: {s.loc['starved', 'event_count']} / "
-          f"{s.loc['starved', 'total_duration_seconds']:.0f} s")
-    print(f"  Alignment quality       : "
-          f"{s['time_alignment_quality'].mean():.2f}")
+    print(
+        f"  Blocked count / duration: {s.loc['blocked', 'event_count']} / "
+        f"{s.loc['blocked', 'total_duration_seconds']:.0f} s"
+    )
+    print(
+        f"  Starved count / duration: {s.loc['starved', 'event_count']} / "
+        f"{s.loc['starved', 'total_duration_seconds']:.0f} s"
+    )
+    print(f"  Alignment quality       : " f"{s['time_alignment_quality'].mean():.2f}")
 
 
 def demo_part_production_tracking(df: pd.DataFrame) -> None:
@@ -527,8 +565,7 @@ def demo_cycle_time_tracking(df: pd.DataFrame) -> None:
     )
     print(f"  Cycle records: {len(cycles)}")
     if not cycles.empty:
-        print(cycles[["systime", "part_number",
-                       "cycle_time_seconds"]].head())
+        print(cycles[["systime", "part_number", "cycle_time_seconds"]].head())
 
     # cycle_time_statistics
     _subheader("cycle_time_statistics()")
@@ -548,8 +585,11 @@ def demo_cycle_time_tracking(df: pd.DataFrame) -> None:
     )
     print(f"  Slow cycles detected: {len(slow)}")
     if not slow.empty:
-        print(slow[["systime", "part_number", "cycle_time_seconds",
-                     "deviation_factor"]].head())
+        print(
+            slow[
+                ["systime", "part_number", "cycle_time_seconds", "deviation_factor"]
+            ].head()
+        )
 
     # cycle_time_trend for PART_A
     _subheader("cycle_time_trend(part_number='PART_A', window_size=10)")
@@ -561,8 +601,7 @@ def demo_cycle_time_tracking(df: pd.DataFrame) -> None:
     )
     print(f"  Trend rows: {len(trend)}")
     if not trend.empty:
-        print(trend[["systime", "cycle_time_seconds", "moving_avg",
-                      "trend"]].head())
+        print(trend[["systime", "cycle_time_seconds", "moving_avg", "trend"]].head())
 
 
 def demo_shift_reporting(df: pd.DataFrame) -> None:
@@ -596,8 +635,7 @@ def demo_shift_reporting(df: pd.DataFrame) -> None:
     # shift_targets
     _subheader("shift_targets()")
     targets = {"day": 500, "afternoon": 480, "night": 450}
-    target_df = sr.shift_targets(counter_uuid=UUID_PART_COUNTER,
-                                  targets=targets)
+    target_df = sr.shift_targets(counter_uuid=UUID_PART_COUNTER, targets=targets)
     if not target_df.empty:
         print(target_df.head(8))
 
@@ -716,20 +754,19 @@ def demo_quality_tracking(df: pd.DataFrame) -> None:
 
 
 def demo_oee_calculator(df: pd.DataFrame) -> None:
-    """10. OEEEvents: calculate_availability, calculate_performance,
-    calculate_quality, calculate_oee."""
+    """10. OEEEvents: availability, performance, quality, oee."""
     _header("10. OEEEvents")
 
     oee = OEEEvents(dataframe=df)
 
-    # calculate_availability
-    _subheader("calculate_availability()")
+    # availability
+    _subheader("availability()")
     avail = oee.availability(UUID_MACHINE_STATE)
     if not avail.empty:
         print(avail)
 
-    # calculate_performance (ideal cycle time = 30 s per part)
-    _subheader("calculate_performance(ideal_cycle_time=30)")
+    # performance (ideal cycle time = 30 s per part)
+    _subheader("performance(ideal_cycle_time=30)")
     perf = oee.performance(
         UUID_PART_COUNTER,
         ideal_cycle_time=30.0,
@@ -738,14 +775,14 @@ def demo_oee_calculator(df: pd.DataFrame) -> None:
     if not perf.empty:
         print(perf)
 
-    # calculate_quality
-    _subheader("calculate_quality()")
+    # quality
+    _subheader("quality()")
     qual = oee.quality(UUID_TOTAL_COUNTER, UUID_REJECT_COUNTER)
     if not qual.empty:
         print(qual)
 
-    # calculate_oee (combined daily OEE)
-    _subheader("calculate_oee()")
+    # oee (combined daily OEE)
+    _subheader("oee()")
     daily_oee = oee.oee(
         run_state_uuid=UUID_MACHINE_STATE,
         counter_uuid=UUID_PART_COUNTER,
@@ -758,7 +795,7 @@ def demo_oee_calculator(df: pd.DataFrame) -> None:
 
 
 def demo_alarm_management(df: pd.DataFrame) -> None:
-    """11. AlarmManagementEvents: alarm_frequency, alarm_duration_stats,
+    """11. AlarmManagementEvents: alarm_frequency, alarm_duration_statistics,
     chattering_detection, standing_alarms."""
     _header("11. AlarmManagementEvents")
 
@@ -772,12 +809,14 @@ def demo_alarm_management(df: pd.DataFrame) -> None:
     _subheader("alarm_frequency(window='4h')")
     freq = alarms.alarm_frequency(window="4h")
     if not freq.empty:
-        print(f"  Windows with alarm activity: "
-              f"{(freq['alarm_count'] > 0).sum()} / {len(freq)}")
+        print(
+            f"  Windows with alarm activity: "
+            f"{(freq['alarm_count'] > 0).sum()} / {len(freq)}"
+        )
         print(freq[freq["alarm_count"] > 0].head(8))
 
-    # alarm_duration_stats
-    _subheader("alarm_duration_stats()")
+    # alarm_duration_statistics
+    _subheader("alarm_duration_statistics()")
     stats = alarms.alarm_duration_statistics()
     if not stats.empty:
         print(stats)
@@ -798,7 +837,7 @@ def demo_alarm_management(df: pd.DataFrame) -> None:
 
 
 def demo_batch_tracking(df: pd.DataFrame) -> None:
-    """12. BatchTrackingEvents: detect_batches, batch_duration_stats,
+    """12. BatchTrackingEvents: detect_batches, batch_duration_statistics,
     batch_yield, batch_transition_matrix."""
     _header("12. BatchTrackingEvents")
 
@@ -813,11 +852,14 @@ def demo_batch_tracking(df: pd.DataFrame) -> None:
     batches = bt.detect_batches()
     print(f"  Batches detected: {len(batches)}")
     if not batches.empty:
-        print(batches[["batch_id", "start", "end",
-                        "duration_seconds", "sample_count"]].head(8))
+        print(
+            batches[
+                ["batch_id", "start", "end", "duration_seconds", "sample_count"]
+            ].head(8)
+        )
 
-    # batch_duration_stats
-    _subheader("batch_duration_stats()")
+    # batch_duration_statistics
+    _subheader("batch_duration_statistics()")
     stats = bt.batch_duration_statistics()
     if not stats.empty:
         print(stats)
@@ -839,6 +881,7 @@ def demo_batch_tracking(df: pd.DataFrame) -> None:
 # Main entry point
 # ========================================================================
 
+
 def main() -> int:
     _header("ts-shape Production Events -- Comprehensive Demo", "=", 72)
     print("\n  Generating 3 days of synthetic manufacturing data ...")
@@ -847,9 +890,11 @@ def main() -> int:
         start=datetime(2024, 6, 1, 0, 0, 0),
         days=3,
     )
-    print(f"  Dataset: {len(df):,} rows, "
-          f"{df['uuid'].nunique()} distinct UUIDs, "
-          f"{df['systime'].min()} to {df['systime'].max()}")
+    print(
+        f"  Dataset: {len(df):,} rows, "
+        f"{df['uuid'].nunique()} distinct UUIDs, "
+        f"{df['systime'].min()} to {df['systime'].max()}"
+    )
 
     # Show the distinct signal UUIDs present in the dataset
     print("\n  Signal UUIDs in dataset:")
@@ -874,6 +919,7 @@ def main() -> int:
     except Exception as e:
         print(f"\n  ERROR during demonstration: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

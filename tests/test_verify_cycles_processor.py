@@ -144,7 +144,7 @@ def test_missing_columns_raise():
         )
     proc = CycleDataProcessor(cycles(BACK_TO_BACK), values(POINTS))
     with pytest.raises(ColumnNotFoundError, match="nope"):
-        proc.compare_cycles("c1", metric="nope")
+        proc.compare_cycles("c1", value_column="nope")
 
 
 def test_no_cycles_gives_empty_results_with_columns():

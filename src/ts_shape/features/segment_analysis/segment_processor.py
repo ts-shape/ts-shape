@@ -1,11 +1,14 @@
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -144,16 +147,20 @@ class SegmentProcessor(Base):
         ends = _to_tz(pd.to_datetime(time_ranges["segment_end"]), tz)
         usable = (starts.notna() & ends.notna()).to_numpy()
         if not usable.all():
-            logger.warning(
-                f"{int((~usable).sum())} time range(s) without start or end "
-                "were ignored."
+            warnings.warn(
+                f"apply_ranges: {int((~usable).sum())} time range(s) without "
+                "start or end were ignored.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
             )
         positions = np.flatnonzero(usable)
         if len(positions) == 0 or df.empty:
             return _empty()
 
-        s_idx = pd.DatetimeIndex(starts.iloc[positions])
-        e_idx = pd.DatetimeIndex(ends.iloc[positions])
+        # One time unit for data and ranges: the int64 comparisons below
+        # would otherwise compare microseconds with nanoseconds.
+        s_idx = pd.DatetimeIndex(starts.iloc[positions]).as_unit("ns")
+        e_idx = pd.DatetimeIndex(ends.iloc[positions]).as_unit("ns")
         # Sort by (start, end): a zero-length range sorts before a range
         # starting at the same instant, which then owns that instant.
         order = np.lexsort((e_idx.asi8, s_idx.asi8))
@@ -174,7 +181,7 @@ class SegmentProcessor(Base):
                 [e not in start_set for e in e_sorted.asi8], dtype=bool
             )
 
-        times = pd.DatetimeIndex(df[time_column])
+        times = pd.DatetimeIndex(df[time_column]).as_unit("ns")
         has_time = ~np.asarray(times.isna())
         if overlap_count == 0:
             # Non-overlapping ranges: one binary search per row.
@@ -190,9 +197,12 @@ class SegmentProcessor(Base):
             row_pos = np.flatnonzero(inside)
             range_pos = pos_sorted[k_safe[row_pos]]
         else:
-            logger.warning(
-                f"{overlap_count} overlapping time range(s) detected. "
-                f"Overlapping rows will appear multiple times in the output."
+            warnings.warn(
+                f"apply_ranges: {overlap_count} overlapping time range(s) "
+                "detected. Overlapping rows will appear multiple times in the "
+                "output.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
             )
             row_parts: list[np.ndarray] = []
             range_parts: list[np.ndarray] = []
@@ -210,7 +220,11 @@ class SegmentProcessor(Base):
             range_pos = np.concatenate(range_parts)
 
         if len(row_pos) == 0:
-            logger.warning("No data matched any time range.")
+            warnings.warn(
+                "apply_ranges: no data matched any time range.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
             return _empty()
 
         # Output order: by range (in time_ranges order), then input order.

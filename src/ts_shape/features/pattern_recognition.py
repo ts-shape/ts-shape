@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.fft import fft, ifft
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ class PatternRecognition(Base):
             order = np.argsort(parsed.to_numpy(dtype="datetime64[ns]"), kind="stable")
             df = df.iloc[order]
             times = parsed.iloc[order].reset_index(drop=True)
-        values = pd.to_numeric(df[value_column], errors="coerce")
+        values = to_numeric_checked(df[value_column], what=f"column {value_column!r}")
         series = np.asarray(
             values.to_numpy(dtype="float64", na_value=np.nan), dtype="float64"
         )

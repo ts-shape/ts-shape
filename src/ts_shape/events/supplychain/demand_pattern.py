@@ -12,6 +12,7 @@ import pandas as pd
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
+from ts_shape.utils.frames import window_offset
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,7 @@ class DemandPatternEvents(Base):
 
         # Calendar periods ('MS', 'W', ...) have no fixed length and made
         # pd.to_timedelta raise; they are all at least a day long.
-        offset = pd.tseries.frequencies.to_offset(window)
+        offset = window_offset(window)
         try:
             daily_or_longer = pd.Timedelta(offset) >= pd.Timedelta("1D")
         except ValueError:

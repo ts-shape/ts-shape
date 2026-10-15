@@ -17,10 +17,11 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.signals.spec import Encoding, Kind, SignalSpec, SignalSpecs
+from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.frames import require_columns
 from ts_shape.utils.normalize import _is_extension, _plain
 
-__all__ = ["infer_specs", "infer_spec"]
+__all__ = ["infer_specs", "infer_spec", "parse_times", "signal_groups"]
 
 _VALUE_COLUMNS = ("value_double", "value_integer", "value_bool", "value_string")
 
@@ -90,15 +91,21 @@ def parse_times(values: pd.Series) -> pd.Series:
     ):
         return pd.to_datetime(values.astype(object))
     try:
-        return pd.to_datetime(values, errors="coerce")
+        with warnings.catch_warnings():
+            # pandas 2.x warns about mixed offsets and returns objects;
+            # pandas 3 raises. Both fall through to the UTC parse below.
+            warnings.simplefilter("ignore", FutureWarning)
+            parsed = pd.to_datetime(values, errors="coerce")
+        if pd.api.types.is_datetime64_any_dtype(parsed.dtype):
+            return parsed
     except (TypeError, ValueError):
-        warnings.warn(
-            f"time column {values.name!r} mixes UTC offsets; times are "
-            "converted to UTC",
-            DataQualityWarning,
-            stacklevel=4,
-        )
-        return pd.to_datetime(values, errors="coerce", utc=True, format="mixed")
+        pass
+    warnings.warn(
+        f"time column {values.name!r} mixes UTC offsets; times are converted to UTC",
+        DataQualityWarning,
+        stacklevel=caller_stacklevel(),
+    )
+    return pd.to_datetime(values, errors="coerce", utc=True, format="mixed")
 
 
 def signal_groups(
@@ -138,7 +145,7 @@ def signal_groups(
         warnings.warn(
             f"{int(missing.sum())} row(s) have no {uuid_column}; they are dropped",
             DataQualityWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
         frame = frame[~missing.to_numpy()]
     raw = frame[uuid_column]
@@ -151,7 +158,7 @@ def signal_groups(
             f"{uuid_column} values {clashes[:5]} occur with different types "
             "(e.g. 1 and '1'); they are treated as one signal",
             DataQualityWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     return [
         (str(key), group) for key, group in frame.groupby(keys.to_numpy(), sort=True)
@@ -177,7 +184,7 @@ def infer_spec(
     require_columns(group, (time_column,), where="infer_spec")
     notes: dict[str, str] = {}
     g = group.sort_values(time_column)
-    times = pd.to_datetime(g[time_column]).dropna()
+    times = parse_times(g[time_column]).dropna()
     tz = str(times.dt.tz) if getattr(times.dt, "tz", None) is not None else None
     period, cv = _interval_stats(times)
 

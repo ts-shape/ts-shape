@@ -103,7 +103,7 @@ def test_feature_matrix_basic():
 def test_feature_matrix_column_naming():
     df = _make_signal_df()
     matrix = FeatureMatrixExporter.to_feature_matrix(
-        df, value_cols=["value_double"], agg_funcs={"mean": np.mean}
+        df, value_columns=["value_double"], agg_funcs={"mean": np.mean}
     )
     assert "temp__value_double__mean" in matrix.columns
     assert "pressure__value_double__mean" in matrix.columns
@@ -112,7 +112,7 @@ def test_feature_matrix_column_naming():
 def test_feature_matrix_values_correct():
     df = _make_signal_df()
     matrix = FeatureMatrixExporter.to_feature_matrix(
-        df, value_cols=["value_double"], agg_funcs={"mean": np.mean}
+        df, value_columns=["value_double"], agg_funcs={"mean": np.mean}
     )
     assert matrix.loc[0, "temp__value_double__mean"] == pytest.approx(20.0)
     assert matrix.loc[0, "pressure__value_double__mean"] == pytest.approx(200.0)
@@ -122,7 +122,10 @@ def test_feature_matrix_with_group_col():
     df = _make_signal_df()
     df["cycle"] = ["c1", "c1", "c2", "c1", "c1", "c2"]
     matrix = FeatureMatrixExporter.to_feature_matrix(
-        df, value_cols=["value_double"], group_col="cycle", agg_funcs={"mean": np.mean}
+        df,
+        value_columns=["value_double"],
+        group_column="cycle",
+        agg_funcs={"mean": np.mean},
     )
     assert set(matrix.index) == {"c1", "c2"}
 
@@ -136,14 +139,14 @@ def test_feature_matrix_missing_uuid_col_raises():
 def test_feature_matrix_missing_value_col_raises():
     df = _make_signal_df()
     with pytest.raises(ColumnNotFoundError, match="nonexistent"):
-        FeatureMatrixExporter.to_feature_matrix(df, value_cols=["nonexistent"])
+        FeatureMatrixExporter.to_feature_matrix(df, value_columns=["nonexistent"])
 
 
 def test_feature_matrix_empty_df_returns_empty():
     df = pd.DataFrame(
         {"uuid": pd.Series(dtype=str), "value_double": pd.Series(dtype=float)}
     )
-    matrix = FeatureMatrixExporter.to_feature_matrix(df, value_cols=["value_double"])
+    matrix = FeatureMatrixExporter.to_feature_matrix(df, value_columns=["value_double"])
     assert matrix.empty
 
 

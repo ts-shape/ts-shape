@@ -120,6 +120,24 @@ Traceability:
   to a common material reference time using speed-based transport lag compensation.
   Methods: align_to_reference, segment_by_cut, lag_profile, alignment_quality.
 
+Flow and Line Balancing:
+- FlowMetricsEvents: WIP, throughput, lead time and Little's Law from entry/exit signals.
+  - wip_over_time: Time-weighted WIP per window.
+  - throughput: Units out per window.
+  - lead_time: FIFO-matched entry -> exit lead time.
+  - flow_summary: Little's Law check and Process Cycle Efficiency.
+
+- LineBalancingEvents: Line balancing and takt analysis from per-station cycle signals.
+  - station_cycle_times: Cycle time statistics per station and window.
+  - balance_metrics: Balance efficiency, balance delay and smoothness index.
+  - yamazumi: Station-loading table against takt.
+
+- RuntimeAccountingEvents: Operating-hours accounting from a boolean run signal.
+  - runtime_summary: Run and idle time, utilization, starts, longest run.
+  - runtime_by_window: Run time per window.
+  - operating_hours_meter: Cumulative operating hours.
+  - run_uuid: Deprecated read-only alias of ``run_state_uuid``.
+
 - MultiProcessTraceabilityEvents: Multi-station topology with parallel paths and handovers.
   - build_timeline: Full timeline with parallel-station awareness.
   - lead_time: End-to-end lead time with parallel flag.
@@ -206,6 +224,8 @@ from .downtime_tracking import (
 )
 from .duty_cycle import DutyCycleEvents
 from .flow_constraints import FlowConstraintEvents
+from .flow_metrics import FlowMetricsEvents
+from .line_balancing import LineBalancingEvents
 from .line_throughput import LineThroughputEvents
 from .long_downtime_events import LongDowntimeEvents
 from .machine_state import MachineStateEvents
@@ -250,6 +270,7 @@ from .rework_tracking import (
     ReworkTracking,  # deprecated alias
 )
 from .routing_traceability import RoutingTraceabilityEvents
+from .runtime_accounting import RuntimeAccountingEvents
 from .schedule_adherence import ProductionScheduleAdherenceEvents
 from .scrap_tracking import (
     ScrapEvents,
@@ -306,6 +327,10 @@ __all__ = [
     "OrderTraceabilityEvents",  # deprecated alias
     "RoutingTraceabilityEvents",
     "MultiProcessTraceabilityEvents",
+    # Flow and line balancing
+    "FlowMetricsEvents",
+    "LineBalancingEvents",
+    "RuntimeAccountingEvents",
     # Setup, Rework, and Operator Tracking
     "SetupTimeEvents",
     "SetupTimeTracking",  # deprecated alias

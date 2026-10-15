@@ -13,7 +13,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import REMOVAL, keyword_only
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class RateOfChangeEvents(Base):
                 f"removed in {REMOVAL}; filter the result on "
                 "duration_seconds instead",
                 DeprecationWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
         cols = ["start", "end", "max_rate", "direction"]
         empty = empty_event_df("interval", ["max_rate", "direction"])

@@ -7,6 +7,7 @@ import pandas as pd
 from ts_shape.events._output import empty_event_df
 from ts_shape.events._windows import floor_local, window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
 from ts_shape.utils.intervals import state_intervals
 
@@ -92,7 +93,7 @@ class DutyCycleEvents(Base):
             return empty_event_df("interval", cols)
 
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["state"] = s[self.value_column].fillna(False).astype(bool)
+        s["state"] = bool_or_false(s[self.value_column])
         if max_gap is None:
             intervals = state_intervals(
                 s,
@@ -184,7 +185,7 @@ class DutyCycleEvents(Base):
         s = self.series[[self.time_column, self.value_column]].copy()
         s[self.time_column] = pd.to_datetime(s[self.time_column])
         s = s.sort_values(self.time_column)
-        s["state"] = s[self.value_column].fillna(False).astype(float)
+        s["state"] = bool_or_false(s[self.value_column]).astype(float)
 
         events: list[dict[str, Any]] = []
         if time_weighted:
@@ -245,7 +246,7 @@ class DutyCycleEvents(Base):
             return self._with_window(pd.DataFrame(columns=cols), window)
 
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["state"] = s[self.value_column].fillna(False).astype(bool)
+        s["state"] = bool_or_false(s[self.value_column])
         s["transition"] = s["state"] != s["state"].shift()
         s["to_on"] = s["transition"] & s["state"]
         s["to_off"] = s["transition"] & ~s["state"]

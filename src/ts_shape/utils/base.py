@@ -40,7 +40,8 @@ from typing import ClassVar
 import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
+from ts_shape.utils.frames import require_columns
 from ts_shape.utils.normalize import normalize_signal_frame
 from ts_shape.utils.signal_checks import checked, checked_init
 
@@ -78,18 +79,24 @@ class Base:
                 setattr(cls, name, checked(member))
 
     @staticmethod
-    def _validate_column(dataframe: pd.DataFrame, column_name: str) -> None:
+    def _validate_column(
+        dataframe: pd.DataFrame, column_name: str, *, where: str | None = None
+    ) -> None:
         """Validate that a column exists in the DataFrame.
+
+        Delegates to :func:`ts_shape.utils.frames.require_columns`.
+
+        Args:
+            dataframe: Input frame.
+            column_name: Required column.
+            where: Name of the calling function, used as the message prefix;
+                without it the message reads ``Column 'x' not found. ...``.
 
         Raises:
             ColumnNotFoundError: If column_name is not in dataframe.columns.
                 This subclasses ``ValueError``.
         """
-        if column_name not in dataframe.columns:
-            raise ColumnNotFoundError(
-                f"Column '{column_name}' not found. "
-                f"Available columns: {list(dataframe.columns)}"
-            )
+        require_columns(dataframe, [column_name], where=where)
 
     @staticmethod
     def _validate_uuid(
@@ -120,15 +127,17 @@ class Base:
         Args:
             dataframe: Long-format input (``systime``, ``uuid``, ``value_*``).
             time_column: Timestamp column to convert and sort by. When it is
-                missing, every column whose name contains "time" or "date"
-                is converted instead.
+                missing, datetime or text columns whose name contains "time"
+                or "date" are read as timestamps instead (with a
+                :class:`~ts_shape.errors.DataQualityWarning`); numeric
+                columns are never converted.
 
         Raises:
             TypeError: If ``dataframe`` is not a pandas DataFrame.
             ColumnNotFoundError: For a detector (``ts_shape.events``), if a
                 non-empty ``dataframe`` has no ``time_column``.
         """
-        column_name = time_column
+        time_col = time_column
         if not isinstance(dataframe, pd.DataFrame):
             raise TypeError(
                 f"Expected pandas DataFrame, got {type(dataframe).__name__}"
@@ -138,67 +147,79 @@ class Base:
             return
         if (
             type(self).__module__.startswith("ts_shape.events.")
-            and column_name not in self.dataframe.columns
+            and time_col not in self.dataframe.columns
         ):
             raise ColumnNotFoundError(
-                f"{type(self).__name__}: time column {column_name!r} not found. "
+                f"{type(self).__name__}: time column {time_col!r} not found. "
                 f"Columns: {list(self.dataframe.columns)}; pass time_column=..."
             )
 
-        # Attempt to convert the specified column_name to datetime if it exists
-        if column_name in self.dataframe.columns:
-            self.dataframe[column_name] = pd.to_datetime(
-                self.dataframe[column_name], errors="coerce"
+        if time_col in self.dataframe.columns:
+            self.dataframe[time_col] = pd.to_datetime(
+                self.dataframe[time_col], errors="coerce"
             )
         else:
-            # If the column_name is not in the DataFrame, fallback to automatic time detection
+            # No time column: a column named like a time ("start_time",
+            # "date") is used instead. Only datetime or text columns qualify;
+            # a number such as ``cycle_time_mean`` is never read as a time.
             time_columns = [
                 col
                 for col in self.dataframe.columns
-                if "time" in col.lower() or "date" in col.lower()
-            ]
-
-            # Convert all detected time columns to datetime, if any
-            for col in time_columns:
-                self.dataframe[col] = pd.to_datetime(
-                    self.dataframe[col], errors="coerce"
+                if isinstance(col, str)
+                and ("time" in col.lower() or "date" in col.lower())
+                and (
+                    pd.api.types.is_datetime64_any_dtype(self.dataframe[col])
+                    or pd.api.types.is_object_dtype(self.dataframe[col])
+                    or pd.api.types.is_string_dtype(self.dataframe[col])
                 )
-
-            # If any time columns are detected, sort by the first one; otherwise, do nothing
+            ]
+            converted = []
+            for col in time_columns:
+                if not pd.api.types.is_datetime64_any_dtype(self.dataframe[col]):
+                    self.dataframe[col] = pd.to_datetime(
+                        self.dataframe[col], errors="coerce", format="mixed"
+                    )
+                    converted.append(col)
+            if converted:
+                warnings.warn(
+                    f"{type(self).__name__}: time column {time_column!r} not "
+                    f"found; read {converted} as timestamps instead. Pass "
+                    "time_column=... to choose the column.",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
+                )
             if time_columns:
-                column_name = time_columns[0]
+                time_col = time_columns[0]
 
         # Every class computes on NumPy-backed dtypes: nullable, pyarrow and
         # text-number columns are converted once here (utils.normalize).
-        normalize_signal_frame(self.dataframe, time_column=column_name)
+        normalize_signal_frame(self.dataframe, time_column=time_col)
 
         # Sort by time; rows with the same timestamp keep a fixed order (by
         # uuid), so a result never depends on the order rows arrived in.
-        if column_name in self.dataframe.columns:
-            keys = [column_name]
+        if time_col in self.dataframe.columns:
+            keys = [time_col]
             if "uuid" in self.dataframe.columns:
                 keys.append("uuid")
             self.dataframe = self.dataframe.sort_values(by=keys, kind="stable")
 
         # Warn on missing/unparseable timestamps. They are kept (sorted last),
         # but every duration or interval touching them comes out NaT/NaN.
-        if column_name in self.dataframe.columns:
-            nat_count = int(self.dataframe[column_name].isna().sum())
+        if time_col in self.dataframe.columns:
+            nat_count = int(self.dataframe[time_col].isna().sum())
             if 0 < nat_count < len(self.dataframe):
                 warnings.warn(
-                    f"Column '{column_name}' contains {nat_count} missing or "
+                    f"Column '{time_col}' contains {nat_count} missing or "
                     "unparseable timestamp(s) (NaT). Consider dropping them "
                     "before processing.",
                     DataQualityWarning,
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
 
         # Warn on duplicate timestamps (per UUID when available)
-        if column_name in self.dataframe.columns:
+        if time_col in self.dataframe.columns:
             subset = (
-                [column_name, "uuid"]
-                if "uuid" in self.dataframe.columns
-                else [column_name]
+                [time_col, "uuid"] if "uuid" in self.dataframe.columns else [time_col]
             )
             dup_count = self.dataframe.duplicated(subset=subset).sum()
             if dup_count:
@@ -206,7 +227,7 @@ class Base:
                     f"DataFrame contains {dup_count} duplicate timestamp(s) "
                     f"(checked on {subset}). Consider deduplicating before processing.",
                     DataQualityWarning,
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
 
         # Warn on columns that are entirely NaN. In long format each signal
@@ -222,7 +243,7 @@ class Base:
             warnings.warn(
                 f"Column(s) {all_nan_cols} contain only NaN values.",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
 
     def get_dataframe(self) -> pd.DataFrame:

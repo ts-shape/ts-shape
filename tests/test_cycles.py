@@ -1,4 +1,4 @@
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
 from ts_shape.features.cycles.cycles_extractor import CycleExtractor

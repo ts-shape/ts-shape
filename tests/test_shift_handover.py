@@ -142,13 +142,13 @@ class TestShiftHandoverReport:
                     "date": date(2024, 1, 1),
                     "shift": "shift_1",
                     "availability_pct": 92.0,
-                    "downtime_minutes": 38.4,
+                    "downtime_seconds": 2304.0,
                 },
                 {
                     "date": date(2024, 1, 1),
                     "shift": "shift_2",
                     "availability_pct": 85.0,
-                    "downtime_minutes": 72.0,
+                    "downtime_seconds": 4320.0,
                 },
             ]
         )
@@ -236,7 +236,7 @@ def test_from_shift_data_with_string_dates_merges_quality_and_downtime():
         {"date": ["2024-01-15"], "shift": ["A"], "ok_parts": [95], "nok_parts": [5]}
     )
     downtime = pd.DataFrame(
-        {"date": ["2024-01-15"], "shift": ["A"], "downtime_minutes": [12.0]}
+        {"date": ["2024-01-15"], "shift": ["A"], "downtime_seconds": [720.0]}
     )
     for report_date in (None, "2024-01-15"):
         out = ShiftHandoverEvents.from_shift_data(

@@ -22,6 +22,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from ts_shape.utils.deprecation import caller_stacklevel
+
 from ..errors import DataQualityWarning
 from . import schema
 from .model import EventLog
@@ -114,7 +116,7 @@ def _pm4py_object_changes(changes: pd.DataFrame) -> pd.DataFrame:
                 f"object_changes field {name!r} has the name of a base column; "
                 f"its values are in column {column!r}",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         mask = (fields == name).to_numpy()
         col = pd.Series(pd.NA, index=changes.index, dtype=object)

@@ -27,9 +27,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.errors import DataQualityWarning
+from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,10 @@ class CriticalParameterRankingEvents(Base):
             ``p_value``, ``abs_effect_size``, ``rank``. Sorted by
             ``abs_effect_size`` descending so the top driver is the first
             row.
+
+        Raises:
+            ColumnNotFoundError: If ``outcome_column`` is not in
+                ``per_run_df`` (a ``ValueError`` subclass).
         """
         from scipy import stats  # local import: keeps top-level import cheap
 
@@ -121,7 +126,7 @@ class CriticalParameterRankingEvents(Base):
             "rank",
         ]
         if outcome_column not in per_run_df.columns:
-            raise ValueError(
+            raise ColumnNotFoundError(
                 f"Outcome column {outcome_column!r} missing from per_run_df; "
                 f"available: {list(per_run_df.columns)}"
             )
@@ -131,7 +136,6 @@ class CriticalParameterRankingEvents(Base):
         y_full = to_numeric_checked(
             per_run_df[outcome_column],
             what=f"outcome column {outcome_column!r}",
-            stacklevel=4,
         )
         if y_full.dropna().empty:
             return pd.DataFrame(columns=cols)
@@ -151,9 +155,7 @@ class CriticalParameterRankingEvents(Base):
         rows: list[dict[str, Any]] = []
         skipped: dict[str, str] = {}
         for col in candidate_columns:
-            x = to_numeric_checked(
-                per_run_df[col], what=f"candidate column {col!r}", stacklevel=4
-            )
+            x = to_numeric_checked(per_run_df[col], what=f"candidate column {col!r}")
             xy = pd.concat([x, y_full], axis=1).dropna()
             if len(xy) < 3:
                 skipped[col] = f"{len(xy)} complete run(s), need at least 3"
@@ -212,7 +214,7 @@ class CriticalParameterRankingEvents(Base):
             warnings.warn(
                 f"{len(skipped)} candidate column(s) not ranked: {detail}.",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         if not rows:
             return pd.DataFrame(columns=cols)

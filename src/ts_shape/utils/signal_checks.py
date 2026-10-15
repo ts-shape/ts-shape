@@ -29,6 +29,7 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
+from ts_shape.utils.deprecation import caller_stacklevel
 
 #: Arguments that name the output, not an input signal.
 _NOT_SIGNALS = {"event_uuid", "uuid_column"}
@@ -98,7 +99,7 @@ def check_signals(obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict) -
             f"{type(obj).__name__}: signal {details} not found in the data; "
             f"the result will be empty. Available uuids: {shown}{more}",
             DataQualityWarning,
-            stacklevel=4,
+            stacklevel=caller_stacklevel(),
         )
 
 

@@ -39,7 +39,9 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
-from ts_shape.utils.frames import require_columns
+from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import caller_stacklevel
+from ts_shape.utils.frames import ffill_values, require_columns, to_ns
 
 logger = logging.getLogger(__name__)
 
@@ -148,14 +150,14 @@ class CycleExtractor(Base):
                         f"CycleExtractor: uuid {signal_uuid!r} not found; the frame "
                         f"holds one signal {present[0]!r}, which is used.",
                         DataQualityWarning,
-                        stacklevel=4,
+                        stacklevel=caller_stacklevel(),
                     )
                 else:
                     warnings.warn(
                         f"CycleExtractor: uuid {signal_uuid!r} not found. "
                         f"Available uuids: {present}",
                         DataQualityWarning,
-                        stacklevel=4,
+                        stacklevel=caller_stacklevel(),
                     )
                     return df.iloc[0:0]
         return df[df[self.time_column].notna()]
@@ -289,9 +291,9 @@ class CycleExtractor(Base):
         """
         frame = self._signal_frame()
         if "value_integer" in frame.columns:
-            raw = pd.to_numeric(frame["value_integer"], errors="coerce").astype(
-                "float64"
-            )
+            raw = to_numeric_checked(
+                frame["value_integer"], what="step column 'value_integer'"
+            ).astype("float64")
         else:
             raw = pd.Series(np.nan, index=frame.index, dtype="float64")
         step = raw.ffill()
@@ -351,14 +353,16 @@ class CycleExtractor(Base):
         change = pd.Series(False, index=frame.index)
         for column in ("value_double", "value_integer"):
             if column in frame.columns:
-                values = pd.to_numeric(frame[column], errors="coerce").astype("float64")
+                values = to_numeric_checked(
+                    frame[column], what=f"column {column!r}"
+                ).astype("float64")
                 values = values.ffill()
                 change |= (
                     values.diff().abs().gt(self.value_change_threshold).fillna(False)
                 )
         for column in ("value_bool", "value_string"):
             if column in frame.columns:
-                held = frame[column].astype(object).ffill()
+                held = ffill_values(frame[column].astype(object))
                 prev = held.shift()
                 change |= (held.ne(prev) & held.notna() & prev.notna()).astype(bool)
         if len(change):
@@ -505,8 +509,13 @@ class CycleExtractor(Base):
         unmatched_starts = int((~has_end).sum())
 
         if unmatched_starts:
-            warning_msg = f"{unmatched_starts} cycle(s) have no matching end and are marked incomplete."
-            logger.warning(warning_msg)
+            warning_msg = (
+                f"{unmatched_starts} cycle(s) have no matching end and are "
+                "marked incomplete."
+            )
+            # A cycle still open when the data ends is expected, not a data
+            # quality problem: it is marked incomplete and only logged.
+            logger.warning("%s", warning_msg)
             self._stats["warnings"].append(warning_msg)
 
         self._stats.update(
@@ -573,7 +582,9 @@ class CycleExtractor(Base):
             cycle_df: DataFrame with cycle data (output from process_* methods)
             min_duration: Minimum acceptable cycle duration (default: '1s')
             max_duration: Maximum acceptable cycle duration (default: '1h')
-            warn: Whether to log warnings for invalid cycles (default: True)
+            warn: Whether to emit a
+                :class:`~ts_shape.errors.DataQualityWarning` for invalid
+                cycles (default: True)
 
         Returns:
             A copy of ``cycle_df`` with ``cycle_duration`` (Timedelta),
@@ -619,7 +630,12 @@ class CycleExtractor(Base):
             validated_df.loc[incomplete_mask, "is_valid"] = False
             validated_df.loc[incomplete_mask, "validation_issue"] = "incomplete_cycle"
             if warn:
-                logger.warning(f"Found {incomplete_mask.sum()} incomplete cycles.")
+                warnings.warn(
+                    f"validate_cycles: found {int(incomplete_mask.sum())} "
+                    "incomplete cycles.",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
+                )
 
         # Check duration constraints (only for complete cycles)
         too_short_mask = complete_mask & (validated_df["cycle_duration"] < min_td)
@@ -631,8 +647,11 @@ class CycleExtractor(Base):
                 validated_df.loc[too_short_mask, "validation_issue"] + "too_short;"
             )
             if warn:
-                logger.warning(
-                    f"Found {too_short_mask.sum()} cycles shorter than {min_duration}."
+                warnings.warn(
+                    f"validate_cycles: found {int(too_short_mask.sum())} cycles "
+                    f"shorter than {min_duration}.",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
                 )
 
         if too_long_mask.any():
@@ -641,15 +660,20 @@ class CycleExtractor(Base):
                 validated_df.loc[too_long_mask, "validation_issue"] + "too_long;"
             )
             if warn:
-                logger.warning(
-                    f"Found {too_long_mask.sum()} cycles longer than {max_duration}."
+                warnings.warn(
+                    f"validate_cycles: found {int(too_long_mask.sum())} cycles "
+                    f"longer than {max_duration}.",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
                 )
 
         valid_count = validated_df["is_valid"].sum()
         invalid_count = (~validated_df["is_valid"]).sum()
 
         logger.info(
-            f"Validation complete: {valid_count} valid cycles, {invalid_count} invalid cycles."
+            "Validation complete: %d valid cycles, %d invalid cycles.",
+            valid_count,
+            invalid_count,
         )
 
         return validated_df
@@ -657,10 +681,7 @@ class CycleExtractor(Base):
     @staticmethod
     def _as_ns(times: pd.Series) -> np.ndarray:
         """Datetimes as int64 nanoseconds (UTC for tz-aware input)."""
-        times = pd.to_datetime(times)
-        if times.dt.tz is not None:
-            times = times.dt.tz_convert("UTC").dt.tz_localize(None)
-        return np.asarray(times.dt.as_unit("ns").astype("int64"), dtype=np.int64)
+        return to_ns(pd.to_datetime(times))
 
     def detect_overlapping_cycles(
         self, cycle_df: pd.DataFrame, resolve: str = "flag"
@@ -719,7 +740,12 @@ class CycleExtractor(Base):
         overlap_count = int(np.clip(later_overlaps, 0, None).sum())
         self._stats["overlapping_cycles"] = overlap_count
         if overlap_count > 0:
-            logger.warning(f"Detected {overlap_count} overlapping cycle pairs.")
+            warnings.warn(
+                f"detect_overlapping_cycles: detected {overlap_count} "
+                "overlapping cycle pairs.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
 
         if resolve == "flag" or overlap_count == 0:
             return result_df

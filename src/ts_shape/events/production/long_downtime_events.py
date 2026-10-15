@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 
@@ -70,7 +71,7 @@ class LongDowntimeEvents(Base):
             if upper is not None:
                 mask &= col <= upper
             return mask
-        return col.fillna(False).astype(bool)
+        return bool_or_false(col)
 
     @keyword_only(1)
     def detect_long_downtime(

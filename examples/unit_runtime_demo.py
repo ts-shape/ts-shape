@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Unit Conversion & Runtime Accounting Demo for ts-shape
 =======================================================

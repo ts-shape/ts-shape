@@ -13,7 +13,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 from ts_shape.utils.time_weighted import time_weighted_resample
 
 logger = logging.getLogger(__name__)
@@ -104,7 +104,7 @@ class MaterialBalanceEvents(Base):
                 f"Material balance signal(s) {missing!r} have no rows; "
                 f"treated as {treated}.",
                 DataQualityWarning,
-                stacklevel=5,
+                stacklevel=caller_stacklevel(),
             )
         if not frames:
             return pd.DataFrame()

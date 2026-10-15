@@ -78,28 +78,6 @@ class ReworkEvents(Base):
             "shift_3": ("22:00", "06:00"),
         }
 
-    def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        """Assign shift based on time of day."""
-        return assign_shift(timestamp, self.shift_definitions)
-
-    def _get_counter_quantity(
-        self,
-        data: pd.DataFrame,
-        value_column: str,
-        *,
-        handle_resets: bool = True,
-    ) -> float:
-        """Get quantity from a monotonic counter.
-
-        When ``handle_resets`` is True (default) a decreasing counter is
-        treated as a reset and the post-reset production is counted (see
-        :func:`ts_shape.utils.counters.counter_quantity`). When False the
-        quantity is ``max(0, last - first)``.
-        """
-        if data.empty:
-            return 0.0
-        return counter_quantity(data[value_column], handle_resets=handle_resets)
-
     def rework_by_shift(
         self,
         rework_uuid: str,
@@ -257,7 +235,7 @@ class ReworkEvents(Base):
                 row = {"reason": reason, "rework_count": qty}
                 row["resets"] = int(grp["_is_reset"].sum())
             else:
-                qty = self._get_counter_quantity(grp, "rework_val", handle_resets=False)
+                qty = counter_quantity(grp["rework_val"], handle_resets=False)
                 row = {"reason": reason, "rework_count": qty}
             results.append(row)
 

@@ -7,7 +7,7 @@ from typing import Any, Literal, TypeVar
 import pandas as pd
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
@@ -48,9 +48,9 @@ def _column_first_compat(*bounds: str) -> Callable[[F], F]:
                     f"{name}(): passing the time column before the bounds is "
                     f"deprecated; pass {', '.join(bounds)} first and "
                     "time_column=... by keyword; the old order will be removed "
-                    "in the next major release",
+                    f"in {REMOVAL}",
                     DeprecationWarning,
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
                 kwargs["time_column"] = args[0]
                 rest = list(args[1:])

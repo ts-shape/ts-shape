@@ -33,12 +33,9 @@ COL_DURATION_S = "duration_seconds"
 
 COL_UUID = "uuid"
 COL_SOURCE_UUID = "source_uuid"
-COL_SOURCE_UUIDS = "source_uuids"
 
-COL_VALUE = "value"
 COL_SEVERITY = "severity"
 COL_SEVERITY_LEVEL = "severity_level"
-COL_IS_DELTA = "is_delta"
 
 #: The shared severity vocabulary of ``severity_level``.
 SEVERITY_LEVELS: tuple[str, ...] = ("info", "warn", "critical")

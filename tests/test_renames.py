@@ -10,6 +10,18 @@ import ts_shape
 from ts_shape.eventlog import taxonomy
 from ts_shape.eventlog.introspect import describe
 
+# Required constructor arguments beyond the DataFrame, per alias.
+DOMAIN_ARGS = {
+    "OrderTraceabilityEvents": {"station_uuids": {"st:1": "Station 1"}},
+    "ProcessStabilityIndex": {"signal_uuid": "sig:1"},
+    "StatisticalProcessControlRuleBased": {
+        "value_column": "value_double",
+        "tolerance_uuid": "tol:1",
+        "actual_uuid": "act:1",
+        "event_uuid": "spc:1",
+    },
+}
+
 
 @pytest.mark.parametrize("old,new", sorted(taxonomy.CLASS_ALIASES.items()))
 def test_old_class_name_is_a_warning_alias(old, new):
@@ -18,12 +30,18 @@ def test_old_class_name_is_a_warning_alias(old, new):
     assert old_cls.__deprecated_alias_of__ is new_cls
     params = list(inspect.signature(new_cls).parameters.values())
     required = [
-        p for p in params if p.default is p.empty and p.kind is p.POSITIONAL_OR_KEYWORD
+        p.name
+        for p in params[1:]
+        if p.default is p.empty and p.kind is p.POSITIONAL_OR_KEYWORD
     ]
-    if len(required) > 1:
-        pytest.skip("constructor needs domain arguments")
+    kwargs = DOMAIN_ARGS.get(old, {})
+    assert set(required) <= set(kwargs), f"add {required} for {old} to DOMAIN_ARGS"
+    frame = pd.DataFrame(
+        {"systime": pd.to_datetime([]), "uuid": [], "value_double": []}
+    )
     with pytest.warns(DeprecationWarning, match=f"{old} is deprecated, use {new}"):
-        old_cls(pd.DataFrame({"systime": pd.to_datetime([]), "uuid": []}))
+        obj = old_cls(frame, **kwargs)
+    assert isinstance(obj, new_cls)
 
 
 @pytest.mark.parametrize(

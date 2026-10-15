@@ -17,7 +17,7 @@ def _numbers(dataframe: pd.DataFrame, value_column: str) -> pd.Series:
     values = dataframe[value_column]
     if ptypes.is_numeric_dtype(values.dtype) and not ptypes.is_bool_dtype(values.dtype):
         return values
-    return to_numeric_checked(values, what=f"column {value_column!r}", stacklevel=4)
+    return to_numeric_checked(values, what=f"column {value_column!r}")
 
 
 def _rows(dataframe: pd.DataFrame, mask: pd.Series) -> pd.DataFrame:

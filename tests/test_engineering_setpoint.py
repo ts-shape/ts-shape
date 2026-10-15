@@ -1,4 +1,4 @@
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.engineering import SetpointChangeEvents
 

@@ -35,6 +35,7 @@ from types import CodeType
 import numpy as np
 import pandas as pd
 
+from ...utils.coerce import bool_or_false
 from ...utils.frames import require_columns
 
 
@@ -181,7 +182,7 @@ def _as_mask(result: object, df: pd.DataFrame, expression: str) -> pd.Series:
     if result.dtype == object:
         present = result.dropna()
         if all(isinstance(v, bool | np.bool_) for v in present.tolist()):
-            return result.where(result.notna(), False).astype(bool)
+            return bool_or_false(result)
     raise ValueError(
         f"trigger expression {expression!r} gives {result.dtype} values, not "
         "True / False; write a condition such as 'torque > 75'"

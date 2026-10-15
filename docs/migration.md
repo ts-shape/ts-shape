@@ -6,6 +6,75 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 8: legacy code removed
+
+### Requirements
+
+ts-shape now needs **pandas 2.2.2 or later** and **numpy 2.0 or later** (was
+pandas 2.1, numpy 1.26). A CI job tests the oldest supported versions, and
+results are the same on pandas 2.2 and pandas 3: daily windows are calendar
+days (23 h / 25 h on a DST change) on both.
+
+`setup.py`, `MANIFEST.in` and the `requirements*.txt` files are gone;
+`pyproject.toml` is the only place dependencies are declared.
+
+### Deprecation warnings you can see
+
+Deprecation warnings point at your own line now. Before, warnings from
+detector methods pointed inside ts-shape, and Python's default filters hid
+them, so a deprecated name could be used without a hint. Run your tests with
+`-W error::DeprecationWarning` once to find them.
+
+Newly deprecated (old name still works and warns):
+
+Loader time ranges are `start` / `end` everywhere; positional calls are
+unchanged.
+
+| Old | New |
+|---|---|
+| recipe spec key `duration_s` | `duration_seconds` |
+| `ShiftHandoverEvents.from_shift_data(downtime_df=...)` with only `downtime_minutes` | a `downtime_seconds` column |
+| `CycleDataProcessor.cycle_uuid_col` / `.systime_col` (attributes) | `.cycle_uuid_column` / `.time_column` |
+| `RuntimeAccountingEvents.run_uuid` (attribute) | `.run_state_uuid` |
+| `MultiSensorValidationEvents.sensor_uuids` (attribute) | `.signal_uuids` |
+| `start_timestamp=` / `end_timestamp=` (Azure Blob, Databricks Unity and Spark parquet loaders, `TimescaleDBDataAccess`, `S3ProxyDataAccess`) | `start=` / `end=` |
+| `start_time=` / `end_time=` (`ParquetLoader.load_by_time_range`, `load_files_by_time_range_and_uuids`) | `start=` / `end=` |
+| `TimescaleDBDataAccess.start_timestamp` / `.end_timestamp`, same on `S3ProxyDataAccess` (attributes) | `.start` / `.end` |
+
+### Behavior changes
+
+- **Time-named numeric columns stay numbers.** A class without its time
+  column used to convert every column whose name contained "time" or "date"
+  (`cycle_time_mean`, `update_rate`) to datetimes. Only datetime or text
+  columns are used now, with a `DataQualityWarning`.
+- **Mixed time units.** `SegmentProcessor.apply_ranges` and
+  `ContinuousProcessAlignmentEvents.segment_by_cut` compare times in one
+  unit; ranges in seconds against data in nanoseconds matched no rows.
+- **Hour folders are UTC in every loader** (Azure, Databricks Unity,
+  Parquet): a tz-aware bound is converted to UTC, a naive bound is UTC.
+  Before, some loaders used local wall-clock hours.
+- `CycleDataProcessor.split_dataframes_by_group` raises
+  `ColumnNotFoundError` for a frame without the group column (it was logged
+  and skipped). `CriticalParameterRankingEvents.rank` raises
+  `ColumnNotFoundError` for a missing outcome column.
+- Problems that were only logged are `DataQualityWarning`s: degenerate SPC
+  limits, a singular MSPC covariance, ignored or overlapping segment ranges,
+  invalid or overlapping cycles, empty feature tables. Text in numeric
+  columns is reported in pattern recognition, feature export, segment
+  statistics, cycles and continuous-process alignment.
+- `StatisticalProcessControlEvents.detect_cusum_shifts` counts a repeated
+  sample (same time, same value) once, with a `DataQualityWarning`. A
+  duplicated row was added to the running sum twice and could report a shift
+  on its own.
+- `ProfileComparison.cluster(n_clusters=...)` always returns the requested
+  number of clusters (SciPy's `maxclust` cut could return fewer).
+- New exports: `ts_shape.events.production` lists `FlowMetricsEvents`,
+  `LineBalancingEvents`, `RuntimeAccountingEvents`; `ts_shape.features` lists
+  `PatternRecognition`, `DescriptiveFeatures`, `TimeWindowedFeatureTable`.
+- The API reference no longer has pages for private modules, and package
+  pages have clean URLs (`.../events/production/` instead of
+  `.../events/production/__init__/`).
+
 ## October 2026, round 7: every function robust and consistent
 
 Every public function, not only the detectors, now handles empty frames,
@@ -138,7 +207,7 @@ New columns; none were removed:
 
 ### Durations in seconds
 
-Each `*_minutes` or `*_s` duration column now has a `*_seconds` twin right after it: `total_seconds`, `downtime_seconds`, `uptime_seconds`, `avg_seconds` (downtime), `avg_cycle_time_seconds`, `target_cycle_time_seconds`, `loss_seconds` (performance loss), `avg_seconds`, `min_seconds`, `max_seconds`, `median_seconds`, `std_seconds`, `avg_setup_seconds`, `total_setup_seconds` (setup time), `downtime_seconds` (shift handover, also in `OUTPUT_COLUMNS`). The old columns stay as a convenience. Their removal would be a breaking change and is left for a future major release; new code should read the `*_seconds` columns. In recipe-phase specs `duration_seconds` is the new spelling of the `duration_s` criterion; `duration_s` is still accepted.
+Each `*_minutes` or `*_s` duration column now has a `*_seconds` twin right after it: `total_seconds`, `downtime_seconds`, `uptime_seconds`, `avg_seconds` (downtime), `avg_cycle_time_seconds`, `target_cycle_time_seconds`, `loss_seconds` (performance loss), `avg_seconds`, `min_seconds`, `max_seconds`, `median_seconds`, `std_seconds`, `avg_setup_seconds`, `total_setup_seconds` (setup time), `downtime_seconds` (shift handover, also in `OUTPUT_COLUMNS`). The old columns stay as a convenience. Their removal would be a breaking change and is left for a future major release; new code should read the `*_seconds` columns. In recipe-phase specs `duration_seconds` is the new spelling of the `duration_s` criterion; `duration_s` still works and, since round 8, warns.
 
 ### Run state as string or boolean
 

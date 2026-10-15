@@ -1,9 +1,9 @@
 """Regression tests (Theme F): degenerate statistics outside production."""
 
-import logging
-
 import pandas as pd
+import pytest
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events.engineering.steady_state_detection import (
     SteadyStateDetectionEvents,
 )
@@ -25,18 +25,16 @@ def _spc(tol_values):
     )
 
 
-def test_cusum_with_constant_tolerance_reports_nothing(caplog):
-    with caplog.at_level(logging.WARNING):
+def test_cusum_with_constant_tolerance_reports_nothing():
+    with pytest.warns(DataQualityWarning, match="CUSUM skipped"):
         out = _spc([10.0, 10.0, 10.0]).detect_cusum_shifts()
     assert out.empty
-    assert "CUSUM skipped" in caplog.text
 
 
-def test_control_limits_single_row_warns(caplog):
-    with caplog.at_level(logging.WARNING):
+def test_control_limits_single_row_warns():
+    with pytest.warns(DataQualityWarning, match="degenerate"):
         limits = _spc([10.0]).control_limits()
     assert limits["3sigma_upper"].isna().all()
-    assert "degenerate" in caplog.text
 
 
 def test_steady_state_sparse_samples_are_not_steady():

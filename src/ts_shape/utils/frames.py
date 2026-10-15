@@ -14,6 +14,10 @@ way everywhere:
   timezone handling, so they can be merged or compared.
 * :func:`localize_like` -- a time bound (``data_end``, ``start``) in the
   timezone of the data.
+* :func:`ffill_values` -- forward-fill that keeps the dtype (no silent
+  downcasting of ``object`` columns).
+* :func:`to_ns` -- times as int64 nanoseconds since the epoch (UTC instants
+  for tz-aware values), for NumPy searches and sorts.
 * :func:`signal_frame_input` -- decorator: a computing classmethod works on
   a normalized copy of its input frame.
 """
@@ -24,8 +28,13 @@ import functools
 from collections.abc import Callable, Iterable
 from typing import Any, TypeVar
 
+import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from pandas.api import types as ptypes
+from pandas.tseries.api import guess_datetime_format
+from pandas.tseries.frequencies import to_offset
+from pandas.tseries.offsets import Tick
 
 from ts_shape.errors import ColumnNotFoundError
 from ts_shape.utils.normalize import normalize_signal_frame
@@ -35,21 +44,26 @@ __all__ = [
     "as_datetime",
     "same_time_axis",
     "localize_like",
+    "localize_in",
+    "to_ns",
+    "ffill_values",
     "signal_frame_input",
+    "window_offset",
 ]
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
 def require_columns(
-    dataframe: pd.DataFrame, columns: Iterable[str | None], *, where: str
+    dataframe: pd.DataFrame, columns: Iterable[str | None], *, where: str | None
 ) -> None:
     """Raise when ``dataframe`` lacks any of ``columns``.
 
     Args:
         dataframe: Input frame.
         columns: Required column names; ``None`` entries are skipped.
-        where: Name of the calling function, used in the message.
+        where: Name of the calling function, used as the message prefix;
+            ``None`` leaves the prefix out.
 
     Raises:
         ColumnNotFoundError: Naming the missing columns and the available
@@ -58,8 +72,9 @@ def require_columns(
     missing = [c for c in columns if c is not None and c not in dataframe.columns]
     if missing:
         label = "column" if len(missing) == 1 else "columns"
+        prefix = f"{where}: {label}" if where else label.capitalize()
         raise ColumnNotFoundError(
-            f"{where}: {label} {', '.join(repr(c) for c in missing)} not found. "
+            f"{prefix} {', '.join(repr(c) for c in missing)} not found. "
             f"Available columns: {list(dataframe.columns)}"
         )
 
@@ -96,12 +111,30 @@ def as_datetime(series: pd.Series, *, where: str) -> pd.Series:
         return pd.Series(
             pd.NaT, index=series.index, name=series.name, dtype="datetime64[ns]"
         )
+    # Text whose layout pandas cannot infer from the first value (or whose
+    # values mix layouts) is parsed value by value, as ``format="mixed"``
+    # does; asking for it explicitly avoids pandas' "Could not infer format"
+    # warning.
+    fmt = "mixed" if _layout_unknown(series) else None
     try:
-        return pd.to_datetime(series)
+        return pd.to_datetime(series, format=fmt)
     except (TypeError, ValueError) as exc:
+        if fmt is None:
+            try:
+                return pd.to_datetime(series, format="mixed")
+            except (TypeError, ValueError):
+                pass
         raise ValueError(
             f"{where}: column {series.name!r} cannot be read as timestamps ({exc})"
         ) from exc
+
+
+def _layout_unknown(series: pd.Series) -> bool:
+    """True when the first non-missing value is text of no inferable layout."""
+    valid = series.dropna()
+    if valid.empty or not isinstance(valid.iloc[0], str):
+        return False
+    return guess_datetime_format(valid.iloc[0]) is None
 
 
 def same_time_axis(
@@ -156,8 +189,26 @@ def localize_like(value: Any, reference: pd.Series) -> pd.Timestamp:
     Returns:
         The bound, comparable with ``reference``.
     """
+    return localize_in(value, getattr(getattr(reference, "dt", None), "tz", None))
+
+
+def localize_in(value: Any, tz: Any) -> pd.Timestamp:
+    """Return ``value`` as a Timestamp in ``tz`` (naive when ``tz`` is None).
+
+    The rule of :func:`localize_like`, for a timezone instead of a column: a
+    naive value is read as wall-clock time in ``tz`` (an ambiguous time is
+    read as standard time, a nonexistent one is shifted forward); an aware
+    value is converted. With ``tz=None`` an aware value is converted to UTC
+    and made naive.
+
+    Args:
+        value: A time (string, datetime, Timestamp).
+        tz: Target timezone, or None for naive.
+
+    Returns:
+        The value as a Timestamp.
+    """
     ts = pd.Timestamp(value)
-    tz = getattr(getattr(reference, "dt", None), "tz", None)
     if tz is not None:
         if ts.tzinfo is None:
             return ts.tz_localize(tz, ambiguous=False, nonexistent="shift_forward")
@@ -165,6 +216,49 @@ def localize_like(value: Any, reference: pd.Series) -> pd.Timestamp:
     if ts.tzinfo is not None:
         return ts.tz_convert("UTC").tz_localize(None)
     return ts
+
+
+def to_ns(values: pd.Series | pd.Index) -> npt.NDArray[np.int64]:
+    """Times as int64 nanoseconds since the epoch.
+
+    Works for naive and tz-aware values of any unit: an aware value gives the
+    nanoseconds of its UTC instant, a naive value those of its wall-clock
+    reading. ``NaT`` becomes the minimum int64 (``numpy``'s NaT), which sorts
+    first.
+
+    Args:
+        values: Datetime Series or Index.
+
+    Returns:
+        One int64 per value, in input order.
+    """
+    index = pd.DatetimeIndex(values)
+    return np.asarray(index.as_unit("ns").asi8, dtype=np.int64)
+
+
+def ffill_values(series: pd.Series) -> pd.Series:
+    """Forward-fill ``series`` and keep its dtype.
+
+    ``Series.ffill`` on an ``object`` column infers a narrower dtype for the
+    result, which pandas 2.2 reports as deprecated silent downcasting. This
+    takes every missing value from the last value before it instead and
+    leaves the dtype alone; leading missing values stay missing.
+
+    Args:
+        series: Values to fill.
+
+    Returns:
+        The filled Series, same index, name and dtype.
+    """
+    valid = series.notna().to_numpy(dtype=bool)
+    if valid.all() or not valid.any():
+        return series.copy()
+    positions = np.where(valid, np.arange(len(series)), -1)
+    np.maximum.accumulate(positions, out=positions)
+    filled = series.iloc[np.maximum(positions, 0)]
+    filled = filled.where(pd.Series(positions >= 0, index=filled.index))
+    filled.index = series.index
+    return filled
 
 
 def signal_frame_input(
@@ -199,3 +293,23 @@ def signal_frame_input(
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+def window_offset(window: Any) -> Any:
+    """The pandas offset of ``window``, with ``"D"`` as a calendar day.
+
+    pandas 3 reads ``"1D"`` as a calendar day (23 h or 25 h on a DST
+    change); pandas 2 reads it as a fixed 24 h. Window ends are computed the
+    pandas-3 way on both, so a daily window on a DST day has its real length.
+
+    Args:
+        window: Offset string (``"1h"``, ``"1D"``, ``"MS"``) or offset.
+
+    Returns:
+        A pandas offset: ``pd.DateOffset(days=n)`` for a day frequency, else
+        ``to_offset(window)``.
+    """
+    offset = to_offset(window)
+    if isinstance(offset, Tick) and offset.rule_code == "D":
+        return pd.DateOffset(days=offset.n)
+    return offset

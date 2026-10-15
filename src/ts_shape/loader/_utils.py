@@ -27,6 +27,7 @@ from typing import Literal, TypeVar
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning, LoaderError
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -205,29 +206,6 @@ def require_optional(obj: object, package: str, extra: str) -> None:
         raise missing_optional(package, extra)
 
 
-def hourly_slots(
-    start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
-) -> pd.DatetimeIndex:
-    """Return every hour that overlaps the closed range ``[start, end]``.
-
-    ``start`` is floored to the hour, so a range starting mid-hour still
-    includes the hour that contains it, and the hour that contains ``end`` is
-    always included: ``09:30 .. 11:00`` yields ``09:00, 10:00, 11:00``.
-
-    Args:
-        start_timestamp: Range start (anything ``pd.to_datetime`` accepts).
-        end_timestamp: Range end, inclusive (anything ``pd.to_datetime`` accepts).
-
-    Returns:
-        Hour-aligned timestamps, one per hour folder to visit; empty when
-        ``start`` is after ``end``.
-    """
-    start, end = same_tz_bounds(start_timestamp, end_timestamp)
-    if start > end:
-        return pd.DatetimeIndex([], tz=start.tz)
-    return pd.date_range(start=start.floor("h"), end=end.floor("h"), freq="h")
-
-
 def parse_utc_times(values: pd.Series) -> pd.Series:
     """Parse timestamps to tz-aware UTC.
 
@@ -248,7 +226,7 @@ def parse_utc_times(values: pd.Series) -> pd.Series:
 
 
 def same_tz_bounds(
-    start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
+    start: str | pd.Timestamp, end: str | pd.Timestamp
 ) -> tuple[pd.Timestamp, pd.Timestamp]:
     """Parse two range bounds so they can be compared.
 
@@ -256,14 +234,14 @@ def same_tz_bounds(
     the timezone of the aware one.
 
     Args:
-        start_timestamp: Range start (anything ``pd.Timestamp`` accepts).
-        end_timestamp: Range end.
+        start: Range start (anything ``pd.Timestamp`` accepts).
+        end: Range end.
 
     Returns:
         ``(start, end)`` as Timestamps with the same timezone handling.
     """
-    start = pd.Timestamp(start_timestamp)
-    end = pd.Timestamp(end_timestamp)
+    start = pd.Timestamp(start)
+    end = pd.Timestamp(end)
     if start.tzinfo is None and end.tzinfo is not None:
         start = start.tz_localize(end.tz)
     elif end.tzinfo is None and start.tzinfo is not None:
@@ -272,8 +250,8 @@ def same_tz_bounds(
 
 
 def utc_folder_hours(
-    start_timestamp: str | pd.Timestamp,
-    end_timestamp: str | pd.Timestamp,
+    start: str | pd.Timestamp,
+    end: str | pd.Timestamp,
     freq: str = "h",
 ) -> pd.DatetimeIndex:
     """Folder slots covering ``[start, end]`` for a layout written in UTC.
@@ -283,20 +261,30 @@ def utc_folder_hours(
     UTC. The result is naive, ready for ``strftime``.
 
     Args:
-        start_timestamp: Range start.
-        end_timestamp: Range end, inclusive.
+        start: Range start.
+        end: Range end, inclusive.
         freq: Folder granularity (default hourly).
 
     Returns:
         Naive UTC timestamps, one per folder; empty when start is after end.
     """
-    start, end = same_tz_bounds(start_timestamp, end_timestamp)
-    if start.tzinfo is not None:
-        start = start.tz_convert("UTC").tz_localize(None)
-        end = end.tz_convert("UTC").tz_localize(None)
+    start, end = same_tz_bounds(start, end)
+    start, end = utc_naive(start), utc_naive(end)
     if start > end:
         return pd.DatetimeIndex([])
     return pd.date_range(start=start.floor(freq), end=end, freq=freq)
+
+
+def utc_naive(timestamp: str | pd.Timestamp) -> pd.Timestamp:
+    """``timestamp`` as naive UTC, to compare with ``YYYY/MM/DD/HH`` folder times.
+
+    A tz-aware value is converted to UTC; a naive value is taken as UTC (the
+    timezone the folder layouts are written in).
+    """
+    ts = pd.Timestamp(timestamp)
+    if ts.tzinfo is not None:
+        return ts.tz_convert("UTC").tz_localize(None)
+    return ts
 
 
 def _align_bound(bound: pd.Timestamp, column: pd.Series) -> pd.Timestamp:
@@ -311,8 +299,8 @@ def _align_bound(bound: pd.Timestamp, column: pd.Series) -> pd.Timestamp:
 
 def trim_to_time_range(
     df: pd.DataFrame,
-    start_timestamp: str | pd.Timestamp | None,
-    end_timestamp: str | pd.Timestamp | None,
+    start: str | pd.Timestamp | None,
+    end: str | pd.Timestamp | None,
     *,
     time_column: str = "systime",
 ) -> pd.DataFrame:
@@ -324,8 +312,8 @@ def trim_to_time_range(
 
     Args:
         df: Frame to trim.
-        start_timestamp: Inclusive lower bound; None leaves the start open.
-        end_timestamp: Inclusive upper bound; None leaves the end open.
+        start: Inclusive lower bound; None leaves the start open.
+        end: Inclusive upper bound; None leaves the end open.
         time_column: Name of the timestamp column to compare.
 
     Returns:
@@ -334,14 +322,14 @@ def trim_to_time_range(
     """
     if df.empty or time_column not in df.columns:
         return df
-    if start_timestamp is None and end_timestamp is None:
+    if start is None and end is None:
         return df
     times = pd.to_datetime(df[time_column])
     mask = pd.Series(True, index=df.index)
-    if start_timestamp is not None:
-        mask &= times >= _align_bound(pd.to_datetime(start_timestamp), times)
-    if end_timestamp is not None:
-        mask &= times <= _align_bound(pd.to_datetime(end_timestamp), times)
+    if start is not None:
+        mask &= times >= _align_bound(pd.to_datetime(start), times)
+    if end is not None:
+        mask &= times <= _align_bound(pd.to_datetime(end), times)
     return df.loc[mask].reset_index(drop=True)
 
 
@@ -416,7 +404,6 @@ def report_failures(
     *,
     what: str,
     errors: ErrorsMode,
-    stacklevel: int = 3,
 ) -> None:
     """Warn about (or raise for) objects a bulk load could not read.
 
@@ -426,11 +413,10 @@ def report_failures(
         errors: ``"warn"`` emits one :class:`~ts_shape.errors.DataQualityWarning`
             naming every failed object; ``"raise"`` raises
             :class:`~ts_shape.errors.LoaderError` from the first error.
-        stacklevel: Passed to :func:`warnings.warn`.
     """
     if not failures:
         return
     message = describe_failures(failures, what)
     if errors == "raise":
         raise LoaderError(message) from failures[0][1]
-    warnings.warn(message, DataQualityWarning, stacklevel=stacklevel)
+    warnings.warn(message, DataQualityWarning, stacklevel=caller_stacklevel())

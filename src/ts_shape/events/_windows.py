@@ -30,6 +30,7 @@ from ts_shape.events._output import (
     finalize_interval_df,
     finalize_summary_df,
 )
+from ts_shape.utils.frames import localize_in, window_offset
 
 __all__ = [
     "WINDOW_COLS",
@@ -48,9 +49,18 @@ __all__ = [
 
 WINDOW_COLS: list[str] = [COL_START, COL_END, COL_DURATION_S]
 
-_RIGHT_LABELED = {"ME", "YE", "QE", "BME", "BYE", "BQE", "W", "M", "A", "Y", "Q"}
+_RIGHT_LABELED = {"ME", "YE", "QE", "BME", "BYE", "BQE", "W"}
 
 Window: TypeAlias = "str | pd.Timedelta | pd.DateOffset"
+
+# A DST problem raises ValueError on pandas 3; pandas 2 raises pytz's
+# AmbiguousTimeError / NonExistentTimeError, which are not ValueErrors.
+try:  # pragma: no cover - depends on the pandas version
+    from pytz.exceptions import InvalidTimeError as _PytzInvalidTime
+
+    _TZ_ERRORS: tuple[type[Exception], ...] = (ValueError, _PytzInvalidTime)
+except ImportError:  # pragma: no cover
+    _TZ_ERRORS = (ValueError,)
 
 
 def floor_local(times: pd.Series, freq: Window) -> pd.Series:
@@ -71,7 +81,7 @@ def floor_local(times: pd.Series, freq: Window) -> pd.Series:
     """
     try:
         return times.dt.floor(freq)
-    except ValueError:
+    except _TZ_ERRORS:
         if times.dt.tz is None:
             raise
     is_dst = times.map(lambda t: bool(t.dst()) if pd.notna(t) else False)
@@ -92,7 +102,7 @@ def _right_labeled(window: Window) -> bool:
 
 
 def _step(window: Window) -> Any:
-    return to_offset(window) if isinstance(window, str) else window
+    return window_offset(window) if isinstance(window, str) else window
 
 
 def window_bounds(labels: pd.Series, window: Window) -> tuple[pd.Series, pd.Series]:
@@ -236,12 +246,6 @@ def data_tz(series: pd.Series) -> Any:
         return None
 
 
-def _localize(ts: pd.Timestamp, tz: Any) -> pd.Timestamp:
-    if tz is None:
-        return ts
-    return ts.tz_localize(tz, ambiguous=False, nonexistent="shift_forward")
-
-
 def _day(value: Any) -> pd.Timestamp | None:
     if value is None or (not isinstance(value, _dt.date) and pd.isna(value)):
         return None
@@ -312,8 +316,8 @@ def add_shift_window(
         start = pd.Timestamp.combine(day.date(), t_start)
         end_day = day + pd.Timedelta(days=1) if t_start >= t_end else day
         end = pd.Timestamp.combine(end_day.date(), t_end)
-        starts.append(_localize(start, tz))
-        ends.append(_localize(end, tz))
+        starts.append(localize_in(start, tz))
+        ends.append(localize_in(end, tz))
     return _insert_window(df, starts, ends, tz)
 
 
@@ -341,8 +345,8 @@ def add_day_window(
             starts.append(pd.NaT)
             ends.append(pd.NaT)
             continue
-        starts.append(_localize(day, tz))
-        ends.append(_localize(day + step, tz))
+        starts.append(localize_in(day, tz))
+        ends.append(localize_in(day + step, tz))
     return _insert_window(df, starts, ends, tz)
 
 

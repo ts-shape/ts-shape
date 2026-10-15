@@ -1,6 +1,6 @@
 """Tests for the public synthetic-data generator."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 import ts_shape

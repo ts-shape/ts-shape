@@ -12,8 +12,11 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method, keyword_only
-from ts_shape.utils.normalize import _caller_stacklevel
+from ts_shape.utils.deprecation import (
+    caller_stacklevel,
+    deprecated_method,
+    keyword_only,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +185,7 @@ class LeadTimeAnalysisEvents(Base):
                     f"a later delivery and {len(deliveries) - len(delivery_pos)} "
                     "delivery(ies) without an earlier open order were dropped",
                     DataQualityWarning,
-                    stacklevel=_caller_stacklevel(),
+                    stacklevel=caller_stacklevel(),
                 )
             # Keep Series (not .values) so a tz-aware systime keeps its tz.
             order_times = orders[self.time_column].iloc[order_pos]

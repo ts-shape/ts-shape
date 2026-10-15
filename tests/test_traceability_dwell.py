@@ -1,6 +1,6 @@
 """Theme B follow-up: infer_dwell_from_next for traceability modules."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.production.order_traceability import ValueTraceabilityEvents
 

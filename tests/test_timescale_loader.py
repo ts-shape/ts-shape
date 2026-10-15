@@ -1,4 +1,4 @@
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 pytest.importorskip("sqlalchemy")
@@ -14,8 +14,8 @@ def test_timescale_fetch_dataframe_monkeypatched(monkeypatch):
     from ts_shape.loader.timeseries.timescale_loader import TimescaleDBDataAccess
 
     loader = TimescaleDBDataAccess(
-        start_timestamp="2024-01-01 00:00:00",
-        end_timestamp="2024-01-01 01:00:00",
+        start="2024-01-01 00:00:00",
+        end="2024-01-01 01:00:00",
         uuids=["u1", "u2"],
         db_config={"db_user": "u", "db_pass": "p", "db_host": "h", "db_name": "n"},
     )

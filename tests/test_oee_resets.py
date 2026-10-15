@@ -1,6 +1,6 @@
 """Reset-aware behavior of OEEEvents.performance / quality."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 from ts_shape.events.production import OEEEvents

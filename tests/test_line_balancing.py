@@ -1,6 +1,6 @@
 """Tests for LineBalancingEvents (line balancing and takt analysis)."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 import pytest
 
 import ts_shape

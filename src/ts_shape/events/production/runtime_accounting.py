@@ -14,6 +14,7 @@ counts): here the focus is *absolute* run time and an hour-meter reading.
 """
 
 import logging
+import warnings
 from typing import Any
 
 import pandas as pd
@@ -21,7 +22,13 @@ import pandas as pd
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
+from ts_shape.utils.deprecation import (
+    REMOVAL,
+    caller_stacklevel,
+    deprecated_method,
+    keyword_only,
+    renamed_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +73,12 @@ class RuntimeAccountingEvents(Base):
     @property
     def run_uuid(self) -> str:
         """Deprecated read-only alias of :attr:`run_state_uuid`."""
+        warnings.warn(
+            "RuntimeAccountingEvents.run_uuid is deprecated, use .run_state_uuid; "
+            f"the old name will be removed in {REMOVAL}",
+            DeprecationWarning,
+            stacklevel=caller_stacklevel(),
+        )
         return self.run_state_uuid
 
     # ------------------------------------------------------------------

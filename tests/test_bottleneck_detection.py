@@ -81,9 +81,9 @@ class TestThroughputConstraintSummary:
     def test_summary_structure(self, three_station_df):
         detector = BottleneckDetectionEvents(three_station_df)
         summary = detector.throughput_constraint_summary(
-            ["station_a", "station_b", "station_c"], window="1h", as_frame=False
+            ["station_a", "station_b", "station_c"], window="1h"
         )
-        assert "bottleneck_counts" in summary
-        assert "most_frequent_bottleneck" in summary
-        assert "avg_utilization_per_station" in summary
-        assert summary["most_frequent_bottleneck"] == "station_a"
+        for column in ("bottleneck_count", "avg_utilization_pct"):
+            assert column in summary.columns
+        top = summary.loc[summary["most_frequent_bottleneck"], "uuid"]
+        assert top.tolist() == ["station_a"]

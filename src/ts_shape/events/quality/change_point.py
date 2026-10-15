@@ -30,7 +30,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +260,8 @@ class ChangePointEvents(Base):
         >>> df = ts_shape.make_timeseries(["pressure"], n_points=100)
         >>> df.loc[50:, "value_double"] += 5  # level shift half-way
         >>> out = ts_shape.ChangePointEvents(df, "pressure").detect_change_points()
-        >>> out[["systime", "mean_before", "mean_after", "shift_sigma"]].round(1)
+        >>> numbers = ["mean_before", "mean_after", "shift_sigma"]
+        >>> out[["systime", *numbers]].round(dict.fromkeys(numbers, 1))
                       systime  mean_before  mean_after  shift_sigma
         0 2025-01-01 00:25:00        100.1       104.8          6.1
     """
@@ -286,7 +287,6 @@ class ChangePointEvents(Base):
                 "x": to_numeric_checked(
                     rows[value_column],
                     what=f"{value_column!r} of signal {signal_uuid!r}",
-                    stacklevel=4,
                 ),
             }
         ).dropna()
@@ -302,7 +302,7 @@ class ChangePointEvents(Base):
                     f"PELT on {len(x)} samples may be slow when changes are "
                     "rare; use method='binseg' or resample the signal",
                     UserWarning,
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
             found = pelt(x, cost=cost, penalty=penalty, min_size=min_size)
         elif method == "binseg":

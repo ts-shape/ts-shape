@@ -197,9 +197,8 @@ class TestComputeMetricProfiles:
         assert result["uuid"].unique().tolist() == ["temperature"]
         assert len(result) == 2  # 1 UUID x 2 segment_values
 
-    def test_overlapping_ranges_warns(self, production_df, caplog):
+    def test_overlapping_ranges_warns(self, production_df):
         """Overlapping time ranges should produce a warning."""
-        import logging
 
         ranges = pd.DataFrame(
             {
@@ -216,6 +215,7 @@ class TestComputeMetricProfiles:
                 "segment_index": [0, 1],
             }
         )
-        with caplog.at_level(logging.WARNING):
+        from ts_shape.errors import DataQualityWarning
+
+        with pytest.warns(DataQualityWarning, match="overlapping"):
             SegmentProcessor.apply_ranges(production_df, ranges)
-        assert "overlapping" in caplog.text.lower()

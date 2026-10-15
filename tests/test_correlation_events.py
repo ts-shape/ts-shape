@@ -213,10 +213,13 @@ def test_rolling_correlation_old_resample_and_int_window_still_work(correlated_d
     new = sc.rolling_correlation(
         "signal:temperature", "signal:pressure", window="1min", window_size=30
     )
-    with pytest.warns(DeprecationWarning, match="is deprecated"):
+    with pytest.warns(DeprecationWarning) as caught:
         old = sc.rolling_correlation(
             "signal:temperature", "signal:pressure", resample="1min", window=30
         )
+    messages = [str(w.message) for w in caught]
+    assert any("'resample' is deprecated" in m for m in messages)
+    assert any("integer window" in m for m in messages)
     pd.testing.assert_frame_equal(new, old)
     with pytest.warns(DeprecationWarning, match="window_size"):
         only_int = sc.rolling_correlation(

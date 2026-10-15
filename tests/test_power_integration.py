@@ -4,8 +4,8 @@ Every case here is hand-computable: the expected kWh is stated in the
 docstring or comment so a failure points at the physics, not at a fixture.
 """
 
-import pandas as pd  # type: ignore
-import pytest  # type: ignore
+import pandas as pd
+import pytest
 
 from ts_shape.events.energy.consumption_analysis import EnergyConsumptionEvents
 from ts_shape.transform.calculator.power_integration import PowerIntegrator
@@ -94,7 +94,7 @@ def test_segment_straddling_window_boundary_is_split():
 def test_multi_day_window():
     """1D windows: 24 h at 10 kW = 240 kWh per day."""
     rows = [(f"2024-01-0{d} 00:00:00", 10.0) for d in (1, 2, 3)]
-    out = PowerIntegrator.energy_by_window(_df(rows), freq="1D")
+    out = PowerIntegrator.energy_by_window(_df(rows), window="1D")
     assert out["kwh"].tolist() == pytest.approx([240.0, 240.0])
 
 
@@ -449,7 +449,7 @@ def test_runs_as_a_pipeline_transform():
     )
     result = (
         Pipeline(name="hourly-kwh")
-        .transform(PowerIntegrator, "to_energy_deltas", freq="1h", max_gap="15min")
+        .transform(PowerIntegrator, "to_energy_deltas", window="1h", max_gap="15min")
         .detect(
             EnergyConsumptionEvents,
             "consumption_by_window",
@@ -478,7 +478,7 @@ def test_timezone_aware_input_is_preserved():
             "value_double": [10.0, 10.0],
         }
     )
-    out = PowerIntegrator.energy_by_window(df, freq="1h")
+    out = PowerIntegrator.energy_by_window(df, window="1h")
 
     assert str(out["start"].dt.tz) == "Europe/Berlin"
     assert out["kwh"].sum() == pytest.approx(20.0)
@@ -503,7 +503,7 @@ def test_daily_windows_conserve_energy_across_a_dst_changeover():
             "value_double": [10.0, 10.0],
         }
     )
-    out = PowerIntegrator.energy_by_window(df, freq="1D")
+    out = PowerIntegrator.energy_by_window(df, window="1D")
     assert out["kwh"].sum() == pytest.approx(470.0)
 
 

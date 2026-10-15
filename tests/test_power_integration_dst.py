@@ -18,7 +18,7 @@ def constant_60kw():
 
 def test_daily_windows_on_spring_forward(constant_60kw):
     out = PowerIntegrator.energy_by_window(
-        constant_60kw, freq="1D", data_end=pd.Timestamp("2024-04-01", tz=BERLIN)
+        constant_60kw, window="1D", data_end=pd.Timestamp("2024-04-01", tz=BERLIN)
     )
     assert list(out["duration_seconds"]) == [86400.0, 82800.0]
     assert list(out["end"]) == [
@@ -31,7 +31,7 @@ def test_daily_windows_on_spring_forward(constant_60kw):
 
 def test_hourly_windows_are_real_hours(constant_60kw):
     out = PowerIntegrator.energy_by_window(
-        constant_60kw, freq="1h", data_end=pd.Timestamp("2024-04-01", tz=BERLIN)
+        constant_60kw, window="1h", data_end=pd.Timestamp("2024-04-01", tz=BERLIN)
     )
     assert len(out) == 47  # 24 + 23 real hours
     assert (out["duration_seconds"] == 3600.0).all()

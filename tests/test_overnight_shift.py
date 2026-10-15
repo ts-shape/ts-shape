@@ -1,6 +1,6 @@
 """Overnight-shift attribution (production_day) regression tests."""
 
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ts_shape.events.production.shift_reporting import ShiftReportEvents
 from ts_shape.events.production.target_tracking import TargetEvents

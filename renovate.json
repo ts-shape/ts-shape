@@ -1,9 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
-    "Default Renovate preset for jakobgabriel Python projects.",
-    "Covers pep621, pip_requirements, pip_setup, github-actions, and python-version managers.",
-    "To reuse: move this file to a jakobgabriel/renovate-config repo and extend via github>jakobgabriel/renovate-config."
+    "Renovate config for ts-shape.",
+    "Updates pyproject.toml (pep621), GitHub Actions and pre-commit hook revs."
   ],
   "extends": [
     "config:recommended",
@@ -12,7 +11,6 @@
   ],
   "dependencyDashboard": true,
   "osvVulnerabilityAlerts": true,
-  "transitiveRemediation": true,
   "rangeStrategy": "bump",
   "minimumReleaseAge": "3 days",
   "prConcurrentLimit": 10,
@@ -29,24 +27,19 @@
   },
   "enabledManagers": [
     "pep621",
-    "pip_requirements",
-    "pip_setup",
     "github-actions",
-    "python-version"
+    "pre-commit"
   ],
-  "python": {
-    "fileMatch": ["(^|/)pyproject\\.toml$"]
+  "pre-commit": {
+    "enabled": true
   },
   "schedule": ["before 9am on Friday"],
-  "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": ["before 9am on Friday"]
-  },
   "packageRules": [
     {
-      "description": "Group core runtime dependencies",
+      "description": "Group core runtime dependencies; keep the declared minimums (CI tests them in min-deps) instead of bumping them",
       "matchManagers": ["pep621"],
-      "matchDepTypes": ["dependencies"],
+      "matchDepTypes": ["project.dependencies"],
+      "rangeStrategy": "widen",
       "groupName": "core runtime dependencies",
       "labels": ["dependencies"]
     },
@@ -63,18 +56,8 @@
       "labels": ["dependencies", "cloud"]
     },
     {
-      "description": "Automerge docs dependencies (minor/patch), monthly schedule",
-      "matchManagers": ["pip_requirements"],
-      "matchFileNames": ["requirements-docs.txt"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "automerge": true,
-      "groupName": "docs dependencies",
-      "labels": ["docs"],
-      "schedule": ["before 9am on the first day of the month"]
-    },
-    {
-      "description": "Dev tools on monthly schedule",
-      "matchPackageNames": ["pytest", "pytest-cov", "black", "ruff", "pre-commit", "mypy"],
+      "description": "Dev tools on monthly schedule; pre-commit hook revs move with the pyproject pins",
+      "matchPackageNames": ["pytest", "pytest-cov", "black", "ruff", "pre-commit", "mypy", "psf/black", "astral-sh/ruff-pre-commit", "pre-commit/pre-commit-hooks"],
       "groupName": "dev tools",
       "labels": ["dev-tools"],
       "schedule": ["before 9am on the first day of the month"],

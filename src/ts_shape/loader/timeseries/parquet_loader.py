@@ -6,7 +6,13 @@ from pathlib import Path
 import pandas as pd
 
 from ts_shape.errors import LoaderConfigWarning
-from ts_shape.loader._utils import retry_call, same_tz_bounds, validate_local_path
+from ts_shape.loader._utils import (
+    retry_call,
+    same_tz_bounds,
+    utc_naive,
+    validate_local_path,
+)
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +27,7 @@ def _folder_bounds(
     bounds are taken as UTC (the folder layout's timezone).
     """
     start, end = same_tz_bounds(start_time, end_time)
-    if start.tzinfo is not None:
-        start = start.tz_convert("UTC").tz_localize(None)
-        end = end.tz_convert("UTC").tz_localize(None)
-    return start.floor("h"), end
+    return utc_naive(start).floor("h"), utc_naive(end)
 
 
 class ParquetLoader:
@@ -71,7 +74,7 @@ class ParquetLoader:
                 f"No parquet files matched under {base_path}. "
                 "Check the path and any time-range/uuid filters.",
                 LoaderConfigWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
             return pd.DataFrame()
         dataframes = [
@@ -101,26 +104,27 @@ class ParquetLoader:
         return cls._read_concat(parquet_files, root)
 
     @classmethod
+    @renamed_kwargs(start_time="start", end_time="end")
     def load_by_time_range(
-        cls, base_path: str, start_time: pd.Timestamp, end_time: pd.Timestamp
+        cls, base_path: str, start: pd.Timestamp, end: pd.Timestamp
     ) -> pd.DataFrame:
         """
         Loads parquet files that fall within a specified time range based on the directory structure.
 
         The directory structure is expected to be in the format YYYY/MM/DD/HH
-        (UTC). The hour folder that contains ``start_time`` is included;
+        (UTC). The hour folder that contains ``start`` is included;
         tz-aware bounds are converted to UTC, naive ones are taken as UTC.
 
         Args:
             base_path (str): The base directory where parquet files are stored.
-            start_time (pd.Timestamp): The start timestamp.
-            end_time (pd.Timestamp): The end timestamp.
+            start (pd.Timestamp): The start timestamp.
+            end (pd.Timestamp): The end timestamp.
 
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files within the time range.
         """
         root = validate_local_path(base_path, must_be_dir=True)
-        first_hour, last = _folder_bounds(start_time, end_time)
+        first_hour, last = _folder_bounds(start, end)
         # Get all parquet files in the directory
         parquet_files = cls._get_parquet_files(root)
         valid_files = []
@@ -173,31 +177,32 @@ class ParquetLoader:
         return cls._read_concat(valid_files, root)
 
     @classmethod
+    @renamed_kwargs(start_time="start", end_time="end")
     def load_files_by_time_range_and_uuids(
         cls,
         base_path: str,
-        start_time: pd.Timestamp,
-        end_time: pd.Timestamp,
+        start: pd.Timestamp,
+        end: pd.Timestamp,
         uuid_list: list,
     ) -> pd.DataFrame:
         """
         Loads parquet files that fall within a specified time range and match any UUID in the list.
 
         The directory structure is expected to be in the format YYYY/MM/DD/HH
-        (UTC; the hour folder that contains ``start_time`` is included), and a
+        (UTC; the hour folder that contains ``start`` is included), and a
         file matches when its name without ``.parquet`` equals a UUID.
 
         Args:
             base_path (str): The base directory where parquet files are stored.
-            start_time (pd.Timestamp): The start timestamp.
-            end_time (pd.Timestamp): The end timestamp.
+            start (pd.Timestamp): The start timestamp.
+            end (pd.Timestamp): The end timestamp.
             uuid_list (list): A list of UUIDs to filter the files.
 
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files that meet both criteria.
         """
         root = validate_local_path(base_path, must_be_dir=True)
-        first_hour, last = _folder_bounds(start_time, end_time)
+        first_hour, last = _folder_bounds(start, end)
         wanted = {str(u) for u in uuid_list}
         # Get all parquet files in the directory
         parquet_files = cls._get_parquet_files(root)

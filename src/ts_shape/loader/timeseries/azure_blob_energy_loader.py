@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import PurePosixPath
-from typing import Any, Union
+from typing import Any, Self
 
 import pandas as pd
 
@@ -21,6 +21,7 @@ from ts_shape.loader._utils import (
     utc_folder_hours,
 )
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,7 @@ class AzureBlobEnergyLoader:
         max_workers: int = 8,
         thousands: str | None = None,
         decimal: str = ".",
-    ) -> "AzureBlobEnergyLoader":
+    ) -> Self:
         """
         Construct a loader using AAD credentials with an account name.
 
@@ -236,7 +237,7 @@ class AzureBlobEnergyLoader:
                     f"Series metadata blob {blob_name!r} does not exist; "
                     "returning an empty metadata table.",
                     LoaderConfigWarning,
-                    stacklevel=2,
+                    stacklevel=caller_stacklevel(),
                 )
                 return pd.DataFrame(columns=_META_COLUMNS)
             raise LoaderError(
@@ -252,8 +253,8 @@ class AzureBlobEnergyLoader:
 
     def load_by_time_range(
         self,
-        start: Union[str, "pd.Timestamp"],
-        end: Union[str, "pd.Timestamp"],
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         series_ids: list[str] | None = None,
         *,
         errors: ErrorsMode = "warn",
@@ -282,8 +283,8 @@ class AzureBlobEnergyLoader:
     def load_by_series_ids(
         self,
         series_ids: list[str],
-        start: Union[str, "pd.Timestamp"] | None = None,
-        end: Union[str, "pd.Timestamp"] | None = None,
+        start: str | pd.Timestamp | None = None,
+        end: str | pd.Timestamp | None = None,
         *,
         errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
@@ -326,8 +327,8 @@ class AzureBlobEnergyLoader:
 
     def stream_by_time_range(
         self,
-        start: Union[str, "pd.Timestamp"],
-        end: Union[str, "pd.Timestamp"],
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         series_ids: list[str] | None = None,
         *,
         errors: ErrorsMode = "warn",
@@ -395,8 +396,8 @@ class AzureBlobEnergyLoader:
 
     def _build_date_paths(
         self,
-        start: Union[str, "pd.Timestamp"],
-        end: Union[str, "pd.Timestamp"],
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
     ) -> list[str]:
         """Return list of day-level blob prefixes: csv/YYYY/MM/DD/.
 
@@ -413,8 +414,8 @@ class AzureBlobEnergyLoader:
 
     def _list_blobs_by_date_range(
         self,
-        start: Union[str, "pd.Timestamp"],
-        end: Union[str, "pd.Timestamp"],
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         ids_set: set | None,
     ) -> list[str]:
         """List CSV blob names across the date range, optionally filtered by ids_set."""
@@ -516,7 +517,7 @@ class AzureBlobEnergyLoader:
                 if not df.empty:
                     frames.append(df)
         failures.sort(key=lambda item: item[0])
-        report_failures(failures, what="CSV blob(s)", errors=errors, stacklevel=4)
+        report_failures(failures, what="CSV blob(s)", errors=errors)
 
         if not frames:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)

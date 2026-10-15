@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import functools
 import inspect
+import sys
 import warnings
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, TypeVar
 
 __all__ = [
@@ -28,6 +30,8 @@ __all__ = [
     "deprecated_method",
     "deprecated_class",
     "keyword_only",
+    "caller_stacklevel",
+    "deprecated_attribute",
 ]
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -36,11 +40,37 @@ C = TypeVar("C", bound=type)
 REMOVAL = "the next major release"
 
 
-def _warn(message: str, stacklevel: int = 3) -> None:
+_PACKAGE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _in_package(filename: str) -> bool:
+    try:
+        return Path(filename).resolve().is_relative_to(_PACKAGE_DIR)
+    except (OSError, ValueError):
+        return False
+
+
+def caller_stacklevel() -> int:
+    """``stacklevel`` that points a warning at the first frame outside ts_shape.
+
+    Call it directly in the ``warnings.warn(...)`` call. Detector methods are
+    wrapped (signal checks, keyword-only and renamed-keyword shims), so a
+    fixed number would attribute the warning to a wrapper inside the package,
+    and Python's default filters would then hide a ``DeprecationWarning``.
+    """
+    frame = sys._getframe(1)
+    level = 1
+    while frame.f_back is not None and _in_package(frame.f_code.co_filename):
+        frame = frame.f_back
+        level += 1
+    return level
+
+
+def _warn(message: str) -> None:
     warnings.warn(
         f"{message}; the old name will be removed in {REMOVAL}",
         DeprecationWarning,
-        stacklevel=stacklevel,
+        stacklevel=caller_stacklevel(),
     )
 
 
@@ -176,3 +206,40 @@ def keyword_only(n_positional: int) -> Callable[[F], F]:
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+class deprecated_attribute:  # noqa: N801 - used like a decorator/property
+    """A class attribute that forwards to ``new_name`` with a warning.
+
+    Example:
+        >>> class Loader:
+        ...     start_timestamp = deprecated_attribute("start")
+
+    Reading or setting ``loader.start_timestamp`` warns and uses
+    ``loader.start``.
+    """
+
+    def __init__(self, new_name: str) -> None:
+        self.new_name = new_name
+        self.old_name = ""
+        self.owner = ""
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.old_name = name
+        self.owner = owner.__name__
+
+    def _message(self) -> str:
+        return (
+            f"{self.owner}.{self.old_name} is deprecated, use "
+            f"{self.owner}.{self.new_name}"
+        )
+
+    def __get__(self, obj: Any, objtype: Any = None) -> Any:
+        if obj is None:
+            return self
+        _warn(self._message())
+        return getattr(obj, self.new_name)
+
+    def __set__(self, obj: Any, value: Any) -> None:
+        _warn(self._message())
+        setattr(obj, self.new_name, value)

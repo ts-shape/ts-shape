@@ -8,7 +8,7 @@ import pandas as pd
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only, renamed_kwargs
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -257,9 +257,7 @@ class AnomalyClassificationEvents(Base):
             return np.asarray((ticks - ticks[0]) / per_second, dtype=float)
         return np.arange(len(index), dtype=float)
 
-    def _fit_slope(
-        self, win: pd.Series, slope_per: str, stacklevel: int
-    ) -> float | None:
+    def _fit_slope(self, win: pd.Series, slope_per: str) -> float | None:
         """Least-squares slope of ``win`` (NaN values left out).
 
         Returns ``None`` -- after a :class:`DataQualityWarning` -- when the
@@ -277,7 +275,7 @@ class AnomalyClassificationEvents(Base):
                 f"{self.signal_uuid}: slope fit failed for the window starting "
                 f"{win.index[0]} ({exc}); window skipped",
                 DataQualityWarning,
-                stacklevel=stacklevel,
+                stacklevel=caller_stacklevel(),
             )
             return None
 
@@ -332,7 +330,7 @@ class AnomalyClassificationEvents(Base):
         while current + window_td <= end_time:
             win_end = current + window_td
             win = sig.loc[current:win_end, self.value_column]
-            slope = self._fit_slope(win, slope_per, 5) if len(win) >= 3 else None
+            slope = self._fit_slope(win, slope_per) if len(win) >= 3 else None
             if slope is not None and abs(slope) >= min_slope:
                 events.append(
                     {
@@ -470,7 +468,7 @@ class AnomalyClassificationEvents(Base):
                 continue
 
             # Check drift
-            fitted = self._fit_slope(win, slope_per, 6)
+            fitted = self._fit_slope(win, slope_per)
             slope = 0.0 if fitted is None else fitted
 
             if fitted is not None and abs(slope) > drift_threshold:

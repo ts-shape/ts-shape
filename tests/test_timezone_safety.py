@@ -102,17 +102,17 @@ def test_stockout_prediction_keeps_tz(start):
 
 def test_datetime_filter_on_tz_aware_column(berlin_signal):
     df = berlin_signal([1.0, 2.0, 3.0], start="2024-01-01 23:00", freq="1h")
-    out = DateTimeFilter.filter_after_date(df, "systime", "2024-01-02")
+    out = DateTimeFilter.filter_after_date(df, "2024-01-02")
     assert len(out) == 1  # 01:00 local; 00:00 is not strictly after
     between = DateTimeFilter.filter_between_datetimes(
-        df, "systime", "2024-01-01 23:00", "2024-01-02 01:00", inclusive="both"
+        df, "2024-01-01 23:00", "2024-01-02 01:00", inclusive="both"
     )
     assert len(between) == 3
 
 
 def test_datetime_filter_default_bounds_exclusive():
     df = pd.DataFrame({"systime": pd.date_range("2024-01-01", periods=3, freq="D")})
-    out = DateTimeFilter.filter_between_dates(df, "systime", "2024-01-01", "2024-01-03")
+    out = DateTimeFilter.filter_between_dates(df, "2024-01-01", "2024-01-03")
     assert len(out) == 1
 
 

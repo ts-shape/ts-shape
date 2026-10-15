@@ -6,6 +6,7 @@ import pandas as pd
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.shifts import assign_shift
 from ts_shape.utils.time_weighted import time_weighted_resample
@@ -132,8 +133,7 @@ class IdleEnergyDetectionEvents(Base):
             out = energy_agg.join(state_agg, how="left").reset_index()
         else:
             state_agg = (
-                state[value_column_state]
-                .fillna(False)
+                bool_or_false(state[value_column_state])
                 .astype(float)
                 .resample(window)
                 .mean()
@@ -204,8 +204,7 @@ class IdleEnergyDetectionEvents(Base):
             energy.groupby("_shift")[value_column_energy].sum().rename("total_energy")
         )
         running_by_shift = (
-            state[value_column_state]
-            .fillna(False)
+            bool_or_false(state[value_column_state])
             .astype(float)
             .groupby(state["_shift"])
             .mean()

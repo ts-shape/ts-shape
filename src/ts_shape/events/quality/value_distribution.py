@@ -17,7 +17,7 @@ from scipy import stats as sp_stats
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,7 @@ class ValueDistributionEvents(Base):
                 f"{self.signal_uuid}: kernel density estimate is singular; "
                 "reporting a single mode at the median",
                 DataQualityWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
             return unimodal(float(np.median(vals)))
 
@@ -318,7 +318,7 @@ class ValueDistributionEvents(Base):
                     f"{self.signal_uuid}: Shapiro-Wilk test skipped for the "
                     f"window starting {ts} ({reason})",
                     DataQualityWarning,
-                    stacklevel=5,
+                    stacklevel=caller_stacklevel(),
                 )
                 continue
 

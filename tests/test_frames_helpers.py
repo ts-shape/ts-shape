@@ -85,3 +85,38 @@ def test_signal_frame_input_normalizes_copy():
     C.f(df)
     assert seen["dtype"] == "float64"
     assert str(df["value_double"].dtype) == "Float64"
+
+
+def test_as_datetime_unknown_layout_parses_without_warning():
+    """Text pandas cannot infer a layout for is parsed value by value, quietly."""
+    import warnings
+
+    s = pd.Series(["5/1/24 10:00", "6/1/24 11:00"], name="t")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = as_datetime(s, where="f")
+    assert list(out) == [
+        pd.Timestamp("2024-05-01 10:00"),
+        pd.Timestamp("2024-06-01 11:00"),
+    ]
+    # mixed layouts are read too
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        mixed = as_datetime(pd.Series(["2024-01-01 10:00", "01/02/2024"]), where="f")
+    assert list(mixed) == [pd.Timestamp("2024-01-01 10:00"), pd.Timestamp("2024-01-02")]
+
+
+def test_to_ns_naive_aware_and_units():
+    import numpy as np
+
+    from ts_shape.utils.frames import to_ns
+
+    naive = pd.Series(pd.to_datetime(["2024-01-01 01:00", None]).as_unit("us"))
+    ns = to_ns(naive)
+    assert ns.dtype == np.int64
+    assert ns[0] == pd.Timestamp("2024-01-01 01:00").value
+    assert ns[1] == np.iinfo(np.int64).min
+    berlin = naive.dt.tz_localize("Europe/Berlin")
+    # an aware value gives its UTC instant
+    assert to_ns(berlin)[0] == pd.Timestamp("2024-01-01 00:00").value
+    assert list(to_ns(pd.DatetimeIndex(berlin))) == list(to_ns(berlin))

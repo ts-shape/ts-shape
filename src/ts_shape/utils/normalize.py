@@ -24,16 +24,14 @@ sees the same NumPy-backed dtypes:
 
 from __future__ import annotations
 
-import os
-import sys
 import warnings
-from types import FrameType
 
 import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
 
 from ts_shape.errors import DataQualityWarning
+from ts_shape.utils.deprecation import caller_stacklevel
 
 __all__ = ["normalize_signal_frame", "NUMERIC_VALUE_COLUMNS"]
 
@@ -64,24 +62,6 @@ def _plain(series: pd.Series) -> pd.Series:
         return pd.to_datetime(series.astype(object))
     values = series.astype(object)
     return values.where(series.notna(), np.nan)
-
-
-_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _caller_stacklevel() -> int:
-    """``stacklevel`` that points a warning at the first frame outside ts_shape.
-
-    Meant for a ``warnings.warn`` call made directly in the caller.
-    """
-    frame: FrameType | None = sys._getframe(1)
-    level = 1
-    while frame is not None and os.path.abspath(frame.f_code.co_filename).startswith(
-        _PACKAGE_DIR
-    ):
-        frame = frame.f_back
-        level += 1
-    return level
 
 
 def _arrow_timestamp(series: pd.Series) -> bool:
@@ -143,6 +123,6 @@ def _parse_numbers(frame: pd.DataFrame, column: str, uuid_column: str) -> pd.Ser
             f"{int(lost.sum())} non-null value(s) in column {column!r}{where} are "
             "not numeric and were treated as missing (NaN).",
             DataQualityWarning,
-            stacklevel=_caller_stacklevel(),
+            stacklevel=caller_stacklevel(),
         )
     return numeric

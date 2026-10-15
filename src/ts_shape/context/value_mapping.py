@@ -6,7 +6,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import require_columns
 
 logger = logging.getLogger(__name__)
@@ -156,7 +156,7 @@ class ValueMapper(Base):
                 f"entry in the mapping table (e.g. {examples}); they keep their "
                 "original value",
                 DataQualityWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         mapped = [
             lookup[t] if h and t is not None else v
