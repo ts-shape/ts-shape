@@ -75,6 +75,17 @@ def test_window_offset_daily_is_a_calendar_day():
     assert (berlin + window_offset("1D")) - berlin == pd.Timedelta("23h")
 
 
+def test_window_offset_return_type_per_pandas_version():
+    # Pins what the docstring says the day offset is on each pandas major.
+    got = window_offset("3D")
+    if isinstance(pd.tseries.frequencies.to_offset("1D"), pd.tseries.offsets.Tick):
+        assert type(got) is pd.DateOffset and got.kwds == {"days": 3}
+    else:
+        assert got == pd.tseries.frequencies.to_offset("3D")
+        assert type(got).__name__ == "Day" and got.n == 3
+    assert window_offset("24h") == pd.tseries.frequencies.to_offset("24h")
+
+
 def test_template_fields():
     assert template_fields("production.{shift}.{state}") == ["shift", "state"]
     assert template_fields("no.placeholders") == []
