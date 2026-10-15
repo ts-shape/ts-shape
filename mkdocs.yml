@@ -4,13 +4,12 @@ site_url: "https://ts-shape.github.io/ts-shape"
 repo_url: "https://github.com/ts-shape/ts-shape"
 repo_name: "ts-shape"
 site_dir: "site"
-copyright: Copyright &copy; 2024 Jakob Gabriel
+copyright: Copyright &copy; 2024-2026 Jakob Gabriel
 edit_uri: edit/main/docs/
 
 not_in_nav: |
   /reference/index.md
 
-# Kept in the repository until it is rewritten; not part of the site.
 validation:
   omitted_files: warn
   absolute_links: warn
@@ -219,7 +218,7 @@ plugins:
 - search
 - gen-files:
     scripts:
-    - scripts/gen_ref_pages.py  # (2)!
+    - scripts/gen_ref_pages.py
 - literate-nav:
     nav_file: SUMMARY.md
 - mkdocstrings:
