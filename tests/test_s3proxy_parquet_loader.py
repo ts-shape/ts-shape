@@ -22,8 +22,8 @@ def test_s3proxy_fetch_data_as_dataframe_monkeypatched(monkeypatch):
     monkeypatch.setattr(s3fs, "S3FileSystem", DummyS3)
 
     loader = S3ProxyDataAccess(
-        start_timestamp="2024-01-01 00:00:00",
-        end_timestamp="2024-01-01 02:00:00",
+        start="2024-01-01 00:00:00",
+        end="2024-01-01 02:00:00",
         uuids=["u1", "u2"],
         s3_config={
             "endpoint_url": "http://localhost",

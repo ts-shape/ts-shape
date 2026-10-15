@@ -27,6 +27,9 @@ them, so a deprecated name could be used without a hint. Run your tests with
 
 Newly deprecated (old name still works and warns):
 
+Loader time ranges are `start` / `end` everywhere; positional calls are
+unchanged.
+
 | Old | New |
 |---|---|
 | recipe spec key `duration_s` | `duration_seconds` |
@@ -34,6 +37,9 @@ Newly deprecated (old name still works and warns):
 | `CycleDataProcessor.cycle_uuid_col` / `.systime_col` (attributes) | `.cycle_uuid_column` / `.time_column` |
 | `RuntimeAccountingEvents.run_uuid` (attribute) | `.run_state_uuid` |
 | `MultiSensorValidationEvents.sensor_uuids` (attribute) | `.signal_uuids` |
+| `start_timestamp=` / `end_timestamp=` (Azure Blob, Databricks Unity and Spark parquet loaders, `TimescaleDBDataAccess`, `S3ProxyDataAccess`) | `start=` / `end=` |
+| `start_time=` / `end_time=` (`ParquetLoader.load_by_time_range`, `load_files_by_time_range_and_uuids`) | `start=` / `end=` |
+| `TimescaleDBDataAccess.start_timestamp` / `.end_timestamp`, same on `S3ProxyDataAccess` (attributes) | `.start` / `.end` |
 
 ### Behavior changes
 
@@ -56,6 +62,10 @@ Newly deprecated (old name still works and warns):
   invalid or overlapping cycles, empty feature tables. Text in numeric
   columns is reported in pattern recognition, feature export, segment
   statistics, cycles and continuous-process alignment.
+- `StatisticalProcessControlEvents.detect_cusum_shifts` counts a repeated
+  sample (same time, same value) once, with a `DataQualityWarning`. A
+  duplicated row was added to the running sum twice and could report a shift
+  on its own.
 - `ProfileComparison.cluster(n_clusters=...)` always returns the requested
   number of clusters (SciPy's `maxclust` cut could return fewer).
 - New exports: `ts_shape.events.production` lists `FlowMetricsEvents`,

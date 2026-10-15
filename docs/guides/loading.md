@@ -67,8 +67,8 @@ loader = AzureBlobParquetLoader(
 loader.list_structure(limit=20)   # {"folders": [...], "files": [...]}
 
 df = loader.load_files_by_time_range_and_uuids(
-    start_timestamp="2024-01-15 08:00",
-    end_timestamp="2024-01-15 12:00",
+    start="2024-01-15 08:00",
+    end="2024-01-15 12:00",
     uuid_list=["temperature", "pressure"],
 )
 ```
@@ -90,8 +90,8 @@ parse=True)`).
 from ts_shape.loader.timeseries.s3proxy_parquet_loader import S3ProxyDataAccess
 
 loader = S3ProxyDataAccess(
-    start_timestamp="2024-01-01 00:00:00",
-    end_timestamp="2024-01-31 23:59:59",
+    start="2024-01-01 00:00:00",
+    end="2024-01-31 23:59:59",
     uuids=["temperature", "pressure"],
     s3_config={
         "endpoint_url": "https://s3.example.com",
@@ -160,8 +160,8 @@ loader.build_paths("2026-06-19 06:00", "2026-06-19 08:00", ["ABC"])   # the file
 from ts_shape.loader.timeseries.timescale_loader import TimescaleDBDataAccess
 
 loader = TimescaleDBDataAccess(
-    start_timestamp="2024-01-01 00:00:00",
-    end_timestamp="2024-01-02 00:00:00",
+    start="2024-01-01 00:00:00",
+    end="2024-01-02 00:00:00",
     uuids=["temperature", "pressure"],
     db_config={"db_user": "...", "db_pass": "...", "db_host": "...", "db_name": "..."},
 )

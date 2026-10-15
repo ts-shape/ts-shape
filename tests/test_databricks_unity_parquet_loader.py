@@ -296,13 +296,13 @@ def test_unreadable_file_is_reported(tmp_path, monkeypatch):
 
 def test_fetch_data_as_dataframe_start_only(tmp_path, monkeypatch):
     loader, _ = _loader(tmp_path, monkeypatch)
-    df = loader.fetch_data_as_dataframe(start_timestamp="2024-01-01 10:30:00")
+    df = loader.fetch_data_as_dataframe(start="2024-01-01 10:30:00")
     assert sorted(df["uuid"]) == ["u1", "u2"]  # hours 10 and 11
 
 
 def test_fetch_data_as_dataframe_end_only(tmp_path, monkeypatch):
     loader, _ = _loader(tmp_path, monkeypatch)
-    df = loader.fetch_data_as_dataframe(end_timestamp="2024-01-01 09:59:00")
+    df = loader.fetch_data_as_dataframe(end="2024-01-01 09:59:00")
     assert df["uuid"].tolist() == ["u1"]  # hour 9 only
 
 

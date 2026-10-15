@@ -102,8 +102,8 @@ def demo_parquet_loader():
     --- Load by Time Range ---
         df = ParquetLoader.load_by_time_range(
             base_path='/data/timeseries/',
-            start_time=pd.Timestamp('2024-01-01'),
-            end_time=pd.Timestamp('2024-01-02'),
+            start=pd.Timestamp('2024-01-01'),
+            end=pd.Timestamp('2024-01-02'),
         )
         # Filters files whose directory path (YYYY/MM/DD/HH) falls in range
 
@@ -117,8 +117,8 @@ def demo_parquet_loader():
     --- Load by Time Range + UUIDs ---
         df = ParquetLoader.load_files_by_time_range_and_uuids(
             base_path='/data/timeseries/',
-            start_time=pd.Timestamp('2024-01-01'),
-            end_time=pd.Timestamp('2024-01-02'),
+            start=pd.Timestamp('2024-01-01'),
+            end=pd.Timestamp('2024-01-02'),
             uuid_list=['sensor-temp-001'],
         )
         # Combines both filters: time range AND uuid matching

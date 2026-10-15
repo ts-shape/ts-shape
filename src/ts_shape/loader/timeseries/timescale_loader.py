@@ -13,6 +13,7 @@ else:
         create_engine = text = None
 
 from ts_shape.loader._utils import require_optional
+from ts_shape.utils.deprecation import deprecated_attribute, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -20,25 +21,30 @@ logger = logging.getLogger(__name__)
 class TimescaleDBDataAccess:
     """Load timeseries data for given UUIDs and a time range from TimescaleDB."""
 
+    #: Deprecated names of :attr:`start` / :attr:`end`.
+    start_timestamp = deprecated_attribute("start")
+    end_timestamp = deprecated_attribute("end")
+
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def __init__(
         self,
-        start_timestamp: str,
-        end_timestamp: str,
+        start: str,
+        end: str,
         uuids: list[str],
         db_config: dict[str, str],
     ):
         """Initialize the TimescaleDB loader and create the database engine.
 
         Args:
-            start_timestamp: Start of the time range (inclusive) to query.
-            end_timestamp: End of the time range (inclusive) to query.
+            start: Start of the time range (inclusive) to query.
+            end: End of the time range (inclusive) to query.
             uuids: List of UUIDs to retrieve data for.
             db_config: Connection settings with the keys ``db_user``,
                 ``db_pass``, ``db_host`` and ``db_name``.
         """
         require_optional(create_engine, "sqlalchemy", "sql")
-        self.start_timestamp = start_timestamp
-        self.end_timestamp = end_timestamp
+        self.start = start
+        self.end = end
         self.uuids = uuids
         self.db_config = db_config
         self.engine = create_engine(
@@ -61,8 +67,8 @@ class TimescaleDBDataAccess:
             self.engine,
             params={
                 "uuid": uuid,
-                "start_ts": self.start_timestamp,
-                "end_ts": self.end_timestamp,
+                "start_ts": self.start,
+                "end_ts": self.end,
             },
             chunksize=10000,
         )

@@ -31,6 +31,7 @@ __all__ = [
     "deprecated_class",
     "keyword_only",
     "caller_stacklevel",
+    "deprecated_attribute",
 ]
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -205,3 +206,40 @@ def keyword_only(n_positional: int) -> Callable[[F], F]:
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+class deprecated_attribute:  # noqa: N801 - used like a decorator/property
+    """A class attribute that forwards to ``new_name`` with a warning.
+
+    Example:
+        >>> class Loader:
+        ...     start_timestamp = deprecated_attribute("start")
+
+    Reading or setting ``loader.start_timestamp`` warns and uses
+    ``loader.start``.
+    """
+
+    def __init__(self, new_name: str) -> None:
+        self.new_name = new_name
+        self.old_name = ""
+        self.owner = ""
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.old_name = name
+        self.owner = owner.__name__
+
+    def _message(self) -> str:
+        return (
+            f"{self.owner}.{self.old_name} is deprecated, use "
+            f"{self.owner}.{self.new_name}"
+        )
+
+    def __get__(self, obj: Any, objtype: Any = None) -> Any:
+        if obj is None:
+            return self
+        _warn(self._message())
+        return getattr(obj, self.new_name)
+
+    def __set__(self, obj: Any, value: Any) -> None:
+        _warn(self._message())
+        setattr(obj, self.new_name, value)

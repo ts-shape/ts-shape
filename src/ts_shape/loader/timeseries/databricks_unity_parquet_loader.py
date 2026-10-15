@@ -18,7 +18,7 @@ from ts_shape.loader._utils import (
     utc_folder_hours,
     utc_naive,
 )
-from ts_shape.utils.deprecation import caller_stacklevel
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -317,10 +317,11 @@ class DatabricksUnityParquetLoader:
             return pd.DataFrame()
         return pd.concat(frames, ignore_index=True)
 
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def load_by_time_range(
         self,
-        start_timestamp: str | pd.Timestamp,
-        end_timestamp: str | pd.Timestamp,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         columns: list[str] | None = None,
         filters: list | None = None,
         *,
@@ -334,10 +335,10 @@ class DatabricksUnityParquetLoader:
         Volume is never scanned.
 
         Args:
-            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+            start: Start of the range (anything ``pd.to_datetime`` accepts).
                 Every hour folder that overlaps ``[start, end]`` is read in
                 full (the start is floored to the hour); see ``trim_to_range``.
-            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+            end: End of the range, inclusive (anything ``pd.to_datetime``
                 accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
@@ -353,7 +354,7 @@ class DatabricksUnityParquetLoader:
                 :class:`~ts_shape.errors.LoaderError` instead.
         """
         check_errors_mode(errors)
-        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start, end))
         paths: list[Path] = []
         for ts in slots:
             paths.extend(self._list_parquet_in(self._hour_dir(ts)))
@@ -381,13 +382,14 @@ class DatabricksUnityParquetLoader:
             return pd.DataFrame()
         out = pd.concat(frames, ignore_index=True)
         if trim_to_range:
-            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+            out = trim_to_time_range(out, start, end)
         return out
 
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def stream_by_time_range(
         self,
-        start_timestamp: str | pd.Timestamp,
-        end_timestamp: str | pd.Timestamp,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         columns: list[str] | None = None,
         filters: list | None = None,
         *,
@@ -402,10 +404,10 @@ class DatabricksUnityParquetLoader:
         Databricks pipelines.
 
         Args:
-            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+            start: Start of the range (anything ``pd.to_datetime`` accepts).
                 Every hour folder that overlaps ``[start, end]`` is read in
                 full (the start is floored to the hour); see ``trim_to_range``.
-            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+            end: End of the range, inclusive (anything ``pd.to_datetime``
                 accepts).
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
@@ -421,7 +423,7 @@ class DatabricksUnityParquetLoader:
                 :class:`~ts_shape.errors.LoaderError` instead.
         """
         check_errors_mode(errors)
-        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start, end))
         paths = (
             path for ts in slots for path in self._list_parquet_in(self._hour_dir(ts))
         )
@@ -431,7 +433,7 @@ class DatabricksUnityParquetLoader:
             paths, columns, filters, failures=failures, errors=errors
         ):
             if trim_to_range:
-                df = trim_to_time_range(df, start_timestamp, end_timestamp)
+                df = trim_to_time_range(df, start, end)
             if not df.empty:
                 yielded += 1
                 yield (name, df)
@@ -446,10 +448,11 @@ class DatabricksUnityParquetLoader:
                 filters=filters,
             )
 
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def load_files_by_time_range_and_uuids(
         self,
-        start_timestamp: str | pd.Timestamp,
-        end_timestamp: str | pd.Timestamp,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         uuid_list: list[str],
         columns: list[str] | None = None,
         filters: list | None = None,
@@ -464,10 +467,10 @@ class DatabricksUnityParquetLoader:
         requested UUID (``<uuid>.parquet``, case-insensitive) are read.
 
         Args:
-            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+            start: Start of the range (anything ``pd.to_datetime`` accepts).
                 Every hour folder that overlaps ``[start, end]`` is read in
                 full (the start is floored to the hour); see ``trim_to_range``.
-            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+            end: End of the range, inclusive (anything ``pd.to_datetime``
                 accepts).
             uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file
                 name, case-insensitively.
@@ -489,7 +492,7 @@ class DatabricksUnityParquetLoader:
             return pd.DataFrame()
 
         variants = self._uuid_basenames(uuid_list)
-        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start, end))
         paths: list[Path] = []
         for ts in slots:
             for path in self._list_parquet_in(self._hour_dir(ts)):
@@ -519,13 +522,14 @@ class DatabricksUnityParquetLoader:
             return pd.DataFrame()
         out = pd.concat(frames, ignore_index=True)
         if trim_to_range:
-            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+            out = trim_to_time_range(out, start, end)
         return out
 
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def stream_files_by_time_range_and_uuids(
         self,
-        start_timestamp: str | pd.Timestamp,
-        end_timestamp: str | pd.Timestamp,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         uuid_list: list[str],
         columns: list[str] | None = None,
         filters: list | None = None,
@@ -539,10 +543,10 @@ class DatabricksUnityParquetLoader:
         Yields ``(file_path, DataFrame)`` as they are read, keeping memory flat.
 
         Args:
-            start_timestamp: Start of the range (anything ``pd.to_datetime`` accepts).
+            start: Start of the range (anything ``pd.to_datetime`` accepts).
                 Every hour folder that overlaps ``[start, end]`` is read in
                 full (the start is floored to the hour); see ``trim_to_range``.
-            end_timestamp: End of the range, inclusive (anything ``pd.to_datetime``
+            end: End of the range, inclusive (anything ``pd.to_datetime``
                 accepts).
             uuid_list: Signal UUIDs to load; each matches a ``<uuid>.parquet`` file
                 name, case-insensitively.
@@ -564,7 +568,7 @@ class DatabricksUnityParquetLoader:
             return
 
         variants = self._uuid_basenames(uuid_list)
-        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start, end))
         paths = (
             path
             for ts in slots
@@ -577,7 +581,7 @@ class DatabricksUnityParquetLoader:
             paths, columns, filters, failures=failures, errors=errors
         ):
             if trim_to_range:
-                df = trim_to_time_range(df, start_timestamp, end_timestamp)
+                df = trim_to_time_range(df, start, end)
             if not df.empty:
                 yielded += 1
                 yield (name, df)
@@ -664,8 +668,8 @@ class DatabricksUnityParquetLoader:
 
     def _load_open_range(
         self,
-        start_timestamp: str | pd.Timestamp | None,
-        end_timestamp: str | pd.Timestamp | None,
+        start: str | pd.Timestamp | None,
+        end: str | pd.Timestamp | None,
         columns: list[str] | None,
         filters: list | None,
         *,
@@ -673,8 +677,8 @@ class DatabricksUnityParquetLoader:
         errors: ErrorsMode,
     ) -> pd.DataFrame:
         """Load the hour folders on or after ``start`` / on or before ``end``."""
-        lo = None if start_timestamp is None else utc_naive(start_timestamp).floor("h")
-        hi = None if end_timestamp is None else utc_naive(end_timestamp).floor("h")
+        lo = None if start is None else utc_naive(start).floor("h")
+        hi = None if end is None else utc_naive(end).floor("h")
         paths = []
         for path in self._walk_parquet(self.base_path):
             hour = self._hour_of_path(path)
@@ -683,7 +687,7 @@ class DatabricksUnityParquetLoader:
             if (lo is None or hour >= lo) and (hi is None or hour <= hi):
                 paths.append(path)
 
-        bound = f"start={start_timestamp!r}, end={end_timestamp!r}"
+        bound = f"start={start!r}, end={end!r}"
         base_repr = repr(str(self.base_path))
         if not paths:
             self._warn_empty(
@@ -705,13 +709,14 @@ class DatabricksUnityParquetLoader:
             return pd.DataFrame()
         out = pd.concat(frames, ignore_index=True)
         if trim_to_range:
-            out = trim_to_time_range(out, start_timestamp, end_timestamp)
+            out = trim_to_time_range(out, start, end)
         return out
 
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def fetch_data_as_dataframe(
         self,
-        start_timestamp: str | pd.Timestamp | None = None,
-        end_timestamp: str | pd.Timestamp | None = None,
+        start: str | pd.Timestamp | None = None,
+        end: str | pd.Timestamp | None = None,
         columns: list[str] | None = None,
         filters: list | None = None,
         *,
@@ -728,10 +733,10 @@ class DatabricksUnityParquetLoader:
         falls back to :meth:`load_all_files`.
 
         Args:
-            start_timestamp: Start of the range; None leaves the start open.
+            start: Start of the range; None leaves the start open.
                 Bounds select whole hour folders (the start is floored to the
                 hour); see ``trim_to_range``.
-            end_timestamp: End of the range, inclusive; None leaves the end open.
+            end: End of the range, inclusive; None leaves the end open.
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.
                 ``[("value_double", ">", 0.0)]``; None reads all rows.
@@ -744,20 +749,20 @@ class DatabricksUnityParquetLoader:
                 skipped file; ``"raise"`` raises
                 :class:`~ts_shape.errors.LoaderError` instead.
         """
-        if start_timestamp is not None and end_timestamp is not None:
+        if start is not None and end is not None:
             return self.load_by_time_range(
-                start_timestamp,
-                end_timestamp,
+                start,
+                end,
                 columns=columns,
                 filters=filters,
                 trim_to_range=trim_to_range,
                 errors=errors,
             )
-        if start_timestamp is not None or end_timestamp is not None:
+        if start is not None or end is not None:
             check_errors_mode(errors)
             return self._load_open_range(
-                start_timestamp,
-                end_timestamp,
+                start,
+                end,
                 columns,
                 filters,
                 trim_to_range=trim_to_range,

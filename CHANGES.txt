@@ -9,7 +9,9 @@ fix: deprecation warnings point at the caller and are no longer hidden;
   UTC in every loader.
 change: logged data problems are DataQualityWarnings; text in numeric
   columns is reported; recipe duration_s, downtime_minutes input and old
-  attribute names warn. See docs/migration.md.
+  attribute names warn; loader time ranges are start / end (old
+  start_timestamp / start_time keywords warn). See docs/migration.md.
+fix: CUSUM counts a repeated sample once.
 chore: setup.py, MANIFEST.in, requirements files, dead scripts and dead
   code removed; duplicated helpers merged; one source of tool versions;
   CI runs once per PR commit; per-job release permissions; examples

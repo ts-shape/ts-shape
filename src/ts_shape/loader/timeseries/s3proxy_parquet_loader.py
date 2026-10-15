@@ -10,6 +10,7 @@ except ImportError:  # optional extra: ts-shape[s3]
     s3fs = None
 
 from ts_shape.loader._utils import require_config, require_optional, retry_call
+from ts_shape.utils.deprecation import deprecated_attribute, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -30,19 +31,24 @@ class S3ProxyDataAccess:
     output data as Parquet files or as a single combined DataFrame.
     """
 
+    #: Deprecated names of :attr:`start` / :attr:`end`.
+    start_timestamp = deprecated_attribute("start")
+    end_timestamp = deprecated_attribute("end")
+
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def __init__(
         self,
-        start_timestamp: str,
-        end_timestamp: str,
+        start: str,
+        end: str,
         uuids: list[str],
         s3_config: dict[str, str],
     ):
         """Initialize the S3ProxyDataAccess object.
 
         Args:
-            start_timestamp: Start timestamp in "Year-Month-Day Hour:Minute:Second"
+            start: Start timestamp in "Year-Month-Day Hour:Minute:Second"
                 format.
-            end_timestamp: End timestamp in "Year-Month-Day Hour:Minute:Second"
+            end: End timestamp in "Year-Month-Day Hour:Minute:Second"
                 format.
             uuids: List of UUIDs to retrieve data for.
             s3_config: Configuration dictionary for the S3 connection. Must contain
@@ -51,8 +57,8 @@ class S3ProxyDataAccess:
         """
         require_optional(s3fs, "s3fs", "s3")
         require_config(s3_config, _REQUIRED_S3_KEYS, name="s3_config")
-        self.start_timestamp = start_timestamp
-        self.end_timestamp = end_timestamp
+        self.start = start
+        self.end = end
         self.uuids = uuids
         self.s3_config = s3_config
 
@@ -74,9 +80,7 @@ class S3ProxyDataAccess:
         Returns:
             A generator yielding paths in the format year/month/day/hour.
         """
-        for timeslot in pd.date_range(
-            start=self.start_timestamp, end=self.end_timestamp, freq="h"
-        ):
+        for timeslot in pd.date_range(start=self.start, end=self.end, freq="h"):
             timeslot_dir = Path(
                 str(timeslot.year),
                 str(timeslot.month).zfill(2),

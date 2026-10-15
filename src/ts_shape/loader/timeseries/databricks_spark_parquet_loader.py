@@ -30,6 +30,7 @@ import pandas as pd
 
 from ts_shape.errors import LoaderError
 from ts_shape.loader._utils import utc_folder_hours
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -95,10 +96,11 @@ class DatabricksSparkParquetLoader:
             )
         return [str(u) for u in items]
 
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def build_paths(
         self,
-        start_timestamp: str | pd.Timestamp,
-        end_timestamp: str | pd.Timestamp,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         uuids: str | Sequence[str],
         *,
         freq: str = "h",
@@ -112,8 +114,8 @@ class DatabricksSparkParquetLoader:
         bounds are converted to UTC, naive bounds are taken as UTC.
 
         Args:
-            start_timestamp: Window start (parsed by ``pandas.Timestamp``).
-            end_timestamp: Window end (inclusive).
+            start: Window start (parsed by ``pandas.Timestamp``).
+            end: Window end (inclusive).
             uuids: A single UUID or a sequence of UUIDs.
             freq: Folder granularity; defaults to hourly (``"h"``).
 
@@ -127,7 +129,7 @@ class DatabricksSparkParquetLoader:
         uuid_list = self._as_uuid_list(uuids)
         if not uuid_list:
             raise LoaderError("At least one uuid is required.")
-        slots = utc_folder_hours(start_timestamp, end_timestamp, freq)
+        slots = utc_folder_hours(start, end, freq)
         paths: list[str] = []
         for ts in slots:
             hour_dir = ts.strftime(self.hour_pattern)
@@ -146,10 +148,11 @@ class DatabricksSparkParquetLoader:
             )
         return self.spark
 
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def load_by_time_range_and_uuids(
         self,
-        start_timestamp: str | pd.Timestamp,
-        end_timestamp: str | pd.Timestamp,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         uuids: str | Sequence[str],
         *,
         columns: Sequence[str] | None = None,
@@ -162,8 +165,8 @@ class DatabricksSparkParquetLoader:
         """Read the hourly parquet files for ``uuids`` within ``[start, end]``.
 
         Args:
-            start_timestamp: Window start.
-            end_timestamp: Window end (inclusive).
+            start: Window start.
+            end: Window end (inclusive).
             uuids: A single UUID or a sequence of UUIDs.
             columns: Optional columns to ``select`` (projection pushdown).
             filter_expr: Optional Spark SQL predicate applied with ``.where``,
@@ -186,7 +189,7 @@ class DatabricksSparkParquetLoader:
             LoaderError: If no SparkSession is available.
         """
         spark = self._require_spark()
-        paths = self.build_paths(start_timestamp, end_timestamp, uuids, freq=freq)
+        paths = self.build_paths(start, end, uuids, freq=freq)
         if path_exists is not None:
             paths = [p for p in paths if path_exists(p)]
         if not paths:
@@ -203,10 +206,11 @@ class DatabricksSparkParquetLoader:
             sdf = sdf.where(filter_expr)
         return sdf.toPandas() if as_pandas else sdf
 
+    @renamed_kwargs(start_timestamp="start", end_timestamp="end")
     def fetch_data_as_dataframe(
         self,
-        start_timestamp: str | pd.Timestamp,
-        end_timestamp: str | pd.Timestamp,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
         uuids: str | Sequence[str],
         *,
         columns: Sequence[str] | None = None,
@@ -215,8 +219,8 @@ class DatabricksSparkParquetLoader:
         """Pandas-returning convenience for ``Pipeline`` / ``DataIntegratorHybrid``.
 
         Args:
-            start_timestamp: Window start.
-            end_timestamp: Window end (inclusive).
+            start: Window start.
+            end: Window end (inclusive).
             uuids: A single UUID or a sequence of UUIDs.
             columns: Optional columns to ``select`` (projection pushdown).
             filter_expr: Optional Spark SQL predicate applied with ``.where``, e.g.
@@ -227,8 +231,8 @@ class DatabricksSparkParquetLoader:
                 ``as_pandas=True``.
         """
         return self.load_by_time_range_and_uuids(
-            start_timestamp,
-            end_timestamp,
+            start,
+            end,
             uuids,
             columns=columns,
             filter_expr=filter_expr,

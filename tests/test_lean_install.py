@@ -26,7 +26,7 @@ def test_core_runs_without_loader_backends():
         ts_shape.profile(df)
         ts_shape.OutlierDetectionEvents(df, value_column="value_double").detect_outliers_zscore()
         try:
-            ts_shape.S3ProxyDataAccess(start_timestamp="2024-01-01", end_timestamp="2024-01-02",
+            ts_shape.S3ProxyDataAccess(start="2024-01-01", end="2024-01-02",
                                        uuids=["a"], s3_config={{}})
         except ImportError as exc:
             assert "ts-shape[s3]" in str(exc), exc
