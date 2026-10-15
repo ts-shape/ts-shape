@@ -45,18 +45,24 @@ pip install "ts-shape[parquet,azure]"
 
 ```python
 import pandas as pd
-import ts_shape
-from ts_shape.eventlog import concat, to_event_log
+from ts_shape import (
+    MachineStateEvents,
+    OutlierDetectionEvents,
+    concat,
+    make_timeseries,
+    profile,
+    to_event_log,
+)
 
 # Synthetic data in the standard format; use a loader or pandas for your own
-temp = ts_shape.make_timeseries(["oven:temp"], n_points=1440, freq="1min", n_outliers=4)
-running = ts_shape.make_timeseries(["oven:running"], n_points=1440, freq="1min", value_column="value_bool")
+temp = make_timeseries(["oven:temp"], n_points=1440, freq="1min", n_outliers=4)
+running = make_timeseries(["oven:running"], n_points=1440, freq="1min", value_column="value_bool")
 df = pd.concat([temp, running], ignore_index=True)
 
-print(ts_shape.profile(df).summary())   # signal kinds, gaps, counter resets, duplicates
+print(profile(df).summary())   # signal kinds, gaps, counter resets, duplicates
 
-outliers = ts_shape.OutlierDetectionEvents(temp, value_column="value_double").detect_outliers_zscore(threshold=4.0)
-intervals = ts_shape.MachineStateEvents(df, run_state_uuid="oven:running").detect_run_idle(min_duration="5min")
+outliers = OutlierDetectionEvents(temp, value_column="value_double").detect_outliers_zscore(threshold=4.0)
+intervals = MachineStateEvents(df, run_state_uuid="oven:running").detect_run_idle(min_duration="5min")
 
 log = concat(
     to_event_log(outliers, detector="OutlierDetectionEvents.detect_outliers_zscore"),

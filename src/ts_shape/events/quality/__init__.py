@@ -115,7 +115,71 @@ Classes:
   - percentile_tracking: Track selected percentiles over time windows.
 """
 
+# This module re-exports the deprecated class aliases on purpose; using them
+# anywhere else is still reported by mypy's "deprecated" check.
+# mypy: disable-error-code="deprecated"
+
 import importlib as _importlib
+from typing import TYPE_CHECKING
+
+# Explicit imports for type checkers and IDEs only (so ``from ts_shape import X``
+# is typed as X, not object); at runtime __getattr__ below imports lazily.
+# tests/typing/test_lazy_exports.py keeps this block in sync with the map.
+if TYPE_CHECKING:
+    from ts_shape.events.quality.anomaly_classification import (
+        AnomalyClassificationEvents as AnomalyClassificationEvents,
+    )
+    from ts_shape.events.quality.calibration_validation import (
+        CalibrationValidationEvents as CalibrationValidationEvents,
+    )
+    from ts_shape.events.quality.capability_trending import (
+        CapabilityTrendingEvents as CapabilityTrendingEvents,
+    )
+    from ts_shape.events.quality.change_point import (
+        ChangePointEvents as ChangePointEvents,
+    )
+    from ts_shape.events.quality.data_gap_analysis import (
+        DataGapAnalysisEvents as DataGapAnalysisEvents,
+    )
+    from ts_shape.events.quality.environmental_compensation import (
+        EnvironmentalCompensationEvents as EnvironmentalCompensationEvents,
+    )
+    from ts_shape.events.quality.gauge_repeatability import (
+        GaugeRepeatabilityEvents as GaugeRepeatabilityEvents,
+    )
+    from ts_shape.events.quality.measurement_uncertainty import (
+        MeasurementUncertaintyEvents as MeasurementUncertaintyEvents,
+    )
+    from ts_shape.events.quality.multi_sensor_validation import (
+        MultiSensorValidationEvents as MultiSensorValidationEvents,
+    )
+    from ts_shape.events.quality.multivariate_spc import (
+        MultivariateSPCEvents as MultivariateSPCEvents,
+    )
+    from ts_shape.events.quality.outlier_detection import (
+        OutlierDetectionEvents as OutlierDetectionEvents,
+    )
+    from ts_shape.events.quality.sampling_resolution import (
+        SamplingResolutionEvents as SamplingResolutionEvents,
+    )
+    from ts_shape.events.quality.sensor_drift import (
+        SensorDriftEvents as SensorDriftEvents,
+    )
+    from ts_shape.events.quality.signal_quality import (
+        SignalQualityEvents as SignalQualityEvents,
+    )
+    from ts_shape.events.quality.statistical_process_control import (
+        StatisticalProcessControlEvents as StatisticalProcessControlEvents,
+    )
+    from ts_shape.events.quality.statistical_process_control import (
+        StatisticalProcessControlRuleBased as StatisticalProcessControlRuleBased,
+    )
+    from ts_shape.events.quality.tolerance_deviation import (
+        ToleranceDeviationEvents as ToleranceDeviationEvents,
+    )
+    from ts_shape.events.quality.value_distribution import (
+        ValueDistributionEvents as ValueDistributionEvents,
+    )
 
 from ts_shape import _LAZY
 
