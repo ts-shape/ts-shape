@@ -6,6 +6,24 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 10: fast at 10 and 100 million rows
+
+Results are unchanged except where listed below; event ids from
+`to_event_log` are byte-identical.
+
+- `ChangePointEvents.detect_change_points` and `segment_statistics` default to
+  `method="auto"`: exact PELT up to 20,000 samples (results unchanged), binary
+  segmentation above that (approximate; results on long series can differ and
+  the slowness warning no longer fires). Pass `method="pelt"` for the exact
+  search on long series.
+- Rolling window moments (degradation and health scores) and matrix-profile
+  distances (motif and discord discovery) differ from before by at most 1e-9
+  relative; motif and discord positions are unchanged.
+- Setpoint KPIs no longer fail on an actual signal with duplicate index
+  labels.
+- A missing uuid no longer matches the text `"nan"` or `"None"` when
+  selecting signals.
+
 ## October 2026, round 9: KPIs match their textbook definitions
 
 Several KPIs gave wrong numbers. They now follow the published definitions
