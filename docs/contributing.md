@@ -12,7 +12,7 @@ Runtime dependencies (`dependencies` in `pyproject.toml`):
 
 | Package | Version | License |
 |---|---|---|
-| pandas | >= 2.2.0 | BSD-3-Clause |
+| pandas | >= 2.2.2 | BSD-3-Clause |
 | numpy | >= 2.0 | BSD-3-Clause |
 | scipy | >= 1.13.1 | BSD-3-Clause |
 
