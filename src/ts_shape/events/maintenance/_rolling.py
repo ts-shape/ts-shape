@@ -203,6 +203,12 @@ def _reference(values: np.ndarray, valid: np.ndarray) -> np.ndarray:
     return values[idx]
 
 
+#: Rows per chunk of :func:`window_moments`: the block levels are built over
+#: the rows the chunk's windows span only, bounding memory (and staying in
+#: cache) on long series.
+_ROW_CHUNK = 1 << 20
+
+
 def window_moments(
     x: np.ndarray, y: np.ndarray, lo: np.ndarray, hi: np.ndarray
 ) -> dict[str, np.ndarray]:
@@ -221,6 +227,36 @@ def window_moments(
     O(n log w) for windows of up to ``w`` rows (see the module docstring for
     the method and its accuracy).
     """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    lo = np.asarray(lo, dtype=np.int64)
+    hi = np.asarray(hi, dtype=np.int64)
+    m = len(lo)
+    if m <= _ROW_CHUNK:
+        return _moments_of_windows(x, y, lo, hi)
+    parts = []
+    for r0 in range(0, m, _ROW_CHUNK):
+        r1 = min(r0 + _ROW_CHUNK, m)
+        clo, chi = lo[r0:r1], hi[r0:r1]
+        nonempty = chi > clo
+        a = int(clo[nonempty].min()) if nonempty.any() else 0
+        b = int(chi[nonempty].max()) if nonempty.any() else 0
+        # Empty windows keep lo == hi inside the span.
+        parts.append(
+            _moments_of_windows(
+                x[a:b],
+                y[a:b],
+                np.where(nonempty, clo - a, 0),
+                np.where(nonempty, chi - a, 0),
+            )
+        )
+    return {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
+
+
+def _moments_of_windows(
+    x: np.ndarray, y: np.ndarray, lo: np.ndarray, hi: np.ndarray
+) -> dict[str, np.ndarray]:
+    """:func:`window_moments` for one chunk of rows (arrays cover their span)."""
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
     lo = np.asarray(lo, dtype=np.int64)

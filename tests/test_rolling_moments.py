@@ -129,3 +129,14 @@ def test_count_windows_and_empty_windows() -> None:
     lo = np.array([0, 5, 5], dtype=np.int64)
     hi = np.array([0, 5, 6], dtype=np.int64)
     _assert_close(_two_pass_reference(x, y, lo, hi), window_moments(x, y, lo, hi))
+
+
+def test_row_chunks_match_the_reference(monkeypatch) -> None:
+    import ts_shape.events.maintenance._rolling as rolling
+
+    monkeypatch.setattr(rolling, "_ROW_CHUNK", 97)  # windows straddle chunks
+    t, y = _series(5, 1000, "nan")
+    y[400:520] = np.nan  # a chunk whose windows are empty or partly empty
+    x = (t - t.iloc[0]).dt.total_seconds().to_numpy() + 1e7
+    lo, hi = time_window_bounds(t, pd.Timedelta("5min"))
+    _assert_close(_two_pass_reference(x, y, lo, hi), window_moments(x, y, lo, hi))
