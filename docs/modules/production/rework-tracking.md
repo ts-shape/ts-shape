@@ -20,7 +20,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 rw = ReworkEvents(df)
-print(rw.rework_rate(rework_uuid="line1:rework", total_production_uuid="line1:parts"))
+result = rw.rework_rate(rework_uuid="line1:rework", total_production_uuid="line1:parts")
+print(result[["date", "shift", "total_produced", "rework_count", "rework_rate_pct"]])
 cost = rw.rework_cost(rework_uuid="line1:rework", part_id_uuid="line1:part_id",
                       rework_costs={"PN-100": 12.50, "PN-200": 8.75})
 ```

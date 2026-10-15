@@ -31,7 +31,7 @@ print(cycles[["cycle_start", "cycle_end", "is_complete"]])
 
 proc = CycleDataProcessor(cycles, temp)
 stats = proc.compute_cycle_statistics()
-print(stats[["cycle_uuid", "duration_seconds", "sample_count", "mean_value_double"]])
+print(stats[["duration_seconds", "sample_count", "mean_value_double"]])
 ```
 
 The first cycle runs 08:00:10–08:00:40 and holds temperatures 1, 2, 3 (mean 2.0).

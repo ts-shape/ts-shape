@@ -587,7 +587,17 @@ The new columns were added next to the old ones; none was removed or renamed. Tw
 - **Merging two summaries on `date` or `(date, shift)`** now finds `start`, `end` and `duration_seconds` on both sides, and pandas suffixes them `_x` / `_y`. Merge on the window instead, or select your columns first:
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape import PartProductionEvents, QualityEvents
+
+t = pd.date_range("2024-01-01", periods=96, freq="h")
+df = pd.concat([
+    pd.DataFrame({"systime": t, "uuid": "line1:ok", "value_integer": np.arange(96) * 9}),
+    pd.DataFrame({"systime": t, "uuid": "line1:nok", "value_integer": np.arange(96)}),
+    pd.DataFrame({"systime": t, "uuid": "line1:part", "value_string": "P-100"}),
+    pd.DataFrame({"systime": t, "uuid": "line1:count", "value_integer": np.arange(96) * 10}),
+], ignore_index=True)
 
 quality = QualityEvents(df).daily_quality_summary("line1:ok", "line1:nok")
 production = PartProductionEvents(df).daily_production_summary("line1:part", "line1:count")
@@ -607,6 +617,8 @@ update any remaining imports:
 | `to_flat_df(...)` | `to_event_log_xes(...)` |
 | `to_ocel_tables(...)` | `to_event_log_ocel(...)` |
 
+<!-- no-run -->
+
 ```python
 # Before
 from ts_shape.eventlog import to_flat_df, to_ocel_tables
@@ -620,6 +632,8 @@ from ts_shape.eventlog import to_event_log_xes, to_event_log_ocel
 To fully model OCEL 2.0, `to_event_log_ocel(log)` returns an `OCEL2Tables`
 bundle (object-to-object relations and time-varying object attributes were
 added) instead of a 3-tuple. Access the frames by attribute:
+
+<!-- no-run -->
 
 ```python
 # Before

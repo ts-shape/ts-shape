@@ -15,7 +15,8 @@ t = pd.date_range("2024-01-01", periods=60 * 144, freq="10min")  # 60 days
 df = pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.arange(len(t)) * 3})
 
 summary = PeriodSummaryEvents(df)
-print(summary.weekly_summary(counter_uuid="line1:parts").head())
+result = summary.weekly_summary(counter_uuid="line1:parts").head()
+print(result[["week_start", "total_production", "daily_avg", "production_days"]])
 monthly = summary.monthly_summary(counter_uuid="line1:parts")
 comparison = summary.compare_periods(counter_uuid="line1:parts",
                                      period1=("2024-01-01", "2024-01-31"),

@@ -19,7 +19,8 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": "line1:state", "value_string
                 pd.DataFrame({"systime": t, "uuid": "line1:reason", "value_string": reason})])
 
 dt = DowntimeEvents(df)  # shifts 06-14, 14-22, 22-06
-print(dt.downtime_by_shift(state_uuid="line1:state", max_gap="15min"))
+result = dt.downtime_by_shift(state_uuid="line1:state", max_gap="15min")
+print(result[["date", "shift", "downtime_minutes", "uptime_minutes", "availability_pct"]])
 pareto = dt.top_downtime_reasons(state_uuid="line1:state", reason_uuid="line1:reason", top_n=5)
 trend = dt.availability_trend(state_uuid="line1:state", window="1h", max_gap="15min")
 ```

@@ -20,7 +20,8 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": u, "value_double": v}) for u
 
 doe = DesignOfExperimentsEvents(df, ["pilot1:barrel_temp_sp", "pilot1:screw_speed_sp"])
 runs = doe.detect_runs(min_duration="10min", stability_tol=0.02)
-print(doe.effects("pilot1:melt_viscosity", statistic="settled", min_duration="10min"))
+result = doe.effects("pilot1:melt_viscosity", statistic="settled", min_duration="10min")
+print(result[["factor", "level", "n_runs", "response_mean", "main_effect"]])
 ```
 
 ## Methods

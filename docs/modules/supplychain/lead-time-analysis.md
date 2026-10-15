@@ -13,7 +13,7 @@ from ts_shape.events.supplychain.lead_time_analysis import LeadTimeAnalysisEvent
 orders = pd.DataFrame({"systime": pd.date_range("2024-01-01", periods=8, freq="1D"), "uuid": "po_placed",
                        "value_string": [f"PO-{i}" for i in range(8)]})
 deliveries = orders.assign(uuid="po_received",
-                           systime=orders["systime"] + pd.to_timedelta([3, 4, 3, 5, 4, 12, 3, 4], unit="D"))
+                           systime=orders["systime"] + pd.to_timedelta([3, 4, 4, 5, 5, 12, 4, 4], unit="D"))
 df = pd.concat([orders, deliveries], ignore_index=True)
 
 lt = LeadTimeAnalysisEvents(df)

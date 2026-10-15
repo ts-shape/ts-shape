@@ -18,7 +18,8 @@ df = pd.concat([pd.DataFrame({"systime": times, "uuid": u, "value_bool": rng.ran
                 for u, p in p_run.items()], ignore_index=True)
 
 bd = BottleneckDetectionEvents(df)
-print(bd.detect_bottleneck(list(p_run), window="1h"))
+result = bd.detect_bottleneck(list(p_run), window="1h")
+print(result[["start", "bottleneck_uuid", "utilization_pct"]])
 summary = bd.throughput_constraint_summary(list(p_run), window="1h")
 ```
 

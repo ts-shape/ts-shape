@@ -19,7 +19,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 mb = MaterialBalanceEvents(df, input_uuids=["feed_1", "feed_2"], output_uuids=["product", "waste"])
-print(mb.balance_check(window="1h", tolerance_pct=5.0).tail())
+result = mb.balance_check(window="1h", tolerance_pct=5.0).tail()
+print(result[["start", "total_input", "total_output", "imbalance_pct", "balanced"]])
 events = mb.detect_balance_exceedance(window="1h", tolerance_pct=5.0, min_duration="2h")
 shares = mb.contribution_breakdown(window="1h")
 ```

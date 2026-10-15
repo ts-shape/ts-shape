@@ -15,7 +15,8 @@ df.loc[720:, "value_double"] += 12.0  # new material lot
 
 vd = ValueDistributionEvents(df, "extruder1:melt_pressure")
 modes = vd.detect_mode_changes(window="1h", n_modes=2, min_separation=1.0)
-print(modes[modes["mode_changed"]])
+result = modes[modes["mode_changed"]]
+print(result[["start", "dominant_mode", "n_modes_detected", "mode_changed"]])
 bimodal = vd.detect_bimodal(min_samples=30)
 bands = vd.percentile_tracking(percentiles=(5, 50, 95), window="1h")
 ```

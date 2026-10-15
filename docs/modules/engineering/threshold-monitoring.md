@@ -15,7 +15,8 @@ df = ts_shape.make_timeseries(["reactor_pressure"], n_points=2880, freq="30s", b
 tm = ThresholdMonitoringEvents(df, "reactor_pressure")
 levels = tm.multi_level_threshold({"warning": 85.0, "alarm": 92.0, "critical": 98.0}, direction="above")
 alarms = tm.threshold_with_hysteresis(upper_limit=90.0, lower_limit=85.0)
-print(tm.time_above_threshold(85.0, window="1h").tail())
+result = tm.time_above_threshold(85.0, window="1h").tail()
+print(result[["start", "time_above", "pct_above", "exceedance_count"]])
 ```
 
 ## Methods

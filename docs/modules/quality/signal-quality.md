@@ -14,7 +14,8 @@ df = ts_shape.make_timeseries(["tank_level"], n_points=7200, freq="1s", baseline
 df = df.drop(index=range(3000, 3100))  # 100 s outage
 
 sq = SignalQualityEvents(df, signal_uuid="tank_level")
-print(sq.detect_missing_data(expected_freq="1s", tolerance_factor=2.0))
+result = sq.detect_missing_data(expected_freq="1s", tolerance_factor=2.0)
+print(result[["start", "gap_duration", "expected_samples_missing"]])
 out_of_range = sq.detect_out_of_range(min_value=0.0, max_value=100.0)
 completeness = sq.data_completeness(window="1h", expected_freq="1s")
 ```

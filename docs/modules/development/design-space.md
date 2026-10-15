@@ -15,7 +15,7 @@ qualification = ts_shape.make_timeseries(cpps, n_points=500, freq="1min", noise=
 operation = ts_shape.make_timeseries(cpps, n_points=500, freq="1min", noise=2.0, drift=8.0, seed=2)
 
 ds = DesignSpaceEvents(qualification, cpps).fit_box(quantiles=(0.05, 0.95))
-print(ds.detect_excursions(operation).head())
+print(ds.detect_excursions(operation).head()[["start", "end", "excursion_mode"]])
 near_edge = ds.boundary_proximity(operation, warn_margin=0.1)
 hull_excursions = ds.fit_hull().detect_excursions(operation)
 ```

@@ -53,6 +53,8 @@ matches a uuid only when its name is exactly `<uuid>.parquet`.
 
 Authenticate with a SAS URL, a connection string, or an AAD credential:
 
+<!-- no-run -->
+
 ```python
 from ts_shape.loader.timeseries.azure_blob_loader import AzureBlobParquetLoader
 
@@ -86,6 +88,8 @@ parse=True)`).
 
 ## S3-compatible storage
 
+<!-- no-run -->
+
 ```python
 from ts_shape.loader.timeseries.s3proxy_parquet_loader import S3ProxyDataAccess
 
@@ -112,6 +116,8 @@ Two loaders read the hourly layout on Databricks. Choose by who does the scan.
 `DatabricksUnityParquetLoader` reads a mounted Unity Catalog Volume on the
 driver with pandas, with no Spark involved:
 
+<!-- no-run -->
+
 ```python
 from ts_shape.loader.timeseries.databricks_unity_parquet_loader import (
     DatabricksUnityParquetLoader,
@@ -125,6 +131,8 @@ df = loader.load_by_time_range("2026-06-19 06:00", "2026-06-19 14:00")
 
 `DatabricksSparkParquetLoader` lets the cluster's Spark session read the files
 and converts to pandas at the end:
+
+<!-- no-run -->
 
 ```python
 from ts_shape.loader.timeseries.databricks_spark_parquet_loader import (
@@ -155,6 +163,8 @@ loader.build_paths("2026-06-19 06:00", "2026-06-19 08:00", ["ABC"])   # the file
 ## TimescaleDB
 
 `TimescaleDBDataAccess` queries a `telemetry` table with the standard columns:
+
+<!-- no-run -->
 
 ```python
 from ts_shape.loader.timeseries.timescale_loader import TimescaleDBDataAccess

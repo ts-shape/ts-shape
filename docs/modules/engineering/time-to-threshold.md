@@ -14,7 +14,8 @@ df = ts_shape.make_timeseries(["filter4:diff_pressure"], n_points=1440, freq="1m
                               baseline=1.0, noise=0.02, drift=0.9)
 
 ttt = TimeToThresholdEvents(df, "filter4:diff_pressure")
-print(ttt.time_to_threshold(2.5, lookback="6h"))
+result = ttt.time_to_threshold(2.5, lookback="6h")
+print(result[["current_value", "estimated_seconds", "confidence", "direction"]])
 history = ttt.time_to_threshold_windows(2.5, window="1h", lookback="6h")
 forecast = ttt.crossing_forecast({"warning": 2.0, "change filter": 2.5}, lookback="6h")
 ```

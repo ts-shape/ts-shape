@@ -19,7 +19,8 @@ df = pd.DataFrame(rows, columns=["value_string", "operator", "value_double"])
 df["systime"], df["uuid"] = pd.date_range("2024-01-01", periods=len(df), freq="1min"), "gauge_01"
 
 grr = GaugeRepeatabilityEvents(df, "gauge_01", operator_column="operator")
-print(grr.gauge_rr_summary(tolerance_range=10.0))
+result = grr.gauge_rr_summary(tolerance_range=10.0)
+print(result[["GRR", "pct_GRR", "pct_PV", "ndc", "pct_GRR_tolerance"]])
 bias = grr.measurement_bias({"P0": 10.0, "P1": 10.5})
 ```
 

@@ -19,7 +19,7 @@ df = pd.DataFrame({"systime": pd.Timestamp("2024-01-01") + pd.to_timedelta(np.r_
 
 rel = ReliabilityEvents(df, "press3:status", failure_states=("BREAKDOWN", "REPAIR"),
                         value_column="value_string", max_gap="30D")
-print(rel.mtbf_mttr())
+print(rel.mtbf_mttr()[["failures", "mtbf_hours", "mttr_hours", "availability_pct"]])
 fit = rel.weibull_fit()
 survival = rel.reliability_at([100], age_hours=200)  # 100 more hours after 200 h since repair
 ```

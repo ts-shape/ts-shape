@@ -18,7 +18,7 @@ df = pd.concat([
 ], ignore_index=True)
 
 bt = BatchTrackingEvents(df, batch_uuid="line1:batch_id")
-print(bt.detect_batches())
+print(bt.detect_batches()[["batch_id", "start", "end", "duration_seconds"]])
 yields = bt.batch_yield(counter_uuid="line1:part_counter")
 matrix = bt.batch_transition_matrix(layout="wide")
 ```

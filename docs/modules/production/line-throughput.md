@@ -18,7 +18,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 tp = LineThroughputEvents(df)
-print(tp.count_parts(counter_uuid="line1:part_counter", window="15min").head())
+result = tp.count_parts(counter_uuid="line1:part_counter", window="15min").head()
+print(result[["start", "end", "count", "resets"]])
 takt = tp.takt_adherence(cycle_uuid="line1:cycle_trigger", takt_time="55s")
 oee = tp.throughput_oee(counter_uuid="line1:part_counter", window="1h", target_rate=60)
 ```

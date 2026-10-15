@@ -17,7 +17,8 @@ sources = [
 ]
 
 mu = MeasurementUncertaintyEvents(df, "cmm1:bore_diameter")
-print(mu.combined_uncertainty(window="8h", type_b_sources=sources, coverage_factor=2.0))
+result = mu.combined_uncertainty(window="8h", type_b_sources=sources, coverage_factor=2.0)
+print(result[["window_start", "type_a", "combined_uncertainty", "expanded_uncertainty"]])
 budget = mu.uncertainty_budget(window="8h", type_b_sources=sources)
 ```
 

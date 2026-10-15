@@ -20,7 +20,8 @@ def batch(n, drift, seed):  # one batch: temperature plus its phase signal
 golden, new = batch(240, 40.0, 1), batch(300, 46.0, 2)
 
 gb = GoldenBatchDeviationEvents(golden, "reactor2:jacket_temp", n_resample=256)
-print(gb.compare(new, mode="dtw", dtw_band_frac=0.1))
+result = gb.compare(new, mode="dtw", dtw_band_frac=0.1)
+print(result[["mode", "deviation_score", "max_abs_residual", "batch_time_at_max"]])
 phases = gb.phase_breakdown(new, new, phase_uuid="reactor2:phase")
 ```
 

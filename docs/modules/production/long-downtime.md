@@ -19,7 +19,8 @@ parts = pd.DataFrame({"systime": pd.date_range("2024-01-02 06:00", periods=480, 
 
 df = pd.concat([state, parts], ignore_index=True)
 ld = LongDowntimeEvents(df, "press7:running")
-print(ld.detect_long_downtime(min_gap="3h", data_end=pd.Timestamp("2024-01-03 08:00")))
+result = ld.detect_long_downtime(min_gap="3h", data_end=pd.Timestamp("2024-01-03 08:00"))
+print(result[["start", "end", "duration_seconds"]])
 campaigns = ld.count_events_between_gaps(df, "press7:part_done", min_gap="3h", aggregation="sum")
 ```
 

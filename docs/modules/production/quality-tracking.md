@@ -20,7 +20,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 qt = QualityEvents(df)
-print(qt.nok_by_shift(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok"))
+result = qt.nok_by_shift(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok")
+print(result[["date", "shift", "ok_parts", "nok_parts", "first_pass_yield_pct"]])
 by_part = qt.quality_by_part(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok", part_id_uuid="line1:part_id")
 ```
 

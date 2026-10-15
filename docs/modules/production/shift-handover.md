@@ -22,7 +22,8 @@ report = ShiftHandoverEvents(df)
 handover = report.generate_report(counter_uuid="line1:parts", ok_counter_uuid="line1:ok",
                                   nok_counter_uuid="line1:nok", state_uuid="line1:running",
                                   targets={"shift_1": 450, "shift_2": 450, "shift_3": 400})
-print(report.highlight_issues(report_df=handover))
+result = report.highlight_issues(report_df=handover)
+print(result[["date", "shift", "metric", "value", "threshold", "severity"]])
 ```
 
 ## Methods

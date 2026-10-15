@@ -14,7 +14,8 @@ df = ts_shape.make_timeseries(["boiler2:steam_temp"], n_points=3000, freq="1s")
 df = df.drop(index=list(range(500, 520)) + list(range(1500, 1900)))  # two outages
 
 gaps = DataGapAnalysisEvents(df, "boiler2:steam_temp")
-print(gaps.gap_summary(min_gap="5s"))
+result = gaps.gap_summary(min_gap="5s")
+print(result[["total_gaps", "total_missing_seconds", "longest_gap_seconds", "gap_fraction"]])
 coverage = gaps.coverage_by_period(window="10min")
 fill = gaps.interpolation_candidates(max_gap="30s", min_gap="2s")
 ```

@@ -17,7 +17,8 @@ df = pd.DataFrame({
     "value_bool": np.arange(3600) % 90 < 60,  # on 60 s, off 30 s
 })
 dc = DutyCycleEvents(df, signal_uuid="oven1:heater_on")
-print(dc.duty_cycle_by_window(window="15min"))
+result = dc.duty_cycle_by_window(window="15min")
+print(result[["start", "on_time", "off_time", "duty_cycle_pct"]])
 intervals = dc.on_off_intervals()
 excessive = dc.excessive_cycling(max_transitions=20, window="15min")
 ```

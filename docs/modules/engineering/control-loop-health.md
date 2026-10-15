@@ -19,7 +19,8 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": u, "value_double": v}) for u
 loop = ControlLoopHealthEvents(df, setpoint_uuid="flow_sp", actual_uuid="flow_pv", output_uuid="valve_out")
 integrals = loop.error_integrals(window="1h")
 saturation = loop.output_saturation(upper_limit=100.0, lower_limit=0.0, window="1h")
-print(loop.loop_health_summary(window="8h"))
+result = loop.loop_health_summary(window="8h")
+print(result[["iae", "bias", "oscillation_count", "pct_saturated", "health_grade"]])
 ```
 
 ## Methods

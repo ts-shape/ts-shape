@@ -14,7 +14,8 @@ df = ts_shape.make_timeseries(["pump3:discharge_pressure"], n_points=7200, freq=
 df["value_double"] = df["value_double"].round(1)  # coarse 0.1 bar ADC steps
 
 sr = SamplingResolutionEvents(df, "pump3:discharge_pressure")
-print(sr.detect_quantization(window="1h", threshold_ratio=0.3))
+result = sr.detect_quantization(window="1h", threshold_ratio=0.3)
+print(result[["window_start", "n_unique_values", "quantization_step", "quantized"]])
 resolution = sr.effective_resolution(window="1h")
 aliasing = sr.detect_aliasing(window="1h", expected_frequency=24.2)  # 1450 rpm pump
 jitter = sr.sampling_jitter(window="1h")

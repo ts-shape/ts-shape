@@ -16,7 +16,8 @@ t = pd.date_range("2024-01-01 06:00", periods=240, freq="1min")
 df = pd.DataFrame({"systime": t, "uuid": "press7:Total_Active_Power-kW",
                    "value_double": np.where(np.arange(240) % 60 < 45, 140.0, 20.0)})
 
-print(PowerIntegrator.energy_by_window(df, window="1h", max_gap="15min"))
+result = PowerIntegrator.energy_by_window(df, window="1h", max_gap="15min")
+print(result[["start", "kwh", "avg_kw", "coverage"]])
 deltas = PowerIntegrator.to_energy_deltas(df, window="1h", max_gap="15min")
 daily = EnergyConsumptionEvents(deltas).consumption_by_window("press7:Total_Active_Power-kW", window="1D")
 ```

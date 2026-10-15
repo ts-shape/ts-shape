@@ -19,7 +19,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 st = SetupTimeEvents(df)
-print(st.setup_durations(state_uuid="line1:state", setup_value="Setup"))
+result = st.setup_durations(state_uuid="line1:state", setup_value="Setup")
+print(result[["start", "end", "duration_minutes", "shift"]])
 by_product = st.setup_by_product(state_uuid="line1:state", part_id_uuid="line1:part_id")
 stats = st.setup_statistics(state_uuid="line1:state")
 ```

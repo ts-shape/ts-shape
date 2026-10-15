@@ -12,9 +12,10 @@ import pandas as pd
 from ts_shape.events.production.oee_calculator import OEEEvents
 
 t = pd.date_range("2024-01-01 06:00", periods=480, freq="1min")
+running = np.arange(480) % 60 < 52   # 8 minutes of stop every hour
 df = pd.concat([
-    pd.DataFrame({"systime": t, "uuid": "line1:running", "value_bool": np.arange(480) % 60 < 52}),
-    pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.arange(480)}),
+    pd.DataFrame({"systime": t, "uuid": "line1:running", "value_bool": running}),
+    pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.cumsum(running)}),  # 1 part/min while running
     pd.DataFrame({"systime": t, "uuid": "line1:rejects", "value_integer": np.arange(480) // 40}),
 ], ignore_index=True)
 

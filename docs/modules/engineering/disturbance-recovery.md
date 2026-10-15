@@ -14,7 +14,8 @@ df = ts_shape.make_timeseries(["reactor_temp"], n_points=2880, freq="10s", basel
 df.loc[1500:1540, "value_double"] += 6.0  # upset of about 7 min
 
 dr = DisturbanceRecoveryEvents(df, "reactor_temp")
-print(dr.detect_disturbances(baseline_window="10min", n_sigma=3.0, min_duration="30s"))
+result = dr.detect_disturbances(baseline_window="10min", n_sigma=3.0, min_duration="30s")
+print(result[["start", "end", "peak_deviation", "direction"]])
 recovery = dr.recovery_time(baseline_window="10min", recovery_pct=0.95, max_recovery="1h")
 frequency = dr.disturbance_frequency(window="8h")
 before_after = dr.before_after_comparison(comparison_window="5min")

@@ -16,7 +16,8 @@ t = pd.Timestamp("2024-01-01 06:00") + pd.to_timedelta(rng.normal(5.0, 0.4, 5000
 df = pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.arange(1, 5001)})
 
 perf = PerformanceLossEvents(df)
-print(perf.performance_by_shift(cycle_uuid="line1:parts", target_cycle_time=4.5, max_cycle_gap="1min"))
+result = perf.performance_by_shift(cycle_uuid="line1:parts", target_cycle_time=4.5, max_cycle_gap="1min")
+print(result[["date", "shift", "actual_parts", "performance_pct", "loss_minutes"]])
 slow = perf.slow_periods(cycle_uuid="line1:parts", target_cycle_time=4.5, threshold_pct=90.0)
 trend = perf.performance_trend(cycle_uuid="line1:parts", target_cycle_time=4.5, window="1h")
 ```

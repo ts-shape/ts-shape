@@ -21,7 +21,8 @@ df = pd.concat([
 energy = EnergyConsumptionEvents(df)
 per_shift = energy.consumption_by_window("meter:main", window="8h", agg="sum")
 peaks = energy.peak_demand_detection("meter:main", window="15min", percentile=0.95)
-print(energy.energy_per_unit("meter:main", "counter:parts", window="1D").head())
+result = energy.energy_per_unit("meter:main", "counter:parts", window="1D").head()
+print(result[["start", "energy", "units_produced", "energy_per_unit"]])
 ```
 
 ## Methods

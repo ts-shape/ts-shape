@@ -19,7 +19,8 @@ inv = InventoryMonitoringEvents(df, level_uuid="stock_level")
 low = inv.detect_low_stock(100, hold="2h")
 rate = inv.consumption_rate(window="1D")
 breaches = inv.reorder_point_breach(250, safety_stock=80)
-print(inv.stockout_prediction(consumption_rate_window="24h").tail(3))
+result = inv.stockout_prediction(consumption_rate_window="24h").tail(3)
+print(result[["current_level", "consumption_rate", "estimated_stockout_time_hours"]])
 ```
 
 ## Methods

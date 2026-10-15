@@ -18,7 +18,8 @@ df = pd.DataFrame({
 })
 ms = MicroStopEvents(df, run_state_uuid="line1:running")
 stops = ms.detect_micro_stops(max_duration="30s")
-print(ms.micro_stop_impact(window="15min", max_duration="30s").head())
+result = ms.micro_stop_impact(window="15min", max_duration="30s").head()
+print(result[["start", "total_micro_stop_time", "performance_loss_pct"]])
 patterns = ms.micro_stop_patterns(hour_grouping=True)
 ```
 
