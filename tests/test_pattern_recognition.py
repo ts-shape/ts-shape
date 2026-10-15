@@ -64,6 +64,29 @@ class TestDiscoverMotifs:
             assert 0 <= row["index_a"] < len(motif_df)
             assert 0 <= row["index_b"] < len(motif_df)
 
+    def test_later_motifs_are_not_trivial_shifts(self):
+        # Two shapes planted twice each in a deterministic aperiodic filler.
+        # Rank 3 used to be (29, 89): the rank-2 pair shifted by one sample.
+        values = np.round(np.sin(np.arange(120) ** 2 * 0.37), 2)
+        a = [0.0, 3.0, 6.0, 9.0, 6.0, 3.0, 0.0, -3.0]
+        b = [5.0, -5.0, 5.0, -5.0, 0.0, 0.0, 8.0, 8.0]
+        values[10:18] = a
+        values[60:68] = a
+        values[30:38] = b
+        values[90:98] = b
+        df = pd.DataFrame({"value_double": values})
+
+        result = PatternRecognition.discover_motifs(df, window_size=8, top_k=3)
+
+        assert result["motif_rank"].tolist() == [1, 2, 3]
+        assert result["index_a"].tolist() == [10, 30, 2]
+        assert result["index_b"].tolist() == [60, 90, 19]
+        assert result["distance"].tolist()[:2] == pytest.approx([0.0, 0.0], abs=1e-6)
+        # Every member is outside window // 2 of every better-ranked member.
+        starts = result[["index_a", "index_b"]].to_numpy()
+        for k in range(1, len(starts)):
+            assert (np.abs(starts[k][:, None] - starts[:k].ravel()) > 4).all()
+
 
 class TestDiscoverDiscords:
     def test_injected_anomaly(self, discord_df):

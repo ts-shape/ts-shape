@@ -137,9 +137,10 @@ temperature cycle recurs every 94 minutes.
   neighbor is farthest away. Both use the matrix profile with z-normalized
   windows, so they compare shapes, not levels. A window is never matched
   with one that overlaps it by `exclusion_zone` samples or less (default half
-  the window), and the discords returned are that far apart. Motif pairs are
-  not: with `top_k > 1`, the next motifs can be the first one shifted by a
-  sample or two.
+  the window), and the discords returned are that far apart. So are motif
+  pairs: with `top_k > 1`, no window of a later motif starts within
+  `exclusion_zone` samples of a window of an earlier one, so the next motifs
+  are other recurring shapes, not the first one shifted by a sample or two.
 - `similarity_search` ranks windows by dynamic time warping distance to a
   query; `template_match` returns every window start closer to a template
   than `threshold` (default: mean minus two standard deviations of all
