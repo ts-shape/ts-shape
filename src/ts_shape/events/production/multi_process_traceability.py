@@ -19,7 +19,7 @@ being processed.  Handover signals between cells confirm the transfer.
 """
 
 import logging
-from typing import Any
+from typing import Any, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -31,7 +31,7 @@ from ts_shape.utils.runs import Runs, run_bounds, run_labels, total_seconds
 
 logger = logging.getLogger(__name__)
 
-_Ints = npt.NDArray[np.int64]
+_Ints: TypeAlias = npt.NDArray[np.int64]
 
 
 def _grouped_searchsorted(

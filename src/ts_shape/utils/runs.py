@@ -23,7 +23,7 @@ them as runs of their own.)
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -41,7 +41,7 @@ __all__ = [
     "run_argmax",
 ]
 
-_Ints = npt.NDArray[np.int64]
+_Ints: TypeAlias = npt.NDArray[np.int64]
 
 
 class Runs(NamedTuple):
@@ -230,9 +230,45 @@ def _pairwise(
     return out
 
 
+_BUFFER = 8192  # numpy's default ufunc buffer size
+
+
+def _sums_in_buffers() -> bool:
+    """True when this numpy sums a long array buffer by buffer.
+
+    Older numpy (2.0, for one) reduces a long contiguous array in blocks of
+    ``_BUFFER`` elements, pairwise within a block and left to right across
+    blocks; newer numpy sums the whole array pairwise. The two differ in the
+    last bit, so the emulation follows whichever this numpy does.
+    """
+    probe = np.random.default_rng(0).normal(size=3 * _BUFFER + 5) * 1e6
+    whole = _pairwise(probe, np.array([0]), np.array([probe.size]))[0]
+    return bool(whole != probe.sum())
+
+
+_BUFFERED = _sums_in_buffers()
+
+
+def _blocked(
+    values: npt.NDArray[np.float64], starts: _Ints, lengths: _Ints
+) -> npt.NDArray[np.float64]:
+    """Buffer-by-buffer sum of each run (see :func:`_sums_in_buffers`)."""
+    out = np.zeros(starts.size, dtype=np.float64)
+    blocks = -(-lengths // _BUFFER)
+    for k in range(int(np.max(blocks)) if blocks.size else 0):
+        m = blocks > k
+        offset = k * _BUFFER
+        size = np.minimum(lengths[m] - offset, _BUFFER)
+        out[m] += _pairwise(values, starts[m] + offset, size)
+    return out
+
+
 def _sum_exact(values: npt.NDArray[np.float64], runs: Runs) -> npt.NDArray[np.float64]:
     """Per-run sum, bit-identical to ``values[s:e].sum()`` for every run."""
-    return _pairwise(np.ascontiguousarray(values), runs.starts, runs.lengths)
+    values = np.ascontiguousarray(values)
+    if _BUFFERED and runs.lengths.size and int(np.max(runs.lengths)) > _BUFFER:
+        return _blocked(values, runs.starts, runs.lengths)
+    return _pairwise(values, runs.starts, runs.lengths)
 
 
 def _nan_filled(values: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:

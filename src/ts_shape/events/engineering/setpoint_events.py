@@ -112,7 +112,7 @@ def _nanmean(values: np.ndarray, valid: np.ndarray) -> float:
     (NaN filled with 0 in place, as pandas does), NaN when there is none."""
     count = int(valid.sum())
     if not count:
-        return np.nan
+        return float("nan")
     return float(np.where(valid, values, 0.0).sum() / count)
 
 
