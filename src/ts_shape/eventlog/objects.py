@@ -62,6 +62,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from ts_shape.utils.deprecation import caller_stacklevel
+
 from ..errors import ColumnNotFoundError, DataQualityWarning
 from ..utils.frames import require_columns
 from . import schema
@@ -304,7 +306,7 @@ def _detect(
                 f"{spec.object_type!r} objects detected from it. Available "
                 f"uuids: {sorted(map(str, available))[:20]}",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
             continue
 
@@ -790,7 +792,7 @@ def _objects_table(intervals: pd.DataFrame) -> pd.DataFrame:
             "object type; OCEL 2.0 object ids must be unique across types — use "
             "id_template='{type}:{value}' to namespace them",
             DataQualityWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     return objs
 

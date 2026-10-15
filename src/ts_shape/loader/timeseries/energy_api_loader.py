@@ -28,6 +28,7 @@ else:
 from ts_shape.errors import DataQualityWarning
 from ts_shape.loader._utils import parse_utc_times, require_optional
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +213,7 @@ class EnergyAPILoader:
                 f"{uuid_value}: none of the {len(df)} API record(s) has the time "
                 f"key {time_key!r} (keys: {list(df.columns)}); they are skipped.",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
             return pd.DataFrame(columns=["systime", "uuid", "value_double", "is_delta"])
 
@@ -226,7 +227,7 @@ class EnergyAPILoader:
                 f"{uuid_value}: none of the {len(df)} API record(s) has the value "
                 f"key {value_key!r} (keys: {list(df.columns)}); values are NaN.",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
             df["value_double"] = float("nan")
 

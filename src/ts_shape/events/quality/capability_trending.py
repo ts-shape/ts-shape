@@ -10,8 +10,7 @@ from scipy import stats
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
-from ts_shape.utils.normalize import _caller_stacklevel
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +173,7 @@ class CapabilityTrendingEvents(Base):
                 "capability_over_time: the signal has no spread (constant, "
                 "single or missing values); the capability indices are NaN",
                 DataQualityWarning,
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
             overall_std = np.nan
 

@@ -17,6 +17,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.signals.spec import Encoding, Kind, SignalSpec, SignalSpecs
+from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.frames import require_columns
 from ts_shape.utils.normalize import _is_extension, _plain
 
@@ -96,7 +97,7 @@ def parse_times(values: pd.Series) -> pd.Series:
             f"time column {values.name!r} mixes UTC offsets; times are "
             "converted to UTC",
             DataQualityWarning,
-            stacklevel=4,
+            stacklevel=caller_stacklevel(),
         )
         return pd.to_datetime(values, errors="coerce", utc=True, format="mixed")
 
@@ -138,7 +139,7 @@ def signal_groups(
         warnings.warn(
             f"{int(missing.sum())} row(s) have no {uuid_column}; they are dropped",
             DataQualityWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
         frame = frame[~missing.to_numpy()]
     raw = frame[uuid_column]
@@ -151,7 +152,7 @@ def signal_groups(
             f"{uuid_column} values {clashes[:5]} occur with different types "
             "(e.g. 1 and '1'); they are treated as one signal",
             DataQualityWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     return [
         (str(key), group) for key, group in frame.groupby(keys.to_numpy(), sort=True)

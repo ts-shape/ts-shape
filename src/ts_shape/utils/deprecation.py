@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import functools
 import inspect
+import sys
 import warnings
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, TypeVar
 
 __all__ = [
@@ -28,6 +30,7 @@ __all__ = [
     "deprecated_method",
     "deprecated_class",
     "keyword_only",
+    "caller_stacklevel",
 ]
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -36,11 +39,37 @@ C = TypeVar("C", bound=type)
 REMOVAL = "the next major release"
 
 
-def _warn(message: str, stacklevel: int = 3) -> None:
+_PACKAGE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _in_package(filename: str) -> bool:
+    try:
+        return Path(filename).resolve().is_relative_to(_PACKAGE_DIR)
+    except (OSError, ValueError):
+        return False
+
+
+def caller_stacklevel() -> int:
+    """``stacklevel`` that points a warning at the first frame outside ts_shape.
+
+    Call it directly in the ``warnings.warn(...)`` call. Detector methods are
+    wrapped (signal checks, keyword-only and renamed-keyword shims), so a
+    fixed number would attribute the warning to a wrapper inside the package,
+    and Python's default filters would then hide a ``DeprecationWarning``.
+    """
+    frame = sys._getframe(1)
+    level = 1
+    while frame.f_back is not None and _in_package(frame.f_code.co_filename):
+        frame = frame.f_back
+        level += 1
+    return level
+
+
+def _warn(message: str) -> None:
     warnings.warn(
         f"{message}; the old name will be removed in {REMOVAL}",
         DeprecationWarning,
-        stacklevel=stacklevel,
+        stacklevel=caller_stacklevel(),
     )
 
 

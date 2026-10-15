@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +156,7 @@ class MetadataJsonLoader:
                     f"{skipped} metadata record(s) are not JSON objects (dicts) "
                     "and are skipped",
                     DataQualityWarning,
-                    stacklevel=4,
+                    stacklevel=caller_stacklevel(),
                 )
             return [
                 self._normalize_record(rec) for rec in data if isinstance(rec, dict)

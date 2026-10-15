@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, keyword_only
 
 # Divisors for Type B uncertainty distributions (GUM standard)
 _DIVISORS = {
@@ -62,9 +62,9 @@ class MeasurementUncertaintyEvents(Base):
         if self.part_uuid is not None:
             warnings.warn(
                 "MeasurementUncertaintyEvents(): part_uuid has no effect and "
-                "will be removed in the next major release",
+                f"will be removed in {REMOVAL}",
                 DeprecationWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
 
     @keyword_only(1)

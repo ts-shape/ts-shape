@@ -51,7 +51,7 @@ from pandas.tseries.offsets import Tick
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import as_datetime, localize_like, require_columns
 
 logger = logging.getLogger(__name__)
@@ -219,10 +219,10 @@ class PowerIntegrator(Base):
                 f"{bad_times} value(s) in time column {time_column!r} are not "
                 "timestamps; those rows are skipped.",
                 DataQualityWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
         power = to_numeric_checked(
-            src[value_column], what=f"power column {value_column!r}", stacklevel=4
+            src[value_column], what=f"power column {value_column!r}"
         )
         df = pd.DataFrame(
             {

@@ -20,6 +20,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.loader._utils import empty_signal_frame
+from ts_shape.utils.deprecation import caller_stacklevel
 
 _VALUE_COLUMNS = ("value_double", "value_integer", "value_bool")
 
@@ -91,7 +92,7 @@ def make_timeseries(
         warnings.warn(
             "n_outliers has no effect with noise=0: outliers are 12 * noise high",
             DataQualityWarning,
-            stacklevel=2,
+            stacklevel=caller_stacklevel(),
         )
 
     rng = np.random.default_rng(seed)

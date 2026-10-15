@@ -9,7 +9,7 @@ import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, keyword_only
 
 _SPEED_FACTORS: dict[str, float] = {
     "m/min": 1.0 / 60.0,
@@ -101,9 +101,9 @@ class ContinuousProcessAlignmentEvents(Base):
         self.line_config = line_config
         if ref_uuid is not None:
             warnings.warn(
-                "ref_uuid has no effect and will be removed in the next major release",
+                f"ref_uuid has no effect and will be removed in {REMOVAL}",
                 DeprecationWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         self.ref_uuid = ref_uuid
         self.cut_uuid = cut_uuid
@@ -471,11 +471,11 @@ class ContinuousProcessAlignmentEvents(Base):
                 "material_ref_time and the cut signal must both be tz-aware or "
                 "both be naive."
             )
-        b_i8 = np.maximum.accumulate(bounds.asi8)
+        b_i8 = np.maximum.accumulate(bounds.as_unit("ns").asi8)
         first_of_bound = np.ones(len(b_i8), dtype=bool)
         first_of_bound[1:] = b_i8[1:] != b_i8[:-1]
         uniq_pos = np.flatnonzero(first_of_bound)
-        k = np.searchsorted(b_i8[uniq_pos], mat.asi8, side="left")
+        k = np.searchsorted(b_i8[uniq_pos], mat.as_unit("ns").asi8, side="left")
         assigned = (k < len(uniq_pos)) & ~np.asarray(mat.isna())
         piece_pos = uniq_pos[np.clip(k, 0, len(uniq_pos) - 1)]
 

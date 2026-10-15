@@ -13,21 +13,18 @@ import warnings
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
+from ts_shape.utils.deprecation import caller_stacklevel
 
 __all__ = ["to_numeric_checked"]
 
 
-def to_numeric_checked(
-    values: pd.Series, *, what: str, stacklevel: int = 3
-) -> pd.Series:
+def to_numeric_checked(values: pd.Series, *, what: str) -> pd.Series:
     """Coerce ``values`` to numbers, warning when non-null values become NaN.
 
     Args:
         values: Values to coerce.
         what: Short description of the values for the warning message,
             e.g. ``"counter column 'value_integer'"``.
-        stacklevel: Passed to :func:`warnings.warn`. The default points at
-            the caller of the function that calls this helper.
 
     Returns:
         A numeric Series aligned with ``values``. Values that are not numeric
@@ -43,6 +40,6 @@ def to_numeric_checked(
             f"{lost} non-null value(s) in {what} are not numeric and were "
             "treated as missing (NaN).",
             DataQualityWarning,
-            stacklevel=stacklevel,
+            stacklevel=caller_stacklevel(),
         )
     return numeric

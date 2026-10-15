@@ -20,6 +20,7 @@ from ts_shape.loader._utils import (
     report_failures,
     trim_to_time_range,
 )
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -348,7 +349,7 @@ class AzureBlobParquetLoader:
         warnings.warn(
             f"AzureBlobParquetLoader.{method} returned an empty DataFrame. {detail}",
             LoaderConfigWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
 
     def _time_search_detail(self, slots: list[pd.Timestamp]) -> str:
@@ -801,7 +802,7 @@ class AzureBlobParquetLoader:
                 "expected blob names <hour prefix>/<uuid>.parquet directly. "
                 "Verify the credentials' list permission.",
                 LoaderConfigWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
             guessed = list(
                 dict.fromkeys(
@@ -1123,7 +1124,7 @@ class AzureBlobFlexibleFileLoader:
                 f"Could not parse blob {blob_name!r} with the {ext!r} parser "
                 f"({type(exc).__name__}: {exc}); returning its raw bytes.",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
             return content
 
@@ -1244,7 +1245,7 @@ class AzureBlobFlexibleFileLoader:
         downloaded, failures = _download_all(
             self._download_bytes, blob_names, self.max_workers
         )
-        report_failures(failures, what="blob(s)", errors=errors, stacklevel=4)
+        report_failures(failures, what="blob(s)", errors=errors)
         return {
             name: self._parse_bytes(name, content) if parse else content
             for name, content in downloaded
@@ -1300,7 +1301,7 @@ class AzureBlobFlexibleFileLoader:
             what="blob(s)",
         ):
             yield (name, self._parse_bytes(name, content) if parse else content)
-        report_failures(failures, what="blob(s)", errors=errors, stacklevel=4)
+        report_failures(failures, what="blob(s)", errors=errors)
 
     def fetch_files_by_time_range_and_basenames(
         self,

@@ -20,7 +20,7 @@ def _operand(dataframe: pd.DataFrame, value_column: str, where: str) -> pd.Serie
     require_columns(dataframe, [value_column], where=f"IntegerCalc.{where}")
     values = dataframe[value_column]
     if ptypes.is_object_dtype(values.dtype) or ptypes.is_string_dtype(values.dtype):
-        return to_numeric_checked(values, what=f"column {value_column!r}", stacklevel=4)
+        return to_numeric_checked(values, what=f"column {value_column!r}")
     return values
 
 

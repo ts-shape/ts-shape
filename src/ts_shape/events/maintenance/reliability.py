@@ -47,8 +47,7 @@ from ts_shape.events._output import (
 from ts_shape.signals.primitives import intervals, windows
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
-from ts_shape.utils.normalize import _caller_stacklevel
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +365,7 @@ class ReliabilityEvents(Base):
                 f"weibull_fit: no finite Weibull fit for {len(tbf)} times between "
                 "failures (e.g. all of the same length); the parameters are NaN",
                 DataQualityWarning,
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
         return pd.DataFrame(
             [

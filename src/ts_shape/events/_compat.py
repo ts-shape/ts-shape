@@ -10,39 +10,18 @@
 
 from __future__ import annotations
 
-import os
-import sys
 import warnings
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from ts_shape.utils.deprecation import REMOVAL
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel
 
 __all__ = ["warn_dict_return", "state_mask", "uses_bool_state", "summary_bounds"]
 
 _BOOL_COLUMN = "value_bool"
 _STRING_COLUMN = "value_string"
-
-
-_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _caller_stacklevel() -> int:
-    """Stack level of the first frame outside ``ts_shape`` (the user's call).
-
-    Detector methods are wrapped (signal checks, keyword-only and renamed
-    keyword shims), so a fixed ``stacklevel`` would point into a wrapper.
-    """
-    level = 1
-    frame = sys._getframe(1)
-    while frame is not None and os.path.abspath(frame.f_code.co_filename).startswith(
-        _PACKAGE_DIR
-    ):
-        frame = frame.f_back  # type: ignore[assignment]
-        level += 1
-    return level
 
 
 def warn_dict_return(qualname: str, *, kind: str = "dict") -> None:
@@ -56,7 +35,7 @@ def warn_dict_return(qualname: str, *, kind: str = "dict") -> None:
         f"{qualname}(as_frame=False) is deprecated: the {kind} return will be "
         f"removed in {REMOVAL}; use the default DataFrame return",
         DeprecationWarning,
-        stacklevel=_caller_stacklevel(),
+        stacklevel=caller_stacklevel(),
     )
 
 

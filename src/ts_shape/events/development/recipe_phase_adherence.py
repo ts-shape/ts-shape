@@ -22,6 +22,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -120,7 +121,7 @@ class RecipePhaseAdherenceEvents(Base):
                 f"Recipe spec for phase {phase!r}: {key!r} must be a (min, max) "
                 f"pair, got {bounds!r}; this criterion was not checked.",
                 DataQualityWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
             return True
         return bool((value >= lo) and (value <= hi))
@@ -267,6 +268,6 @@ class RecipePhaseAdherenceEvents(Base):
                 f"signal {self.value_uuid!r} and were not evaluated: "
                 f"{no_samples!r}.",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         return pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)

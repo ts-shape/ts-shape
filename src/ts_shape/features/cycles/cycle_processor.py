@@ -17,7 +17,7 @@ import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +386,7 @@ class CycleDataProcessor(Base):
             warnings.warn(
                 f"compare_cycles: reference cycle {reference_cycle_uuid!r} not found.",
                 DataQualityWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             return self._comparison_schema()
         ref_pos = int(ref_positions[0])
@@ -395,7 +395,7 @@ class CycleDataProcessor(Base):
                 f"compare_cycles: reference cycle {reference_cycle_uuid!r} has "
                 f"no {value_column!r} data.",
                 DataQualityWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             return self._comparison_schema()
         ref_mean = float(stats.loc[ref_pos, "mean"])

@@ -20,6 +20,8 @@ from typing import SupportsFloat
 import numpy as np
 import pandas as pd
 
+from ts_shape.utils.deprecation import caller_stacklevel
+
 from ..errors import ColumnNotFoundError, DataQualityWarning
 from ..events._output import COL_END, COL_START, COL_SYSTIME
 from ..utils.coerce import to_numeric_checked
@@ -436,7 +438,7 @@ def _severity_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
             "severity column contains values outside "
             f"{_SEVERITY_VOCABULARY}: {bad}; they are set to <NA>",
             DataQualityWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
         out = out.mask(unknown)
     return out
@@ -543,7 +545,7 @@ def adapt(
                 f"{detector}: {int(backwards.sum())} row(s) end before they "
                 "start; they are dropped from the event log",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
             keep = ~backwards.to_numpy()
             frame = frame.loc[keep].reset_index(drop=True)
@@ -587,7 +589,7 @@ def adapt(
             f"{detector}: activity template {rule.template!r} has missing "
             f"values in {nan_fields}; they render as 'unknown'",
             DataQualityWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
     activities = frame.apply(lambda r: render_activity(rule, r), axis=1).astype(
         "string"

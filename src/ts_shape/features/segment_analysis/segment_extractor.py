@@ -6,6 +6,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.intervals import _check_mode
 
 logger = logging.getLogger(__name__)
@@ -173,7 +174,7 @@ class SegmentExtractor(Base):
                 f"{n_nat} row(s) of '{segment_uuid}' have no timestamp and were "
                 "skipped.",
                 DataQualityWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         keep = times.notna().to_numpy()
         if not keep.any():

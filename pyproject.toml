@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8"]
+requires = ["setuptools>=77", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -38,9 +38,9 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "pandas>=2.1.0",
+    "pandas>=2.2.0",
     "scipy>=1.13.1",
-    "numpy>=1.26.4",
+    "numpy>=2.0",
 ]
 
 [project.urls]

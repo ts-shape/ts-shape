@@ -48,7 +48,7 @@ __all__ = [
 
 WINDOW_COLS: list[str] = [COL_START, COL_END, COL_DURATION_S]
 
-_RIGHT_LABELED = {"ME", "YE", "QE", "BME", "BYE", "BQE", "W", "M", "A", "Y", "Q"}
+_RIGHT_LABELED = {"ME", "YE", "QE", "BME", "BYE", "BQE", "W"}
 
 Window: TypeAlias = "str | pd.Timedelta | pd.DateOffset"
 

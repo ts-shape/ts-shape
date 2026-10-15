@@ -7,11 +7,11 @@ Simple module for shift summaries:
 """
 
 import logging
-import warnings
 from typing import Literal, overload
 
 import pandas as pd
 
+from ts_shape.events._compat import warn_dict_return
 from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
@@ -469,13 +469,7 @@ class ShiftReportEvents(Base):
             2 2025-01-02  shift_2       157
         """
         if not as_frame:
-            warnings.warn(
-                "ShiftReportEvents.best_and_worst_shifts(as_frame=False) is "
-                "deprecated: the dict return will be removed in the next major release; "
-                "use the default DataFrame return",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+            warn_dict_return("ShiftReportEvents.best_and_worst_shifts")
 
         shift_prod = self.shift_production(
             counter_uuid, value_column_counter=value_column_counter

@@ -47,7 +47,7 @@ def numeric_values(dataframe: pd.DataFrame, column: str, *, where: str) -> pd.Se
             values = values.astype(object).where(values.notna(), np.nan)
     if ptypes.is_numeric_dtype(values.dtype):
         return values
-    numbers = to_numeric_checked(values, what=f"column {column!r}", stacklevel=4)
+    numbers = to_numeric_checked(values, what=f"column {column!r}")
     return numbers.astype("float64")
 
 

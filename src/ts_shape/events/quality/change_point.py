@@ -30,7 +30,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +286,6 @@ class ChangePointEvents(Base):
                 "x": to_numeric_checked(
                     rows[value_column],
                     what=f"{value_column!r} of signal {signal_uuid!r}",
-                    stacklevel=4,
                 ),
             }
         ).dropna()
@@ -302,7 +301,7 @@ class ChangePointEvents(Base):
                     f"PELT on {len(x)} samples may be slow when changes are "
                     "rare; use method='binseg' or resample the signal",
                     UserWarning,
-                    stacklevel=3,
+                    stacklevel=caller_stacklevel(),
                 )
             found = pelt(x, cost=cost, penalty=penalty, min_size=min_size)
         elif method == "binseg":

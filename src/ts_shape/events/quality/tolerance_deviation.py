@@ -11,8 +11,12 @@ from ts_shape.errors import DataQualityWarning
 from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.events._output import drop_duplicate_events
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method, keyword_only
-from ts_shape.utils.normalize import _caller_stacklevel
+from ts_shape.utils.deprecation import (
+    REMOVAL,
+    caller_stacklevel,
+    deprecated_method,
+    keyword_only,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -140,11 +144,11 @@ class ToleranceDeviationEvents(Base):
                 )
             warnings.warn(
                 "ToleranceDeviationEvents(): tolerance_uuid is deprecated and will "
-                "be removed in the next major release; use upper_tolerance_uuid and/or "
+                f"be removed in {REMOVAL}; use upper_tolerance_uuid and/or "
                 "lower_tolerance_uuid (a single upper limit is "
                 "upper_tolerance_uuid alone)",
                 DeprecationWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
             self.tolerance_uuid = tolerance_uuid
             self.separate_tolerances = False
@@ -667,7 +671,7 @@ class ToleranceDeviationEvents(Base):
                 "spread (constant, single or missing values); the capability "
                 "indices are NaN",
                 DataQualityWarning,
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
             process_std = np.nan
 

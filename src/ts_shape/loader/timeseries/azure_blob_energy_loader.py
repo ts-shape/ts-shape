@@ -21,6 +21,7 @@ from ts_shape.loader._utils import (
     utc_folder_hours,
 )
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +237,7 @@ class AzureBlobEnergyLoader:
                     f"Series metadata blob {blob_name!r} does not exist; "
                     "returning an empty metadata table.",
                     LoaderConfigWarning,
-                    stacklevel=2,
+                    stacklevel=caller_stacklevel(),
                 )
                 return pd.DataFrame(columns=_META_COLUMNS)
             raise LoaderError(
@@ -516,7 +517,7 @@ class AzureBlobEnergyLoader:
                 if not df.empty:
                     frames.append(df)
         failures.sort(key=lambda item: item[0])
-        report_failures(failures, what="CSV blob(s)", errors=errors, stacklevel=4)
+        report_failures(failures, what="CSV blob(s)", errors=errors)
 
         if not frames:
             return pd.DataFrame(columns=_EMPTY_SCHEMA)

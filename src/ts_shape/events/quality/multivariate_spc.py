@@ -38,8 +38,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
-from ts_shape.utils.deprecation import keyword_only
-from ts_shape.utils.normalize import _caller_stacklevel
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +137,6 @@ class MultivariateSPCEvents(Base):
                 uuid: to_numeric_checked(
                     rows[self.value_column],
                     what=f"{self.value_column!r} of signal {uuid!r}",
-                    stacklevel=6,
                 ),
             }
         ).dropna()
@@ -184,7 +182,7 @@ class MultivariateSPCEvents(Base):
             f"observation(s); at least {p + 2} are needed for {p} variables, "
             "so no T² is computed",
             DataQualityWarning,
-            stacklevel=_caller_stacklevel(),
+            stacklevel=caller_stacklevel(),
         )
         return True
 

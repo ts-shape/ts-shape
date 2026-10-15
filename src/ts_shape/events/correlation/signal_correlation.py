@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import REMOVAL, renamed_kwargs
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, renamed_kwargs
 from ts_shape.utils.intervals import interval_end_times
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ def _window_size_from_int_window(func: Callable[P, R]) -> Callable[P, R]:
                 "as window_size (window is the resample interval); the integer "
                 f"form will be removed in {REMOVAL}",
                 DeprecationWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
             kwargs["window_size"] = kwargs.pop("window")
         return func(*args, **kwargs)

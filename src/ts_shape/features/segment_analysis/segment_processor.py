@@ -152,8 +152,10 @@ class SegmentProcessor(Base):
         if len(positions) == 0 or df.empty:
             return _empty()
 
-        s_idx = pd.DatetimeIndex(starts.iloc[positions])
-        e_idx = pd.DatetimeIndex(ends.iloc[positions])
+        # One time unit for data and ranges: the int64 comparisons below
+        # would otherwise compare microseconds with nanoseconds.
+        s_idx = pd.DatetimeIndex(starts.iloc[positions]).as_unit("ns")
+        e_idx = pd.DatetimeIndex(ends.iloc[positions]).as_unit("ns")
         # Sort by (start, end): a zero-length range sorts before a range
         # starting at the same instant, which then owns that instant.
         order = np.lexsort((e_idx.asi8, s_idx.asi8))
@@ -174,7 +176,7 @@ class SegmentProcessor(Base):
                 [e not in start_set for e in e_sorted.asi8], dtype=bool
             )
 
-        times = pd.DatetimeIndex(df[time_column])
+        times = pd.DatetimeIndex(df[time_column]).as_unit("ns")
         has_time = ~np.asarray(times.isna())
         if overlap_count == 0:
             # Non-overlapping ranges: one binary search per row.

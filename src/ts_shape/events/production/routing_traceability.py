@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -134,9 +135,9 @@ class RoutingTraceabilityEvents(Base):
         if station_map is not None:
             warnings.warn(
                 "RoutingTraceabilityEvents(): 'station_map' is deprecated, use "
-                "'state_map'; the old name will be removed in the next major release",
+                f"'state_map'; the old name will be removed in {REMOVAL}",
                 DeprecationWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         # state_map takes priority over the deprecated station_map.
         if state_map is not None and station_map is not None:
@@ -144,7 +145,7 @@ class RoutingTraceabilityEvents(Base):
                 "Both state_map and station_map were passed; station_map is "
                 "ignored and state_map is used.",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         chosen = state_map if state_map is not None else station_map
         self.state_map: dict[int | float | str, str] = chosen or {}

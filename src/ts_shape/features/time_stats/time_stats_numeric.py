@@ -26,9 +26,7 @@ def _prepared(
         pd.api.types.is_numeric_dtype(values.dtype)
         and not isinstance(values.dtype, pd.api.extensions.ExtensionDtype)
     ):
-        values = to_numeric_checked(
-            values, what=f"column {value_column!r}", stacklevel=4
-        )
+        values = to_numeric_checked(values, what=f"column {value_column!r}")
         df[value_column] = values.astype("float64")
     return df
 

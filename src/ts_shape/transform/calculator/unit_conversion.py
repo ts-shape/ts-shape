@@ -164,9 +164,7 @@ class UnitConverter(Base):
         Base._validate_column(dataframe, value_column)
         df = dataframe.copy()
         target = target_column or value_column
-        numbers = to_numeric_checked(
-            df[value_column], what=f"column {value_column!r}", stacklevel=3
-        )
+        numbers = to_numeric_checked(df[value_column], what=f"column {value_column!r}")
         magnitudes = np.asarray(
             numbers.to_numpy(dtype="float64", na_value=np.nan), dtype="float64"
         )

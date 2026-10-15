@@ -7,6 +7,7 @@ import pandas as pd
 
 from ts_shape.errors import LoaderConfigWarning
 from ts_shape.loader._utils import retry_call, same_tz_bounds, validate_local_path
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ class ParquetLoader:
                 f"No parquet files matched under {base_path}. "
                 "Check the path and any time-range/uuid filters.",
                 LoaderConfigWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
             return pd.DataFrame()
         dataframes = [

@@ -13,7 +13,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +250,7 @@ class SetpointChangeEvents(Base):
                 "share a timestamp with the previous sample; their rate is "
                 "undefined and they are not counted as ramping",
                 DataQualityWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         sp["rate"] = sp["dv"] / sp["dt_s"].where(~dup)
         rate_mask = sp["rate"].abs() >= float(min_rate)
@@ -375,7 +375,7 @@ class SetpointChangeEvents(Base):
                 "time_to_settle(): both tol and settle_pct were passed; "
                 "settle_pct wins and tol is ignored",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
         if self.sp.empty:
             return self._kpi_frame([], cols, actual_uuid, lookahead)
@@ -972,7 +972,7 @@ class SetpointChangeEvents(Base):
                 f"change(s) of {actual_uuid!r} (first at {failed_fits[0]}); "
                 "their decay_rate_lambda and fit_quality_r2 are None.",
                 DataQualityWarning,
-                stacklevel=3,
+                stacklevel=caller_stacklevel(),
             )
         return self._kpi_frame(rows, cols, actual_uuid, lookahead)
 
@@ -1163,7 +1163,7 @@ class SetpointChangeEvents(Base):
                 "control_quality_metrics(): both tol and settle_pct were "
                 "passed; settle_pct wins and tol is ignored",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
             tol = 0.0  # unused once settle_pct is set; avoid a second warning
 

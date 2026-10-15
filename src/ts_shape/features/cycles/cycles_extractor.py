@@ -39,6 +39,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.frames import require_columns
 
 logger = logging.getLogger(__name__)
@@ -148,14 +149,14 @@ class CycleExtractor(Base):
                         f"CycleExtractor: uuid {signal_uuid!r} not found; the frame "
                         f"holds one signal {present[0]!r}, which is used.",
                         DataQualityWarning,
-                        stacklevel=4,
+                        stacklevel=caller_stacklevel(),
                     )
                 else:
                     warnings.warn(
                         f"CycleExtractor: uuid {signal_uuid!r} not found. "
                         f"Available uuids: {present}",
                         DataQualityWarning,
-                        stacklevel=4,
+                        stacklevel=caller_stacklevel(),
                     )
                     return df.iloc[0:0]
         return df[df[self.time_column].notna()]

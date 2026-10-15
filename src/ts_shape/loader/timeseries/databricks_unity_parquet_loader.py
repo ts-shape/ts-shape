@@ -17,6 +17,7 @@ from ts_shape.loader._utils import (
     report_failures,
     trim_to_time_range,
 )
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ class DatabricksUnityParquetLoader:
                 "Volume is mounted (default '/Volumes/<catalog>/<schema>/<volume>') "
                 "and that catalog/schema/volume/prefix are correct.",
                 LoaderConfigWarning,
-                stacklevel=2,
+                stacklevel=caller_stacklevel(),
             )
 
     # ---- Hourly-layout helpers (mirror AzureBlobParquetLoader) ----
@@ -163,7 +164,7 @@ class DatabricksUnityParquetLoader:
                 f"Could not list {str(directory)!r} ({type(exc).__name__}: {exc}); "
                 "its parquet files are skipped.",
                 DataQualityWarning,
-                stacklevel=4,
+                stacklevel=caller_stacklevel(),
             )
             return []
 
@@ -251,7 +252,7 @@ class DatabricksUnityParquetLoader:
             f"DatabricksUnityParquetLoader.{method} returned an empty "
             f"DataFrame. {detail}",
             LoaderConfigWarning,
-            stacklevel=3,
+            stacklevel=caller_stacklevel(),
         )
 
     def _time_search_detail(self, slots: list[pd.Timestamp]) -> str:

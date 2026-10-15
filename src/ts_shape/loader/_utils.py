@@ -27,6 +27,7 @@ from typing import Literal, TypeVar
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning, LoaderError
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -416,7 +417,6 @@ def report_failures(
     *,
     what: str,
     errors: ErrorsMode,
-    stacklevel: int = 3,
 ) -> None:
     """Warn about (or raise for) objects a bulk load could not read.
 
@@ -426,11 +426,10 @@ def report_failures(
         errors: ``"warn"`` emits one :class:`~ts_shape.errors.DataQualityWarning`
             naming every failed object; ``"raise"`` raises
             :class:`~ts_shape.errors.LoaderError` from the first error.
-        stacklevel: Passed to :func:`warnings.warn`.
     """
     if not failures:
         return
     message = describe_failures(failures, what)
     if errors == "raise":
         raise LoaderError(message) from failures[0][1]
-    warnings.warn(message, DataQualityWarning, stacklevel=stacklevel)
+    warnings.warn(message, DataQualityWarning, stacklevel=caller_stacklevel())
