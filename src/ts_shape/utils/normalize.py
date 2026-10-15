@@ -33,7 +33,13 @@ from pandas.api import types as ptypes
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.deprecation import caller_stacklevel
 
-__all__ = ["normalize_signal_frame", "NUMERIC_VALUE_COLUMNS"]
+__all__ = [
+    "normalize_signal_frame",
+    "NUMERIC_VALUE_COLUMNS",
+    "text_keys",
+    "text_mask",
+    "unique_text",
+]
 
 #: Value columns that hold numbers; text in them is parsed.
 NUMERIC_VALUE_COLUMNS = ("value_double", "value_integer")
@@ -60,8 +66,87 @@ def _plain(series: pd.Series) -> pd.Series:
         return series.astype("float64")
     if ptypes.is_datetime64_any_dtype(dtype):
         return pd.to_datetime(series.astype(object))
+    if ptypes.is_string_dtype(dtype):
+        return _strings_as_object(series)
     values = series.astype(object)
     return values.where(series.notna(), np.nan)
+
+
+def _strings_as_object(series: pd.Series) -> pd.Series:
+    """A string-dtype column as ``object`` with ``NaN`` for missing values.
+
+    Equal to ``series.astype(object).where(series.notna(), np.nan)``, but
+    built from the unique values: every row holding the same text refers to
+    one Python ``str``, instead of one new object per row (a uuid or state
+    column has few distinct values and many rows).
+    """
+    codes, uniques = pd.factorize(series)
+    labels = np.empty(len(uniques) + 1, dtype=object)
+    labels[: len(uniques)] = np.asarray(uniques, dtype=object)
+    labels[-1] = np.nan  # code -1: missing
+    return pd.Series(labels[codes], index=series.index, name=series.name, dtype=object)
+
+
+def _non_missing(values: object) -> list[object]:
+    return [v for v in values if not _is_missing(v)]  # type: ignore[attr-defined]
+
+
+def _is_missing(value: object) -> bool:
+    missing = pd.isna(value)
+    return bool(missing) if isinstance(missing, (bool, np.bool_)) else False
+
+
+def _text_is_exact(series: pd.Series, values: list[object]) -> bool:
+    """Whether ``str()`` of the unique values matches ``astype(str)`` per row.
+
+    Unique values are found by equality, so an ``object`` column holding
+    both ``1`` and ``1.0`` (or ``True``) has one unique value but two texts;
+    such columns take the row-wise path.
+    """
+    return series.dtype != object or all(isinstance(v, str) for v in values)
+
+
+def unique_text(series: pd.Series) -> set[str]:
+    """``set(series.dropna().astype(str).unique())``, from the unique values.
+
+    Never converts the whole column to text: only its distinct values are
+    turned into strings (a column with mixed non-text values falls back to
+    the row-wise conversion).
+    """
+    values = _non_missing(pd.unique(series))
+    if not _text_is_exact(series, values):
+        return set(series.dropna().astype(str).unique())
+    return {str(v) for v in values}
+
+
+def text_mask(series: pd.Series, text: str) -> np.ndarray:
+    """Rows whose value, as text, equals ``text`` (missing values never match).
+
+    The same rows as ``series.astype(str) == text``, compared on the unique
+    values and mapped back with ``isin``.
+    """
+    values = _non_missing(pd.unique(series))
+    if not _text_is_exact(series, values):
+        texts = series.astype(str)
+        return np.asarray((texts == text) & series.notna(), dtype=bool)
+    hits = [v for v in values if str(v) == text]
+    if not hits:
+        return np.zeros(len(series), dtype=bool)
+    return np.asarray(series.isin(hits), dtype=bool)
+
+
+def text_keys(series: pd.Series) -> np.ndarray:
+    """``series.astype(str).to_numpy()`` for a column without missing values.
+
+    Built from the unique values: rows with the same value share one ``str``.
+    """
+    codes, uniques = pd.factorize(series)
+    values = list(uniques)
+    if (codes < 0).any() or not _text_is_exact(series, values):
+        return np.asarray(series.astype(str).to_numpy(), dtype=object)
+    labels = np.array([str(v) for v in values] + [""], dtype=object)
+    keys: np.ndarray = labels[codes]
+    return keys
 
 
 def _arrow_timestamp(series: pd.Series) -> bool:

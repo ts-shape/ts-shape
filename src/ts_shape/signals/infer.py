@@ -19,7 +19,7 @@ from ts_shape.errors import DataQualityWarning
 from ts_shape.signals.spec import Encoding, Kind, SignalSpec, SignalSpecs
 from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.frames import require_columns
-from ts_shape.utils.normalize import _is_extension, _plain
+from ts_shape.utils.normalize import _is_extension, _plain, text_keys
 
 __all__ = ["infer_specs", "infer_spec", "parse_times", "signal_groups"]
 
@@ -149,10 +149,8 @@ def signal_groups(
         )
         frame = frame[~missing.to_numpy()]
     raw = frame[uuid_column]
-    keys = raw.astype(str)
-    clashes = sorted(
-        k for k, n in raw.groupby(keys.to_numpy()).nunique().items() if n > 1
-    )
+    keys = text_keys(raw)  # astype(str), on the unique values
+    clashes = sorted(k for k, n in raw.groupby(keys).nunique().items() if n > 1)
     if clashes:
         warnings.warn(
             f"{uuid_column} values {clashes[:5]} occur with different types "
@@ -160,9 +158,7 @@ def signal_groups(
             DataQualityWarning,
             stacklevel=caller_stacklevel(),
         )
-    return [
-        (str(key), group) for key, group in frame.groupby(keys.to_numpy(), sort=True)
-    ]
+    return [(str(key), group) for key, group in frame.groupby(keys, sort=True)]
 
 
 def infer_spec(

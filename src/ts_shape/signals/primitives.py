@@ -37,7 +37,7 @@ from ts_shape.utils.frames import (
     same_time_axis,
     window_offset,
 )
-from ts_shape.utils.normalize import normalize_signal_frame
+from ts_shape.utils.normalize import normalize_signal_frame, text_mask
 from ts_shape.utils.shifts import DEFAULT_SHIFTS
 from ts_shape.utils.time_weighted import time_weighted_resample
 
@@ -61,7 +61,7 @@ def _frame_times(
     require_columns(dataframe, (time_column, spec.value_column), where=spec.uuid)
     rows = dataframe
     if uuid_column in dataframe.columns:
-        rows = dataframe[dataframe[uuid_column].astype(str) == str(spec.uuid)]
+        rows = dataframe[text_mask(dataframe[uuid_column], str(spec.uuid))]
     times = as_datetime(rows[time_column], where=f"signal {spec.uuid!r}")
     return rows, times
 
