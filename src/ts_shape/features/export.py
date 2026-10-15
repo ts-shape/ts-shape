@@ -5,12 +5,15 @@ suitable for machine-learning workflows.
 """
 
 import logging
+import warnings
 from collections.abc import Callable
 
 import pandas as pd
 from pandas.api import types as ptypes
 
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.errors import DataQualityWarning
+from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import require_columns
 
 logger = logging.getLogger(__name__)
@@ -111,7 +114,9 @@ class FeatureMatrixExporter:
 
         for (row_key, sig), grp in iterator:
             for vcol in value_columns:
-                series = pd.to_numeric(grp[vcol], errors="coerce").dropna()
+                series = to_numeric_checked(
+                    grp[vcol], what=f"column {vcol!r} of signal {sig!r}"
+                ).dropna()
                 for agg_name, agg_fn in aggs.items():
                     col_name = f"{sig}__{vcol}__{agg_name}"
                     if not len(series):
@@ -123,7 +128,12 @@ class FeatureMatrixExporter:
                     rows.setdefault(row_key, {})[col_name] = value
 
         if not rows:
-            logger.warning("No data to aggregate — returning empty feature matrix.")
+            warnings.warn(
+                "FeatureMatrixExporter.to_feature_matrix: no data to aggregate; "
+                "returning an empty feature matrix.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
             return pd.DataFrame()
 
         matrix = pd.DataFrame.from_dict(rows, orient="index")

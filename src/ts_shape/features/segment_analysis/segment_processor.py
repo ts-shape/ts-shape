@@ -1,11 +1,14 @@
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -144,9 +147,11 @@ class SegmentProcessor(Base):
         ends = _to_tz(pd.to_datetime(time_ranges["segment_end"]), tz)
         usable = (starts.notna() & ends.notna()).to_numpy()
         if not usable.all():
-            logger.warning(
-                f"{int((~usable).sum())} time range(s) without start or end "
-                "were ignored."
+            warnings.warn(
+                f"apply_ranges: {int((~usable).sum())} time range(s) without "
+                "start or end were ignored.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
             )
         positions = np.flatnonzero(usable)
         if len(positions) == 0 or df.empty:
@@ -192,9 +197,12 @@ class SegmentProcessor(Base):
             row_pos = np.flatnonzero(inside)
             range_pos = pos_sorted[k_safe[row_pos]]
         else:
-            logger.warning(
-                f"{overlap_count} overlapping time range(s) detected. "
-                f"Overlapping rows will appear multiple times in the output."
+            warnings.warn(
+                f"apply_ranges: {overlap_count} overlapping time range(s) "
+                "detected. Overlapping rows will appear multiple times in the "
+                "output.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
             )
             row_parts: list[np.ndarray] = []
             range_parts: list[np.ndarray] = []
@@ -212,7 +220,11 @@ class SegmentProcessor(Base):
             range_pos = np.concatenate(range_parts)
 
         if len(row_pos) == 0:
-            logger.warning("No data matched any time range.")
+            warnings.warn(
+                "apply_ranges: no data matched any time range.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
             return _empty()
 
         # Output order: by range (in time_ranges order), then input order.

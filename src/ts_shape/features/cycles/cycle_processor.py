@@ -15,12 +15,22 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
+from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
-from ts_shape.utils.frames import to_ns
+from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, renamed_kwargs
+from ts_shape.utils.frames import require_columns, to_ns
 
 logger = logging.getLogger(__name__)
+
+
+def _warn_attribute(old: str, new: str) -> None:
+    warnings.warn(
+        f"CycleDataProcessor.{old} is deprecated, use .{new}; the old name "
+        f"will be removed in {REMOVAL}",
+        DeprecationWarning,
+        stacklevel=caller_stacklevel(),
+    )
 
 
 class CycleDataProcessor(Base):
@@ -53,24 +63,18 @@ class CycleDataProcessor(Base):
             TypeError: If one of cycles and values is tz-aware and the other naive.
         """
         super().__init__(values_df, time_column=time_column)
-        for column in ("cycle_start", "cycle_end", cycle_uuid_column):
-            if column not in cycles_df.columns:
-                raise ColumnNotFoundError(
-                    f"cycles_df: column {column!r} not found. "
-                    f"Columns: {list(cycles_df.columns)}"
-                )
-        if time_column not in values_df.columns:
-            raise ColumnNotFoundError(
-                f"values_df: column {time_column!r} not found. "
-                f"Columns: {list(values_df.columns)}"
-            )
+        require_columns(
+            cycles_df,
+            ("cycle_start", "cycle_end", cycle_uuid_column),
+            where="CycleDataProcessor: cycles_df",
+        )
+        require_columns(
+            values_df, (time_column,), where="CycleDataProcessor: values_df"
+        )
         self.values_df = values_df.copy()  # Initialize self.values_df explicitly
         self.cycles_df = cycles_df.copy()
         self.cycle_uuid_column = cycle_uuid_column
         self.time_column = time_column
-        # Old attribute names, kept for code that reads them.
-        self.cycle_uuid_col = cycle_uuid_column
-        self.systime_col = time_column
 
         # Ensure proper datetime format
         self.cycles_df["cycle_start"] = pd.to_datetime(self.cycles_df["cycle_start"])
@@ -93,6 +97,42 @@ class CycleDataProcessor(Base):
 
         self._pairs_cache: tuple[np.ndarray, np.ndarray] | None = None
         logger.info("CycleDataProcessor initialized with cycles and values DataFrames.")
+
+    # ------------------------------------------------------------------
+    # Deprecated attribute names
+    # ------------------------------------------------------------------
+
+    @property
+    def cycle_uuid_col(self) -> str:
+        """Deprecated name of :attr:`cycle_uuid_column`."""
+        _warn_attribute("cycle_uuid_col", "cycle_uuid_column")
+        return self.cycle_uuid_column
+
+    @cycle_uuid_col.setter
+    def cycle_uuid_col(self, value: str) -> None:
+        """Set :attr:`cycle_uuid_column` through its deprecated name.
+
+        Args:
+            value: The cycle uuid column.
+        """
+        _warn_attribute("cycle_uuid_col", "cycle_uuid_column")
+        self.cycle_uuid_column = value
+
+    @property
+    def systime_col(self) -> str:
+        """Deprecated name of :attr:`time_column`."""
+        _warn_attribute("systime_col", "time_column")
+        return self.time_column
+
+    @systime_col.setter
+    def systime_col(self, value: str) -> None:
+        """Set :attr:`time_column` through its deprecated name.
+
+        Args:
+            value: The time column.
+        """
+        _warn_attribute("systime_col", "time_column")
+        self.time_column = value
 
     # ------------------------------------------------------------------
     # Core assignment
@@ -240,18 +280,24 @@ class CycleDataProcessor(Base):
         Returns:
             List of DataFrames, each corresponding to a group in the original DataFrames.
                 Rows whose ``column`` is missing are left out.
+
+        Raises:
+            ColumnNotFoundError: If one of ``dfs`` has no ``column`` (it was
+                skipped with a log message before).
         """
         split_dfs = []
-        for df in dfs:
-            if column not in df.columns:
-                logger.warning(f"Column '{column}' not found in DataFrame. Skipping.")
-                continue
+        for position, df in enumerate(dfs):
+            require_columns(
+                df,
+                (column,),
+                where=f"CycleDataProcessor.split_dataframes_by_group: dfs[{position}]",
+            )
             groups = df.groupby(column)
             for _, group in groups:
                 split_dfs.append(group)
 
         logger.info(
-            f"Split data into {len(split_dfs)} groups based on column '{column}'."
+            "Split data into %d groups based on column %r.", len(split_dfs), column
         )
         return split_dfs
 
@@ -261,14 +307,12 @@ class CycleDataProcessor(Base):
 
     def _per_cycle_metric(self, metric: str) -> pd.DataFrame:
         """count/mean/std of ``metric`` per cycle position (non-missing values)."""
-        if metric not in self.values_df.columns:
-            raise ColumnNotFoundError(
-                f"values_df: column {metric!r} not found. "
-                f"Columns: {list(self.values_df.columns)}"
-            )
+        require_columns(
+            self.values_df, (metric,), where="CycleDataProcessor: values_df"
+        )
         value_pos, cycle_pos = self._pairs()
-        values = pd.to_numeric(
-            self.values_df[metric].iloc[value_pos], errors="coerce"
+        values = to_numeric_checked(
+            self.values_df[metric].iloc[value_pos], what=f"column {metric!r}"
         ).astype("float64")
         frame = pd.DataFrame({"cycle": cycle_pos, "v": values.to_numpy()}).dropna()
         return frame.groupby("cycle")["v"].agg(["count", "mean", "std"])

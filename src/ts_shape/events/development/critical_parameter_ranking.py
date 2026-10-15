@@ -27,7 +27,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.errors import DataQualityWarning
+from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import caller_stacklevel
@@ -110,6 +110,10 @@ class CriticalParameterRankingEvents(Base):
             ``p_value``, ``abs_effect_size``, ``rank``. Sorted by
             ``abs_effect_size`` descending so the top driver is the first
             row.
+
+        Raises:
+            ColumnNotFoundError: If ``outcome_column`` is not in
+                ``per_run_df`` (a ``ValueError`` subclass).
         """
         from scipy import stats  # local import: keeps top-level import cheap
 
@@ -122,7 +126,7 @@ class CriticalParameterRankingEvents(Base):
             "rank",
         ]
         if outcome_column not in per_run_df.columns:
-            raise ValueError(
+            raise ColumnNotFoundError(
                 f"Outcome column {outcome_column!r} missing from per_run_df; "
                 f"available: {list(per_run_df.columns)}"
             )

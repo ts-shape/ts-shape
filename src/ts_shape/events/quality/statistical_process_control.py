@@ -1,10 +1,13 @@
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import (
+    caller_stacklevel,
     deprecated_class,
     deprecated_method,
     keyword_only,
@@ -86,12 +89,12 @@ class StatisticalProcessControlEvents(Base):
             # Fewer than two tolerance rows (sigma NaN) or a constant signal
             # (sigma 0): the limits are NaN or collapse onto the mean, so the
             # Western Electric rules silently never fire (or always fire).
-            logger.warning(
-                "Control limits for uuid %r are degenerate (sigma=%s from %d "
-                "row(s)); rule checks will not be meaningful.",
-                self.tolerance_uuid,
-                sigma,
-                len(df),
+            warnings.warn(
+                f"Control limits for uuid {self.tolerance_uuid!r} are degenerate "
+                f"(sigma={sigma} from {len(df)} row(s)); rule checks will not be "
+                "meaningful.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
             )
 
         control_limits = {
@@ -540,11 +543,11 @@ class StatisticalProcessControlEvents(Base):
             # sigma NaN (fewer than two rows) or 0 (constant): k*sigma and the
             # decision interval h*sigma are 0/NaN, which flags every deviation
             # (or none). Report nothing rather than a wall of false shifts.
-            logger.warning(
-                "CUSUM skipped for uuid %r: tolerance sigma is %s; at least two "
-                "non-constant tolerance values are needed.",
-                self.tolerance_uuid,
-                sigma,
+            warnings.warn(
+                f"CUSUM skipped for uuid {self.tolerance_uuid!r}: tolerance sigma "
+                f"is {sigma}; at least two non-constant tolerance values are needed.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
             )
             return pd.DataFrame(columns=result_cols)
 

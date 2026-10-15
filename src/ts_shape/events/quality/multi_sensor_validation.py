@@ -10,6 +10,7 @@ from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import (
+    REMOVAL,
     caller_stacklevel,
     deprecated_method,
     keyword_only,
@@ -58,6 +59,12 @@ class MultiSensorValidationEvents(Base):
     @property
     def sensor_uuids(self) -> list[str]:
         """Deprecated alias of :attr:`signal_uuids` (read-only)."""
+        warnings.warn(
+            "MultiSensorValidationEvents.sensor_uuids is deprecated, use "
+            f".signal_uuids; the old name will be removed in {REMOVAL}",
+            DeprecationWarning,
+            stacklevel=caller_stacklevel(),
+        )
         return self.signal_uuids
 
     def _build_pivot(self) -> pd.DataFrame:

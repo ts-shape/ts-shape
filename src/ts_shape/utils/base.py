@@ -41,6 +41,7 @@ import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
+from ts_shape.utils.frames import require_columns
 from ts_shape.utils.normalize import normalize_signal_frame
 from ts_shape.utils.signal_checks import checked, checked_init
 
@@ -78,18 +79,24 @@ class Base:
                 setattr(cls, name, checked(member))
 
     @staticmethod
-    def _validate_column(dataframe: pd.DataFrame, column_name: str) -> None:
+    def _validate_column(
+        dataframe: pd.DataFrame, column_name: str, *, where: str | None = None
+    ) -> None:
         """Validate that a column exists in the DataFrame.
+
+        Delegates to :func:`ts_shape.utils.frames.require_columns`.
+
+        Args:
+            dataframe: Input frame.
+            column_name: Required column.
+            where: Name of the calling function, used as the message prefix;
+                without it the message reads ``Column 'x' not found. ...``.
 
         Raises:
             ColumnNotFoundError: If column_name is not in dataframe.columns.
                 This subclasses ``ValueError``.
         """
-        if column_name not in dataframe.columns:
-            raise ColumnNotFoundError(
-                f"Column '{column_name}' not found. "
-                f"Available columns: {list(dataframe.columns)}"
-            )
+        require_columns(dataframe, [column_name], where=where)
 
     @staticmethod
     def _validate_uuid(

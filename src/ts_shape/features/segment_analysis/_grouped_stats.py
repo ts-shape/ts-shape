@@ -23,6 +23,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from ts_shape.utils.coerce import to_numeric_checked
+
 STAT_ORDER = [
     "min",
     "max",
@@ -191,7 +193,8 @@ def summarize_groups(
         dataframe: Input frame.
         keys: Anything ``DataFrame.groupby`` accepts as a list (column names,
             a :class:`pandas.Grouper`).
-        value_column: Column holding the values; text is read as NaN.
+        value_column: Column holding the values; text is read as NaN
+            and reported with a :class:`~ts_shape.errors.DataQualityWarning`.
         min_count: Groups with fewer non-NaN values are dropped.
 
     Returns:
@@ -202,7 +205,9 @@ def summarize_groups(
     gb = dataframe.groupby(keys, sort=True, observed=True, dropna=True)
     codes = gb.ngroup().to_numpy(dtype=np.int64, na_value=-1)
     index = gb.size().index
-    values = pd.to_numeric(dataframe[value_column], errors="coerce")
+    values = to_numeric_checked(
+        dataframe[value_column], what=f"column {value_column!r}"
+    )
     vals = np.asarray(values.to_numpy(dtype="float64", na_value=np.nan))
     stats = grouped_summary(codes, vals, len(index))
     keys_frame = index.to_frame(index=False)

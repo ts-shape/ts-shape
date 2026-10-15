@@ -12,6 +12,7 @@ Two modes of operation:
 """
 
 import logging
+import warnings
 from typing import Any, Literal, overload
 
 import pandas as pd
@@ -20,7 +21,12 @@ from ts_shape.events._compat import state_mask, warn_dict_return
 from ts_shape.events._windows import add_shift_window, data_tz
 from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_class, keyword_only
+from ts_shape.utils.deprecation import (
+    REMOVAL,
+    caller_stacklevel,
+    deprecated_class,
+    keyword_only,
+)
 from ts_shape.utils.shifts import assign_shift, production_dates
 
 logger = logging.getLogger(__name__)
@@ -241,8 +247,10 @@ class ShiftHandoverEvents(Base):
             quality_df: DataFrame with [date, shift, ok_parts, nok_parts, quality_pct]
                 — e.g. from ``QualityEvents.nok_by_shift()``.  Optional.
             downtime_df: DataFrame with [date, shift, availability_pct,
-                downtime_seconds] (or the legacy ``downtime_minutes``) — e.g.
-                from ``DowntimeEvents.downtime_by_shift()``.  Optional.
+                downtime_seconds] — e.g. from
+                ``DowntimeEvents.downtime_by_shift()``.  Optional. A frame
+                with only the legacy ``downtime_minutes`` still works, with a
+                ``DeprecationWarning``, until the next major release.
             targets: Per-shift production targets (dict).
             report_date: Specific date (YYYY-MM-DD).  If None, uses latest.
 
@@ -310,6 +318,18 @@ class ShiftHandoverEvents(Base):
 
         # Merge downtime
         if downtime_df is not None and not downtime_df.empty:
+            if (
+                "downtime_minutes" in downtime_df.columns
+                and "downtime_seconds" not in downtime_df.columns
+            ):
+                warnings.warn(
+                    "ShiftHandoverEvents.from_shift_data(): a downtime_df with "
+                    "'downtime_minutes' but no 'downtime_seconds' is deprecated; "
+                    "pass 'downtime_seconds' (DowntimeEvents.downtime_by_shift() "
+                    f"returns it). The minutes input will be removed in {REMOVAL}",
+                    DeprecationWarning,
+                    stacklevel=caller_stacklevel(),
+                )
             d = downtime_df[downtime_df["date"] == target_date].copy()
             d_cols = ["date", "shift"]
             if "availability_pct" in d.columns:

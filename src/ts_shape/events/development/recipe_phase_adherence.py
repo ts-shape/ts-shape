@@ -22,7 +22,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import caller_stacklevel
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,10 @@ class RecipePhaseAdherenceEvents(Base):
     criteria keys (all optional) per phase:
 
     * ``duration_seconds``  -- ``(min, max)`` seconds. ``duration_s`` is the
-      legacy spelling of the same criterion and is still accepted (giving
-      both for one phase raises ``ValueError``); ``criteria_failed`` names
-      the key the spec used.
+      deprecated spelling of the same criterion: it still works, with a
+      ``DeprecationWarning``, until the next major release (giving both for
+      one phase raises ``ValueError``); ``criteria_failed`` names the key the
+      spec used.
     * ``hold_value``        -- ``(min, max)`` for the mean value during
       the phase.
     * ``ramp_rate_max``     -- maximum absolute slope (value-units per
@@ -68,12 +69,23 @@ class RecipePhaseAdherenceEvents(Base):
         self.value_column = value_column
         self.time_column = time_column
         self.spec = dict(spec)
+        legacy = []
         for phase, criteria in self.spec.items():
             if "duration_s" in criteria and "duration_seconds" in criteria:
                 raise ValueError(
                     f"Recipe spec for phase {phase!r} gives both 'duration_seconds' "
                     "and its legacy spelling 'duration_s'; give one"
                 )
+            if "duration_s" in criteria:
+                legacy.append(str(phase))
+        if legacy:
+            warnings.warn(
+                "RecipePhaseAdherenceEvents: the spec key 'duration_s' (phase(s) "
+                f"{', '.join(repr(p) for p in legacy)}) is deprecated, use "
+                f"'duration_seconds'; the old name will be removed in {REMOVAL}",
+                DeprecationWarning,
+                stacklevel=caller_stacklevel(),
+            )
         self._validate_uuid(self.dataframe, phase_uuid)
         self._validate_uuid(self.dataframe, value_uuid)
 

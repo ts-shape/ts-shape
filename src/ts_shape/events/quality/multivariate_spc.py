@@ -204,9 +204,11 @@ class MultivariateSPCEvents(Base):
         cov = np.cov(ref_x, rowvar=False, ddof=1)
         inv = np.linalg.pinv(cov)
         if np.linalg.matrix_rank(cov) < p:
-            logger.warning(
+            warnings.warn(
                 "reference covariance is singular (constant or collinear "
-                "variables); T² uses the pseudo-inverse"
+                "variables); T² uses the pseudo-inverse",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
             )
         return x, ref, mean, inv
 

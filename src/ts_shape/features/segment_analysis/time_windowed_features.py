@@ -1,12 +1,14 @@
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
 from ts_shape.features.segment_analysis.segment_processor import ALL_METRICS
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import as_datetime, window_offset
 
 logger = logging.getLogger(__name__)
@@ -111,7 +113,11 @@ class TimeWindowedFeatureTable(Base):
         keys = leading[1:]
         empty = _typed_empty(columns, df[time_column].dtype, keys)
         if dataframe.empty:
-            logger.warning("Empty DataFrame provided.")
+            warnings.warn(
+                "TimeWindowedFeatureTable.compute_long: empty DataFrame provided.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
             return empty
         # Stable time order: the window grouper then labels rows reliably.
         df = df.iloc[np.argsort(df[time_column].to_numpy(), kind="stable")]
@@ -122,7 +128,12 @@ class TimeWindowedFeatureTable(Base):
 
         result = summarize_groups(df, grouper, value_column)
         if result.empty:
-            logger.warning("No windows with sufficient data (>= 2 non-NaN values).")
+            warnings.warn(
+                "TimeWindowedFeatureTable.compute_long: no windows with "
+                "sufficient data (>= 2 non-NaN values).",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
             return empty
         result.columns = [*leading, *result.columns[len(leading) :]]
         result["start"] = result["time_window"]

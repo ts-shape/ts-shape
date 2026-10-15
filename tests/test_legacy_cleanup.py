@@ -151,3 +151,304 @@ def test_batch_quantity_without_resets_is_last_minus_first():
         "cnt", handle_resets=False
     )
     assert list(out["quantity"]) == [10, 10]
+
+
+# ---- no silent numeric coercion ----------------------------------------------
+
+
+def _text_in_numbers() -> pd.DataFrame:
+    t = pd.date_range("2024-01-01", periods=60, freq="min")
+    values = pd.Series(np.sin(np.arange(60) / 3).astype(object))
+    values[5] = "n/a"
+    return pd.DataFrame({"systime": t, "uuid": "s", "value_double": values})
+
+
+def test_feature_functions_report_text_in_numeric_columns():
+    from ts_shape.errors import DataQualityWarning
+    from ts_shape.features.export import FeatureMatrixExporter
+    from ts_shape.features.pattern_recognition import PatternRecognition
+    from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
+
+    df = _text_in_numbers()
+    with pytest.warns(DataQualityWarning, match="1 non-null value.*'value_double'"):
+        PatternRecognition.discover_motifs(df, window_size=5, top_k=1)
+    with pytest.warns(DataQualityWarning, match="'value_double' of signal 's'"):
+        FeatureMatrixExporter.to_feature_matrix(df, value_columns=["value_double"])
+    with pytest.warns(DataQualityWarning, match="'value_double' are not numeric"):
+        stats = summarize_groups(df, ["uuid"], "value_double")
+    assert int(stats["sample_count"].iloc[0]) == 59
+
+
+def test_cycle_processor_reports_text_in_metric_column():
+    from ts_shape.errors import DataQualityWarning
+    from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
+
+    df = _text_in_numbers()
+    t = df["systime"]
+    cycles = pd.DataFrame(
+        {"cycle_start": [t[0]], "cycle_end": [t[30]], "cycle_uuid": ["c1"]}
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DataQualityWarning)
+        proc = CycleDataProcessor(cycles, df)
+    with pytest.warns(DataQualityWarning, match="'value_double' are not numeric"):
+        proc.compute_cycle_statistics()
+
+
+# ---- column checks -----------------------------------------------------------
+
+
+def _cycles_and_values():
+    t = pd.date_range("2024-01-01", periods=10, freq="min")
+    values = pd.DataFrame({"systime": t, "uuid": "s", "value_double": range(10)})
+    cycles = pd.DataFrame(
+        {"cycle_start": [t[0], t[5]], "cycle_end": [t[4], t[9]], "cycle_uuid": "c"}
+    )
+    cycles["cycle_uuid"] = ["c1", "c2"]
+    return cycles, values
+
+
+def test_validate_column_keeps_its_message():
+    from ts_shape.errors import ColumnNotFoundError
+    from ts_shape.utils.base import Base
+
+    df = pd.DataFrame({"a": [1]})
+    with pytest.raises(ColumnNotFoundError, match=r"^Column 'b' not found\. "):
+        Base._validate_column(df, "b")
+    with pytest.raises(ColumnNotFoundError, match=r"^f: column 'b' not found"):
+        Base._validate_column(df, "b", where="f")
+    Base._validate_column(df, "a")
+
+
+def test_critical_parameter_ranking_missing_outcome_column():
+    from ts_shape.errors import ColumnNotFoundError
+    from ts_shape.events.development.critical_parameter_ranking import (
+        CriticalParameterRankingEvents,
+    )
+
+    runs = pd.DataFrame({"temp": [1.0, 2.0, 3.0], "yield": [1.0, 2.0, 2.5]})
+    with pytest.raises(ColumnNotFoundError, match="'nope'"):
+        CriticalParameterRankingEvents().rank(runs, ["temp"], "nope")
+
+
+def test_cycle_processor_column_checks():
+    from ts_shape.errors import ColumnNotFoundError
+    from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
+
+    cycles, values = _cycles_and_values()
+    with pytest.raises(ColumnNotFoundError, match="'cycle_start', 'cycle_end'"):
+        CycleDataProcessor(cycles.drop(columns=["cycle_start", "cycle_end"]), values)
+    with pytest.raises(ColumnNotFoundError, match="values_df: column 'systime'"):
+        CycleDataProcessor(cycles, values.rename(columns={"systime": "t"}))
+    proc = CycleDataProcessor(cycles, values)
+    groups = proc.group_by_cycle_uuid()
+    assert len(proc.split_dataframes_by_group(groups, "uuid")) == 2
+    # A frame without the group column raises instead of being skipped.
+    with pytest.raises(ColumnNotFoundError, match=r"dfs\[1\]: column 'uuid'"):
+        proc.split_dataframes_by_group(
+            [groups[0], groups[1].drop(columns="uuid")], "uuid"
+        )
+
+
+# ---- data-quality warnings instead of log lines -----------------------------
+
+
+def test_degenerate_statistics_warn():
+    from ts_shape.errors import DataQualityWarning
+    from ts_shape.events.quality.multivariate_spc import MultivariateSPCEvents
+
+    t = pd.date_range("2024-01-01", periods=50, freq="min")
+    temp = np.sin(np.arange(50) / 5.0)
+    df = pd.concat(
+        [
+            pd.DataFrame({"systime": t, "uuid": "temp", "value_double": temp}),
+            pd.DataFrame({"systime": t, "uuid": "press", "value_double": 2 * temp}),
+        ],
+        ignore_index=True,
+    )
+    with pytest.warns(DataQualityWarning, match="covariance is singular"):
+        MultivariateSPCEvents(df, ["temp", "press"]).hotelling_t2()
+
+
+def test_weibull_fit_failure_is_named_in_the_warning(monkeypatch):
+    from ts_shape.errors import DataQualityWarning
+    from ts_shape.events.maintenance import reliability
+
+    times, states = [], []
+    t = pd.Timestamp("2024-01-01")
+    for hours in (8, 10, 13, 17):
+        times += [t, t + pd.Timedelta(hours=hours)]
+        states += [False, True]
+        t += pd.Timedelta(hours=hours + 1)
+    times.append(t)
+    states.append(False)
+    df = pd.DataFrame({"systime": times, "uuid": "fault", "value_bool": states})
+
+    def broken_fit(*args, **kwargs):
+        raise RuntimeError("did not converge")
+
+    monkeypatch.setattr(reliability.stats.weibull_min, "fit", broken_fit)
+    with pytest.warns(DataQualityWarning, match="RuntimeError: did not converge"):
+        reliability.ReliabilityEvents(df, "fault").weibull_fit()
+
+
+def test_segment_processor_warns_for_ignored_and_unmatched_ranges():
+    from ts_shape.errors import DataQualityWarning
+    from ts_shape.features.segment_analysis.segment_processor import SegmentProcessor
+
+    t = pd.date_range("2024-01-01", periods=5, freq="min")
+    df = pd.DataFrame({"systime": t, "uuid": "x", "value_double": range(5)})
+    ranges = pd.DataFrame(
+        {
+            "segment_start": [t[0], pd.NaT],
+            "segment_end": [t[2], t[4]],
+            "segment_value": ["P", "Q"],
+            "segment_index": [0, 1],
+        }
+    )
+    with pytest.warns(DataQualityWarning, match="1 time range.*ignored"):
+        out = SegmentProcessor.apply_ranges(df, ranges)
+    assert set(out["segment_value"]) == {"P"}
+    later = ranges.iloc[:1].assign(
+        segment_start=pd.Timestamp("2025-01-01"),
+        segment_end=pd.Timestamp("2025-01-02"),
+    )
+    with pytest.warns(DataQualityWarning, match="no data matched"):
+        assert SegmentProcessor.apply_ranges(df, later).empty
+
+
+def test_feature_tables_warn_when_nothing_to_compute():
+    from ts_shape.errors import DataQualityWarning
+    from ts_shape.features.export import FeatureMatrixExporter
+    from ts_shape.features.segment_analysis.time_windowed_features import (
+        TimeWindowedFeatureTable,
+    )
+
+    empty = pd.DataFrame(
+        {
+            "systime": pd.Series(dtype="datetime64[ns]"),
+            "uuid": pd.Series(dtype=object),
+            "value_double": pd.Series(dtype=float),
+        }
+    )
+    with pytest.warns(DataQualityWarning, match="empty DataFrame"):
+        TimeWindowedFeatureTable.compute_long(empty, segment_column=None)
+    one = pd.DataFrame(
+        {"systime": [pd.Timestamp("2024-01-01")], "uuid": ["s"], "value_double": [1.0]}
+    )
+    with pytest.warns(DataQualityWarning, match="no windows with sufficient data"):
+        TimeWindowedFeatureTable.compute_long(one, segment_column=None)
+    with pytest.warns(DataQualityWarning, match="no data to aggregate"):
+        FeatureMatrixExporter.to_feature_matrix(empty, value_columns=["value_double"])
+
+
+def test_cycle_validation_warns():
+    from ts_shape.errors import DataQualityWarning
+    from ts_shape.features.cycles.cycles_extractor import CycleExtractor
+
+    t = pd.date_range("2024-01-01", periods=6, freq="min")
+    df = pd.DataFrame({"systime": t, "uuid": "s", "value_bool": [True] * 6})
+    ce = CycleExtractor(df, start_uuid="s")
+    cycles = pd.DataFrame(
+        {
+            "cycle_start": [t[0], t[1]],
+            "cycle_end": [t[3], t[5]],
+            "cycle_uuid": ["a", "b"],
+            "is_complete": [True, True],
+        }
+    )
+    with pytest.warns(
+        DataQualityWarning, match="validate_cycles: found 2 cycles longer"
+    ):
+        ce.validate_cycles(cycles, max_duration="1m")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ce.validate_cycles(cycles, max_duration="1m", warn=False)
+    with pytest.warns(DataQualityWarning, match="1 overlapping cycle pairs"):
+        ce.detect_overlapping_cycles(cycles)
+
+
+# ---- deprecated legacy inputs ------------------------------------------------
+
+
+def test_cycle_processor_old_attribute_names_warn():
+    from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
+
+    cycles, values = _cycles_and_values()
+    proc = CycleDataProcessor(cycles, values)
+    with pytest.warns(DeprecationWarning, match="cycle_uuid_col is deprecated"):
+        assert proc.cycle_uuid_col == "cycle_uuid"
+    with pytest.warns(DeprecationWarning, match="systime_col is deprecated"):
+        assert proc.systime_col == "systime"
+    with pytest.warns(DeprecationWarning) as record:
+        proc.cycle_uuid_col = "cycle_uuid"
+    assert record[0].filename == __file__
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert proc.cycle_uuid_column == "cycle_uuid"
+
+
+def test_recipe_spec_duration_s_warns():
+    from ts_shape.events.development.recipe_phase_adherence import (
+        RecipePhaseAdherenceEvents,
+    )
+
+    t = pd.date_range("2024-01-01", periods=10, freq="min")
+    df = pd.concat(
+        [
+            pd.DataFrame({"systime": t, "uuid": "phase", "value_string": "heat"}),
+            pd.DataFrame({"systime": t, "uuid": "temp", "value_double": range(10)}),
+        ],
+        ignore_index=True,
+    )
+    with pytest.warns(
+        DeprecationWarning, match="'duration_s'.*'heat'.*'duration_seconds'"
+    ):
+        RecipePhaseAdherenceEvents(
+            df, "phase", "temp", {"heat": {"duration_s": (0, 60)}}
+        )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        RecipePhaseAdherenceEvents(
+            df, "phase", "temp", {"heat": {"duration_seconds": (0, 60)}}
+        )
+
+
+def test_handover_downtime_minutes_input_warns():
+    from ts_shape.events.production.shift_handover import ShiftHandoverEvents
+
+    prod = pd.DataFrame({"date": ["2024-01-15"], "shift": ["A"], "quantity": [100]})
+    minutes = pd.DataFrame(
+        {"date": ["2024-01-15"], "shift": ["A"], "downtime_minutes": [12.0]}
+    )
+    with pytest.warns(
+        DeprecationWarning, match="'downtime_minutes'.*'downtime_seconds'"
+    ):
+        out = ShiftHandoverEvents.from_shift_data(prod, downtime_df=minutes)
+    assert out["downtime_seconds"].iloc[0] == 720.0
+    seconds = minutes.rename(columns={"downtime_minutes": "downtime_seconds"})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        ShiftHandoverEvents.from_shift_data(prod, downtime_df=seconds)
+
+
+def test_read_only_aliases_warn():
+    from ts_shape.events.production.runtime_accounting import RuntimeAccountingEvents
+    from ts_shape.events.quality.multi_sensor_validation import (
+        MultiSensorValidationEvents,
+    )
+
+    t = pd.date_range("2024-01-01", periods=4, freq="min")
+    run = pd.DataFrame({"systime": t, "uuid": "m", "value_bool": [True] * 4})
+    with pytest.warns(DeprecationWarning, match="run_uuid is deprecated"):
+        assert RuntimeAccountingEvents(run, run_state_uuid="m").run_uuid == "m"
+    sensors = pd.concat(
+        [
+            pd.DataFrame({"systime": t, "uuid": u, "value_double": 1.0})
+            for u in ("a", "b")
+        ],
+        ignore_index=True,
+    )
+    msv = MultiSensorValidationEvents(sensors, ["a", "b"])
+    with pytest.warns(DeprecationWarning, match="sensor_uuids is deprecated"):
+        assert msv.sensor_uuids == ["a", "b"]

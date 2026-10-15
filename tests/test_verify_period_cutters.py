@@ -360,7 +360,7 @@ class TestApplyRanges:
         b = SegmentProcessor.apply_ranges(df, r_utc)
         pd.testing.assert_frame_equal(a, b)
 
-    def test_overlapping_hand_built_ranges_duplicate_with_warning(self, caplog):
+    def test_overlapping_hand_built_ranges_duplicate_with_warning(self):
         times = pd.date_range("2024-01-01", periods=5, freq="1min")
         df = pd.DataFrame({"systime": times, "uuid": "x", "value_double": range(5)})
         ranges = pd.DataFrame(
@@ -371,8 +371,8 @@ class TestApplyRanges:
                 "segment_index": [0, 1],
             }
         )
-        out = SegmentProcessor.apply_ranges(df, ranges)
-        assert "overlapping" in caplog.text.lower()
+        with pytest.warns(DataQualityWarning, match="overlapping"):
+            out = SegmentProcessor.apply_ranges(df, ranges)
         # No end_inclusive column: an end is inclusive when no range starts
         # there, so P = [0, 3] and Q = [2, 4]; rows 2 and 3 appear twice.
         assert out["segment_value"].tolist() == ["P"] * 4 + ["Q"] * 3

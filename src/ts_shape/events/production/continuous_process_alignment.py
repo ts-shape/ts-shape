@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, keyword_only
 
@@ -154,7 +155,9 @@ class ContinuousProcessAlignmentEvents(Base):
         speed = pd.DataFrame(
             {
                 self.time_column: speed_df[self.time_column],
-                "_speed_raw": pd.to_numeric(speed_df[speed_col], errors="coerce")
+                "_speed_raw": to_numeric_checked(
+                    speed_df[speed_col], what=f"speed column {speed_col!r}"
+                )
                 .astype("float64")
                 .to_numpy(),
             }
@@ -375,8 +378,9 @@ class ContinuousProcessAlignmentEvents(Base):
                         else "value_double"
                     )
                     if num_col in counter_df.columns:
-                        counts = pd.to_numeric(
-                            counter_df[num_col], errors="coerce"
+                        counts = to_numeric_checked(
+                            counter_df[num_col],
+                            what=f"counter column {num_col!r}",
                         ).astype("float64")
                         # Missing readings are gaps, not a counter at 0.
                         present = counts.notna().to_numpy()
@@ -400,7 +404,10 @@ class ContinuousProcessAlignmentEvents(Base):
             cut_counts = np.ones(len(length_df), dtype=np.int64)
             if cut_value_column in length_df.columns:
                 cut_lengths = (
-                    pd.to_numeric(length_df[cut_value_column], errors="coerce")
+                    to_numeric_checked(
+                        length_df[cut_value_column],
+                        what=f"cut-length column {cut_value_column!r}",
+                    )
                     .astype("float64")
                     .to_numpy()
                 )
@@ -421,7 +428,10 @@ class ContinuousProcessAlignmentEvents(Base):
                 length_times = pd.DatetimeIndex(pd.to_datetime(length_df[tcol]))
                 idx = length_times.searchsorted(cut_times, side="right") - 1
                 vals = (
-                    pd.to_numeric(length_df[cut_value_column], errors="coerce")
+                    to_numeric_checked(
+                        length_df[cut_value_column],
+                        what=f"cut-length column {cut_value_column!r}",
+                    )
                     .astype("float64")
                     .to_numpy()
                 )

@@ -55,14 +55,15 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 def require_columns(
-    dataframe: pd.DataFrame, columns: Iterable[str | None], *, where: str
+    dataframe: pd.DataFrame, columns: Iterable[str | None], *, where: str | None
 ) -> None:
     """Raise when ``dataframe`` lacks any of ``columns``.
 
     Args:
         dataframe: Input frame.
         columns: Required column names; ``None`` entries are skipped.
-        where: Name of the calling function, used in the message.
+        where: Name of the calling function, used as the message prefix;
+            ``None`` leaves the prefix out.
 
     Raises:
         ColumnNotFoundError: Naming the missing columns and the available
@@ -71,8 +72,9 @@ def require_columns(
     missing = [c for c in columns if c is not None and c not in dataframe.columns]
     if missing:
         label = "column" if len(missing) == 1 else "columns"
+        prefix = f"{where}: {label}" if where else label.capitalize()
         raise ColumnNotFoundError(
-            f"{where}: {label} {', '.join(repr(c) for c in missing)} not found. "
+            f"{prefix} {', '.join(repr(c) for c in missing)} not found. "
             f"Available columns: {list(dataframe.columns)}"
         )
 
