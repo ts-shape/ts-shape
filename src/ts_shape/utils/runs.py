@@ -223,7 +223,10 @@ def _pairwise(
         s, n = starts[big], lengths[big]
         n2 = n // 2
         n2 -= n2 % 8
-        out[big] = _pairwise(values, s, n2) + _pairwise(values, s + n2, n - n2)
+        # Both halves of every run in one call, so the number of calls grows
+        # with the tree depth (log n), not with the number of tree nodes.
+        halves = _pairwise(values, np.r_[s, s + n2], np.r_[n2, n - n2])
+        out[big] = halves[: big.size] + halves[big.size :]
     return out
 
 
