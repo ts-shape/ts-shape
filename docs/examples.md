@@ -20,7 +20,7 @@ or `pip install -e ".[dev]"` in a clone.
 | [`production_tracking_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/production_tracking_demo.py) | Parts, cycle times, downtime, quality and shift reports |
 | [`line_flow_analytics_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/line_flow_analytics_demo.py) | Line balancing and takt, flow metrics and Little's law |
 | [`unit_runtime_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/unit_runtime_demo.py) | Unit conversion (needs `ts-shape[units]`) and operating-hours accounting |
-| [`setpoint_events_advanced_usage.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/setpoint_events_advanced_usage.py) | Setpoint changes: noise filtering, percentage tolerance, settling and control-quality KPIs |
+| [`setpoint_events_advanced_usage.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/setpoint_events_advanced_usage.py) | Setpoint changes on simulated control loops: noise filtering, percentage and derivative settling, overshoot, control-quality KPIs, a before/after tuning comparison |
 | [`maintenance_events_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/maintenance_events_demo.py) | Degradation, failure prediction and vibration analysis |
 | [`energy_events_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/energy_events_demo.py) | Energy consumption and efficiency |
 | [`correlation_events_demo.py`](https://github.com/ts-shape/ts-shape/blob/main/examples/correlation_events_demo.py) | Signal correlation and anomaly correlation |

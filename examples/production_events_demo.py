@@ -358,7 +358,7 @@ def demo_machine_state(df: pd.DataFrame) -> None:
     rapid = machine.detect_rapid_transitions(threshold="30s", min_count=3)
     print(f"  Rapid transition bursts found: {len(rapid)}")
     if not rapid.empty:
-        print(rapid.head())
+        print(rapid.head()[["start", "end", "transition_count"]])
 
     # state_quality_metrics
     _subheader("state_quality_metrics()")
@@ -537,7 +537,7 @@ def demo_part_production_tracking(df: pd.DataFrame) -> None:
     )
     print(f"  Rows: {len(daily)}")
     if not daily.empty:
-        print(daily.head(8))
+        print(daily.head(8)[["date", "part_number", "total_quantity", "hours_active"]])
 
     # production_totals
     _subheader("production_totals()")
@@ -574,7 +574,18 @@ def demo_cycle_time_tracking(df: pd.DataFrame) -> None:
         cycle_trigger_uuid=UUID_CYCLE_TRIGGER,
     )
     if not stats.empty:
-        print(stats)
+        print(
+            stats[
+                [
+                    "part_number",
+                    "count",
+                    "min_seconds",
+                    "avg_seconds",
+                    "max_seconds",
+                    "std_seconds",
+                ]
+            ]
+        )
 
     # detect_slow_cycles
     _subheader("detect_slow_cycles(threshold_factor=1.5)")
@@ -624,13 +635,23 @@ def demo_shift_reporting(df: pd.DataFrame) -> None:
     )
     print(f"  Rows: {len(prod)}")
     if not prod.empty:
-        print(prod.head(8))
+        print(prod.head(8)[["date", "shift", "part_number", "quantity"]])
 
     # shift_comparison
     _subheader("shift_comparison(days=3)")
     comp = sr.shift_comparison(counter_uuid=UUID_PART_COUNTER, days=3)
     if not comp.empty:
-        print(comp)
+        print(
+            comp[
+                [
+                    "shift",
+                    "avg_quantity",
+                    "min_quantity",
+                    "max_quantity",
+                    "std_quantity",
+                ]
+            ]
+        )
 
     # shift_targets
     _subheader("shift_targets()")
@@ -643,9 +664,9 @@ def demo_shift_reporting(df: pd.DataFrame) -> None:
     _subheader("best_and_worst_shifts(days=3)")
     bw = sr.best_and_worst_shifts(counter_uuid=UUID_PART_COUNTER, days=3)
     print("  Best shifts:")
-    print(bw[bw["rank_type"] == "best"])
+    print(bw[bw["rank_type"] == "best"][["date", "shift", "quantity"]])
     print("  Worst shifts:")
-    print(bw[bw["rank_type"] == "worst"])
+    print(bw[bw["rank_type"] == "worst"][["date", "shift", "quantity"]])
 
 
 def demo_downtime_tracking(df: pd.DataFrame) -> None:
@@ -668,7 +689,11 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
     )
     print(f"  Rows: {len(by_shift)}")
     if not by_shift.empty:
-        print(by_shift.head(8))
+        print(
+            by_shift.head(8)[
+                ["date", "shift", "total_minutes", "downtime_minutes", "uptime_minutes"]
+            ]
+        )
 
     # downtime_by_reason
     _subheader("downtime_by_reason()")
@@ -678,7 +703,17 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
         stopped_value="Stopped",
     )
     if not by_reason.empty:
-        print(by_reason)
+        print(
+            by_reason[
+                [
+                    "reason",
+                    "occurrences",
+                    "total_minutes",
+                    "avg_minutes",
+                    "pct_of_total",
+                ]
+            ]
+        )
 
     # top_downtime_reasons
     _subheader("top_downtime_reasons(top_n=3)")
@@ -689,7 +724,7 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
         stopped_value="Stopped",
     )
     if not top.empty:
-        print(top)
+        print(top[["reason", "total_minutes", "pct_of_total", "cumulative_pct"]])
 
     # availability_trend
     _subheader("availability_trend(window='1D')")
@@ -699,7 +734,9 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
         window="1D",
     )
     if not avail.empty:
-        print(avail)
+        print(
+            avail[["period", "availability_pct", "uptime_minutes", "downtime_minutes"]]
+        )
 
 
 def demo_quality_tracking(df: pd.DataFrame) -> None:
@@ -722,7 +759,18 @@ def demo_quality_tracking(df: pd.DataFrame) -> None:
     )
     print(f"  Rows: {len(nok_shift)}")
     if not nok_shift.empty:
-        print(nok_shift.head(8))
+        print(
+            nok_shift.head(8)[
+                [
+                    "date",
+                    "shift",
+                    "ok_parts",
+                    "nok_parts",
+                    "total_parts",
+                    "nok_rate_pct",
+                ]
+            ]
+        )
 
     # quality_by_part
     _subheader("quality_by_part()")
@@ -732,7 +780,11 @@ def demo_quality_tracking(df: pd.DataFrame) -> None:
         part_id_uuid=UUID_PART_NUMBER,
     )
     if not by_part.empty:
-        print(by_part)
+        print(
+            by_part[
+                ["part_number", "ok_parts", "nok_parts", "total_parts", "nok_rate_pct"]
+            ]
+        )
 
     # nok_by_reason
     _subheader("nok_by_reason()")
@@ -750,7 +802,7 @@ def demo_quality_tracking(df: pd.DataFrame) -> None:
         nok_counter_uuid=UUID_NOK_COUNTER,
     )
     if not daily.empty:
-        print(daily)
+        print(daily[["date", "ok_parts", "nok_parts", "total_parts", "nok_rate_pct"]])
 
 
 def demo_oee_calculator(df: pd.DataFrame) -> None:
@@ -763,7 +815,7 @@ def demo_oee_calculator(df: pd.DataFrame) -> None:
     _subheader("availability()")
     avail = oee.availability(UUID_MACHINE_STATE)
     if not avail.empty:
-        print(avail)
+        print(avail[["start", "run_seconds", "planned_seconds", "availability_pct"]])
 
     # performance (ideal cycle time = 30 s per part)
     _subheader("performance(ideal_cycle_time=30)")
@@ -773,13 +825,25 @@ def demo_oee_calculator(df: pd.DataFrame) -> None:
         run_state_uuid=UUID_MACHINE_STATE,
     )
     if not perf.empty:
-        print(perf)
+        print(
+            perf[
+                [
+                    "start",
+                    "actual_parts",
+                    "ideal_parts",
+                    "run_seconds",
+                    "performance_pct",
+                ]
+            ]
+        )
 
     # quality
     _subheader("quality()")
     qual = oee.quality(UUID_TOTAL_COUNTER, UUID_REJECT_COUNTER)
     if not qual.empty:
-        print(qual)
+        print(
+            qual[["start", "total_parts", "reject_parts", "good_parts", "quality_pct"]]
+        )
 
     # oee (combined daily OEE)
     _subheader("oee()")
@@ -791,7 +855,17 @@ def demo_oee_calculator(df: pd.DataFrame) -> None:
         reject_uuid=UUID_REJECT_COUNTER,
     )
     if not daily_oee.empty:
-        print(daily_oee)
+        print(
+            daily_oee[
+                [
+                    "start",
+                    "availability_pct",
+                    "performance_pct",
+                    "quality_pct",
+                    "oee_pct",
+                ]
+            ]
+        )
 
 
 def demo_alarm_management(df: pd.DataFrame) -> None:
@@ -813,20 +887,33 @@ def demo_alarm_management(df: pd.DataFrame) -> None:
             f"  Windows with alarm activity: "
             f"{(freq['alarm_count'] > 0).sum()} / {len(freq)}"
         )
-        print(freq[freq["alarm_count"] > 0].head(8))
+        print(
+            freq[freq["alarm_count"] > 0].head(8)[
+                ["start", "end", "duration_seconds", "alarm_count"]
+            ]
+        )
 
     # alarm_duration_statistics
     _subheader("alarm_duration_statistics()")
     stats = alarms.alarm_duration_statistics()
     if not stats.empty:
-        print(stats)
+        print(
+            stats[
+                [
+                    "source_uuid",
+                    "alarm_count",
+                    "avg_duration_seconds",
+                    "max_duration_seconds",
+                ]
+            ]
+        )
 
     # chattering_detection
     _subheader("chattering_detection(min_transitions=5, window='5min')")
     chatter = alarms.chattering_detection(min_transitions=5, window="5min")
     print(f"  Chattering windows: {len(chatter)}")
     if not chatter.empty:
-        print(chatter.head())
+        print(chatter.head()[["start", "end", "duration_seconds", "transition_count"]])
 
     # standing_alarms
     _subheader("standing_alarms(min_duration='30min')")
@@ -852,17 +939,15 @@ def demo_batch_tracking(df: pd.DataFrame) -> None:
     batches = bt.detect_batches()
     print(f"  Batches detected: {len(batches)}")
     if not batches.empty:
-        print(
-            batches[
-                ["batch_id", "start", "end", "duration_seconds", "sample_count"]
-            ].head(8)
-        )
+        print(batches[["batch_id", "start", "end", "duration_seconds"]].head(8))
 
     # batch_duration_statistics
     _subheader("batch_duration_statistics()")
     stats = bt.batch_duration_statistics()
     if not stats.empty:
-        print(stats)
+        print(
+            stats[["batch_id", "count", "min_duration_seconds", "avg_duration_seconds"]]
+        )
 
     # batch_yield (using part counter)
     _subheader("batch_yield(counter_uuid)")
@@ -884,7 +969,7 @@ def demo_batch_tracking(df: pd.DataFrame) -> None:
 
 def main() -> int:
     _header("ts-shape Production Events -- Comprehensive Demo", "=", 72)
-    print("\n  Generating 3 days of synthetic manufacturing data ...")
+    print("\n  Generating 3 days of synthetic manufacturing data")
 
     df = generate_manufacturing_data(
         start=datetime(2024, 6, 1, 0, 0, 0),

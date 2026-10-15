@@ -359,7 +359,7 @@ def demo_descriptive_features(df: pd.DataFrame):
                     for k, v in list(content.items())[:3]:
                         print(f"      {k}: {v}")
                     if len(content) > 3:
-                        print(f"      ... ({len(content)} total keys)")
+                        print(f"      ({len(content)} keys in total)")
                 else:
                     print(f"      {content}")
 
@@ -368,7 +368,7 @@ def demo_descriptive_features(df: pd.DataFrame):
     result_df = feat.compute(output_format="dataframe")
     cols = list(result_df.columns)[:5]
     print(result_df[cols].to_string(index=False))
-    print(f"  ... total columns: {len(result_df.columns)}")
+    print(f"  ({len(result_df.columns)} columns in total)")
     print()
 
 
