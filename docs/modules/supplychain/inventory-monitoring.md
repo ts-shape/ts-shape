@@ -29,11 +29,11 @@ print(inv.stockout_prediction(consumption_rate_window="24h").tail(3))
 | `detect_low_stock(min_level, hold='0s')` | intervals below `min_level` for at least `hold`: `min_value`, `avg_value`, `duration_seconds` |
 | `consumption_rate(window='1h', handle_refills=True)` | per window: `consumption_rate` (units per hour), `level_start`, `level_end` |
 | `reorder_point_breach(reorder_level, safety_stock=0.0)` | one point per crossing below a level: `current_level`, `breach_type` (`reorder`/`safety_stock`), `deficit` |
-| `stockout_prediction(consumption_rate_window='4h')` | per sample: `current_level`, `consumption_rate`, `estimated_stockout_time_hours` |
+| `stockout_prediction(consumption_rate_window='4h', handle_refills=True)` | per sample: `current_level`, `consumption_rate`, `estimated_stockout_time_hours` |
 
 ## Notes
 
 - `handle_refills=True` (default) sums only level decreases, so a refill is treated like a counter reset. With `False` consumption is first − last level per window, so a refill cancels consumption (100 → 40 → 100 → 40 reads as 0).
-- `stockout_prediction` projects the time to zero from the consumption rate over the preceding `consumption_rate_window`. Where the level is not falling, `estimated_stockout_time_hours` is NaN (no stockout projected).
+- `stockout_prediction` projects the time to zero from the consumption rate over the preceding `consumption_rate_window`. The rate uses the same refill-aware rule as `consumption_rate` (sum of level decreases), so a refill inside the lookback does not cancel the consumption around it; `handle_refills=False` uses first − last level. Where the level is not falling, `estimated_stockout_time_hours` is NaN (no stockout projected).
 - `safety_stock` must be at most `reorder_level`.
 - Low-stock intervals end at the next sample after the level recovers (`interval_end="next_change"`, default) or at the last low sample (`"last_sample"`).

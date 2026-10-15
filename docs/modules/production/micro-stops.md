@@ -28,7 +28,7 @@ patterns = ms.micro_stop_patterns(hour_grouping=True)
 |---|---|
 | `detect_micro_stops(max_duration='30s', min_duration='0s')` | `start`, `end`, `duration_seconds`, `duration`, `preceding_run_duration` |
 | `micro_stop_frequency(window='1h', max_duration='30s')` | per window: `count`, `total_lost_time`, `pct_of_window` |
-| `micro_stop_impact(window='1h', max_duration='30s')` | per window: `total_run_time`, `total_micro_stop_time`, `availability_loss_pct` |
+| `micro_stop_impact(window='1h', max_duration='30s')` | per window: `total_run_time`, `total_micro_stop_time`, `performance_loss_pct` (= `availability_loss_pct`) |
 | `micro_stop_patterns(hour_grouping=True, max_duration='30s')` | per `hour` of day (or 8-hour `shift` block with `hour_grouping=False`): `avg_count`, `avg_lost_time` |
 
 ## Notes
@@ -36,4 +36,5 @@ patterns = ms.micro_stop_patterns(hour_grouping=True)
 - `max_duration` is passed to each method separately. Set it just below the threshold at which stops are reported as downtime (30 s suits fast discrete lines; slower assembly may need 60-120 s).
 - Missing values count as idle.
 - `micro_stop_impact` classifies a stop by its full duration and splits its time and the run time at the window boundaries; `micro_stop_frequency` counts each stop (and its lost time) in the window it starts in.
+- `performance_loss_pct` is the micro-stop time as a share of run + micro-stop time. Minor stoppages are a performance (speed) loss in Nakajima's six big losses, not an availability loss; `availability_loss_pct` carries the same value under its original name for compatibility.
 - Intervals close at the next transition by default (`interval_end="next_change"`), so a run signal logged only on change is measured correctly; `data_end` bounds the last open interval. With `interval_end="last_sample"`, every interval of such a signal has zero duration and no lost time is reported.

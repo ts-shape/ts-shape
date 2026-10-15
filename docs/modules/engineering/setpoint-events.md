@@ -30,10 +30,10 @@ print(sc.control_quality_metrics("temp_pv", tol=0.5, lookahead="15min").T)
 | `detect_setpoint_steps(min_delta, min_hold='0s')` | `magnitude`, `prev_level`, `new_level` |
 | `detect_setpoint_ramps(min_rate, min_duration='0s')` | ramp intervals: `avg_rate`, `delta` |
 | `detect_setpoint_changes(min_delta=0.0, min_rate=None)` | steps and ramps in one table with `change_type` |
-| `time_to_settle(actual_uuid, tol=0.0, settle_pct=None, hold='0s', lookahead='10min')` | `t_settle_seconds`, `settled` |
+| `time_to_settle(actual_uuid, tol=0.0, settle_pct=None, hold='0s', lookahead='10min')` | `t_settle_seconds`, `settled`, `settled_within_window` |
 | `time_to_settle_derivative(actual_uuid, rate_threshold=0.01)` | `t_settle_seconds`, `settled`, `final_rate` |
 | `rise_time(actual_uuid, start_pct=0.1, end_pct=0.9)` | `rise_time_seconds`, `reached_end` |
-| `overshoot_metrics(actual_uuid, window='10min')` | `overshoot_abs`, `overshoot_pct`, `t_peak_seconds`, `undershoot_abs`, `undershoot_pct`, `oscillation_count`, `oscillation_amplitude` |
+| `overshoot_metrics(actual_uuid, window='10min')` | `overshoot_abs`, `overshoot_pct`, `overshoot_ratio`, `t_peak_seconds`, `undershoot_abs`, `undershoot_pct`, `undershoot_ratio`, `oscillation_count`, `oscillation_amplitude` |
 | `decay_rate(actual_uuid, lookahead='10min')` | `decay_rate_lambda`, `fit_quality_r2` |
 | `oscillation_frequency(actual_uuid, window='10min')` | `oscillation_freq_hz`, `period_seconds` |
 | `control_quality_metrics(actual_uuid, tol=0.0)` | all of the above per change |
@@ -42,6 +42,7 @@ print(sc.control_quality_metrics("temp_pv", tol=0.5, lookahead="15min").T)
 
 - A step is a change of at least `min_delta` whose new level holds for `min_hold` (no further change within it). `filter_noise=True` drops changes below `noise_threshold`.
 - A ramp is a run where |dS/dt| ≥ `min_rate` (setpoint units per second) lasting at least `min_duration`.
-- Settled means the actual value stays within ±`tol` of the new setpoint for `hold`. `settle_pct` (fraction of the step size, e.g. 0.02) takes precedence over `tol`. The search ends after `lookahead`.
+- The settling time (Ogata) is the time after which the actual value enters the ±`tol` band around the new setpoint and stays inside it until the end of the evaluation window, not the first entry: an underdamped response crosses the band on every swing. The window ends after `lookahead` or at the next setpoint change, whichever is first. `settled_within_window` is False (and `t_settle_seconds` NaN) when the value is outside the band at the window's end; `settled` additionally requires the final in-band stretch to last `hold`. `settle_pct` (fraction of the step size, e.g. 0.02) takes precedence over `tol`.
+- `overshoot_pct` / `undershoot_pct` are percent of the step size (Ogata's maximum percent overshoot); `overshoot_ratio` / `undershoot_ratio` are the same as fractions.
 - `decay_rate` fits error(t) = A · exp(−λ t).
 - The actual signal must be in the same frame as the setpoint signal.

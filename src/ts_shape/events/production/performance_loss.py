@@ -16,6 +16,7 @@ from ts_shape.events._windows import (
     data_tz,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
 
@@ -62,17 +63,24 @@ _TREND_COLS = [
 
 def _loss_row(
     grp: pd.DataFrame, target_cycle_time: float
-) -> tuple[int, float, float, float, float]:
-    """``(parts, avg cycle s, performance %, loss s, run s)`` of a group."""
-    actual_parts = len(grp)
-    avg_ct = grp["cycle_time_s"].mean()
-    elapsed = grp["cycle_time_s"].sum()
+) -> tuple[int | float, float, float, float, float]:
+    """``(parts, avg cycle s, performance %, loss s, run s)`` of a group.
+
+    ISO 22400-2: performance = ideal cycle time x produced quantity / run
+    time, and the actual (average) cycle time is run time / produced
+    quantity. ``parts`` is the produced quantity (counter increments, not the
+    number of readings) and the run time is the summed interval time.
+    """
+    actual_parts = float(grp["parts"].sum())
+    elapsed = float(grp["interval_s"].sum())
+    avg_ct = elapsed / actual_parts if actual_parts > 0 else float("nan")
     if elapsed > 0 and target_cycle_time > 0:
         performance = (actual_parts * target_cycle_time / elapsed) * 100.0
     else:
         performance = 0.0
-    loss_seconds = max(0, elapsed - actual_parts * target_cycle_time)
-    return actual_parts, avg_ct, performance, loss_seconds, float(elapsed)
+    loss_seconds = max(0.0, elapsed - actual_parts * target_cycle_time)
+    parts_out = int(actual_parts) if actual_parts.is_integer() else actual_parts
+    return parts_out, avg_ct, performance, loss_seconds, elapsed
 
 
 class PerformanceLossEvents(Base):
@@ -87,11 +95,18 @@ class PerformanceLossEvents(Base):
     All methods compare against a single ``target_cycle_time``; there are no
     per-part targets.
 
-    Every row carries its basis: ``run_seconds`` is the summed cycle time
-    (the elapsed running time the performance is measured over). Durations
-    are in seconds (``*_seconds``); ``loss_minutes`` and the ``*_s`` cycle
-    time columns are kept as a convenience. For a line that runs several part numbers, filter the
-    data to one part (or one product run) per call.
+    Definitions follow ISO 22400-2: ``actual_parts`` is the produced
+    quantity (the sum of reset-aware counter increments, so a counter that
+    steps by 2 counts 2 parts; for a trigger signal one part per row),
+    ``run_seconds`` is the running time the parts were made in (the summed
+    intervals between producing readings, minus any dropped by
+    ``max_cycle_gap``), ``avg_cycle_time_seconds = run_seconds /
+    actual_parts`` and ``performance_pct = target_cycle_time x actual_parts
+    / run_seconds x 100``. The speed loss is ``run_seconds - actual_parts x
+    target_cycle_time``. Durations are in seconds (``*_seconds``);
+    ``loss_minutes`` and the ``*_s`` cycle time columns are kept as a
+    convenience. For a line that runs several part numbers, filter the data
+    to one part (or one product run) per call.
 
     Merge keys: [date, shift] for shift-level, [period] for trend data.
 
@@ -156,33 +171,59 @@ class PerformanceLossEvents(Base):
         *,
         max_cycle_gap: str | None = None,
     ) -> pd.DataFrame:
-        """Compute per-cycle times from a counter or trigger signal.
+        """Production intervals from a counter or trigger signal.
 
-        When ``max_cycle_gap`` is set, intervals longer than it are dropped as
-        stoppages (breaks, downtime) rather than counted as slow cycles.
+        One row per reading that reports production, with ``parts`` (the
+        parts produced since the previous producing reading), ``interval_s``
+        (the time since it) and ``cycle_time_s`` (``interval_s / parts``).
+
+        For a numeric counter the parts are the reset-aware counter
+        increments (:func:`~ts_shape.utils.counters.counter_increments`), so
+        a counter that steps by 2 reports 2 parts, and the first increment
+        after the baseline reading is counted (its interval runs from the
+        baseline). Readings with no increment do not end an interval. For a
+        trigger signal (non-numeric ``value_column``) each row is one part
+        and the first row is the baseline.
+
+        When ``max_cycle_gap`` is set, intervals longer than it are dropped
+        (with their parts) as stoppages (breaks, downtime) rather than
+        counted as slow cycles.
         """
+        cols = [self.time_column, "parts", "interval_s", "cycle_time_s"]
         data = (
             self.dataframe[self.dataframe["uuid"] == cycle_uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if data.empty:
-            return pd.DataFrame(columns=[self.time_column, "cycle_time_s"])
+            return pd.DataFrame(columns=cols)
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
 
-        # If counter: detect increments.  If trigger (bool): each row is a cycle.
         if value_column in data.columns and pd.api.types.is_numeric_dtype(
             data[value_column]
         ):
-            data["delta"] = data[value_column].diff()
-            data = data[data["delta"] > 0]
+            # Counter: the reset-aware increments are the parts produced. The
+            # first reading is the baseline the first increment is measured
+            # from, so it stays in to anchor the first interval.
+            data = data[data[value_column].notna()]
+            if data.empty:
+                return pd.DataFrame(columns=cols)
+            data["parts"] = counter_increments(data[value_column]).to_numpy()
+            anchor = pd.Series(False, index=data.index)
+            anchor.iloc[0] = True
+            data = data[(data["parts"] > 0) | anchor]
+        else:
+            # Trigger: each row is one cycle.
+            data["parts"] = 1.0
 
-        data["cycle_time_s"] = data[self.time_column].diff().dt.total_seconds()
-        data = data[data["cycle_time_s"].notna() & (data["cycle_time_s"] > 0)]
+        data["interval_s"] = data[self.time_column].diff().dt.total_seconds()
+        data = data[data["interval_s"].notna() & (data["interval_s"] > 0)]
+        data = data[data["parts"] > 0]
         if max_cycle_gap is not None:
             cap_seconds = pd.to_timedelta(max_cycle_gap).total_seconds()
-            data = data[data["cycle_time_s"] <= cap_seconds]
+            data = data[data["interval_s"] <= cap_seconds]
+        data["cycle_time_s"] = data["interval_s"] / data["parts"]
         return data
 
     def performance_by_shift(
@@ -196,7 +237,8 @@ class PerformanceLossEvents(Base):
     ) -> pd.DataFrame:
         """Calculate performance percentage per shift.
 
-        Performance = (target_cycle_time * actual_parts) / elapsed_run_time.
+        Performance = (target_cycle_time * actual_parts) / run_seconds, with
+        ``actual_parts`` the produced quantity (counter increments).
 
         Args:
             cycle_uuid: UUID of cycle trigger or counter signal.
@@ -220,7 +262,7 @@ class PerformanceLossEvents(Base):
                 avg_cycle_time_seconds, target_cycle_time_s,
                 target_cycle_time_seconds, performance_pct, loss_minutes,
                 loss_seconds
-            - run_seconds: summed cycle time of the shift (the basis of
+            - run_seconds: running time of the shift (the basis of
                 ``performance_pct``)
             ``avg_cycle_time_s`` / ``target_cycle_time_s`` / ``loss_minutes``
             are convenience duplicates of the ``*_seconds`` columns.
@@ -297,7 +339,7 @@ class PerformanceLossEvents(Base):
                 uuid (event uuid), source_uuid (cycle_uuid), actual_parts,
                 avg_cycle_time_s, avg_cycle_time_seconds, performance_pct,
                 loss_minutes, loss_seconds
-            - run_seconds: summed cycle time in the window (the basis of
+            - run_seconds: running time in the window (the basis of
                 ``performance_pct``)
         """
         data = self._compute_cycle_times(
@@ -361,7 +403,7 @@ class PerformanceLossEvents(Base):
             - start, end (start + window), duration_seconds
             - period, actual_parts, avg_cycle_time_s, avg_cycle_time_seconds,
                 performance_pct, loss_minutes, loss_seconds
-            - run_seconds: summed cycle time in the period (the basis of
+            - run_seconds: running time in the period (the basis of
                 ``performance_pct``)
         """
         data = self._compute_cycle_times(

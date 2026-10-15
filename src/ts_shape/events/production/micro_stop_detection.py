@@ -241,12 +241,21 @@ class MicroStopEvents(Base):
         Returns:
             DataFrame with columns: start, end (start + window),
             duration_seconds, uuid, source_uuid, total_run_time,
-            total_micro_stop_time, availability_loss_pct.
+            total_micro_stop_time, performance_loss_pct,
+            availability_loss_pct.
+
+            ``performance_loss_pct`` is the micro-stop time as a percentage of
+            run + micro-stop time. Minor stops are a *performance* loss in
+            Nakajima's six big losses (idling and minor stoppages), not an
+            availability loss. ``availability_loss_pct`` holds the same value
+            under its original, misleading name and is kept for
+            compatibility.
         """
         cols = [
             "start",
             "total_run_time",
             "total_micro_stop_time",
+            "performance_loss_pct",
             "availability_loss_pct",
         ]
 
@@ -299,6 +308,8 @@ class MicroStopEvents(Base):
             0.0,
         )
 
+        # Nakajima: minor stops are a performance loss (twin of the old name).
+        combined["performance_loss_pct"] = combined["availability_loss_pct"]
         return self._with_window(combined[cols], window)
 
     def _with_window(self, df: pd.DataFrame, window: str) -> pd.DataFrame:

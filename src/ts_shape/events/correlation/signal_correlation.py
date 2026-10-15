@@ -255,9 +255,16 @@ class SignalCorrelationEvents(Base):
 
         Finds the time lag at which two signals are most correlated.
 
+        Sign convention: ``lag_periods = k`` correlates ``a[t]`` with
+        ``b[t - k]`` (``b`` shifted forward by ``k`` grid periods). A positive
+        best lag means ``b`` *leads* ``a`` (``a`` follows ``b`` by ``k``
+        periods); a negative best lag means ``b`` *lags* ``a``. For example,
+        ``b(t) = a(t - 5)`` (``b`` delayed by 5 periods) gives a best lag of
+        ``-5``.
+
         Args:
             uuid_a: UUID of first signal (reference).
-            uuid_b: UUID of second signal (lagged).
+            uuid_b: UUID of second signal, shifted against the reference.
             window: Resample interval for alignment (offset string).
             max_lag: Maximum lag periods to test (in both directions).
 

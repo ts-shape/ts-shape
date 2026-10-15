@@ -14,6 +14,21 @@ from ts_shape.utils.time_weighted import time_weighted_resample
 logger = logging.getLogger(__name__)
 
 
+def _rolling_ratio(
+    numerator: pd.Series, denominator: pd.Series, window: int
+) -> pd.Series:
+    """Ratio of rolling sums, ``sum(numerator) / sum(denominator)``.
+
+    The aggregate intensity of a span of windows (ISO 50006: EnPI of a
+    period = its total energy / its total output), not the mean of the
+    per-window ratios, which over-weights low-output windows. NaN where the
+    rolling denominator is not positive.
+    """
+    num = numerator.astype(float).rolling(window=window, min_periods=1).sum()
+    den = denominator.astype(float).rolling(window=window, min_periods=1).sum()
+    return (num / den.where(den > 0)).astype(float)
+
+
 class EnergyEfficiencyEvents(Base):
     """Energy: Efficiency Tracking
 
@@ -107,7 +122,9 @@ class EnergyEfficiencyEvents(Base):
             value_column_energy: Column with energy readings.
             value_column_counter: Column with counter readings.
             window: Time window for aggregation.
-            trend_window: Number of windows for rolling average.
+            trend_window: Number of trailing windows (itself included) in
+                ``rolling_avg_efficiency``: their summed units over their
+                summed energy.
             handle_resets: ``True`` (default) treats a decreasing production
                 counter as a reset and sums reset-aware increments per window
                 (see :func:`ts_shape.utils.counters.counter_per_window`), so a
@@ -189,9 +206,11 @@ class EnergyEfficiencyEvents(Base):
             0.0,
         )
 
-        merged["rolling_avg_efficiency"] = (
-            merged["efficiency"].rolling(window=trend_window, min_periods=1).mean()
-        )
+        # Efficiency of the trailing span as one period (summed units over
+        # summed energy), not the mean of per-window ratios.
+        merged["rolling_avg_efficiency"] = _rolling_ratio(
+            merged["units"], merged["energy"], trend_window
+        ).fillna(0.0)
 
         slope = merged["rolling_avg_efficiency"].diff()
         merged["trend_direction"] = pd.cut(
@@ -437,8 +456,10 @@ class EnergyEfficiencyEvents(Base):
             np.nan,
         )
 
-        # Trend: compare each period's SEC to rolling average
-        rolling_sec = merged["sec"].rolling(window=7, min_periods=1).mean()
+        # Trend: compare each period's SEC to the SEC of the trailing 7
+        # periods taken as one period (summed energy / summed output, ISO
+        # 50006), not the mean of the per-period ratios.
+        rolling_sec = _rolling_ratio(merged["total_energy"], merged["total_output"], 7)
         merged["sec_trend"] = np.where(
             merged["sec"] > rolling_sec * 1.1,
             "worsening",

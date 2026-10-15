@@ -102,10 +102,12 @@ def test_setpoint_time_to_settle_and_overshoot():
     settle = spe.time_to_settle(actual_uuid="pv", tol=0.1, hold="30s", lookahead="10m")
     assert not settle.empty
     assert {"start", "t_settle_seconds", "settled"}.issubset(settle.columns)
-    # First change settles after ~45s, second after ~30s
+    # Settling time is the final entry into the band (Ogata): the first change
+    # enters at 165 s but the 11.5 peak at 180 s leaves it again, so it settles
+    # at 195 s (75 s after the change); the second settles after 30 s.
     assert sorted([s for s in settle["t_settle_seconds"] if s is not None]) == [
         30.0,
-        45.0,
+        75.0,
     ]
 
     overs = spe.overshoot_metrics(actual_uuid="pv", window="10m")
