@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Line & Flow Analytics Demo for ts-shape
 ========================================
@@ -17,8 +16,8 @@ exit are tracked to derive flow metrics.
 
 import pandas as pd
 
-from ts_shape.events.production.line_balancing import LineBalancingEvents
 from ts_shape.events.production.flow_metrics import FlowMetricsEvents
+from ts_shape.events.production.line_balancing import LineBalancingEvents
 
 # ---------------------------------------------------------------------------
 # Helper: build pulse signals (a boolean that toggles True->False per event)

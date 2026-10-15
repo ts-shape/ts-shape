@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Demonstration of data loader utilities in ts-shape.
 
@@ -8,19 +7,15 @@ This script shows how to use:
 3. DataIntegratorHybrid (combine timeseries + metadata DataFrames)
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import json
 import sys
-import os
+from datetime import datetime, timedelta
 
-# Add parent directory to path to import ts_shape
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+import numpy as np
+import pandas as pd
 
-from ts_shape.loader.timeseries.parquet_loader import ParquetLoader
-from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
 from ts_shape.loader.combine.integrator import DataIntegratorHybrid
+from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
 
 
 def create_timeseries_dataframe():
@@ -29,19 +24,21 @@ def create_timeseries_dataframe():
     start_time = datetime(2024, 1, 1, 8, 0, 0)
     rows = []
 
-    uuids = ['sensor-temp-001', 'sensor-press-002', 'sensor-flow-003']
+    uuids = ["sensor-temp-001", "sensor-press-002", "sensor-flow-003"]
 
     for uid in uuids:
         for i in range(50):
             t = start_time + timedelta(minutes=i * 5)
-            rows.append({
-                'systime': t,
-                'uuid': uid,
-                'value_double': np.random.normal(100 if 'temp' in uid else 50, 5),
-                'value_string': None,
-                'value_bool': None,
-                'is_delta': True,
-            })
+            rows.append(
+                {
+                    "systime": t,
+                    "uuid": uid,
+                    "value_double": np.random.normal(100 if "temp" in uid else 50, 5),
+                    "value_string": None,
+                    "value_bool": None,
+                    "is_delta": True,
+                }
+            )
 
     return pd.DataFrame(rows)
 
@@ -60,9 +57,24 @@ def create_metadata_json_string():
             "2": "Flow Meter C",
         },
         "config": {
-            "0": {"unit": "celsius", "location": "reactor_1", "min_range": 0, "max_range": 200},
-            "1": {"unit": "bar", "location": "pipeline_3", "min_range": 0, "max_range": 10},
-            "2": {"unit": "m3/h", "location": "inlet_valve", "min_range": 0, "max_range": 500},
+            "0": {
+                "unit": "celsius",
+                "location": "reactor_1",
+                "min_range": 0,
+                "max_range": 200,
+            },
+            "1": {
+                "unit": "bar",
+                "location": "pipeline_3",
+                "min_range": 0,
+                "max_range": 10,
+            },
+            "2": {
+                "unit": "m3/h",
+                "location": "inlet_valve",
+                "min_range": 0,
+                "max_range": 500,
+            },
         },
     }
     return json.dumps(metadata, indent=2)
@@ -118,7 +130,7 @@ def demo_parquet_loader():
     print(f"\n  Shape: {df.shape}")
     print(f"  UUIDs: {df['uuid'].unique().tolist()}")
     print(f"  Time range: {df['systime'].min()} to {df['systime'].max()}")
-    print(f"\n  Sample rows:")
+    print("\n  Sample rows:")
     print(df.head(6).to_string(index=False))
 
 
@@ -129,7 +141,7 @@ def demo_metadata_json_loader():
     print("=" * 70)
 
     json_str = create_metadata_json_string()
-    print(f"\n--- Input JSON ---")
+    print("\n--- Input JSON ---")
     print(json_str)
 
     # Load from string
@@ -142,43 +154,51 @@ def demo_metadata_json_loader():
     print(df.to_string())
 
     # List UUIDs and labels
-    print(f"\n--- UUIDs ---")
+    print("\n--- UUIDs ---")
     print(f"  {loader.list_uuids()}")
 
-    print(f"\n--- Labels ---")
+    print("\n--- Labels ---")
     print(f"  {loader.list_labels()}")
 
     # Lookup by UUID
     print("\n--- Lookup by UUID ---")
-    result = loader.get_by_uuid('sensor-temp-001')
+    result = loader.get_by_uuid("sensor-temp-001")
     if result:
-        print(f"  sensor-temp-001:")
+        print("  sensor-temp-001:")
         for key, value in result.items():
             print(f"    {key}: {value}")
 
     # Lookup by label
     print("\n--- Lookup by Label ---")
-    result = loader.get_by_label('Pressure Sensor B')
+    result = loader.get_by_label("Pressure Sensor B")
     if result:
-        print(f"  Pressure Sensor B:")
+        print("  Pressure Sensor B:")
         for key, value in result.items():
             print(f"    {key}: {value}")
 
     # Filter by UUID set
     print("\n--- Filter by UUIDs ---")
-    filtered = loader.filter_by_uuid(['sensor-temp-001', 'sensor-flow-003'])
+    filtered = loader.filter_by_uuid(["sensor-temp-001", "sensor-flow-003"])
     print(filtered.to_string())
 
     # Filter by label
     print("\n--- Filter by Labels ---")
-    filtered = loader.filter_by_label(['Temperature Sensor A'])
+    filtered = loader.filter_by_label(["Temperature Sensor A"])
     print(filtered.to_string())
 
     # Load from list-of-records format
     print("\n--- Alternative: Load from list of records ---")
     records = [
-        {"uuid": "valve-001", "label": "Inlet Valve", "config": {"type": "butterfly", "size": "DN100"}},
-        {"uuid": "valve-002", "label": "Outlet Valve", "config": {"type": "gate", "size": "DN150"}},
+        {
+            "uuid": "valve-001",
+            "label": "Inlet Valve",
+            "config": {"type": "butterfly", "size": "DN100"},
+        },
+        {
+            "uuid": "valve-002",
+            "label": "Outlet Valve",
+            "config": {"type": "gate", "size": "DN150"},
+        },
     ]
     loader2 = MetadataJsonLoader(records)
     print(loader2.to_df().to_string())
@@ -188,7 +208,10 @@ def demo_metadata_json_loader():
     col_data = {
         "uuid": ["pump-01", "pump-02"],
         "label": ["Main Pump", "Backup Pump"],
-        "config": [{"power_kw": 75, "type": "centrifugal"}, {"power_kw": 55, "type": "positive_displacement"}],
+        "config": [
+            {"power_kw": 75, "type": "centrifugal"},
+            {"power_kw": 55, "type": "positive_displacement"},
+        ],
     }
     loader3 = MetadataJsonLoader(col_data)
     print(loader3.to_df().to_string())
@@ -202,18 +225,20 @@ def demo_data_integrator():
 
     # Create timeseries data
     ts_df = create_timeseries_dataframe()
-    print(f"\n--- Timeseries Data ---")
+    print("\n--- Timeseries Data ---")
     print(f"  Shape: {ts_df.shape}")
     print(f"  UUIDs: {ts_df['uuid'].unique().tolist()}")
 
     # Create metadata
-    metadata_df = pd.DataFrame({
-        'uuid': ['sensor-temp-001', 'sensor-press-002', 'sensor-flow-003'],
-        'label': ['Temperature Sensor A', 'Pressure Sensor B', 'Flow Meter C'],
-        'unit': ['celsius', 'bar', 'm3/h'],
-        'location': ['reactor_1', 'pipeline_3', 'inlet_valve'],
-    })
-    print(f"\n--- Metadata ---")
+    metadata_df = pd.DataFrame(
+        {
+            "uuid": ["sensor-temp-001", "sensor-press-002", "sensor-flow-003"],
+            "label": ["Temperature Sensor A", "Pressure Sensor B", "Flow Meter C"],
+            "unit": ["celsius", "bar", "m3/h"],
+            "location": ["reactor_1", "pipeline_3", "inlet_valve"],
+        }
+    )
+    print("\n--- Metadata ---")
     print(metadata_df.to_string(index=False))
 
     # Combine timeseries + metadata
@@ -221,12 +246,12 @@ def demo_data_integrator():
     combined = DataIntegratorHybrid.combine_data(
         timeseries_sources=[ts_df],
         metadata_sources=[metadata_df],
-        join_key='uuid',
-        merge_how='left',
+        join_key="uuid",
+        merge_how="left",
     )
     print(f"  Combined shape: {combined.shape}")
     print(f"  Columns: {list(combined.columns)}")
-    print(f"\n  Sample rows:")
+    print("\n  Sample rows:")
     print(combined.head(6).to_string(index=False))
 
     # Filter by specific UUIDs
@@ -234,9 +259,9 @@ def demo_data_integrator():
     filtered = DataIntegratorHybrid.combine_data(
         timeseries_sources=[ts_df],
         metadata_sources=[metadata_df],
-        uuids=['sensor-temp-001'],
-        join_key='uuid',
-        merge_how='left',
+        uuids=["sensor-temp-001"],
+        join_key="uuid",
+        merge_how="left",
     )
     print(f"  Filtered shape: {filtered.shape}")
     print(f"  UUIDs in result: {filtered['uuid'].unique().tolist()}")
@@ -244,21 +269,30 @@ def demo_data_integrator():
 
     # Combine multiple timeseries sources
     print("\n--- Combining Multiple Timeseries Sources ---")
-    ts_df_2 = pd.DataFrame({
-        'systime': pd.to_datetime([datetime(2024, 1, 2, 8, 0) + timedelta(minutes=i * 5) for i in range(10)]),
-        'uuid': 'sensor-temp-001',
-        'value_double': np.random.normal(105, 3, 10),
-        'is_delta': True,
-    })
+    ts_df_2 = pd.DataFrame(
+        {
+            "systime": pd.to_datetime(
+                [
+                    datetime(2024, 1, 2, 8, 0) + timedelta(minutes=i * 5)
+                    for i in range(10)
+                ]
+            ),
+            "uuid": "sensor-temp-001",
+            "value_double": np.random.normal(105, 3, 10),
+            "is_delta": True,
+        }
+    )
     multi_combined = DataIntegratorHybrid.combine_data(
         timeseries_sources=[ts_df, ts_df_2],
         metadata_sources=[metadata_df],
-        join_key='uuid',
-        merge_how='left',
+        join_key="uuid",
+        merge_how="left",
     )
     print(f"  Combined from 2 sources: {multi_combined.shape}")
-    temp_data = multi_combined[multi_combined['uuid'] == 'sensor-temp-001']
-    print(f"  sensor-temp-001 rows: {len(temp_data)} (50 from source 1 + 10 from source 2)")
+    temp_data = multi_combined[multi_combined["uuid"] == "sensor-temp-001"]
+    print(
+        f"  sensor-temp-001 rows: {len(temp_data)} (50 from source 1 + 10 from source 2)"
+    )
 
     # Integration with MetadataJsonLoader
     print("\n--- Integration with MetadataJsonLoader ---")
@@ -269,8 +303,8 @@ def demo_data_integrator():
     combined_with_loader = DataIntegratorHybrid.combine_data(
         timeseries_sources=[ts_df],
         metadata_sources=[meta_from_loader],
-        join_key='uuid',
-        merge_how='left',
+        join_key="uuid",
+        merge_how="left",
     )
     print(f"  Shape: {combined_with_loader.shape}")
     print(f"  Columns: {list(combined_with_loader.columns)}")
@@ -295,6 +329,7 @@ def main():
     except Exception as e:
         print(f"\nError during demonstration: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -302,4 +337,4 @@ def main():
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

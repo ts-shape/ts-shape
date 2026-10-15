@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Features and Statistics Demo for ts-shape
 ==========================================
@@ -11,6 +10,7 @@ Stats:
   - StringStatistics     (string_stats)
   - TimestampStatistics  (timestamp_stats)
   - DescriptiveFeatures  (feature_table)
+  - Missing-value handling across the column-type statistics
 
 Time-grouped stats:
   - TimeGroupedStatistics (time_stats_numeric)
@@ -24,23 +24,24 @@ gas-flow, recipe labels, and chamber-active status over several production
 cycles.
 """
 
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 
-from ts_shape.features.stats.numeric_stats import NumericStatistics
+import numpy as np
+import pandas as pd
+
+from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
+from ts_shape.features.cycles.cycles_extractor import CycleExtractor
 from ts_shape.features.stats.boolean_stats import BooleanStatistics
+from ts_shape.features.stats.feature_table import DescriptiveFeatures
+from ts_shape.features.stats.numeric_stats import NumericStatistics
 from ts_shape.features.stats.string_stats import StringStatistics
 from ts_shape.features.stats.timestamp_stats import TimestampStatistics
-from ts_shape.features.stats.feature_table import DescriptiveFeatures
 from ts_shape.features.time_stats.time_stats_numeric import TimeGroupedStatistics
-from ts_shape.features.cycles.cycles_extractor import CycleExtractor
-from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
-
 
 # ---------------------------------------------------------------------------
 # Helper: build realistic wafer-fab chamber data
 # ---------------------------------------------------------------------------
+
 
 def create_chamber_data(n_cycles: int = 5, points_per_cycle: int = 120) -> pd.DataFrame:
     """
@@ -66,79 +67,93 @@ def create_chamber_data(n_cycles: int = 5, points_per_cycle: int = 120) -> pd.Da
 
         # --- Active phase ---
         for i in range(points_per_cycle):
-            temp = 350.0 + np.random.normal(0, 1.2) + (cycle_idx * 0.3)  # slight drift per cycle
+            temp = (
+                350.0 + np.random.normal(0, 1.2) + (cycle_idx * 0.3)
+            )  # slight drift per cycle
             pressure = 2.5 + np.random.normal(0, 0.05)
             gas_flow = int(200 + np.random.normal(0, 5))
 
             # Temperature row
-            rows.append({
-                "systime": t,
-                "uuid": "chamber_temp",
-                "value_bool": None,
-                "value_integer": None,
-                "value_double": round(temp, 3),
-                "value_string": None,
-                "is_delta": True,
-            })
+            rows.append(
+                {
+                    "systime": t,
+                    "uuid": "chamber_temp",
+                    "value_bool": None,
+                    "value_integer": None,
+                    "value_double": round(temp, 3),
+                    "value_string": None,
+                    "is_delta": True,
+                }
+            )
 
             # Pressure row
-            rows.append({
-                "systime": t + timedelta(seconds=1),
-                "uuid": "chamber_pressure",
-                "value_bool": None,
-                "value_integer": None,
-                "value_double": round(pressure, 4),
-                "value_string": None,
-                "is_delta": True,
-            })
+            rows.append(
+                {
+                    "systime": t + timedelta(seconds=1),
+                    "uuid": "chamber_pressure",
+                    "value_bool": None,
+                    "value_integer": None,
+                    "value_double": round(pressure, 4),
+                    "value_string": None,
+                    "is_delta": True,
+                }
+            )
 
             # Gas flow row
-            rows.append({
-                "systime": t + timedelta(seconds=2),
-                "uuid": "gas_flow_rate",
-                "value_bool": None,
-                "value_integer": gas_flow,
-                "value_double": None,
-                "value_string": None,
-                "is_delta": True,
-            })
+            rows.append(
+                {
+                    "systime": t + timedelta(seconds=2),
+                    "uuid": "gas_flow_rate",
+                    "value_bool": None,
+                    "value_integer": gas_flow,
+                    "value_double": None,
+                    "value_string": None,
+                    "is_delta": True,
+                }
+            )
 
             # Recipe label (only on first sample of each cycle)
             if i == 0:
-                rows.append({
-                    "systime": t + timedelta(seconds=3),
-                    "uuid": "recipe_name",
-                    "value_bool": None,
-                    "value_integer": None,
-                    "value_double": None,
-                    "value_string": recipe,
-                    "is_delta": True,
-                })
+                rows.append(
+                    {
+                        "systime": t + timedelta(seconds=3),
+                        "uuid": "recipe_name",
+                        "value_bool": None,
+                        "value_integer": None,
+                        "value_double": None,
+                        "value_string": recipe,
+                        "is_delta": True,
+                    }
+                )
 
             # Chamber active status
-            rows.append({
-                "systime": t + timedelta(seconds=3),
-                "uuid": "chamber_active",
-                "value_bool": True,
-                "value_integer": None,
-                "value_double": None,
-                "value_string": None,
-                "is_delta": True,
-            })
+            rows.append(
+                {
+                    "systime": t + timedelta(seconds=3),
+                    "uuid": "chamber_active",
+                    "value_bool": True,
+                    "value_integer": None,
+                    "value_double": None,
+                    "value_string": None,
+                    "is_delta": True,
+                }
+            )
 
             t += timedelta(seconds=5)
 
         # --- Idle gap (chamber off) ---
         for i in range(24):  # 2 minutes at 5-second intervals
-            rows.append({
-                "systime": t,
-                "uuid": "chamber_active",
-                "value_bool": False,
-                "value_integer": None,
-                "value_double": None,
-                "value_string": None,
-                "is_delta": True,
-            })
+            rows.append(
+                {
+                    "systime": t,
+                    "uuid": "chamber_active",
+                    "value_bool": False,
+                    "value_integer": None,
+                    "value_double": None,
+                    "value_string": None,
+                    "is_delta": True,
+                }
+            )
             t += timedelta(seconds=5)
 
     return pd.DataFrame(rows)
@@ -147,6 +162,7 @@ def create_chamber_data(n_cycles: int = 5, points_per_cycle: int = 120) -> pd.Da
 # ---------------------------------------------------------------------------
 # Demo functions
 # ---------------------------------------------------------------------------
+
 
 def demo_numeric_statistics(df: pd.DataFrame):
     """Demonstrate NumericStatistics on chamber temperature data."""
@@ -199,8 +215,12 @@ def demo_boolean_statistics(df: pd.DataFrame):
     print(f"  False count:     {BooleanStatistics.count_false(active_df, col)}")
     print(f"  Null count:      {BooleanStatistics.count_null(active_df, col)}")
     print(f"  Not-null count:  {BooleanStatistics.count_not_null(active_df, col)}")
-    print(f"  True %:          {BooleanStatistics.true_percentage(active_df, col):.1f}%")
-    print(f"  False %:         {BooleanStatistics.false_percentage(active_df, col):.1f}%")
+    print(
+        f"  True %:          {BooleanStatistics.true_percentage(active_df, col):.1f}%"
+    )
+    print(
+        f"  False %:         {BooleanStatistics.false_percentage(active_df, col):.1f}%"
+    )
     print(f"  Mode:            {BooleanStatistics.mode(active_df, col)}")
     print(f"  Is balanced?     {BooleanStatistics.is_balanced(active_df, col)}")
 
@@ -224,19 +244,33 @@ def demo_string_statistics(df: pd.DataFrame):
 
     print(f"  Unique values:      {StringStatistics.count_unique(recipe_df, col)}")
     print(f"  Most frequent:      {StringStatistics.most_frequent(recipe_df, col)}")
-    print(f"  Count most freq:    {StringStatistics.count_most_frequent(recipe_df, col)}")
+    print(
+        f"  Count most freq:    {StringStatistics.count_most_frequent(recipe_df, col)}"
+    )
     print(f"  Null count:         {StringStatistics.count_null(recipe_df, col)}")
-    print(f"  Avg string length:  {StringStatistics.average_string_length(recipe_df, col):.1f}")
+    print(
+        f"  Avg string length:  {StringStatistics.average_string_length(recipe_df, col):.1f}"
+    )
     print(f"  Longest string:     {StringStatistics.longest_string(recipe_df, col)}")
     print(f"  Shortest string:    {StringStatistics.shortest_string(recipe_df, col)}")
-    print(f"  Uppercase %:        {StringStatistics.uppercase_percentage(recipe_df, col):.1f}%")
-    print(f"  Contains digit:     {StringStatistics.contains_digit_count(recipe_df, col)}")
-    print(f"  Starts with 'OXIDE': {StringStatistics.starts_with_count(recipe_df, 'OXIDE', col)}")
-    print(f"  Ends with 'B':      {StringStatistics.ends_with_count(recipe_df, 'B', col)}")
-    print(f"  Contains 'DEP':     {StringStatistics.contains_substring_count(recipe_df, 'DEP', col)}")
+    print(
+        f"  Uppercase %:        {StringStatistics.uppercase_percentage(recipe_df, col):.1f}%"
+    )
+    print(
+        f"  Contains digit:     {StringStatistics.contains_digit_count(recipe_df, col)}"
+    )
+    print(
+        f"  Starts with 'OXIDE': {StringStatistics.starts_with_count(recipe_df, 'OXIDE', col)}"
+    )
+    print(
+        f"  Ends with 'B':      {StringStatistics.ends_with_count(recipe_df, 'B', col)}"
+    )
+    print(
+        f"  Contains 'DEP':     {StringStatistics.contains_substring_count(recipe_df, 'DEP', col)}"
+    )
 
     # Top N most common
-    print(f"\n  Top 3 most common recipes:")
+    print("\n  Top 3 most common recipes:")
     top3 = StringStatistics.most_common_n_strings(recipe_df, n=3, value_column=col)
     for name, count in top3.items():
         print(f"    {name}: {count}")
@@ -272,8 +306,12 @@ def demo_timestamp_statistics(df: pd.DataFrame):
     print(f"  Null count:        {TimestampStatistics.count_null(ts_df, col)}")
     print(f"  Not-null count:    {TimestampStatistics.count_not_null(ts_df, col)}")
     print(f"  Avg time gap:      {TimestampStatistics.average_time_gap(ts_df, col)}")
-    print(f"  Std dev of gaps:   {TimestampStatistics.standard_deviation_timestamps(ts_df, col)}")
-    print(f"  Most frequent day: {TimestampStatistics.most_frequent_day(ts_df, col)} (0=Mon)")
+    print(
+        f"  Std dev of gaps:   {TimestampStatistics.standard_deviation_timestamps(ts_df, col)}"
+    )
+    print(
+        f"  Most frequent day: {TimestampStatistics.most_frequent_day(ts_df, col)} (0=Mon)"
+    )
     print(f"  Most frequent hr:  {TimestampStatistics.most_frequent_hour(ts_df, col)}")
 
     # Distributions
@@ -347,7 +385,11 @@ def demo_time_grouped_statistics(df: pd.DataFrame):
     # Single statistic: 10-minute mean
     print("\n--- 10-minute mean temperature ---")
     mean_10m = TimeGroupedStatistics.calculate_statistic(
-        temp_df, time_column="systime", value_column="value_double", window="10min", stat_method="mean"
+        temp_df,
+        time_column="systime",
+        value_column="value_double",
+        window="10min",
+        stat_method="mean",
     )
     print(mean_10m.head(8).to_string())
 
@@ -365,15 +407,26 @@ def demo_time_grouped_statistics(df: pd.DataFrame):
     # Hourly difference (last - first)
     print("\n--- Hourly difference (last - first) ---")
     diff_h = TimeGroupedStatistics.calculate_statistic(
-        temp_df, time_column="systime", value_column="value_double", window="h", stat_method="diff"
+        temp_df,
+        time_column="systime",
+        value_column="value_double",
+        window="h",
+        stat_method="diff",
     )
     print(diff_h.to_string())
 
     # Custom aggregation function (coefficient of variation per 10-min bin)
     print("\n--- 10-minute coefficient of variation (custom func) ---")
-    cv_func = lambda x: x.std() / x.mean() if x.mean() != 0 else 0
+
+    def cv_func(x):
+        return x.std() / x.mean() if x.mean() != 0 else 0
+
     cv_10m = TimeGroupedStatistics.calculate_custom_func(
-        temp_df, time_column="systime", value_column="value_double", window="10min", func=cv_func
+        temp_df,
+        time_column="systime",
+        value_column="value_double",
+        window="10min",
+        func=cv_func,
     )
     print(cv_10m.head(8).to_string())
     print()
@@ -398,7 +451,9 @@ def demo_cycle_extraction(df: pd.DataFrame):
     # Method suggestion
     print("\n--- Method suggestion ---")
     suggestion = extractor.suggest_method()
-    for method, reason in zip(suggestion["recommended_methods"], suggestion["reasoning"]):
+    for method, reason in zip(
+        suggestion["recommended_methods"], suggestion["reasoning"]
+    ):
         print(f"  {method}: {reason}")
 
     # Extract persistent cycles (True -> False transitions)
@@ -406,11 +461,13 @@ def demo_cycle_extraction(df: pd.DataFrame):
     cycles = extractor.process_persistent_cycle()
     print(f"  Extracted {len(cycles)} cycles")
     if not cycles.empty:
-        print(cycles[["cycle_start", "cycle_end", "is_complete"]].to_string(index=False))
+        print(
+            cycles[["cycle_start", "cycle_end", "is_complete"]].to_string(index=False)
+        )
 
     # Extraction statistics
     stats = extractor.get_extraction_stats()
-    print(f"\n  Extraction stats:")
+    print("\n  Extraction stats:")
     print(f"    Total:      {stats['total_cycles']}")
     print(f"    Complete:   {stats['complete_cycles']}")
     print(f"    Incomplete: {stats['incomplete_cycles']}")
@@ -418,16 +475,20 @@ def demo_cycle_extraction(df: pd.DataFrame):
 
     # Validate cycles (min 30s, max 15min)
     print("\n--- Validate cycles ---")
-    validated = extractor.validate_cycles(cycles, min_duration="30s", max_duration="15m")
+    validated = extractor.validate_cycles(
+        cycles, min_duration="30s", max_duration="15m"
+    )
     valid_count = validated["is_valid"].sum()
     invalid_count = (~validated["is_valid"]).sum()
     print(f"  Valid: {valid_count}, Invalid: {invalid_count}")
     if "validation_issue" in validated.columns:
         issues = validated[~validated["is_valid"]]
         if not issues.empty:
-            print(f"  Issues found:")
+            print("  Issues found:")
             for _, row in issues.iterrows():
-                print(f"    {row['cycle_start']} -> {row.get('validation_issue', 'unknown')}")
+                print(
+                    f"    {row['cycle_start']} -> {row.get('validation_issue', 'unknown')}"
+                )
 
     # Detect overlapping cycles
     print("\n--- Overlap detection ---")
@@ -479,15 +540,26 @@ def demo_cycle_processor(df: pd.DataFrame):
     print("\n--- Split data by cycle ---")
     split_data = processor.split_by_cycle()
     for cycle_uuid, cycle_df in list(split_data.items())[:3]:
-        print(f"  Cycle {cycle_uuid[:12]}...: {len(cycle_df)} readings, "
-              f"mean temp = {cycle_df['value_double'].mean():.2f} C")
+        print(
+            f"  Cycle {cycle_uuid[:12]}...: {len(cycle_df)} readings, "
+            f"mean temp = {cycle_df['value_double'].mean():.2f} C"
+        )
 
     # --- Cycle statistics ---
     print("\n--- Cycle statistics ---")
     cycle_stats = processor.compute_cycle_statistics()
     if not cycle_stats.empty:
-        display_cols = [c for c in ["cycle_uuid", "duration_seconds", "value_count", "mean_value_double", "std_value_double"]
-                        if c in cycle_stats.columns]
+        display_cols = [
+            c
+            for c in [
+                "cycle_uuid",
+                "duration_seconds",
+                "value_count",
+                "mean_value_double",
+                "std_value_double",
+            ]
+            if c in cycle_stats.columns
+        ]
         # Truncate cycle_uuid for display
         stats_display = cycle_stats[display_cols].copy()
         stats_display["cycle_uuid"] = stats_display["cycle_uuid"].str[:12] + "..."
@@ -496,15 +568,27 @@ def demo_cycle_processor(df: pd.DataFrame):
     # --- Compare cycles against a reference ---
     print("\n--- Compare cycles against first cycle ---")
     ref_uuid = complete_cycles["cycle_uuid"].iloc[0]
-    comparison = processor.compare_cycles(reference_cycle_uuid=ref_uuid, value_column="value_double")
+    comparison = processor.compare_cycles(
+        reference_cycle_uuid=ref_uuid, value_column="value_double"
+    )
     if not comparison.empty:
-        comp_display = comparison[["cycle_uuid", "is_reference", "mean_value", "deviation_from_ref", "deviation_pct"]].copy()
+        comp_display = comparison[
+            [
+                "cycle_uuid",
+                "is_reference",
+                "mean_value",
+                "deviation_from_ref",
+                "deviation_pct",
+            ]
+        ].copy()
         comp_display["cycle_uuid"] = comp_display["cycle_uuid"].str[:12] + "..."
         print(comp_display.to_string(index=False))
 
     # --- Identify golden cycles ---
     print("\n--- Identify golden cycles (low variability) ---")
-    golden = processor.identify_golden_cycles(value_column="value_double", method="low_variability", top_n=2)
+    golden = processor.identify_golden_cycles(
+        value_column="value_double", method="low_variability", top_n=2
+    )
     for i, gc in enumerate(golden):
         print(f"  #{i+1}: {gc[:12]}...")
 
@@ -519,6 +603,44 @@ def demo_cycle_processor(df: pd.DataFrame):
     print("\n--- Split groups by signal uuid ---")
     sub_groups = processor.split_dataframes_by_group(grouped[:2], column="uuid")
     print(f"  Sub-groups from first 2 cycles: {len(sub_groups)}")
+    print()
+
+
+def demo_missing_values():
+    """Show how the column statistics treat missing values in mixed columns."""
+    print("=" * 72)
+    print("9. STATISTICS WITH MISSING VALUES")
+    print("=" * 72)
+
+    rng = np.random.default_rng(42)
+    n = 200
+    df = pd.DataFrame(
+        {
+            "systime": pd.date_range("2024-01-01 08:00", periods=n, freq="5min"),
+            "value_double": rng.normal(100.0, 15.0, n),
+            "value_string": rng.choice(
+                ["PRODUCT_A", "PRODUCT_B", "PRODUCT_C", "PRODUCT_D", None],
+                n,
+                p=[0.35, 0.30, 0.20, 0.10, 0.05],
+            ),
+            "value_bool": rng.choice([True, False, None], n, p=[0.6, 0.35, 0.05]),
+        }
+    )
+    print(f"\nMixed-type frame: {len(df)} rows with some missing labels and flags")
+
+    col = "value_double"
+    print(
+        f"  P90 of value_double:   {NumericStatistics.column_quantile(df, col, 0.90):.3f}"
+    )
+    print(f"  Null strings:          {StringStatistics.count_null(df, 'value_string')}")
+    print(f"  Null booleans:         {BooleanStatistics.count_null(df, 'value_bool')}")
+    print(
+        f"  True % (non-null):     {BooleanStatistics.true_percentage(df, 'value_bool'):.1f}%"
+    )
+
+    print("\n  StringStatistics.summary_as_dict():")
+    for key, value in StringStatistics.summary_as_dict(df, "value_string").items():
+        print(f"    {key}: {value}")
     print()
 
 
@@ -539,6 +661,7 @@ if __name__ == "__main__":
     demo_time_grouped_statistics(df)
     demo_cycle_extraction(df)
     demo_cycle_processor(df)
+    demo_missing_values()
 
     print("=" * 72)
     print("Features and statistics demo complete.")

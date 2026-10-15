@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Lambda Rules Demo for ts-shape
 ==============================
@@ -19,6 +18,7 @@ This example covers both shapes that the MVP supports:
 
 Run it:  ``python examples/lambda_rules_demo.py``
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -47,16 +47,18 @@ def synth_inputs() -> pd.DataFrame:
     ts = pd.date_range(start, periods=60, freq="30s", tz="UTC")
     rng = np.random.default_rng(42)
 
-    asset_a = pd.DataFrame({
-        "systime": ts,
-        "source_uuid": ["asset-A"] * 60,
-        "state": ["run"] * 50 + ["idle"] * 10,
-        # Baseline torque ~ 42, three sustained spikes for the threshold rule.
-        "torque": rng.normal(loc=42.0, scale=1.5, size=60),
-        # Baseline bearing temp ~ 80, one long hot window (10 contiguous rows = 270s)
-        # at rows 20..29, plus one isolated spike at row 45.
-        "bearing_temp_c": rng.normal(loc=80.0, scale=0.7, size=60),
-    })
+    asset_a = pd.DataFrame(
+        {
+            "systime": ts,
+            "source_uuid": ["asset-A"] * 60,
+            "state": ["run"] * 50 + ["idle"] * 10,
+            # Baseline torque ~ 42, three sustained spikes for the threshold rule.
+            "torque": rng.normal(loc=42.0, scale=1.5, size=60),
+            # Baseline bearing temp ~ 80, one long hot window (10 contiguous rows = 270s)
+            # at rows 20..29, plus one isolated spike at row 45.
+            "bearing_temp_c": rng.normal(loc=80.0, scale=0.7, size=60),
+        }
+    )
     asset_a.loc[10, "torque"] = 79.5
     asset_a.loc[15, "torque"] = 86.0
     asset_a.loc[40, "torque"] = 95.0
@@ -66,14 +68,16 @@ def synth_inputs() -> pd.DataFrame:
     asset_a.loc[20:29, "bearing_temp_c"] = [86, 87, 88, 87, 89, 90, 88, 86, 87, 86]
     asset_a.loc[45, "bearing_temp_c"] = 91  # isolated spike, < min_duration
 
-    asset_b = pd.DataFrame({
-        "systime": ts,
-        "source_uuid": ["asset-B"] * 60,
-        "state": ["run"] * 60,
-        "torque": rng.normal(loc=40.0, scale=1.2, size=60),
-        # asset-B has a 90s hot window at rows 5..8 (>= 30s threshold).
-        "bearing_temp_c": rng.normal(loc=78.0, scale=0.6, size=60),
-    })
+    asset_b = pd.DataFrame(
+        {
+            "systime": ts,
+            "source_uuid": ["asset-B"] * 60,
+            "state": ["run"] * 60,
+            "torque": rng.normal(loc=40.0, scale=1.2, size=60),
+            # asset-B has a 90s hot window at rows 5..8 (>= 30s threshold).
+            "bearing_temp_c": rng.normal(loc=78.0, scale=0.6, size=60),
+        }
+    )
     asset_b.loc[5:8, "bearing_temp_c"] = [88, 89, 90, 86]
 
     df = pd.concat([asset_a, asset_b], ignore_index=True)
@@ -112,9 +116,13 @@ def main() -> None:
         print()
 
         cols = [
-            "ocel:eid", "ocel:activity", "ocel:timestamp",
-            "ts_shape:start_timestamp", "ts_shape:duration_s",
-            "ts_shape:severity", "ts_shape:value",
+            "ocel:eid",
+            "ocel:activity",
+            "ocel:timestamp",
+            "ts_shape:start_timestamp",
+            "ts_shape:duration_s",
+            "ts_shape:severity",
+            "ts_shape:value",
         ]
         print("--- events ---")
         print(log.events[cols].to_string(index=False))
@@ -127,9 +135,11 @@ def main() -> None:
         print("=" * 70)
         print("Flat XES export — case = asset (first 10 rows)")
         print("=" * 70)
-        print(xes[
-            ["case:concept:name", "concept:name", "time:timestamp"]
-        ].head(10).to_string(index=False))
+        print(
+            xes[["case:concept:name", "concept:name", "time:timestamp"]]
+            .head(10)
+            .to_string(index=False)
+        )
         print()
 
         tables = to_event_log_ocel(log)

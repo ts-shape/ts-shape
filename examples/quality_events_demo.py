@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Quality Events Demo for ts-shape
 =================================
@@ -12,9 +11,10 @@ Scenario: A CNC milling machine produces parts with a target bore diameter of 25
 Sensor readings are collected every 30 seconds over an 8-hour shift.
 """
 
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
 
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 from ts_shape.events.quality.statistical_process_control import (
@@ -345,7 +345,7 @@ def demo_tolerance_deviation():
 
     df = create_tolerance_data()
     print(f"\nInput data: {len(df)} rows")
-    print(f"  Upper spec: 25.010 mm, Lower spec: 24.990 mm")
+    print("  Upper spec: 25.010 mm, Lower spec: 24.990 mm")
 
     tol = ToleranceDeviationEvents(
         dataframe=df,
@@ -378,24 +378,21 @@ def demo_tolerance_deviation():
 
     # --- Process capability indices ---
     print("\n--- Process capability indices ---")
-    try:
-        capability = tol.capability_indices().iloc[0]
-        print(f"  Cp  = {capability['Cp']:.4f}  (potential capability)")
-        print(f"  Cpk = {capability['Cpk']:.4f}  (actual capability)")
-        print(f"  Pp  = {capability['Pp']:.4f}  (process performance)")
-        print(f"  Ppk = {capability['Ppk']:.4f}  (process performance index)")
-        print(f"  USL = {capability['usl']:.4f} mm")
-        print(f"  LSL = {capability['lsl']:.4f} mm")
-        print(f"  Process mean = {capability['mean']:.4f} mm")
-        print(f"  Process std  = {capability['std']:.6f} mm")
-        if capability["Cpk"] >= 1.33:
-            print("  --> Process is CAPABLE (Cpk >= 1.33)")
-        else:
-            print(
-                "  --> Process is NOT capable (Cpk < 1.33) -- investigate variation sources"
-            )
-    except Exception as e:
-        print(f"  Could not compute capability indices: {e}")
+    capability = tol.capability_indices().iloc[0]
+    print(f"  Cp  = {capability['Cp']:.4f}  (potential capability)")
+    print(f"  Cpk = {capability['Cpk']:.4f}  (actual capability)")
+    print(f"  Pp  = {capability['Pp']:.4f}  (process performance)")
+    print(f"  Ppk = {capability['Ppk']:.4f}  (process performance index)")
+    print(f"  USL = {capability['usl']:.4f} mm")
+    print(f"  LSL = {capability['lsl']:.4f} mm")
+    print(f"  Process mean = {capability['mean']:.4f} mm")
+    print(f"  Process std  = {capability['std']:.6f} mm")
+    if capability["Cpk"] >= 1.33:
+        print("  --> Process is CAPABLE (Cpk >= 1.33)")
+    else:
+        print(
+            "  --> Process is NOT capable (Cpk < 1.33) -- investigate variation sources"
+        )
     print()
 
 

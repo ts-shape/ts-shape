@@ -6,11 +6,11 @@ for detecting related process issues in manufacturing.
 Run: python examples/correlation_events_demo.py
 """
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from ts_shape.events.correlation.signal_correlation import SignalCorrelationEvents
 from ts_shape.events.correlation.anomaly_correlation import AnomalyCorrelationEvents
+from ts_shape.events.correlation.signal_correlation import SignalCorrelationEvents
 
 
 def create_correlated_process_data(n: int = 1000) -> pd.DataFrame:
@@ -56,10 +56,14 @@ def create_correlated_process_data(n: int = 1000) -> pd.DataFrame:
             ("proc:vibration", vibration[i]),
             ("proc:flow_rate", flow[i]),
         ]:
-            rows.append({
-                "systime": t, "uuid": uuid,
-                "value_double": val, "is_delta": True,
-            })
+            rows.append(
+                {
+                    "systime": t,
+                    "uuid": uuid,
+                    "value_double": val,
+                    "is_delta": True,
+                }
+            )
 
     return pd.DataFrame(rows)
 
@@ -97,15 +101,20 @@ if __name__ == "__main__":
     print("-" * 70)
 
     breakdowns = sc.correlation_breakdown(
-        "proc:temperature", "proc:pressure",
-        window="1min", window_size=30, threshold=0.3,
+        "proc:temperature",
+        "proc:pressure",
+        window="1min",
+        window_size=30,
+        threshold=0.3,
     )
     print(f"\nCorrelation breakdowns detected: {len(breakdowns)}")
     if not breakdowns.empty:
         for _, row in breakdowns.iterrows():
-            print(f"  {row['start']} to {row['end']} "
-                  f"(min_corr={row['min_correlation']:.3f}, "
-                  f"duration={row['duration_seconds']:.0f}s)")
+            print(
+                f"  {row['start']} to {row['end']} "
+                f"(min_corr={row['min_correlation']:.3f}, "
+                f"duration={row['duration_seconds']:.0f}s)"
+            )
 
     # -----------------------------------------------------------------------
     # 3. Lag Correlation Analysis
@@ -118,9 +127,11 @@ if __name__ == "__main__":
         "proc:temperature", "proc:vibration", window="1min", max_lag=20
     )
     best = lag[lag["is_best_lag"]].iloc[0]
-    print(f"\nBest lag: {best['lag_periods']} periods "
-          f"(correlation = {best['correlation']:.3f})")
-    print(f"Top 5 lag correlations:")
+    print(
+        f"\nBest lag: {best['lag_periods']} periods "
+        f"(correlation = {best['correlation']:.3f})"
+    )
+    print("Top 5 lag correlations:")
     top5 = lag.nlargest(5, "correlation")
     for _, row in top5.iterrows():
         marker = " <-- best" if row["is_best_lag"] else ""
@@ -142,9 +153,11 @@ if __name__ == "__main__":
     print(f"\nCoincident anomaly windows: {len(coincident)}")
     if not coincident.empty:
         for _, row in coincident.iterrows():
-            print(f"  {row['start']}: "
-                  f"{row['anomaly_count']} anomalies across "
-                  f"[{row['signal_uuids_involved']}]")
+            print(
+                f"  {row['start']}: "
+                f"{row['anomaly_count']} anomalies across "
+                f"[{row['signal_uuids_involved']}]"
+            )
 
     # -----------------------------------------------------------------------
     # 5. Cascade Detection
@@ -154,15 +167,19 @@ if __name__ == "__main__":
     print("-" * 70)
 
     cascades = ac.cascade_detection(
-        "proc:temperature", "proc:vibration",
-        n_sigma=2.5, max_delay="15min",
+        "proc:temperature",
+        "proc:vibration",
+        n_sigma=2.5,
+        max_delay="15min",
     )
     print(f"\nCascade events detected: {len(cascades)}")
     if not cascades.empty:
         for _, row in cascades.iterrows():
-            print(f"  Leader: {row['leader_time']} -> "
-                  f"Follower: {row['follower_time']} "
-                  f"(delay={row['delay_seconds']:.0f}s)")
+            print(
+                f"  Leader: {row['leader_time']} -> "
+                f"Follower: {row['follower_time']} "
+                f"(delay={row['delay_seconds']:.0f}s)"
+            )
 
     # -----------------------------------------------------------------------
     # 6. Root Cause Ranking
@@ -172,11 +189,13 @@ if __name__ == "__main__":
     print("-" * 70)
 
     ranking = ac.root_cause_ranking(signals, n_sigma=2.5, max_delay="15min")
-    print(f"\nSignal ranking by anomaly leadership:")
+    print("\nSignal ranking by anomaly leadership:")
     for _, row in ranking.iterrows():
-        print(f"  #{int(row['rank'])} {row['signal_uuid']}: "
-              f"leader_ratio={row['leader_ratio']:.2f} "
-              f"(leads={int(row['leader_count'])}, follows={int(row['follower_count'])})")
+        print(
+            f"  #{int(row['rank'])} {row['signal_uuid']}: "
+            f"leader_ratio={row['leader_ratio']:.2f} "
+            f"(leads={int(row['leader_count'])}, follows={int(row['follower_count'])})"
+        )
 
     print("\n" + "=" * 70)
     print("Demo complete.")
