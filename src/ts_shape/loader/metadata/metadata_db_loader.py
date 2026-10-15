@@ -118,8 +118,12 @@ class DatapointDB:
                     for r in result.fetchall()
                 ]
 
-                # Convert to DataFrame and filter by required UUIDs if necessary
-                metadata_df = pd.DataFrame(data_points)
+                # Convert to DataFrame and filter by required UUIDs if necessary.
+                # Explicit columns: a device without data points still gets
+                # an (empty) frame with uuid / label / config.
+                metadata_df = pd.DataFrame(
+                    data_points, columns=["uuid", "label", "config"]
+                )
                 if not metadata_df.empty and self.required_uuid_list:
                     metadata_df = metadata_df[
                         metadata_df["uuid"].isin(self.required_uuid_list)
