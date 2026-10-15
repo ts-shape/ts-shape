@@ -77,6 +77,25 @@ class UnitConverter(Base):
         UnitConverter.convert_value(100, "C", "F")          # 212.0
         UnitConverter.conversion_factor("bar", "psi")        # (14.5037..., 0.0)
         UnitConverter.convert_column(df, "bar", "psi", value_column="value_double")
+
+    Example:
+        >>> import pandas as pd
+        >>> from ts_shape import UnitConverter
+        >>> round(UnitConverter.convert_value(100, "C", "F"), 6)
+        212.0
+        >>> factor, offset = UnitConverter.conversion_factor("bar", "psi")
+        >>> round(factor, 4), offset
+        (14.5038, 0.0)
+        >>> df = pd.DataFrame({
+        ...     "systime": pd.date_range("2025-01-01", periods=3, freq="1h"),
+        ...     "uuid": "pressure",
+        ...     "value_double": [2.0, 1.5, 0.0],
+        ... })
+        >>> UnitConverter.convert_column(df, "bar", "kPa")[["systime", "value_double"]]
+                      systime  value_double
+        0 2025-01-01 00:00:00         200.0
+        1 2025-01-01 01:00:00         150.0
+        2 2025-01-01 02:00:00           0.0
     """
 
     @classmethod

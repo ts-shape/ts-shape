@@ -178,6 +178,23 @@ class PowerIntegrator(Base):
 
     Negative power (PV export, regenerative drives) is integrated as-is, so
     ``kwh`` is *net* energy. Filter the input first if gross import is wanted.
+
+    Example:
+        100 kW for half an hour, then 50 kW, then off (``locf`` holds each value):
+
+        >>> import pandas as pd
+        >>> from ts_shape import PowerIntegrator
+        >>> df = pd.DataFrame({
+        ...     "systime": pd.to_datetime([
+        ...         "2025-01-01 00:00", "2025-01-01 00:30",
+        ...         "2025-01-01 01:00", "2025-01-01 02:00"]),
+        ...     "uuid": "press",
+        ...     "value_double": [100.0, 50.0, 0.0, 0.0],
+        ... })
+        >>> PowerIntegrator.energy_by_window(df, window="1h")[["start", "kwh", "avg_kw"]]
+                        start   kwh  avg_kw
+        0 2025-01-01 00:00:00  75.0    75.0
+        1 2025-01-01 01:00:00   0.0     0.0
     """
 
     # ------------------------------------------------------------------

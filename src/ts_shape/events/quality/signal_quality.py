@@ -32,6 +32,26 @@ class SignalQualityEvents(Base):
     - sampling_regularity: Inter-sample interval statistics per window.
     - detect_out_of_range: Flag values outside physical/expected bounds.
     - data_completeness: Percentage of expected samples received per window.
+
+    Example:
+        A 1 s signal with an 8 s gap and one implausible reading:
+
+        >>> import pandas as pd
+        >>> from ts_shape import SignalQualityEvents
+        >>> df = pd.DataFrame({
+        ...     "systime": pd.to_datetime([
+        ...         "2025-01-01 00:00:00", "2025-01-01 00:00:01", "2025-01-01 00:00:02",
+        ...         "2025-01-01 00:00:10", "2025-01-01 00:00:11"]),
+        ...     "uuid": "temp",
+        ...     "value_double": [20.0, 20.5, 21.0, 95.0, 21.0],
+        ... })
+        >>> quality = SignalQualityEvents(df, "temp")
+        >>> quality.detect_missing_data(expected_freq="1s")[["start", "end", "duration_seconds"]]
+                        start                 end  duration_seconds
+        0 2025-01-01 00:00:02 2025-01-01 00:00:10               8.0
+        >>> quality.detect_out_of_range(0.0, 50.0)[["start", "end", "duration_seconds"]]
+                        start                 end  duration_seconds
+        0 2025-01-01 00:00:10 2025-01-01 00:00:11               1.0
     """
 
     def __init__(

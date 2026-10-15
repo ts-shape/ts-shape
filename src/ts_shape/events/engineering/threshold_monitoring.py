@@ -81,6 +81,25 @@ class ThresholdMonitoringEvents(Base):
     - threshold_with_hysteresis: Alarm entry/exit with separate high/low thresholds.
     - time_above_threshold: Time and percentage above a threshold per window.
     - threshold_exceedance_trend: Track exceedance frequency over time.
+
+    Example:
+        >>> import pandas as pd
+        >>> from ts_shape import ThresholdMonitoringEvents
+        >>> df = pd.DataFrame({
+        ...     "systime": pd.date_range("2025-01-01 08:00", periods=6, freq="1min"),
+        ...     "uuid": "temp",
+        ...     "value_double": [70.0, 82.0, 91.0, 85.0, 75.0, 70.0],
+        ... })
+        >>> monitor = ThresholdMonitoringEvents(df, "temp")
+        >>> monitor.multi_level_threshold({"warning": 80.0, "alarm": 90.0})[
+        ...     ["start", "end", "level"]]
+                        start                 end    level
+        0 2025-01-01 08:02:00 2025-01-01 08:03:00    alarm
+        1 2025-01-01 08:01:00 2025-01-01 08:04:00  warning
+        >>> monitor.threshold_with_hysteresis(upper_limit=80.0, lower_limit=76.0)[
+        ...     ["start", "end", "duration_seconds"]]
+                        start                 end  duration_seconds
+        0 2025-01-01 08:01:00 2025-01-01 08:04:00             180.0
     """
 
     def __init__(

@@ -34,6 +34,23 @@ class MicroStopEvents(Base):
     - micro_stop_frequency: Count micro-stops per time window.
     - micro_stop_impact: Time lost to micro-stops per window.
     - micro_stop_patterns: Group micro-stops by hour-of-day.
+
+    Example:
+        >>> import pandas as pd
+        >>> from ts_shape import MicroStopEvents
+        >>> df = pd.DataFrame({
+        ...     "systime": pd.to_datetime([
+        ...         "2025-01-01 08:00:00", "2025-01-01 08:10:00", "2025-01-01 08:10:20",
+        ...         "2025-01-01 08:30:00", "2025-01-01 08:30:45", "2025-01-01 09:00:00"]),
+        ...     "uuid": "run",
+        ...     "value_bool": [True, False, True, False, True, True],
+        ... })
+        >>> stops = MicroStopEvents(df, "run").detect_micro_stops(max_duration="30s")
+        >>> stops[["start", "end", "duration_seconds"]]
+                        start                 end  duration_seconds
+        0 2025-01-01 08:10:00 2025-01-01 08:10:20              20.0
+
+        The 45 s stop at 08:30 is longer than ``max_duration`` and is not listed.
     """
 
     def __init__(

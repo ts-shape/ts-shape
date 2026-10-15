@@ -423,6 +423,19 @@ class PeriodSummaryEvents(Base):
         # Roll up to weekly/monthly
         weekly = PeriodSummaryEvents.from_daily_data(daily, window='W')
         monthly = PeriodSummaryEvents.from_daily_data(daily, window='MS')
+
+    Example:
+        A part counter that rises by 100 a day:
+
+        >>> import ts_shape
+        >>> df = ts_shape.make_timeseries(["counter"], n_points=14, freq="1D",
+        ...     start="2025-01-06", baseline=0, noise=0, drift=1300,
+        ...     value_column="value_integer")
+        >>> weekly = ts_shape.PeriodSummaryEvents(df).weekly_summary("counter")
+        >>> weekly[["start", "end", "total_production", "daily_avg"]]
+               start        end  total_production   daily_avg
+        0 2025-01-06 2025-01-13               600   85.714286
+        1 2025-01-13 2025-01-20               700  100.000000
     """
 
     def __init__(

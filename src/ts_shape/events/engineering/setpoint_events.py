@@ -139,6 +139,19 @@ class SetpointChangeEvents(Base):
     Schema assumptions (columns):
     - uuid, sequence_number, systime, plctime, is_delta
     - value_integer, value_string, value_double, value_bool, value_bytes
+
+    Example:
+        >>> import pandas as pd
+        >>> from ts_shape import SetpointChangeEvents
+        >>> df = pd.DataFrame({
+        ...     "systime": pd.date_range("2025-01-01 08:00", periods=4, freq="10min"),
+        ...     "uuid": "oven:setpoint",
+        ...     "value_double": [50.0, 50.0, 60.0, 60.0],
+        ... })
+        >>> steps = SetpointChangeEvents(df, "oven:setpoint").detect_setpoint_steps(min_delta=5.0)
+        >>> steps[["start", "prev_level", "new_level", "magnitude"]]
+                        start  prev_level  new_level  magnitude
+        0 2025-01-01 08:20:00        50.0       60.0       10.0
     """
 
     def __init__(
