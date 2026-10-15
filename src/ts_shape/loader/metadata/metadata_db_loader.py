@@ -5,21 +5,28 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 if TYPE_CHECKING:
-    from sqlalchemy import create_engine, text
+    from sqlalchemy import URL, create_engine, text
 else:
     try:
         from sqlalchemy import create_engine, text
     except ImportError:  # optional extra: ts-shape[sql]
         create_engine = text = None
 
-from ts_shape.loader._utils import require_optional
+from ts_shape.loader._utils import (
+    POSTGRES_DRIVER,
+    create_postgres_engine,
+    postgres_url,
+    require_optional,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class DatapointDB:
-    """
-    Class for accessing datapoints via a database.
+    """Load datapoint metadata per device from the PostgreSQL config repository.
+
+    Needs the ``postgres`` extra (``pip install ts-shape[postgres]``).
+    ``repr(db)`` masks the password.
     """
 
     def __init__(
@@ -31,6 +38,10 @@ class DatapointDB:
         output_path: str = "data",
         required_uuid_list: list[str] | None = None,
         filter_enabled: bool = True,
+        *,
+        db_port: int = 5432,
+        db_name: str = "config_repository",
+        db_driver: str = POSTGRES_DRIVER,
     ):
         """Initialize the DatapointDB class and load metadata for each device.
 
@@ -43,12 +54,22 @@ class DatapointDB:
             required_uuid_list: List of UUIDs to filter the metadata (optional).
             filter_enabled: Whether to filter metadata by "enabled == True" and
                 "archived == False" (default is True).
+            db_port: Database port. Default 5432.
+            db_name: Database name. Default ``"config_repository"``.
+            db_driver: DB-API driver. Default ``"psycopg2"`` (the ``postgres``
+                extra).
+
+        Raises:
+            ImportError: SQLAlchemy or the database driver is not installed.
         """
         require_optional(create_engine, "sqlalchemy", "sql")
         self.device_names = device_names
         self.db_user = db_user
         self.db_pass = db_pass
         self.db_host = db_host
+        self.db_port = db_port
+        self.db_name = db_name
+        self.db_driver = db_driver
         self.output_path = output_path
         self.required_uuid_list = required_uuid_list or []
         self.filter_enabled = filter_enabled
@@ -58,11 +79,27 @@ class DatapointDB:
         self.device_uuids: dict[str, list[str]] = {}  # Store UUIDs for each device
         self._db_access()
 
+    @property
+    def url(self) -> "URL":
+        """The connection URL; ``str(url)`` masks the password."""
+        return postgres_url(
+            username=self.db_user,
+            password=self.db_pass,
+            host=self.db_host,
+            port=self.db_port,
+            database=self.db_name,
+            driver=self.db_driver,
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}(device_names={self.device_names!r}, "
+            f"url={str(self.url)!r})"
+        )
+
     def _db_access(self) -> None:
         """Connect to the database and retrieve metadata for each device."""
-        engine = create_engine(
-            f"postgresql://{self.db_user}:{self.db_pass}@{self.db_host}:5432/config_repository"
-        )
+        engine = create_postgres_engine(create_engine, self.url)
 
         with engine.connect() as conn:
             for device_name in self.device_names:

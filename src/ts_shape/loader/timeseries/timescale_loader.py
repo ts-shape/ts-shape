@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -12,14 +12,24 @@ else:
     except ImportError:  # optional extra: ts-shape[sql]
         create_engine = text = None
 
-from ts_shape.loader._utils import require_optional
+from ts_shape.loader._utils import (
+    POSTGRES_DRIVER,
+    create_postgres_engine,
+    postgres_url,
+    require_optional,
+)
 from ts_shape.utils.deprecation import deprecated_attribute, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
 
 class TimescaleDBDataAccess:
-    """Load timeseries data for given UUIDs and a time range from TimescaleDB."""
+    """Load timeseries data for given UUIDs and a time range from TimescaleDB.
+
+    Needs the ``postgres`` extra (``pip install ts-shape[postgres]``:
+    SQLAlchemy and the psycopg2 driver). Creating the loader does not connect;
+    the first fetch does. ``repr(loader)`` masks the password.
+    """
 
     #: Deprecated names of :attr:`start` / :attr:`end`.
     start_timestamp = deprecated_attribute("start")
@@ -31,7 +41,7 @@ class TimescaleDBDataAccess:
         start: str,
         end: str,
         uuids: list[str],
-        db_config: dict[str, str],
+        db_config: dict[str, Any],
     ):
         """Initialize the TimescaleDB loader and create the database engine.
 
@@ -40,15 +50,34 @@ class TimescaleDBDataAccess:
             end: End of the time range (inclusive) to query.
             uuids: List of UUIDs to retrieve data for.
             db_config: Connection settings with the keys ``db_user``,
-                ``db_pass``, ``db_host`` and ``db_name``.
+                ``db_pass``, ``db_host`` and ``db_name``, and optionally
+                ``db_port`` (default 5432) and ``db_driver`` (the DB-API
+                driver, default ``"psycopg2"``). The password is used as is;
+                it needs no URL escaping.
+
+        Raises:
+            ImportError: SQLAlchemy or the database driver is not installed.
         """
         require_optional(create_engine, "sqlalchemy", "sql")
         self.start = start
         self.end = end
         self.uuids = uuids
         self.db_config = db_config
-        self.engine = create_engine(
-            f'postgresql://{db_config["db_user"]}:{db_config["db_pass"]}@{db_config["db_host"]}/{db_config["db_name"]}'
+        self.url = postgres_url(
+            username=db_config["db_user"],
+            password=db_config["db_pass"],
+            host=db_config["db_host"],
+            port=db_config.get("db_port", 5432),
+            database=db_config["db_name"],
+            driver=db_config.get("db_driver", POSTGRES_DRIVER),
+        )
+        self.engine = create_postgres_engine(create_engine, self.url)
+
+    def __repr__(self) -> str:
+        # str(URL) renders the password as ``***``.
+        return (
+            f"{type(self).__name__}(start={self.start!r}, end={self.end!r}, "
+            f"uuid_count={len(self.uuids)}, url={str(self.url)!r})"
         )
 
     def _fetch_data(self, uuid: str) -> pd.DataFrame:

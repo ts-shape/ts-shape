@@ -11,6 +11,7 @@ import pandas as pd
 from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
 from ts_shape.loader._utils import (
     ErrorsMode,
+    azure_container_repr,
     check_errors_mode,
     describe_failures,
     is_not_found,
@@ -225,6 +226,9 @@ class AzureBlobParquetLoader:
         # Pattern for hour-level subpath; tokens: {Y} {m} {d} {H}
         # Default matches many data lake layouts: YYYY/MM/DD/HH/
         self.hour_pattern = hour_pattern
+
+    def __repr__(self) -> str:
+        return azure_container_repr(self)
 
     @classmethod
     def from_account_name(
@@ -973,6 +977,9 @@ class AzureBlobFlexibleFileLoader:
         if not AzureBlobFlexibleFileLoader._parsers_initialized:
             self._enable_builtin_parsers()
             AzureBlobFlexibleFileLoader._parsers_initialized = True
+
+    def __repr__(self) -> str:
+        return azure_container_repr(self)
 
     # ---- Shared helpers with Parquet loader ----
     def _hour_prefix(self, ts: pd.Timestamp) -> str:

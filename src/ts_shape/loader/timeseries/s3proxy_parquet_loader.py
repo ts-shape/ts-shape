@@ -9,7 +9,13 @@ try:
 except ImportError:  # optional extra: ts-shape[s3]
     s3fs = None
 
-from ts_shape.loader._utils import require_config, require_optional, retry_call
+from ts_shape.loader._utils import (
+    loader_repr,
+    redact_url,
+    require_config,
+    require_optional,
+    retry_call,
+)
 from ts_shape.utils.deprecation import deprecated_attribute, renamed_kwargs
 
 logger = logging.getLogger(__name__)
@@ -71,6 +77,17 @@ class S3ProxyDataAccess:
             version_aware=s3_config["version_aware"],
         )
         self.s3_path_base = s3_config["s3_path_base"]
+
+    def __repr__(self) -> str:
+        # key and secret are left out.
+        return loader_repr(
+            self,
+            start=self.start,
+            end=self.end,
+            uuid_count=len(self.uuids),
+            endpoint_url=redact_url(str(self.s3_config["endpoint_url"])),
+            s3_path_base=self.s3_path_base,
+        )
 
     def _generate_timeslot_paths(self) -> Iterator[Path]:
         """Generate time-based directory paths for each hour in the range.
