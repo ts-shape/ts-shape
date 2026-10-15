@@ -17,6 +17,38 @@ from ts_shape.utils.deprecation import (
 logger = logging.getLogger(__name__)
 
 
+def _unique_samples(
+    dataframe: pd.DataFrame, signal_uuid: str, value_column: str
+) -> pd.DataFrame:
+    """Rows of ``signal_uuid`` with exact repeated samples dropped (warns)."""
+    rows = dataframe[dataframe["uuid"] == signal_uuid]
+    unique = rows.drop_duplicates(subset=["systime", value_column])
+    dropped = len(rows) - len(unique)
+    if dropped:
+        warnings.warn(
+            f"{signal_uuid!r}: {dropped} repeated sample(s) (same time and "
+            "value) were counted once in the CUSUM.",
+            DataQualityWarning,
+            stacklevel=caller_stacklevel(),
+        )
+    return unique.copy()
+
+
+def _cusum(
+    values: np.ndarray, target: float, slack: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Upper and lower CUSUM: ``C_i = max(0, C_{i-1} + deviation_i - slack)``."""
+    high = np.zeros(len(values))
+    low = np.zeros(len(values))
+    hi = lo = 0.0
+    for i, value in enumerate(values.tolist()):
+        hi = max(0.0, hi + value - target - slack)
+        lo = max(0.0, lo + target - value - slack)
+        high[i] = hi
+        low[i] = lo
+    return high, low
+
+
 class StatisticalProcessControlEvents(Base):
     """
     Inherits from Base and applies SPC rules (Western Electric Rules) to a DataFrame for event detection.
@@ -519,15 +551,18 @@ class StatisticalProcessControlEvents(Base):
                 shift_direction, severity, uuid (the event uuid) and
                 source_uuid (the actual signal's uuid).
         """
-        df = self.dataframe[self.dataframe["uuid"] == self.actual_uuid].copy()
+        # A repeated sample (same time, same value) would be summed twice and
+        # could cross the threshold on its own: keep one copy of each.
+        df = _unique_samples(self.dataframe, self.actual_uuid, self.value_column)
         df = df.sort_values(by="systime").reset_index(drop=True)
+        tolerance_df = _unique_samples(
+            self.dataframe, self.tolerance_uuid, self.value_column
+        )
 
         # Determine target and sigma
         if target is None:
-            tolerance_df = self.dataframe[self.dataframe["uuid"] == self.tolerance_uuid]
             target = tolerance_df[self.value_column].mean()
 
-        tolerance_df = self.dataframe[self.dataframe["uuid"] == self.tolerance_uuid]
         sigma = tolerance_df[self.value_column].std()
         result_cols = [
             "systime",
@@ -551,20 +586,9 @@ class StatisticalProcessControlEvents(Base):
             )
             return pd.DataFrame(columns=result_cols)
 
-        # Initialize CUSUM statistics
-        cusum_high = np.zeros(len(df))
-        cusum_low = np.zeros(len(df))
-
-        # Calculate CUSUM
-        for i in range(len(df)):
-            value = df.loc[i, self.value_column]
-
-            if i == 0:
-                cusum_high[i] = max(0, value - target - k * sigma)
-                cusum_low[i] = max(0, target - value - k * sigma)
-            else:
-                cusum_high[i] = max(0, cusum_high[i - 1] + value - target - k * sigma)
-                cusum_low[i] = max(0, cusum_low[i - 1] + target - value - k * sigma)
+        cusum_high, cusum_low = _cusum(
+            df[self.value_column].to_numpy(dtype=float), float(target), float(k * sigma)
+        )
 
         # Add CUSUM statistics to dataframe
         df["cusum_high"] = cusum_high
