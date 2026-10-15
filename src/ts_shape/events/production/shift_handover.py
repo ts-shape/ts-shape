@@ -28,6 +28,11 @@ from ts_shape.utils.deprecation import (
     keyword_only,
 )
 from ts_shape.utils.shifts import assign_shift, production_dates
+from ts_shape.utils.time_accounting import (
+    reading_intervals,
+    shift_periods,
+    time_by_period,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +182,12 @@ class ShiftHandoverEvents(Base):
         *,
         production_day: bool = True,
     ) -> pd.DataFrame:
-        """Compute availability grouped by date/shift."""
+        """Compute availability grouped by date/shift.
+
+        Each reading's state holds until the next reading; the intervals are
+        split at the shift boundaries, so each shift gets the time that fell
+        inside it.
+        """
         data = (
             self.dataframe[self.dataframe["uuid"] == state_uuid]
             .copy()
@@ -195,18 +205,27 @@ class ShiftHandoverEvents(Base):
             )
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
-        data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
-        data["date"] = self._group_dates(data, production_day)
-        data["is_running"] = state_mask(
-            data, value_column, running_value, bool_value=True
+        times = data[self.time_column]
+        is_running = state_mask(data, value_column, running_value, bool_value=True)
+        # Each reading's state holds until the next reading; the intervals
+        # are split at the shift boundaries (ISO 22400-2 time model).
+        intervals = reading_intervals(
+            times, is_running.map({True: "up", False: "down"})
         )
-        data["duration_s"] = data[self.time_column].diff().shift(-1).dt.total_seconds()
-        data = data[data["duration_s"].notna()]
+        periods = shift_periods(
+            times.iloc[0],
+            times.iloc[-1],
+            self.shift_definitions,
+            production_day=production_day,
+        )
+        seconds = time_by_period(
+            intervals, periods, keys=["date", "shift"], states=["up", "down"]
+        )
 
         results = []
-        for (dt, shift), grp in data.groupby(["date", "shift"]):
-            up = grp.loc[grp["is_running"], "duration_s"].sum()
-            down = grp.loc[~grp["is_running"], "duration_s"].sum()
+        for dt, shift, up, down in seconds[["date", "shift", "up", "down"]].itertuples(
+            index=False, name=None
+        ):
             total = up + down
             avail = (up / total * 100) if total > 0 else 0.0
             results.append(

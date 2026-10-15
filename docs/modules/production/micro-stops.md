@@ -35,4 +35,5 @@ patterns = ms.micro_stop_patterns(hour_grouping=True)
 
 - `max_duration` is passed to each method separately. Set it just below the threshold at which stops are reported as downtime (30 s suits fast discrete lines; slower assembly may need 60-120 s).
 - Missing values count as idle.
+- `micro_stop_impact` classifies a stop by its full duration and splits its time and the run time at the window boundaries; `micro_stop_frequency` counts each stop (and its lost time) in the window it starts in.
 - Intervals close at the next transition by default (`interval_end="next_change"`), so a run signal logged only on change is measured correctly; `data_end` bounds the last open interval. With `interval_end="last_sample"`, every interval of such a signal has zero duration and no lost time is reported.

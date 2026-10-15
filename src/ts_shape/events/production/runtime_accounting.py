@@ -8,7 +8,9 @@ Computes operating-time metrics from a single boolean run signal:
 - a cumulative operating-hours meter (like a physical hour meter).
 
 Per-sample duration is the gap to the next sample, summed over ``True``
-samples -- the same approach as ``OEEEvents.availability``.
+samples -- the same approach as ``OEEEvents.availability``. Per window, each
+sample's interval is split at the window boundaries, so a run that crosses
+midnight counts in both days (the ISO 22400-2 time model).
 This is distinct from ``DutyCycleEvents`` (duty *percentage* and cycle
 counts): here the focus is *absolute* run time and an hour-meter reading.
 """
@@ -28,6 +30,11 @@ from ts_shape.utils.deprecation import (
     deprecated_method,
     keyword_only,
     renamed_kwargs,
+)
+from ts_shape.utils.time_accounting import (
+    floor_periods,
+    reading_intervals,
+    time_by_period,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,6 +139,40 @@ class RuntimeAccountingEvents(Base):
             )
         return pd.DataFrame(rows, columns=["start", "duration_seconds"])
 
+    def _time_by_window(
+        self, samples: pd.DataFrame, window: str, max_gap: str | None
+    ) -> pd.DataFrame:
+        """Run / idle seconds and start count per ``floor``-aligned window.
+
+        Each sample's state holds until the next sample; the intervals are
+        split at the window boundaries, so a run that crosses midnight counts
+        in both days (ISO 22400-2 time model). A rising edge counts in the
+        window of the sample that starts the run. Windows that hold a sample
+        or any run / idle time are reported, in time order.
+
+        Columns: ``start``, ``end``, ``run``, ``idle``, ``start_count``.
+        """
+        times = samples[self.time_column]
+        intervals = reading_intervals(
+            times, samples["state"].map({True: "run", False: "idle"}), max_gap=max_gap
+        )
+        periods = floor_periods(times.iloc[0], times.iloc[-1], window)
+        seconds = time_by_period(
+            intervals, periods, keys=["period"], states=["run", "idle"]
+        ).set_index("period")
+        labels = floor_local(times, window)
+        starts = samples["is_start"].groupby(labels.to_numpy()).sum()
+        keep = periods["period"].isin(seconds.index) | periods["period"].isin(labels)
+        out = periods.loc[keep, ["period", "start", "end"]].reset_index(drop=True)
+        out["run"] = (
+            out["period"].map(seconds["run"]).fillna(0.0).to_numpy(dtype="float64")
+        )
+        out["idle"] = (
+            out["period"].map(seconds["idle"]).fillna(0.0).to_numpy(dtype="float64")
+        )
+        out["start_count"] = out["period"].map(starts).fillna(0).to_numpy(dtype="int64")
+        return out[["start", "end", "run", "idle", "start_count"]]
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -195,6 +236,12 @@ class RuntimeAccountingEvents(Base):
     ) -> pd.DataFrame:
         """Run time per calendar window.
 
+        Each sample's state holds until the next sample; the interval is
+        split at the window boundaries, so each window gets the run and idle
+        time that fell inside it. A start counts in the window of the sample
+        that begins the run. Windows holding a sample or any observed time
+        are reported.
+
         Args:
             window: Resample window (e.g. ``"1D"``, ``"8h"``).
             max_gap: Optional cap (e.g. "15min") excluding a logging gap from
@@ -210,19 +257,19 @@ class RuntimeAccountingEvents(Base):
         if samples.empty:
             return empty_event_df("summary", extra_cols=extra)
 
-        samples = samples.copy()
-        samples["win"] = floor_local(samples[self.time_column], window)
+        by_window = self._time_by_window(samples, window, max_gap)
         rows: list[dict[str, Any]] = []
-        for win, grp in samples.groupby("win", sort=True):
-            run_s = float(grp.loc[grp["state"], "dur"].sum())
-            covered = float(grp["dur"].sum())
+        for start, end, run_s, idle_s, n_starts in by_window.itertuples(
+            index=False, name=None
+        ):
+            covered = run_s + idle_s
             rows.append(
                 {
-                    "start": win,
-                    "end": win + pd.Timedelta(window),
+                    "start": start,
+                    "end": end,
                     "run_seconds": run_s,
                     "run_hours": run_s / 3600.0,
-                    "start_count": int(grp["is_start"].sum()),
+                    "start_count": int(n_starts),
                     "utilization_pct": (
                         (run_s / covered * 100.0) if covered > 0 else 0.0
                     ),
@@ -237,7 +284,9 @@ class RuntimeAccountingEvents(Base):
         """Cumulative operating-hours meter, sampled per window.
 
         Mirrors a physical equipment hour meter: a monotonically increasing
-        total of run hours.
+        total of run hours. Run time is split at the window boundaries (see
+        :meth:`runtime_by_window`); every window holding a sample or any
+        observed time is reported, so the meter has no holes.
 
         Args:
             window: Resample window for the meter readings.
@@ -254,18 +303,7 @@ class RuntimeAccountingEvents(Base):
         if samples.empty:
             return empty_event_df("summary", extra_cols=extra)
 
-        samples = samples.copy()
-        samples["win"] = floor_local(samples[self.time_column], window)
-        all_windows = samples.groupby("win", sort=True).size().index
-        run_per = (
-            samples[samples["state"]]
-            .groupby("win")["dur"]
-            .sum()
-            .reindex(all_windows, fill_value=0.0)
-            .sort_index()
-        )
-        out = run_per.reset_index()
-        out.columns = ["start", "run_seconds"]
+        by_window = self._time_by_window(samples, window, max_gap)
+        out = by_window[["start", "end", "run"]].rename(columns={"run": "run_seconds"})
         out["cumulative_run_hours"] = out["run_seconds"].cumsum() / 3600.0
-        out["end"] = out["start"] + pd.Timedelta(window)
         return finalize_summary_df(out)
