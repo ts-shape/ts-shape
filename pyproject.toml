@@ -123,6 +123,11 @@ fallback_version = "0.0.0+unknown"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-v"
+# A ts-shape deprecation outside a test that expects it fails the suite, so
+# the tests and examples keep using the current names.
+filterwarnings = [
+    "error:.*the next major release:DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["ts_shape"]

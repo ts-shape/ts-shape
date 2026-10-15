@@ -81,9 +81,12 @@ def test_cycle_extractors_on_object_bools(no_future_warnings):
 
 def test_future_no_silent_downcasting_path():
     """The helpers give the same answer with pandas' opt-in future behavior."""
-    if not hasattr(pd.options, "future") or not hasattr(
-        pd.options.future, "no_silent_downcasting"
-    ):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        has_option = hasattr(pd.options, "future") and hasattr(
+            pd.options.future, "no_silent_downcasting"
+        )
+    if not has_option:
         pytest.skip("option removed in this pandas version")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

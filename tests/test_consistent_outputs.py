@@ -311,7 +311,8 @@ def test_from_shift_data_derives_the_missing_downtime_unit():
     assert out["downtime_minutes"].iloc[0] == 10.0
     minutes_only = seconds_only.rename(columns={"downtime_seconds": "downtime_minutes"})
     minutes_only["downtime_minutes"] = 10.0
-    out = ShiftHandoverEvents.from_shift_data(prod, downtime_df=minutes_only)
+    with pytest.warns(DeprecationWarning, match="downtime_minutes"):
+        out = ShiftHandoverEvents.from_shift_data(prod, downtime_df=minutes_only)
     assert out["downtime_seconds"].iloc[0] == 600.0
     assert list(out.columns) == ShiftHandoverEvents.OUTPUT_COLUMNS
 
@@ -332,9 +333,10 @@ def _recipe_df() -> pd.DataFrame:
 
 def test_recipe_spec_accepts_duration_seconds():
     df = _recipe_df()
-    legacy = RecipePhaseAdherenceEvents(
-        df, "phase", "temp", {"heat": {"duration_s": (0, 60)}}
-    ).evaluate()
+    with pytest.warns(DeprecationWarning, match="duration_s"):
+        legacy = RecipePhaseAdherenceEvents(
+            df, "phase", "temp", {"heat": {"duration_s": (0, 60)}}
+        ).evaluate()
     new = RecipePhaseAdherenceEvents(
         df, "phase", "temp", {"heat": {"duration_seconds": (0, 60)}}
     ).evaluate()

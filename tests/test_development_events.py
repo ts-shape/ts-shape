@@ -389,7 +389,7 @@ class TestRecipePhaseAdherenceEvents:
             }
         )
         df = pd.concat([phase_df, value_df], ignore_index=True)
-        spec = {"heat_up": {"duration_s": (500.0, 700.0)}}
+        spec = {"heat_up": {"duration_seconds": (500.0, 700.0)}}
         det = RecipePhaseAdherenceEvents(
             df, phase_uuid="phase", value_uuid="temp", spec=spec
         )
@@ -434,9 +434,9 @@ def test_recipe_malformed_spec_entry_warns():
         df,
         phase_uuid="phase",
         value_uuid="temp",
-        spec={"heat_up": {"duration_s": 300, "hold_value": (0.0, 2.0)}},
+        spec={"heat_up": {"duration_seconds": 300, "hold_value": (0.0, 2.0)}},
     )
-    with pytest.warns(DataQualityWarning, match="'duration_s' must be a"):
+    with pytest.warns(DataQualityWarning, match="'duration_seconds' must be a"):
         out = det.evaluate().set_index("phase")
     # The malformed criterion is not checked; the valid one still is.
     assert out.loc["heat_up", "pass"]
