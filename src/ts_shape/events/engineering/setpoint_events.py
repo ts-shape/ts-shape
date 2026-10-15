@@ -377,15 +377,13 @@ class SetpointChangeEvents(Base):
         Returns:
             DataFrame with columns: start, end (start + the lookahead window),
             duration_seconds, uuid, source_uuid ("<setpoint_uuid>,<actual_uuid>"),
-            is_delta, and
-
-            - ``t_settle_seconds``: seconds from the change to the start of
-              the final inside-band run; ``None`` when the response is
-              outside the band at the end of the window.
-            - ``settled_within_window``: True when the response is inside the
-              band at the end of the window (a settling time exists).
-            - ``settled``: ``settled_within_window`` and the final
-              inside-band run lasts at least ``hold``.
+            is_delta, t_settle_seconds (seconds from the change to the start
+            of the final inside-band run; ``None`` when the response is
+            outside the band at the end of the window), settled_within_window
+            (True when the response is inside the band at the end of the
+            window, so a settling time exists) and settled
+            (settled_within_window and the final inside-band run lasts at
+            least ``hold``).
         """
         cols = [
             "start",
