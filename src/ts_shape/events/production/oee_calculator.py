@@ -11,6 +11,7 @@ Industry-standard metric for manufacturing productivity:
 import logging
 import warnings
 from math import nan
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -37,6 +38,9 @@ from ts_shape.utils.time_accounting import (
     reading_intervals,
     time_by_period,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +149,22 @@ class OEEEvents(Base):
     # Availability
     # ------------------------------------------------------------------
 
-    calculate_availability = deprecated_method("availability")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "OEEEvents.calculate_availability() is deprecated, use .availability()"
+        )
+        def calculate_availability(
+            self,
+            run_state_uuid: str,
+            planned_time_hours: float | None = None,
+            *,
+            value_column: str = "value_bool",
+            max_gap: str | None = None,
+        ) -> pd.DataFrame: ...
+
+    else:
+        calculate_availability = deprecated_method("availability")
 
     @keyword_only(2)
     def availability(
@@ -254,7 +273,25 @@ class OEEEvents(Base):
     # Performance
     # ------------------------------------------------------------------
 
-    calculate_performance = deprecated_method("performance")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "OEEEvents.calculate_performance() is deprecated, use .performance()"
+        )
+        def calculate_performance(
+            self,
+            counter_uuid: str,
+            ideal_cycle_time: float,
+            run_state_uuid: str | None = None,
+            *,
+            value_column: str = "value_integer",
+            run_value_column: str = "value_bool",
+            handle_resets: bool = True,
+            max_gap: str | None = None,
+        ) -> pd.DataFrame: ...
+
+    else:
+        calculate_performance = deprecated_method("performance")
 
     @keyword_only(3)
     def performance(
@@ -409,7 +446,20 @@ class OEEEvents(Base):
     # Quality
     # ------------------------------------------------------------------
 
-    calculate_quality = deprecated_method("quality")
+    if TYPE_CHECKING:
+
+        @deprecated("OEEEvents.calculate_quality() is deprecated, use .quality()")
+        def calculate_quality(
+            self,
+            total_uuid: str,
+            reject_uuid: str,
+            *,
+            value_column: str = "value_integer",
+            handle_resets: bool = True,
+        ) -> pd.DataFrame: ...
+
+    else:
+        calculate_quality = deprecated_method("quality")
 
     def quality(
         self,
@@ -505,7 +555,24 @@ class OEEEvents(Base):
     # Combined OEE
     # ------------------------------------------------------------------
 
-    calculate_oee = deprecated_method("oee")
+    if TYPE_CHECKING:
+
+        @deprecated("OEEEvents.calculate_oee() is deprecated, use .oee()")
+        def calculate_oee(
+            self,
+            run_state_uuid: str,
+            counter_uuid: str,
+            ideal_cycle_time: float,
+            total_uuid: str | None = None,
+            reject_uuid: str | None = None,
+            *,
+            planned_time_hours: float | None = None,
+            handle_resets: bool = True,
+            max_gap: str | None = None,
+        ) -> pd.DataFrame: ...
+
+    else:
+        calculate_oee = deprecated_method("oee")
 
     @keyword_only(4)
     def oee(
@@ -660,4 +727,10 @@ class OEEEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-OEECalculator = deprecated_class(OEEEvents, "OEECalculator")
+if TYPE_CHECKING:
+
+    @deprecated("OEECalculator is deprecated, use OEEEvents")
+    class OEECalculator(OEEEvents): ...
+
+else:
+    OEECalculator = deprecated_class(OEEEvents, "OEECalculator")

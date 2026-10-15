@@ -7,7 +7,7 @@ Simple module for shift summaries:
 """
 
 import logging
-from typing import Literal, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 import pandas as pd
 
@@ -17,6 +17,9 @@ from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class, keyword_only
 from ts_shape.utils.shifts import assign_shift, production_dates
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -505,4 +508,10 @@ class ShiftReportEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-ShiftReporting = deprecated_class(ShiftReportEvents, "ShiftReporting")
+if TYPE_CHECKING:
+
+    @deprecated("ShiftReporting is deprecated, use ShiftReportEvents")
+    class ShiftReporting(ShiftReportEvents): ...
+
+else:
+    ShiftReporting = deprecated_class(ShiftReportEvents, "ShiftReporting")

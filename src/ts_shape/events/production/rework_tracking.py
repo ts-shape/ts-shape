@@ -9,6 +9,7 @@ Track rework events and their impact:
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -25,6 +26,9 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -510,4 +514,10 @@ class ReworkEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-ReworkTracking = deprecated_class(ReworkEvents, "ReworkTracking")
+if TYPE_CHECKING:
+
+    @deprecated("ReworkTracking is deprecated, use ReworkEvents")
+    class ReworkTracking(ReworkEvents): ...
+
+else:
+    ReworkTracking = deprecated_class(ReworkEvents, "ReworkTracking")

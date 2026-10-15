@@ -98,6 +98,10 @@ Classes:
   - crossing_forecast: Forecast crossing times for multiple thresholds.
 """
 
+# This module re-exports the deprecated class aliases on purpose; using them
+# anywhere else is still reported by mypy's "deprecated" check.
+# mypy: disable-error-code="deprecated"
+
 from .control_loop_health import ControlLoopHealthEvents  # re-export
 from .disturbance_recovery import DisturbanceRecoveryEvents  # re-export
 from .material_balance import MaterialBalanceEvents  # re-export

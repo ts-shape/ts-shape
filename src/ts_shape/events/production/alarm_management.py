@@ -5,6 +5,7 @@ and standing alarm identification from boolean alarm signals.
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,9 @@ from ts_shape.utils.deprecation import (
     renamed_kwargs,
 )
 from ts_shape.utils.runs import run_bounds, total_seconds
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +200,15 @@ class AlarmManagementEvents(Base):
         counts["source_uuid"] = self.alarm_uuid
         return counts
 
-    alarm_duration_stats = deprecated_method("alarm_duration_statistics")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "AlarmManagementEvents.alarm_duration_stats() is deprecated, use .alarm_duration_statistics()"
+        )
+        def alarm_duration_stats(self) -> pd.DataFrame: ...
+
+    else:
+        alarm_duration_stats = deprecated_method("alarm_duration_statistics")
 
     def alarm_duration_statistics(self) -> pd.DataFrame:
         """Compute min / avg / max / total duration of alarm-ON states.

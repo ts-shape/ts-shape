@@ -7,6 +7,7 @@ Track when machine runs slower than ideal/target speed:
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -19,6 +20,9 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -439,6 +443,12 @@ class PerformanceLossEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-PerformanceLossTracking = deprecated_class(
-    PerformanceLossEvents, "PerformanceLossTracking"
-)
+if TYPE_CHECKING:
+
+    @deprecated("PerformanceLossTracking is deprecated, use PerformanceLossEvents")
+    class PerformanceLossTracking(PerformanceLossEvents): ...
+
+else:
+    PerformanceLossTracking = deprecated_class(
+        PerformanceLossEvents, "PerformanceLossTracking"
+    )

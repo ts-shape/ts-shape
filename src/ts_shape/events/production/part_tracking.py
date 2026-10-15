@@ -15,6 +15,7 @@ production that happened in a window where a reset occurred. Pass
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -22,6 +23,9 @@ from ts_shape.events._windows import add_day_window, data_tz, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -495,6 +499,12 @@ class PartProductionEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-PartProductionTracking = deprecated_class(
-    PartProductionEvents, "PartProductionTracking"
-)
+if TYPE_CHECKING:
+
+    @deprecated("PartProductionTracking is deprecated, use PartProductionEvents")
+    class PartProductionTracking(PartProductionEvents): ...
+
+else:
+    PartProductionTracking = deprecated_class(
+        PartProductionEvents, "PartProductionTracking"
+    )

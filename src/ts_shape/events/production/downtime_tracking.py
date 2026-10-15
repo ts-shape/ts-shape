@@ -9,6 +9,7 @@ Essential module for daily downtime analysis:
 
 import logging
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -24,6 +25,9 @@ from ts_shape.utils.time_accounting import (
     shift_periods,
     time_by_period,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -549,4 +553,10 @@ class DowntimeEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-DowntimeTracking = deprecated_class(DowntimeEvents, "DowntimeTracking")
+if TYPE_CHECKING:
+
+    @deprecated("DowntimeTracking is deprecated, use DowntimeEvents")
+    class DowntimeTracking(DowntimeEvents): ...
+
+else:
+    DowntimeTracking = deprecated_class(DowntimeEvents, "DowntimeTracking")

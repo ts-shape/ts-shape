@@ -8,6 +8,7 @@ Compare production output and quality across operators:
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -15,6 +16,9 @@ from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -430,6 +434,14 @@ class OperatorPerformanceEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-OperatorPerformanceTracking = deprecated_class(
-    OperatorPerformanceEvents, "OperatorPerformanceTracking"
-)
+if TYPE_CHECKING:
+
+    @deprecated(
+        "OperatorPerformanceTracking is deprecated, use OperatorPerformanceEvents"
+    )
+    class OperatorPerformanceTracking(OperatorPerformanceEvents): ...
+
+else:
+    OperatorPerformanceTracking = deprecated_class(
+        OperatorPerformanceEvents, "OperatorPerformanceTracking"
+    )

@@ -11,13 +11,16 @@ identifier to its own UUID.  This module joins those signals to answer
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.runs import run_bounds, total_seconds
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -378,6 +381,12 @@ class ValueTraceabilityEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-OrderTraceabilityEvents = deprecated_class(
-    ValueTraceabilityEvents, "OrderTraceabilityEvents"
-)
+if TYPE_CHECKING:
+
+    @deprecated("OrderTraceabilityEvents is deprecated, use ValueTraceabilityEvents")
+    class OrderTraceabilityEvents(ValueTraceabilityEvents): ...
+
+else:
+    OrderTraceabilityEvents = deprecated_class(
+        ValueTraceabilityEvents, "OrderTraceabilityEvents"
+    )

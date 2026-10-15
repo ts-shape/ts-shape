@@ -1,9 +1,12 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 
 class EnvironmentalCompensationEvents(Base):
@@ -135,7 +138,15 @@ class EnvironmentalCompensationEvents(Base):
             pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
         )
 
-    estimate_sensitivity = deprecated_method("sensitivity")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "EnvironmentalCompensationEvents.estimate_sensitivity() is deprecated, use .sensitivity()"
+        )
+        def estimate_sensitivity(self, window: str = "8h") -> pd.DataFrame: ...
+
+    else:
+        estimate_sensitivity = deprecated_method("sensitivity")
 
     @keyword_only(1)
     def sensitivity(self, window: str = "8h") -> pd.DataFrame:

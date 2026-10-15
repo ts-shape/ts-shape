@@ -12,7 +12,7 @@ Two modes of operation:
 
 import logging
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -26,6 +26,9 @@ from ts_shape.utils.deprecation import (
     keyword_only,
     renamed_kwargs,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -1009,4 +1012,10 @@ class PeriodSummaryEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-PeriodSummary = deprecated_class(PeriodSummaryEvents, "PeriodSummary")
+if TYPE_CHECKING:
+
+    @deprecated("PeriodSummary is deprecated, use PeriodSummaryEvents")
+    class PeriodSummary(PeriodSummaryEvents): ...
+
+else:
+    PeriodSummary = deprecated_class(PeriodSummaryEvents, "PeriodSummary")

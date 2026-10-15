@@ -7,6 +7,7 @@ Track material waste and scrap (different from NOK parts):
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -23,6 +24,9 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -389,4 +393,10 @@ class ScrapEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-ScrapTracking = deprecated_class(ScrapEvents, "ScrapTracking")
+if TYPE_CHECKING:
+
+    @deprecated("ScrapTracking is deprecated, use ScrapEvents")
+    class ScrapTracking(ScrapEvents): ...
+
+else:
+    ScrapTracking = deprecated_class(ScrapEvents, "ScrapTracking")

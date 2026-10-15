@@ -206,6 +206,10 @@ Performance and Target Tracking:
   - dwell_time_violation: Find intervals exceeding max allowed duration in a state.
 """
 
+# This module re-exports the deprecated class aliases on purpose; using them
+# anywhere else is still reported by mypy's "deprecated" check.
+# mypy: disable-error-code="deprecated"
+
 # Event Detection Classes
 from .alarm_management import AlarmManagementEvents
 from .batch_tracking import BatchTrackingEvents

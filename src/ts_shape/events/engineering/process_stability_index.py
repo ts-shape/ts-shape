@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -7,6 +7,9 @@ import pandas as pd
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class, keyword_only
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +308,12 @@ class ProcessStabilityIndexEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-ProcessStabilityIndex = deprecated_class(
-    ProcessStabilityIndexEvents, "ProcessStabilityIndex"
-)
+if TYPE_CHECKING:
+
+    @deprecated("ProcessStabilityIndex is deprecated, use ProcessStabilityIndexEvents")
+    class ProcessStabilityIndex(ProcessStabilityIndexEvents): ...
+
+else:
+    ProcessStabilityIndex = deprecated_class(
+        ProcessStabilityIndexEvents, "ProcessStabilityIndex"
+    )

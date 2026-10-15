@@ -8,6 +8,7 @@ Track setup durations to support Single-Minute Exchange of Die improvement:
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -15,6 +16,9 @@ from ts_shape.events._windows import add_period_window
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -429,4 +433,10 @@ class SetupTimeEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-SetupTimeTracking = deprecated_class(SetupTimeEvents, "SetupTimeTracking")
+if TYPE_CHECKING:
+
+    @deprecated("SetupTimeTracking is deprecated, use SetupTimeEvents")
+    class SetupTimeTracking(SetupTimeEvents): ...
+
+else:
+    SetupTimeTracking = deprecated_class(SetupTimeEvents, "SetupTimeTracking")

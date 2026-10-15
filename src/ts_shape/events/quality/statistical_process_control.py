@@ -1,6 +1,6 @@
 import logging
 import warnings
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,9 @@ from ts_shape.utils.deprecation import (
     keyword_only,
     renamed_kwargs,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +166,15 @@ class StatisticalProcessControlEvents(Base):
             self._validate_uuid(self.dataframe, tolerance_uuid)
             self._validate_uuid(self.dataframe, actual_uuid)
 
-    calculate_control_limits = deprecated_method("control_limits")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "StatisticalProcessControlEvents.calculate_control_limits() is deprecated, use .control_limits()"
+        )
+        def calculate_control_limits(self) -> pd.DataFrame: ...
+
+    else:
+        calculate_control_limits = deprecated_method("control_limits")
 
     def _reference_values(self) -> pd.Series:
         """Reference (tolerance) values in time order."""
@@ -214,7 +225,21 @@ class StatisticalProcessControlEvents(Base):
 
         return pd.DataFrame([control_limits])
 
-    calculate_dynamic_control_limits = deprecated_method("dynamic_control_limits")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "StatisticalProcessControlEvents.calculate_dynamic_control_limits() is deprecated, use .dynamic_control_limits()"
+        )
+        def calculate_dynamic_control_limits(
+            self,
+            method: Literal["moving_range", "ewma"] = "moving_range",
+            window_size: int = 20,
+            ewma_lambda: float | None = None,
+            n_sigma: float = 3.0,
+        ) -> pd.DataFrame: ...
+
+    else:
+        calculate_dynamic_control_limits = deprecated_method("dynamic_control_limits")
 
     @keyword_only(1)
     @renamed_kwargs(window="window_size")
@@ -581,7 +606,17 @@ class StatisticalProcessControlEvents(Base):
         """
         return self._apply_rule("rule_8", df, limits)
 
-    apply_rules_vectorized = deprecated_method("detect_rule_violations")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "StatisticalProcessControlEvents.apply_rules_vectorized() is deprecated, use .detect_rule_violations()"
+        )
+        def apply_rules_vectorized(
+            self, selected_rules: list[str] | None = None
+        ) -> pd.DataFrame: ...
+
+    else:
+        apply_rules_vectorized = deprecated_method("detect_rule_violations")
 
     @keyword_only(1)
     def detect_rule_violations(
@@ -861,7 +896,17 @@ class StatisticalProcessControlEvents(Base):
 
         return result
 
-    process = deprecated_method("detect_violations")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "StatisticalProcessControlEvents.process() is deprecated, use .detect_violations()"
+        )
+        def process(
+            self, selected_rules: list[str] | None = None, include_severity: bool = True
+        ) -> pd.DataFrame: ...
+
+    else:
+        process = deprecated_method("detect_violations")
 
     @keyword_only(1)
     def detect_violations(
@@ -959,6 +1004,14 @@ class StatisticalProcessControlEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-StatisticalProcessControlRuleBased = deprecated_class(
-    StatisticalProcessControlEvents, "StatisticalProcessControlRuleBased"
-)
+if TYPE_CHECKING:
+
+    @deprecated(
+        "StatisticalProcessControlRuleBased is deprecated, use StatisticalProcessControlEvents"
+    )
+    class StatisticalProcessControlRuleBased(StatisticalProcessControlEvents): ...
+
+else:
+    StatisticalProcessControlRuleBased = deprecated_class(
+        StatisticalProcessControlEvents, "StatisticalProcessControlRuleBased"
+    )

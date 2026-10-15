@@ -5,7 +5,7 @@ compute duration statistics, per-batch yield, and batch transition matrices.
 """
 
 import logging
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
 
@@ -14,6 +14,9 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_quantity
 from ts_shape.utils.deprecation import deprecated_method
 from ts_shape.utils.runs import run_bounds, total_seconds
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +131,15 @@ class BatchTrackingEvents(Base):
     # Duration statistics
     # ------------------------------------------------------------------
 
-    batch_duration_stats = deprecated_method("batch_duration_statistics")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "BatchTrackingEvents.batch_duration_stats() is deprecated, use .batch_duration_statistics()"
+        )
+        def batch_duration_stats(self) -> pd.DataFrame: ...
+
+    else:
+        batch_duration_stats = deprecated_method("batch_duration_statistics")
 
     def batch_duration_statistics(self) -> pd.DataFrame:
         """Compute duration statistics grouped by batch type (batch_id).

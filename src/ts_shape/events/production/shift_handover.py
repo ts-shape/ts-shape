@@ -13,7 +13,7 @@ Two modes of operation:
 
 import logging
 import warnings
-from typing import Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import pandas as pd
 
@@ -34,6 +34,9 @@ from ts_shape.utils.time_accounting import (
     shift_periods,
     time_by_period,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -764,4 +767,10 @@ class ShiftHandoverEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-ShiftHandoverReport = deprecated_class(ShiftHandoverEvents, "ShiftHandoverReport")
+if TYPE_CHECKING:
+
+    @deprecated("ShiftHandoverReport is deprecated, use ShiftHandoverEvents")
+    class ShiftHandoverReport(ShiftHandoverEvents): ...
+
+else:
+    ShiftHandoverReport = deprecated_class(ShiftHandoverEvents, "ShiftHandoverReport")

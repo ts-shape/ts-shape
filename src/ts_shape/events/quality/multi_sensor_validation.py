@@ -1,7 +1,7 @@
 import logging
 import warnings
 from itertools import combinations
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -16,6 +16,9 @@ from ts_shape.utils.deprecation import (
     keyword_only,
     renamed_kwargs,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +267,17 @@ class MultiSensorValidationEvents(Base):
             window=window,
         )
 
-    identify_outlier_sensor = deprecated_method("detect_outlier_sensor")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "MultiSensorValidationEvents.identify_outlier_sensor() is deprecated, use .detect_outlier_sensor()"
+        )
+        def identify_outlier_sensor(
+            self, window: str = "1h", method: str = "median"
+        ) -> pd.DataFrame: ...
+
+    else:
+        identify_outlier_sensor = deprecated_method("detect_outlier_sensor")
 
     @keyword_only(1)
     def detect_outlier_sensor(

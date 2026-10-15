@@ -8,7 +8,7 @@ Essential module for daily quality analysis:
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -23,6 +23,9 @@ from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
 from ts_shape.utils.time_accounting import counter_by_period, shift_periods
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -715,4 +718,10 @@ class QualityEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-QualityTracking = deprecated_class(QualityEvents, "QualityTracking")
+if TYPE_CHECKING:
+
+    @deprecated("QualityTracking is deprecated, use QualityEvents")
+    class QualityTracking(QualityEvents): ...
+
+else:
+    QualityTracking = deprecated_class(QualityEvents, "QualityTracking")
