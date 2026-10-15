@@ -33,11 +33,11 @@ NO_RUN = "<!-- no-run -->"
 _FENCE = re.compile(
     r"^(?P<indent>[ \t]*)```python[^\n]*\n(?P<body>.*?)^(?P=indent)```", re.M | re.S
 )
-# pandas marks elided rows or columns with "..." and a "[n rows x m columns]"
-# footer; a page should print the columns it talks about instead.
 # pandas' defaults, as a reader's console has them (a local config must not
 # hide a truncated frame).
 _DISPLAY = ("display.max_columns", 0, "display.width", 80, "display.max_rows", 60)
+# pandas marks elided rows or columns with "..." and a "[n rows x m columns]"
+# footer; a page should print the columns it talks about instead.
 _TRUNCATED = re.compile(r"(^|\s)\.\.\.(\s|$)|\[\d+ rows x \d+ columns\]", re.M)
 
 
@@ -56,6 +56,29 @@ def _blocks(text: str) -> list[tuple[int, str]]:
 
 
 PAGES = sorted(p for p in DOCS.rglob("*.md") if _blocks(p.read_text(encoding="utf-8")))
+
+
+@pytest.fixture(autouse=True)
+def _restore_registries():
+    """Undo what a page registers (custom adapters, rules, object types).
+
+    The event-log guides register a custom detector; left in the global
+    registries it would fail the registry-consistency tests run later.
+    """
+    from ts_shape.eventlog import adapters, archetypes, schema, taxonomy
+
+    saved = [
+        (taxonomy.REGISTRY, dict(taxonomy.REGISTRY)),
+        (archetypes.ARCHETYPE_BY_METHOD, dict(archetypes.ARCHETYPE_BY_METHOD)),
+        (adapters._OVERRIDES, dict(adapters._OVERRIDES)),
+    ]
+    object_types = set(schema._OBJECT_TYPES)
+    yield
+    for registry, copy in saved:
+        registry.clear()
+        registry.update(copy)
+    schema._OBJECT_TYPES.clear()
+    schema._OBJECT_TYPES.update(object_types)
 
 
 def test_pages_are_discovered():
