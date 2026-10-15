@@ -187,6 +187,10 @@ class PatternRecognition(Base):
             return cls._mass(series, query)
         return cls._euclidean(series, query)
 
+    #: STOMP refreshes its running sliding dot products with one exact FFT
+    #: every this many rows, so their rounding cannot accumulate.
+    _STOMP_REFRESH = 64
+
     @classmethod
     def _compute_matrix_profile(
         cls,
@@ -194,7 +198,19 @@ class PatternRecognition(Base):
         window_size: int,
         exclusion_zone: int,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Compute the Matrix Profile and Matrix Profile Index.
+        """Compute the Matrix Profile and Matrix Profile Index (STOMP).
+
+        Row ``i`` of the distance matrix is the MASS distance profile of the
+        window starting at ``i`` (see :meth:`_mass`). Its sliding dot products
+        are updated from row ``i - 1`` in O(n) (STOMP, Zhu et al. 2016:
+        ``QT[i, j] = QT[i-1, j-1] - T[i-1] T[j-1] + T[i+m-1] T[j+m-1]``)
+        instead of one FFT per row, and recomputed exactly by FFT every
+        :attr:`_STOMP_REFRESH` rows. O(n^2) instead of O(n^2 log n). The
+        distances equal the per-row MASS ones to rounding: within 1e-9
+        relative unless the series' level is many orders of magnitude above a
+        window's spread, where MASS's own rounding error (on the raw values)
+        is larger and this, working on the series centred on its mean, is the
+        more accurate of the two.
 
         Args:
             series: 1D time series array.
@@ -207,17 +223,59 @@ class PatternRecognition(Base):
             ``inf`` and index ``-1``.
         """
         n = len(series)
-        profile_len = max(n - window_size + 1, 0)
+        m = window_size
+        profile_len = max(n - m + 1, 0)
         mp = np.full(profile_len, np.inf)
         mpi = np.full(profile_len, -1, dtype=int)
-        valid = cls._valid_windows(series, window_size)
+        valid = cls._valid_windows(series, m)
+        if profile_len == 0 or not valid.any():
+            return mp, mpi
 
+        # Everything _mass derives from the series alone, computed once. The
+        # series is centred on its mean first: z-normalized distances do not
+        # change, and the dot products then carry no offset**2 term to cancel
+        # (MASS on the raw series loses digits when the level is large
+        # compared with a window's spread).
+        missing = np.isnan(series)
+        filled = np.where(missing, 0.0, series - float(np.mean(series[~missing])))
+        fft_series = fft(filled)
+        s = pd.Series(filled)
+        rolling_mean = s.rolling(window=m).mean().to_numpy()[m - 1 :]
+        rolling_std = s.rolling(window=m).std(ddof=0).to_numpy()[m - 1 :]
+        rolling_std = np.where(rolling_std < 1e-10, 1e-10, rolling_std)
+        windows = np.lib.stride_tricks.sliding_window_view(filled, m)
+        q_means = windows.mean(axis=1)
+        q_stds = np.maximum(windows.std(axis=1), 1e-10)
+
+        def exact_qt(i: int) -> np.ndarray:
+            q_padded = np.zeros(n)
+            q_padded[:m] = filled[i : i + m][::-1]
+            qt: np.ndarray = np.real(ifft(fft_series * fft(q_padded)))
+            return qt[m - 1 :]
+
+        first_row = exact_qt(0)
+        qt = first_row
+        head = filled[: profile_len - 1]
+        tail = filled[m : m + profile_len - 1]
         for i in range(profile_len):
+            if i and i % cls._STOMP_REFRESH == 0:
+                qt = exact_qt(i)
+            elif i:
+                nxt = np.empty(profile_len)
+                nxt[1:] = qt[:-1] - filled[i - 1] * head + filled[i + m - 1] * tail
+                nxt[0] = first_row[i]
+                qt = nxt
             if not valid[i]:
                 continue
-            query = series[i : i + window_size]
-            dist_profile = cls._mass(series, query)
-            dist_profile = np.where(np.isnan(dist_profile), np.inf, dist_profile)
+            q_mean = q_means[i]
+            q_std = q_stds[i]
+            dist_sq = (
+                2
+                * m
+                * (1 - (qt - m * q_mean * rolling_mean) / (m * q_std * rolling_std))
+            )
+            dist_sq = np.maximum(dist_sq, 0)
+            dist_profile = np.where(valid, np.sqrt(dist_sq), np.inf)
 
             # Apply exclusion zone
             ez_start = max(0, i - exclusion_zone)
@@ -417,6 +475,57 @@ class PatternRecognition(Base):
             return scaled
         return values
 
+    #: Windows per vectorized DTW batch (bounds the (len + 1) x batch arrays).
+    _DTW_BATCH = 8192
+
+    @classmethod
+    def _dtw_squared(cls, query: np.ndarray, windows: np.ndarray) -> np.ndarray:
+        """Squared DTW distance of ``query`` to every row of ``windows``.
+
+        The dynamic program of :meth:`_dtw_distance` run for all windows at
+        once (one vector operation per cell instead of one per cell and
+        window). Same operations in the same order, so the distances are
+        bit-identical: ``np.float_power`` is the C ``pow`` that the scalar
+        ``(a - b) ** 2`` calls.
+        """
+        n = len(query)
+        count, m = windows.shape
+        out = np.empty(count)
+        for a in range(0, count, cls._DTW_BATCH):
+            cand = np.ascontiguousarray(windows[a : a + cls._DTW_BATCH].T)
+            width = cand.shape[1]
+            prev = np.full((m + 1, width), np.inf)
+            prev[0] = 0.0
+            for i in range(1, n + 1):
+                cur = np.empty((m + 1, width))
+                cur[0] = np.inf
+                q = query[i - 1]
+                for j in range(1, m + 1):
+                    cost = np.float_power(q - cand[j - 1], 2.0)
+                    best = np.minimum(np.minimum(prev[j], cur[j - 1]), prev[j - 1])
+                    cur[j] = cost + best
+                prev = cur
+            out[a : a + width] = prev[m]
+        return out
+
+    @classmethod
+    def _dtw_windows(
+        cls, series: np.ndarray, m: int, normalize: bool
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Start indices of the windows without a missing value, and those
+        windows (z-normalized as :meth:`_znorm` does when ``normalize``)."""
+        valid = cls._valid_windows(series, m)
+        starts = np.flatnonzero(valid)
+        windows = np.lib.stride_tricks.sliding_window_view(series, m)[starts]
+        if normalize and len(starts):
+            std = windows.std(axis=1)
+            mean = windows.mean(axis=1)
+            scale = std > 1e-10
+            safe = np.where(scale, std, 1.0)
+            scaled = (windows - mean[:, None]) / safe[:, None]
+            windows = np.where(scale[:, None], scaled, windows)
+        return starts, windows
+
     @classmethod
     def _dtw_profile(
         cls, series: np.ndarray, query: np.ndarray, normalize: bool
@@ -427,14 +536,85 @@ class PatternRecognition(Base):
         if n < m:
             return np.array([])
         q = cls._znorm(query) if normalize else query
-        valid = cls._valid_windows(series, m)
+        starts, windows = cls._dtw_windows(series, m, normalize)
         distances = np.full(n - m + 1, np.nan)
-        for i in np.flatnonzero(valid):
-            subseq = series[i : i + m].copy()
-            if normalize:
-                subseq = cls._znorm(subseq)
-            distances[i] = cls._dtw_distance(q, subseq)
+        distances[starts] = np.sqrt(cls._dtw_squared(q, windows))
         return distances
+
+    @staticmethod
+    def _dtw_lower_bound(query: np.ndarray, windows: np.ndarray) -> np.ndarray:
+        """Lower bounds of the squared DTW distance of ``query`` to each window.
+
+        The largest of LB_Kim (the first and last cells lie on every warping
+        path) and LB_Keogh in both directions (every sample is matched to at
+        least one sample of the other sequence, so it costs at least its
+        squared distance to the other sequence's range; without a warping
+        band the envelope is that range).
+        """
+        lo_q, hi_q = float(query.min()), float(query.max())
+        below = np.maximum(lo_q - windows, 0.0)
+        above = np.maximum(windows - hi_q, 0.0)
+        keogh = (below * below + above * above).sum(axis=1)
+        lo_w, hi_w = windows.min(axis=1), windows.max(axis=1)
+        below = np.maximum(lo_w[:, None] - query[None, :], 0.0)
+        above = np.maximum(query[None, :] - hi_w[:, None], 0.0)
+        keogh_rev = (below * below + above * above).sum(axis=1)
+        first = (query[0] - windows[:, 0]) ** 2
+        if len(query) > 1 and windows.shape[1] > 1:
+            kim = first + (query[-1] - windows[:, -1]) ** 2
+        else:
+            kim = first
+        bound: np.ndarray = np.maximum(np.maximum(keogh, keogh_rev), kim)
+        return bound
+
+    @classmethod
+    def _dtw_top_k(
+        cls, series: np.ndarray, query: np.ndarray, normalize: bool, top_k: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """The ``top_k`` windows closest to ``query`` under DTW, as (start
+        indices, distances) ranked by distance, ties by start index.
+
+        Exactly the first ``top_k`` of the full :meth:`_dtw_profile` ranking:
+        windows are visited in order of a lower bound of their distance
+        (:meth:`_dtw_lower_bound`), and the search stops once the bound
+        exceeds the ``top_k``-th best distance found so far (with a margin
+        far above rounding), so no skipped window can rank or tie.
+        """
+        m = len(query)
+        if len(series) < m:
+            return np.zeros(0, dtype=np.int64), np.zeros(0)
+        q = cls._znorm(query) if normalize else query
+        starts, windows = cls._dtw_windows(series, m, normalize)
+        if not 0 < top_k < len(starts):
+            # Every window is needed (or none): rank the full profile.
+            dist = np.sqrt(cls._dtw_squared(q, windows))
+            rank = np.argsort(dist, kind="stable")[:top_k]
+            return starts[rank], dist[rank]
+        bound = cls._dtw_lower_bound(q, windows)
+        order = np.argsort(bound, kind="stable")
+        done = np.zeros(0, dtype=np.int64)
+        squared = np.zeros(0)
+        batch = max(4 * top_k, 256)
+        pos = 0
+        while pos < len(order):
+            if len(squared) >= top_k:
+                kth = float(np.partition(squared, top_k - 1)[top_k - 1])
+                limit = kth * (1 + 1e-9) + 1e-300
+                stop = int(np.searchsorted(bound[order], limit, side="right"))
+                if stop <= pos:
+                    break
+                take = order[pos : min(stop, pos + batch)]
+            else:
+                take = order[pos : pos + batch]
+            done = np.concatenate([done, take])
+            squared = np.concatenate([squared, cls._dtw_squared(q, windows[take])])
+            pos += len(take)
+            batch *= 2
+        # Rank as the full profile does: by distance, ties by start index.
+        idx = starts[done]
+        dist = np.sqrt(squared)
+        rank = np.lexsort((idx, dist))[:top_k]
+        return idx[rank], dist[rank]
 
     @classmethod
     def similarity_search(
@@ -473,16 +653,14 @@ class PatternRecognition(Base):
             dataframe, value_column, time_column, uuid, "similarity_search"
         )
         q = cls._query(query, "query")
-        profile = cls._dtw_profile(series, q, normalize)
-        candidates = np.flatnonzero(~np.isnan(profile))
-        ranked = candidates[np.argsort(profile[candidates], kind="stable")]
+        ranked, distances = cls._dtw_top_k(series, q, normalize, top_k)
 
         results: list[dict[str, object]] = []
-        for rank, idx in enumerate(ranked[:top_k], 1):
+        for rank, (idx, dist) in enumerate(zip(ranked, distances, strict=True), 1):
             row: dict[str, object] = {
                 "rank": rank,
                 "start_index": int(idx),
-                "dtw_distance": float(profile[idx]),
+                "dtw_distance": float(dist),
             }
             if times is not None:
                 row["start_time"] = times.iloc[int(idx)]

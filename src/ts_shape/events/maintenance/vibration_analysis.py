@@ -13,6 +13,7 @@ from ts_shape.events.maintenance._rolling import (
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
+from ts_shape.utils.runs import run_agg, total_seconds, true_runs
 
 logger = logging.getLogger(__name__)
 
@@ -106,33 +107,29 @@ class VibrationAnalysisEvents(Base):
         if not exceeded.any():
             return pd.DataFrame(columns=cols)
 
-        # Group contiguous exceeded intervals
-        group_id = (exceeded != exceeded.shift()).cumsum()
-        ends = interval_end_times(sig[self.time_column], interval_end)
-        events: list[dict[str, Any]] = []
-        for _, seg in sig.groupby(group_id):
-            seg_exc = exceeded.loc[seg.index]
-            if not seg_exc.iloc[0]:
-                continue
-            start_time = seg[self.time_column].iloc[0]
-            end_time = ends.loc[seg.index[-1]]
-            avg_rms = float(seg["rms"].mean())
-            events.append(
-                {
-                    "start": start_time,
-                    "end": end_time,
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": True,
-                    "rms_value": avg_rms,
-                    "baseline_rms": baseline_rms,
-                    "ratio": avg_rms / baseline_rms if baseline_rms > 0 else None,
-                    "duration_seconds": (end_time - start_time).total_seconds(),
-                }
-            )
-
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        # One interval per contiguous run of exceeded samples.
+        runs = true_runs(exceeded.to_numpy(dtype=bool))
+        start = sig[self.time_column].array[runs.starts]
+        end = interval_end_times(sig[self.time_column], interval_end).array[runs.last]
+        avg_rms = run_agg(sig["rms"], runs, "nanmean")
+        ratio: Any = (
+            avg_rms / baseline_rms
+            if baseline_rms > 0
+            else np.full(runs.n_runs, None, dtype=object)
+        )
+        return pd.DataFrame(
+            {
+                "start": start,
+                "end": end,
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": True,
+                "rms_value": avg_rms,
+                "baseline_rms": baseline_rms,
+                "ratio": ratio,
+                "duration_seconds": total_seconds(end - start),
+            },
+            columns=cols,
         )
 
     @keyword_only(1)

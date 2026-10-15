@@ -37,15 +37,163 @@ import logging
 import warnings
 from typing import ClassVar
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import require_columns
-from ts_shape.utils.normalize import normalize_signal_frame
-from ts_shape.utils.signal_checks import checked, checked_init
+from ts_shape.utils.normalize import normalize_signal_frame, unique_text
+from ts_shape.utils.signal_checks import checked, checked_init, remember_uuids
 
 logger = logging.getLogger(__name__)
+
+
+def _copy_on_write() -> bool:
+    """Whether pandas copies a shared column on its first write."""
+    if int(pd.__version__.split(".")[0]) >= 3:
+        return True
+    return pd.get_option("mode.copy_on_write") is True
+
+
+def _is_numpy_datetime(series: pd.Series) -> bool:
+    """A ``datetime64`` column (naive or tz-aware) that needs no parsing."""
+    dtype = series.dtype
+    if isinstance(dtype, pd.DatetimeTZDtype):
+        return True
+    return isinstance(dtype, np.dtype) and dtype.kind == "M"
+
+
+def _all_missing(series: pd.Series) -> bool:
+    """``series.isna().all()``, answered from a few rows when one has a value."""
+    dtype = series.dtype
+    if isinstance(dtype, np.dtype) and dtype.kind in "biu":  # no NaN possible
+        return False
+    n = len(series)
+    if n and isinstance(dtype, np.dtype):
+        values = series.to_numpy()
+        for i in (0, n // 2, n - 1):
+            if not _is_missing_scalar(values[i]):
+                return False
+    return bool(series.isna().all())
+
+
+def _is_missing_scalar(value: object) -> bool:
+    missing = pd.isna(value)
+    return not isinstance(missing, (bool, np.bool_)) or bool(missing)
+
+
+def _ticks(series: pd.Series) -> np.ndarray | None:
+    """The time column as int64 ticks (NaT is the smallest), or ``None``."""
+    if not _is_numpy_datetime(series):
+        return None
+    if isinstance(series.dtype, pd.DatetimeTZDtype):
+        return np.asarray(series.array.asi8, dtype=np.int64)
+    return np.asarray(series.to_numpy().view("i8"), dtype=np.int64)
+
+
+def _missing_last(codes: np.ndarray) -> np.ndarray:
+    """Factorize codes (``-1``: missing) with missing as the largest, in place."""
+    codes[codes < 0] = np.iinfo(np.int64).max
+    return codes
+
+
+class _SortOrder:
+    """Sort keys of a signal frame: ``(time, uuid)``, missing values last.
+
+    Computes, on integer codes, what ``sort_values(by=keys, kind="stable")``,
+    ``isna().sum()`` and ``duplicated(subset=keys).sum()`` compute on the
+    columns: whether the frame is already in order, the stable sort, the NaT
+    count and the duplicate count. Columns whose order cannot be read from
+    codes (an ``object`` uuid column with non-text values, a time column
+    that is not ``datetime64``) take the pandas calls themselves.
+    """
+
+    def __init__(self, frame: pd.DataFrame, time_col: str) -> None:
+        self.frame = frame
+        self.keys = [time_col] + (["uuid"] if "uuid" in frame.columns else [])
+        self.ticks: np.ndarray | None = None
+        self.nat: np.ndarray | None = None
+        self.codes: np.ndarray | None = None
+        #: The uuids, as text (``None`` when the frame has no uuid column).
+        self.uuids: set[str] | None = None
+        self.exact = False
+        if not frame.columns.is_unique:
+            return
+        self.ticks = _ticks(frame[time_col])
+        if self.ticks is not None:
+            self.nat = np.asarray(frame[time_col].isna(), dtype=bool)
+        if "uuid" in frame.columns:
+            self.codes, self.uuids = self._uuid_codes(frame["uuid"])
+        self.exact = self.ticks is not None and (
+            "uuid" not in frame.columns or self.codes is not None
+        )
+
+    @staticmethod
+    def _uuid_codes(series: pd.Series) -> tuple[np.ndarray | None, set[str]]:
+        """Codes in sort order (missing: the largest) and the uuid texts."""
+        if isinstance(series.dtype, pd.CategoricalDtype):
+            # A categorical sorts by its categories' order.
+            codes = np.array(series.cat.codes, dtype=np.int64)
+            return _missing_last(codes), unique_text(series)
+        try:
+            codes, uniques = pd.factorize(series, sort=True)
+        except TypeError:  # values that cannot be ordered
+            return None, unique_text(series)
+        values = list(uniques)
+        if series.dtype == object and not all(isinstance(v, str) for v in values):
+            return None, unique_text(series)
+        texts = {str(v) for v in values}
+        return _missing_last(np.asarray(codes, dtype=np.int64)), texts
+
+    def is_sorted(self) -> bool:
+        if not self.exact:
+            return False
+        ticks, nat = self.ticks, self.nat
+        assert ticks is not None and nat is not None
+        if len(ticks) < 2:
+            return True
+        if (nat[:-1] & ~nat[1:]).any():
+            return False  # a NaT before a timestamp
+        valid = len(ticks) - int(nat.sum())
+        if (ticks[1:valid] < ticks[: max(valid - 1, 0)]).any():
+            return False
+        if self.codes is None:
+            return True
+        ties = ticks[1:] == ticks[:-1]
+        return not (ties & (self.codes[1:] < self.codes[:-1])).any()
+
+    def sort(self) -> pd.DataFrame:
+        """The sorted frame (it replaces the unsorted one here, too)."""
+        if not self.exact:
+            self.frame = self.frame.sort_values(by=self.keys, kind="stable")
+            return self.frame
+        assert self.ticks is not None and self.nat is not None
+        if self.codes is None:
+            order = np.lexsort((self.ticks, self.nat))
+        else:
+            order = np.lexsort((self.codes, self.ticks, self.nat))
+            self.codes = self.codes[order]
+        self.ticks = self.ticks[order]
+        self.nat = self.nat[order]
+        frame = self.frame
+        self.frame = frame.take(order).__finalize__(frame, method="sort_values")
+        return self.frame
+
+    def nat_count(self) -> int:
+        if self.nat is None:
+            return int(self.frame[self.keys[0]].isna().sum())
+        return int(self.nat.sum())
+
+    def duplicate_count(self, frame: pd.DataFrame) -> int:
+        """Rows repeating an earlier row's keys (the frame is sorted)."""
+        if not self.exact:
+            return int(frame.duplicated(subset=self.keys).sum())
+        assert self.ticks is not None
+        same = self.ticks[1:] == self.ticks[:-1]
+        if self.codes is not None:
+            same &= self.codes[1:] == self.codes[:-1]
+        return int(same.sum())
 
 
 class Base:
@@ -142,7 +290,13 @@ class Base:
             raise TypeError(
                 f"Expected pandas DataFrame, got {type(dataframe).__name__}"
             )
-        self.dataframe = dataframe.copy()
+        # Under copy-on-write (always on in pandas 3) a shallow copy is a
+        # private copy: the first write to a column copies that column.
+        # Without it, the frame is copied once below unless sorting already
+        # built new arrays.
+        cow = _copy_on_write()
+        self.dataframe = dataframe.copy(deep=not cow or dataframe.empty)
+        owned = cow or dataframe.empty
         if self.dataframe.empty:
             return
         if (
@@ -155,9 +309,10 @@ class Base:
             )
 
         if time_col in self.dataframe.columns:
-            self.dataframe[time_col] = pd.to_datetime(
-                self.dataframe[time_col], errors="coerce"
-            )
+            if not _is_numpy_datetime(self.dataframe[time_col]):
+                self.dataframe[time_col] = pd.to_datetime(
+                    self.dataframe[time_col], errors="coerce"
+                )
         else:
             # No time column: a column named like a time ("start_time",
             # "date") is used instead. Only datetime or text columns qualify;
@@ -195,18 +350,24 @@ class Base:
         # text-number columns are converted once here (utils.normalize).
         normalize_signal_frame(self.dataframe, time_column=time_col)
 
+        has_time = time_col in self.dataframe.columns
+        order = _SortOrder(self.dataframe, time_col) if has_time else None
+
         # Sort by time; rows with the same timestamp keep a fixed order (by
         # uuid), so a result never depends on the order rows arrived in.
-        if time_col in self.dataframe.columns:
-            keys = [time_col]
-            if "uuid" in self.dataframe.columns:
-                keys.append("uuid")
-            self.dataframe = self.dataframe.sort_values(by=keys, kind="stable")
+        if order is not None and not order.is_sorted():
+            self.dataframe = order.sort()
+            owned = True
+        if not owned:
+            self.dataframe = self.dataframe.copy()
+        if order is not None and order.uuids is not None:
+            # Read back by the signal checks instead of scanning the column.
+            remember_uuids(self, self.dataframe, "uuid", order.uuids)
 
         # Warn on missing/unparseable timestamps. They are kept (sorted last),
         # but every duration or interval touching them comes out NaT/NaN.
-        if time_col in self.dataframe.columns:
-            nat_count = int(self.dataframe[time_col].isna().sum())
+        if order is not None:
+            nat_count = order.nat_count()
             if 0 < nat_count < len(self.dataframe):
                 warnings.warn(
                     f"Column '{time_col}' contains {nat_count} missing or "
@@ -217,11 +378,9 @@ class Base:
                 )
 
         # Warn on duplicate timestamps (per UUID when available)
-        if time_col in self.dataframe.columns:
-            subset = (
-                [time_col, "uuid"] if "uuid" in self.dataframe.columns else [time_col]
-            )
-            dup_count = self.dataframe.duplicated(subset=subset).sum()
+        if order is not None:
+            subset = order.keys
+            dup_count = order.duplicate_count(self.dataframe)
             if dup_count:
                 warnings.warn(
                     f"DataFrame contains {dup_count} duplicate timestamp(s) "
@@ -234,7 +393,7 @@ class Base:
         # fills one value_* column, so unused value columns are normal; they
         # are reported only when no value column holds any data.
         all_nan_cols = [
-            col for col in self.dataframe.columns if self.dataframe[col].isna().all()
+            col for col in self.dataframe.columns if _all_missing(self.dataframe[col])
         ]
         value_cols = [c for c in self.dataframe.columns if str(c).startswith("value_")]
         if any(c not in all_nan_cols for c in value_cols):

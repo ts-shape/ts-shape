@@ -13,6 +13,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
+from ts_shape.utils.runs import run_agg, true_runs
 
 logger = logging.getLogger(__name__)
 
@@ -99,26 +100,34 @@ class StartupDetectionEvents(Base):
         above_enter = s[self.value_column] >= enter_thr
         rising = (~above_enter.shift(fill_value=False)) & above_enter
         rise_times = s.loc[rising, self.time_column]
+        if rise_times.empty:
+            return self._intervals([], cols)
 
-        events: list[dict[str, Any]] = []
-        for t0 in rise_times:
-            # ensure dwell above exit threshold for min_above
-            win = _between(s, self.time_column, t0, t0 + min_above_td)
-            if win.empty:
-                continue
-            if (win[self.value_column] >= exit_thr).all():
-                events.append(
-                    {
-                        "start": t0,
-                        "end": t0 + min_above_td,
-                        "uuid": self.event_uuid,
-                        "is_delta": True,
-                        "method": "threshold",
-                        "threshold": float(threshold),
-                    }
-                )
-
-        return self._intervals(events, cols)
+        # A rise is a startup when every sample in [t0, t0 + min_above] is
+        # at or above the exit level: count the samples below it with a
+        # prefix sum over the windows found by binary search.
+        times = s[self.time_column]
+        lo = times.searchsorted(rise_times, side="left")
+        hi = times.searchsorted(rise_times + min_above_td, side="right")
+        below = np.r_[0, np.cumsum(~(s[self.value_column] >= exit_thr).to_numpy())]
+        ok = (hi > lo) & (below[hi] == below[lo])
+        if not ok.any():
+            return self._intervals([], cols)
+        t0 = rise_times.array[ok]
+        events = pd.DataFrame(
+            {
+                "start": t0,
+                "end": t0 + min_above_td,
+                "uuid": self.event_uuid,
+                "is_delta": True,
+                "method": "threshold",
+                "threshold": float(threshold),
+            },
+            columns=cols,
+        )
+        return finalize_interval_df(
+            events, uuid=self.event_uuid, source_uuid=self.target_uuid
+        )
 
     def _intervals(self, events: list[dict[str, Any]], cols: list[str]) -> pd.DataFrame:
         """Canonical interval frame (full schema, also when empty)."""
@@ -206,6 +215,41 @@ class StartupDetectionEvents(Base):
         s["slope"] = s["dv"] / s["dt_s"].where(~dup)
         mask = s["slope"] >= float(min_slope)
 
+        if not s.index.is_unique:
+            return self._slope_events_by_labels(s, mask, min_slope, min_duration, cols)
+        runs = true_runs(mask.to_numpy(dtype=bool))
+        times = s[self.time_column].array
+        start_t, end_t = times[runs.starts], times[runs.last]
+        keep = ~((end_t - start_t) < pd.to_timedelta(min_duration))
+        if not keep.any():
+            return self._intervals([], cols)
+        avg_slope = run_agg(s["slope"], runs, "nanmean")[keep]
+        events = pd.DataFrame(
+            {
+                "start": start_t[keep],
+                "end": end_t[keep],
+                "uuid": self.event_uuid,
+                "is_delta": True,
+                "method": "slope",
+                "min_slope": float(min_slope),
+                "avg_slope": avg_slope,
+            },
+            columns=cols,
+        )
+        return finalize_interval_df(
+            events, uuid=self.event_uuid, source_uuid=self.target_uuid
+        )
+
+    def _slope_events_by_labels(
+        self,
+        s: pd.DataFrame,
+        mask: pd.Series,
+        min_slope: float,
+        min_duration: str,
+        cols: list[str],
+    ) -> pd.DataFrame:
+        """Label-based run loop, kept for frames with duplicate index labels
+        (whose ``.loc`` lookups the vectorized version does not reproduce)."""
         gid = (mask != mask.shift()).cumsum()
         min_d = pd.to_timedelta(min_duration)
         events: list[dict[str, Any]] = []
@@ -229,7 +273,6 @@ class StartupDetectionEvents(Base):
                     "avg_slope": float(avg_slope) if pd.notna(avg_slope) else None,
                 }
             )
-
         return self._intervals(events, cols)
 
     @keyword_only(2)

@@ -1,6 +1,5 @@
 import logging
 import warnings
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -14,6 +13,7 @@ from ts_shape.events._output import (
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, keyword_only
+from ts_shape.utils.runs import run_argmax, true_runs
 
 logger = logging.getLogger(__name__)
 
@@ -101,37 +101,30 @@ class RateOfChangeEvents(Base):
         if rate_df.empty:
             return empty
 
-        rapid = rate_df["rate"].abs() >= threshold
+        rate = rate_df["rate"].to_numpy(dtype=np.float64)
+        rapid = np.abs(rate) >= threshold
         if not rapid.any():
             return empty
 
-        groups = (rapid != rapid.shift()).cumsum()
-        events: list[dict[str, Any]] = []
+        # One interval per run of rapid samples; max_rate is the rate with the
+        # largest magnitude (first one on ties).
+        runs = true_runs(rapid)
+        times = rate_df[self.time_column].array
+        max_rate = rate[run_argmax(np.abs(rate), runs)]
+        events = pd.DataFrame(
+            {
+                "start": times[runs.starts],
+                "end": times[runs.last],
+                "max_rate": max_rate,
+                "direction": np.where(max_rate > 0, "increasing", "decreasing").astype(
+                    object
+                ),
+            },
+            columns=cols,
+        )
 
-        for _, seg in rate_df.groupby(groups):
-            seg_rapid = rapid.loc[seg.index]
-            if not seg_rapid.iloc[0]:
-                continue
-            start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
-            max_rate_idx = seg["rate"].abs().idxmax()
-            max_rate = float(seg.loc[max_rate_idx, "rate"])
-
-            events.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "max_rate": max_rate,
-                    "direction": "increasing" if max_rate > 0 else "decreasing",
-                }
-            )
-
-        if not events:
-            return empty
         return finalize_interval_df(
-            pd.DataFrame(events, columns=cols),
-            uuid=self.event_uuid,
-            source_uuid=self.signal_uuid,
+            events, uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
     @keyword_only(1)
@@ -194,28 +187,23 @@ class RateOfChangeEvents(Base):
         )
         max_td = pd.to_timedelta(max_duration)
 
-        events: list[dict[str, Any]] = []
         values = sig[self.value_column].values
         times = sig[self.time_column].array
-
-        for i in range(1, len(values)):
-            delta = values[i] - values[i - 1]
-            duration = pd.Timestamp(times[i]) - pd.Timestamp(times[i - 1])
-
-            if abs(delta) >= min_delta and duration <= max_td:
-                events.append(
-                    {
-                        "time": pd.Timestamp(times[i]),
-                        "value_before": float(values[i - 1]),
-                        "value_after": float(values[i]),
-                        "delta": float(delta),
-                        "duration": duration,
-                    }
-                )
-
-        if not events:
+        delta = values[1:] - values[:-1]
+        duration = times[1:] - times[:-1]
+        hit = np.flatnonzero((np.abs(delta) >= min_delta) & (duration <= max_td))
+        if not hit.size:
             return empty
-        out = pd.DataFrame(events, columns=cols)
+        out = pd.DataFrame(
+            {
+                "time": times[hit + 1],
+                "value_before": values[hit].astype(np.float64),
+                "value_after": values[hit + 1].astype(np.float64),
+                "delta": delta[hit].astype(np.float64),
+                "duration": duration[hit],
+            },
+            columns=cols,
+        )
         out["systime"] = out["time"]
         return finalize_point_df(
             out, uuid=self.event_uuid, source_uuid=self.signal_uuid

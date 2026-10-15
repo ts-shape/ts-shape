@@ -23,12 +23,12 @@ spread_changes = cp.detect_change_points(cost="normal_meanvar")
 
 | Method | Returns |
 |---|---|
-| `detect_change_points(cost='normal_mean', penalty=None, min_size=5, method='pelt')` | one point per change at the first sample of the new segment: `mean_before`, `mean_after`, `std_before`, `std_after`, `shift`, `shift_sigma` |
+| `detect_change_points(cost='normal_mean', penalty=None, min_size=5, method='auto')` | one point per change at the first sample of the new segment: `mean_before`, `mean_after`, `std_before`, `std_after`, `shift`, `shift_sigma` |
 | `segment_statistics(...)` (same arguments) | one interval per segment: `start`, `end` (start of the next segment), `segment`, `mean`, `std`, `sample_count` |
 
 ## Notes
 
-- `method="pelt"` (default) is exact: it minimizes a Gaussian cost plus a penalty per change, but becomes quadratic on long series with few changes. `method="binseg"` (binary segmentation) is O(n log n) and approximate; use it, or resample first, on long series. PELT warns above 20,000 samples.
+- `method="pelt"` is exact: it minimizes a Gaussian cost plus a penalty per change, but becomes quadratic on long series with few changes. `method="binseg"` (binary segmentation) is O(n log n) and approximate. `method="auto"` (the default) runs PELT on up to 20,000 samples (`PELT_WARN_SAMPLES`) and binary segmentation above; pass `method="pelt"` to get the exact result on a long series (it warns above 20,000 samples), or resample first.
 - `penalty=None` uses the BIC (`2 log n` for `normal_mean`, `3 log n` for `normal_meanvar`) and finds no changes on stationary noise. Raise it to keep only larger shifts.
 - `normal_mean` estimates one noise level for the whole signal, robustly from first differences, so level shifts do not inflate it. On a signal whose spread changes it over-segments the noisy stretch; use `normal_meanvar` there.
 - `min_size` is the minimum number of samples per segment.

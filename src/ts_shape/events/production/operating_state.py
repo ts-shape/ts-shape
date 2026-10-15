@@ -127,7 +127,9 @@ class OperatingStateEvents(Base):
                 "start": start[keep].reset_index(drop=True),
                 "end": end[keep].reset_index(drop=True),
                 "state": state_ids.to_numpy(),
-                "state_label": [labels[i] for i in state_ids.tolist()],
+                "state_label": np.asarray(labels, dtype=object)[
+                    state_ids.to_numpy()
+                ].tolist(),
                 "mean_value": means.to_numpy(dtype="float64")[keep],
                 "duration_seconds": duration[keep].dt.total_seconds().to_numpy(),
                 "uuid": self.event_uuid,
@@ -218,7 +220,15 @@ class OperatingStateEvents(Base):
             return pd.DataFrame(columns=cols)
 
         labels = self._state_labels(n_states)
-        states = intervals["state"].tolist()
+        states = intervals["state"].to_numpy(dtype=np.int64)
+        # Each distinct (from, to) pair is classified once, then mapped back.
+        pairs, pair_idx, pair_counts = np.unique(
+            np.column_stack([states[:-1], states[1:]]),
+            axis=0,
+            return_inverse=True,
+            return_counts=True,
+        )
+        pair_list = [(int(a), int(b)) for a, b in pairs.tolist()]
 
         # Build normal transition set
         if expected_order is not None:
@@ -226,33 +236,29 @@ class OperatingStateEvents(Base):
             for i in range(len(expected_order) - 1):
                 normal_transitions.add((expected_order[i], expected_order[i + 1]))
         else:
-            # Count bigrams, take transitions occurring at least 20% of the time
-            transition_counts: dict[tuple, int] = {}
-            for i in range(len(states) - 1):
-                pair = (states[i], states[i + 1])
-                transition_counts[pair] = transition_counts.get(pair, 0) + 1
-            total = sum(transition_counts.values())
-            threshold = max(1, total * 0.1)
+            # Count bigrams, take transitions occurring at least 10% of the time
+            threshold = max(1, (len(states) - 1) * 0.1)
             normal_transitions = {
-                pair for pair, count in transition_counts.items() if count >= threshold
+                pair
+                for pair, count in zip(pair_list, pair_counts.tolist(), strict=True)
+                if count >= threshold
             }
 
         def _label(state_id: int) -> str:
             return labels[state_id] if state_id < len(labels) else f"state_{state_id}"
 
-        from_states = [int(x) for x in states[:-1]]
-        to_states = [int(x) for x in states[1:]]
+        uniq, state_idx = np.unique(states, return_inverse=True)
+        state_labels = np.asarray([_label(int(x)) for x in uniq], dtype=object)
+        unusual = np.asarray([p not in normal_transitions for p in pair_list])
+        pair_idx = pair_idx.reshape(-1)
         return pd.DataFrame(
             {
                 "transition_time": intervals["start"].iloc[1:].reset_index(drop=True),
-                "from_state": from_states,
-                "to_state": to_states,
-                "from_label": [_label(x) for x in from_states],
-                "to_label": [_label(x) for x in to_states],
-                "is_unusual": [
-                    (a, b) not in normal_transitions
-                    for a, b in zip(from_states, to_states, strict=True)
-                ],
+                "from_state": states[:-1],
+                "to_state": states[1:],
+                "from_label": state_labels[state_idx[:-1]].tolist(),
+                "to_label": state_labels[state_idx[1:]].tolist(),
+                "is_unusual": unusual[pair_idx].astype(bool),
             },
             columns=cols,
         )
@@ -292,24 +298,21 @@ class OperatingStateEvents(Base):
         max_td = pd.to_timedelta(max_duration).total_seconds()
         state_intervals = intervals[intervals["state"] == state]
 
-        events: list[dict[str, Any]] = []
-        for _, row in state_intervals.iterrows():
-            dur = row["duration_seconds"]
-            if dur > max_td:
-                events.append(
-                    {
-                        "start": row["start"],
-                        "end": row["end"],
-                        "state_label": row["state_label"],
-                        "duration_seconds": dur,
-                        "excess_seconds": dur - max_td,
-                        "uuid": self.event_uuid,
-                        "source_uuid": self.signal_uuid,
-                    }
-                )
-
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        hit = state_intervals[state_intervals["duration_seconds"] > max_td]
+        if hit.empty:
+            return pd.DataFrame(columns=cols)
+        dur = hit["duration_seconds"].to_numpy()
+        return pd.DataFrame(
+            {
+                "start": hit["start"].array,
+                "end": hit["end"].array,
+                "state_label": hit["state_label"].tolist(),
+                "duration_seconds": dur,
+                "excess_seconds": dur - max_td,
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+            },
+            columns=cols,
         )
 
     # ------------------------------------------------------------------

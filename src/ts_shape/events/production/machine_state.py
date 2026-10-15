@@ -11,6 +11,7 @@ from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
+from ts_shape.utils.runs import total_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -256,33 +257,67 @@ class MachineStateEvents(Base):
             return pd.DataFrame(columns=cols)
 
         threshold_td = pd.to_timedelta(threshold)
-        rapid_events: list[dict[str, Any]] = []
+        times = transitions["systime"].reset_index(drop=True)
+        if min_count < 1 or bool(times.isna().any()):
+            rapid_events = self._rapid_transitions_loop(
+                transitions, threshold_td, min_count
+            )
+        else:
+            # Every (i, j) with j >= i + min_count - 1 and t_j - t_i <=
+            # threshold, in (i, j) order; times are sorted, so the j for one i
+            # run up to the first later transition beyond the threshold.
+            n = len(times)
+            first_j = np.arange(n, dtype=np.int64) + min_count - 1
+            stop_j = times.searchsorted(times + threshold_td, side="right")
+            count = np.clip(stop_j - first_j, 0, None)
+            count[first_j >= n] = 0
+            i = np.repeat(np.arange(n, dtype=np.int64), count)
+            offset = np.arange(i.size, dtype=np.int64) - np.repeat(
+                np.cumsum(count) - count, count
+            )
+            j = first_j[i] + offset
+            t = times.array
+            start, end = t[i], t[j]
+            rapid_events = pd.DataFrame(
+                {
+                    "start": start,
+                    "end": end,
+                    "transition_count": j - i + 1,
+                    "duration_seconds": total_seconds(end - start),
+                }
+            )
 
-        for i in range(len(transitions) - min_count + 1):
-            start = transitions.iloc[i]["systime"]
-            for j in range(i + min_count - 1, len(transitions)):
-                end = transitions.iloc[j]["systime"]
-                duration = end - start
-                if duration <= threshold_td:
-                    transition_count = j - i + 1
-                    rapid_events.append(
-                        {
-                            "start": start,
-                            "end": end,
-                            "transition_count": transition_count,
-                            "duration_seconds": duration.total_seconds(),
-                        }
-                    )
-                else:
-                    break
-
-        if not rapid_events:
+        if len(rapid_events) == 0:
             return pd.DataFrame(columns=cols)
         out = pd.DataFrame(rapid_events)
         out.insert(0, "systime", out["start"])
         out.insert(1, "uuid", self.event_uuid)
         out.insert(2, "source_uuid", self.run_state_uuid)
         return out
+
+    @staticmethod
+    def _rapid_transitions_loop(
+        transitions: pd.DataFrame, threshold_td: pd.Timedelta, min_count: int
+    ) -> list[dict[str, Any]]:
+        """Reference pairwise scan (a missing transition time, min_count < 1)."""
+        rapid_events: list[dict[str, Any]] = []
+        for i in range(len(transitions) - min_count + 1):
+            start = transitions.iloc[i]["systime"]
+            for j in range(i + min_count - 1, len(transitions)):
+                end = transitions.iloc[j]["systime"]
+                duration = end - start
+                if duration <= threshold_td:
+                    rapid_events.append(
+                        {
+                            "start": start,
+                            "end": end,
+                            "transition_count": j - i + 1,
+                            "duration_seconds": duration.total_seconds(),
+                        }
+                    )
+                else:
+                    break
+        return rapid_events
 
     def _detect_data_gaps(self, max_gap: str = "5min") -> int:
         """Detect missing data gaps in the time series.

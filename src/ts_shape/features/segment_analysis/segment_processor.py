@@ -204,20 +204,28 @@ class SegmentProcessor(Base):
                 DataQualityWarning,
                 stacklevel=caller_stacklevel(),
             )
-            row_parts: list[np.ndarray] = []
-            range_parts: list[np.ndarray] = []
-            t_i8 = times.asi8
-            for s_val, e_val, closed, pos in zip(
-                s_sorted.asi8, e_sorted.asi8, closed_end, pos_sorted, strict=True
-            ):
-                hit = has_time & (t_i8 >= s_val) & (t_i8 < e_val)
-                if closed:
-                    hit |= has_time & (t_i8 == e_val)
-                rows = np.flatnonzero(hit)
-                row_parts.append(rows)
-                range_parts.append(np.full(len(rows), pos, dtype=np.int64))
-            row_pos = np.concatenate(row_parts)
-            range_pos = np.concatenate(range_parts)
+            # Every range is a contiguous run of the time-sorted rows: two
+            # binary searches per range instead of a scan of all rows. A row
+            # is in a range when start <= t < end, or t == end for a closed
+            # end (also when that end lies before the start).
+            timed = np.flatnonzero(has_time)
+            by_time = timed[np.argsort(times.asi8[timed], kind="stable")]
+            t_sorted = times.asi8[by_time]
+            s_i8, e_i8 = s_sorted.asi8, e_sorted.asi8
+            at_end_lo = np.searchsorted(t_sorted, e_i8, side="left")
+            at_end_hi = np.searchsorted(t_sorted, e_i8, side="right")
+            lo = np.searchsorted(t_sorted, s_i8, side="left")
+            hi = np.maximum(np.where(closed_end, at_end_hi, at_end_lo), lo)
+            backwards_closed = closed_end & (e_i8 < s_i8)
+            lo = np.where(backwards_closed, at_end_lo, lo)
+            hi = np.where(backwards_closed, at_end_hi, hi)
+            lens = (hi - lo).astype(np.int64)
+            offsets = np.cumsum(lens) - lens
+            flat = np.arange(int(lens.sum()), dtype=np.int64) + np.repeat(
+                lo - offsets, lens
+            )
+            row_pos = by_time[flat]
+            range_pos = np.repeat(pos_sorted, lens).astype(np.int64)
 
         if len(row_pos) == 0:
             warnings.warn(

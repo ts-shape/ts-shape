@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -9,6 +8,7 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
+from ts_shape.utils.runs import total_seconds
 from ts_shape.utils.shifts import assign_shift
 from ts_shape.utils.time_accounting import grouper_periods, time_by_period
 
@@ -146,35 +146,33 @@ class MicroStopEvents(Base):
         max_td = pd.to_timedelta(max_duration)
         min_td = pd.to_timedelta(min_duration)
 
-        events: list[dict[str, Any]] = []
-        for i, row in intervals.iterrows():
-            if row["state"] != "idle":
-                continue
-            dur = row["duration"]
-            if dur > max_td or dur < min_td:
-                continue
+        state = intervals["state"].to_numpy()
+        duration = intervals["duration"]
+        idle = (state == "idle") & (duration <= max_td).to_numpy()
+        idle &= (duration >= min_td).to_numpy()
+        if not idle.any():
+            return pd.DataFrame(columns=cols)
 
-            # Find preceding run duration
-            preceding_run = pd.Timedelta(0)
-            if i > 0:
-                prev = intervals.iloc[i - 1]
-                if prev["state"] == "run":
-                    preceding_run = prev["duration"]
-
-            events.append(
-                {
-                    "start": row["start"],
-                    "end": row["end"],
-                    "duration_seconds": (row["end"] - row["start"]).total_seconds(),
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.run_state_uuid,
-                    "duration": dur,
-                    "preceding_run_duration": preceding_run,
-                }
-            )
-
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        # Run time just before each stop: the previous interval when it is a
+        # run, else zero.
+        prev_run = np.r_[False, state[:-1] == "run"]
+        preceding = duration.shift(1).where(prev_run, pd.Timedelta(0))[idle]
+        if not prev_run[idle].all():
+            # A stop without a run before it gets Timedelta(0), whose
+            # nanosecond unit the column then takes (as it always has).
+            preceding = preceding.astype("timedelta64[ns]")
+        stops = intervals.loc[idle].reset_index(drop=True)
+        return pd.DataFrame(
+            {
+                "start": stops["start"],
+                "end": stops["end"],
+                "duration_seconds": total_seconds(stops["end"] - stops["start"]),
+                "uuid": self.event_uuid,
+                "source_uuid": self.run_state_uuid,
+                "duration": stops["duration"],
+                "preceding_run_duration": preceding.reset_index(drop=True),
+            },
+            columns=cols,
         )
 
     @keyword_only(1)

@@ -131,7 +131,27 @@ def test_validation_and_large_input_warning(monkeypatch):
         ChangePointEvents(df, "sig").detect_change_points(method="window")
     monkeypatch.setattr(cp, "PELT_WARN_SAMPLES", 10)
     with pytest.warns(UserWarning, match="binseg"):
-        ChangePointEvents(df, "sig").detect_change_points()
+        ChangePointEvents(df, "sig").detect_change_points(method="pelt")
+
+
+def test_auto_method_switches_to_binseg_above_the_pelt_limit(monkeypatch):
+    import warnings
+
+    import ts_shape.events.quality.change_point as cp
+
+    rng = np.random.default_rng(5)
+    x = np.concatenate([rng.normal(m, 1, 60) for m in (0, 4, 1)])
+    df = _frame(x)
+    for method in ("detect_change_points", "segment_statistics"):
+        small = getattr(ChangePointEvents(df, "sig"), method)
+        pd.testing.assert_frame_equal(small(), small(method="pelt"))
+    monkeypatch.setattr(cp, "PELT_WARN_SAMPLES", 100)
+    for method in ("detect_change_points", "segment_statistics"):
+        large = getattr(ChangePointEvents(df, "sig"), method)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # auto never warns
+            auto = large()
+        pd.testing.assert_frame_equal(auto, large(method="binseg"))
 
 
 def test_non_numeric_values_warn():

@@ -5,8 +5,8 @@ and standing alarm identification from boolean alarm signals.
 """
 
 import logging
-from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.events._output import finalize_interval_df
@@ -18,6 +18,7 @@ from ts_shape.utils.deprecation import (
     keyword_only,
     renamed_kwargs,
 )
+from ts_shape.utils.runs import run_bounds, total_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -91,31 +92,23 @@ class AlarmManagementEvents(Base):
             .copy()
             .reset_index(drop=True)
         )
-        s["state"] = bool_or_false(s[self.value_column])
-        s["group"] = (s["state"] != s["state"].shift()).cumsum()
-
-        rows: list[dict[str, Any]] = []
-        groups = list(s.groupby("group"))
-        for idx, (_, seg) in enumerate(groups):
-            if not seg["state"].iloc[0]:
-                continue  # skip OFF intervals
-            start = seg[self.time_column].iloc[0]
-            # End is the first timestamp of the *next* group (OFF transition),
-            # or the last timestamp in this group if no next group exists.
-            if idx + 1 < len(groups):
-                _, next_seg = groups[idx + 1]
-                end = next_seg[self.time_column].iloc[0]
-            else:
-                end = seg[self.time_column].iloc[-1]
-            rows.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "duration_seconds": (end - start).total_seconds(),
-                }
-            )
-
-        return pd.DataFrame(rows)
+        state = bool_or_false(s[self.value_column]).to_numpy(dtype=bool)
+        runs = run_bounds(state)
+        on = state[runs.starts]
+        if not on.any():
+            return pd.DataFrame([])
+        # An ON run ends where the next run (OFF) starts, or at the last
+        # sample when the alarm is still active at the end of the data.
+        times = s[self.time_column].array
+        start = times[runs.starts[on]]
+        end = times[np.minimum(runs.ends[on], len(state) - 1)]
+        return pd.DataFrame(
+            {
+                "start": start,
+                "end": end,
+                "duration_seconds": total_seconds(end - start),
+            }
+        )
 
     # ------------------------------------------------------------------
     # public methods
@@ -289,45 +282,25 @@ class AlarmManagementEvents(Base):
                 ]
             )
 
-        # Collapse consecutive flagged timestamps into distinct windows
-        flagged_times = flagged.index.to_series().reset_index(drop=True)
-        transition_counts = flagged.values
-
-        rows: list[dict[str, Any]] = []
-        start = flagged_times.iloc[0]
-        max_count = int(transition_counts[0])
-
-        for i in range(1, len(flagged_times)):
-            gap = flagged_times.iloc[i] - flagged_times.iloc[i - 1]
-            if gap > window_td:
-                # Close current window
-                rows.append(
-                    {
-                        "start": start,
-                        "end": flagged_times.iloc[i - 1],
-                        "transition_count": max_count,
-                        "uuid": self.event_uuid,
-                        "source_uuid": self.alarm_uuid,
-                    }
-                )
-                start = flagged_times.iloc[i]
-                max_count = int(transition_counts[i])
-            else:
-                max_count = max(max_count, int(transition_counts[i]))
-
-        # Close last window
-        rows.append(
+        # Collapse consecutive flagged timestamps into distinct windows: a new
+        # window starts after a gap longer than ``window``.
+        flagged_times = flagged.index.array
+        counts = flagged.to_numpy(dtype=np.float64).astype(np.int64)
+        cut = np.flatnonzero((flagged_times[1:] - flagged_times[:-1]) > window_td) + 1
+        first = np.concatenate(([0], cut))
+        last = np.concatenate((cut - 1, [len(flagged_times) - 1]))
+        rows = pd.DataFrame(
             {
-                "start": start,
-                "end": flagged_times.iloc[-1],
-                "transition_count": max_count,
+                "start": flagged_times[first],
+                "end": flagged_times[last],
+                "transition_count": np.maximum.reduceat(counts, first),
                 "uuid": self.event_uuid,
                 "source_uuid": self.alarm_uuid,
             }
         )
 
         out = finalize_interval_df(
-            pd.DataFrame(rows), uuid=self.event_uuid, source_uuid=self.alarm_uuid
+            rows, uuid=self.event_uuid, source_uuid=self.alarm_uuid
         )
         cols = ["start", "end", "duration_seconds", "transition_count"]
         return out[cols + ["uuid", "source_uuid"]]

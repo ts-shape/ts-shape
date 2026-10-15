@@ -8,6 +8,7 @@ completeness per calendar window (real window lengths on DST days).
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.events._windows import finish_events
@@ -15,6 +16,7 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.frames import window_offset
 from ts_shape.utils.intervals import interval_end_times
+from ts_shape.utils.runs import run_agg, true_runs
 
 logger = logging.getLogger(__name__)
 
@@ -147,24 +149,24 @@ class SignalQualityEvents(Base):
             sig["interval"].resample(window).agg(["mean", "std", "min", "max", "count"])
         )
 
-        events: list[dict[str, Any]] = []
-        for ts, row in resampled.iterrows():
-            if row["count"] < 2 or pd.isna(row["mean"]):
-                continue
-            mean_val = row["mean"]
-            std_val = row["std"] if pd.notna(row["std"]) else 0.0
-            # Regularity score: 1.0 = perfectly regular, 0.0 = very irregular
-            regularity = max(0.0, 1.0 - (std_val / (mean_val + 1e-10)))
-            events.append(
-                {
-                    "start": ts,
-                    "mean_interval": float(mean_val),
-                    "std_interval": float(std_val),
-                    "min_interval": float(row["min"]),
-                    "max_interval": float(row["max"]),
-                    "regularity_score": max(0.0, min(1.0, regularity)),
-                }
-            )
+        keep = (resampled["count"] >= 2).to_numpy() & resampled[
+            "mean"
+        ].notna().to_numpy()
+        kept = resampled[keep]
+        mean_val = kept["mean"].to_numpy(dtype=np.float64)
+        std_val = kept["std"].fillna(0.0).to_numpy(dtype=np.float64)
+        # Regularity score: 1.0 = perfectly regular, 0.0 = very irregular
+        regularity = np.maximum(0.0, 1.0 - (std_val / (mean_val + 1e-10)))
+        events = pd.DataFrame(
+            {
+                "start": kept.index,
+                "mean_interval": mean_val,
+                "std_interval": std_val,
+                "min_interval": kept["min"].to_numpy(dtype=np.float64),
+                "max_interval": kept["max"].to_numpy(dtype=np.float64),
+                "regularity_score": np.minimum(1.0, regularity),
+            }
+        )
 
         return finish_events(
             events,
@@ -226,36 +228,26 @@ class SignalQualityEvents(Base):
                 [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
             )
 
-        groups = (out_of_range != out_of_range.shift()).cumsum()
-        ends = interval_end_times(sig[self.time_column], interval_end)
-        events: list[dict[str, Any]] = []
-
-        for _, seg in sig.groupby(groups):
-            seg_oor = out_of_range.loc[seg.index]
-            if not seg_oor.iloc[0]:
-                continue
-            start = seg[self.time_column].iloc[0]
-            end = ends.loc[seg.index[-1]]
-            min_obs = float(seg[self.value_column].min())
-            max_obs = float(seg[self.value_column].max())
-
-            if max_obs > max_value:
-                direction = "above"
-            elif min_obs < min_value:
-                direction = "below"
-            else:
-                direction = "both"
-
-            events.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "duration": end - start,
-                    "min_observed": min_obs,
-                    "max_observed": max_obs,
-                    "direction": direction,
-                }
-            )
+        runs = true_runs(out_of_range.to_numpy(dtype=bool))
+        start = sig[self.time_column].array[runs.starts]
+        end = interval_end_times(sig[self.time_column], interval_end).array[runs.last]
+        min_obs = run_agg(sig[self.value_column], runs, "nanmin")
+        max_obs = run_agg(sig[self.value_column], runs, "nanmax")
+        direction = np.where(
+            max_obs > max_value,
+            "above",
+            np.where(min_obs < min_value, "below", "both"),
+        ).astype(object)
+        events = pd.DataFrame(
+            {
+                "start": start,
+                "end": end,
+                "duration": end - start,
+                "min_observed": min_obs,
+                "max_observed": max_obs,
+                "direction": direction,
+            }
+        )
 
         return finish_events(
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid

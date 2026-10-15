@@ -23,6 +23,7 @@ from __future__ import annotations
 import functools
 import inspect
 import warnings
+import weakref
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -30,11 +31,15 @@ import pandas as pd
 
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.deprecation import caller_stacklevel
+from ts_shape.utils.normalize import unique_text
 
 #: Arguments that name the output, not an input signal.
 _NOT_SIGNALS = {"event_uuid", "uuid_column"}
 
 _CHECKING = "_ts_shape_checking"
+# The uuids of ``obj.dataframe``, kept by ``Base`` (which already computed
+# them) so a method call does not scan the uuid column again.
+_UUIDS = "_ts_shape_uuids"
 # Set on every wrapped method so ``Base`` can tell which methods are checked.
 _CHECKED_MARKER = "__ts_shape_checked__"
 
@@ -62,6 +67,35 @@ def _frame_uuids(obj: Any) -> tuple[pd.DataFrame | None, str]:
     return (frame if isinstance(frame, pd.DataFrame) else None), str(column)
 
 
+def remember_uuids(obj: Any, frame: pd.DataFrame, column: str, uuids: set[str]) -> None:
+    """Record ``uuids`` (as text) as the values of ``frame[column]``.
+
+    Used while ``obj.dataframe`` is still ``frame`` (the same object, with
+    the same length); a detector that replaces its frame gets its uuids
+    computed again.
+    """
+    try:
+        ref = weakref.ref(frame)
+    except TypeError:
+        return
+    try:
+        object.__setattr__(obj, _UUIDS, (ref, column, len(frame), frozenset(uuids)))
+    except (AttributeError, TypeError):
+        pass
+
+
+def _present_uuids(obj: Any, frame: pd.DataFrame, column: str) -> set[str]:
+    """``set(frame[column].dropna().astype(str).unique())``, cached per frame."""
+    cached = getattr(obj, _UUIDS, None)
+    if cached is not None:
+        ref, cached_column, length, uuids = cached
+        if ref() is frame and cached_column == column and length == len(frame):
+            return set(uuids)
+    uuids = unique_text(frame[column])
+    remember_uuids(obj, frame, column, uuids)
+    return set(uuids)
+
+
 def check_signals(obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict) -> None:
     """Warn about signal uuids that are not in ``obj.dataframe``."""
     frame, column = _frame_uuids(obj)
@@ -83,13 +117,13 @@ def check_signals(obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict) -
             f"{type(obj).__name__}: the data has no {column!r} column to find "
             f"signal {requested[0][1]!r} in. Columns: {list(frame.columns)}"
         )
-    present = set(frame[column].dropna().astype(str).unique())
+    present = _present_uuids(obj, frame, column)
     # A method that also takes its own frame (production_df, report_df ...)
     # may name signals that live there.
     for value in bound.arguments.values():
         if value is not frame and isinstance(value, pd.DataFrame):
             if column in value.columns:
-                present |= set(value[column].dropna().astype(str).unique())
+                present |= unique_text(value[column])
     missing = [(n, u) for n, u in requested if u not in present]
     if missing:
         shown = sorted(present)[:10]

@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Literal, overload
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.events._compat import warn_dict_return
@@ -8,6 +9,7 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
+from ts_shape.utils.runs import run_agg, run_bounds
 
 logger = logging.getLogger(__name__)
 
@@ -162,37 +164,15 @@ class FlowConstraintEvents(Base):
         )
 
         cond = merged["state_up"] & (~merged["state_dn"].fillna(False))
-        gid = (cond.ne(cond.shift())).cumsum()
-        min_td = pd.to_timedelta(min_duration)
-        rows: list[dict[str, Any]] = []
-        ends = interval_end_times(merged[self.time_column], interval_end)
-        for _, seg in merged.groupby(gid):
-            m = cond.loc[seg.index]
-            if not m.any():
-                continue
-            start = seg[self.time_column].iloc[0]
-            end = ends.loc[seg.index[-1]]
-            duration = end - start
-            if duration < min_td:
-                continue
-
-            # Calculate severity based on duration
-            severity = self._calculate_severity(duration)
-
-            rows.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "uuid": self.event_uuid,
-                    "source_uuid": roles["upstream_run"],
-                    "is_delta": True,
-                    "type": "blocked",
-                    "time_alignment_quality": alignment_quality,
-                    "duration": duration,
-                    "severity": severity,
-                }
-            )
-        return pd.DataFrame(rows)
+        return self._condition_events(
+            merged,
+            cond,
+            interval_end=interval_end,
+            min_duration=min_duration,
+            source_uuid=roles["upstream_run"],
+            kind="blocked",
+            alignment_quality=alignment_quality,
+        )
 
     def starved_events(
         self,
@@ -300,37 +280,64 @@ class FlowConstraintEvents(Base):
         )
 
         cond = merged["state_dn"] & (~merged["state_up"].fillna(False))
-        gid = (cond.ne(cond.shift())).cumsum()
-        min_td = pd.to_timedelta(min_duration)
-        rows: list[dict[str, Any]] = []
-        ends = interval_end_times(merged[self.time_column], interval_end)
-        for _, seg in merged.groupby(gid):
-            m = cond.loc[seg.index]
-            if not m.any():
-                continue
-            start = seg[self.time_column].iloc[0]
-            end = ends.loc[seg.index[-1]]
-            duration = end - start
-            if duration < min_td:
-                continue
+        return self._condition_events(
+            merged,
+            cond,
+            interval_end=interval_end,
+            min_duration=min_duration,
+            source_uuid=roles["downstream_run"],
+            kind="starved",
+            alignment_quality=alignment_quality,
+        )
 
-            # Calculate severity based on duration
-            severity = self._calculate_severity(duration)
+    def _condition_events(
+        self,
+        merged: pd.DataFrame,
+        cond: pd.Series,
+        *,
+        interval_end: str,
+        min_duration: str,
+        source_uuid: str,
+        kind: str,
+        alignment_quality: float,
+    ) -> pd.DataFrame:
+        """One event per run of ``cond`` that holds and lasts ``min_duration``.
 
-            rows.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "uuid": self.event_uuid,
-                    "source_uuid": roles["downstream_run"],
-                    "is_delta": True,
-                    "type": "starved",
-                    "time_alignment_quality": alignment_quality,
-                    "duration": duration,
-                    "severity": severity,
-                }
-            )
-        return pd.DataFrame(rows)
+        Runs are the groups of ``cond.ne(cond.shift()).cumsum()``, exactly as
+        ``groupby`` forms them: rows whose group key is missing (``cond`` is a
+        nullable boolean) belong to no run.
+        """
+        gid = cond.ne(cond.shift()).cumsum()
+        pos = np.flatnonzero(gid.notna().to_numpy(dtype=bool))
+        runs = run_bounds(gid.iloc[pos].to_numpy(dtype=np.int64))
+        holds = run_agg(bool_or_false(cond).to_numpy(dtype=bool)[pos], runs, "any")
+        start = merged[self.time_column].array[pos[runs.starts]]
+        end = interval_end_times(merged[self.time_column], interval_end).array[
+            pos[runs.last]
+        ]
+        duration = end - start
+        keep = holds & ~(duration < pd.to_timedelta(min_duration))
+        if not keep.any():
+            return pd.DataFrame([])
+        duration = duration[keep]
+        severity = np.where(
+            duration < pd.to_timedelta("5s"),
+            "minor",
+            np.where(duration < pd.to_timedelta("30s"), "moderate", "severe"),
+        )
+        return pd.DataFrame(
+            {
+                "start": start[keep],
+                "end": end[keep],
+                "uuid": self.event_uuid,
+                "source_uuid": source_uuid,
+                "is_delta": True,
+                "type": kind,
+                "time_alignment_quality": alignment_quality,
+                "duration": duration,
+                "severity": severity.tolist(),
+            }
+        )
 
     def _calculate_severity(
         self,

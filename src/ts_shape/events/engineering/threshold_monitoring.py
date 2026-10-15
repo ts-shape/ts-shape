@@ -17,6 +17,60 @@ from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
 logger = logging.getLogger(__name__)
 
 
+def _pairwise_sum_slice(values: np.ndarray, offset: int, length: int) -> float:
+    """numpy's pairwise sum of a length-``length`` array that is zero except
+    for ``values`` at ``[offset, offset + len(values))``.
+
+    Equals ``full.sum()`` bit for bit (``full`` the zero-padded array) but
+    only touches the blocks of numpy's summation tree that hold ``values``;
+    an all-zero block sums to exactly 0.0, which leaves any partial sum
+    unchanged.
+    """
+    end = offset + values.size
+
+    def block(lo: int, n: int) -> float:
+        if lo + n <= offset or lo >= end:
+            return 0.0
+        if n > 128:
+            n2 = n // 2
+            n2 -= n2 % 8
+            return block(lo, n2) + block(lo + n2, n - n2)
+        seg = np.zeros(n, dtype=np.float64)
+        a, b = max(lo, offset), min(lo + n, end)
+        seg[a - lo : b - lo] = values[a - offset : b - offset]
+        if n < 8:
+            res = 0.0
+            for v in seg.tolist():
+                res += v
+            return res
+        full = n - n % 8
+        r = seg[:full].reshape(-1, 8).sum(axis=0).tolist()
+        res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))
+        for v in seg[full:].tolist():
+            res += v
+        return float(res)
+
+    return block(0, length)
+
+
+def _time_weighted_above_fraction_loop(
+    above: pd.Series, window_starts: pd.Index, window_td: pd.Timedelta
+) -> list[float]:
+    """Reference per-window loop (used when a timestamp is missing)."""
+    times = above.index.to_series().reset_index(drop=True)
+    seg_end = times.shift(-1).fillna(times)
+    flags = above.reset_index(drop=True).astype(bool)
+    starts, stops = times[flags], seg_end[flags]
+    fractions: list[float] = []
+    for w_start in window_starts:
+        w_end = w_start + window_td
+        overlap = (
+            stops.clip(upper=w_end) - starts.clip(lower=w_start)
+        ).dt.total_seconds()
+        fractions.append(float(overlap.clip(lower=0).sum()) / window_td.total_seconds())
+    return fractions
+
+
 class ThresholdMonitoringEvents(Base):
     """Engineering: Threshold Monitoring
 
@@ -281,45 +335,62 @@ class ThresholdMonitoringEvents(Base):
                 sig["above"], resampled.index, window_td
             )
 
-        events: list[dict[str, Any]] = []
-        for ts, row in resampled.iterrows():
-            if row["sample_count"] == 0:
-                continue
-            pct = float(row["above_frac"] * 100)
-            time_above_seconds = row["above_frac"] * window_td.total_seconds()
-            events.append(
-                {
-                    "start": ts,
-                    "time_above": float(time_above_seconds),
-                    "pct_above": pct,
-                    "exceedance_count": int(row["exceedance_count"]),
-                }
-            )
-
-        if not events:
+        kept = resampled[resampled["sample_count"] != 0]
+        if kept.empty:
             return empty_event_df("summary", cols[1:])
-        return finalize_summary_df(
-            add_window_bounds(pd.DataFrame(events, columns=cols), window)
+        above_frac = kept["above_frac"].to_numpy(dtype=np.float64)
+        events = pd.DataFrame(
+            {
+                "start": kept.index,
+                "time_above": above_frac * window_td.total_seconds(),
+                "pct_above": above_frac * 100,
+                "exceedance_count": kept["exceedance_count"]
+                .to_numpy(dtype=np.float64)
+                .astype(np.int64),
+            },
+            columns=cols,
         )
+        return finalize_summary_df(add_window_bounds(events, window))
 
     @staticmethod
     def _time_weighted_above_fraction(
         above: pd.Series, window_starts: pd.Index, window_td: pd.Timedelta
     ) -> list[float]:
-        """Fraction of each window spent above, holding values to the next sample."""
+        """Fraction of each window spent above, holding values to the next sample.
+
+        Per window this is the sum, over all flagged samples, of the overlap
+        of ``[sample, next sample)`` with the window (clipped at 0), divided
+        by the window length. Only the samples near the window overlap it, so
+        the sum is computed over that slice -- with the pairwise summation
+        order of the full-length sum, so the result is bit-identical.
+        """
         times = above.index.to_series().reset_index(drop=True)
+        if bool(times.isna().any()):
+            return _time_weighted_above_fraction_loop(above, window_starts, window_td)
         seg_end = times.shift(-1).fillna(times)
-        flags = above.reset_index(drop=True).astype(bool)
-        starts, stops = times[flags], seg_end[flags]
+        flags = above.reset_index(drop=True).astype(bool).to_numpy()
+        starts = np.asarray(times.array[flags].asi8, dtype=np.int64)
+        stops = np.asarray(seg_end.array[flags].asi8, dtype=np.int64)
+        per_second = 10.0 ** {"s": 0, "ms": 3, "us": 6, "ns": 9}[times.dt.unit]
+        window_s = window_td.total_seconds()
+        w_lo = np.asarray(window_starts.as_unit(times.dt.unit).asi8, dtype=np.int64)
+        w_hi = np.asarray(
+            (window_starts + window_td).as_unit(times.dt.unit).asi8, dtype=np.int64
+        )
+        first = np.searchsorted(stops, w_lo, side="right")
+        last = np.searchsorted(starts, w_hi, side="left")
         fractions: list[float] = []
-        for w_start in window_starts:
-            w_end = w_start + window_td
-            overlap = (
-                stops.clip(upper=w_end) - starts.clip(lower=w_start)
-            ).dt.total_seconds()
-            fractions.append(
-                float(overlap.clip(lower=0).sum()) / window_td.total_seconds()
-            )
+        for lo, hi, a, b in zip(w_lo, w_hi, first, last, strict=True):
+            if b > a:
+                overlap = (
+                    np.minimum(stops[a:b], hi) - np.maximum(starts[a:b], lo)
+                ) / per_second
+                total = _pairwise_sum_slice(
+                    np.maximum(overlap, 0.0), int(a), starts.size
+                )
+            else:
+                total = 0.0
+            fractions.append(float(total) / window_s)
         return fractions
 
     @keyword_only(2)

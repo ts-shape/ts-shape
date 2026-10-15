@@ -8,8 +8,27 @@ from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
 from ts_shape.utils.frames import window_offset
+from ts_shape.utils.runs import total_seconds
 
 logger = logging.getLogger(__name__)
+
+
+def _floats(values: np.ndarray) -> np.ndarray:
+    """``values`` as float64, NaN-checked element by element for non-numbers."""
+    if values.dtype.kind in "biuf":
+        return values.astype(np.float64)
+    return np.array(
+        [np.nan if np.isnan(v) else float(v) for v in values], dtype=np.float64
+    )
+
+
+def _float_or_none(values: np.ndarray) -> Any:
+    """A column as a list of ``float``-or-``None`` would build it: float64
+    with NaN for the missing values, or all ``None`` (object) when none is
+    known."""
+    if values.size and np.isnan(values).all():
+        return [None] * values.size
+    return values
 
 
 class DataGapAnalysisEvents(Base):
@@ -87,20 +106,17 @@ class DataGapAnalysisEvents(Base):
         times = self.signal[self.time_column].array
         diffs = times[1:] - times[:-1]
 
-        events: list[dict[str, Any]] = []
-        for i, d in enumerate(diffs):
-            gap = pd.Timedelta(d)
-            # A zero step (duplicate timestamp) is never a gap.
-            if gap >= threshold and gap > pd.Timedelta(0):
-                events.append(
-                    {
-                        "start": pd.Timestamp(times[i]),
-                        "end": pd.Timestamp(times[i + 1]),
-                        "gap_duration_seconds": float(gap.total_seconds()),
-                        "samples_before_gap": i + 1,
-                        "samples_after_gap": len(times) - (i + 1),
-                    }
-                )
+        # A zero step (duplicate timestamp) is never a gap.
+        i = np.flatnonzero((diffs >= threshold) & (diffs > pd.Timedelta(0)))
+        events = pd.DataFrame(
+            {
+                "start": times[i],
+                "end": times[i + 1],
+                "gap_duration_seconds": total_seconds(diffs[i]),
+                "samples_before_gap": i + 1,
+                "samples_after_gap": len(times) - (i + 1),
+            }
+        )
 
         return finish_events(
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
@@ -298,32 +314,27 @@ class DataGapAnalysisEvents(Base):
         signal_std = float(np.nanstd(values))
         safe_threshold = 2.0 * signal_std if signal_std > 0 else float("inf")
 
-        events: list[dict[str, Any]] = []
-        for i, d in enumerate(diffs):
-            gap = pd.Timedelta(d)
-            if gap <= pd.Timedelta(0) or gap < min_td or gap > max_td:
-                continue
-
-            val_before = float(values[i]) if not np.isnan(values[i]) else None
-            val_after = float(values[i + 1]) if not np.isnan(values[i + 1]) else None
-            if val_before is not None and val_after is not None:
-                jump = abs(val_after - val_before)
-            else:
-                jump = float("nan")
-
-            safe = not np.isnan(jump) and jump <= safe_threshold
-
-            events.append(
-                {
-                    "start": pd.Timestamp(times[i]),
-                    "end": pd.Timestamp(times[i + 1]),
-                    "gap_duration_seconds": float(gap.total_seconds()),
-                    "value_before": val_before,
-                    "value_after": val_after,
-                    "value_jump": float(jump) if not np.isnan(jump) else None,
-                    "safe_to_interpolate": safe,
-                }
-            )
+        # (A NaT step fails every comparison and is kept, as before.)
+        i = np.flatnonzero(
+            ~((diffs <= pd.Timedelta(0)) | (diffs < min_td) | (diffs > max_td))
+        )
+        before = _floats(values[i])
+        after = _floats(values[i + 1])
+        known = ~np.isnan(before) & ~np.isnan(after)
+        with np.errstate(invalid="ignore"):
+            jump = np.where(known, np.abs(after - before), np.nan)
+            safe = ~np.isnan(jump) & (jump <= safe_threshold)
+        events = pd.DataFrame(
+            {
+                "start": times[i],
+                "end": times[i + 1],
+                "gap_duration_seconds": total_seconds(diffs[i]),
+                "value_before": _float_or_none(before),
+                "value_after": _float_or_none(after),
+                "value_jump": _float_or_none(jump),
+                "safe_to_interpolate": safe,
+            }
+        )
 
         return finish_events(
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
