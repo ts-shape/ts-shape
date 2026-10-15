@@ -4,7 +4,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ts_shape.utils.runs import RUN_FUNCS, run_agg, run_bounds, run_labels, true_runs
+from ts_shape.utils.runs import (
+    RUN_FUNCS,
+    run_agg,
+    run_argmax,
+    run_bounds,
+    run_labels,
+    run_positions,
+    total_seconds,
+    true_runs,
+)
 
 
 def _pandas_runs(values: pd.Series) -> list[tuple[int, int]]:
@@ -206,3 +215,28 @@ class TestRunAgg:
         v = np.random.default_rng(9).normal(size=100_003) * 1e6
         r = run_bounds(np.zeros(v.size))
         assert run_agg(v, r, "sum")[0] == v.sum()
+
+
+class TestHelpers:
+    def test_positions_and_labels_for_true_runs(self):
+        r = true_runs(np.array([False, True, True, False, True]))
+        assert run_positions(r).tolist() == [1, 2, 4]
+        assert run_labels(r).tolist() == [0, 0, 1]
+
+    def test_argmax_first_on_ties_and_skips_nan(self):
+        r = run_bounds([0, 0, 0, 1, 1, 2])
+        v = np.array([1.0, 3.0, 3.0, np.nan, 2.0, np.nan])
+        assert run_argmax(v, r).tolist() == [1, 4, 5]
+        assert run_argmax(v, run_bounds(np.array([]))).size == 0
+
+    @pytest.mark.parametrize("unit", ["ns", "us", "ms", "s"])
+    def test_total_seconds_matches_scalar(self, unit):
+        rng = np.random.default_rng(3)
+        ns = rng.integers(-(10**15), 10**15, size=2000)
+        td = pd.to_timedelta(ns, unit="ns").as_unit(unit)
+        expected = [x.total_seconds() for x in td]
+        np.testing.assert_array_equal(total_seconds(td), expected)
+
+    def test_total_seconds_nat(self):
+        out = total_seconds(pd.to_timedelta([1, None], unit="s"))
+        assert out[0] == 1.0 and np.isnan(out[1])

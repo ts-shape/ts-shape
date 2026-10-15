@@ -29,7 +29,17 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-__all__ = ["Runs", "run_bounds", "true_runs", "run_labels", "run_agg", "RUN_FUNCS"]
+__all__ = [
+    "Runs",
+    "run_bounds",
+    "true_runs",
+    "run_labels",
+    "run_agg",
+    "RUN_FUNCS",
+    "total_seconds",
+    "run_positions",
+    "run_argmax",
+]
 
 _Ints = npt.NDArray[np.int64]
 
@@ -148,11 +158,11 @@ def true_runs(mask: Any) -> Runs:
 
 
 def run_labels(runs: Runs) -> _Ints:
-    """Run number (0, 1, ...) per element covered by ``runs``.
+    """Run number (0, 1, ...) per element covered by ``runs``, in order.
 
-    Only meaningful for runs that tile the array (from :func:`run_bounds`);
-    for :func:`true_runs` the labels cover the ``True`` elements only, in
-    order.
+    For runs that tile the array (from :func:`run_bounds`) this is one label
+    per element; for :func:`true_runs` only the ``True`` elements are covered
+    (see :func:`run_positions` for their positions).
     """
     return np.repeat(np.arange(runs.n_runs, dtype=np.int64), runs.lengths)
 
@@ -336,3 +346,53 @@ def run_agg(values: Any, runs: Runs, funcs: str | Iterable[str]) -> Any:
     if isinstance(funcs, str):
         return _one(values, runs, funcs)
     return {f: _one(values, runs, f) for f in funcs}
+
+
+def run_positions(runs: Runs) -> _Ints:
+    """Positions of all elements covered by ``runs``, in order.
+
+    Aligned with :func:`run_labels`: element ``i`` of both belongs together.
+    """
+    offsets = np.cumsum(runs.lengths) - runs.lengths
+    total = int(runs.lengths.sum())
+    shift = np.repeat(runs.starts - offsets, runs.lengths)
+    return np.asarray(np.arange(total, dtype=np.int64) + shift, dtype=np.int64)
+
+
+def run_argmax(values: Any, runs: Runs) -> _Ints:
+    """Position of the first maximum of ``values`` in each run.
+
+    Like ``Series.idxmax()`` per run (NaN skipped), but returns positions.
+    A run whose values are all NaN gives its first position.
+    """
+    if runs.n_runs == 0:
+        return np.zeros(0, dtype=np.int64)
+    f = _float(values)
+    f = np.where(np.isnan(f), -np.inf, f)
+    peak = np.asarray(_reduceat(np.maximum, f, runs), dtype=np.float64)
+    labels = run_labels(runs)
+    covered = run_positions(runs)
+    hit = f[covered] == peak[labels]
+    first = np.full(runs.n_runs, -1, dtype=np.int64)
+    # Hits come in increasing position: assigning in reverse keeps the first.
+    first[labels[hit][::-1]] = covered[hit][::-1]
+    return np.where(first < 0, runs.starts, first)
+
+
+def total_seconds(deltas: Any) -> npt.NDArray[np.float64]:
+    """Seconds per timedelta, bit-identical to scalar ``Timedelta.total_seconds()``.
+
+    The scalar method computes ``days * 86400 + seconds + microseconds / 1e6``
+    (dropping sub-microsecond precision); the vectorized
+    ``TimedeltaIndex.total_seconds()`` divides nanoseconds by ``1e9``, which
+    can differ in the last bit. Use this when replacing a per-row
+    ``(end - start).total_seconds()`` loop. ``NaT`` gives NaN.
+    """
+    td = pd.TimedeltaIndex(deltas)
+    if td.unit == "ns":
+        us = td.asi8 // 1000
+    else:
+        us = td.asi8 * {"us": 1, "ms": 1000, "s": 1_000_000}[td.unit]
+    out = (us // 1_000_000).astype(np.float64) + (us % 1_000_000) / 1e6
+    out[np.asarray(td.isna())] = np.nan
+    return np.asarray(out, dtype=np.float64)
