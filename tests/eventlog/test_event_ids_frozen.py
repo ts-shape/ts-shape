@@ -221,3 +221,18 @@ def test_detector_frames_match_frozen_reference():
         log = to_event_log(frame, detector=detector)
         assert log.events["ocel:eid"].tolist() == eids.tolist()
         assert log.events["ocel:activity"].tolist() == acts.tolist()
+
+
+def test_ids_are_the_same_across_hashing_chunks(monkeypatch):
+    import ts_shape.eventlog.adapters as adapters
+
+    # Small chunks: duplicate rows fall into different chunks.
+    monkeypatch.setattr(adapters, "_EID_CHUNK", 7)
+    rule = RULES["fields"]
+    frame = pd.concat([_mixed_frame(30, seed=9, unit="us", tz="UTC")] * 3)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        eids, _, _, _ = _reference(frame, rule, "Test.method")
+        log = adapt(frame, rule=rule, detector="Test.method")
+    assert log.events["ocel:eid"].tolist() == eids.tolist()
+    assert log.events["ocel:eid"].is_unique

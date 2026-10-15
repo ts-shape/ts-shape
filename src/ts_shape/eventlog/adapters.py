@@ -161,6 +161,9 @@ def _stable(value: object) -> str:
 
 _UNITS_PER_SECOND = {"s": 1, "ms": 10**3, "us": 10**6, "ns": 10**9}
 
+#: Rows rendered and hashed at a time by :func:`_content_eids`.
+_EID_CHUNK = 1 << 18
+
 
 def _stable_datetimes(values: pd.Series) -> list[str] | None:
     """:func:`_stable` of every cell of a datetime64 column, vectorized.
@@ -247,20 +250,19 @@ def _stable_column(values: pd.Series) -> list[str]:
     return [_stable(v) for v in values.tolist()]
 
 
-def _uuid5_strings(names: list[str]) -> list[str]:
-    """``str(uuid.uuid5(_NAMESPACE, name))`` for each name, without building
-    ``UUID`` objects (the same SHA-1 digest, version and variant bits)."""
-    prefix = _NAMESPACE.bytes
-    sha1 = hashlib.sha1
-    variant = "89ab89ab89ab89ab"  # (nibble & 0x3) | 0x8, indexed by nibble
-    out = []
-    for name in names:
-        h = sha1(prefix + name.encode("utf-8")).hexdigest()
-        out.append(
-            f"{h[:8]}-{h[8:12]}-5{h[13:16]}-"
-            f"{variant[int(h[16], 16)]}{h[17:20]}-{h[20:32]}"
-        )
-    return out
+#: (nibble & 0x3) | 0x8 -- the RFC 4122 variant bits -- indexed by nibble.
+_VARIANT = "89ab89ab89ab89ab"
+
+
+def _uuid5_text(hexdigest: str) -> str:
+    """``str(uuid.UUID(bytes=sha1_digest[:16], version=5))`` from the hex
+    digest: what ``str(uuid.uuid5(namespace, name))`` returns for the digest
+    of ``namespace.bytes + name``, without building a ``UUID``."""
+    h = hexdigest
+    return (
+        f"{h[:8]}-{h[8:12]}-5{h[13:16]}-"
+        f"{_VARIANT[int(h[16], 16)]}{h[17:20]}-{h[20:32]}"
+    )
 
 
 def _content_eids(
@@ -287,26 +289,40 @@ def _content_eids(
     """
     n = len(frame)
     payload_cols = sorted(str(c) for c in frame.columns if c not in time_cols)
-    rendered = [[f"{c}={v}" for v in _stable_column(frame[c])] for c in payload_cols]
-    source = (
-        _stable_column(frame["source_uuid"])
-        if "source_uuid" in frame.columns
-        else ["\x00"] * n
-    )
-    starts = _stable_column(ts_start)
-    ends = _stable_column(ts_end)
-    acts = [str(a) for a in activities.tolist()]
     head = detector + "|"
-    keys = [
-        head + "|".join(parts) for parts in zip(source, starts, ends, acts, *rendered)
-    ]
-    seen: dict[str, int] = {}
-    for i, key in enumerate(keys):
-        k = seen.get(key, 0)
-        seen[key] = k + 1
-        if k:
-            keys[i] = f"{key}|#{k}"
-    return pd.Series(["e-" + u for u in _uuid5_strings(keys)], dtype="string")
+    prefix = _NAMESPACE.bytes
+    sha1 = hashlib.sha1
+    # Occurrences of each key, held by its digest (the key itself is only
+    # needed for the rows of one chunk, which bounds memory).
+    seen: dict[bytes, int] = {}
+    eids: list[str] = []
+    for a in range(0, n, _EID_CHUNK):
+        b = min(a + _EID_CHUNK, n)
+        rendered = [
+            [f"{c}={v}" for v in _stable_column(frame[c].iloc[a:b])]
+            for c in payload_cols
+        ]
+        source = (
+            _stable_column(frame["source_uuid"].iloc[a:b])
+            if "source_uuid" in frame.columns
+            else ["\x00"] * (b - a)
+        )
+        starts = _stable_column(ts_start.iloc[a:b])
+        ends = _stable_column(ts_end.iloc[a:b])
+        acts = [str(x) for x in activities.iloc[a:b].tolist()]
+        keys = [
+            head + "|".join(parts)
+            for parts in zip(source, starts, ends, acts, *rendered, strict=True)
+        ]
+        for key in keys:
+            digest = sha1(prefix + key.encode("utf-8")).digest()
+            k = seen.get(digest, 0)
+            seen[digest] = k + 1
+            if k:
+                # Identical rows: the occurrence number makes the id unique.
+                digest = sha1(prefix + f"{key}|#{k}".encode()).digest()
+            eids.append("e-" + _uuid5_text(digest.hex()))
+    return pd.Series(eids, dtype="string")
 
 
 class MissingCanonicalColumn(ColumnNotFoundError, KeyError):
@@ -399,31 +415,34 @@ def _render_activities(rule: LabelRule, frame: pd.DataFrame) -> pd.Series:
         return pd.Series([template] * n, index=frame.index, dtype="string")
     parts = _template_parts(template)
     fields = {name for is_field, name in parts if is_field}
-    values = None
-    if any(f in frame.columns for f in fields):
+    present = [name for name in fields if name in frame.columns]
+    if present:
         row_wise = not frame.columns.is_unique or isinstance(
             frame.iloc[0].dtype, pd.api.extensions.ExtensionDtype
         )
-        values = None if row_wise else frame.values
-        if values is None or values.dtype.kind in "mM":
+        if row_wise or frame.iloc[:1].values.dtype.kind in "mM":
             return frame.apply(lambda r: render_activity(rule, r), axis=1).astype(
                 "string"
             )
-    rendered: dict[str, list[str]] = {}
-    for name in fields:
-        if values is None or name not in frame.columns:
-            rendered[name] = ["unknown"] * n
-            continue
-        column = values[:, frame.columns.get_loc(name)]
-        rendered[name] = [
-            "unknown" if v is None or _is_missing(v) else str(v) for v in column
+    out: list[str] = []
+    for a in range(0, n, _EID_CHUNK):
+        b = min(a + _EID_CHUNK, n)
+        # The common-dtype row values of this chunk (as apply builds rows).
+        values = frame.iloc[a:b].values if present else None
+        rendered: dict[str, list[str]] = {}
+        for name in fields:
+            if values is None or name not in frame.columns:
+                rendered[name] = ["unknown"] * (b - a)
+                continue
+            column = values[:, frame.columns.get_loc(name)]
+            rendered[name] = [
+                "unknown" if v is None or _is_missing(v) else str(v) for v in column
+            ]
+        pieces = [
+            rendered[name] if is_field else [name] * (b - a) for is_field, name in parts
         ]
-    pieces = [rendered[name] if is_field else [name] * n for is_field, name in parts]
-    return pd.Series(
-        ["".join(row) for row in zip(*pieces, strict=True)],
-        index=frame.index,
-        dtype="string",
-    )
+        out.extend("".join(row) for row in zip(*pieces, strict=True))
+    return pd.Series(out, index=frame.index, dtype="string")
 
 
 def _classify_severity(value: object) -> str | None:
