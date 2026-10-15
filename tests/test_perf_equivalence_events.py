@@ -18,6 +18,7 @@ import pytest
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import (
+    add_twin_columns,
     empty_event_df,
     finalize_interval_df,
     finalize_point_df,
@@ -148,6 +149,28 @@ def _ref_rateofchange_detect_step_changes(
     out = pd.DataFrame(events, columns=cols)
     out["systime"] = out["time"]
     return finalize_point_df(out, uuid=self.event_uuid, source_uuid=self.signal_uuid)
+
+
+def _with_step_bounds(out: pd.DataFrame) -> pd.DataFrame:
+    """The reference step changes plus the canonical bounds (added in round 11).
+
+    ``start`` / ``end`` follow ``time`` and ``duration_seconds`` follows
+    ``duration``; the step values are unchanged.
+    """
+    if out.empty:
+        cols = ["time", "start", "end", "value_before", "value_after", "delta"]
+        return empty_event_df("point", [*cols, "duration", "duration_seconds"])
+    out = out.copy()
+    duration = pd.to_timedelta(out["duration"])
+    at = list(out.columns).index("time") + 1
+    out.insert(at, "start", out["time"] - duration)
+    out.insert(at + 1, "end", out["time"])
+    out.insert(
+        list(out.columns).index("duration") + 1,
+        "duration_seconds",
+        duration.dt.total_seconds().astype(float),
+    )
+    return out
 
 
 def _ref_degradationdetection_detect_trend_degradation(
@@ -1803,7 +1826,9 @@ CASES = [
             f"step_changes_{d}_{w}",
             lambda df: RateOfChangeEvents(df, "sig"),
             lambda o, d=d, w=w: o.detect_step_changes(d, max_duration=w),
-            lambda o, d=d, w=w: _ref_rateofchange_detect_step_changes(o, d, w),
+            lambda o, d=d, w=w: _with_step_bounds(
+                _ref_rateofchange_detect_step_changes(o, d, w)
+            ),
         )
         for d, w in ((0.5, "5s"), (0.0, "0s"), (3.0, "1s"))
     ],
@@ -2034,8 +2059,9 @@ CASES = [
             lambda o, t=t, w=w, ie=ie: o.time_above_threshold(
                 t, window=w, interval_end=ie
             ),
-            lambda o, t=t, w=w, ie=ie: _ref_thresholdmonitoring_time_above_threshold(
-                o, t, w, interval_end=ie
+            lambda o, t=t, w=w, ie=ie: add_twin_columns(
+                _ref_thresholdmonitoring_time_above_threshold(o, t, w, interval_end=ie),
+                {"pct_above": "above_pct"},
             ),
         )
         for t, w, ie in (

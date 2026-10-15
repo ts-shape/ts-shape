@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import add_period_window
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class, renamed_kwargs
@@ -325,6 +326,7 @@ class SetupTimeEvents(Base):
         return result.sort_values("avg_minutes", ascending=False).reset_index(drop=True)
 
     @renamed_kwargs(state_uuid="run_state_uuid")
+    @twin_columns({"pct_of_available_time": "of_available_time_pct"})
     def setup_statistics(
         self,
         run_state_uuid: str,
@@ -345,6 +347,10 @@ class SetupTimeEvents(Base):
                 avg_seconds, median_minutes, median_seconds, std_minutes,
                 std_seconds, pct_of_available_time
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
+
+            Canonical twin columns: ``of_available_time_pct`` (after
+            ``pct_of_available_time``); each holds the same values as the deprecated
+            column right before it, which is removed in the next major release.
         """
         intervals = self._extract_setup_intervals(
             run_state_uuid, setup_value, value_column

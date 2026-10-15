@@ -8,6 +8,7 @@ from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
     finalize_summary_df,
+    twin_columns,
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
@@ -313,6 +314,7 @@ class DisturbanceRecoveryEvents(Base):
 
     @keyword_only(1)
     @renamed_kwargs(threshold_sigma="n_sigma")
+    @twin_columns({"pct_time_disturbed": "time_disturbed_pct"})
     def disturbance_frequency(
         self,
         window: str = "8h",
@@ -332,6 +334,10 @@ class DisturbanceRecoveryEvents(Base):
             DataFrame with columns: start, end, duration_seconds,
             disturbance_count, total_disturbance_seconds, pct_time_disturbed,
             avg_recovery_seconds. ``end`` is ``start`` + ``window``.
+
+            Canonical twin columns: ``time_disturbed_pct`` (after
+            ``pct_time_disturbed``); each holds the same values as the deprecated column
+            right before it, which is removed in the next major release.
         """
         cols = [
             "start",

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import (
     add_day_window,
     add_shift_window,
@@ -499,6 +500,7 @@ class QualityEvents(Base):
 
         return pd.DataFrame(results, columns=part_cols)
 
+    @twin_columns({"pct_of_total": "of_total_pct"})
     def nok_by_reason(
         self,
         nok_counter_uuid: str,
@@ -534,13 +536,18 @@ class QualityEvents(Base):
             - resets: Number of counter resets for the reason (only when
                 ``handle_resets=True``)
 
+            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
+
         Example:
             >>> import pandas as pd, ts_shape
             >>> kw = dict(n_points=20, freq="1min", noise=0, value_column="value_integer")
             >>> df = pd.concat([ts_shape.make_timeseries(["nok"], drift=19, **kw),
             ...                 ts_shape.make_id_signal("reason", ["Scratch", "Dent"], freq="1min")])
-            >>> ts_shape.QualityEvents(df).nok_by_reason("nok", "reason")
-                reason  nok_parts  pct_of_total  resets
+            >>> out = ts_shape.QualityEvents(df).nok_by_reason("nok", "reason")
+            >>> out[["reason", "nok_parts", "of_total_pct", "resets"]]
+                reason  nok_parts  of_total_pct  resets
             0     Dent       10.0     52.631579       0
             1  Scratch        9.0     47.368421       0
         """

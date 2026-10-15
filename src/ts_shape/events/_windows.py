@@ -42,6 +42,7 @@ __all__ = [
     "data_tz",
     "finish_events",
     "floor_local",
+    "labeled_window_summary",
     "window_bounds",
     "window_summary",
     "with_window_bounds",
@@ -200,6 +201,39 @@ def window_summary(
     return finalize_summary_df(
         add_window_bounds(df[cols], window), uuid=uuid, source_uuid=source_uuid
     )
+
+
+def labeled_window_summary(
+    rows: pd.DataFrame | list,
+    cols: list[str],
+    window: Window,
+    *,
+    label_column: str = "window_start",
+    uuid: str | None = None,
+    source_uuid: str | None = None,
+) -> pd.DataFrame:
+    """Canonical summary frame for rows labeled by their resample window.
+
+    For detectors that label each row with the legacy ``window_start``
+    column (the ``resample`` label). ``start`` / ``end`` /
+    ``duration_seconds`` -- the true window bounds, see
+    :func:`window_bounds` -- lead the frame (as in every summary); the label
+    column and the rest of ``cols`` follow unchanged, so ``window_start`` is
+    a deprecated twin of ``start``. An empty input yields the full-schema
+    empty frame.
+    """
+    df = rows if isinstance(rows, pd.DataFrame) else pd.DataFrame(rows, columns=cols)
+    df = df[cols]
+    if df.empty:
+        extra = list(cols)
+        if uuid is not None or source_uuid is not None:
+            extra = ["uuid", "source_uuid", *extra]
+        return empty_event_df("summary", extra)
+    start, end = window_bounds(df[label_column], window)
+    out = df.copy()
+    out.insert(0, COL_START, start)
+    out.insert(1, COL_END, end)
+    return finalize_summary_df(out, uuid=uuid, source_uuid=source_uuid)
 
 
 def finish_events(

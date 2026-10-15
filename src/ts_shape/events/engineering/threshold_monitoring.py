@@ -8,6 +8,7 @@ from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
     finalize_summary_df,
+    twin_columns,
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
@@ -305,6 +306,7 @@ class ThresholdMonitoringEvents(Base):
         )
 
     @keyword_only(2)
+    @twin_columns({"pct_above": "above_pct"})
     def time_above_threshold(
         self,
         threshold: float,
@@ -327,6 +329,10 @@ class ThresholdMonitoringEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, time_above,
             pct_above, exceedance_count. ``end`` is ``start`` + ``window``.
+
+            Canonical twin columns: ``above_pct`` (after ``pct_above``); each holds the
+            same values as the deprecated column right before it, which is removed in
+            the next major release.
         """
         cols = ["start", "time_above", "pct_above", "exceedance_count"]
         if self.signal.empty:

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import (
     add_period_window,
     add_shift_window,
@@ -58,8 +59,8 @@ class ScrapEvents(Base):
         >>> reason = ts_shape.make_id_signal("reason", ["Burr", "Crack"], freq="1min")
         >>> out = ts_shape.ScrapEvents(pd.concat([scrap, reason])).scrap_by_reason(
         ...     "scrap_kg", "reason")
-        >>> out[["reason", "scrap_quantity", "pct_of_total"]].round(1)
-          reason  scrap_quantity  pct_of_total
+        >>> out[["reason", "scrap_quantity", "of_total_pct"]].round(1)
+          reason  scrap_quantity  of_total_pct
         0  Crack             5.0          52.6
         1   Burr             4.5          47.4
     """
@@ -153,6 +154,7 @@ class ScrapEvents(Base):
             data_tz(data[self.time_column]),
         )
 
+    @twin_columns({"pct_of_total": "of_total_pct"})
     def scrap_by_reason(
         self,
         scrap_uuid: str,
@@ -185,6 +187,10 @@ class ScrapEvents(Base):
             - reason, scrap_quantity, pct_of_total
             - resets: Number of counter resets for the reason (only when
                 ``handle_resets=True``)
+
+            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         columns = ["reason", "scrap_quantity", "pct_of_total"]
         if handle_resets:

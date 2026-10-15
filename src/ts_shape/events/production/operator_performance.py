@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
@@ -391,6 +392,7 @@ class OperatorPerformanceEvents(Base):
 
         return pd.DataFrame(results, columns=columns)
 
+    @twin_columns({"pct_of_best": "of_best_pct"})
     def operator_comparison(
         self,
         operator_uuid: str,
@@ -410,6 +412,10 @@ class OperatorPerformanceEvents(Base):
         Returns:
             DataFrame with columns:
             - operator, total_produced, rank, pct_of_best
+
+            Canonical twin columns: ``of_best_pct`` (after ``pct_of_best``); each holds
+            the same values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         prod = self.production_by_operator(
             operator_uuid,

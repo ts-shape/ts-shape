@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
@@ -233,6 +234,13 @@ class GaugeRepeatabilityEvents(Base):
         )
 
     @keyword_only(1)
+    @twin_columns(
+        {
+            "pct_GRR": "GRR_pct",
+            "pct_PV": "PV_pct",
+            "pct_GRR_tolerance": "GRR_tolerance_pct",
+        }
+    )
     def gauge_rr_summary(self, tolerance_range: float | None = None) -> pd.DataFrame:
         """Full Gauge R&R summary table.
 
@@ -246,6 +254,11 @@ class GaugeRepeatabilityEvents(Base):
         Returns:
             DataFrame with single row: EV, AV, GRR, PV, TV, pct_GRR,
             pct_PV, ndc, and optionally pct_GRR_tolerance.
+
+            Canonical twin columns: ``GRR_pct`` (after ``pct_GRR``), ``PV_pct`` (after
+            ``pct_PV``), ``GRR_tolerance_pct`` (after ``pct_GRR_tolerance``); each holds
+            the same values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         cols = ["EV", "AV", "GRR", "PV", "TV", "pct_GRR", "pct_PV", "ndc"]
         if tolerance_range is not None:

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from ts_shape.events._compat import state_mask
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import add_period_window, add_shift_window, data_tz
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
@@ -274,6 +275,7 @@ class DowntimeEvents(Base):
         )
 
     @renamed_kwargs(state_uuid="run_state_uuid")
+    @twin_columns({"pct_of_total": "of_total_pct"})
     def downtime_by_reason(
         self,
         run_state_uuid: str,
@@ -304,6 +306,10 @@ class DowntimeEvents(Base):
             - pct_of_total: Percentage of total downtime
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
+            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
+
         Example:
             >>> import pandas as pd, ts_shape
             >>> states = ["Running", "Stopped", "Running", "Stopped", "Running"]
@@ -311,8 +317,8 @@ class DowntimeEvents(Base):
             ...     ts_shape.make_id_signal("reason", ["-", "Jam", "-", "Tool", "-"], hold=10,
             ...                             freq="1min")])
             >>> out = ts_shape.DowntimeEvents(df).downtime_by_reason("state", "reason")
-            >>> out[["reason", "occurrences", "total_minutes", "pct_of_total"]]
-              reason  occurrences  total_minutes  pct_of_total
+            >>> out[["reason", "occurrences", "total_minutes", "of_total_pct"]]
+              reason  occurrences  total_minutes  of_total_pct
             0    Jam           10           10.0          50.0
             1   Tool           10           10.0          50.0
         """
@@ -397,6 +403,7 @@ class DowntimeEvents(Base):
         return reason_stats[_REASON_COLS].reset_index(drop=True)
 
     @renamed_kwargs(state_uuid="run_state_uuid")
+    @twin_columns({"pct_of_total": "of_total_pct"})
     def top_downtime_reasons(
         self,
         run_state_uuid: str,
@@ -421,6 +428,10 @@ class DowntimeEvents(Base):
         Returns:
             DataFrame with top N reasons and cumulative percentage: reason,
             total_minutes, total_seconds, pct_of_total, cumulative_pct
+
+            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
 
         Example:
             >>> import pandas as pd, ts_shape

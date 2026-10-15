@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from ts_shape.events._windows import labeled_window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
 
@@ -107,7 +108,9 @@ class EnvironmentalCompensationEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, correlation, p_value,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), correlation, p_value,
             significant.
         """
         from scipy import stats
@@ -115,7 +118,7 @@ class EnvironmentalCompensationEvents(Base):
         cols = ["window_start", "correlation", "p_value", "significant"]
         aligned = self._build_aligned()
         if aligned.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         events: list[dict[str, Any]] = []
         for ts, group in aligned.resample(window):
@@ -134,9 +137,7 @@ class EnvironmentalCompensationEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)
 
     if TYPE_CHECKING:
 
@@ -158,7 +159,9 @@ class EnvironmentalCompensationEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, coefficient, intercept,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), coefficient, intercept,
             r_squared, unit_change_per_degree.
         """
         from scipy import stats
@@ -172,7 +175,7 @@ class EnvironmentalCompensationEvents(Base):
         ]
         aligned = self._build_aligned()
         if aligned.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         events: list[dict[str, Any]] = []
         for ts, group in aligned.resample(window):
@@ -194,9 +197,7 @@ class EnvironmentalCompensationEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)
 
     @keyword_only(1)
     def compensated_signal(self, coefficient: float | None = None) -> pd.DataFrame:
@@ -271,7 +272,9 @@ class EnvironmentalCompensationEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, window_end, env_mean,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), window_end, env_mean,
             env_min, env_max, exceedance_type, severity.
         """
         cols = [
@@ -285,7 +288,7 @@ class EnvironmentalCompensationEvents(Base):
         ]
 
         if self._env is None or self._env.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         env = self._env[[self.time_column, self.value_column]].copy()
         env = env.set_index(self.time_column)
@@ -349,6 +352,4 @@ class EnvironmentalCompensationEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)

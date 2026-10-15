@@ -4,6 +4,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
+from ts_shape.events._windows import labeled_window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, keyword_only
 
@@ -68,6 +70,7 @@ class MeasurementUncertaintyEvents(Base):
             )
 
     @keyword_only(1)
+    @twin_columns({"n_samples": "sample_count"})
     def type_a_uncertainty(self, window: str = "8h") -> pd.DataFrame:
         """Statistical (Type A) uncertainty from repeated measurements.
 
@@ -77,12 +80,18 @@ class MeasurementUncertaintyEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, mean, std, n_samples,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), mean, std, n_samples,
             type_a_uncertainty.
+
+            Canonical twin columns: ``sample_count`` (after ``n_samples``); each holds
+            the same values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         cols = ["window_start", "mean", "std", "n_samples", "type_a_uncertainty"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -108,9 +117,7 @@ class MeasurementUncertaintyEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)
 
     @staticmethod
     def type_b_uncertainty(sources: list[dict[str, Any]]) -> pd.DataFrame:
@@ -169,7 +176,9 @@ class MeasurementUncertaintyEvents(Base):
                 for ~95.45% coverage).
 
         Returns:
-            DataFrame with columns: window_start, type_a, type_b_combined,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), type_a, type_b_combined,
             combined_uncertainty, expanded_uncertainty, coverage_factor.
         """
         cols = [
@@ -183,7 +192,7 @@ class MeasurementUncertaintyEvents(Base):
 
         type_a_df = self.type_a_uncertainty(window=window)
         if type_a_df.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         # Compute combined Type B
         type_b_combined = 0.0
@@ -210,11 +219,10 @@ class MeasurementUncertaintyEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)
 
     @keyword_only(1)
+    @twin_columns({"pct_contribution": "contribution_pct"})
     def uncertainty_budget(
         self,
         window: str = "8h",
@@ -231,6 +239,10 @@ class MeasurementUncertaintyEvents(Base):
 
         Returns:
             DataFrame with columns: source, uncertainty, pct_contribution.
+
+            Canonical twin columns: ``contribution_pct`` (after ``pct_contribution``);
+            each holds the same values as the deprecated column right before it, which
+            is removed in the next major release.
         """
         cols = ["source", "uncertainty", "pct_contribution"]
 

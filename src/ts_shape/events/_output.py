@@ -17,8 +17,9 @@ the same column names regardless of detector pack or method.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from typing import Literal
+import functools
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Any, Literal, TypeVar
 
 import pandas as pd
 
@@ -108,6 +109,8 @@ SUMMARY_SCHEMA: tuple[str, ...] = (COL_START, COL_END, COL_DURATION_S)
 
 
 Shape = Literal["point", "interval", "summary"]
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def _schema_for(shape: Shape) -> tuple[str, ...]:
@@ -265,3 +268,70 @@ def finalize_summary_df(
         out[COL_SOURCE_UUID] = source_uuid
     leading = SUMMARY_SCHEMA + (COL_UUID, COL_SOURCE_UUID)
     return _reorder(out, leading)
+
+
+def add_twin_columns(
+    df: pd.DataFrame,
+    twins: Mapping[str, str],
+    *,
+    scale: Mapping[str, float] | None = None,
+) -> pd.DataFrame:
+    """Add a column under its canonical name right after its legacy column.
+
+    A renamed output column keeps its old spelling for one major release:
+    the canonical column (``twins[old]``) is a copy of the legacy one, placed
+    directly after it, so code reading either name works and the frame reads
+    old, new, old, new. ``scale`` multiplies the copy, for a unit change
+    (``{"max_gap_ms": 1e-3}`` turns milliseconds into ``max_gap_seconds``).
+    Legacy columns that are absent are skipped; an existing canonical column
+    is left as it is.
+
+    Args:
+        df: A detector result.
+        twins: Legacy column name -> canonical column name.
+        scale: Optional factor per legacy column name.
+
+    Returns:
+        A copy of ``df`` with the canonical columns.
+    """
+    out = df.copy()
+    for old, new in twins.items():
+        if old not in out.columns or new in out.columns:
+            continue
+        values = out[old]
+        if scale and old in scale and len(out):
+            values = pd.to_numeric(values, errors="coerce") * scale[old]
+        out.insert(list(out.columns).index(old) + 1, new, values)
+    return out
+
+
+def twin_columns(
+    twins: Mapping[str, str], *, scale: Mapping[str, float] | None = None
+) -> Callable[[F], F]:
+    """Decorate a detector method so its DataFrame result has the twins.
+
+    Applies :func:`add_twin_columns` to every DataFrame the method returns
+    (other return values, e.g. the legacy ``as_frame=False`` lists, pass
+    through), so each early return gets the canonical columns too.
+
+    Example:
+        >>> class Demo:
+        ...     @twin_columns({"n_samples": "sample_count"})
+        ...     def stats(self):
+        ...         return pd.DataFrame({"n_samples": [3]})
+        >>> list(Demo().stats().columns)
+        ['n_samples', 'sample_count']
+    """
+
+    def decorate(func: F) -> F:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            out = func(*args, **kwargs)
+            if isinstance(out, pd.DataFrame):
+                return add_twin_columns(out, twins, scale=scale)
+            return out
+
+        wrapper.__twin_columns__ = dict(twins)  # type: ignore[attr-defined]
+        return wrapper  # type: ignore[return-value]
+
+    return decorate

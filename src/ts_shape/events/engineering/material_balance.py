@@ -10,6 +10,7 @@ from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
     finalize_summary_df,
+    twin_columns,
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
@@ -323,6 +324,7 @@ class MaterialBalanceEvents(Base):
         )
 
     @keyword_only(1)
+    @twin_columns({"pct_of_total": "of_total_pct"})
     def contribution_breakdown(self, window: str = "1h") -> pd.DataFrame:
         """Each signal's contribution to total input/output per window.
 
@@ -334,6 +336,10 @@ class MaterialBalanceEvents(Base):
             source_uuid, role, value, pct_of_total. ``uuid`` and
             ``source_uuid`` both hold the contributing signal's uuid; ``end``
             is ``start`` + ``window``.
+
+            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         cols = ["start", "uuid", "role", "value", "pct_of_total"]
         inputs = self._resample_signals(self.input_uuids, window)

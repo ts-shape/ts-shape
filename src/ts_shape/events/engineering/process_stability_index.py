@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class, keyword_only
@@ -274,6 +275,7 @@ class ProcessStabilityIndexEvents(Base):
         return self._summary(sorted_scores[cols].reset_index(drop=True), cols, window)
 
     @keyword_only(1)
+    @twin_columns({"pct_of_best": "of_best_pct"})
     def stability_comparison(self, window: str = "8h") -> pd.DataFrame:
         """Compare each window to the best-observed window.
 
@@ -284,6 +286,10 @@ class ProcessStabilityIndexEvents(Base):
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, stability_score,
             best_score, gap_to_best, pct_of_best.
+
+            Canonical twin columns: ``of_best_pct`` (after ``pct_of_best``); each holds
+            the same values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         cols = [
             "start",

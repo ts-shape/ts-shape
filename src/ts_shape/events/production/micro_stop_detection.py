@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
@@ -193,6 +194,7 @@ class MicroStopEvents(Base):
         )
 
     @keyword_only(1)
+    @twin_columns({"pct_of_window": "of_window_pct"})
     def micro_stop_frequency(
         self, window: str = "1h", max_duration: str = "30s"
     ) -> pd.DataFrame:
@@ -206,6 +208,10 @@ class MicroStopEvents(Base):
             DataFrame with columns: start, end (start + window),
             duration_seconds, uuid, source_uuid, count, total_lost_time,
             pct_of_window.
+
+            Canonical twin columns: ``of_window_pct`` (after ``pct_of_window``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         cols = ["start", "count", "total_lost_time", "pct_of_window"]
         stops = self.detect_micro_stops(max_duration=max_duration)

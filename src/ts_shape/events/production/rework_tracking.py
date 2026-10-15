@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import (
     add_period_window,
     add_shift_window,
@@ -154,6 +155,7 @@ class ReworkEvents(Base):
             data_tz(data[self.time_column]),
         )
 
+    @twin_columns({"pct_of_total": "of_total_pct"})
     def rework_by_reason(
         self,
         rework_uuid: str,
@@ -186,6 +188,10 @@ class ReworkEvents(Base):
             - reason, rework_count, pct_of_total
             - resets: Number of counter resets for the reason (only when
                 ``handle_resets=True``)
+
+            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         columns = ["reason", "rework_count", "pct_of_total"]
         if handle_resets:
