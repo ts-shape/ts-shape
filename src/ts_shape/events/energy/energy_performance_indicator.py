@@ -11,6 +11,21 @@ from ts_shape.utils.deprecation import renamed_kwargs
 logger = logging.getLogger(__name__)
 
 
+def _rolling_ratio(
+    numerator: pd.Series, denominator: pd.Series, window: int
+) -> pd.Series:
+    """Ratio of rolling sums, ``sum(numerator) / sum(denominator)``.
+
+    The aggregate intensity of a span of windows (ISO 50006: EnPI of a
+    period = its total energy / its total output), not the mean of the
+    per-window ratios, which over-weights low-output windows. NaN where the
+    rolling denominator is not positive.
+    """
+    num = numerator.astype(float).rolling(window=window, min_periods=1).sum()
+    den = denominator.astype(float).rolling(window=window, min_periods=1).sum()
+    return (num / den.where(den > 0)).astype(float)
+
+
 class EnergyPerformanceIndicatorEvents(Base):
     """Energy: Performance Indicator (EnPI) per ISO 50001
 
@@ -131,8 +146,11 @@ class EnergyPerformanceIndicatorEvents(Base):
     ) -> pd.DataFrame:
         """Compare current EnPI against a baseline.
 
-        ``baseline="rolling"`` (default) compares each window with the mean
-        EnPI of the preceding ``baseline_window`` windows (itself included).
+        ``baseline="rolling"`` (default) compares each window with the EnPI
+        of the preceding ``baseline_window`` windows (itself included) taken
+        as one period: their summed energy over their summed output (ISO
+        50006), not the mean of the per-window EnPI values, which
+        over-weights low-output windows.
         A rolling baseline drifts with the process, so it never shows a
         lasting improvement, and kWh/unit is biased by load: a fixed base
         load makes EnPI look worse whenever output is low.
@@ -211,8 +229,8 @@ class EnergyPerformanceIndicatorEvents(Base):
                 0.0,
             )
         else:
-            base["baseline_enpi"] = (
-                base["enpi"].rolling(window=baseline_window, min_periods=1).mean()
+            base["baseline_enpi"] = _rolling_ratio(
+                base["energy_kwh"], base["units_produced"], baseline_window
             )
             base["deviation_pct"] = np.where(
                 base["baseline_enpi"] > 0,

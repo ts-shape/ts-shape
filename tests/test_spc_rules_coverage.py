@@ -10,7 +10,11 @@ from ts_shape.events.quality.statistical_process_control import (
 
 
 def _spc(actual):
-    # Tolerance 9, 10, 11 -> mean 10, sigma 1.
+    # Tolerance 9, 10, 11 -> mean 10, sample std 1. sigma_method="std" pins
+    # sigma to the sample std (exactly 1 here) so the zone edges are exact;
+    # the rule logic does not depend on how sigma is
+    # estimated (the default MR-bar / 1.128 is covered in
+    # tests/reference/test_kpi_references_quality.py).
     tol = pd.DataFrame(
         {
             "systime": pd.date_range("2024-01-01", periods=3, freq="h"),
@@ -26,7 +30,12 @@ def _spc(actual):
         }
     )
     return StatisticalProcessControlEvents(
-        pd.concat([tol, act]), "value_double", "tol", "act", "evt"
+        pd.concat([tol, act]),
+        "value_double",
+        "tol",
+        "act",
+        "evt",
+        sigma_method="std",
     )
 
 

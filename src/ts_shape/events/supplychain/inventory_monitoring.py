@@ -307,6 +307,8 @@ class InventoryMonitoringEvents(Base):
     def stockout_prediction(
         self,
         consumption_rate_window: str = "4h",
+        *,
+        handle_refills: bool = True,
     ) -> pd.DataFrame:
         """Estimate time until stockout based on recent consumption rate.
 
@@ -317,11 +319,18 @@ class InventoryMonitoringEvents(Base):
         Args:
             consumption_rate_window: Lookback window for calculating
                 consumption rate (e.g. ``'4h'``).
+            handle_refills: When True (default) the consumption in the
+                lookback is the sum of the level *decreases* between
+                consecutive samples (the same refill-aware rule as
+                :meth:`consumption_rate`), so a refill inside the window does
+                not cancel the consumption around it. When False it is the
+                level at the window's first sample minus the level at its
+                last (a refill then hides consumption, often giving ``0``).
 
         Returns:
             DataFrame with columns: systime, uuid, source_uuid, is_delta,
             current_level,
-            consumption_rate, estimated_stockout_time_hours.
+            consumption_rate (units per hour), estimated_stockout_time_hours.
             ``estimated_stockout_time_hours`` is NaN where the level is not
             falling (no consumption in the window): no stockout is
             projected.
@@ -342,18 +351,27 @@ class InventoryMonitoringEvents(Base):
         window_td = pd.to_timedelta(consumption_rate_window)
 
         # Lookback window [t - window, t] (every sample at time t included) as
-        # index bounds on the sorted levels; consumption = first - last value
-        # in the window over the time between its first and last sample.
+        # index bounds on the sorted levels; the rate is the consumption in
+        # the window over the time between its first and last sample.
         times = lv[self.time_column]
         values = lv[self.value_column].to_numpy(dtype=float)
         lo = times.searchsorted(times - window_td, side="left")
         hi = times.searchsorted(times, side="right") - 1
         t_ns = times.to_numpy(dtype="datetime64[ns]")
         elapsed_hours = (t_ns[hi] - t_ns[lo]) / np.timedelta64(1, "h")
+        if handle_refills:
+            # Sum of the decreases between consecutive samples in the window:
+            # a refill (an increase) adds nothing instead of cancelling the
+            # consumption before it.
+            drops = np.zeros(len(values))
+            if len(values) > 1:
+                drops[1:] = np.nan_to_num(np.clip(values[:-1] - values[1:], 0, None))
+            cum = np.cumsum(drops)
+            consumed = cum[hi] - cum[lo]
+        else:
+            consumed = values[lo] - values[hi]
         with np.errstate(invalid="ignore", divide="ignore"):
-            rate = np.where(
-                elapsed_hours > 0, (values[lo] - values[hi]) / elapsed_hours, 0.0
-            )
+            rate = np.where(elapsed_hours > 0, consumed / elapsed_hours, 0.0)
             rate = np.where(hi - lo + 1 < 2, 0.0, rate)
             est_hours = np.where(rate > 0, values / rate, np.nan)
 

@@ -36,8 +36,10 @@ print(daily[["start", "availability_pct", "performance_pct", "quality_pct", "oee
 ## Notes
 
 - Rows are calendar days: `start` is midnight, `duration_seconds` the real day length (23 h or 25 h on DST days with tz-aware data).
-- Availability = run time / planned time. Without `planned_time_hours` the planned time is each day's first-to-last-sample span.
-- Performance = actual parts × `ideal_cycle_time` (seconds per part) / run time. Without `run_state_uuid`, `performance` uses the day's span as run time.
+- Time is split at midnight (ISO 22400-2 time model): each reading's state holds until the next reading, and a run across midnight counts in both days.
+- Availability = run time / planned time. Without `planned_time_hours` the planned time is the time the state signal covers that day. A day the state signal does not cover has NaN availability, performance and OEE (its run time is unknown).
+- Performance = actual parts × `ideal_cycle_time` (seconds per part) / run time. Without `run_state_uuid`, `performance` uses the time the counter readings cover that day as run time.
+- A percentage above 100 % (availability over a fixed planned time, performance) is reported as computed, not clipped, with a `DataQualityWarning` naming the day: the inputs disagree.
 - `max_gap` (e.g. `"15min"`) treats a longer gap between readings as no data and removes it from run and planned time; without it, a logging gap while the last state was running counts as run time. `excluded_seconds` is the removed time.
-- Counters are reset-aware by default (`handle_resets=True`): a decreasing counter is a reset and the production after it is counted; increments are booked to the day of the reading that reports them.
+- Counters are reset-aware by default (`handle_resets=True`): a decreasing counter is a reset and the production after it is counted; the increment between two readings is spread over the time between them and split at midnight in proportion to time, so parts belong to the day they were produced in (part counts can be fractional).
 - Without `total_uuid`/`reject_uuid`, quality is 100 % and the quality basis columns are NaN.

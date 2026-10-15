@@ -30,6 +30,7 @@ from ts_shape import (
     TargetEvents,
     ToleranceDeviationEvents,
 )
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events.development.recipe_phase_adherence import (
     RecipePhaseAdherenceEvents,
 )
@@ -100,11 +101,15 @@ def _oee_frame() -> pd.DataFrame:
 
 def test_oee_carries_the_basis_of_its_percentages():
     oee = OEEEvents(_oee_frame())
-    daily = oee.oee(
-        "run", "cnt", 30.0, total_uuid="tot", reject_uuid="rej", max_gap="15min"
-    )
+    # The parts counted across the excluded logging gap have no run time:
+    # performance is above 100 %, reported unclipped with a warning.
+    with pytest.warns(DataQualityWarning, match="performance_pct above 100"):
+        daily = oee.oee(
+            "run", "cnt", 30.0, total_uuid="tot", reject_uuid="rej", max_gap="15min"
+        )
     avail = oee.availability("run", max_gap="15min")
-    perf = oee.performance("cnt", 30.0, run_state_uuid="run", max_gap="15min")
+    with pytest.warns(DataQualityWarning, match="performance_pct above 100"):
+        perf = oee.performance("cnt", 30.0, run_state_uuid="run", max_gap="15min")
     qual = oee.quality("tot", "rej")
     row = daily.iloc[0]
 
@@ -126,8 +131,9 @@ def test_oee_carries_the_basis_of_its_percentages():
         row["run_seconds"] / row["planned_seconds"] * 100
     )
     assert row["performance_pct"] == pytest.approx(
-        min(row["actual_parts"] / row["ideal_parts"] * 100, 100.0)
+        row["actual_parts"] / row["ideal_parts"] * 100
     )
+    assert row["performance_pct"] > 100
     assert row["quality_pct"] == pytest.approx(
         row["good_parts"] / row["total_parts"] * 100
     )

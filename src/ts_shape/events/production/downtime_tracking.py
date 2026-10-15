@@ -13,16 +13,17 @@ from collections.abc import Mapping
 import pandas as pd
 
 from ts_shape.events._compat import state_mask
-from ts_shape.events._windows import (
-    add_period_window,
-    add_shift_window,
-    data_tz,
-    window_bounds,
-)
+from ts_shape.events._windows import add_period_window, add_shift_window, data_tz
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import assign_shift, production_dates
+from ts_shape.utils.time_accounting import (
+    EXCLUDED,
+    grouper_periods,
+    reading_intervals,
+    shift_periods,
+    time_by_period,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,12 @@ class DowntimeEvents(Base):
     ) -> pd.DataFrame:
         """Calculate downtime duration per shift.
 
+        Each reading's state holds until the next reading, and that interval
+        is split at the shift boundaries (the ISO 22400-2 time model): a stop
+        from 07:00 to 15:00 is 7 h of downtime in the 06:00-14:00 shift and
+        1 h in the 14:00-22:00 shift. A shift is reported when any observed
+        time falls in it.
+
         Args:
             state_uuid: UUID for machine state signal
             running_value: Value that indicates machine is running. A bool
@@ -178,7 +185,8 @@ class DowntimeEvents(Base):
             - uptime_minutes / uptime_seconds: Running time
             - availability_pct: Uptime percentage
             - excluded_seconds: Time removed by ``max_gap`` as "no data"
-                (0 without a cap); it is in neither uptime nor downtime
+                (0 without a cap), split at the shift boundaries like the
+                rest; it is in neither uptime nor downtime
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
         Example:
@@ -203,106 +211,61 @@ class DowntimeEvents(Base):
             )
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
-
-        # Assign shifts and dates
-        state_data["shift"] = assign_shift(
-            state_data[self.time_column], self.shift_definitions
-        )
-        state_data["date"] = (
-            production_dates(
-                state_data[self.time_column],
-                state_data["shift"],
-                self.shift_definitions,
-            )
-            if production_day
-            else state_data[self.time_column].dt.date
-        )
-
-        # Calculate duration for each state
-        state_data["next_time"] = state_data[self.time_column].shift(-1)
-        state_data["duration_s"] = (
-            state_data["next_time"] - state_data[self.time_column]
-        ).dt.total_seconds()
-        state_data["duration_minutes"] = state_data["duration_s"] / 60
-        state_data["excluded_s"] = 0.0
+        times = state_data[self.time_column]
 
         if max_gap is None and state_uuid in self.specs:
             spec_gap = self.specs[state_uuid].max_gap
             max_gap = str(spec_gap) if spec_gap is not None else None
 
-        # Treat over-long gaps as "no data" so they are excluded from the sums.
-        if max_gap is not None:
-            cap_minutes = pd.to_timedelta(max_gap).total_seconds() / 60
-            over_gap = state_data["duration_minutes"] > cap_minutes
-            state_data.loc[over_gap, "excluded_s"] = state_data.loc[
-                over_gap, "duration_s"
-            ]
-            state_data.loc[over_gap, ["duration_minutes", "duration_s"]] = float("nan")
-
-        # Mark running vs downtime
-        state_data["is_running"] = state_mask(
+        # One interval per reading (held until the next reading), split at
+        # the shift boundaries: a stop from 07:00 to 15:00 is 7 h of the
+        # 06-14 shift and 1 h of the 14-22 shift (ISO 22400-2 time model).
+        is_running = state_mask(
             state_data, value_column, running_value, bool_value=True
         )
-
-        # Seconds per (date, shift), aggregated in one pass.
-        seconds = (
-            state_data.assign(
-                _up=state_data["duration_s"].where(state_data["is_running"], 0.0),
-                _down=state_data["duration_s"].where(~state_data["is_running"], 0.0),
-            )
-            .groupby(["date", "shift"])[["_up", "_down", "excluded_s"]]
-            .sum()
+        intervals = reading_intervals(
+            times,
+            is_running.map({True: "up", False: "down"}),
+            max_gap=max_gap,
         )
-        seconds_by_group = dict(
-            zip(seconds.index, seconds.itertuples(index=False, name=None), strict=True)
+        periods = shift_periods(
+            times.iloc[0],
+            times.iloc[-1],
+            self.shift_definitions,
+            production_day=production_day,
         )
+        seconds = time_by_period(
+            intervals,
+            periods,
+            keys=["date", "shift"],
+            states=["up", "down", EXCLUDED],
+        )
+        seconds = seconds[(seconds["up"] + seconds["down"]) > 0]
 
-        # Group by date and shift
         results = []
-        for (date, shift), group in state_data.groupby(["date", "shift"]):
-            if group.empty:
-                continue
-
-            # Calculate times (exclude last row with NaN duration)
-            valid_data = group[group["duration_minutes"].notna()]
-
-            if valid_data.empty:
-                continue
-
-            uptime_minutes = valid_data[valid_data["is_running"]][
-                "duration_minutes"
-            ].sum()
-            downtime_minutes = valid_data[~valid_data["is_running"]][
-                "duration_minutes"
-            ].sum()
-            total_minutes = uptime_minutes + downtime_minutes
-            uptime_seconds, downtime_seconds, excluded_seconds = seconds_by_group[
-                (date, shift)
-            ]
-
-            availability_pct = (
-                (uptime_minutes / total_minutes * 100) if total_minutes > 0 else 0
-            )
-
+        for date, shift, up, down, excluded in seconds[
+            ["date", "shift", "up", "down", EXCLUDED]
+        ].itertuples(index=False, name=None):
+            total = up + down
             results.append(
                 {
                     "date": date,
                     "shift": shift,
-                    "total_minutes": total_minutes,
-                    "total_seconds": float(uptime_seconds + downtime_seconds),
-                    "downtime_minutes": downtime_minutes,
-                    "downtime_seconds": float(downtime_seconds),
-                    "uptime_minutes": uptime_minutes,
-                    "uptime_seconds": float(uptime_seconds),
-                    "availability_pct": availability_pct,
-                    "excluded_seconds": float(excluded_seconds),
+                    "total_minutes": total / 60,
+                    "total_seconds": float(total),
+                    "downtime_minutes": down / 60,
+                    "downtime_seconds": float(down),
+                    "uptime_minutes": up / 60,
+                    "uptime_seconds": float(up),
+                    "availability_pct": up / total * 100,
+                    "excluded_seconds": float(excluded),
                 }
             )
 
         return add_shift_window(
             pd.DataFrame(results, columns=_SHIFT_COLS),
             self.shift_definitions,
-            data_tz(state_data[self.time_column]),
+            data_tz(times),
         )
 
     def downtime_by_reason(
@@ -493,6 +456,11 @@ class DowntimeEvents(Base):
     ) -> pd.DataFrame:
         """Calculate availability trend over time.
 
+        Each reading's state holds until the next reading, and that interval
+        is split at the window boundaries (the ISO 22400-2 time model), so
+        every window holds exactly the up / down time that fell inside it. A
+        window is reported when any observed time falls in it.
+
         Args:
             state_uuid: UUID for machine state signal
             running_value: Value that indicates machine is running (a string,
@@ -517,7 +485,7 @@ class DowntimeEvents(Base):
             - uptime_minutes / uptime_seconds: Total uptime
             - downtime_minutes / downtime_seconds: Total downtime
             - excluded_seconds: Time removed by ``max_gap`` as "no data"
-                (0 without a cap)
+                (0 without a cap), split at the window boundaries
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
         Example:
@@ -540,83 +508,40 @@ class DowntimeEvents(Base):
             return add_period_window(pd.DataFrame(columns=_TREND_COLS), window)
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
+        times = state_data[self.time_column]
 
-        # Calculate duration for each state
-        state_data["next_time"] = state_data[self.time_column].shift(-1)
-        state_data["duration_s"] = (
-            state_data["next_time"] - state_data[self.time_column]
-        ).dt.total_seconds()
-        state_data["duration_minutes"] = state_data["duration_s"] / 60
-
-        # Treat over-long gaps as "no data" so they are excluded below.
-        excluded: pd.Series | None = None
-        if max_gap is not None:
-            cap_minutes = pd.to_timedelta(max_gap).total_seconds() / 60
-            over_gap = state_data["duration_minutes"] > cap_minutes
-            excluded = state_data.loc[over_gap].set_index(self.time_column)[
-                "duration_s"
-            ]
-            state_data.loc[over_gap, ["duration_minutes", "duration_s"]] = float("nan")
-
-        # Mark running vs downtime
-        state_data["is_running"] = state_mask(
+        # One interval per reading, split at the window boundaries, so each
+        # window holds exactly the up / down time that fell inside it.
+        is_running = state_mask(
             state_data, value_column, running_value, bool_value=True
         )
+        intervals = reading_intervals(
+            times,
+            is_running.map({True: "up", False: "down"}),
+            max_gap=max_gap,
+        )
+        periods = grouper_periods(times.iloc[0], times.iloc[-1], window)
+        seconds = time_by_period(
+            intervals, periods, keys=["period"], states=["up", "down", EXCLUDED]
+        )
+        seconds = seconds[(seconds["up"] + seconds["down"]) > 0]
 
-        # Remove NaN durations
-        state_data = state_data[state_data["duration_minutes"].notna()]
-
-        if state_data.empty:
+        if seconds.empty:
             return add_period_window(pd.DataFrame(columns=_TREND_COLS), window)
 
-        # Group by time window
-        state_data = state_data.set_index(self.time_column)
-
-        grouper = pd.Grouper(freq=window)
-        seconds = (
-            state_data.assign(
-                _up=state_data["duration_s"].where(state_data["is_running"], 0.0),
-                _down=state_data["duration_s"].where(~state_data["is_running"], 0.0),
-            )
-            .groupby(grouper)[["_up", "_down"]]
-            .sum()
-        )
-        seconds_by_period = dict(
-            zip(seconds.index, seconds.itertuples(index=False, name=None), strict=True)
-        )
-        # Excluded time is booked to the window (as reported in start/end)
-        # holding the reading before the gap.
-        excluded_by_period: dict = {}
-        if excluded is not None and len(excluded):
-            labels = pd.Series(seconds.index)
-            lo, hi = window_bounds(labels, window)
-            bins = pd.IntervalIndex.from_arrays(lo, hi, closed="left")
-            pos = bins.get_indexer(excluded.index)
-            hit = pos >= 0
-            sums = excluded[hit].groupby(pos[hit]).sum()
-            excluded_by_period = {labels.iloc[i]: v for i, v in sums.items()}
-
         results = []
-        for period, group in state_data.groupby(grouper):
-            if group.empty:
-                continue
-            excluded_seconds = float(excluded_by_period.get(period, 0.0))
-
-            uptime = group[group["is_running"]]["duration_minutes"].sum()
-            downtime = group[~group["is_running"]]["duration_minutes"].sum()
-            total = uptime + downtime
-
-            availability = (uptime / total * 100) if total > 0 else 0
-
+        for period, up, down, excluded in seconds[
+            ["period", "up", "down", EXCLUDED]
+        ].itertuples(index=False, name=None):
             results.append(
                 {
                     "period": period,
-                    "availability_pct": availability,
-                    "uptime_minutes": uptime,
-                    "uptime_seconds": float(seconds_by_period[period][0]),
-                    "downtime_minutes": downtime,
-                    "downtime_seconds": float(seconds_by_period[period][1]),
-                    "excluded_seconds": excluded_seconds,
+                    "availability_pct": up / (up + down) * 100,
+                    "uptime_minutes": up / 60,
+                    "uptime_seconds": float(up),
+                    "downtime_minutes": down / 60,
+                    "downtime_seconds": float(down),
+                    "excluded_seconds": float(excluded),
                 }
             )
 

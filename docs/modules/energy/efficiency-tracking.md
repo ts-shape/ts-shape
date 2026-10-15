@@ -38,4 +38,5 @@ sec = ee.specific_energy_consumption("meter:main", "counter:parts", window="1D")
 
 - The meter must carry kWh deltas (see [PowerIntegrator](power-integration.md) for kW signals). The state signal is boolean, True = running; counters are reset-aware.
 - `idle_energy_waste` books a window's energy as waste when the machine ran less than 10 % of it and it consumed more than `idle_threshold`. The run state is held until the next change (`time_weighted=True`); `time_weighted=False` averages the samples.
+- `rolling_avg_efficiency` is the trailing `trend_window` windows taken as one period (Σunits / Σenergy), and `sec_trend` compares each window's SEC with the trailing 7 windows' Σenergy / Σoutput (ISO 50006), not with the mean of the per-window ratios, which over-weights low-output windows.
 - `efficiency_comparison` defaults to three 8-hour shifts from 06:00.

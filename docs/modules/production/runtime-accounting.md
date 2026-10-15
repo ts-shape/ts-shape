@@ -34,8 +34,8 @@ All arguments are keyword-only.
 
 ## Notes
 
-- Each sample's state holds until the next sample; the last sample contributes no time. A sample's whole duration is booked to the window it starts in, even when it reaches into the next one.
+- Each sample's state holds until the next sample; the last sample contributes no time. Per window, a sample's interval is split at the window boundaries (ISO 22400-2 time model), so a run across midnight counts in both days.
 - `max_gap`: a gap to the next sample longer than this counts as neither run nor idle time. Without it, a logging outage that began while running is booked as run time.
 - `utilization_pct` = run time / (run + idle) time with data, not / calendar time.
 - `start_count` counts transitions to running; a run already in progress at the first sample counts as a start.
-- The meter starts at 0 at the beginning of the data and covers only windows that contain samples. Add the physical meter reading at that time as an offset to match it.
+- The meter starts at 0 at the beginning of the data and covers every window that holds a sample or observed time. Add the physical meter reading at that time as an offset to match it.

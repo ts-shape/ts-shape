@@ -114,12 +114,14 @@ def test_efficiency_trend_hand_computed():
     _bounds_ok(out)
     assert list(out["energy"]) == ENERGY
     assert list(out["units"]) == UNITS
-    # units / kWh: 0.5, 0.75, 1.5, 0.6; rolling(2): 0.5, 0.625, 1.125, 1.05.
+    # units / kWh: 0.5, 0.75, 1.5, 0.6. The rolling(2) efficiency is the
+    # trailing pair as one period (ISO 50006: summed units / summed energy),
+    # not the mean of the two ratios (formerly 0.5, 0.625, 1.125, 1.05).
     assert out["efficiency"].tolist() == pytest.approx([0.5, 0.75, 1.5, 0.6])
     assert out["rolling_avg_efficiency"].tolist() == pytest.approx(
-        [0.5, 0.625, 1.125, 1.05]
+        [5 / 10, 20 / 30, 27 / 28, 36 / 48]
     )
-    # Slope +0.125, +0.5, -0.075 against the +-0.01 stable band.
+    # Slope +0.167, +0.298, -0.214 against the +-0.01 stable band.
     assert pd.isna(out["trend_direction"].iloc[0])
     assert list(out["trend_direction"].iloc[1:].astype(str)) == [
         "increasing",
@@ -137,8 +139,9 @@ def test_specific_energy_consumption_hand_computed():
     assert list(out["total_output"]) == UNITS
     sec = [2.0, 20 / 15, 8 / 12, 40 / 24]
     assert out["sec"].tolist() == pytest.approx(sec)
-    # Rolling(7) mean of SEC: 2, 1.667, 1.333, 1.417. Worse than +10 % is
-    # worsening, better than -10 % improving.
+    # Rolling(7) SEC as one period (summed energy / summed output): 2, 1.5,
+    # 1.1875, 1.393. Worse than +10 % is worsening, better than -10 %
+    # improving.
     assert list(out["sec_trend"]) == ["stable", "improving", "improving", "worsening"]
 
 

@@ -1,3 +1,20 @@
+# October 15, 2026 (round 9)
+KPIs match their textbook definitions.
+fix: durations and counter increments are split at shift, hour and day
+  boundaries (downtime, availability trend, shift handover, runtime, micro
+  stops, OEE, per-shift quality); OEE across midnight is correct; days
+  without state data are NaN; performance above 100 % warns instead of
+  being clipped.
+fix: PerformanceLoss counts parts; time_to_settle is the last band entry;
+  overshoot/undershoot are percent (ratio twins added); period roll-ups
+  recompute from summed bases; EnPI/SEC rolling baselines are ratios of
+  sums; stockout prediction is refill-aware.
+fix: SPC individuals limits, rules and CUSUM use MR-bar/1.128
+  (sigma_method="std" keeps the old sigma); real moving-range and EWMA
+  charts; Cp/Cpk within sigma, Pp/Ppk overall and per-window sigma.
+feat: utils.time_accounting; micro-stop performance_loss_pct; reference
+  tests for KPIs in tests/reference. See docs/migration.md.
+
 # October 15, 2026 (round 8)
 Legacy code and tooling removed.
 change: requires pandas>=2.2.2 and numpy>=2.0; a CI job tests these floors

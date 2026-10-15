@@ -35,5 +35,5 @@ print(lags[lags["is_best_lag"]])
 ## Notes
 
 - Both signals are resampled to the `window` grid; `window_size` and `max_lag` count grid periods, so `window_size=240` with `window="1min"` is 4 hours.
-- A positive `lag_periods` pairs `uuid_a` at time t with `uuid_b` at t minus the lag.
+- Sign convention: `lag_periods = k` pairs `uuid_a` at time t with `uuid_b` at t − k. A positive best lag means `uuid_b` leads (`uuid_a` follows it by k periods); a negative best lag means `uuid_b` lags `uuid_a`. For b(t) = a(t − 5) the best lag is −5. In the example above pressure (`uuid_a`) follows temperature (`uuid_b`) by 5 min, so the best lag is +5.
 - Breakdown intervals end at the next grid point after the condition stops holding (`interval_end="next_change"`, default) or at the last flagged point (`"last_sample"`).

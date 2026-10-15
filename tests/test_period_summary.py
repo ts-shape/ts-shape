@@ -3,7 +3,9 @@
 from datetime import date
 
 import pandas as pd
+import pytest
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events.production.period_summary import PeriodSummaryEvents
 
 
@@ -176,7 +178,9 @@ class TestPeriodSummary:
                 {"date": date(2024, 1, 2), "quality_pct": 80.0, "count": 200},
             ]
         )
-        result = PeriodSummaryEvents.from_daily_data(daily, window="W")
+        # No good/total parts basis: the plain mean is used and flagged.
+        with pytest.warns(DataQualityWarning, match="quality_pct"):
+            result = PeriodSummaryEvents.from_daily_data(daily, window="W")
         assert not result.empty
         # quality_pct should be averaged: (90+80)/2 = 85
         assert result["quality_pct"].iloc[0] == 85.0

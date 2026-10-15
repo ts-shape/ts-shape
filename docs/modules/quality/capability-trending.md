@@ -25,7 +25,7 @@ All arguments are keyword-only.
 
 | Method | Returns (per window) |
 |---|---|
-| `capability_over_time(window='8h')` | `cp`, `cpk`, `pp`, `ppk`, `mean`, `std`, `n_samples` |
+| `capability_over_time(window='8h')` | `cp`, `cpk`, `pp`, `ppk`, `mean`, `std`, `std_within`, `n_samples` |
 | `detect_capability_drop(window='8h', min_cpk=1.33, lookback=5)` | `cpk`, `prev_avg_cpk`, `drop_pct`, `alert` |
 | `capability_forecast(window='8h', horizon=5, threshold=1.33)` | `cpk`, `trend_slope`, `forecast_cpk`, `windows_to_threshold` |
 | `yield_estimate(window='8h')` | `estimated_yield_pct`, `dpmo`, `sigma_level` (assumes a normal distribution per window) |
@@ -33,6 +33,6 @@ All arguments are keyword-only.
 ## Notes
 
 - Limits are fixed (`upper_spec`, `lower_spec`) or spec signals (`upper_spec_uuid`, `lower_spec_uuid`); with signals each window uses the spec in force for that window.
-- Cp/Cpk use the window's standard deviation; Pp/Ppk use the standard deviation of the whole signal with the window's mean. Windows with fewer than 2 samples are skipped.
+- Each window uses only its own samples (AIAG SPC manual; Montgomery §8.3): Cp/Cpk use the within σ̂ = MR̄ / 1.128 of consecutive samples (`std_within`), Pp/Ppk the window's sample standard deviation (`std`, ddof = 1). `sigma_method="std"` (constructor) computes Cp/Cpk from `std` too, so Cp = Pp. Before October 2026 Cp/Cpk used the window's `std` and Pp/Ppk the standard deviation of the whole signal (later windows included). Windows with fewer than 2 samples are skipped.
 - `alert` is True when Cpk < `min_cpk` or Cpk dropped more than 20 % below the mean of the previous `lookback` windows.
 - The forecast fits one straight line through all window Cpk values. `windows_to_threshold` is NaN when the trend is not falling.

@@ -22,6 +22,7 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+from ts_shape.utils.time_accounting import counter_by_period, shift_periods
 
 logger = logging.getLogger(__name__)
 
@@ -110,11 +111,15 @@ class QualityEvents(Base):
             handle_resets: When True (default), treat a decreasing counter as a reset
                 and count the parts accumulated after the reset, for both the
                 OK and NOK counters. The increments are computed once over
-                each whole counter signal and booked to the shift of the
-                reading that reports them, so the shifts add up to the signal
-                totals (the parts made between the last reading of one shift
-                and the first of the next count in the next shift). The
-                result gains a ``resets`` column with the number of resets
+                each whole counter signal; the increment between two readings
+                is spread over the time between them and split at the shift
+                boundaries in proportion to time (ISO 22400-2: a part belongs
+                to the period it was produced in), so the shifts add up to
+                the signal totals and the parts made in the last hour of a
+                night shift stay in that shift even though the reading that
+                reports them falls in the morning shift. Quantities can
+                therefore be fractional. A reset counts in the shift of the
+                reading that shows it. The result gains a ``resets`` column with the number of resets
                 observed in each shift (across both counters). When False,
                 each counter uses ``max(0, last - first)`` of the shift's own
                 readings; a shift containing a reset reports too little (often
@@ -206,20 +211,22 @@ class QualityEvents(Base):
                 nok_data["date"] = nok_data[self.time_column].dt.date
             nok_processed = nok_data
 
-        # Quantities per shift: increments over each whole counter signal,
-        # booked to the shift of the reading that reports them, so the shifts
-        # add up to the signal total (no production lost at shift boundaries).
-        keys = ["date", "shift"]
+        # Quantities per shift. With handle_resets the reset-aware increment
+        # between two readings is spread over the time between them and split
+        # at the shift boundaries in proportion to time (ISO 22400-2: a part
+        # belongs to the period it was produced in), so a night shift keeps
+        # the parts its last hour produced even though the reading reporting
+        # them falls in the morning shift.
         ok_totals = (
-            counter_totals(
-                ok_processed, value_column, keys, handle_resets=handle_resets
+            self._counter_by_shift(
+                ok_processed, value_column, handle_resets, production_day
             )
             if ok_processed is not None
             else None
         )
         nok_totals = (
-            counter_totals(
-                nok_processed, value_column, keys, handle_resets=handle_resets
+            self._counter_by_shift(
+                nok_processed, value_column, handle_resets, production_day
             )
             if nok_processed is not None
             else None
@@ -267,6 +274,35 @@ class QualityEvents(Base):
             pd.DataFrame(results, columns=shift_cols),
             self.shift_definitions,
             data_tz(self.dataframe[self.time_column]),
+        )
+
+    def _counter_by_shift(
+        self,
+        data: pd.DataFrame,
+        value_column: str,
+        handle_resets: bool,
+        production_day: bool,
+    ) -> pd.DataFrame:
+        """Counter quantity and resets per ``(date, shift)`` of one counter.
+
+        ``data`` is time-sorted with ``date`` / ``shift`` assigned per
+        reading. With ``handle_resets`` increments are spread over the time
+        they were produced in (see :func:`~ts_shape.utils.time_accounting.
+        counter_by_period`); without it each shift reports
+        ``max(0, last - first)`` of its own readings.
+        """
+        keys = ["date", "shift"]
+        if not handle_resets:
+            return counter_totals(data, value_column, keys, handle_resets=False)
+        times = data[self.time_column]
+        periods = shift_periods(
+            times.iloc[0],
+            times.iloc[-1],
+            self.shift_definitions,
+            production_day=production_day,
+        )
+        return counter_by_period(
+            times, data[value_column], periods, data[keys], keys=keys
         )
 
     def quality_by_part(

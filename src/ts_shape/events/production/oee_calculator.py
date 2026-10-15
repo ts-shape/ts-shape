@@ -9,9 +9,12 @@ Industry-standard metric for manufacturing productivity:
 """
 
 import logging
+import warnings
+from math import nan
 
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import (
     COL_DURATION_S,
     COL_END,
@@ -21,9 +24,24 @@ from ts_shape.events._output import (
 from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
-from ts_shape.utils.deprecation import deprecated_class, deprecated_method, keyword_only
+from ts_shape.utils.deprecation import (
+    caller_stacklevel,
+    deprecated_class,
+    deprecated_method,
+    keyword_only,
+)
+from ts_shape.utils.time_accounting import (
+    EXCLUDED,
+    counter_by_period,
+    grouper_periods,
+    reading_intervals,
+    time_by_period,
+)
 
 logger = logging.getLogger(__name__)
+
+# Rounding slack before a percentage counts as above 100 %.
+_PCT_TOLERANCE = 1e-6
 
 
 def _daily_summary(
@@ -50,6 +68,34 @@ def _daily_summary(
     df = df.drop(columns=["date"])
     leading = [COL_START, COL_END, COL_DURATION_S]
     return df[leading + [c for c in df.columns if c not in leading]]
+
+
+def _day_periods(times: pd.Series) -> pd.DataFrame:
+    """Calendar days (local midnights) covering ``times``, keyed by ``date``."""
+    days = grouper_periods(times.iloc[0], times.iloc[-1], "1D")
+    days["date"] = [ts.date() for ts in days["period"]]
+    return days
+
+
+def _warn_above_100(metric: str, rows: list[dict]) -> None:
+    """Warn about days whose ``<metric>_pct`` exceeds 100 %.
+
+    A ratio above 100 % means the inputs disagree (an ideal cycle time that is
+    too long, run time missing from the state signal, a planned time shorter
+    than the run time). The value is reported as computed, not clipped.
+    """
+    key = f"{metric}_pct"
+    over = [r["date"] for r in rows if r[key] > 100.0 + _PCT_TOLERANCE]
+    if over:
+        days = ", ".join(str(d) for d in over)
+        warnings.warn(
+            f"OEEEvents: {key} above 100 % in the day window(s) starting {days}; "
+            "the inputs disagree (check the ideal cycle time, the planned time "
+            "and that the state and counter signals cover the same time). The "
+            "value is reported unclipped.",
+            DataQualityWarning,
+            stacklevel=caller_stacklevel(),
+        )
 
 
 class OEEEvents(Base):
@@ -112,14 +158,19 @@ class OEEEvents(Base):
     ) -> pd.DataFrame:
         """Calculate availability percentage from run/idle intervals.
 
-        Availability = run_time / planned_time.  When *planned_time_hours* is
-        ``None`` the planned time is derived from the first-to-last timestamp
-        span for each day.
+        Availability = run_time / planned_time (ISO 22400-2: APT / PBT).
+        Each reading's state holds until the next reading; the interval is
+        split at midnight, so a run across midnight counts in both days. When
+        *planned_time_hours* is ``None`` the planned time is the time the
+        state signal covers that day. A day the state signal does not cover
+        is not reported. A value above 100 % (run time longer than a fixed
+        planned time) is kept and reported with a
+        :class:`~ts_shape.errors.DataQualityWarning` naming the day.
 
         Args:
             run_state_uuid: UUID of the boolean run-state signal (True = running).
             planned_time_hours: Fixed planned production hours per day.  If None,
-                the time span covered by data each day is used.
+                the time the state signal covers each day is used.
             value_column: Column holding the boolean state.
             max_gap: Optional cap (e.g. "15min"). A sample's duration is the gap
                 to the next reading; a gap longer than this is treated as a
@@ -138,8 +189,7 @@ class OEEEvents(Base):
             - planned_seconds
             - availability_pct
             - excluded_seconds: time removed by ``max_gap`` as "no data"
-                (booked to the day of the reading before the gap; 0 without
-                ``max_gap``)
+                (split at midnight like the rest; 0 without ``max_gap``)
         """
         avail_extra = [
             "run_seconds",
@@ -157,38 +207,31 @@ class OEEEvents(Base):
             return _daily_summary([], avail_extra, tz=self._tz)
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
-        state_data["state"] = bool_or_false(state_data[value_column])
-        state_data["date"] = state_data[self.time_column].dt.date
+        times = state_data[self.time_column]
+        state = bool_or_false(state_data[value_column])
 
-        # Duration of each sample = gap to next sample
-        state_data["duration"] = (
-            state_data[self.time_column].shift(-1) - state_data[self.time_column]
-        ).dt.total_seconds()
-
-        # Treat over-long gaps as "no data" so they inflate neither run nor
-        # planned time.
-        excluded_by_day: dict = {}
-        if max_gap is not None:
-            cap_seconds = pd.to_timedelta(max_gap).total_seconds()
-            over_gap = state_data["duration"] > cap_seconds
-            excluded_by_day = (
-                state_data.loc[over_gap].groupby("date")["duration"].sum().to_dict()
-            )
-            state_data.loc[over_gap, "duration"] = float("nan")
-
-        # Drop last row per day (NaN duration at boundaries handled by groupby)
-        state_data = state_data[state_data["duration"].notna()]
-
-        if state_data.empty:
-            return _daily_summary([], avail_extra, tz=self._tz)
+        # Each reading's state holds until the next reading (gaps longer than
+        # max_gap are "no data"); the intervals are split at midnight, so a
+        # run across midnight counts in both days (ISO 22400-2 time model).
+        intervals = reading_intervals(
+            times, state.map({True: "run", False: "idle"}), max_gap=max_gap
+        )
+        seconds = time_by_period(
+            intervals,
+            _day_periods(times),
+            keys=["date"],
+            states=["run", "idle", EXCLUDED],
+        )
+        seconds = seconds[(seconds["run"] + seconds["idle"]) > 0]
 
         results = []
-        for date, grp in state_data.groupby("date"):
-            run_seconds = grp.loc[grp["state"], "duration"].sum()
+        for date, run_seconds, idle_seconds, excluded in seconds[
+            ["date", "run", "idle", EXCLUDED]
+        ].itertuples(index=False, name=None):
             if planned_time_hours is not None:
                 planned_seconds = planned_time_hours * 3600.0
             else:
-                planned_seconds = grp["duration"].sum()
+                planned_seconds = run_seconds + idle_seconds
 
             availability = (
                 (run_seconds / planned_seconds * 100.0) if planned_seconds > 0 else 0.0
@@ -197,13 +240,14 @@ class OEEEvents(Base):
             results.append(
                 {
                     "date": date,
-                    "run_seconds": run_seconds,
-                    "planned_seconds": planned_seconds,
-                    "availability_pct": min(availability, 100.0),
-                    "excluded_seconds": float(excluded_by_day.get(date, 0.0)),
+                    "run_seconds": float(run_seconds),
+                    "planned_seconds": float(planned_seconds),
+                    "availability_pct": availability,
+                    "excluded_seconds": float(excluded),
                 }
             )
 
+        _warn_above_100("availability", results)
         return _daily_summary(results, avail_extra, tz=self._tz)
 
     # ------------------------------------------------------------------
@@ -226,9 +270,14 @@ class OEEEvents(Base):
     ) -> pd.DataFrame:
         """Calculate performance percentage (actual vs ideal throughput).
 
-        Performance = (actual_parts * ideal_cycle_time) / run_time.
-        If *run_state_uuid* is None, the total time span per day is used
-        as run time.
+        Performance = (actual_parts * ideal_cycle_time) / run_time
+        (ISO 22400-2: PQ x pICT / APT). If *run_state_uuid* is None, the time
+        the counter readings cover each day is used as run time. With a
+        state signal, a day it does not cover has unknown run time:
+        ``run_seconds``, ``ideal_parts`` and ``performance_pct`` are NaN.
+        A value above 100 % means the inputs disagree; it is kept (not
+        clipped) and reported with a
+        :class:`~ts_shape.errors.DataQualityWarning` naming the day.
 
         Args:
             counter_uuid: UUID of the monotonic part counter.
@@ -239,9 +288,12 @@ class OEEEvents(Base):
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
                 ``actual_parts`` is the reset-aware total. The increments are
-                computed once over the whole signal and booked to the day of
-                the reading that reports them, so the days add up to the
-                signal total. The result gains a
+                computed once over the whole signal; the increment between
+                two readings is spread over the time between them and split
+                at midnight in proportion to time (ISO 22400-2: a part
+                belongs to the period it was produced in), so the days add
+                up to the signal total and ``actual_parts`` can be
+                fractional. The result gains a
                 ``resets`` column with the number of resets observed each day.
                 When False, ``actual_parts`` is simply
                 ``max(0, last - first)`` and a day containing a reset reports
@@ -275,35 +327,42 @@ class OEEEvents(Base):
         counter_data[self.time_column] = pd.to_datetime(counter_data[self.time_column])
         counter_data["date"] = counter_data[self.time_column].dt.date
 
-        # Compute run_seconds per day
-        run_per_day = {}
+        # Run time per day from the state signal. A day the state signal does
+        # not cover has unknown run time (NaN), not the counter's time span.
+        run_per_day: dict = {}
         if run_state_uuid is not None:
             avail_df = self.availability(
                 run_state_uuid, value_column=run_value_column, max_gap=max_gap
             )
-            for _, row in avail_df.iterrows():
-                run_per_day[row[COL_START].date()] = row["run_seconds"]
+            for start, run_s in zip(
+                avail_df[COL_START], avail_df["run_seconds"], strict=True
+            ):
+                run_per_day[start.date()] = float(run_s)
 
-        # Parts per day: increments over the whole signal, booked to the day of
-        # the reading that reports them, so the days add up to the total.
-        parts = counter_totals(
-            counter_data, value_column, ["date"], handle_resets=handle_resets
-        ).set_index("date")
+        parts = self._counter_by_day(counter_data, value_column, handle_resets)
+        if run_state_uuid is None:
+            # No state signal: the time the counter readings cover each day.
+            covered = time_by_period(
+                reading_intervals(
+                    counter_data[self.time_column],
+                    pd.Series("covered", index=counter_data.index),
+                ),
+                _day_periods(counter_data[self.time_column]),
+                keys=["date"],
+                states=["covered"],
+            )
+            run_per_day = dict(zip(covered["date"], covered["covered"], strict=True))
 
         results = []
-        for date, grp in counter_data.groupby("date"):
-            grp = grp.sort_values(self.time_column)
-            actual_parts = float(parts.at[date, "quantity"])
+        for date, actual_parts, n_resets in parts[
+            ["date", "quantity", "resets"]
+        ].itertuples(index=False, name=None):
+            run_seconds = run_per_day.get(date, 0.0 if run_state_uuid is None else nan)
 
-            if date in run_per_day:
-                run_seconds = run_per_day[date]
-            else:
-                span = (
-                    grp[self.time_column].iloc[-1] - grp[self.time_column].iloc[0]
-                ).total_seconds()
-                run_seconds = max(span, 0)
-
-            if run_seconds > 0 and ideal_cycle_time > 0:
+            if pd.isna(run_seconds):
+                ideal_parts = nan
+                performance = nan
+            elif run_seconds > 0 and ideal_cycle_time > 0:
                 ideal_parts = run_seconds / ideal_cycle_time
                 performance = (actual_parts / ideal_parts) * 100.0
             else:
@@ -312,16 +371,39 @@ class OEEEvents(Base):
 
             row = {
                 "date": date,
-                "actual_parts": int(actual_parts),
+                "actual_parts": float(actual_parts),
                 "ideal_parts": ideal_parts,
                 "run_seconds": run_seconds,
-                "performance_pct": min(performance, 100.0),
+                "performance_pct": performance,
             }
             if handle_resets:
-                row["resets"] = int(parts.at[date, "resets"])
+                row["resets"] = int(n_resets)
             results.append(row)
 
+        _warn_above_100("performance", results)
         return _daily_summary(results, perf_extra, tz=self._tz)
+
+    def _counter_by_day(
+        self, data: pd.DataFrame, value_column: str, handle_resets: bool
+    ) -> pd.DataFrame:
+        """Counter quantity and resets per calendar day.
+
+        With ``handle_resets`` the reset-aware increment between two readings
+        is spread over the time between them, split at midnight in proportion
+        to time (ISO 22400-2: the quantity belongs to the period it was
+        produced in). Without it each day reports ``max(0, last - first)`` of
+        its own readings. Columns: ``date``, ``quantity``, ``resets``.
+        """
+        if not handle_resets:
+            return counter_totals(data, value_column, ["date"], handle_resets=False)
+        times = data[self.time_column]
+        return counter_by_period(
+            times,
+            data[value_column],
+            _day_periods(times),
+            data[["date"]],
+            keys=["date"],
+        )
 
     # ------------------------------------------------------------------
     # Quality
@@ -346,9 +428,10 @@ class OEEEvents(Base):
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset for both the total and the
                 reject counters, so a day containing a reset is not
-                under-reported. Increments are booked to the day of the
-                reading that reports them, so the days add up to the signal
-                totals. The result gains a ``resets`` column with the
+                under-reported. Increments are spread over the time between
+                two readings and split at midnight in proportion to time (see
+                :meth:`performance`), so the days add up to the signal
+                totals and the part counts can be fractional. The result gains a ``resets`` column with the
                 combined number of resets (total + reject) observed each day.
                 When False, both quantities are ``max(0, last - first)``.
 
@@ -388,30 +471,28 @@ class OEEEvents(Base):
                 reject_data[self.time_column]
             )
             reject_data["date"] = reject_data[self.time_column].dt.date
-            rejects = counter_totals(
-                reject_data, value_column, ["date"], handle_resets=handle_resets
-            )
-            for date, qty, n_resets in rejects.itertuples(index=False):
+            rejects = self._counter_by_day(reject_data, value_column, handle_resets)
+            for date, qty, n_resets in rejects[
+                ["date", "quantity", "resets"]
+            ].itertuples(index=False):
                 reject_by_day[date] = float(qty)
                 if handle_resets:
                     reject_resets_by_day[date] = int(n_resets)
 
-        # Increments over each whole signal, booked to the day of the reading
-        # that reports them, so the days add up to the signal totals.
-        totals = counter_totals(
-            total_data, value_column, ["date"], handle_resets=handle_resets
-        )
+        totals = self._counter_by_day(total_data, value_column, handle_resets)
         results = []
-        for date, total_parts, n_resets in totals.itertuples(index=False):
-            reject_parts = reject_by_day.get(date, 0)
-            good_parts = max(0, total_parts - reject_parts)
+        for date, total_parts, n_resets in totals[
+            ["date", "quantity", "resets"]
+        ].itertuples(index=False):
+            reject_parts = reject_by_day.get(date, 0.0)
+            good_parts = max(0.0, total_parts - reject_parts)
             quality = (good_parts / total_parts * 100.0) if total_parts > 0 else 0.0
 
             row = {
                 "date": date,
-                "total_parts": int(total_parts),
-                "reject_parts": int(reject_parts),
-                "good_parts": int(good_parts),
+                "total_parts": float(total_parts),
+                "reject_parts": float(reject_parts),
+                "good_parts": float(good_parts),
                 "quality_pct": min(quality, 100.0),
             }
             if handle_resets:
@@ -472,7 +553,11 @@ class OEEEvents(Base):
             - oee_pct
 
             followed by the basis each percentage was computed from, taken
-            from the components (a day missing from a component reports 0):
+            from the components (a day missing from a component reports 0, except
+            that a day the state signal does not cover has NaN
+            ``availability_pct``, ``performance_pct``, ``oee_pct``,
+            ``run_seconds``, ``planned_seconds`` and ``ideal_parts``: its run
+            time is unknown):
 
             - run_seconds, planned_seconds, excluded_seconds: from
                 :meth:`availability` (``excluded_seconds`` is the time
@@ -544,7 +629,13 @@ class OEEEvents(Base):
                 merged[col] = 0.0
             merged["_qual_resets"] = 0
 
+        # A day the state signal does not cover has unknown availability and
+        # run time (so unknown performance and OEE), not 0 %.
+        no_state = merged["availability_pct"].isna()
         merged = merged.fillna(0.0)
+        unknown = ["availability_pct", "run_seconds", "planned_seconds"]
+        unknown += ["performance_pct", "ideal_parts"]
+        merged.loc[no_state, unknown] = float("nan")
         if not has_quality:
             # Quality was not measured: the 100 % is an assumption, not a count.
             for col in qual_basis:

@@ -8,8 +8,9 @@ T0 = pd.Timestamp("2024-01-01")
 
 
 def test_spc_rule_1_violation_and_process():
-    # Tolerance rows 9, 10, 11 repeated: center 10, sample sigma
-    # sqrt(20/29) (each of the ten 9s and 11s deviates by 1, n - 1 = 29).
+    # Tolerance rows 9, 10, 11 repeated: center 10. Moving ranges
+    # 1, 1, 2, 1, 1, 2, ... (29 of them: 10 ones-pairs and 9 twos -> sum
+    # 2 * 10 + 9 * 2 = 38), so sigma = (38 / 29) / 1.128 (Montgomery 6.4).
     tol_uuid = "tol"
     act_uuid = "act"
     event_uuid = "evt"
@@ -31,13 +32,13 @@ def test_spc_rule_1_violation_and_process():
         event_uuid=event_uuid,
     )
     limits = spc.control_limits().iloc[0]
-    sigma = (20 / 29) ** 0.5
+    sigma = (38 / 29) / 1.128
     assert limits["mean"] == 10.0
     assert abs(limits["3sigma_upper"] - (10 + 3 * sigma)) < 1e-12
     assert abs(limits["1sigma_lower"] - (10 - sigma)) < 1e-12
 
     processed = spc.detect_violations(selected_rules=["rule_1"])
-    # Only the 20 is beyond 3 sigma (12.49); 9 and 10 are within.
+    # Only the 20 is beyond 3 sigma (13.48); 9 and 10 are within.
     assert list(processed["value_double"]) == [20.0]
     assert list(processed["systime"]) == [pd.Timestamp("2024-01-01 00:32")]
     assert list(processed["uuid"]) == [event_uuid]
@@ -57,7 +58,12 @@ def test_spc_rule_1_method_flags_points_beyond_3_sigma():
 
 
 def _spc(values, *, tol_uuid="tol", act_uuid="act", event_uuid="evt"):
-    """Build an SPC monitor over ``values``; tolerance 9, 10, 11 = mean 10, sigma 1."""
+    """Build an SPC monitor over ``values``; tolerance 9, 10, 11 = mean 10, sigma 1.
+
+    ``sigma_method="std"``: the sample std of 9, 10, 11 is exactly 1, so the
+    rule tests have exact zone edges (the default MR-bar / 1.128 is covered
+    in tests/reference/test_kpi_references_quality.py).
+    """
     n = len(values)
     tol = pd.DataFrame(
         {
@@ -81,6 +87,7 @@ def _spc(values, *, tol_uuid="tol", act_uuid="act", event_uuid="evt"):
         tolerance_uuid=tol_uuid,
         actual_uuid=act_uuid,
         event_uuid=event_uuid,
+        sigma_method="std",
     )
 
 

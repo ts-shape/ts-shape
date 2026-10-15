@@ -39,4 +39,5 @@ Every `*_seconds` column has a `*_minutes` twin.
 
 - The state may be a string signal in `value_string` (`running_value='Running'`, `stopped_value='Stopped'`) or a boolean run signal in `value_bool` (True = running). The boolean signal is used when the state rows carry no `value_string`; `running_value=True` or `stopped_value=False` selects it explicitly. Both give the same downtime.
 - `max_gap` treats a gap between two readings longer than the cap as no data instead of booking it to the preceding state; `excluded_seconds` is the time removed (0 without a cap). With `specs=` (see [signals](../../guides/signals.md)) a state signal's `max_gap` is applied by default.
+- Each reading's state holds until the next reading, and that time is split at the shift / window boundaries (ISO 22400-2 time model): a stop from 07:00 to 15:00 is 7 h of downtime in the 06-14 shift and 1 h in the 14-22 shift. Excluded time is split the same way.
 - Default shifts are 06:00-14:00, 14:00-22:00, 22:00-06:00; pass `shift_definitions={"day": ("06:00", "18:00"), "night": ("18:00", "06:00")}` for your schedule.

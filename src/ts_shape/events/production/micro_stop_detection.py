@@ -10,6 +10,7 @@ from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 from ts_shape.utils.shifts import assign_shift
+from ts_shape.utils.time_accounting import grouper_periods, time_by_period
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +228,12 @@ class MicroStopEvents(Base):
     ) -> pd.DataFrame:
         """Time lost to micro-stops vs total available time per window.
 
+        A stop is classified as a micro-stop by its full duration; its time
+        and the run time are then split at the window boundaries (the ISO
+        22400-2 time model), so a stop across the hour counts in both hours.
+        Every window from the first interval to the end of the last one is
+        reported (0 when it holds no run or micro-stop time).
+
         Args:
             window: Resample window.
             max_duration: Maximum idle duration to qualify as micro-stop.
@@ -234,12 +241,21 @@ class MicroStopEvents(Base):
         Returns:
             DataFrame with columns: start, end (start + window),
             duration_seconds, uuid, source_uuid, total_run_time,
-            total_micro_stop_time, availability_loss_pct.
+            total_micro_stop_time, performance_loss_pct,
+            availability_loss_pct.
+
+            ``performance_loss_pct`` is the micro-stop time as a percentage of
+            run + micro-stop time. Minor stops are a *performance* loss in
+            Nakajima's six big losses (idling and minor stoppages), not an
+            availability loss. ``availability_loss_pct`` holds the same value
+            under its original, misleading name and is kept for
+            compatibility.
         """
         cols = [
             "start",
             "total_run_time",
             "total_micro_stop_time",
+            "performance_loss_pct",
             "availability_loss_pct",
         ]
 
@@ -250,31 +266,40 @@ class MicroStopEvents(Base):
         max_td = pd.to_timedelta(max_duration)
         _window_td = pd.to_timedelta(window)
 
-        intervals["dur_seconds"] = intervals["duration"].dt.total_seconds()
-        intervals["is_micro_stop"] = (intervals["state"] == "idle") & (
-            intervals["duration"] <= max_td
+        is_micro = (intervals["state"] == "idle") & (intervals["duration"] <= max_td)
+        # A stop is classified by its full duration; its time is then split
+        # at the window boundaries with the run time (ISO 22400-2 time model).
+        labeled = pd.DataFrame(
+            {
+                "start": pd.to_datetime(intervals["start"]),
+                "end": pd.to_datetime(intervals["end"]),
+                "state": intervals["state"].where(~is_micro, "micro"),
+            }
         )
-        intervals["is_run"] = intervals["state"] == "run"
-
-        intervals_indexed = intervals.set_index("start")
-
-        run_time = (
-            intervals_indexed.loc[intervals_indexed["is_run"], "dur_seconds"]
-            .resample(window)
-            .sum()
+        periods = grouper_periods(
+            labeled["start"].iloc[0], labeled["end"].max(), window
         )
-        micro_time = (
-            intervals_indexed.loc[intervals_indexed["is_micro_stop"], "dur_seconds"]
-            .resample(window)
-            .sum()
-        )
-
+        seconds = time_by_period(
+            labeled, periods, keys=["period"], states=["run", "micro"]
+        ).set_index("period")
+        first, last = labeled["start"].iloc[0], labeled["end"].max()
+        span = periods[
+            (periods["end"] > first)
+            & ((periods["start"] < last) | (periods["start"] <= first))
+        ]
         combined = pd.DataFrame(
             {
-                "total_run_time": run_time,
-                "total_micro_stop_time": micro_time,
+                "start": span["period"].to_numpy(),
+                "total_run_time": span["period"]
+                .map(seconds["run"])
+                .fillna(0.0)
+                .to_numpy(dtype="float64"),
+                "total_micro_stop_time": span["period"]
+                .map(seconds["micro"])
+                .fillna(0.0)
+                .to_numpy(dtype="float64"),
             }
-        ).fillna(0)
+        )
 
         total_active = combined["total_run_time"] + combined["total_micro_stop_time"]
         combined["availability_loss_pct"] = np.where(
@@ -283,9 +308,9 @@ class MicroStopEvents(Base):
             0.0,
         )
 
-        result = combined.reset_index()
-        result = result.rename(columns={"start": "start"})
-        return self._with_window(result[cols], window)
+        # Nakajima: minor stops are a performance loss (twin of the old name).
+        combined["performance_loss_pct"] = combined["availability_loss_pct"]
+        return self._with_window(combined[cols], window)
 
     def _with_window(self, df: pd.DataFrame, window: str) -> pd.DataFrame:
         """Insert end (start + window), duration_seconds, uuid and source_uuid."""

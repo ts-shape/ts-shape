@@ -352,8 +352,13 @@ class SetpointChangeEvents(Base):
         lookahead: str = "10min",
     ) -> pd.DataFrame:
         """
-        For each setpoint change (any change), compute time until the actual signal
-        is within ±`tol` of the new setpoint for a continuous duration of `hold`.
+        For each setpoint change (any change), compute the settling time: the
+        time after which the actual signal enters the ±tolerance band around
+        the new setpoint and *stays* inside it until the end of the evaluation
+        window (Ogata, *Modern Control Engineering*, settling time ``t_s``).
+        The first entry into the band is not the settling time: an
+        underdamped response crosses the band on every swing long before it
+        settles.
 
         Args:
             actual_uuid: UUID of the actual/process value signal
@@ -361,15 +366,33 @@ class SetpointChangeEvents(Base):
             settle_pct: Tolerance as a fraction of the step magnitude (e.g.
                 0.02 for 2%). When given it wins over ``tol``; passing both
                 emits a ``UserWarning``.
-            hold: Minimum duration the signal must stay within tolerance
-            lookahead: Maximum time window to search for settling
+            hold: Minimum duration the final inside-band run must last
+                before the window ends for the settle to count as confirmed
+                (``settled``).
+            lookahead: Evaluation window after each change. It also ends at
+                the next (later) setpoint change, after which the process
+                follows a different setpoint. The response must be inside the
+                band at the window's last sample to have settled.
 
         Returns:
             DataFrame with columns: start, end (start + the lookahead window),
             duration_seconds, uuid, source_uuid ("<setpoint_uuid>,<actual_uuid>"),
-            is_delta, t_settle_seconds, settled.
+            is_delta, t_settle_seconds (seconds from the change to the start
+            of the final inside-band run; ``None`` when the response is
+            outside the band at the end of the window), settled_within_window
+            (True when the response is inside the band at the end of the
+            window, so a settling time exists) and settled
+            (settled_within_window and the final inside-band run lasts at
+            least ``hold``).
         """
-        cols = ["start", "uuid", "is_delta", "t_settle_seconds", "settled"]
+        cols = [
+            "start",
+            "uuid",
+            "is_delta",
+            "t_settle_seconds",
+            "settled",
+            "settled_within_window",
+        ]
         if settle_pct is not None and tol != 0.0:
             warnings.warn(
                 "time_to_settle(): both tol and settle_pct were passed; "
@@ -393,11 +416,25 @@ class SetpointChangeEvents(Base):
             sp["delta"].abs() > 0, [self.time_column, self.value_column, "delta"]
         ].reset_index(drop=True)
 
+        # The response to a step is evaluated until the lookahead ends or the
+        # next (strictly later) setpoint change, whichever is first: after
+        # that the process follows a different setpoint.
+        change_ticks = (
+            pd.DatetimeIndex(change_times[self.time_column]).as_unit("ns").asi8
+        )
         rows: list[dict[str, Any]] = []
         for c in change_times.to_dict("records"):
             t0 = c[self.time_column]
             s_new = float(c[self.value_column])
             delta = float(c["delta"]) if pd.notna(c["delta"]) else 0.0
+            nxt = np.searchsorted(
+                change_ticks, pd.Timestamp(t0).as_unit("ns").value, side="right"
+            )
+            t_next = (
+                change_times[self.time_column].iloc[nxt]
+                if nxt < len(change_times)
+                else None
+            )
 
             # Calculate tolerance based on settle_pct or use absolute tol
             if settle_pct is not None and delta != 0:
@@ -406,6 +443,8 @@ class SetpointChangeEvents(Base):
                 effective_tol = tol
 
             window = self._window(actual, t0, t0 + look_td)
+            if t_next is not None:
+                window = window[window[self.time_column] < t_next]
             if window.empty:
                 rows.append(
                     {
@@ -414,32 +453,30 @@ class SetpointChangeEvents(Base):
                         "is_delta": True,
                         "t_settle_seconds": None,
                         "settled": False,
+                        "settled_within_window": False,
                     }
                 )
                 continue
             err = (window[self.value_column] - s_new).abs()
-            inside = err <= effective_tol
+            present = err.notna()  # a missing reading is no evidence either way
+            inside = (err[present] <= effective_tol).to_numpy()
+            times = window.loc[present, self.time_column]
 
-            # time to first entry within tolerance (ignores hold)
-            if inside.any():
-                first_idx = inside[inside].index[0]
-                t_enter = window.loc[first_idx, self.time_column]
-            else:
-                t_enter = None
-
-            # determine if any contiguous inside segment satisfies hold duration
+            # Settling time (Ogata): the instant after which the response
+            # enters the band and stays inside it until the end of the
+            # evaluation window -- the start of the final inside run, not the
+            # first entry (an underdamped response passes through the band
+            # long before it settles).
+            settled_within_window = bool(inside.size and inside[-1])
+            t_enter = None
             settled = False
-            if inside.any():
-                gid = (inside.ne(inside.shift())).cumsum()
-                for _, seg in window.groupby(gid):
-                    seg_inside = inside.loc[seg.index]
-                    if not seg_inside.iloc[0]:
-                        continue
-                    start_seg = seg[self.time_column].iloc[0]
-                    end_seg = seg[self.time_column].iloc[-1]
-                    if (end_seg - start_seg) >= hold_td:
-                        settled = True
-                        break
+            if settled_within_window:
+                outside = np.flatnonzero(~inside)
+                first_in = int(outside[-1]) + 1 if outside.size else 0
+                t_enter = times.iloc[first_in]
+                # ``hold`` confirms the settle: the final inside run must last
+                # at least that long before the window ends.
+                settled = (times.iloc[-1] - t_enter) >= hold_td
 
             rows.append(
                 {
@@ -450,6 +487,7 @@ class SetpointChangeEvents(Base):
                         (t_enter - t0).total_seconds() if t_enter is not None else None
                     ),
                     "settled": bool(settled),
+                    "settled_within_window": settled_within_window,
                 }
             )
 
@@ -473,9 +511,15 @@ class SetpointChangeEvents(Base):
         Returns:
             DataFrame with columns: start, end (start + the lookahead window),
             duration_seconds, uuid, source_uuid ("<setpoint_uuid>,<actual_uuid>"),
-            is_delta, overshoot_abs, overshoot_pct,
-            t_peak_seconds, undershoot_abs, undershoot_pct, t_undershoot_seconds,
-            oscillation_count, oscillation_amplitude.
+            is_delta, overshoot_abs, overshoot_pct, overshoot_ratio,
+            t_peak_seconds, undershoot_abs, undershoot_pct, undershoot_ratio,
+            t_undershoot_seconds, oscillation_count, oscillation_amplitude.
+
+            ``overshoot_pct`` is the peak overshoot in percent of the step
+            magnitude (0-100+, Ogata's maximum percent overshoot ``M_p``);
+            ``overshoot_ratio`` is the same quantity as a fraction (0-1+).
+            ``undershoot_pct`` / ``undershoot_ratio`` are the swing back past
+            the new setpoint after it is first reached, in the same two units.
         """
         cols = [
             "start",
@@ -483,9 +527,11 @@ class SetpointChangeEvents(Base):
             "is_delta",
             "overshoot_abs",
             "overshoot_pct",
+            "overshoot_ratio",
             "t_peak_seconds",
             "undershoot_abs",
             "undershoot_pct",
+            "undershoot_ratio",
             "t_undershoot_seconds",
             "oscillation_count",
             "oscillation_amplitude",
@@ -521,9 +567,11 @@ class SetpointChangeEvents(Base):
                         "is_delta": True,
                         "overshoot_abs": None,
                         "overshoot_pct": None,
+                        "overshoot_ratio": None,
                         "t_peak_seconds": None,
                         "undershoot_abs": None,
                         "undershoot_pct": None,
+                        "undershoot_ratio": None,
                         "t_undershoot_seconds": None,
                         "oscillation_count": None,
                         "oscillation_amplitude": None,
@@ -564,7 +612,7 @@ class SetpointChangeEvents(Base):
                 )
 
             overshoot_abs = float(peak) if pd.notna(peak) and peak > 0 else 0.0
-            overshoot_pct = (
+            overshoot_ratio = (
                 (overshoot_abs / abs(delta))
                 if (delta != 0 and overshoot_abs is not None)
                 else None
@@ -575,7 +623,7 @@ class SetpointChangeEvents(Base):
                 if pd.notna(undershoot_val) and abs(undershoot_val) > 0
                 else 0.0
             )
-            undershoot_pct = (
+            undershoot_ratio = (
                 (undershoot_abs / abs(delta))
                 if (delta != 0 and undershoot_abs is not None)
                 else None
@@ -598,8 +646,13 @@ class SetpointChangeEvents(Base):
                     "is_delta": True,
                     "overshoot_abs": overshoot_abs if overshoot_abs > 0 else None,
                     "overshoot_pct": (
-                        float(overshoot_pct)
-                        if overshoot_pct is not None and overshoot_abs > 0
+                        100.0 * float(overshoot_ratio)
+                        if overshoot_ratio is not None and overshoot_abs > 0
+                        else None
+                    ),
+                    "overshoot_ratio": (
+                        float(overshoot_ratio)
+                        if overshoot_ratio is not None and overshoot_abs > 0
                         else None
                     ),
                     "t_peak_seconds": (
@@ -607,8 +660,13 @@ class SetpointChangeEvents(Base):
                     ),
                     "undershoot_abs": undershoot_abs if undershoot_abs > 0 else None,
                     "undershoot_pct": (
-                        float(undershoot_pct)
-                        if undershoot_pct is not None and undershoot_abs > 0
+                        100.0 * float(undershoot_ratio)
+                        if undershoot_ratio is not None and undershoot_abs > 0
+                        else None
+                    ),
+                    "undershoot_ratio": (
+                        float(undershoot_ratio)
+                        if undershoot_ratio is not None and undershoot_abs > 0
                         else None
                     ),
                     "t_undershoot_seconds": (
@@ -1125,11 +1183,13 @@ class SetpointChangeEvents(Base):
             DataFrame with comprehensive metrics including:
             - start, end (start + lookahead), duration_seconds, uuid,
                 source_uuid ("<setpoint_uuid>,<actual_uuid>"), is_delta
-            - t_settle_seconds, settled (from time_to_settle)
+            - t_settle_seconds, settled, settled_within_window (from
+                time_to_settle)
             - t_settle_derivative_seconds (from time_to_settle_derivative)
             - rise_time_seconds (from rise_time)
-            - overshoot_abs, overshoot_pct (from overshoot_metrics)
-            - undershoot_abs, undershoot_pct
+            - overshoot_abs, overshoot_pct (percent), overshoot_ratio
+                (fraction) (from overshoot_metrics)
+            - undershoot_abs, undershoot_pct (percent), undershoot_ratio
             - oscillation_count, oscillation_amplitude, oscillation_freq_hz
             - decay_rate_lambda, fit_quality_r2
             - steady_state_error (final error in window)
@@ -1143,12 +1203,15 @@ class SetpointChangeEvents(Base):
                     "is_delta",
                     "t_settle_seconds",
                     "settled",
+                    "settled_within_window",
                     "t_settle_derivative_seconds",
                     "rise_time_seconds",
                     "overshoot_abs",
                     "overshoot_pct",
+                    "overshoot_ratio",
                     "undershoot_abs",
                     "undershoot_pct",
+                    "undershoot_ratio",
                     "oscillation_count",
                     "oscillation_amplitude",
                     "oscillation_freq_hz",
@@ -1237,8 +1300,10 @@ class SetpointChangeEvents(Base):
                     "start",
                     "overshoot_abs",
                     "overshoot_pct",
+                    "overshoot_ratio",
                     "undershoot_abs",
                     "undershoot_pct",
+                    "undershoot_ratio",
                     "oscillation_count",
                     "oscillation_amplitude",
                 ],

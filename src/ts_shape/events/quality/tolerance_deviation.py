@@ -10,6 +10,11 @@ import pandas as pd
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.events._output import drop_duplicate_events
+from ts_shape.events.quality.statistical_process_control import (
+    SigmaMethod,
+    _check_sigma_method,
+    _sigma_hat,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import (
@@ -35,6 +40,7 @@ _CAPABILITY_COLUMNS = [
     "Cpm",
     "mean",
     "std",
+    "std_within",
     "usl",
     "lsl",
     "target",
@@ -530,6 +536,7 @@ class ToleranceDeviationEvents(Base):
         target_value: float | None = ...,
         *,
         as_frame: Literal[True] = ...,
+        sigma_method: SigmaMethod = ...,
     ) -> pd.DataFrame: ...
 
     @overload
@@ -538,6 +545,7 @@ class ToleranceDeviationEvents(Base):
         target_value: float | None = ...,
         *,
         as_frame: Literal[False],
+        sigma_method: SigmaMethod = ...,
     ) -> dict[str, float]: ...
 
     @keyword_only(1)
@@ -546,22 +554,27 @@ class ToleranceDeviationEvents(Base):
         target_value: float | None = None,
         *,
         as_frame: bool = True,
+        sigma_method: SigmaMethod = "moving_range",
     ) -> pd.DataFrame | dict[str, float]:
         """
         Calculate process capability indices (Cp, Cpk, Pp, Ppk and Cpm).
 
-        Process capability indices measure how well a process meets specification limits:
-        - Cp = (USL - LSL) / 6σ: potential capability assuming perfect centering
-        - Cpk = min(USL - mean, mean - LSL) / 3σ: accounts for centering
-        - Pp / Ppk: the same formulas
+        Process capability indices measure how well a process meets specification limits
+        (AIAG SPC manual; Montgomery, Introduction to Statistical Quality
+        Control, section 8.3):
+        - Cp = (USL - LSL) / 6σ_within: potential capability assuming perfect centering
+        - Cpk = min(USL - mean, mean - LSL) / 3σ_within: accounts for centering
+        - Pp / Ppk: the same formulas with the overall σ
         - Cpm (only when ``target_value`` is given): the Taguchi index
-          Cp / sqrt(1 + ((mean - T) / σ)²), which penalizes distance from
-          the target T
+          (USL - LSL) / 6 sqrt(σ² + (mean - T)²) = Pp / sqrt(1 + ((mean - T) / σ)²)
+          with the overall σ, which penalizes distance from the target T
 
-        σ is the overall sample standard deviation (ddof=1) of all actual
-        measurements. The data carries no rational subgroups, so no
-        within-subgroup (short-term) σ can be estimated: Cp/Cpk are computed
-        from the overall σ and are therefore equal to Pp/Ppk.
+        The overall σ (``std``) is the sample standard deviation (ddof=1)
+        of all actual measurements. The within (short-term) σ
+        (``std_within``) is, with the default ``sigma_method="moving_range"``,
+        the individuals-chart estimate ``MR-bar / 1.128`` from consecutive
+        measurements in time order; with ``sigma_method="std"`` it is the
+        overall σ, so Cp/Cpk equal Pp/Ppk (the behavior before October 2026).
 
         With a one-sided spec (only an upper or only a lower limit) Cp/Pp
         are NaN and Cpk/Ppk are the one-sided index (CPU or CPL); the
@@ -577,6 +590,8 @@ class ToleranceDeviationEvents(Base):
                 midpoint of the tolerances (or the single limit of a
                 one-sided spec) is reported as ``target`` and no ``Cpm`` is
                 computed.
+            sigma_method: Within σ for Cp/Cpk: ``"moving_range"`` (default,
+                ``MR-bar / 1.128``) or ``"std"`` (the overall σ).
             as_frame: When True (default), return a one-row DataFrame (see
                 below). ``as_frame=False`` returns the dictionary form; it is
                 deprecated, emits a ``DeprecationWarning`` and will be removed
@@ -587,18 +602,20 @@ class ToleranceDeviationEvents(Base):
             columns start, end, duration_seconds (first to last actual
             measurement), uuid (event uuid), source_uuid (actual uuid), Cp,
             Cpk, Pp, Ppk, Cpm (always present; NaN unless ``target_value``
-            is given), mean, std, usl, lsl, target, and sample_count (the
+            is given), mean, std (overall σ), std_within (the σ behind Cp /
+            Cpk), usl, lsl, target, and sample_count (the
             number of measurements the indices are computed from).
 
             With ``as_frame=False`` (deprecated), a dictionary containing:
                 - 'Cp': Process capability
                 - 'Cpk': Process capability index
-                - 'Pp': Process performance (equal to Cp, see above)
-                - 'Ppk': Process performance index (equal to Cpk)
+                - 'Pp': Process performance
+                - 'Ppk': Process performance index
                 - 'Cpm': Taguchi capability index; only present when
                   ``target_value`` is given (NaN for a one-sided spec)
                 - 'mean': Process mean
-                - 'std': Process standard deviation
+                - 'std': Overall process standard deviation
+                - 'std_within': Within σ used for Cp / Cpk
                 - 'usl': Upper specification limit
                 - 'lsl': Lower specification limit
                 - 'target': Target value used
@@ -607,6 +624,7 @@ class ToleranceDeviationEvents(Base):
             - Values > 1.33 are generally considered acceptable
             - Values > 1.67 are considered good
         """
+        _check_sigma_method(sigma_method)
         if not as_frame:
             warn_dict_return("ToleranceDeviationEvents.capability_indices")
         if as_frame and self.dataframe.empty:
@@ -668,6 +686,9 @@ class ToleranceDeviationEvents(Base):
                 stacklevel=caller_stacklevel(),
             )
             process_std = np.nan
+        within_std = _sigma_hat(actual_data, sigma_method)
+        if not within_std > 0:
+            within_std = np.nan
 
         # Determine target value
         target_given = target_value is not None
@@ -679,18 +700,21 @@ class ToleranceDeviationEvents(Base):
             else:
                 target_value = (usl + lsl) / 2
 
-        # Calculate Cp (potential capability); undefined (NaN) when one-sided
-        cp = (usl - lsl) / (6 * process_std)
+        def _indices(sigma: float) -> tuple[float, float]:
+            # (USL - LSL) / 6 sigma is undefined (NaN) when one-sided; the
+            # k-index is then the one-sided index (CPU or CPL).
+            index = (usl - lsl) / (6 * sigma)
+            upper = (usl - process_mean) / (3 * sigma)
+            lower = (process_mean - lsl) / (3 * sigma)
+            k_index = (
+                upper
+                if pd.isna(lower)
+                else lower if pd.isna(upper) else min(upper, lower)
+            )
+            return index, k_index
 
-        # Calculate Cpk (actual capability accounting for centering); a
-        # one-sided spec gives the one-sided index (CPU or CPL).
-        cpu = (usl - process_mean) / (3 * process_std)
-        cpl = (process_mean - lsl) / (3 * process_std)
-        cpk = cpu if pd.isna(cpl) else cpl if pd.isna(cpu) else min(cpu, cpl)
-
-        # Without subgroups there is no short-term sigma: Pp/Ppk equal Cp/Cpk.
-        pp = cp
-        ppk = cpk
+        cp, cpk = _indices(within_std)  # within (short-term) sigma
+        pp, ppk = _indices(process_std)  # overall sigma
 
         result: dict[str, Any] = {
             "Cp": float(cp),
@@ -699,13 +723,14 @@ class ToleranceDeviationEvents(Base):
             "Ppk": float(ppk),
             "mean": float(process_mean),
             "std": float(process_std),
+            "std_within": float(within_std),
             "usl": float(usl),
             "lsl": float(lsl),
             "target": float(target_value),
         }
         if target_given:
             # Taguchi index (Chan, Cheng & Spiring 1988, JQT 20(3)).
-            cpm = cp / np.sqrt(1 + ((process_mean - target_value) / process_std) ** 2)
+            cpm = pp / np.sqrt(1 + ((process_mean - target_value) / process_std) ** 2)
             result["Cpm"] = float(cpm)
         if not as_frame:
             return result
@@ -721,7 +746,10 @@ class ToleranceDeviationEvents(Base):
             "source_uuid": self.actual_uuid,
             **{k: result[k] for k in ("Cp", "Cpk", "Pp", "Ppk")},
             "Cpm": result.get("Cpm", float("nan")),
-            **{k: result[k] for k in ("mean", "std", "usl", "lsl", "target")},
+            **{
+                k: result[k]
+                for k in ("mean", "std", "std_within", "usl", "lsl", "target")
+            },
             "sample_count": int(len(actual_data)),
         }
         return pd.DataFrame([row], columns=_CAPABILITY_COLUMNS)
