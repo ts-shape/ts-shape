@@ -36,7 +36,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import (
@@ -342,6 +341,8 @@ class ReliabilityEvents(Base):
             ``failure_pattern`` is ``"unknown"`` and a
             :class:`~ts_shape.errors.DataQualityWarning` is emitted.
         """
+        from scipy import stats
+
         ep = self._episodes
         keep = ep if include_initial else ep[~ep["first_observed"].astype(bool)]
         tbf = keep["operating_before_s"].astype(float).to_numpy() / 3600

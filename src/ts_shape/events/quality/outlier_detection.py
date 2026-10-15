@@ -3,25 +3,54 @@ from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
-from scipy.stats import zscore
 
 from ts_shape.events._output import (
     drop_duplicate_events,
     empty_event_df,
     finalize_point_df,
 )
+from ts_shape.loader._utils import missing_optional
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
 
-# Try to import sklearn for IsolationForest
-try:
-    from sklearn.ensemble import IsolationForest
 
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
+def _nan_omit_mean(a: np.ndarray) -> np.ndarray:
+    """Mean of ``a`` ignoring NaNs, shape ``(1,)``, as ``scipy.stats`` computes it."""
+    nan_mask = np.isnan(a)
+    mean: np.ndarray
+    if not nan_mask.any():
+        mean = np.mean(a, keepdims=True)
+    else:
+        weights = np.where(nan_mask, 0.0, 1.0)
+        total = np.sum(np.where(nan_mask, 0.0, a) * weights, keepdims=True)
+        mean = total / np.sum(weights, keepdims=True)
+    return mean
+
+
+def _abs_zscore(values: pd.Series) -> np.ndarray:
+    """``abs(scipy.stats.zscore(values, nan_policy="omit"))``, without scipy.
+
+    Computed the way scipy computes it (ddof 0, NaNs left out of the mean and
+    the standard deviation and kept as NaN in the result, NaN where the
+    standard deviation is zero relative to the mean), so the scores are
+    bit-identical; importing ``scipy.stats`` would add about half a second to
+    importing this module.
+    """
+    x = values.astype(float).to_numpy()
+    scores: np.ndarray
+    if x.size == 0:
+        scores = np.abs(x)
+        return scores
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = _nan_omit_mean(x)
+        deviation = x - mean
+        std = _nan_omit_mean(deviation * deviation) ** 0.5
+        z = deviation / std
+    z[np.broadcast_to(std <= np.abs(np.finfo(float).eps * mean), z.shape)] = np.nan
+    scores = np.abs(z)
+    return scores
 
 
 class OutlierDetectionEvents(Base):
@@ -209,10 +238,7 @@ class OutlierDetectionEvents(Base):
         """
 
         def scorer(values: pd.Series) -> tuple[pd.Series, pd.Series]:
-            z = pd.Series(
-                np.abs(zscore(values.astype(float), nan_policy="omit")),
-                index=values.index,
-            )
+            z = pd.Series(_abs_zscore(values), index=values.index)
             return z > threshold, z
 
         return self._detect(scorer, include_singles)
@@ -299,7 +325,8 @@ class OutlierDetectionEvents(Base):
     ) -> pd.DataFrame:
         """
         Detects outliers using sklearn's IsolationForest algorithm.
-        Falls back gracefully if sklearn is not available.
+        Needs scikit-learn (``pip install ts-shape[ml]``), imported on the
+        first call.
 
         Rows with a NaN value are not scored.
 
@@ -312,12 +339,12 @@ class OutlierDetectionEvents(Base):
             pd.DataFrame: A DataFrame of detected outliers and grouped events.
 
         Raises:
-            ImportError: If sklearn is not installed.
+            ImportError: If scikit-learn is not installed.
         """
-        if not SKLEARN_AVAILABLE:
-            raise ImportError(
-                "sklearn is not available. Please install it with: pip install scikit-learn"
-            )
+        try:
+            from sklearn.ensemble import IsolationForest
+        except ImportError as exc:
+            raise missing_optional("scikit-learn", "ml") from exc
 
         def scorer(values: pd.Series) -> tuple[pd.Series, pd.Series]:
             mask = pd.Series(False, index=values.index)

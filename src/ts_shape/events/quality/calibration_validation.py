@@ -2,7 +2,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
@@ -89,6 +88,8 @@ class CalibrationValidationEvents(Base):
             DataFrame with columns: reference, measured_mean,
             measured_std, bias, linearity_error.
         """
+        from scipy import stats
+
         cols = ["reference", "measured_mean", "measured_std", "bias", "linearity_error"]
         if not calibration_points:
             return pd.DataFrame(columns=cols)
@@ -272,6 +273,8 @@ class CalibrationValidationEvents(Base):
             DataFrame with columns: window_start, bias_mean, bias_std,
             bias_trend, stability_score.
         """
+        from scipy import stats
+
         cols = [
             "window_start",
             "bias_mean",

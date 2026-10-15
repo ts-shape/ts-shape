@@ -12,7 +12,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats as sp_stats
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
@@ -162,6 +161,8 @@ class ValueDistributionEvents(Base):
             than ``min_samples`` values). A constant signal is unimodal with
             ``mode_1`` at its value.
         """
+        from scipy import stats as sp_stats
+
         cols = ["is_bimodal", "dip_score", "n_samples", "mode_1", "mode_2", "valley"]
         vals = self.signal[self.value_column].dropna().values
         if len(vals) < min_samples:
@@ -264,6 +265,8 @@ class ValueDistributionEvents(Base):
             source_uuid, n_samples, is_normal, p_value, skewness, kurtosis.
             ``end`` is ``start`` plus one ``window``.
         """
+        from scipy import stats as sp_stats
+
         cols = [
             "start",
             "n_samples",
@@ -415,6 +418,8 @@ class ValueDistributionEvents(Base):
         values: np.ndarray, max_modes: int, min_separation: float
     ) -> list[float]:
         """Find up to *max_modes* peaks in the value distribution via KDE."""
+        from scipy import stats as sp_stats
+
         if len(values) < 5:
             return []
 

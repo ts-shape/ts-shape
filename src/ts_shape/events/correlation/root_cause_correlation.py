@@ -26,7 +26,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
@@ -145,6 +144,8 @@ class RootCauseCorrelationEvents(Base):
         candidate values at ``t`` are paired with the onset flags at
         ``t + lag``.
         """
+        from scipy import stats
+
         if lag > 0:
             left, right = candidate[:-lag], onsets[lag:]
         else:

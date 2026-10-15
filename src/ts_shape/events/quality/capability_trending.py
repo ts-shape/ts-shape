@@ -4,7 +4,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
@@ -355,6 +354,8 @@ class CapabilityTrendingEvents(Base):
             source_uuid, cpk, trend_slope, forecast_cpk,
             windows_to_threshold. ``end`` is ``start`` plus one ``window``.
         """
+        from scipy import stats
+
         cols = [
             "start",
             "cpk",
@@ -439,6 +440,8 @@ class CapabilityTrendingEvents(Base):
             source_uuid, estimated_yield_pct, dpmo, sigma_level.
             ``end`` is ``start`` plus one ``window``.
         """
+        from scipy import stats
+
         cols = ["start", "estimated_yield_pct", "dpmo", "sigma_level"]
         if self.signal.empty:
             return finish_events(

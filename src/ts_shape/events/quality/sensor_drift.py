@@ -9,7 +9,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
@@ -278,6 +277,8 @@ class SensorDriftEvents(Base):
             source_uuid, value, slope, r_squared, direction.
             ``end`` is ``start`` plus one ``window``.
         """
+        from scipy import stats
+
         cols = ["start", "value", "slope", "r_squared", "direction"]
         if self.signal.empty:
             return finish_events(

@@ -2,7 +2,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-from scipy.fft import fft, ifft
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
@@ -129,6 +128,8 @@ class PatternRecognition(Base):
             1D array of distances for each position; NaN for a window with a
             missing value.
         """
+        from scipy.fft import fft, ifft
+
         n = len(series)
         m = len(query)
 
@@ -222,6 +223,8 @@ class PatternRecognition(Base):
             missing value, or without any comparable window, has profile
             ``inf`` and index ``-1``.
         """
+        from scipy.fft import fft, ifft
+
         n = len(series)
         m = window_size
         profile_len = max(n - m + 1, 0)

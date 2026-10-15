@@ -1,7 +1,6 @@
 from typing import Any
 
 import pandas as pd
-from scipy import stats
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
@@ -108,6 +107,8 @@ class EnvironmentalCompensationEvents(Base):
             DataFrame with columns: window_start, correlation, p_value,
             significant.
         """
+        from scipy import stats
+
         cols = ["window_start", "correlation", "p_value", "significant"]
         aligned = self._build_aligned()
         if aligned.empty:
@@ -149,6 +150,8 @@ class EnvironmentalCompensationEvents(Base):
             DataFrame with columns: window_start, coefficient, intercept,
             r_squared, unit_change_per_degree.
         """
+        from scipy import stats
+
         cols = [
             "window_start",
             "coefficient",
@@ -202,6 +205,8 @@ class EnvironmentalCompensationEvents(Base):
             compensated_value, correction_applied, source_uuid. ``uuid``
             is the event uuid and ``source_uuid`` the measured signal's uuid.
         """
+        from scipy import stats
+
         cols = [
             "systime",
             "uuid",

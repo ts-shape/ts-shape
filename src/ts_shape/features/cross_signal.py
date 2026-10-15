@@ -4,8 +4,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
-from scipy import signal as scipy_signal
-from scipy import stats as scipy_stats
 
 from ts_shape.utils.frames import as_datetime, require_columns
 
@@ -103,6 +101,8 @@ class CrossSignalAnalytics:
                 few of them to fit a lag, ``f_statistic`` and ``p_value`` are
                 NaN and ``is_causal`` is False.
         """
+        from scipy import stats as scipy_stats
+
         x, y = self._pair(cause, effect, "granger_causality")
         n = len(x)
 
@@ -283,6 +283,8 @@ class CrossSignalAnalytics:
             Float between 0 (no sync) and 1 (perfect sync); NaN when no row
                 has a value for both signals.
         """
+        from scipy import signal as scipy_signal
+
         if method not in ("phase", "amplitude"):
             raise ValueError(f"Unknown method: {method}. Use 'phase' or 'amplitude'.")
         a, b = self._pair(signal_a, signal_b, "synchronization_index")
@@ -354,6 +356,8 @@ class CrossSignalAnalytics:
                 both signals have a value are used; with fewer than 2 such rows
                 the numbers are NaN and ``leader`` / ``follower`` are None.
         """
+        from scipy import signal as scipy_signal
+
         a, b = self._pair(signal_a, signal_b, "lead_lag")
         n = len(a)
         if n < 2:
