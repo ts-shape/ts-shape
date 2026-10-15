@@ -311,7 +311,7 @@ def test_align_asof_warns_on_unknown_uuid():
 def test_harmonizer_on_empty_untyped_and_pyarrow():
     h = DataHarmonizer(_untyped("systime", "uuid", "value_double"))
     assert h.resample_to_uniform("1s").empty
-    assert h.merge_multi_signals(freq="1s").empty
+    assert h.merge_multi_signals(window="1s").empty
     assert h.fill_gaps(max_gap="1s").empty
     assert h.align_asof("a", "b").empty
     gaps = h.detect_gaps()

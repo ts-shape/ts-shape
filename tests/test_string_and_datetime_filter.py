@@ -25,7 +25,7 @@ def test_string_filter_basic_operations():
     assert contains["value_string"].tolist() == ["alpha", "alphabet"]
 
     cleaned = StringFilter.regex_clean_value_string(
-        df.copy(), column_name="value_string", regex_pattern=r"\\d+", replacement=""
+        df.copy(), value_column="value_string", regex_pattern=r"\\d+", replacement=""
     )
     # unchanged strings because no digits
     assert cleaned["value_string"].fillna("").str.contains(r"\d").sum() == 0
@@ -47,30 +47,24 @@ def test_datetime_filter_range_and_points():
         }
     )
 
-    after = DateTimeFilter.filter_after_date(df, "systime", "2023-01-02")
+    after = DateTimeFilter.filter_after_date(df, "2023-01-02")
     assert after["systime"].min() > pd.Timestamp("2023-01-02")
 
-    before = DateTimeFilter.filter_before_date(df, "systime", "2023-01-04")
+    before = DateTimeFilter.filter_before_date(df, "2023-01-04")
     assert before["systime"].max() < pd.Timestamp("2023-01-04")
 
-    between = DateTimeFilter.filter_between_dates(
-        df, "systime", "2023-01-02", "2023-01-05"
-    )
+    between = DateTimeFilter.filter_between_dates(df, "2023-01-02", "2023-01-05")
     assert between["systime"].min() > pd.Timestamp("2023-01-02")
     assert between["systime"].max() < pd.Timestamp("2023-01-05")
 
-    after_dt = DateTimeFilter.filter_after_datetime(
-        df, "systime", "2023-01-02 00:00:00"
-    )
+    after_dt = DateTimeFilter.filter_after_datetime(df, "2023-01-02 00:00:00")
     assert after_dt["systime"].min() > pd.Timestamp("2023-01-02")
 
-    before_dt = DateTimeFilter.filter_before_datetime(
-        df, "systime", "2023-01-04 00:00:00"
-    )
+    before_dt = DateTimeFilter.filter_before_datetime(df, "2023-01-04 00:00:00")
     assert before_dt["systime"].max() < pd.Timestamp("2023-01-04")
 
     between_dt = DateTimeFilter.filter_between_datetimes(
-        df, "systime", "2023-01-02 01:00:00", "2023-01-04 12:00:00"
+        df, "2023-01-02 01:00:00", "2023-01-04 12:00:00"
     )
     assert between_dt["systime"].min() > pd.Timestamp("2023-01-02 01:00:00")
     assert between_dt["systime"].max() < pd.Timestamp("2023-01-04 12:00:00")

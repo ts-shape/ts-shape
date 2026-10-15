@@ -55,7 +55,7 @@ def test_transform_only_replaces_channel():
     df = _signal()
     result = (
         Pipeline(name="t")
-        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=0.0)
+        .transform(IntegerCalc, "scale_column", value_column="value_double", factor=0.0)
         .run(df)
     )
     assert isinstance(result, PipelineResult)
@@ -111,7 +111,7 @@ def test_full_transform_then_detect():
     df = _signal()
     result = (
         Pipeline(name="quality")
-        .transform(DoubleFilter, "filter_nan_value_double", column_name="value_double")
+        .transform(DoubleFilter, "filter_nan_value_double", value_column="value_double")
         .detect(
             OutlierDetectionEvents,
             "detect_outliers_zscore",
@@ -272,7 +272,7 @@ def test_runtime_detector_in_pipeline():
 def test_empty_input_flows_through(empty_df):
     result = (
         Pipeline()
-        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=2)
+        .transform(IntegerCalc, "scale_column", value_column="value_double", factor=2)
         .detect(
             OutlierDetectionEvents,
             "detect_outliers_zscore",
@@ -287,7 +287,7 @@ def test_empty_input_flows_through(empty_df):
 def test_steps_describe_and_repr():
     pipe = (
         Pipeline(name="demo")
-        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=2)
+        .transform(IntegerCalc, "scale_column", value_column="value_double", factor=2)
         .detect(
             OutlierDetectionEvents,
             "detect_outliers_zscore",
@@ -310,7 +310,7 @@ def test_callable_form_forwards_kwargs():
     df = _signal(n_outliers=0)
     result = (
         Pipeline()
-        .transform(IntegerCalc.scale_column, column_name="value_double", factor=10)
+        .transform(IntegerCalc.scale_column, value_column="value_double", factor=10)
         .run(df)
     )
     assert result.data["value_double"].to_numpy() == pytest.approx(
@@ -344,7 +344,7 @@ def test_run_steps_returns_every_intermediate():
     df = _signal()
     steps = (
         Pipeline()
-        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=2)
+        .transform(IntegerCalc, "scale_column", value_column="value_double", factor=2)
         .detect(
             OutlierDetectionEvents,
             "detect_outliers_zscore",
@@ -422,7 +422,7 @@ def test_source_then_transform_then_detect():
     result = (
         Pipeline(name="full")
         .source(_ClassmethodLoader, "load", n_outliers=8)
-        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=2)
+        .transform(IntegerCalc, "scale_column", value_column="value_double", factor=2)
         .detect(
             OutlierDetectionEvents,
             "detect_outliers_zscore",
@@ -444,7 +444,7 @@ def test_run_with_dataframe_on_source_bound_pipeline_raises():
 
 def test_run_without_dataframe_on_sourceless_pipeline_raises():
     pipe = Pipeline(name="dd").transform(
-        IntegerCalc, "scale_column", column_name="value_double", factor=2
+        IntegerCalc, "scale_column", value_column="value_double", factor=2
     )
     with pytest.raises(TypeError, match="no source step"):
         pipe.run()
@@ -452,7 +452,7 @@ def test_run_without_dataframe_on_sourceless_pipeline_raises():
 
 def test_source_must_be_first_step():
     pipe = Pipeline().transform(
-        IntegerCalc, "scale_column", column_name="value_double", factor=2
+        IntegerCalc, "scale_column", value_column="value_double", factor=2
     )
     with pytest.raises(ValueError, match="must be the first step"):
         pipe.source(_ClassmethodLoader, "load")
@@ -483,7 +483,7 @@ def test_run_steps_exposes_loaded_frame_under_source_name():
     steps = (
         Pipeline()
         .source(_ClassmethodLoader, "load", name="parquet")
-        .transform(IntegerCalc, "scale_column", column_name="value_double", factor=2)
+        .transform(IntegerCalc, "scale_column", value_column="value_double", factor=2)
         .run_steps()
     )
     assert set(steps) == {"parquet", "scale_column"}

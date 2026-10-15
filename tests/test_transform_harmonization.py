@@ -69,13 +69,13 @@ class TestPivotToWide:
 class TestResampleToUniform:
     def test_uniform_frequency(self, long_format_df):
         harmonizer = DataHarmonizer(long_format_df)
-        resampled = harmonizer.resample_to_uniform(freq="1s")
+        resampled = harmonizer.resample_to_uniform(window="1s")
         diffs = pd.Series(resampled.index).diff().dropna()
         assert (diffs == pd.Timedelta("1s")).all()
 
     def test_interpolation_fills_nans(self, long_format_df):
         harmonizer = DataHarmonizer(long_format_df)
-        resampled = harmonizer.resample_to_uniform(freq="1s")
+        resampled = harmonizer.resample_to_uniform(window="1s")
         # Interior values should mostly be filled
         interior = resampled.iloc[1:-1]
         nan_ratio = interior.isna().sum().sum() / interior.size
@@ -159,6 +159,6 @@ class TestMergeMultiSignals:
 
     def test_merge_with_resample(self, long_format_df):
         harmonizer = DataHarmonizer(long_format_df)
-        merged = harmonizer.merge_multi_signals(freq="2s")
+        merged = harmonizer.merge_multi_signals(window="2s")
         diffs = pd.Series(merged.index).diff().dropna()
         assert (diffs == pd.Timedelta("2s")).all()
