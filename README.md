@@ -1,7 +1,7 @@
 # ts-shape
 
 [![PyPI](https://img.shields.io/pypi/v/ts-shape.svg)](https://pypi.org/project/ts-shape/)
-[![CI](https://github.com/ts-shape/ts-shape/actions/workflows/ci.yml/badge.svg)](https://github.com/ts-shape/ts-shape/actions/workflows/ci.yml)
+[![Release](https://github.com/ts-shape/ts-shape/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/ts-shape/ts-shape/actions/workflows/release.yml)
 [![Docs](https://img.shields.io/badge/docs-mkdocs-708FCC.svg)](https://ts-shape.github.io/ts-shape/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/ts-shape/ts-shape/blob/main/LICENSE.txt)
 
