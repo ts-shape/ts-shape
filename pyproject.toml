@@ -84,7 +84,6 @@ docs = [
     "mkdocs-material>=9.0",
     "mkdocs-literate-nav",
     "mkdocs-gen-files",
-    "mkdocs-callouts",
     "mkdocstrings[python]>=0.24",
     "black==26.3.1",
 ]

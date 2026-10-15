@@ -40,5 +40,5 @@ DB-API driver, so users can install psycopg, pg8000 or another driver instead.
 1. Prefer the standard library or an existing dependency.
 2. Use MIT, BSD or Apache-2.0 licensed packages; GPL packages cannot be used.
 3. Prefer an optional extra over a core dependency, and import it lazily.
-4. Add it to `pyproject.toml` and run `python scripts/requirements.py compile`
-   (see [Development](insiders/development.md#requirements-pip-tools)).
+4. Add it to `pyproject.toml`, the only place dependencies are declared
+   (see [Development](insiders/development.md#dependencies)).
