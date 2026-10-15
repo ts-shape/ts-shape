@@ -31,6 +31,10 @@ nav:
   - Production and OEE: guides/production.md
   - Quality and SPC: guides/quality.md
   - Process engineering: guides/engineering.md
+  - Maintenance: guides/maintenance.md
+  - Energy: guides/energy.md
+  - Context and enrichment: guides/context.md
+  - Features for ML: guides/ml-features.md
   - Pipelines: guides/pipeline-builder.md
   - Event log (XES and OCEL):
     - Overview: guides/eventlog/index.md
@@ -62,6 +66,7 @@ nav:
   - Production:
     - Event Detection:
       - Machine State: modules/production/machine-state.md
+      - Operating State: modules/production/operating-state.md
       - Line Throughput: modules/production/line-throughput.md
       - Changeover: modules/production/changeover.md
       - Flow Constraints: modules/production/flow-constraints.md
@@ -95,6 +100,7 @@ nav:
       - Performance Loss: modules/production/performance-loss.md
       - Scrap Tracking: modules/production/scrap-tracking.md
       - Target Tracking: modules/production/target-tracking.md
+      - Schedule Adherence: modules/production/schedule-adherence.md
       - Shift Handover: modules/production/shift-handover.md
       - Period Summary: modules/production/period-summary.md
   - Engineering:
@@ -117,13 +123,18 @@ nav:
     - Failure Prediction: modules/maintenance/failure-prediction.md
     - Reliability (MTBF / MTTR / Weibull): modules/maintenance/reliability.md
     - Vibration Analysis: modules/maintenance/vibration-analysis.md
+    - Asset Health Index: modules/maintenance/asset-health-index.md
   - Energy:
     - Power Integration: modules/energy/power-integration.md
     - Consumption Analysis: modules/energy/consumption-analysis.md
     - Efficiency Tracking: modules/energy/efficiency-tracking.md
+    - Energy Performance Indicator (EnPI): modules/energy/energy-performance-indicator.md
+    - Idle Energy: modules/energy/idle-energy-detection.md
+    - Carbon Intensity: modules/energy/carbon-intensity.md
   - Correlation:
     - Signal Correlation: modules/correlation/signal-correlation.md
     - Anomaly Correlation: modules/correlation/anomaly-correlation.md
+    - Root Cause Correlation: modules/correlation/root-cause-correlation.md
   - Supply Chain:
     - Inventory Monitoring: modules/supplychain/inventory-monitoring.md
     - Demand Patterns: modules/supplychain/demand-patterns.md
