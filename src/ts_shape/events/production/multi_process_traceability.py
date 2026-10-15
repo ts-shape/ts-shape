@@ -49,7 +49,7 @@ def _grouped_searchsorted(
     tie = np.r_[np.full(n, d_tie), np.full(q_groups.size, q_tie)]
     order = np.lexsort((tie, np.r_[times, q_times], np.r_[groups, q_groups]))
     is_data = order < n
-    data_before = np.cumsum(is_data) - is_data
+    data_before: _Ints = np.cumsum(is_data, dtype=np.int64) - is_data
     out = np.empty(q_groups.size, dtype=np.int64)
     out[order[~is_data] - n] = data_before[~is_data]
     return out
