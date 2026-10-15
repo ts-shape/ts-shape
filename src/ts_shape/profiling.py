@@ -131,9 +131,11 @@ class ProfileReport:
 def _longest_constant_seconds(values: pd.Series, times: pd.Series) -> float:
     if len(values) < 2:
         return 0.0
-    run = (values != values.shift()).cumsum()
-    frame = pd.DataFrame({"run": run.to_numpy(), "t": times.to_numpy()})
-    spans = frame.groupby("run")["t"].agg(lambda t: t.iloc[-1] - t.iloc[0])
+    run = (values != values.shift()).cumsum().to_numpy()
+    # Span of each run of equal values: its last time minus its first
+    # (cythonized group first/last; ``times`` has no NaT here).
+    grouped = times.reset_index(drop=True).groupby(run, sort=False)
+    spans = grouped.last() - grouped.first()
     return float(spans.max().total_seconds()) if len(spans) else 0.0
 
 
@@ -141,7 +143,10 @@ def _profile_signal(
     raw: pd.DataFrame, spec: SignalSpec, time_column: str
 ) -> tuple[dict[str, Any], list[tuple[str, str, str]]]:
     issues: list[tuple[str, str, str]] = []
-    times_raw = pd.to_datetime(raw[time_column], errors="coerce")
+    times_raw = raw[time_column]
+    if not pd.api.types.is_datetime64_any_dtype(times_raw):
+        # (to_datetime of a datetime column is a no-op, but scans it first)
+        times_raw = pd.to_datetime(times_raw, errors="coerce")
     nat = int(times_raw.isna().sum())
     ordered = times_raw.dropna()
     out_of_order = int((ordered.diff() < pd.Timedelta(0)).sum())
