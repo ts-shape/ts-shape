@@ -30,14 +30,20 @@ from ts_shape.loader.timeseries.timescale_loader import (  # noqa: E402
 DB = {"db_user": "u", "db_pass": "p", "db_host": "h", "db_name": "plant"}
 
 
+def _full_url(url):
+    """The URL as text with its password (SQLAlchemy URL objects mask it)."""
+    render = getattr(url, "render_as_string", None)
+    return render(hide_password=False) if render else str(url)
+
+
 @pytest.fixture
 def engine_urls(monkeypatch):
     """Record the URL every engine is created with; no driver is loaded."""
     urls: list[str] = []
 
     def fake_engine(url, *args, **kwargs):
-        urls.append(url)
-        return f"engine:{url}"
+        urls.append(_full_url(url))
+        return f"engine:{_full_url(url)}"
 
     # the loader may import create_engine at module level or lazily
     monkeypatch.setattr(sqlalchemy, "create_engine", fake_engine)
@@ -91,7 +97,7 @@ def _timescale(uuids):
 
 def test_timescale_engine_url(engine_urls):
     _timescale(["a"])
-    assert engine_urls == ["postgresql://u:p@h/plant"]
+    assert engine_urls == ["postgresql+psycopg2://u:p@h:5432/plant"]
 
 
 def test_timescale_query_binds_parameters(engine_urls, read_sql_calls):
@@ -106,7 +112,7 @@ def test_timescale_query_binds_parameters(engine_urls, read_sql_calls):
         "end_ts": "2024-01-01 02:00:00",
     }
     assert first["chunksize"] == 10000
-    assert first["engine"] == "engine:postgresql://u:p@h/plant"
+    assert first["engine"] == "engine:postgresql+psycopg2://u:p@h:5432/plant"
 
 
 def test_timescale_no_uuids_is_an_empty_frame(engine_urls, read_sql_calls):
@@ -297,7 +303,7 @@ def metadata_db(monkeypatch):
     }
 
     def fake_engine(url, *args, **kwargs):
-        urls.append(url)
+        urls.append(_full_url(url))
         return type("Engine", (), {"connect": lambda self: _Conn(rows, queries)})()
 
     monkeypatch.setattr(sqlalchemy, "create_engine", fake_engine)
@@ -315,7 +321,7 @@ def test_metadata_db_filters_and_exports(metadata_db, tmp_path, caplog):
         output_path=str(tmp_path),
         required_uuid_list=["u1", "u3"],
     )
-    assert urls == ["postgresql://user:pw@dbhost:5432/config_repository"]
+    assert urls == ["postgresql+psycopg2://user:pw@dbhost:5432/config_repository"]
     assert all("dp.enabled = true" in q for q, _ in queries)
     assert db.get_all_uuids() == {"press 1": ["u1"], "press 2": ["u3"]}
     assert db.get_all_metadata()["press 2"] == [
