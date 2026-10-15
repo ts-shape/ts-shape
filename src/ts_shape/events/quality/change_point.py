@@ -35,7 +35,7 @@ from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 logger = logging.getLogger(__name__)
 
 Cost = Literal["normal_mean", "normal_meanvar"]
-Method = Literal["pelt", "binseg"]
+Method = Literal["auto", "pelt", "binseg"]
 
 _POINT_COLS = [
     "value",
@@ -242,7 +242,8 @@ def binseg(
     return sorted(points)
 
 
-#: Above this many samples ``method="pelt"`` warns that it may be slow.
+#: Above this many samples ``method="pelt"`` warns that it may be slow, and
+#: ``method="auto"`` (the default) uses :func:`binseg` instead of :func:`pelt`.
 PELT_WARN_SAMPLES = 20_000
 
 
@@ -296,6 +297,8 @@ class ChangePointEvents(Base):
         self, cost: Cost, penalty: float | None, min_size: int, method: Method
     ) -> list[tuple[int, int]]:
         x = self.signal["x"].to_numpy(dtype=float)
+        if method == "auto":
+            method = "pelt" if len(x) <= PELT_WARN_SAMPLES else "binseg"
         if method == "pelt":
             if len(x) > PELT_WARN_SAMPLES:
                 warnings.warn(
@@ -308,7 +311,9 @@ class ChangePointEvents(Base):
         elif method == "binseg":
             found = binseg(x, cost=cost, penalty=penalty, min_size=min_size)
         else:
-            raise ValueError(f"method must be 'pelt' or 'binseg', got {method!r}")
+            raise ValueError(
+                f"method must be 'auto', 'pelt' or 'binseg', got {method!r}"
+            )
         bounds = [0, *found, len(x)]
         return list(itertools.pairwise(bounds))
 
@@ -318,7 +323,7 @@ class ChangePointEvents(Base):
         cost: Cost = "normal_mean",
         penalty: float | None = None,
         min_size: int = 5,
-        method: Method = "pelt",
+        method: Method = "auto",
     ) -> pd.DataFrame:
         """Detect level (and optionally spread) shifts.
 
@@ -328,8 +333,11 @@ class ChangePointEvents(Base):
             penalty: Cost of one change point; ``None`` = BIC (see
                 :func:`pelt`). Larger values find fewer, larger changes.
             min_size: Minimum samples per segment.
-            method: ``"pelt"`` (exact) or ``"binseg"`` (fast, approximate;
-                for long series with few changes).
+            method: ``"auto"`` (default) runs ``"pelt"`` on up to
+                :data:`PELT_WARN_SAMPLES` (20,000) samples and ``"binseg"``
+                above, where PELT may turn quadratic. ``"pelt"`` is exact at
+                any length (it warns above 20,000 samples); ``"binseg"`` is
+                fast and approximate (for long series with few changes).
 
         Returns:
             Point events at the first sample of each new segment: ``systime``,
@@ -372,7 +380,7 @@ class ChangePointEvents(Base):
         cost: Cost = "normal_mean",
         penalty: float | None = None,
         min_size: int = 5,
-        method: Method = "pelt",
+        method: Method = "auto",
     ) -> pd.DataFrame:
         """The stable segments between change points.
 
