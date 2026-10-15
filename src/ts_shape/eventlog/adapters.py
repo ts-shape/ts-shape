@@ -161,6 +161,15 @@ def _stable(value: object) -> str:
 
 _UNITS_PER_SECOND = {"s": 1, "ms": 10**3, "us": 10**6, "ns": 10**9}
 
+
+def _is_datetime64(dtype: object) -> bool:
+    """NumPy ``datetime64`` or pandas' tz-aware ``datetime64`` (not pyarrow
+    timestamps, which keep the element-wise path)."""
+    return isinstance(dtype, pd.DatetimeTZDtype) or (
+        isinstance(dtype, np.dtype) and dtype.kind == "M"
+    )
+
+
 #: Rows rendered and hashed at a time by :func:`_content_eids`.
 _EID_CHUNK = 1 << 18
 
@@ -235,7 +244,7 @@ def _stable_column(values: pd.Series) -> list[str]:
                     strict=True,
                 )
             ]
-    if dtype.kind == "M":
+    if _is_datetime64(dtype):
         rendered = _stable_datetimes(values)
         if rendered is not None:
             return rendered
@@ -373,7 +382,7 @@ def _to_utc_column(values: pd.Series) -> pd.Series:
     all-NaT column go through :func:`_to_utc_ts` element by element.
     """
     dtype = values.dtype
-    if dtype.kind == "M" and values.notna().any():
+    if _is_datetime64(dtype) and values.notna().any():
         if isinstance(dtype, pd.DatetimeTZDtype):
             return values.dt.tz_convert("UTC")
         return values.dt.tz_localize("UTC")
