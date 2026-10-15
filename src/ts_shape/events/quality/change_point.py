@@ -260,7 +260,8 @@ class ChangePointEvents(Base):
         >>> df = ts_shape.make_timeseries(["pressure"], n_points=100)
         >>> df.loc[50:, "value_double"] += 5  # level shift half-way
         >>> out = ts_shape.ChangePointEvents(df, "pressure").detect_change_points()
-        >>> out[["systime", "mean_before", "mean_after", "shift_sigma"]].round(1)
+        >>> numbers = ["mean_before", "mean_after", "shift_sigma"]
+        >>> out[["systime", *numbers]].round(dict.fromkeys(numbers, 1))
                       systime  mean_before  mean_after  shift_sigma
         0 2025-01-01 00:25:00        100.1       104.8          6.1
     """

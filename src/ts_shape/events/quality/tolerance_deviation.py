@@ -11,6 +11,7 @@ from ts_shape.errors import DataQualityWarning
 from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.events._output import drop_duplicate_events
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import (
     REMOVAL,
     caller_stacklevel,
@@ -61,7 +62,8 @@ class ToleranceDeviationEvents(Base):
         >>> tde = ts_shape.ToleranceDeviationEvents(
         ...     pd.concat([limits, act]), "value_double", "value_double", actual_uuid="act",
         ...     upper_tolerance_uuid="usl", lower_tolerance_uuid="lsl")
-        >>> tde.detect_deviations()[["systime", "value_double", "severity"]].round(1)
+        >>> out = tde.detect_deviations()
+        >>> out[["systime", "value_double", "severity"]].round({"value_double": 1})
                        systime  value_double severity
         4  2025-01-01 00:02:00         110.0    major
         33 2025-01-01 00:16:30         111.2    major
@@ -327,18 +329,10 @@ class ToleranceDeviationEvents(Base):
         Returns:
             Processed DataFrame with events
         """
-        # Create a column for lagged tolerance values
-        df["tolerance_value"] = df.apply(
-            lambda row: (
-                row[self.tolerance_column]
-                if (row["uuid"] == self.tolerance_uuid and row["is_delta"])
-                else pd.NA
-            ),
-            axis=1,
-        )
-
-        # Forward fill the tolerance values to propagate the last observed tolerance value
-        df["tolerance_value"] = df["tolerance_value"].ffill()
+        # The tolerance setting rows carry the tolerance; every later row
+        # uses the last one set (forward fill).
+        is_setting = df["uuid"].eq(self.tolerance_uuid) & bool_or_false(df["is_delta"])
+        df["tolerance_value"] = df[self.tolerance_column].where(is_setting).ffill()
 
         # Store original tolerance for deviation calculations
         df["upper_tolerance"] = df["tolerance_value"]

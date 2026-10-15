@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel
 
 __all__ = ["warn_dict_return", "state_mask", "uses_bool_state", "summary_bounds"]
@@ -81,8 +82,7 @@ def state_mask(
         return pd.Series(False, index=data.index)
     raw = data[column]
     known = raw.notna()
-    as_bool = raw.where(known, False).astype(bool)
-    return known & (as_bool == target)
+    return known & (bool_or_false(raw) == target)
 
 
 def summary_bounds(times: pd.Series) -> tuple[Any, Any, float]:

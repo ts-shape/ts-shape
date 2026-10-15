@@ -47,7 +47,8 @@ class EnergyConsumptionEvents(Base):
         >>> df = ts_shape.make_timeseries(["meter"], n_points=96, freq="15min",
         ...                               baseline=5.0, noise=0.5)  # kWh per 15 min
         >>> energy = ts_shape.EnergyConsumptionEvents(df)
-        >>> energy.consumption_by_window("meter", window="6h")[["start", "consumption"]].round(1)
+        >>> out = energy.consumption_by_window("meter", window="6h")
+        >>> out[["start", "consumption"]].round({"consumption": 1})
                         start  consumption
         0 2025-01-01 00:00:00        119.8
         1 2025-01-01 06:00:00        122.1

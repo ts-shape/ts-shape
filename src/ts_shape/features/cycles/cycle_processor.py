@@ -18,6 +18,7 @@ import pandas as pd
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
+from ts_shape.utils.frames import to_ns
 
 logger = logging.getLogger(__name__)
 
@@ -100,11 +101,7 @@ class CycleDataProcessor(Base):
     @staticmethod
     def _as_ns(times: pd.Series) -> np.ndarray:
         """Datetimes as int64 nanoseconds (UTC for tz-aware input); NaT -> min."""
-        if times.dt.tz is not None:
-            times = times.dt.tz_convert("UTC").dt.tz_localize(None)
-        return np.asarray(times.dt.as_unit("ns").to_numpy(dtype="datetime64[ns]")).view(
-            "int64"
-        )
+        return to_ns(times)
 
     def _pairs(self) -> tuple[np.ndarray, np.ndarray]:
         """(value positions, cycle positions) of every sample-in-cycle match.

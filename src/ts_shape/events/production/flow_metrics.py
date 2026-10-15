@@ -23,6 +23,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
@@ -95,7 +96,7 @@ class FlowMetricsEvents(Base):
         if sig.empty:
             return pd.Series(dtype="datetime64[ns]")
         sig[self.time_column] = pd.to_datetime(sig[self.time_column])
-        state = sig[self.value_column].fillna(False).astype(bool)
+        state = bool_or_false(sig[self.value_column])
         prev = state.shift(fill_value=False)
         edges = sig[(~prev) & state]
         return edges[self.time_column].reset_index(drop=True)

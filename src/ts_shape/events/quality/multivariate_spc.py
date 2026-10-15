@@ -90,7 +90,9 @@ class MultivariateSPCEvents(Base):
         >>> df.loc[150, "value_double"] += 8  # one disturbed temp sample
         >>> mspc = ts_shape.MultivariateSPCEvents(df, ["temp", "pressure"])
         >>> out = mspc.detect_out_of_control()
-        >>> out[["start", "max_t2", "ucl", "top_contributor"]].round(1)
+        >>> out[["start", "max_t2", "ucl", "top_contributor"]].round(
+        ...     {"max_t2": 1, "ucl": 1}
+        ... )
                         start  max_t2   ucl top_contributor
         0 2025-01-01 01:15:00    56.9  11.5            temp
     """

@@ -14,6 +14,10 @@ way everywhere:
   timezone handling, so they can be merged or compared.
 * :func:`localize_like` -- a time bound (``data_end``, ``start``) in the
   timezone of the data.
+* :func:`ffill_values` -- forward-fill that keeps the dtype (no silent
+  downcasting of ``object`` columns).
+* :func:`to_ns` -- times as int64 nanoseconds since the epoch (UTC instants
+  for tz-aware values), for NumPy searches and sorts.
 * :func:`signal_frame_input` -- decorator: a computing classmethod works on
   a normalized copy of its input frame.
 """
@@ -24,8 +28,11 @@ import functools
 from collections.abc import Callable, Iterable
 from typing import Any, TypeVar
 
+import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from pandas.api import types as ptypes
+from pandas.tseries.api import guess_datetime_format
 from pandas.tseries.frequencies import to_offset
 from pandas.tseries.offsets import Tick
 
@@ -37,6 +44,8 @@ __all__ = [
     "as_datetime",
     "same_time_axis",
     "localize_like",
+    "to_ns",
+    "ffill_values",
     "signal_frame_input",
     "window_offset",
 ]
@@ -99,12 +108,30 @@ def as_datetime(series: pd.Series, *, where: str) -> pd.Series:
         return pd.Series(
             pd.NaT, index=series.index, name=series.name, dtype="datetime64[ns]"
         )
+    # Text whose layout pandas cannot infer from the first value (or whose
+    # values mix layouts) is parsed value by value, as ``format="mixed"``
+    # does; asking for it explicitly avoids pandas' "Could not infer format"
+    # warning.
+    fmt = "mixed" if _layout_unknown(series) else None
     try:
-        return pd.to_datetime(series)
+        return pd.to_datetime(series, format=fmt)
     except (TypeError, ValueError) as exc:
+        if fmt is None:
+            try:
+                return pd.to_datetime(series, format="mixed")
+            except (TypeError, ValueError):
+                pass
         raise ValueError(
             f"{where}: column {series.name!r} cannot be read as timestamps ({exc})"
         ) from exc
+
+
+def _layout_unknown(series: pd.Series) -> bool:
+    """True when the first non-missing value is text of no inferable layout."""
+    valid = series.dropna()
+    if valid.empty or not isinstance(valid.iloc[0], str):
+        return False
+    return guess_datetime_format(valid.iloc[0]) is None
 
 
 def same_time_axis(
@@ -168,6 +195,49 @@ def localize_like(value: Any, reference: pd.Series) -> pd.Timestamp:
     if ts.tzinfo is not None:
         return ts.tz_convert("UTC").tz_localize(None)
     return ts
+
+
+def to_ns(values: pd.Series | pd.Index) -> npt.NDArray[np.int64]:
+    """Times as int64 nanoseconds since the epoch.
+
+    Works for naive and tz-aware values of any unit: an aware value gives the
+    nanoseconds of its UTC instant, a naive value those of its wall-clock
+    reading. ``NaT`` becomes the minimum int64 (``numpy``'s NaT), which sorts
+    first.
+
+    Args:
+        values: Datetime Series or Index.
+
+    Returns:
+        One int64 per value, in input order.
+    """
+    index = pd.DatetimeIndex(values)
+    return np.asarray(index.as_unit("ns").asi8, dtype=np.int64)
+
+
+def ffill_values(series: pd.Series) -> pd.Series:
+    """Forward-fill ``series`` and keep its dtype.
+
+    ``Series.ffill`` on an ``object`` column infers a narrower dtype for the
+    result, which pandas 2.2 reports as deprecated silent downcasting. This
+    takes every missing value from the last value before it instead and
+    leaves the dtype alone; leading missing values stay missing.
+
+    Args:
+        series: Values to fill.
+
+    Returns:
+        The filled Series, same index, name and dtype.
+    """
+    valid = series.notna().to_numpy(dtype=bool)
+    if valid.all() or not valid.any():
+        return series.copy()
+    positions = np.where(valid, np.arange(len(series)), -1)
+    np.maximum.accumulate(positions, out=positions)
+    filled = series.iloc[np.maximum(positions, 0)]
+    filled = filled.where(pd.Series(positions >= 0, index=filled.index))
+    filled.index = series.index
+    return filled
 
 
 def signal_frame_input(

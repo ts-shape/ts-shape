@@ -65,7 +65,7 @@ import pandas as pd
 from ts_shape.utils.deprecation import caller_stacklevel
 
 from ..errors import ColumnNotFoundError, DataQualityWarning
-from ..utils.frames import require_columns
+from ..utils.frames import require_columns, to_ns
 from . import schema
 from .concat import concat
 from .model import EventLog
@@ -113,7 +113,7 @@ def _to_utc(values: object) -> pd.Series:
 
 def _ns(values: pd.Series) -> _I64:
     """int64 nanoseconds of a UTC datetime Series (NaT -> ``_NAT``)."""
-    return np.asarray(_to_utc(values).to_numpy(dtype="datetime64[ns]")).view(np.int64)
+    return to_ns(_to_utc(values))
 
 
 def _from_ns(values: _I64) -> pd.Series:

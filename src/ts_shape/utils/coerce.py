@@ -6,16 +6,21 @@ into ``NaN`` without a trace, so a column of ``"12,5"`` strings or a stray
 :func:`to_numeric_checked` performs the same coercion and emits a
 :class:`~ts_shape.errors.DataQualityWarning` naming how many non-null values
 were not numeric.
+
+:func:`bool_or_false` reads a run/state column as plain ``bool`` with
+missing values as ``False``, without relying on pandas' deprecated silent
+downcasting of ``object`` columns (``.fillna(False).astype(bool)``).
 """
 
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.deprecation import caller_stacklevel
 
-__all__ = ["to_numeric_checked"]
+__all__ = ["to_numeric_checked", "bool_or_false"]
 
 
 def to_numeric_checked(values: pd.Series, *, what: str) -> pd.Series:
@@ -43,3 +48,25 @@ def to_numeric_checked(values: pd.Series, *, what: str) -> pd.Series:
             stacklevel=caller_stacklevel(),
         )
     return numeric
+
+
+def bool_or_false(values: pd.Series) -> pd.Series:
+    """``values`` as a NumPy ``bool`` Series; missing values are ``False``.
+
+    Known values are cast with ``bool`` (as ``.astype(bool)`` does), so the
+    result equals ``values.fillna(False).astype(bool)`` for every dtype, but
+    an ``object`` column is never filled first, which pandas 2.2 reports as
+    a deprecated downcast.
+
+    Args:
+        values: State values (``bool``, nullable ``boolean``, numbers or
+            ``object``).
+
+    Returns:
+        A ``bool`` Series with the index and name of ``values``.
+    """
+    known = values.notna().to_numpy(dtype=bool)
+    out = np.zeros(len(values), dtype=bool)
+    if known.any():
+        out[known] = values[known].astype(bool).to_numpy(dtype=bool)
+    return pd.Series(out, index=values.index, name=values.name)

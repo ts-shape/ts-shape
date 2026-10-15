@@ -35,7 +35,8 @@ class CapabilityTrendingEvents(Base):
         >>> import ts_shape
         >>> df = ts_shape.make_timeseries(["dia"], n_points=960, freq="1min", drift=3.0)
         >>> cap = ts_shape.CapabilityTrendingEvents(df, "dia", upper_spec=105, lower_spec=95)
-        >>> cap.capability_over_time(window="8h")[["start", "cpk", "ppk"]].round(2)
+        >>> out = cap.capability_over_time(window="8h")
+        >>> out[["start", "cpk", "ppk"]].round({"cpk": 2, "ppk": 2})
                         start   cpk   ppk
         0 2025-01-01 00:00:00  1.33  1.08
         1 2025-01-01 08:00:00  0.83  0.71

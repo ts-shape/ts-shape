@@ -40,7 +40,7 @@ import pandas as pd
 from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import caller_stacklevel
-from ts_shape.utils.frames import require_columns
+from ts_shape.utils.frames import ffill_values, require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -359,7 +359,7 @@ class CycleExtractor(Base):
                 )
         for column in ("value_bool", "value_string"):
             if column in frame.columns:
-                held = frame[column].astype(object).ffill()
+                held = ffill_values(frame[column].astype(object))
                 prev = held.shift()
                 change |= (held.ne(prev) & held.notna() & prev.notna()).astype(bool)
         if len(change):

@@ -19,6 +19,8 @@ from collections.abc import Iterator
 import numpy as np
 import pandas as pd
 
+from ts_shape.utils.frames import to_ns
+
 _MAX_CHUNK_ELEMENTS = 2_000_000
 
 
@@ -47,11 +49,7 @@ def count_window_bounds(n: int, size: int) -> tuple[np.ndarray, np.ndarray]:
 
 def times_ns(times: pd.Series) -> np.ndarray:
     """Sorted times as int64 nanoseconds since the epoch (UTC for tz-aware)."""
-    ser = pd.Series(times)
-    if isinstance(ser.dtype, pd.DatetimeTZDtype):
-        ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-    ns: np.ndarray = ser.to_numpy(dtype="datetime64[ns]").view(np.int64)
-    return ns
+    return to_ns(pd.Series(times))
 
 
 def interval_bounds(

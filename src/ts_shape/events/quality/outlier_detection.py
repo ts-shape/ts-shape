@@ -32,7 +32,9 @@ class OutlierDetectionEvents(Base):
         >>> import ts_shape
         >>> df = ts_shape.make_timeseries(["temp"], n_outliers=3)
         >>> out = ts_shape.OutlierDetectionEvents(df, "value_double").detect_outliers_zscore()
-        >>> out[["systime", "value_double", "severity"]].round(1)
+        >>> out[["systime", "value_double", "severity"]].round(
+        ...     {"value_double": 1, "severity": 1}
+        ... )
                       systime  value_double  severity
         0 2025-01-01 01:34:30          89.7       8.9
         1 2025-01-01 03:21:00          88.8       9.6

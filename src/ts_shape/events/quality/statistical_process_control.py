@@ -32,7 +32,7 @@ class StatisticalProcessControlEvents(Base):
         >>> spc = ts_shape.StatisticalProcessControlEvents(
         ...     pd.concat([ref, act]), "value_double", "ref", "act", "quality:spc")
         >>> out = spc.detect_rule_violations(selected_rules=["rule_1"])
-        >>> out[["systime", "value", "rule", "severity"]].round(1)
+        >>> out[["systime", "value", "rule", "severity"]].round({"value": 1})
                       systime  value    rule  severity
         0 2025-01-01 00:19:30  112.7  rule_1  critical
         1 2025-01-01 00:24:30   88.1  rule_1  critical

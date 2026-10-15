@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ts_shape.utils.frames import as_datetime
+from ts_shape.utils.frames import as_datetime, to_ns
 
 
 def time_order(
@@ -41,9 +41,7 @@ def time_order(
     order = np.arange(n)
     if time_column in dataframe.columns and n:
         times = as_datetime(dataframe[time_column], where=where)
-        if times.dt.tz is not None:
-            times = times.dt.tz_convert("UTC").dt.tz_localize(None)
-        keys = times.to_numpy(dtype="datetime64[ns]").view("int64")
+        keys = to_ns(times)
         nat = times.isna().to_numpy()
         # NaT sorts last, like ``sort_values``.
         keys = np.where(nat, np.iinfo(np.int64).max, keys)

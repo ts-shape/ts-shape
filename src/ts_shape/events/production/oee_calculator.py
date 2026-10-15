@@ -20,6 +20,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import deprecated_class, deprecated_method, keyword_only
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,7 @@ class OEEEvents(Base):
             return _daily_summary([], avail_extra, tz=self._tz)
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
-        state_data["state"] = state_data[value_column].fillna(False).astype(bool)
+        state_data["state"] = bool_or_false(state_data[value_column])
         state_data["date"] = state_data[self.time_column].dt.date
 
         # Duration of each sample = gap to next sample
