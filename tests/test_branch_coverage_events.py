@@ -324,3 +324,48 @@ def test_slope_startup_repeated_labels_hand_built():
     assert out["duration_seconds"].tolist() == [2.0, 2.0]
     assert out["avg_slope"].tolist() == [1.0, 1.0]
     assert out["method"].tolist() == ["slope", "slope"]
+
+
+def _flat_two_signals():
+    t0 = pd.Timestamp("2024-01-01")
+    return pd.DataFrame(
+        {
+            "systime": t0 + pd.to_timedelta([0, 1, 2, 0, 1, 2], unit="s"),
+            "uuid": ["a", "a", "a", "b", "b", "b"],
+            "value_double": [0.0, 0.0, 0.0, 0.0, 9.0, 9.0],
+        }
+    )
+
+
+MULTI_COLS = [
+    "start",
+    "end",
+    "uuid",
+    "is_delta",
+    "method",
+    "signals_triggered",
+    "signal_details",
+]
+
+
+def test_multi_signal_any_without_events_has_the_all_columns():
+    # Used to return a frame with no columns for "any".
+    sd = StartupDetectionEvents(_flat_two_signals(), "a")
+    sig = {"a": {"method": "threshold", "threshold": 5.0}}
+    got_any = sd.detect_startup_multi_signal(sig, logic="any")
+    got_all = sd.detect_startup_multi_signal(sig, logic="all")
+    assert list(got_any.columns) == MULTI_COLS
+    assert len(got_any) == 0
+    pd.testing.assert_frame_equal(got_any, got_all)
+
+
+def test_multi_signal_all_without_a_match_keeps_the_columns():
+    # "b" starts at 1s, "a" at 0s: no match within 0s, but the columns stay.
+    sd = StartupDetectionEvents(_flat_two_signals(), "a")
+    sig = {
+        "b": {"method": "threshold", "threshold": 5.0},
+        "a": {"method": "threshold", "threshold": -1.0},
+    }
+    out = sd.detect_startup_multi_signal(sig, logic="all", time_tolerance="0s")
+    assert list(out.columns) == MULTI_COLS
+    assert len(out) == 0

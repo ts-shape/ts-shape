@@ -306,6 +306,15 @@ class StartupDetectionEvents(Base):
             self.target_uuid = orig_uuid
             self.series = orig_series
 
+        multi_cols = [
+            "start",
+            "end",
+            "uuid",
+            "is_delta",
+            "method",
+            "signals_triggered",
+            "signal_details",
+        ]
         # Combine events based on logic
         if logic == "any":
             # Union: any signal detecting is sufficient
@@ -323,22 +332,13 @@ class StartupDetectionEvents(Base):
                             "signal_details": {sig_uuid: dict(event)},
                         }
                     )
-            return pd.DataFrame(all_events)
+            # Same empty frame as "all" when no signal detected anything.
+            return pd.DataFrame(all_events, columns=multi_cols)
 
         else:  # logic == "all"
             # Intersection: all signals must detect within time_tolerance
             if not signal_events or any(df.empty for df in signal_events.values()):
-                return pd.DataFrame(
-                    columns=[
-                        "start",
-                        "end",
-                        "uuid",
-                        "is_delta",
-                        "method",
-                        "signals_triggered",
-                        "signal_details",
-                    ]
-                )
+                return pd.DataFrame(columns=multi_cols)
 
             tolerance = pd.to_timedelta(time_tolerance)
             combined_events = []
@@ -389,7 +389,7 @@ class StartupDetectionEvents(Base):
                         }
                     )
 
-            return pd.DataFrame(combined_events)
+            return pd.DataFrame(combined_events, columns=multi_cols)
 
     def detect_startup_adaptive(
         self,
