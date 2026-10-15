@@ -1,3 +1,19 @@
+# October 15, 2026 (round 10)
+Fast at 10 and 100 million rows; results unchanged.
+perf: detector construction copies, sorts and converts only what it must
+  (no full-column text conversion, sort skipped on sorted input); 100M-row
+  frames no longer run out of memory.
+perf: per-run and per-row Python loops in 19 detector modules replaced by
+  numpy (utils.runs); O(n log w) rolling moments; setpoint KPIs share one
+  window gather; STOMP matrix profile; vectorized DTW with LB_Keogh
+  pruning; faster profile, to_event_log (same event ids), tolerance
+  deviation and apply_ranges.
+change: ChangePointEvents defaults to method="auto" (PELT up to 20,000
+  samples, binary segmentation above).
+fix: setpoint KPIs no longer fail on duplicate index labels.
+chore: benchmarks/run.py and a scaling check in CI (pytest -m scale).
+  See docs/migration.md.
+
 # October 15, 2026 (round 9)
 KPIs match their textbook definitions.
 fix: durations and counter increments are split at shift, hour and day
