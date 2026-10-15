@@ -24,7 +24,7 @@ from typing import Any
 
 import pandas as pd
 
-from ts_shape.signals.infer import infer_spec, signal_groups
+from ts_shape.signals.infer import _iter_signal_groups, infer_spec
 from ts_shape.signals.spec import SignalSpec, SignalSpecs
 from ts_shape.utils.counters import count_resets
 
@@ -342,7 +342,7 @@ def profile(
     inferred: dict[str, SignalSpec] = {}
     rows: list[dict[str, Any]] = []
     issues: list[dict[str, str]] = []
-    for key, raw in signal_groups(dataframe, uuid_column, time_column):
+    for key, raw in _iter_signal_groups(dataframe, uuid_column, time_column):
         if specs is not None and key in specs:
             spec = specs[key]
         else:

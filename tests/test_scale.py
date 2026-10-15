@@ -2,9 +2,9 @@
 
 Marked ``scale`` and left out of the default run (``-m "not scale"`` in the
 pytest addopts); run them with ``pytest -m scale``. Each check times the
-same call at 200k and 400k rows (best of three, to ride out noise) and
-fails when the larger run takes 3x as long or more -- a sign of a row loop
-or a sort that grows faster than the data. ``Base`` construction also has a
+same call at 200k and 400k rows (best of five after a warm-up, to ride out
+noise) and fails when the larger run takes 3x as long or more -- a sign of
+a row loop or a sort that grows faster than the data. ``Base`` construction also has a
 memory budget, measured with ``tracemalloc`` (NumPy allocations are traced).
 
 The synthetic frame comes from ``benchmarks/run.py``.
@@ -12,6 +12,7 @@ The synthetic frame comes from ``benchmarks/run.py``.
 
 from __future__ import annotations
 
+import gc
 import importlib.util
 import time
 import tracemalloc
@@ -69,13 +70,22 @@ CASES: dict[str, Callable[[pd.DataFrame], Any]] = {
 
 
 def _best_seconds(fn: Callable[[pd.DataFrame], Any], df: pd.DataFrame) -> float:
+    # One untimed warm-up call, then the best of five with the garbage
+    # collector off: inside a long test session, a collection or first-touch
+    # page faults can otherwise land in one timing and fake a slow-down.
     best = float("inf")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        for _ in range(3):
-            start = time.perf_counter()
-            fn(df)
-            best = min(best, time.perf_counter() - start)
+        fn(df)
+        gc.collect()
+        gc.disable()
+        try:
+            for _ in range(5):
+                start = time.perf_counter()
+                fn(df)
+                best = min(best, time.perf_counter() - start)
+        finally:
+            gc.enable()
     return best
 
 

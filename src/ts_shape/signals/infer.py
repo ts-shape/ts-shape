@@ -9,7 +9,7 @@ change-encoded signal) should be set with :meth:`SignalSpecs.override`.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 import numpy as np
@@ -19,7 +19,7 @@ from ts_shape.errors import DataQualityWarning
 from ts_shape.signals.spec import Encoding, Kind, SignalSpec, SignalSpecs
 from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.frames import require_columns
-from ts_shape.utils.normalize import _is_extension, _plain, text_keys
+from ts_shape.utils.normalize import _is_extension, _plain
 
 __all__ = ["infer_specs", "infer_spec", "parse_times", "signal_groups"]
 
@@ -129,8 +129,32 @@ def signal_groups(
     Raises:
         ColumnNotFoundError: When ``uuid_column`` or ``time_column`` is missing.
     """
+    return list(_iter_signal_groups(dataframe, uuid_column, time_column))
+
+
+def _iter_signal_groups(
+    dataframe: pd.DataFrame, uuid_column: str, time_column: str
+) -> Iterator[tuple[str, pd.DataFrame]]:
+    """:func:`signal_groups`, one signal at a time.
+
+    Only one signal's rows are copied at once, so profiling a large frame
+    needs memory for one signal instead of all of them.
+
+    Args:
+        dataframe: Long-format frame.
+        uuid_column: Signal identifier column.
+        time_column: Timestamp column.
+
+    Yields:
+        ``(uuid, rows)`` pairs, sorted by uuid.
+
+    Raises:
+        ColumnNotFoundError: When ``uuid_column`` or ``time_column`` is missing.
+    """
     require_columns(dataframe, (uuid_column, time_column), where="signal profile")
-    frame = dataframe.reset_index(drop=True).copy()
+    # reset_index returns a new frame (a copy on pandas 2, copy-on-write on
+    # pandas 3), so the column assignments below never reach the input.
+    frame = dataframe.reset_index(drop=True)
     for column in frame.columns:
         is_signal_column = column == uuid_column or (
             isinstance(column, str) and column.startswith("value_")
@@ -148,9 +172,14 @@ def signal_groups(
             stacklevel=caller_stacklevel(),
         )
         frame = frame[~missing.to_numpy()]
-    raw = frame[uuid_column]
-    keys = text_keys(raw)  # astype(str), on the unique values
-    clashes = sorted(k for k, n in raw.groupby(keys).nunique().items() if n > 1)
+    # Group by the uuid as text, working on the distinct values: one key per
+    # distinct uuid, then each row's group from its factorize code.
+    codes, uniques = pd.factorize(frame[uuid_column])
+    unique_keys = pd.Series(uniques).astype(str).to_numpy()
+    names, key_of_unique, per_key = np.unique(
+        unique_keys, return_inverse=True, return_counts=True
+    )
+    clashes = sorted(str(k) for k in names[per_key > 1])
     if clashes:
         warnings.warn(
             f"{uuid_column} values {clashes[:5]} occur with different types "
@@ -158,7 +187,11 @@ def signal_groups(
             DataQualityWarning,
             stacklevel=caller_stacklevel(),
         )
-    return [(str(key), group) for key, group in frame.groupby(keys, sort=True)]
+    row_key = key_of_unique[codes]
+    order = np.argsort(row_key, kind="stable")
+    bounds = np.r_[0, np.cumsum(np.bincount(row_key, minlength=names.size))]
+    for k, name in enumerate(names):
+        yield str(name), frame.take(order[bounds[k] : bounds[k + 1]])
 
 
 def infer_spec(
@@ -265,7 +298,7 @@ def infer_specs(
     """
     specs = {
         key: infer_spec(group, key, time_column)
-        for key, group in signal_groups(dataframe, uuid_column, time_column)
+        for key, group in _iter_signal_groups(dataframe, uuid_column, time_column)
     }
     result = SignalSpecs(specs)
     return result.override(overrides) if overrides else result
