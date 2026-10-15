@@ -21,23 +21,15 @@ import pandas as pd
 
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.events._windows import floor_local
+from ts_shape.events.production._flow import (
+    Number,
+    rising_edge_times,
+    to_seconds,
+)
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
-
-_Number = int | float | str
-
-
-def _to_seconds(value: _Number | None) -> float | None:
-    """Coerce a duration (seconds number or pandas offset string) to seconds."""
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    seconds: float = pd.to_timedelta(value).total_seconds()
-    return seconds
 
 
 class LineBalancingEvents(Base):
@@ -90,19 +82,13 @@ class LineBalancingEvents(Base):
     # ------------------------------------------------------------------
 
     def _rising_edge_times(self, uuid: str) -> pd.Series:
-        """Return the timestamps of rising edges of one station's trigger."""
-        sig = (
-            self.dataframe[self.dataframe["uuid"] == uuid]
-            .copy()
-            .sort_values(self.time_column)
+        """Return the timestamps of rising edges of one boolean signal."""
+        return rising_edge_times(
+            self.dataframe,
+            uuid,
+            time_column=self.time_column,
+            value_column=self.value_column,
         )
-        if sig.empty:
-            return pd.Series(dtype="datetime64[ns]")
-        sig[self.time_column] = pd.to_datetime(sig[self.time_column])
-        state = bool_or_false(sig[self.value_column])
-        prev = state.shift(fill_value=False)
-        edges = sig[(~prev) & state]
-        return edges[self.time_column].reset_index(drop=True)
 
     def _all_cycles(self) -> pd.DataFrame:
         """Long-format cycle table for every station.
@@ -134,14 +120,14 @@ class LineBalancingEvents(Base):
 
     def _resolve_takt(
         self,
-        takt_time: _Number | None,
+        takt_time: Number | None,
         demand: float | None,
-        available_time: _Number | None,
+        available_time: Number | None,
     ) -> float | None:
         """Resolve takt time (seconds) from an explicit value or demand/time."""
         if takt_time is not None:
-            return _to_seconds(takt_time)
-        avail = _to_seconds(available_time)
+            return to_seconds(takt_time)
+        avail = to_seconds(available_time)
         if demand is not None and avail is not None and demand > 0:
             return avail / demand
         return None
@@ -194,9 +180,9 @@ class LineBalancingEvents(Base):
     def balance_metrics(
         self,
         *,
-        takt_time: _Number | None = None,
+        takt_time: Number | None = None,
         demand: float | None = None,
-        available_time: _Number | None = None,
+        available_time: Number | None = None,
         window: str = "1h",
         require_all_stations: bool = False,
     ) -> pd.DataFrame:
@@ -285,9 +271,9 @@ class LineBalancingEvents(Base):
     def yamazumi(
         self,
         *,
-        takt_time: _Number | None = None,
+        takt_time: Number | None = None,
         demand: float | None = None,
-        available_time: _Number | None = None,
+        available_time: Number | None = None,
     ) -> pd.DataFrame:
         """Yamazumi (station-loading) table over the whole dataset.
 

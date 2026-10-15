@@ -44,6 +44,7 @@ __all__ = [
     "as_datetime",
     "same_time_axis",
     "localize_like",
+    "localize_in",
     "to_ns",
     "ffill_values",
     "signal_frame_input",
@@ -186,8 +187,26 @@ def localize_like(value: Any, reference: pd.Series) -> pd.Timestamp:
     Returns:
         The bound, comparable with ``reference``.
     """
+    return localize_in(value, getattr(getattr(reference, "dt", None), "tz", None))
+
+
+def localize_in(value: Any, tz: Any) -> pd.Timestamp:
+    """Return ``value`` as a Timestamp in ``tz`` (naive when ``tz`` is None).
+
+    The rule of :func:`localize_like`, for a timezone instead of a column: a
+    naive value is read as wall-clock time in ``tz`` (an ambiguous time is
+    read as standard time, a nonexistent one is shifted forward); an aware
+    value is converted. With ``tz=None`` an aware value is converted to UTC
+    and made naive.
+
+    Args:
+        value: A time (string, datetime, Timestamp).
+        tz: Target timezone, or None for naive.
+
+    Returns:
+        The value as a Timestamp.
+    """
     ts = pd.Timestamp(value)
-    tz = getattr(getattr(reference, "dt", None), "tz", None)
     if tz is not None:
         if ts.tzinfo is None:
             return ts.tz_localize(tz, ambiguous=False, nonexistent="shift_forward")

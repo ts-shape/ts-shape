@@ -22,23 +22,15 @@ from ts_shape.events._output import (
     finalize_summary_df,
 )
 from ts_shape.events._windows import floor_local
+from ts_shape.events.production._flow import (
+    Number,
+    rising_edge_times,
+    to_seconds,
+)
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
-
-_Number = int | float | str
-
-
-def _to_seconds(value: _Number | None) -> float | None:
-    """Coerce a duration (seconds number or pandas offset string) to seconds."""
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    seconds: float = pd.to_timedelta(value).total_seconds()
-    return seconds
 
 
 class FlowMetricsEvents(Base):
@@ -87,19 +79,13 @@ class FlowMetricsEvents(Base):
     # ------------------------------------------------------------------
 
     def _rising_edge_times(self, uuid: str) -> pd.Series:
-        """Return the timestamps of rising edges of a boolean signal."""
-        sig = (
-            self.dataframe[self.dataframe["uuid"] == uuid]
-            .copy()
-            .sort_values(self.time_column)
+        """Return the timestamps of rising edges of one boolean signal."""
+        return rising_edge_times(
+            self.dataframe,
+            uuid,
+            time_column=self.time_column,
+            value_column=self.value_column,
         )
-        if sig.empty:
-            return pd.Series(dtype="datetime64[ns]")
-        sig[self.time_column] = pd.to_datetime(sig[self.time_column])
-        state = bool_or_false(sig[self.value_column])
-        prev = state.shift(fill_value=False)
-        edges = sig[(~prev) & state]
-        return edges[self.time_column].reset_index(drop=True)
 
     def _wip_per_window(self, window: str) -> pd.DataFrame:
         """Time-weighted WIP statistics per window.
@@ -225,7 +211,7 @@ class FlowMetricsEvents(Base):
     def flow_summary(
         self,
         *,
-        value_add_seconds: _Number | None = None,
+        value_add_seconds: Number | None = None,
         window: str = "1h",
     ) -> pd.DataFrame:
         """Combined flow metrics with a Little's Law consistency check.
@@ -289,7 +275,7 @@ class FlowMetricsEvents(Base):
         )
 
         if value_add_seconds is not None:
-            va = _to_seconds(value_add_seconds)
+            va = to_seconds(value_add_seconds)
             merged["process_cycle_efficiency_pct"] = (
                 va / merged["lead_time_mean_seconds"] * 100.0
             ).where(merged["lead_time_mean_seconds"] > 0)

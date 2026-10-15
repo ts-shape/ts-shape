@@ -13,14 +13,9 @@ from pandas.api import types as ptypes
 
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.frames import as_datetime, require_columns
+from ts_shape.utils.normalize import _is_extension
 
 __all__ = ["numeric_values", "bool_values", "text_values", "time_values"]
-
-
-def _is_extension(series: pd.Series) -> bool:
-    return isinstance(series.dtype, pd.api.extensions.ExtensionDtype) and not (
-        isinstance(series.dtype, pd.DatetimeTZDtype | pd.CategoricalDtype)
-    )
 
 
 def numeric_values(dataframe: pd.DataFrame, column: str, *, where: str) -> pd.Series:

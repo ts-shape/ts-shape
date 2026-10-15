@@ -11,6 +11,7 @@ import pandas as pd
 
 from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
+from ts_shape.utils.counters import counter_quantity
 from ts_shape.utils.deprecation import deprecated_method
 
 logger = logging.getLogger(__name__)
@@ -290,11 +291,9 @@ class BatchTrackingEvents(Base):
                     counter_data[self.time_column] <= batch_row["end"]
                 )
                 batch_counter = counter_data.loc[mask, value_column_counter]
-                if len(batch_counter) < 2:
-                    quantities.append(0)
-                else:
-                    qty = int(batch_counter.iloc[-1] - batch_counter.iloc[0])
-                    quantities.append(max(0, qty))
+                quantities.append(
+                    int(counter_quantity(batch_counter, handle_resets=False))
+                )
                 resets.append(0)
 
         batches = batches.copy()

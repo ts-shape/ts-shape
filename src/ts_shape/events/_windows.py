@@ -30,7 +30,7 @@ from ts_shape.events._output import (
     finalize_interval_df,
     finalize_summary_df,
 )
-from ts_shape.utils.frames import window_offset
+from ts_shape.utils.frames import localize_in, window_offset
 
 __all__ = [
     "WINDOW_COLS",
@@ -246,12 +246,6 @@ def data_tz(series: pd.Series) -> Any:
         return None
 
 
-def _localize(ts: pd.Timestamp, tz: Any) -> pd.Timestamp:
-    if tz is None:
-        return ts
-    return ts.tz_localize(tz, ambiguous=False, nonexistent="shift_forward")
-
-
 def _day(value: Any) -> pd.Timestamp | None:
     if value is None or (not isinstance(value, _dt.date) and pd.isna(value)):
         return None
@@ -322,8 +316,8 @@ def add_shift_window(
         start = pd.Timestamp.combine(day.date(), t_start)
         end_day = day + pd.Timedelta(days=1) if t_start >= t_end else day
         end = pd.Timestamp.combine(end_day.date(), t_end)
-        starts.append(_localize(start, tz))
-        ends.append(_localize(end, tz))
+        starts.append(localize_in(start, tz))
+        ends.append(localize_in(end, tz))
     return _insert_window(df, starts, ends, tz)
 
 
@@ -351,8 +345,8 @@ def add_day_window(
             starts.append(pd.NaT)
             ends.append(pd.NaT)
             continue
-        starts.append(_localize(day, tz))
-        ends.append(_localize(day + step, tz))
+        starts.append(localize_in(day, tz))
+        ends.append(localize_in(day + step, tz))
     return _insert_window(df, starts, ends, tz)
 
 

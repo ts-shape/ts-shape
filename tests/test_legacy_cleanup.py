@@ -93,3 +93,61 @@ def test_future_no_silent_downcasting_path():
             mask = state_mask(data, "value_string", True, bool_value=True)
     assert out.tolist() == [True, False, False, False, True]
     assert mask.tolist() == [True, False, False, False, True]
+
+
+# ---- merged duplicates -----------------------------------------------------
+
+
+def test_flow_helpers_shared_by_flow_and_line_balancing():
+    from ts_shape.events.production import _flow, flow_metrics, line_balancing
+
+    assert flow_metrics.to_seconds is _flow.to_seconds
+    assert line_balancing.rising_edge_times is _flow.rising_edge_times
+    assert _flow.to_seconds("1min") == 60.0 and _flow.to_seconds(5) == 5.0
+    assert _flow.to_seconds(None) is None
+    times = pd.date_range("2024-01-01", periods=5, freq="min")
+    df = pd.DataFrame(
+        {
+            "systime": times,
+            "uuid": "s",
+            "value_bool": pd.Series([True, False, None, True, True], dtype=object),
+        }
+    )
+    edges = _flow.rising_edge_times(
+        df, "s", time_column="systime", value_column="value_bool"
+    )
+    assert list(edges) == [times[0], times[3]]
+
+
+def test_localize_in_matches_localize_like_on_dst_days():
+    from ts_shape.utils.frames import localize_in, localize_like
+
+    ref = pd.Series(
+        pd.date_range("2024-10-27", periods=2, freq="h", tz="Europe/Berlin")
+    )
+    for value in ("2024-10-27 02:30", "2024-03-31 02:30", "2024-01-01 00:00"):
+        assert localize_in(value, "Europe/Berlin") == localize_like(value, ref)
+    # ambiguous -> standard time (+01:00); nonexistent -> shifted forward
+    ambiguous = localize_in("2024-10-27 02:30", "Europe/Berlin")
+    assert ambiguous.utcoffset() == pd.Timedelta(hours=1)
+    assert localize_in("2024-03-31 02:30", "Europe/Berlin").hour == 3
+    assert localize_in("2024-01-01 05:00+01:00", None) == pd.Timestamp(
+        "2024-01-01 04:00"
+    )
+
+
+def test_batch_quantity_without_resets_is_last_minus_first():
+    from ts_shape.events.production.batch_tracking import BatchTrackingEvents
+
+    t = pd.date_range("2024-01-01", periods=6, freq="10min")
+    batch = pd.DataFrame(
+        {"systime": t, "uuid": "batch", "value_string": list("AAABBB")}
+    )
+    counter = pd.DataFrame(
+        {"systime": t, "uuid": "cnt", "value_integer": [10, 15, 20, 20, 18, 30]}
+    )
+    df = pd.concat([batch, counter], ignore_index=True)
+    out = BatchTrackingEvents(df, batch_uuid="batch").batch_yield(
+        "cnt", handle_resets=False
+    )
+    assert list(out["quantity"]) == [10, 10]
