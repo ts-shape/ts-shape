@@ -132,21 +132,21 @@ def test_retry_call_rejects_invalid_attempts():
         retry_call(lambda: None, attempts=0)
 
 
-# ---- hourly_slots / trim_to_time_range ----------------------------------------
+# ---- utc_folder_hours / trim_to_time_range ----------------------------------------
 
 
-def test_hourly_slots_floors_start_and_includes_end_hour():
+def test_utc_folder_hours_floors_start_and_includes_end_hour():
     import pandas as pd
 
-    from ts_shape.loader._utils import hourly_slots
+    from ts_shape.loader._utils import utc_folder_hours
 
-    slots = list(hourly_slots("2024-01-01 09:30", "2024-01-01 11:00"))
+    slots = list(utc_folder_hours("2024-01-01 09:30", "2024-01-01 11:00"))
     assert [ts.hour for ts in slots] == [9, 10, 11]
-    slots = list(hourly_slots("2024-01-01 09:30", "2024-01-01 10:15"))
+    slots = list(utc_folder_hours("2024-01-01 09:30", "2024-01-01 10:15"))
     assert [ts.hour for ts in slots] == [9, 10]
-    assert list(hourly_slots("2024-01-01 11:00", "2024-01-01 09:00")) == []
+    assert list(utc_folder_hours("2024-01-01 11:00", "2024-01-01 09:00")) == []
     aware = list(
-        hourly_slots(
+        utc_folder_hours(
             pd.Timestamp("2024-01-01 09:30", tz="UTC"), "2024-01-01 10:00+00:00"
         )
     )

@@ -206,29 +206,6 @@ def require_optional(obj: object, package: str, extra: str) -> None:
         raise missing_optional(package, extra)
 
 
-def hourly_slots(
-    start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
-) -> pd.DatetimeIndex:
-    """Return every hour that overlaps the closed range ``[start, end]``.
-
-    ``start`` is floored to the hour, so a range starting mid-hour still
-    includes the hour that contains it, and the hour that contains ``end`` is
-    always included: ``09:30 .. 11:00`` yields ``09:00, 10:00, 11:00``.
-
-    Args:
-        start_timestamp: Range start (anything ``pd.to_datetime`` accepts).
-        end_timestamp: Range end, inclusive (anything ``pd.to_datetime`` accepts).
-
-    Returns:
-        Hour-aligned timestamps, one per hour folder to visit; empty when
-        ``start`` is after ``end``.
-    """
-    start, end = same_tz_bounds(start_timestamp, end_timestamp)
-    if start > end:
-        return pd.DatetimeIndex([], tz=start.tz)
-    return pd.date_range(start=start.floor("h"), end=end.floor("h"), freq="h")
-
-
 def parse_utc_times(values: pd.Series) -> pd.Series:
     """Parse timestamps to tz-aware UTC.
 
@@ -292,12 +269,22 @@ def utc_folder_hours(
         Naive UTC timestamps, one per folder; empty when start is after end.
     """
     start, end = same_tz_bounds(start_timestamp, end_timestamp)
-    if start.tzinfo is not None:
-        start = start.tz_convert("UTC").tz_localize(None)
-        end = end.tz_convert("UTC").tz_localize(None)
+    start, end = utc_naive(start), utc_naive(end)
     if start > end:
         return pd.DatetimeIndex([])
     return pd.date_range(start=start.floor(freq), end=end, freq=freq)
+
+
+def utc_naive(timestamp: str | pd.Timestamp) -> pd.Timestamp:
+    """``timestamp`` as naive UTC, to compare with ``YYYY/MM/DD/HH`` folder times.
+
+    A tz-aware value is converted to UTC; a naive value is taken as UTC (the
+    timezone the folder layouts are written in).
+    """
+    ts = pd.Timestamp(timestamp)
+    if ts.tzinfo is not None:
+        return ts.tz_convert("UTC").tz_localize(None)
+    return ts
 
 
 def _align_bound(bound: pd.Timestamp, column: pd.Series) -> pd.Timestamp:

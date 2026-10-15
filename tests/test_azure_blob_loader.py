@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
+from ts_shape.loader._utils import utc_folder_hours
 from ts_shape.loader.timeseries.azure_blob_loader import (
     AzureBlobFlexibleFileLoader,
     AzureBlobParquetLoader,
@@ -71,7 +72,7 @@ def test_hour_prefix_and_slots():
     ts = pd.Timestamp("2024-01-01 09:05:00")
     pfx = loader._hour_prefix(ts)
     assert pfx.endswith("2024/01/01/09/")
-    slots = list(loader._hourly_slots("2024-01-01 08:00:00", "2024-01-01 10:00:00"))
+    slots = list(utc_folder_hours("2024-01-01 08:00:00", "2024-01-01 10:00:00"))
     assert len(slots) == 3
 
 
@@ -378,14 +379,22 @@ def test_filters_too_strict_warning_hint(monkeypatch):
 
 def test_hourly_slots_include_hour_containing_end():
     loader = _make_loader_without_init(prefix="parquet/")
-    slots = list(loader._hourly_slots("2024-01-01 09:30", "2024-01-01 11:00"))
+    slots = list(utc_folder_hours("2024-01-01 09:30", "2024-01-01 11:00"))
     assert [loader._hour_prefix(ts) for ts in slots] == [
         "parquet/2024/01/01/09/",
         "parquet/2024/01/01/10/",
         "parquet/2024/01/01/11/",
     ]
     flex = _make_flexible_without_init(prefix="parquet/")
-    assert len(list(flex._hourly_slots("2024-01-01 09:30", "2024-01-01 11:00"))) == 3
+    berlin = utc_folder_hours(
+        pd.Timestamp("2024-01-01 10:30", tz="Europe/Berlin"),
+        pd.Timestamp("2024-01-01 12:00", tz="Europe/Berlin"),
+    )
+    assert [flex._hour_prefix(ts) for ts in berlin] == [
+        "parquet/2024/01/01/09/",
+        "parquet/2024/01/01/10/",
+        "parquet/2024/01/01/11/",
+    ]
 
 
 def test_load_by_time_range_mid_hour_start_reads_last_hour(monkeypatch):

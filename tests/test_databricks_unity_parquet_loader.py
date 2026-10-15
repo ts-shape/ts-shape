@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
+from ts_shape.loader._utils import utc_folder_hours
 from ts_shape.loader.timeseries.databricks_unity_parquet_loader import (
     DatabricksUnityParquetLoader,
 )
@@ -68,7 +69,7 @@ def test_hour_dir_and_slots(tmp_path):
     loader, _ = _loader(tmp_path)
     hd = loader._hour_dir(pd.Timestamp("2024-01-01 09:05:00"))
     assert str(hd).endswith("parquet/2024/01/01/09")
-    slots = list(loader._hourly_slots("2024-01-01 08:00:00", "2024-01-01 10:00:00"))
+    slots = list(utc_folder_hours("2024-01-01 08:00:00", "2024-01-01 10:00:00"))
     assert len(slots) == 3
 
 
@@ -303,3 +304,27 @@ def test_fetch_data_as_dataframe_end_only(tmp_path, monkeypatch):
     loader, _ = _loader(tmp_path, monkeypatch)
     df = loader.fetch_data_as_dataframe(end_timestamp="2024-01-01 09:59:00")
     assert df["uuid"].tolist() == ["u1"]  # hour 9 only
+
+
+def test_hour_folders_are_utc_for_berlin_bounds(tmp_path, monkeypatch):
+    """Berlin bounds select UTC hour folders, for closed and open ranges."""
+    loader, _ = _loader(tmp_path, monkeypatch)
+    # 11:00 Berlin (winter, UTC+1) is the 10:00 UTC folder
+    start = pd.Timestamp("2024-01-01 11:00", tz="Europe/Berlin")
+    end = pd.Timestamp("2024-01-01 11:59", tz="Europe/Berlin")
+    closed = loader.load_by_time_range(start, end, trim_to_range=False)
+    assert list(closed["uuid"]) == ["u1"]
+    # one-sided: on or after the 11:00 UTC folder only
+    after = loader.fetch_data_as_dataframe(
+        pd.Timestamp("2024-01-01 12:00", tz="Europe/Berlin"),
+        None,
+        trim_to_range=False,
+    )
+    assert list(after["uuid"]) == ["u2"]
+    # one-sided: on or before the 09:00 UTC folder only
+    before = loader.fetch_data_as_dataframe(
+        None,
+        pd.Timestamp("2024-01-01 10:30", tz="Europe/Berlin"),
+        trim_to_range=False,
+    )
+    assert list(before["uuid"]) == ["u1"]

@@ -7,7 +7,11 @@ import pytest
 
 import ts_shape.loader as loader_pkg
 from ts_shape.errors import DataQualityWarning
-from ts_shape.loader._utils import hourly_slots, parse_utc_times, trim_to_time_range
+from ts_shape.loader._utils import (
+    parse_utc_times,
+    trim_to_time_range,
+    utc_folder_hours,
+)
 from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
 from ts_shape.loader.timeseries.databricks_spark_parquet_loader import (
     DatabricksSparkParquetLoader,
@@ -93,10 +97,25 @@ def test_lazy_loader_map_lists_metadata_and_s3_loaders():
 # ---------- time bounds ----------------------------------------------------
 
 
-def test_hourly_slots_with_mixed_aware_and_naive_bounds():
-    slots = hourly_slots(pd.Timestamp("2024-01-01 09:30", tz="UTC"), "2024-01-01 11:00")
+def test_utc_folder_hours_with_mixed_aware_and_naive_bounds():
+    slots = utc_folder_hours(
+        pd.Timestamp("2024-01-01 09:30", tz="UTC"), "2024-01-01 11:00"
+    )
     assert len(slots) == 3
-    assert str(slots.tz) == "UTC"
+    assert slots.tz is None
+
+
+def test_folder_hours_are_utc_for_berlin_bounds():
+    """A Europe/Berlin bound picks the UTC hour folders (UTC+1 in winter)."""
+    start = pd.Timestamp("2024-01-01 10:30", tz="Europe/Berlin")
+    end = pd.Timestamp("2024-01-01 12:00", tz="Europe/Berlin")
+    hours = [ts.strftime("%H") for ts in utc_folder_hours(start, end)]
+    assert hours == ["09", "10", "11"]
+    # summer: UTC+2; a naive end is read in the zone of the aware start
+    summer = utc_folder_hours(
+        pd.Timestamp("2024-07-01 10:00", tz="Europe/Berlin"), "2024-07-01 11:00"
+    )
+    assert [ts.hour for ts in summer] == [8, 9]
 
 
 def test_trim_to_time_range_with_mixed_bounds():

@@ -12,10 +12,11 @@ from ts_shape.loader._utils import (
     ErrorsMode,
     check_errors_mode,
     describe_failures,
-    hourly_slots,
     read_errors,
     report_failures,
     trim_to_time_range,
+    utc_folder_hours,
+    utc_naive,
 )
 from ts_shape.utils.deprecation import caller_stacklevel
 
@@ -43,6 +44,8 @@ class DatabricksUnityParquetLoader:
       mounted Volume is read like a local directory.
     - **Navigates only the hour folders in range** (``YYYY/MM/DD/HH``) instead of
       scanning the whole tree, so a one-hour query never lists the whole Volume.
+      The hour folders are UTC: a tz-aware bound is converted to UTC first and
+      a naive bound is read as UTC.
     - **Column projection and row-predicate pushdown** via ``columns`` / ``filters``
       forwarded to ``pandas.read_parquet`` (pyarrow), so only needed bytes are read.
     - **Streaming generators** (:meth:`stream_by_time_range`,
@@ -126,13 +129,6 @@ class DatabricksUnityParquetLoader:
             )
 
     # ---- Hourly-layout helpers (mirror AzureBlobParquetLoader) ----
-    @staticmethod
-    def _hourly_slots(
-        start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
-    ) -> pd.DatetimeIndex:
-        """Hours overlapping ``[start, end]``; the start is floored to the hour."""
-        return hourly_slots(start_timestamp, end_timestamp)
-
     def _hour_dir(self, ts: pd.Timestamp) -> Path:
         """Return the directory for a given hour, e.g. <base>/2024/01/31/09."""
         y = str(ts.year)
@@ -357,7 +353,7 @@ class DatabricksUnityParquetLoader:
                 :class:`~ts_shape.errors.LoaderError` instead.
         """
         check_errors_mode(errors)
-        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
         paths: list[Path] = []
         for ts in slots:
             paths.extend(self._list_parquet_in(self._hour_dir(ts)))
@@ -425,7 +421,7 @@ class DatabricksUnityParquetLoader:
                 :class:`~ts_shape.errors.LoaderError` instead.
         """
         check_errors_mode(errors)
-        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
         paths = (
             path for ts in slots for path in self._list_parquet_in(self._hour_dir(ts))
         )
@@ -493,7 +489,7 @@ class DatabricksUnityParquetLoader:
             return pd.DataFrame()
 
         variants = self._uuid_basenames(uuid_list)
-        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
         paths: list[Path] = []
         for ts in slots:
             for path in self._list_parquet_in(self._hour_dir(ts)):
@@ -568,7 +564,7 @@ class DatabricksUnityParquetLoader:
             return
 
         variants = self._uuid_basenames(uuid_list)
-        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
         paths = (
             path
             for ts in slots
@@ -677,16 +673,8 @@ class DatabricksUnityParquetLoader:
         errors: ErrorsMode,
     ) -> pd.DataFrame:
         """Load the hour folders on or after ``start`` / on or before ``end``."""
-        lo = (
-            None
-            if start_timestamp is None
-            else pd.to_datetime(start_timestamp).floor("h").tz_localize(None)
-        )
-        hi = (
-            None
-            if end_timestamp is None
-            else pd.to_datetime(end_timestamp).floor("h").tz_localize(None)
-        )
+        lo = None if start_timestamp is None else utc_naive(start_timestamp).floor("h")
+        hi = None if end_timestamp is None else utc_naive(end_timestamp).floor("h")
         paths = []
         for path in self._walk_parquet(self.base_path):
             hour = self._hour_of_path(path)

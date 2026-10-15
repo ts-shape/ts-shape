@@ -6,7 +6,12 @@ from pathlib import Path
 import pandas as pd
 
 from ts_shape.errors import LoaderConfigWarning
-from ts_shape.loader._utils import retry_call, same_tz_bounds, validate_local_path
+from ts_shape.loader._utils import (
+    retry_call,
+    same_tz_bounds,
+    utc_naive,
+    validate_local_path,
+)
 from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
@@ -22,10 +27,7 @@ def _folder_bounds(
     bounds are taken as UTC (the folder layout's timezone).
     """
     start, end = same_tz_bounds(start_time, end_time)
-    if start.tzinfo is not None:
-        start = start.tz_convert("UTC").tz_localize(None)
-        end = end.tz_convert("UTC").tz_localize(None)
-    return start.floor("h"), end
+    return utc_naive(start).floor("h"), utc_naive(end)
 
 
 class ParquetLoader:

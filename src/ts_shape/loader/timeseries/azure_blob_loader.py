@@ -13,12 +13,12 @@ from ts_shape.loader._utils import (
     ErrorsMode,
     check_errors_mode,
     describe_failures,
-    hourly_slots,
     is_not_found,
     missing_optional,
     read_errors,
     report_failures,
     trim_to_time_range,
+    utc_folder_hours,
 )
 from ts_shape.utils.deprecation import caller_stacklevel
 
@@ -112,6 +112,9 @@ class AzureBlobParquetLoader:
     - Using server-side prefix filtering when provided
     - Streaming blob listings and filtering client-side by UUID containment
     - Downloading and parsing parquet files concurrently
+
+    Hour folders are UTC: a tz-aware time bound is converted to UTC before
+    the folders to visit are chosen, and a naive bound is read as UTC.
     """
 
     def __init__(
@@ -369,13 +372,6 @@ class AzureBlobParquetLoader:
         )
 
     # ---- Helpers for time-structured containers parquet/YYYY/MM/DD/HH ----
-    @staticmethod
-    def _hourly_slots(
-        start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
-    ) -> pd.DatetimeIndex:
-        """Hours overlapping ``[start, end]``; the start is floored to the hour."""
-        return hourly_slots(start_timestamp, end_timestamp)
-
     def _hour_prefix(self, ts: pd.Timestamp) -> str:
         # Builds e.g. "parquet/2024/01/31/09/" if prefix="parquet/"
         y = str(ts.year)
@@ -483,7 +479,7 @@ class AzureBlobParquetLoader:
                 :class:`~ts_shape.errors.LoaderError` instead.
         """
         check_errors_mode(errors)
-        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
         blob_names: list[str] = []
         for pfx in hour_prefixes:
@@ -553,7 +549,7 @@ class AzureBlobParquetLoader:
                 :class:`~ts_shape.errors.LoaderError` instead.
         """
         check_errors_mode(errors)
-        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
 
         def _names_iter() -> Iterator[str]:
@@ -639,7 +635,7 @@ class AzureBlobParquetLoader:
             return pd.DataFrame()
 
         variants_ordered = self._uuid_variants(uuid_list)
-        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
         all_blob_names, guessed, fallback_note = self._resolve_uuid_blobs(
             "load_files_by_time_range_and_uuids", hour_prefixes, variants_ordered
@@ -720,7 +716,7 @@ class AzureBlobParquetLoader:
             return
 
         variants_ordered = self._uuid_variants(uuid_list)
-        slots = list(self._hourly_slots(start_timestamp, end_timestamp))
+        slots = list(utc_folder_hours(start_timestamp, end_timestamp))
         hour_prefixes = [self._hour_prefix(ts) for ts in slots]
         all_blob_names, guessed, fallback_note = self._resolve_uuid_blobs(
             "stream_files_by_time_range_and_uuids", hour_prefixes, variants_ordered
@@ -891,6 +887,9 @@ class AzureBlobFlexibleFileLoader:
     Designed for containers with paths like: prefix/YYYY/MM/DD/HH/<unknown and non-static suffix>/file.ext
     This class lists by per-hour prefix and can filter by extensions and/or basenames,
     then downloads files concurrently as raw bytes.
+
+    Hour folders are UTC: a tz-aware time bound is converted to UTC before
+    the folders to visit are chosen, and a naive bound is read as UTC.
     """
 
     # Parser registry: maps lowercase extensions (with dot) -> callable(content, name) -> Any
@@ -991,13 +990,6 @@ class AzureBlobFlexibleFileLoader:
             AzureBlobFlexibleFileLoader._parsers_initialized = True
 
     # ---- Shared helpers with Parquet loader ----
-    @staticmethod
-    def _hourly_slots(
-        start_timestamp: str | pd.Timestamp, end_timestamp: str | pd.Timestamp
-    ) -> pd.DatetimeIndex:
-        """Hours overlapping ``[start, end]``; the start is floored to the hour."""
-        return hourly_slots(start_timestamp, end_timestamp)
-
     def _hour_prefix(self, ts: pd.Timestamp) -> str:
         y = str(ts.year)
         m = str(ts.month).zfill(2)
@@ -1152,7 +1144,7 @@ class AzureBlobFlexibleFileLoader:
         collected = 0
         for pfx in (
             self._hour_prefix(ts)
-            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+            for ts in utc_folder_hours(start_timestamp, end_timestamp)
         ):
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             for b in blob_iter:
@@ -1189,7 +1181,7 @@ class AzureBlobFlexibleFileLoader:
         allowed_exts = self._normalize_exts(extensions)
         for pfx in (
             self._hour_prefix(ts)
-            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+            for ts in utc_folder_hours(start_timestamp, end_timestamp)
         ):
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             for b in blob_iter:
@@ -1343,7 +1335,7 @@ class AzureBlobFlexibleFileLoader:
         candidates: list[str] = []
         for pfx in (
             self._hour_prefix(ts)
-            for ts in self._hourly_slots(start_timestamp, end_timestamp)
+            for ts in utc_folder_hours(start_timestamp, end_timestamp)
         ):
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             for b in blob_iter:
@@ -1399,7 +1391,7 @@ class AzureBlobFlexibleFileLoader:
         def _names_iter() -> Iterator[str]:
             for pfx in (
                 self._hour_prefix(ts)
-                for ts in self._hourly_slots(start_timestamp, end_timestamp)
+                for ts in utc_folder_hours(start_timestamp, end_timestamp)
             ):
                 blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
                 for b in blob_iter:
