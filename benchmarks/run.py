@@ -19,9 +19,10 @@ interleaved on a 1 s grid: a run/idle state (bool), a production counter
 column is filled on every row.
 
 Reported per case: ``seconds`` (the timed call only; generating the data and
-any ``setup`` step are excluded), ``peak_rss_mb`` (process high-water mark),
-``base_rss_mb`` (after generating the data, before the timed call) and their
-difference ``delta_rss_mb``. Results go to a JSON file and are printed as a
+any ``setup`` step are excluded), ``peak_rss_mb`` (high-water mark during the
+timed call, reset through ``/proc/self/clear_refs`` on Linux), ``base_rss_mb``
+(after generating the data, before the timed call) and their difference
+``delta_rss_mb``. Results go to a JSON file and are printed as a
 markdown table.
 """
 
@@ -51,7 +52,9 @@ PART = "part:id"
 UUIDS = (STATE, COUNTER, TEMP, PRESSURE, PART)
 
 
-def make_frame(n_rows: int, seed: int = 0, uuid_dtype: str = "default") -> pd.DataFrame:
+def make_frame(
+    n_rows: int, seed: int = 0, uuid_dtype: str = "default", slim: bool = False
+) -> pd.DataFrame:
     """A long-format frame of ``n_rows`` rows, sorted by (systime, uuid).
 
     Args:
@@ -60,6 +63,8 @@ def make_frame(n_rows: int, seed: int = 0, uuid_dtype: str = "default") -> pd.Da
         uuid_dtype: ``"default"`` (whatever pandas infers from Python strings:
             ``str`` on pandas 3, ``object`` on pandas 2), ``"object"`` or
             ``"category"``.
+        slim: Only ``systime``, ``uuid``, ``value_double`` and ``value_bool``
+            (for runs at 100M rows).
     """
     rng = np.random.default_rng(seed)
     k = len(UUIDS)
@@ -79,6 +84,15 @@ def make_frame(n_rows: int, seed: int = 0, uuid_dtype: str = "default") -> pd.Da
     lengths = rng.integers(1, 60, size=n_rows // 2 + 2)
     state = np.repeat(np.arange(len(lengths)) % 2 == 0, lengths)[:n_rows]
     walk = np.cumsum(rng.normal(0.0, 0.05, n_rows)) + 50.0
+    if slim:
+        return pd.DataFrame(
+            {
+                "systime": systime,
+                "uuid": uuid,
+                "value_double": walk,
+                "value_bool": state,
+            }
+        )
     counter = np.cumsum(state.astype(np.int64))
     parts = np.array(["P-100", "P-200", "P-300"], dtype=object)
     part = parts[(step // 3600) % len(parts)]
@@ -181,8 +195,29 @@ DEFAULT_CASES = (
 )
 
 
+def _reset_peak_rss() -> bool:
+    """Reset the kernel's peak-RSS mark (Linux), so it covers the timed call."""
+    try:
+        with open("/proc/self/clear_refs", "w") as f:
+            f.write("5")
+        return True
+    except OSError:
+        return False
+
+
 def _rss_mb() -> float:
-    """Peak resident set size of this process so far (MB)."""
+    """Peak resident set size since the last reset (MB).
+
+    ``VmHWM`` from ``/proc/self/status`` where available, else the
+    process-lifetime ``ru_maxrss`` (which then includes building the data).
+    """
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) / 1024.0
+    except OSError:
+        pass
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
 
 
@@ -195,15 +230,16 @@ def _current_rss_mb() -> float:
         return float("nan")
 
 
-def child(case: str, n_rows: int, uuid_dtype: str) -> dict[str, Any]:
+def child(case: str, n_rows: int, uuid_dtype: str, slim: bool) -> dict[str, Any]:
     """Run one case in this process and return its measurements."""
     import warnings
 
     warnings.simplefilter("ignore")
-    df = make_frame(n_rows, uuid_dtype=uuid_dtype)
+    df = make_frame(n_rows, uuid_dtype=uuid_dtype, slim=slim)
     setup, run = _cases()[case]
     ctx = setup(df)
     base_rss = _current_rss_mb()
+    reset = _reset_peak_rss()
     start = time.perf_counter()
     run(ctx)
     seconds = time.perf_counter() - start
@@ -217,6 +253,7 @@ def child(case: str, n_rows: int, uuid_dtype: str) -> dict[str, Any]:
         "peak_rss_mb": round(peak, 1),
         "delta_rss_mb": round(peak - base_rss, 1),
         "input_mb": round(df.memory_usage(deep=False).sum() / 2**20, 1),
+        "peak_since_data": reset,
         "pandas": pd.__version__,
     }
 
@@ -237,6 +274,7 @@ def run_one(
     max_gb: float,
     timeout: float,
     uuid_dtype: str,
+    slim: bool = False,
 ) -> dict[str, Any]:
     """Run one case in a fresh, memory-capped subprocess."""
     env = {**os.environ, "PYTHONPATH": str(src)}
@@ -252,7 +290,7 @@ def run_one(
         str(n_rows),
         "--uuid-dtype",
         uuid_dtype,
-    ]
+    ] + (["--slim"] if slim else [])
     start = time.perf_counter()
     try:
         proc = subprocess.run(
@@ -304,6 +342,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--uuid-dtype", choices=("default", "object", "category"), default="default"
     )
+    parser.add_argument(
+        "--slim", action="store_true", help="only systime/uuid/value_double/bool"
+    )
     parser.add_argument("--out", type=Path, default=None, help="JSON output file")
     parser.add_argument("--label", default="", help="label stored in the JSON")
     parser.add_argument("--list", action="store_true", help="list the cases")
@@ -312,7 +353,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.child:
-        print(json.dumps(child(args.child, args.n, args.uuid_dtype)), flush=True)
+        result = child(args.child, args.n, args.uuid_dtype, args.slim)
+        print(json.dumps(result), flush=True)
         return 0
     if args.list:
         sys.path.insert(0, str(args.src))
@@ -329,6 +371,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_gb=args.max_gb,
                 timeout=args.timeout,
                 uuid_dtype=args.uuid_dtype,
+                slim=args.slim,
             )
             result["label"] = args.label
             rows.append(result)

@@ -65,10 +65,22 @@ def _is_numpy_datetime(series: pd.Series) -> bool:
 
 
 def _all_missing(series: pd.Series) -> bool:
+    """``series.isna().all()``, answered from a few rows when one has a value."""
     dtype = series.dtype
     if isinstance(dtype, np.dtype) and dtype.kind in "biu":  # no NaN possible
         return False
+    n = len(series)
+    if n and isinstance(dtype, np.dtype):
+        values = series.to_numpy()
+        for i in (0, n // 2, n - 1):
+            if not _is_missing_scalar(values[i]):
+                return False
     return bool(series.isna().all())
+
+
+def _is_missing_scalar(value: object) -> bool:
+    missing = pd.isna(value)
+    return not isinstance(missing, (bool, np.bool_)) or bool(missing)
 
 
 def _ticks(series: pd.Series) -> np.ndarray | None:
