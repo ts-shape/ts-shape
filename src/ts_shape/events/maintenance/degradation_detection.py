@@ -14,6 +14,7 @@ from ts_shape.events.maintenance._rolling import (
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
+from ts_shape.utils.runs import run_agg, total_seconds, true_runs
 
 logger = logging.getLogger(__name__)
 
@@ -122,36 +123,24 @@ class DegradationDetectionEvents(Base):
         if not degrading.any():
             return pd.DataFrame(columns=cols)
 
-        # Group contiguous degrading intervals
-        group_id = (degrading != degrading.shift()).cumsum()
-        ends = interval_end_times(sig[self.time_column], interval_end)
-        events: list[dict[str, Any]] = []
-        for _, seg in sig.groupby(group_id):
-            seg_deg = degrading.loc[seg.index]
-            if not seg_deg.iloc[0]:
-                continue
-            start_time = seg[self.time_column].iloc[0]
-            end_time = ends.loc[seg.index[-1]]
-            avg_slope = float(seg["slope"].mean())
-            total_change = float(
-                seg[self.value_column].iloc[-1] - seg[self.value_column].iloc[0]
-            )
-            duration = (end_time - start_time).total_seconds()
-            events.append(
-                {
-                    "start": start_time,
-                    "end": end_time,
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": True,
-                    "avg_slope": avg_slope,
-                    "total_change": total_change,
-                    "duration_seconds": duration,
-                }
-            )
-
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        # One interval per contiguous run of degrading samples.
+        runs = true_runs(degrading.to_numpy(dtype=bool))
+        times = sig[self.time_column].array
+        start = times[runs.starts]
+        end = interval_end_times(sig[self.time_column], interval_end).array[runs.last]
+        values = sig[self.value_column].to_numpy(dtype=np.float64)
+        return pd.DataFrame(
+            {
+                "start": start,
+                "end": end,
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": True,
+                "avg_slope": run_agg(sig["slope"], runs, "nanmean"),
+                "total_change": values[runs.last] - values[runs.starts],
+                "duration_seconds": total_seconds(end - start),
+            },
+            columns=cols,
         )
 
     @keyword_only(1)
@@ -223,32 +212,23 @@ class DegradationDetectionEvents(Base):
         if not exceeded.any():
             return pd.DataFrame(columns=cols)
 
-        # Group contiguous exceeded intervals
-        group_id = (exceeded != exceeded.shift()).cumsum()
-        ends = interval_end_times(sig[self.time_column], interval_end)
-        events: list[dict[str, Any]] = []
-        for _, seg in sig.groupby(group_id):
-            seg_exc = exceeded.loc[seg.index]
-            if not seg_exc.iloc[0]:
-                continue
-            events.append(
-                {
-                    "start": seg[self.time_column].iloc[0],
-                    "end": ends.loc[seg.index[-1]],
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": True,
-                    "baseline_variance": baseline_var,
-                    "current_variance": float(seg["current_variance"].mean()),
-                    "ratio": float(seg["ratio"].mean()),
-                    "duration_seconds": (
-                        ends.loc[seg.index[-1]] - seg[self.time_column].iloc[0]
-                    ).total_seconds(),
-                }
-            )
-
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        # One interval per contiguous run of exceeded samples.
+        runs = true_runs(exceeded.to_numpy(dtype=bool))
+        start = sig[self.time_column].array[runs.starts]
+        end = interval_end_times(sig[self.time_column], interval_end).array[runs.last]
+        return pd.DataFrame(
+            {
+                "start": start,
+                "end": end,
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": True,
+                "baseline_variance": baseline_var,
+                "current_variance": run_agg(sig["current_variance"], runs, "nanmean"),
+                "ratio": run_agg(sig["ratio"], runs, "nanmean"),
+                "duration_seconds": total_seconds(end - start),
+            },
+            columns=cols,
         )
 
     @keyword_only(2)

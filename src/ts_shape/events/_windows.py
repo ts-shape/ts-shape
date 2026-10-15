@@ -203,7 +203,7 @@ def window_summary(
 
 
 def finish_events(
-    events: list[dict[str, Any]],
+    events: list[dict[str, Any]] | pd.DataFrame,
     cols: Sequence[str],
     shape: Literal["interval", "summary"],
     *,
@@ -213,18 +213,23 @@ def finish_events(
 ) -> pd.DataFrame:
     """Build a canonical interval/summary frame from per-row dicts.
 
-    Rows that carry only ``start`` get ``end`` = one ``window`` later
-    (calendar-correct). Adds ``duration_seconds``, ``uuid`` and
-    ``source_uuid``; empty input yields an empty frame with the same columns.
+    ``events`` may also be a DataFrame holding (at least) ``cols``, for
+    detectors that compute their rows column-wise. Rows that carry only
+    ``start`` get ``end`` = one ``window`` later (calendar-correct). Adds
+    ``duration_seconds``, ``uuid`` and ``source_uuid``; empty input yields an
+    empty frame with the same columns.
     """
     full = list(cols)
     if COL_END not in full:
         if window is None:
             raise ValueError("window is required when rows have no 'end' column")
         full.insert(full.index(COL_START) + 1, COL_END)
-    if not events:
+    if len(events) == 0:
         return empty_event_df(shape, ["uuid", "source_uuid", *full])
-    df = pd.DataFrame(events, columns=list(cols))
+    if isinstance(events, pd.DataFrame):
+        df = events[list(cols)]
+    else:
+        df = pd.DataFrame(events, columns=list(cols))
     if COL_END not in df.columns and window is not None:
         start, end = window_bounds(df[COL_START], window)
         df[COL_START] = start

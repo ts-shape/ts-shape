@@ -14,6 +14,7 @@ from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
+from ts_shape.utils.runs import Runs, run_agg, total_seconds, true_runs
 
 logger = logging.getLogger(__name__)
 
@@ -111,35 +112,30 @@ class InventoryMonitoringEvents(Base):
             .copy()
             .reset_index(drop=True)
         )
-        lv["below"] = lv[self.value_column] < min_level
-        ends = interval_end_times(lv[self.time_column], interval_end)
+        below = (lv[self.value_column] < min_level).to_numpy(dtype=bool)
 
-        # Group contiguous below-threshold segments
-        lv["group"] = (lv["below"] != lv["below"].shift()).cumsum()
-
-        rows: list[dict[str, Any]] = []
-        for _, seg in lv[lv["below"]].groupby("group"):
-            start = seg[self.time_column].iloc[0]
-            end = ends.loc[seg.index[-1]]
-            duration = (end - start).total_seconds()
-            if (end - start) < hold_td:
-                continue
-            rows.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.level_uuid,
-                    "is_delta": True,
-                    "min_value": float(seg[self.value_column].min()),
-                    "avg_value": float(seg[self.value_column].mean()),
-                    "duration_seconds": duration,
-                }
-            )
-
-        if not rows:
+        # Contiguous below-threshold runs, kept when they last at least hold.
+        runs = true_runs(below)
+        start = lv[self.time_column].array[runs.starts]
+        end = interval_end_times(lv[self.time_column], interval_end).array[runs.last]
+        keep = ~((end - start) < hold_td)
+        if not keep.any():
             return pd.DataFrame(columns=empty_cols)
-        return pd.DataFrame(rows)
+        runs = Runs(runs.starts[keep], runs.ends[keep], runs.lengths[keep])
+        start, end = start[keep], end[keep]
+        values = lv[self.value_column]
+        return pd.DataFrame(
+            {
+                "start": start,
+                "end": end,
+                "uuid": self.event_uuid,
+                "source_uuid": self.level_uuid,
+                "is_delta": True,
+                "min_value": run_agg(values, runs, "nanmin"),
+                "avg_value": run_agg(values, runs, "nanmean"),
+                "duration_seconds": total_seconds(end - start),
+            }
+        )
 
     @keyword_only(1)
     def consumption_rate(

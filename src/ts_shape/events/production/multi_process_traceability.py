@@ -21,12 +21,115 @@ being processed.  Handover signals between cells confirm the transfer.
 import logging
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.runs import Runs, run_bounds, run_labels, total_seconds
 
 logger = logging.getLogger(__name__)
+
+_Ints = npt.NDArray[np.int64]
+
+
+def _grouped_searchsorted(
+    groups: _Ints, times: _Ints, q_groups: _Ints, q_times: _Ints, side: str
+) -> _Ints:
+    """``searchsorted`` of ``(q_group, q_time)`` in data sorted by ``(group, time)``.
+
+    Returns, per query, the global position of the first data element not
+    less (``side="left"``) / greater (``side="right"``) than the query, so
+    for a query in group ``g`` the result lies within ``g``'s data range.
+    """
+    n = groups.size
+    # Ties: a "left" query sorts before equal data, a "right" one after it.
+    q_tie, d_tie = (0, 1) if side == "left" else (1, 0)
+    tie = np.r_[np.full(n, d_tie), np.full(q_groups.size, q_tie)]
+    order = np.lexsort((tie, np.r_[times, q_times], np.r_[groups, q_groups]))
+    is_data = order < n
+    data_before = np.cumsum(is_data) - is_data
+    out = np.empty(q_groups.size, dtype=np.int64)
+    out[order[~is_data] - n] = data_before[~is_data]
+    return out
+
+
+def _overlap_bounds(
+    timeline: pd.DataFrame, *, allow_ties: bool
+) -> tuple[_Ints, _Ints, _Ints, _Ints, _Ints] | None:
+    """Per-row item label, start/end (int ns), ``p`` (the first row of the
+    same item whose start is not before this row's end) and the item's first
+    row.
+
+    ``timeline`` is sorted by ``(item_id, start)``. Returns None when a start
+    or end is missing (NaT), or -- unless ``allow_ties`` -- when two rows of
+    one item share a start (a per-item ``sort_values`` may then order them
+    differently); callers fall back to their pairwise loops.
+    """
+    start, end = timeline["start"], timeline["end"]
+    if bool(start.isna().any()) or bool(end.isna().any()):
+        return None
+    runs = run_bounds(timeline["item_id"])
+    gid = run_labels(runs)
+    s_ns = np.asarray(start.array.asi8, dtype=np.int64)
+    e_ns = np.asarray(end.array.asi8, dtype=np.int64)
+    if not allow_ties and bool(((gid[1:] == gid[:-1]) & (s_ns[1:] == s_ns[:-1])).any()):
+        return None
+    p = _grouped_searchsorted(gid, s_ns, gid, e_ns, "left")
+    return gid, s_ns, e_ns, p, runs.starts[gid]
+
+
+def _parallel_flags(timeline: pd.DataFrame) -> npt.NDArray[np.bool_] | None:
+    """Whether each row overlaps another row of the same item.
+
+    Rows ``i`` and ``j`` overlap when ``start_i < end_j`` and
+    ``start_j < end_i``. Within an item the rows are sorted by start, so the
+    rows starting before ``end_i`` are a prefix: an earlier one overlaps if
+    the running maximum of their ends exceeds ``start_i``, a later one unless
+    it is a zero-length row at exactly ``start_i``.
+    """
+    bounds = _overlap_bounds(timeline, allow_ties=True)
+    if bounds is None:
+        return None
+    gid, s_ns, e_ns, p, g0 = bounds
+    n = gid.size
+    pos = np.arange(n, dtype=np.int64)
+    # Earlier rows j < min(i, p_i) all start before end_i.
+    run_max = pd.Series(e_ns).groupby(gid).cummax().to_numpy()
+    k = np.minimum(pos, p) - 1
+    earlier = (k >= g0) & (run_max[np.maximum(k, 0)] > s_ns)
+    # Later rows j in (i, p_i) overlap unless zero-length at start_i (those
+    # have start == start_i, so they sit before the first larger start).
+    b = _grouped_searchsorted(gid, s_ns, gid, s_ns, "right")
+    zero = np.r_[0, np.cumsum(s_ns == e_ns)]
+    hi = np.maximum(np.minimum(p, b), pos + 1)
+    later = (p - pos - 1) - (zero[hi] - zero[pos + 1]) > 0
+    return np.asarray(earlier | later, dtype=bool)
+
+
+def _overlap_pairs(timeline: pd.DataFrame) -> tuple[_Ints, _Ints] | None:
+    """Row pairs ``i < j`` of one item whose intervals overlap, in loop order.
+
+    Row ``j > i`` starts after row ``i`` (no tied starts), so the pair
+    overlaps when ``j`` starts before ``end_i`` (``j < p_i``) and is not
+    zero-length.
+    """
+    bounds = _overlap_bounds(timeline, allow_ties=False)
+    if bounds is None:
+        return None
+    _, s_ns, e_ns, p, _ = bounds
+    pos = np.arange(s_ns.size, dtype=np.int64)
+    count = np.maximum(p - pos - 1, 0)
+    i = np.repeat(pos, count)
+    j = (
+        i
+        + 1
+        + np.arange(i.size, dtype=np.int64)
+        - np.repeat(np.cumsum(count) - count, count)
+    )
+    keep = s_ns[j] < e_ns[j]
+    return i[keep], j[keep]
 
 
 class MultiProcessTraceabilityEvents(Base):
@@ -156,28 +259,27 @@ class MultiProcessTraceabilityEvents(Base):
             gap = dt > median_dt * 3
         else:
             gap = pd.Series(False, index=s.index)
-        s["group"] = (value_change | gap).cumsum()
-
-        rows: list[dict[str, Any]] = []
-        for _, seg in s.groupby("group"):
-            item_id = seg["item_id"].iloc[0]
-            if item_id == "":
-                continue
-            start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
-            rows.append(
-                {
-                    "item_id": item_id,
-                    "station": station_name,
-                    "id_uuid": id_uuid,
-                    "start": start,
-                    "end": end,
-                    "duration_seconds": (end - start).total_seconds(),
-                    "sample_count": len(seg),
-                }
-            )
-
-        return pd.DataFrame(rows)
+        # A segment starts at every value change or time gap.
+        first = np.flatnonzero((value_change | gap).to_numpy(dtype=bool))
+        runs = Runs(first, np.r_[first[1:], len(s)], np.diff(np.r_[first, len(s)]))
+        ids = s["item_id"].iloc[runs.starts]
+        keep = (ids != "").to_numpy(dtype=bool)
+        if not keep.any():
+            return pd.DataFrame([])
+        times = s[self.time_column].array
+        start = times[runs.starts[keep]]
+        end = times[runs.last[keep]]
+        return pd.DataFrame(
+            {
+                "item_id": ids[keep].tolist(),
+                "station": station_name,
+                "id_uuid": id_uuid,
+                "start": start,
+                "end": end,
+                "duration_seconds": total_seconds(end - start),
+                "sample_count": runs.lengths[keep],
+            }
+        )
 
     # ------------------------------------------------------------------
     # build_timeline
@@ -243,19 +345,11 @@ class MultiProcessTraceabilityEvents(Base):
         timeline["step_sequence"] = timeline.groupby("item_id").cumcount() + 1
 
         # Detect parallel activity: for each item, check if any intervals overlap
-        timeline["is_parallel"] = False
-        for _, grp in timeline.groupby("item_id"):
-            if len(grp) < 2:
-                continue
-            idxs = grp.index.tolist()
-            for i, idx_i in enumerate(idxs):
-                for idx_j in idxs[i + 1 :]:
-                    row_i = timeline.loc[idx_i]
-                    row_j = timeline.loc[idx_j]
-                    # Overlap: start_i < end_j AND start_j < end_i
-                    if row_i["start"] < row_j["end"] and row_j["start"] < row_i["end"]:
-                        timeline.loc[idx_i, "is_parallel"] = True
-                        timeline.loc[idx_j, "is_parallel"] = True
+        flags = _parallel_flags(timeline)
+        if flags is not None:
+            timeline["is_parallel"] = flags
+        else:
+            self._parallel_flags_loop(timeline)
 
         timeline["uuid"] = self.event_uuid
 
@@ -270,6 +364,23 @@ class MultiProcessTraceabilityEvents(Base):
             ).dt.total_seconds()
 
         return timeline
+
+    @staticmethod
+    def _parallel_flags_loop(timeline: pd.DataFrame) -> None:
+        """Pairwise ``is_parallel`` (fallback for rows with a NaT bound)."""
+        timeline["is_parallel"] = False
+        for _, grp in timeline.groupby("item_id"):
+            if len(grp) < 2:
+                continue
+            idxs = grp.index.tolist()
+            for i, idx_i in enumerate(idxs):
+                for idx_j in idxs[i + 1 :]:
+                    row_i = timeline.loc[idx_i]
+                    row_j = timeline.loc[idx_j]
+                    # Overlap: start_i < end_j AND start_j < end_i
+                    if row_i["start"] < row_j["end"] and row_j["start"] < row_i["end"]:
+                        timeline.loc[idx_i, "is_parallel"] = True
+                        timeline.loc[idx_j, "is_parallel"] = True
 
     # ------------------------------------------------------------------
     # lead_time
@@ -364,6 +475,44 @@ class MultiProcessTraceabilityEvents(Base):
                 ]
             )
 
+        pairs = _overlap_pairs(timeline)
+        if pairs is None:
+            rows = self._parallel_activity_loop(timeline)
+            if rows:
+                return pd.DataFrame(rows)
+        elif pairs[0].size:
+            i, j = pairs
+            start, end = timeline["start"].array, timeline["end"].array
+            # Rows are sorted by start without ties, so row j starts later.
+            e_ns = np.asarray(end.asi8, dtype=np.int64)
+            ov_start = start[j]
+            ov_end = end[np.where(e_ns[j] < e_ns[i], j, i)]
+            station = timeline["station"]
+            return pd.DataFrame(
+                {
+                    "item_id": timeline["item_id"].iloc[i].tolist(),
+                    "station_a": station.iloc[i].tolist(),
+                    "station_b": station.iloc[j].tolist(),
+                    "overlap_start": ov_start,
+                    "overlap_end": ov_end,
+                    "overlap_seconds": total_seconds(ov_end - ov_start),
+                    "uuid": self.event_uuid,
+                }
+            )
+        return pd.DataFrame(
+            columns=[
+                "item_id",
+                "station_a",
+                "station_b",
+                "overlap_start",
+                "overlap_end",
+                "overlap_seconds",
+                "uuid",
+            ]
+        )
+
+    def _parallel_activity_loop(self, timeline: pd.DataFrame) -> list[dict[str, Any]]:
+        """Pairwise overlaps (fallback for NaT bounds or tied starts)."""
         rows: list[dict[str, Any]] = []
         for item_id, grp in timeline.groupby("item_id"):
             if len(grp) < 2:
@@ -391,21 +540,7 @@ class MultiProcessTraceabilityEvents(Base):
                             }
                         )
 
-        return (
-            pd.DataFrame(rows)
-            if rows
-            else pd.DataFrame(
-                columns=[
-                    "item_id",
-                    "station_a",
-                    "station_b",
-                    "overlap_start",
-                    "overlap_end",
-                    "overlap_seconds",
-                    "uuid",
-                ]
-            )
-        )
+        return rows
 
     # ------------------------------------------------------------------
     # handover_log

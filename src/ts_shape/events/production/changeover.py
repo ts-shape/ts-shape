@@ -1,9 +1,11 @@
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.runs import true_runs
 
 logger = logging.getLogger(__name__)
 
@@ -253,19 +255,20 @@ class ChangeoverEvents(Base):
             if not inside.any():
                 continue
 
-            # Find first stable period
-            gid = (inside.ne(inside.shift())).cumsum()
-            end_found: pd.Timestamp | None = None
-
-            for _, seg in s.groupby(gid):
-                seg_inside = inside.loc[seg.index]
-                if not seg_inside.iloc[0]:
-                    continue
-                start_seg = seg[self.time_column].iloc[0]
-                end_seg = seg[self.time_column].iloc[-1]
-                if (end_seg - start_seg) >= hold_td:
-                    end_found = start_seg
-                    break
+            # Find the first stable run (inside the band) lasting at least
+            # the hold time.
+            end_found: pd.Timestamp | None
+            if not s.index.is_unique:
+                end_found = self._stable_start_by_labels(s, inside, hold_td)
+            else:
+                runs = true_runs(inside.to_numpy(dtype=bool))
+                times = s[self.time_column].array
+                long_enough = np.flatnonzero(
+                    (times[runs.last] - times[runs.starts]) >= hold_td
+                )
+                end_found = (
+                    times[runs.starts[long_enough[0]]] if long_enough.size else None
+                )
 
             if end_found is not None:
                 metric_ends.append(end_found)
@@ -273,6 +276,22 @@ class ChangeoverEvents(Base):
         if metric_defs and len(metric_ends) == len(metric_defs):
             return max(metric_ends)
 
+        return None
+
+    def _stable_start_by_labels(
+        self, s: pd.DataFrame, inside: pd.Series, hold_td: pd.Timedelta
+    ) -> pd.Timestamp | None:
+        """Label-based run search, kept for frames with duplicate index labels
+        (whose ``.loc`` lookups the vectorized search does not reproduce)."""
+        gid = (inside.ne(inside.shift())).cumsum()
+        for _, seg in s.groupby(gid):
+            seg_inside = inside.loc[seg.index]
+            if not seg_inside.iloc[0]:
+                continue
+            start_seg = seg[self.time_column].iloc[0]
+            end_seg = seg[self.time_column].iloc[-1]
+            if (end_seg - start_seg) >= hold_td:
+                return start_seg
         return None
 
     def _calculate_reference(

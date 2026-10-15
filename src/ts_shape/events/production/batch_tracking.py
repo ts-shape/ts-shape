@@ -5,7 +5,7 @@ compute duration statistics, per-batch yield, and batch transition matrices.
 """
 
 import logging
-from typing import Any, Literal
+from typing import Literal
 
 import pandas as pd
 
@@ -13,6 +13,7 @@ from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_quantity
 from ts_shape.utils.deprecation import deprecated_method
+from ts_shape.utils.runs import run_bounds, total_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -102,27 +103,26 @@ class BatchTrackingEvents(Base):
             )
 
         s = self._segments()
-
-        rows: list[dict[str, Any]] = []
-        for _, seg in s.groupby("group"):
-            batch_id = seg["batch_id"].iloc[0]
-            if batch_id == "":
-                continue
-            start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
-            rows.append(
-                {
-                    "batch_id": batch_id,
-                    "start": start,
-                    "end": end,
-                    "duration_seconds": (end - start).total_seconds(),
-                    "sample_count": len(seg),
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.batch_uuid,
-                }
-            )
-
-        return pd.DataFrame(rows)
+        runs = run_bounds(s["batch_id"])
+        ids = s["batch_id"].iloc[runs.starts]
+        # An empty batch ID (missing value) is a gap between batches.
+        keep = (ids != "").to_numpy(dtype=bool)
+        if not keep.any():
+            return pd.DataFrame([])
+        times = s[self.time_column].array
+        start = times[runs.starts[keep]]
+        end = times[runs.last[keep]]
+        return pd.DataFrame(
+            {
+                "batch_id": ids[keep].tolist(),
+                "start": start,
+                "end": end,
+                "duration_seconds": total_seconds(end - start),
+                "sample_count": runs.lengths[keep],
+                "uuid": self.event_uuid,
+                "source_uuid": self.batch_uuid,
+            }
+        )
 
     # ------------------------------------------------------------------
     # Duration statistics

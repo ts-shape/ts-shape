@@ -17,6 +17,7 @@ import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.runs import run_bounds, total_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -108,31 +109,27 @@ class ValueTraceabilityEvents(Base):
                 ]
             )
 
-        s = sdf[[self.time_column, self.value_column]].copy()
-        s["identifier"] = s[self.value_column].fillna("")
-        s["group"] = (s["identifier"] != s["identifier"].shift()).cumsum()
-
-        station_name = self.station_uuids[uuid]
-        rows: list[dict[str, Any]] = []
-        for _, seg in s.groupby("group"):
-            identifier = seg["identifier"].iloc[0]
-            if identifier == "":
-                continue
-            start = seg[self.time_column].iloc[0]
-            end = seg[self.time_column].iloc[-1]
-            rows.append(
-                {
-                    "identifier": identifier,
-                    "station_uuid": uuid,
-                    "station_name": station_name,
-                    "start": start,
-                    "end": end,
-                    "duration_seconds": (end - start).total_seconds(),
-                    "sample_count": len(seg),
-                }
-            )
-
-        return pd.DataFrame(rows)
+        identifier = sdf[self.value_column].fillna("")
+        runs = run_bounds(identifier)
+        ids = identifier.iloc[runs.starts]
+        # An empty identifier (missing value) is a gap between visits.
+        keep = (ids != "").to_numpy(dtype=bool)
+        if not keep.any():
+            return pd.DataFrame([])
+        times = sdf[self.time_column].array
+        start = times[runs.starts[keep]]
+        end = times[runs.last[keep]]
+        return pd.DataFrame(
+            {
+                "identifier": ids[keep].tolist(),
+                "station_uuid": uuid,
+                "station_name": self.station_uuids[uuid],
+                "start": start,
+                "end": end,
+                "duration_seconds": total_seconds(end - start),
+                "sample_count": runs.lengths[keep],
+            }
+        )
 
     # ------------------------------------------------------------------
     # build_timeline
