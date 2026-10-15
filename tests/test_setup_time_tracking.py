@@ -33,7 +33,7 @@ class TestSetupTimeTracking:
     def test_setup_durations(self):
         df = _make_setup_df()
         tracker = SetupTimeEvents(df)
-        result = tracker.setup_durations(state_uuid="machine_state")
+        result = tracker.setup_durations(run_state_uuid="machine_state")
         assert not result.empty
         assert "duration_minutes" in result.columns
         assert "date" in result.columns
@@ -44,7 +44,7 @@ class TestSetupTimeTracking:
         df = _make_setup_df()
         tracker = SetupTimeEvents(df)
         result = tracker.setup_by_product(
-            state_uuid="machine_state",
+            run_state_uuid="machine_state",
             part_id_uuid="part_number",
         )
         assert not result.empty
@@ -56,7 +56,7 @@ class TestSetupTimeTracking:
     def test_setup_statistics(self):
         df = _make_setup_df()
         tracker = SetupTimeEvents(df)
-        result = tracker.setup_statistics(state_uuid="machine_state")
+        result = tracker.setup_statistics(run_state_uuid="machine_state")
         assert not result.empty
         assert len(result) == 1
         assert "total_setups" in result.columns
@@ -67,7 +67,7 @@ class TestSetupTimeTracking:
     def test_setup_trend(self):
         df = _make_setup_df()
         tracker = SetupTimeEvents(df)
-        result = tracker.setup_trend(state_uuid="machine_state", window="1D")
+        result = tracker.setup_trend(run_state_uuid="machine_state", window="1D")
         assert not result.empty
         assert "period" in result.columns
         assert "avg_setup_minutes" in result.columns
@@ -76,10 +76,10 @@ class TestSetupTimeTracking:
     def test_empty_data(self):
         df = pd.DataFrame(columns=["systime", "uuid", "value_string"])
         tracker = SetupTimeEvents(df)
-        assert tracker.setup_durations(state_uuid="x").empty
-        assert tracker.setup_by_product(state_uuid="x", part_id_uuid="y").empty
-        assert tracker.setup_statistics(state_uuid="x").empty
-        assert tracker.setup_trend(state_uuid="x").empty
+        assert tracker.setup_durations(run_state_uuid="x").empty
+        assert tracker.setup_by_product(run_state_uuid="x", part_id_uuid="y").empty
+        assert tracker.setup_statistics(run_state_uuid="x").empty
+        assert tracker.setup_trend(run_state_uuid="x").empty
 
     def test_no_setup_in_data(self):
         """All running, no setup events → empty results."""
@@ -89,4 +89,4 @@ class TestSetupTimeTracking:
         ]
         df = pd.DataFrame(rows)
         tracker = SetupTimeEvents(df)
-        assert tracker.setup_durations(state_uuid="state").empty
+        assert tracker.setup_durations(run_state_uuid="state").empty

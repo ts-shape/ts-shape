@@ -606,14 +606,15 @@ class DatabricksUnityParquetLoader:
                 variants.add(f"{s}.parquet")
         return variants
 
+    @renamed_kwargs(parquet_only="only_parquet")
     def list_structure(
-        self, parquet_only: bool = True, limit: int | None = None
+        self, only_parquet: bool = True, limit: int | None = None
     ) -> dict[str, list[str]]:
         """
         List the folders (hours) and files under the configured Volume path.
 
         Args:
-            parquet_only: If True, only include files ending with ``.parquet``.
+            only_parquet: If True, only include files ending with ``.parquet``.
             limit: Optional cap on number of files collected for quick inspection.
 
         Returns:
@@ -626,7 +627,7 @@ class DatabricksUnityParquetLoader:
         if not self.base_path.exists():
             return {"folders": [], "files": []}
 
-        pattern = "*.parquet" if parquet_only else "*"
+        pattern = "*.parquet" if only_parquet else "*"
         for path in sorted(self.base_path.rglob(pattern)):
             if not path.is_file():
                 continue

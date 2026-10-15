@@ -33,7 +33,7 @@ def dst_minutely():
 
 def test_data_completeness_23h_day_is_complete(dst_minutely):
     out = SignalQualityEvents(dst_minutely, "s").data_completeness(
-        window="1D", expected_freq="1min"
+        window="1D", expected_interval="1min"
     )
     assert list(out["expected_count"]) == [1440, 1380, 1440]
     assert (out["completeness_pct"] == 100.0).all()

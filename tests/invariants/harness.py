@@ -307,7 +307,7 @@ OPTIONAL_METHOD_ARGS: dict[tuple[str, str], dict[str, Any]] = {
         "counter_uuid": COUNTER,
         "ok_counter_uuid": COUNTER,
         "nok_counter_uuid": COUNTER,
-        "state_uuid": STATE,
+        "run_state_uuid": STATE,
     },
 }
 

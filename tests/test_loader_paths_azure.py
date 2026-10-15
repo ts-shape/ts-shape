@@ -308,7 +308,7 @@ def test_list_structure_and_limit():
     full = loader.list_structure()
     assert full["folders"] == ["pq/2024/01/01/08/", "pq/2024/01/01/09/"]
     assert "pq/2024/01/01/09/notes.json" not in full["files"]
-    every = loader.list_structure(parquet_only=False, limit=2)
+    every = loader.list_structure(only_parquet=False, limit=2)
     assert len(every["files"]) == 2
 
 

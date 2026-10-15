@@ -83,8 +83,8 @@ def test_compare_periods_handles_resets():
 
     default = summary.compare_periods(
         counter_uuid="prod_counter",
-        period1=("2024-01-01", "2024-01-01"),
-        period2=("2024-01-02", "2024-01-02"),
+        period_a=("2024-01-01", "2024-01-01"),
+        period_b=("2024-01-02", "2024-01-02"),
         handle_resets=False,
     )
     p1_default = default[default["metric"] == "total_production"]["period1_value"].iloc[
@@ -94,8 +94,8 @@ def test_compare_periods_handles_resets():
 
     aware = summary.compare_periods(
         counter_uuid="prod_counter",
-        period1=("2024-01-01", "2024-01-01"),
-        period2=("2024-01-02", "2024-01-02"),
+        period_a=("2024-01-01", "2024-01-01"),
+        period_b=("2024-01-02", "2024-01-02"),
         handle_resets=True,
     )
     p1_aware = aware[aware["metric"] == "total_production"]["period1_value"].iloc[0]
@@ -135,8 +135,8 @@ def test_compare_periods_default_is_reset_aware():
     def call(**kw):
         return summary.compare_periods(
             counter_uuid="prod_counter",
-            period1=("2024-01-01", "2024-01-01"),
-            period2=("2024-01-02", "2024-01-02"),
+            period_a=("2024-01-01", "2024-01-01"),
+            period_b=("2024-01-02", "2024-01-02"),
             **kw,
         )
 

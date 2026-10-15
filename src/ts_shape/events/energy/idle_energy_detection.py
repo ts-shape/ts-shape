@@ -57,12 +57,14 @@ class IdleEnergyDetectionEvents(Base):
         self._uuid_column = uuid_column
 
     @renamed_kwargs(
-        energy_column="value_column_energy", state_column="value_column_state"
+        state_uuid="run_state_uuid",
+        energy_column="value_column_energy",
+        state_column="value_column_state",
     )
     def idle_energy_by_window(
         self,
         meter_uuid: str,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         value_column_energy: str = "value_double",
         value_column_state: str = "value_bool",
@@ -80,7 +82,7 @@ class IdleEnergyDetectionEvents(Base):
 
         Args:
             meter_uuid: Identifier of the energy meter signal.
-            state_uuid: Identifier of the boolean machine-state signal (True=running).
+            run_state_uuid: Identifier of the boolean machine-state signal (True=running).
             value_column_energy: Column containing energy readings.
             value_column_state: Column containing boolean state values.
             window: Resample window (e.g. '1h', '15min').
@@ -98,7 +100,7 @@ class IdleEnergyDetectionEvents(Base):
                        machine_running_pct (0-100), idle_fraction,
                        machine_running_ratio (0-1)
         """
-        energy, state = self._filter_two(meter_uuid, state_uuid)
+        energy, state = self._filter_two(meter_uuid, run_state_uuid)
         empty_cols = [
             "start",
             "uuid",
@@ -156,12 +158,14 @@ class IdleEnergyDetectionEvents(Base):
         return with_window_bounds(out[empty_cols], window)
 
     @renamed_kwargs(
-        energy_column="value_column_energy", state_column="value_column_state"
+        state_uuid="run_state_uuid",
+        energy_column="value_column_energy",
+        state_column="value_column_state",
     )
     def idle_energy_by_shift(
         self,
         meter_uuid: str,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         value_column_energy: str = "value_double",
         value_column_state: str = "value_bool",
@@ -177,7 +181,7 @@ class IdleEnergyDetectionEvents(Base):
 
         Args:
             meter_uuid: Identifier of the energy meter signal.
-            state_uuid: Identifier of the boolean machine-state signal.
+            run_state_uuid: Identifier of the boolean machine-state signal.
             value_column_energy: Column containing energy readings.
             value_column_state: Column containing boolean state values.
             shift_definitions: Dict mapping shift name → (start_time, end_time).
@@ -193,7 +197,7 @@ class IdleEnergyDetectionEvents(Base):
         shifts = shift_definitions or _DEFAULT_SHIFTS
         empty_cols = ["shift", "total_energy", "idle_energy", "waste_fraction"]
 
-        energy, state = self._filter_two(meter_uuid, state_uuid)
+        energy, state = self._filter_two(meter_uuid, run_state_uuid)
         if energy.empty or state.empty:
             return pd.DataFrame(columns=empty_cols)
 
@@ -226,12 +230,14 @@ class IdleEnergyDetectionEvents(Base):
         return out[empty_cols]
 
     @renamed_kwargs(
-        energy_column="value_column_energy", state_column="value_column_state"
+        state_uuid="run_state_uuid",
+        energy_column="value_column_energy",
+        state_column="value_column_state",
     )
     def idle_energy_trend(
         self,
         meter_uuid: str,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         value_column_energy: str = "value_double",
         value_column_state: str = "value_bool",
@@ -243,7 +249,7 @@ class IdleEnergyDetectionEvents(Base):
 
         Args:
             meter_uuid: Identifier of the energy meter signal.
-            state_uuid: Identifier of the boolean machine-state signal.
+            run_state_uuid: Identifier of the boolean machine-state signal.
             value_column_energy: Column containing energy readings.
             value_column_state: Column containing boolean state values.
             window: Aggregation window (default daily).
@@ -257,7 +263,7 @@ class IdleEnergyDetectionEvents(Base):
         """
         by_window = self.idle_energy_by_window(
             meter_uuid,
-            state_uuid,
+            run_state_uuid,
             value_column_energy=value_column_energy,
             value_column_state=value_column_state,
             window=window,

@@ -460,7 +460,7 @@ CASES = {
             counter_uuid="counter",
             ok_counter_uuid="ok",
             nok_counter_uuid="nok",
-            state_uuid="state",
+            run_state_uuid="state",
             **kw,
         ),
     ),
@@ -589,7 +589,7 @@ def test_highlight_issues_frame_matches_list():
         counter_uuid="counter",
         ok_counter_uuid="ok",
         nok_counter_uuid="nok",
-        state_uuid="state",
+        run_state_uuid="state",
     )
     frame = obj.highlight_issues(**uuids)
     with pytest.warns(DeprecationWarning):
@@ -657,7 +657,7 @@ def test_shift_handover_bool_run_state_matches_string_run_state():
         counter_uuid="counter",
         ok_counter_uuid="ok",
         nok_counter_uuid="nok",
-        state_uuid="state",
+        run_state_uuid="state",
     )
     as_str = ShiftHandoverEvents(_plant(False)).generate_report(**kwargs)
     as_bool = ShiftHandoverEvents(_plant(True)).generate_report(**kwargs)

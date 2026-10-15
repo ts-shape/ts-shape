@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from ts_shape.utils.deprecation import renamed_kwargs
+
 from ..model import EventLog
 from ..schema import OCEL_OID, OCEL_TYPE, TS_SEVERITY
 from .detector import LambdaDetector
@@ -37,18 +39,19 @@ class BacktestResult:
         )
 
 
+@renamed_kwargs(df="dataframe")
 def run_backtest(
     detector: LambdaDetector,
-    df: pd.DataFrame,
+    dataframe: pd.DataFrame,
     *,
     objects: Mapping[str, object] | None = None,
     qualifiers: Mapping[str, str] | None = None,
 ) -> BacktestResult:
-    """Run ``detector`` over ``df`` and summarize hit counts.
+    """Run ``detector`` over ``dataframe`` and summarize hit counts.
 
     Args:
         detector: The registered lambda rule.
-        df: Input frame the rule is evaluated on.
+        dataframe: Input frame the rule is evaluated on.
         objects: Object bindings passed to the event-log adapter.
         qualifiers: Relation qualifier per object type.
 
@@ -56,7 +59,7 @@ def run_backtest(
         A :class:`BacktestResult` with the hit count, hits per severity and
         per asset, and the full event log.
     """
-    log = detector.to_event_log(df, objects=objects, qualifiers=qualifiers)
+    log = detector.to_event_log(dataframe, objects=objects, qualifiers=qualifiers)
 
     by_severity: dict[str, int] = {}
     if TS_SEVERITY in log.events.columns and not log.events.empty:

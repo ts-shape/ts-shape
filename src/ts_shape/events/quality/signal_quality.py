@@ -13,7 +13,10 @@ import pandas as pd
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import (
+    keyword_only,
+    renamed_kwargs,
+)
 from ts_shape.utils.frames import window_offset
 from ts_shape.utils.intervals import interval_end_times
 from ts_shape.utils.runs import run_agg, true_runs
@@ -46,7 +49,7 @@ class SignalQualityEvents(Base):
         ...     "value_double": [20.0, 20.5, 21.0, 95.0, 21.0],
         ... })
         >>> quality = SignalQualityEvents(df, "temp")
-        >>> quality.detect_missing_data(expected_freq="1s")[["start", "end", "duration_seconds"]]
+        >>> quality.detect_missing_data(expected_interval="1s")[["start", "end", "duration_seconds"]]
                         start                 end  duration_seconds
         0 2025-01-01 00:00:02 2025-01-01 00:00:10               8.0
         >>> quality.detect_out_of_range(0.0, 50.0)[["start", "end", "duration_seconds"]]
@@ -77,14 +80,15 @@ class SignalQualityEvents(Base):
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
     @keyword_only(1)
+    @renamed_kwargs(expected_freq="expected_interval")
     def detect_missing_data(
-        self, expected_freq: str = "1s", tolerance_factor: float = 2.0
+        self, expected_interval: str = "1s", tolerance_factor: float = 2.0
     ) -> pd.DataFrame:
         """Find gaps where time between samples exceeds expected frequency.
 
         Args:
-            expected_freq: Expected sampling frequency (e.g. '1s', '100ms').
-            tolerance_factor: Multiplier on expected_freq to trigger a gap.
+            expected_interval: Expected sampling interval (e.g. '1s', '100ms').
+            tolerance_factor: Multiplier on expected_interval to trigger a gap.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -100,7 +104,7 @@ class SignalQualityEvents(Base):
 
         times = self.signal[self.time_column].array
         diffs = times[1:] - times[:-1]
-        expected_td = pd.to_timedelta(expected_freq)
+        expected_td = pd.to_timedelta(expected_interval)
         threshold = expected_td * tolerance_factor
 
         events: list[dict[str, Any]] = []
@@ -274,14 +278,15 @@ class SignalQualityEvents(Base):
         )
 
     @keyword_only(1)
+    @renamed_kwargs(expected_freq="expected_interval")
     def data_completeness(
-        self, window: str = "1h", expected_freq: str = "1s"
+        self, window: str = "1h", expected_interval: str = "1s"
     ) -> pd.DataFrame:
         """Percentage of expected samples actually received per window.
 
         Args:
             window: Resample window.
-            expected_freq: Expected sampling frequency.
+            expected_interval: Expected sampling interval.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -304,7 +309,7 @@ class SignalQualityEvents(Base):
             .copy()
             .set_index(self.time_column)
         )
-        expected_td = pd.to_timedelta(expected_freq)
+        expected_td = pd.to_timedelta(expected_interval)
         offset = window_offset(window)
 
         counts = sig[self.value_column].resample(window).count()

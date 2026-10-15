@@ -250,7 +250,7 @@ def demo_downtime_tracking():
     # Downtime by shift
     print("\n--- Downtime by Shift ---")
     shift_downtime = tracker.downtime_by_shift(
-        state_uuid="machine_state",
+        run_state_uuid="machine_state",
         running_value="Running",
     )
     if not shift_downtime.empty:
@@ -259,7 +259,7 @@ def demo_downtime_tracking():
     # Downtime by reason
     print("\n--- Downtime by Reason ---")
     reason_analysis = tracker.downtime_by_reason(
-        state_uuid="machine_state",
+        run_state_uuid="machine_state",
         reason_uuid="downtime_reason",
         stopped_value="Stopped",
     )
@@ -269,7 +269,7 @@ def demo_downtime_tracking():
     # Top downtime reasons (Pareto)
     print("\n--- Top 3 Downtime Reasons (Pareto) ---")
     top_reasons = tracker.top_downtime_reasons(
-        state_uuid="machine_state",
+        run_state_uuid="machine_state",
         reason_uuid="downtime_reason",
         top_n=3,
         stopped_value="Stopped",
@@ -280,7 +280,7 @@ def demo_downtime_tracking():
     # Availability trend
     print("\n--- Availability Trend (daily) ---")
     trend = tracker.availability_trend(
-        state_uuid="machine_state",
+        run_state_uuid="machine_state",
         running_value="Running",
         window="1D",
     )

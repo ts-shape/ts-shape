@@ -685,8 +685,8 @@ def _ref_multiprocesstraceability_detect_intervals(
                 "sample_count",
             ]
         )
-    s = sdf[[self.time_column, self.id_value_column]].copy()
-    s["item_id"] = s[self.id_value_column].fillna("")
+    s = sdf[[self.time_column, self.value_column_id]].copy()
+    s["item_id"] = s[self.value_column_id].fillna("")
     value_change = s["item_id"] != s["item_id"].shift()
     dt = s[self.time_column].diff()
     median_dt = dt.median()
@@ -1591,16 +1591,16 @@ def _ref_routingtraceability_build_routing_timeline(
             ]
         )
     routing_subset = self.routing_data[
-        [self.time_column, self.routing_value_column]
+        [self.time_column, self.value_column_routing]
     ].copy()
-    id_subset = self.id_data[[self.time_column, self.id_value_column]].copy()
+    id_subset = self.id_data[[self.time_column, self.value_column_id]].copy()
     merged = pd.merge_asof(
         routing_subset, id_subset, on=self.time_column, direction="backward"
     )
     merged = merged.rename(
         columns={
-            self.id_value_column: "item_id",
-            self.routing_value_column: "routing_value",
+            self.value_column_id: "item_id",
+            self.value_column_routing: "routing_value",
         }
     )
     merged = merged.dropna(subset=["item_id"])
@@ -1783,7 +1783,7 @@ PROCESSES = [
 
 def _routing(uuid, routing_uuid, column, state_map=None):
     return lambda df: RoutingTraceabilityEvents(
-        df, uuid, routing_uuid, state_map=state_map, routing_value_column=column
+        df, uuid, routing_uuid, state_map=state_map, value_column_routing=column
     )
 
 

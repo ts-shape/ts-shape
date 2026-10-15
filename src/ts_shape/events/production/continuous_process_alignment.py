@@ -10,7 +10,12 @@ import pandas as pd
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_increments
-from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, keyword_only
+from ts_shape.utils.deprecation import (
+    REMOVAL,
+    caller_stacklevel,
+    keyword_only,
+    renamed_kwargs,
+)
 
 _SPEED_FACTORS: dict[str, float] = {
     "m/min": 1.0 / 60.0,
@@ -271,13 +276,14 @@ class ContinuousProcessAlignmentEvents(Base):
         extra = [c for c in result.columns if c not in front]
         return result[front + extra]
 
+    @renamed_kwargs(cut_value_column="value_column_cut")
     def segment_by_cut(
         self,
         aligned_df: pd.DataFrame,
         *,
         cut_length_uuid: str | None = None,
         part_counter_uuid: str | None = None,
-        cut_value_column: str = "value_double",
+        value_column_cut: str = "value_double",
         handle_resets: bool = True,
     ) -> pd.DataFrame:
         """Add piece columns to the output of `align_to_reference`.
@@ -314,7 +320,7 @@ class ContinuousProcessAlignmentEvents(Base):
                 Defaults to the constructor ``cut_uuid`` when None.
             part_counter_uuid: UUID of a part-counter signal (boolean or
                 monotonically increasing integer).
-            cut_value_column: Column holding the length value in
+            value_column_cut: Column holding the length value in
                 ``cut_length_uuid`` rows. With a counter, each cut takes the
                 latest length reported at or before it.
             handle_resets: When True (default) and a numeric ``part_counter_uuid`` is
@@ -402,11 +408,11 @@ class ContinuousProcessAlignmentEvents(Base):
             length_df = _signal(cut_length_uuid)
             cut_times = length_df[tcol]
             cut_counts = np.ones(len(length_df), dtype=np.int64)
-            if cut_value_column in length_df.columns:
+            if value_column_cut in length_df.columns:
                 cut_lengths = (
                     to_numeric_checked(
-                        length_df[cut_value_column],
-                        what=f"cut-length column {cut_value_column!r}",
+                        length_df[value_column_cut],
+                        what=f"cut-length column {value_column_cut!r}",
                     )
                     .astype("float64")
                     .to_numpy()
@@ -423,14 +429,14 @@ class ContinuousProcessAlignmentEvents(Base):
             and len(cut_counts)
         ):
             length_df = _signal(cut_length_uuid)
-            if not length_df.empty and cut_value_column in length_df.columns:
+            if not length_df.empty and value_column_cut in length_df.columns:
                 # The length reported at or before each cut.
                 length_times = pd.DatetimeIndex(pd.to_datetime(length_df[tcol]))
                 idx = length_times.searchsorted(cut_times, side="right") - 1
                 vals = (
                     to_numeric_checked(
-                        length_df[cut_value_column],
-                        what=f"cut-length column {cut_value_column!r}",
+                        length_df[value_column_cut],
+                        what=f"cut-length column {value_column_cut!r}",
                     )
                     .astype("float64")
                     .to_numpy()

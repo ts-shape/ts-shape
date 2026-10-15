@@ -684,7 +684,7 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
     # downtime_by_shift
     _subheader("downtime_by_shift()")
     by_shift = dt.downtime_by_shift(
-        state_uuid=UUID_MACHINE_STATE_STR,
+        run_state_uuid=UUID_MACHINE_STATE_STR,
         running_value="Running",
     )
     print(f"  Rows: {len(by_shift)}")
@@ -698,7 +698,7 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
     # downtime_by_reason
     _subheader("downtime_by_reason()")
     by_reason = dt.downtime_by_reason(
-        state_uuid=UUID_MACHINE_STATE_STR,
+        run_state_uuid=UUID_MACHINE_STATE_STR,
         reason_uuid=UUID_DOWNTIME_REASON,
         stopped_value="Stopped",
     )
@@ -718,7 +718,7 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
     # top_downtime_reasons
     _subheader("top_downtime_reasons(top_n=3)")
     top = dt.top_downtime_reasons(
-        state_uuid=UUID_MACHINE_STATE_STR,
+        run_state_uuid=UUID_MACHINE_STATE_STR,
         reason_uuid=UUID_DOWNTIME_REASON,
         top_n=3,
         stopped_value="Stopped",
@@ -729,7 +729,7 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
     # availability_trend
     _subheader("availability_trend(window='1D')")
     avail = dt.availability_trend(
-        state_uuid=UUID_MACHINE_STATE_STR,
+        run_state_uuid=UUID_MACHINE_STATE_STR,
         running_value="Running",
         window="1D",
     )

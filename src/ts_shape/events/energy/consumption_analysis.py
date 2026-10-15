@@ -70,40 +70,41 @@ class EnergyConsumptionEvents(Base):
         self._uuid_column = uuid_column
 
     @staticmethod
+    @renamed_kwargs(df="dataframe", id_column="uuid_column")
     def normalize(
-        df: pd.DataFrame,
+        dataframe: pd.DataFrame,
         *,
         series_id: str,
         time_column: str = "time",
         value_column: str = "value",
-        id_column: str | None = None,
+        uuid_column: str | None = None,
     ) -> pd.DataFrame:
         """Convert a raw energy DataFrame to the standard ts-shape schema.
 
         Handles two input formats:
 
         - Two-column CSV: (time, value) — ``series_id`` is assigned as uuid.
-        - Three-column with explicit id: (time, id_column, value) — values from
-          ``id_column`` are used as uuid; ``series_id`` is ignored.
+        - Three-column with explicit id: (time, uuid_column, value) — values from
+          ``uuid_column`` are used as uuid; ``series_id`` is ignored.
 
         Args:
-            df: Raw DataFrame.
-            series_id: UUID to assign when no id_column is provided.
-            time_column: Name of the timestamp column in df.
-            value_column: Name of the value column in df.
-            id_column: Optional column name whose values become the uuid.
+            dataframe: Raw DataFrame.
+            series_id: UUID to assign when no uuid_column is provided.
+            time_column: Name of the timestamp column in dataframe.
+            value_column: Name of the value column in dataframe.
+            uuid_column: Optional column name whose values become the uuid.
 
         Returns:
             DataFrame with columns: systime, uuid, value_double, is_delta
         """
         out = pd.DataFrame()
-        out["systime"] = pd.to_datetime(df[time_column])
-        if id_column and id_column in df.columns:
-            out["uuid"] = df[id_column].astype(str)
+        out["systime"] = pd.to_datetime(dataframe[time_column])
+        if uuid_column and uuid_column in dataframe.columns:
+            out["uuid"] = dataframe[uuid_column].astype(str)
         else:
             out["uuid"] = series_id
         out["value_double"] = to_numeric_checked(
-            df[value_column], what=f"column {value_column!r}"
+            dataframe[value_column], what=f"column {value_column!r}"
         )
         out["is_delta"] = True
         return out.sort_values("systime").reset_index(drop=True)

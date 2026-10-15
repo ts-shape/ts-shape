@@ -159,7 +159,7 @@ class TestDetectAliasing:
     def test_with_expected_frequency(self, regular_sampling_df):
         sr = SamplingResolutionEvents(regular_sampling_df, "sensor_1")
         # 0.1 Hz expected at 1 Hz sampling → safe
-        result = sr.detect_aliasing(window="5min", expected_frequency=0.1)
+        result = sr.detect_aliasing(window="5min", expected_frequency_hz=0.1)
         assert len(result) > 0
         assert result.iloc[0]["aliasing_risk"] == "none"
 

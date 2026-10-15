@@ -30,6 +30,7 @@ from ts_shape.utils.deprecation import (
     deprecated_class,
     deprecated_method,
     keyword_only,
+    renamed_kwargs,
 )
 from ts_shape.utils.time_accounting import (
     EXCLUDED,
@@ -285,7 +286,7 @@ class OEEEvents(Base):
             run_state_uuid: str | None = None,
             *,
             value_column: str = "value_integer",
-            run_value_column: str = "value_bool",
+            value_column_state: str = "value_bool",
             handle_resets: bool = True,
             max_gap: str | None = None,
         ) -> pd.DataFrame: ...
@@ -294,6 +295,7 @@ class OEEEvents(Base):
         calculate_performance = deprecated_method("performance")
 
     @keyword_only(3)
+    @renamed_kwargs(run_value_column="value_column_state")
     def performance(
         self,
         counter_uuid: str,
@@ -301,7 +303,7 @@ class OEEEvents(Base):
         run_state_uuid: str | None = None,
         *,
         value_column: str = "value_integer",
-        run_value_column: str = "value_bool",
+        value_column_state: str = "value_bool",
         handle_resets: bool = True,
         max_gap: str | None = None,
     ) -> pd.DataFrame:
@@ -321,7 +323,7 @@ class OEEEvents(Base):
             ideal_cycle_time: Ideal cycle time in seconds per part.
             run_state_uuid: Optional UUID for run-state to compute actual run time.
             value_column: Column holding counter values.
-            run_value_column: Column holding boolean run state.
+            value_column_state: Column holding boolean run state.
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so
                 ``actual_parts`` is the reset-aware total. The increments are
@@ -369,7 +371,7 @@ class OEEEvents(Base):
         run_per_day: dict = {}
         if run_state_uuid is not None:
             avail_df = self.availability(
-                run_state_uuid, value_column=run_value_column, max_gap=max_gap
+                run_state_uuid, value_column=value_column_state, max_gap=max_gap
             )
             for start, run_s in zip(
                 avail_df[COL_START], avail_df["run_seconds"], strict=True

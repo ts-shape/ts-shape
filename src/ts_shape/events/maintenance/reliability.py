@@ -46,7 +46,12 @@ from ts_shape.events._output import (
 from ts_shape.signals.primitives import intervals, windows
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import caller_stacklevel, keyword_only, renamed_kwargs
+from ts_shape.utils.deprecation import (
+    caller_stacklevel,
+    deprecated_attribute,
+    keyword_only,
+    renamed_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +126,13 @@ class ReliabilityEvents(Base):
         0         2         2.5         1.0              71.4
     """
 
+    state_uuid = deprecated_attribute("run_state_uuid")
+
+    @renamed_kwargs(state_uuid="run_state_uuid")
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         failure_states: Sequence[object] = (True,),
         value_column: str = "value_bool",
@@ -136,7 +144,7 @@ class ReliabilityEvents(Base):
         """
         Args:
             dataframe: Long-format data.
-            state_uuid: The failure-state signal.
+            run_state_uuid: The failure-state signal.
             failure_states: Values meaning "failed / down for repair". The
                 default ``(True,)`` fits a fault bit; for a status code pass
                 e.g. ``("BREAKDOWN", "REPAIR")``.
@@ -150,12 +158,12 @@ class ReliabilityEvents(Base):
             time_column: Timestamp column.
         """
         super().__init__(dataframe, time_column=time_column)
-        self.state_uuid = state_uuid
+        self.run_state_uuid = run_state_uuid
         self.failure_states = list(failure_states)
         self.event_uuid = event_uuid
         self.time_column = time_column
         spec = SignalSpec(
-            uuid=state_uuid,
+            uuid=run_state_uuid,
             kind="state",
             value_column=value_column,
             max_gap=None if max_gap is None else pd.Timedelta(max_gap),
@@ -233,7 +241,7 @@ class ReliabilityEvents(Base):
         )
         out["duration_seconds"] = (out["end"] - out["start"]).dt.total_seconds()
         return finalize_interval_df(
-            out, uuid=self.event_uuid, source_uuid=self.state_uuid
+            out, uuid=self.event_uuid, source_uuid=self.run_state_uuid
         )
 
     @keyword_only(1)
@@ -311,7 +319,7 @@ class ReliabilityEvents(Base):
         out = pd.DataFrame(rows)
         out["duration_seconds"] = (out["end"] - out["start"]).dt.total_seconds()
         return finalize_summary_df(
-            out, uuid=self.event_uuid, source_uuid=self.state_uuid
+            out, uuid=self.event_uuid, source_uuid=self.run_state_uuid
         )
 
     @keyword_only(1)

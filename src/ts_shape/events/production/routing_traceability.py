@@ -35,7 +35,12 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel
+from ts_shape.utils.deprecation import (
+    REMOVAL,
+    caller_stacklevel,
+    deprecated_attribute,
+    renamed_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +129,12 @@ class RoutingTraceabilityEvents(Base):
         paths = trace.routing_paths()
     """
 
+    id_value_column = deprecated_attribute("value_column_id")
+    routing_value_column = deprecated_attribute("value_column_routing")
+
+    @renamed_kwargs(
+        id_value_column="value_column_id", routing_value_column="value_column_routing"
+    )
     def __init__(
         self,
         dataframe: pd.DataFrame,
@@ -133,8 +144,8 @@ class RoutingTraceabilityEvents(Base):
         state_map: dict[int | float | str, str] | None = None,
         station_map: dict[int | float | str, str] | None = None,
         event_uuid: str = "prod:routing_trace",
-        id_value_column: str = "value_string",
-        routing_value_column: str = "value_integer",
+        value_column_id: str = "value_string",
+        value_column_routing: str = "value_integer",
         time_column: str = "systime",
     ) -> None:
         """Initialize routing traceability.
@@ -153,8 +164,8 @@ class RoutingTraceabilityEvents(Base):
                          removed in the next major release. When both are passed,
                          ``state_map`` wins and a UserWarning is emitted.
             event_uuid: UUID to tag derived events with.
-            id_value_column: Column holding the item ID string.
-            routing_value_column: Column holding the state/routing value.
+            value_column_id: Column holding the item ID string.
+            value_column_routing: Column holding the state/routing value.
             time_column: Name of timestamp column.
         """
         super().__init__(dataframe, time_column=time_column)
@@ -178,8 +189,8 @@ class RoutingTraceabilityEvents(Base):
         chosen = state_map if state_map is not None else station_map
         self.state_map: dict[int | float | str, str] = chosen or {}
         self.event_uuid = event_uuid
-        self.id_value_column = id_value_column
-        self.routing_value_column = routing_value_column
+        self.value_column_id = value_column_id
+        self.value_column_routing = value_column_routing
         self.time_column = time_column
 
         # Pre-filter signals
@@ -300,9 +311,9 @@ class RoutingTraceabilityEvents(Base):
 
         # Merge: for each routing sample, attach the most-recent item ID
         routing_subset = self.routing_data[
-            [self.time_column, self.routing_value_column]
+            [self.time_column, self.value_column_routing]
         ].copy()
-        id_subset = self.id_data[[self.time_column, self.id_value_column]].copy()
+        id_subset = self.id_data[[self.time_column, self.value_column_id]].copy()
 
         merged = pd.merge_asof(
             routing_subset,
@@ -313,8 +324,8 @@ class RoutingTraceabilityEvents(Base):
 
         merged = merged.rename(
             columns={
-                self.id_value_column: "item_id",
-                self.routing_value_column: "routing_value",
+                self.value_column_id: "item_id",
+                self.value_column_routing: "routing_value",
             }
         )
         merged = merged.dropna(subset=["item_id"])

@@ -7,6 +7,8 @@ from typing import TypeAlias
 
 import pandas as pd
 
+from ts_shape.utils.deprecation import renamed_kwargs
+
 from . import adapters, schema, taxonomy
 from .model import EventLog
 
@@ -61,8 +63,9 @@ def _coerce_table(data: TableInput, empty: pd.DataFrame, name: str) -> pd.DataFr
     return df.astype(empty.dtypes.to_dict()).reset_index(drop=True)
 
 
+@renamed_kwargs(df="dataframe")
 def to_event_log(
-    df: pd.DataFrame,
+    dataframe: pd.DataFrame,
     *,
     detector: str,
     objects: Mapping[str, object] | None = None,
@@ -86,17 +89,17 @@ def to_event_log(
     row order, and the same detector on two machines does not collide.
 
     Args:
-        df: The detector frame.
+        dataframe: The detector frame.
         detector: ``"ClassName.method_name"`` -- the key used in the taxonomy
             registry and the value written to ``ts_shape:detector``.
             Deprecated names resolve to the current ones.
         objects: Binds OCEL object types to, per type:
 
-            * a column name of ``df`` (e.g. ``{"asset": "source_uuid"}``);
+            * a column name of ``dataframe`` (e.g. ``{"asset": "source_uuid"}``);
             * any other string or scalar -- a literal broadcast to every row
               (``{"line": "L1"}``); ``None`` binds no object;
             * a callable taking a row dict and returning an oid;
-            * a ``pd.Series`` aligned with ``df`` by index label (a length or
+            * a ``pd.Series`` aligned with ``dataframe`` by index label (a length or
               label mismatch raises ``ValueError``).
 
             Types listed in the rule's ``produces_objects`` are also
@@ -140,11 +143,15 @@ def to_event_log(
     override = adapters.get_override(class_name, method_name)
     if override is not None:
         log = override(
-            df, rule=rule, detector=detector, objects=objects, qualifiers=qualifiers
+            dataframe,
+            rule=rule,
+            detector=detector,
+            objects=objects,
+            qualifiers=qualifiers,
         )
     else:
         log = adapters.adapt(
-            df,
+            dataframe,
             rule=rule,
             detector=detector,
             objects=objects,

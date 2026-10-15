@@ -601,7 +601,7 @@ def demo_cycle_processor(df: pd.DataFrame):
 
     # --- Split groups further by uuid (signal type) ---
     print("\n--- Split groups by signal uuid ---")
-    sub_groups = processor.split_dataframes_by_group(grouped[:2], column="uuid")
+    sub_groups = processor.split_dataframes_by_group(grouped[:2], group_column="uuid")
     print(f"  Sub-groups from first 2 cycles: {len(sub_groups)}")
     print()
 

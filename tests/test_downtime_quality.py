@@ -167,7 +167,7 @@ def test_downtime_by_shift_basic(sample_downtime_data):
     """Test basic downtime calculation by shift."""
     tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.downtime_by_shift(
-        state_uuid="machine_state", running_value="Running"
+        run_state_uuid="machine_state", running_value="Running"
     )
 
     assert not result.empty
@@ -193,7 +193,7 @@ def test_downtime_by_shift_values(sample_downtime_data):
     """Test that downtime values are reasonable."""
     tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.downtime_by_shift(
-        state_uuid="machine_state", running_value="Running"
+        run_state_uuid="machine_state", running_value="Running"
     )
 
     # All values should be positive
@@ -215,7 +215,7 @@ def test_downtime_by_reason(sample_downtime_data):
     """Test downtime analysis by reason code."""
     tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.downtime_by_reason(
-        state_uuid="machine_state",
+        run_state_uuid="machine_state",
         reason_uuid="downtime_reason",
         stopped_value="Stopped",
     )
@@ -250,7 +250,7 @@ def test_top_downtime_reasons(sample_downtime_data):
     """Test Pareto analysis of top downtime reasons."""
     tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.top_downtime_reasons(
-        state_uuid="machine_state",
+        run_state_uuid="machine_state",
         reason_uuid="downtime_reason",
         top_n=3,
         stopped_value="Stopped",
@@ -280,7 +280,7 @@ def test_availability_trend(sample_downtime_data):
     """Test availability trend calculation."""
     tracker = DowntimeEvents(sample_downtime_data)
     result = tracker.availability_trend(
-        state_uuid="machine_state", running_value="Running", window="1D"
+        run_state_uuid="machine_state", running_value="Running", window="1D"
     )
 
     assert not result.empty
@@ -299,7 +299,7 @@ def test_downtime_empty_data():
     df_empty = pd.DataFrame(columns=["uuid", "systime", "value_string", "is_delta"])
     tracker = DowntimeEvents(df_empty)
 
-    result = tracker.downtime_by_shift(state_uuid="machine_state")
+    result = tracker.downtime_by_shift(run_state_uuid="machine_state")
     assert result.empty
 
 
@@ -323,7 +323,7 @@ def test_downtime_custom_shifts():
 
     tracker = DowntimeEvents(df, shift_definitions=custom_shifts)
     result = tracker.downtime_by_shift(
-        state_uuid="machine_state", running_value="Running"
+        run_state_uuid="machine_state", running_value="Running"
     )
 
     assert not result.empty
@@ -564,7 +564,7 @@ def test_downtime_quality_integration(sample_downtime_data, sample_quality_data)
     # Test downtime tracking
     downtime_tracker = DowntimeEvents(combined_df)
     downtime_result = downtime_tracker.downtime_by_shift(
-        state_uuid="machine_state", running_value="Running"
+        run_state_uuid="machine_state", running_value="Running"
     )
     assert not downtime_result.empty
 

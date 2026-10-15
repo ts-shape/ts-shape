@@ -4,7 +4,10 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import (
+    keyword_only,
+    renamed_kwargs,
+)
 
 
 class SamplingResolutionEvents(Base):
@@ -201,16 +204,17 @@ class SamplingResolutionEvents(Base):
         )
 
     @keyword_only(1)
+    @renamed_kwargs(expected_frequency="expected_frequency_hz")
     def detect_aliasing(
         self,
         window: str = "1h",
-        expected_frequency: float | None = None,
+        expected_frequency_hz: float | None = None,
     ) -> pd.DataFrame:
         """Check for Nyquist violations using FFT.
 
         Args:
             window: Resample window size.
-            expected_frequency: Known process frequency in Hz. If None,
+            expected_frequency_hz: Known process frequency in Hz. If None,
                 dominant frequency is estimated from FFT.
 
         Returns:
@@ -263,7 +267,9 @@ class SamplingResolutionEvents(Base):
                 dominant_freq = 0.0
 
             check_freq = (
-                expected_frequency if expected_frequency is not None else dominant_freq
+                expected_frequency_hz
+                if expected_frequency_hz is not None
+                else dominant_freq
             )
 
             if check_freq > nyquist * 0.9:

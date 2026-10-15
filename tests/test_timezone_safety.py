@@ -52,7 +52,7 @@ def test_interpolation_candidates_keep_local_time(berlin_signal):
 
 def test_signal_quality_missing_data(berlin_signal):
     df = berlin_signal([1.0, 2.0], start="2024-01-01 00:00", freq="1h")
-    out = SignalQualityEvents(df, "sig").detect_missing_data(expected_freq="1min")
+    out = SignalQualityEvents(df, "sig").detect_missing_data(expected_interval="1min")
     _assert_berlin(out["start"])
 
 
