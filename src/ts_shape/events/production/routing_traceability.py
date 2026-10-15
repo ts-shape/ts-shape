@@ -55,6 +55,34 @@ def _as_number(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _combo_run_starts(item_id: pd.Series, routing: pd.Series) -> np.ndarray:
+    """Positions where ``item_id + "|" + routing.astype(str)`` changes.
+
+    For numeric routing values and item IDs without ``"|"`` the key changes
+    exactly when the item ID or the routing value's text changes, so both
+    are compared directly (distinct floats have distinct text, except NaN
+    with NaN; ``0.0`` and ``-0.0`` differ). Other inputs build the key.
+    """
+    ids = item_id.to_numpy()
+    plain = routing.dtype.kind in "biuf" and not any(
+        "|" in str(u) for u in pd.unique(item_id)
+    )
+    if not plain:
+        combo = (item_id + "|" + routing.astype(str)).to_numpy()
+        change = combo[1:] != combo[:-1]
+    else:
+        v = routing.to_numpy()
+        if v.dtype.kind == "f":
+            # Same text: both NaN, or equal with the same sign (0.0 / -0.0).
+            same = (np.isnan(v[1:]) & np.isnan(v[:-1])) | (
+                (v[1:] == v[:-1]) & (np.signbit(v[1:]) == np.signbit(v[:-1]))
+            )
+        else:
+            same = v[1:] == v[:-1]
+        change = (ids[1:] != ids[:-1]) | ~same
+    return np.flatnonzero(np.r_[True, np.asarray(change, dtype=bool)])
+
+
 class RoutingTraceabilityEvents(Base):
     """Trace item routing using an ID signal paired with a state/routing signal.
 
@@ -308,13 +336,10 @@ class RoutingTraceabilityEvents(Base):
                 ]
             )
 
-        # Detect contiguous intervals of (item_id, routing_value)
-        merged["combo"] = merged["item_id"] + "|" + merged["routing_value"].astype(str)
-        merged["group"] = (merged["combo"] != merged["combo"].shift()).cumsum()
-
-        # One row per contiguous (item_id, routing_value) run, in time order.
+        # One row per contiguous run of the key ``item_id + "|" +
+        # str(routing_value)``, in time order.
         n = len(merged)
-        first_pos = np.flatnonzero(merged["group"].diff().fillna(1).to_numpy() != 0)
+        first_pos = _combo_run_starts(merged["item_id"], merged["routing_value"])
         last_pos = np.r_[first_pos[1:] - 1, n - 1]
         times = merged[self.time_column]
         start = times.iloc[first_pos].reset_index(drop=True)

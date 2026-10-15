@@ -8,6 +8,7 @@ import pandas as pd
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.runs import total_seconds, true_runs
 
 logger = logging.getLogger(__name__)
 
@@ -67,15 +68,36 @@ class WarmUpCoolDownEvents(Base):
         min_duration: str = "1min",
         max_pause: int = 0,
     ) -> list[dict[str, Any]]:
+        """Monotonic ramp intervals as dicts (see :meth:`_ramp_frame`)."""
+        frame = self._ramp_frame(direction, min_change, min_duration, max_pause)
+        return [] if frame is None else frame.to_dict("records")
+
+    _RAMP_COLUMNS = [
+        "start",
+        "end",
+        "start_value",
+        "end_value",
+        "change",
+        "duration_seconds",
+        "avg_rate",
+    ]
+
+    def _ramp_frame(
+        self,
+        direction: str,
+        min_change: float,
+        min_duration: str = "1min",
+        max_pause: int = 0,
+    ) -> pd.DataFrame | None:
         """Detect monotonic ramp intervals (rising or falling).
 
         A ramp is a run of sample-to-sample steps in ``direction``. With
         ``max_pause > 0``, up to that many consecutive flat or reversed steps
         between two moving stretches are bridged, so one noisy or repeated
-        sample does not split a ramp in two.
+        sample does not split a ramp in two. Returns None when there is none.
         """
         if self.signal.empty or len(self.signal) < 3:
-            return []
+            return None
 
         min_td = pd.Timedelta(min_duration)
         # A repeated sample (same time and value) is not a pause in a ramp.
@@ -85,7 +107,7 @@ class WarmUpCoolDownEvents(Base):
             .reset_index(drop=True)
         )
         if len(sig) < 3:
-            return []
+            return None
         vals = sig[self.value_column].values
         times = sig[self.time_column].array
 
@@ -98,63 +120,34 @@ class WarmUpCoolDownEvents(Base):
         if max_pause > 0:
             moving = _bridge_pauses(moving, max_pause)
 
-        # Intervalize the boolean mask over the diff indices
-        intervals: list[dict[str, Any]] = []
-        in_ramp = False
-        start_idx = 0
-
-        for i in range(len(moving)):
-            if moving[i] and not in_ramp:
-                start_idx = i
-                in_ramp = True
-            elif not moving[i] and in_ramp:
-                # End of ramp at index i (the point before reversal)
-                end_idx = i
-                in_ramp = False
-                s_time = pd.Timestamp(times[start_idx])
-                e_time = pd.Timestamp(times[end_idx])
-                s_val = float(vals[start_idx])
-                e_val = float(vals[end_idx])
-                change = abs(e_val - s_val)
-                dur = e_time - s_time
-                if change >= min_change and dur >= min_td:
-                    dur_s = dur.total_seconds()
-                    intervals.append(
-                        {
-                            "start": s_time,
-                            "end": e_time,
-                            "start_value": s_val,
-                            "end_value": e_val,
-                            "change": change,
-                            "duration_seconds": dur_s,
-                            "avg_rate": change / dur_s if dur_s > 0 else 0.0,
-                        }
-                    )
-
-        # Handle ramp that extends to end of data
-        if in_ramp:
-            end_idx = len(vals) - 1
-            s_time = pd.Timestamp(times[start_idx])
-            e_time = pd.Timestamp(times[end_idx])
-            s_val = float(vals[start_idx])
-            e_val = float(vals[end_idx])
-            change = abs(e_val - s_val)
-            dur = e_time - s_time
-            if change >= min_change and dur >= min_td:
-                dur_s = dur.total_seconds()
-                intervals.append(
-                    {
-                        "start": s_time,
-                        "end": e_time,
-                        "start_value": s_val,
-                        "end_value": e_val,
-                        "change": change,
-                        "duration_seconds": dur_s,
-                        "avg_rate": change / dur_s if dur_s > 0 else 0.0,
-                    }
-                )
-
-        return intervals
+        # A run of moving steps [s, e) over the diff indices spans the samples
+        # s..e (a ramp reaching the end of the data ends at the last sample).
+        runs = true_runs(moving)
+        s_idx, e_idx = runs.starts, runs.ends
+        s_val = vals[s_idx].astype(np.float64)
+        e_val = vals[e_idx].astype(np.float64)
+        change = np.abs(e_val - s_val)
+        s_time, e_time = times[s_idx], times[e_idx]
+        dur = e_time - s_time
+        keep = (change >= min_change) & (dur >= min_td)
+        if not keep.any():
+            return None
+        dur_s = total_seconds(dur[keep])
+        change = change[keep]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            avg_rate = np.where(dur_s > 0, change / dur_s, 0.0)
+        return pd.DataFrame(
+            {
+                "start": s_time[keep],
+                "end": e_time[keep],
+                "start_value": s_val[keep],
+                "end_value": e_val[keep],
+                "change": change,
+                "duration_seconds": dur_s,
+                "avg_rate": avg_rate,
+            },
+            columns=self._RAMP_COLUMNS,
+        )
 
     @keyword_only(2)
     def detect_warmup(
@@ -188,28 +181,25 @@ class WarmUpCoolDownEvents(Base):
             "duration_seconds",
             "avg_rate",
         ]
-        ramps = self._detect_ramps("rising", min_rise, min_duration, max_pause)
-        if not ramps:
+        ramps = self._ramp_frame("rising", min_rise, min_duration, max_pause)
+        if ramps is None:
             return pd.DataFrame(columns=cols)
 
-        events: list[dict[str, Any]] = []
-        for r in ramps:
-            events.append(
-                {
-                    "start": r["start"],
-                    "end": r["end"],
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": False,
-                    "start_value": r["start_value"],
-                    "end_value": r["end_value"],
-                    "rise": r["change"],
-                    "duration_seconds": r["duration_seconds"],
-                    "avg_rate": r["avg_rate"],
-                }
-            )
-
-        return pd.DataFrame(events, columns=cols)
+        return pd.DataFrame(
+            {
+                "start": ramps["start"],
+                "end": ramps["end"],
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": False,
+                "start_value": ramps["start_value"],
+                "end_value": ramps["end_value"],
+                "rise": ramps["change"],
+                "duration_seconds": ramps["duration_seconds"],
+                "avg_rate": ramps["avg_rate"],
+            },
+            columns=cols,
+        )
 
     @keyword_only(2)
     def detect_cooldown(
@@ -243,28 +233,25 @@ class WarmUpCoolDownEvents(Base):
             "duration_seconds",
             "avg_rate",
         ]
-        ramps = self._detect_ramps("falling", min_fall, min_duration, max_pause)
-        if not ramps:
+        ramps = self._ramp_frame("falling", min_fall, min_duration, max_pause)
+        if ramps is None:
             return pd.DataFrame(columns=cols)
 
-        events: list[dict[str, Any]] = []
-        for r in ramps:
-            events.append(
-                {
-                    "start": r["start"],
-                    "end": r["end"],
-                    "uuid": self.event_uuid,
-                    "source_uuid": self.signal_uuid,
-                    "is_delta": False,
-                    "start_value": r["start_value"],
-                    "end_value": r["end_value"],
-                    "fall": r["change"],
-                    "duration_seconds": r["duration_seconds"],
-                    "avg_rate": r["avg_rate"],
-                }
-            )
-
-        return pd.DataFrame(events, columns=cols)
+        return pd.DataFrame(
+            {
+                "start": ramps["start"],
+                "end": ramps["end"],
+                "uuid": self.event_uuid,
+                "source_uuid": self.signal_uuid,
+                "is_delta": False,
+                "start_value": ramps["start_value"],
+                "end_value": ramps["end_value"],
+                "fall": ramps["change"],
+                "duration_seconds": ramps["duration_seconds"],
+                "avg_rate": ramps["avg_rate"],
+            },
+            columns=cols,
+        )
 
     @keyword_only(2)
     def warmup_consistency(
