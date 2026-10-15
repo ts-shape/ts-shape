@@ -1,3 +1,4 @@
+import importlib.util
 import logging
 from collections.abc import Callable
 
@@ -14,6 +15,9 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
+
+#: Whether scikit-learn is installed (checked without importing it).
+SKLEARN_AVAILABLE = importlib.util.find_spec("sklearn") is not None
 
 
 def _nan_omit_mean(a: np.ndarray) -> np.ndarray:
