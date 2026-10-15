@@ -1,3 +1,20 @@
+# October 15, 2026 (round 8)
+Legacy code and tooling removed.
+change: requires pandas>=2.2.2 and numpy>=2.0; a CI job tests these floors
+  and results match pandas 3 (calendar-day windows on DST days, DST
+  flooring, mixed UTC offsets, clustering).
+fix: deprecation warnings point at the caller and are no longer hidden;
+  apply_ranges / segment_by_cut compare times in one unit; numeric columns
+  named like times are no longer converted to datetimes; hour folders are
+  UTC in every loader.
+change: logged data problems are DataQualityWarnings; text in numeric
+  columns is reported; recipe duration_s, downtime_minutes input and old
+  attribute names warn. See docs/migration.md.
+chore: setup.py, MANIFEST.in, requirements files, dead scripts and dead
+  code removed; duplicated helpers merged; one source of tool versions;
+  CI runs once per PR commit; per-job release permissions; examples
+  linted; a ts-shape deprecation fails the test suite.
+
 # October 14, 2026 (round 7)
 Robust and consistent behavior for every public function.
 fix: wrong results: CrossSignalAnalytics.lead_lag named the wrong leader;
