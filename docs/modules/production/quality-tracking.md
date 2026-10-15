@@ -36,6 +36,6 @@ by_part = qt.quality_by_part(ok_counter_uuid="line1:ok", nok_counter_uuid="line1
 ## Notes
 
 - Pass cumulative counters; the module takes the increments. Convert per-cycle OK/NOK flags to cumulative sums first.
-- With `handle_resets=True` (default) a decreasing counter is a reset and the parts after it still count; a `resets` column is added. Increments are computed once over each whole counter and booked to the shift, day, part or reason of the reading that reports them, so the groups add up to the counter total. `handle_resets=False` uses `max(0, last - first)` per group.
+- With `handle_resets=True` (default) a decreasing counter is a reset and the parts after it still count; a `resets` column is added. Increments are computed once over each whole counter, so the groups add up to the counter total. Per shift and day, the increment between two readings is spread over the time between them and split at the shift boundaries in proportion to time (parts belong to the shift they were produced in; counts can be fractional); per part and reason it is booked to the group of the reading that reports it. `handle_resets=False` uses `max(0, last - first)` per group.
 - `quality_pct` equals `first_pass_yield_pct`; it is the column name other modules (OEE, shift handover, period summary) join on.
 - Default shifts are 06-14, 14-22, 22-06 (`shift_definitions=` to change).
