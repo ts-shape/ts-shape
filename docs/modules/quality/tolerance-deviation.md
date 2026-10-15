@@ -29,13 +29,13 @@ capability = tdev.capability_indices(target_value=50.0)
 | Method | Returns |
 |---|---|
 | `detect_deviations()` | out-of-tolerance events: `systime`, the measured value, `deviation_abs`, `deviation_pct`, `severity` (`minor`/`major`/`critical`) |
-| `capability_indices(target_value=None)` | one row: `Cp`, `Cpk`, `Pp`, `Ppk`, `Cpm`, `mean`, `std`, `usl`, `lsl`, `target`, `sample_count` |
+| `capability_indices(target_value=None, sigma_method='moving_range')` | one row: `Cp`, `Cpk`, `Pp`, `Ppk`, `Cpm`, `mean`, `std`, `std_within`, `usl`, `lsl`, `target`, `sample_count` |
 
 ## Notes
 
 - Each sample is checked against the latest limit values at that time (`tolerance_lag` shifts the limit timestamps). Out-of-tolerance samples closer than `time_threshold` (default `5min`) form one event, reported as its first and last row; a single-sample event is one row.
 - Severity: `minor` within `warning_threshold` (default 0.8) × the tolerance range, `major` outside the limits, `critical` when the deviation exceeds twice the tolerance range.
 - Two-sided spec: pass both `upper_tolerance_uuid` and `lower_tolerance_uuid`. With only one the spec is one-sided: Cp/Pp are NaN, Cpk/Ppk are CPU or CPL, and `deviation_pct` is relative to the single limit.
-- σ is the overall sample standard deviation (the data has no subgroups), so Cp/Cpk equal Pp/Ppk. `Cpm = Cp / sqrt(1 + ((mean − target) / σ)²)` is computed only with `target_value`; otherwise `target` reports the spec midpoint.
+- Cp/Cpk use the within σ̂ = MR̄ / 1.128 of consecutive measurements (`std_within`); Pp/Ppk use the overall sample standard deviation (`std`), as in the AIAG SPC manual. `sigma_method="std"` computes Cp/Cpk from the overall σ (Cp = Pp, the behavior before October 2026). `Cpm = (USL − LSL) / (6·sqrt(σ² + (mean − target)²))` with the overall σ is computed only with `target_value`; otherwise `target` reports the spec midpoint.
 - `actual_uuid` is required. The single `tolerance_uuid` (compared through `compare_func`) is deprecated; a single upper limit is `upper_tolerance_uuid` alone. `capability_indices(..., as_frame=False)` returns the deprecated dict.
 - Measurements without spread (constant values, a single measurement or only missing values) give NaN capability indices and a `DataQualityWarning`, as in `CapabilityTrendingEvents`.

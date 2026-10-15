@@ -76,10 +76,13 @@ def test_capability_single_tolerance_is_one_sided():
     res = _events(df).capability_indices().iloc[0]
     assert res["usl"] == 15.0  # the latest tolerance, not the first
     assert np.isnan(res["Cp"]) and np.isnan(res["lsl"])
-    assert res["Cpk"] == pytest.approx(
+    # Ppk uses the overall sample std; Cpk the within sigma MR-bar / 1.128
+    # (moving ranges 1, 1, 1 -> 1 / 1.128).
+    assert res["Ppk"] == pytest.approx(
         (15.0 - 12.0) / (3 * df.loc[df["uuid"] == "act", "value_double"].std()),
         abs=1e-4,
     )
+    assert res["Cpk"] == pytest.approx((15.0 - 12.0) / (3 / 1.128))
 
 
 @pytest.mark.parametrize(
@@ -171,13 +174,18 @@ def test_capability_cpm_only_with_target():
     assert np.isnan(ev.capability_indices().iloc[0]["Cpm"])
     res = ev.capability_indices(target_value=10.0).iloc[0]
     sigma = pd.Series([11.0, 12.0, 13.0, 12.0]).std()
-    cp = 12.0 / (6 * sigma)
+    pp = 12.0 / (6 * sigma)
+    assert res["Pp"] == pytest.approx(pp)
     assert res["Cpm"] == pytest.approx(
-        cp / np.sqrt(1 + ((12.0 - 10.0) / sigma) ** 2), abs=1e-4
+        pp / np.sqrt(1 + ((12.0 - 10.0) / sigma) ** 2), abs=1e-4
     )
-    assert res["Pp"] == res["Cp"] and res["Ppk"] == res["Cpk"]
-    # On target, Cpm equals Cp.
-    assert ev.capability_indices(target_value=12.0).iloc[0]["Cpm"] == res["Cp"]
+    # sigma_method="std" (the earlier behavior): Cp/Cpk from the overall
+    # sigma, equal to Pp/Ppk.
+    old = ev.capability_indices(target_value=10.0, sigma_method="std").iloc[0]
+    assert old["Pp"] == old["Cp"] and old["Ppk"] == old["Cpk"]
+    assert old["Cpm"] == res["Cpm"]
+    # On target, Cpm equals Pp (both use the overall sigma).
+    assert ev.capability_indices(target_value=12.0).iloc[0]["Cpm"] == res["Pp"]
 
 
 def test_upper_tolerance_alone_is_one_sided():
@@ -217,7 +225,9 @@ def test_lower_tolerance_alone_is_one_sided():
     res = ev.capability_indices().iloc[0]
     assert np.isnan(res["usl"]) and np.isnan(res["Cp"])
     sigma = pd.Series([9.0, 11.0, 12.0]).std()
-    assert res["Cpk"] == pytest.approx((32.0 / 3 - 10.0) / (3 * sigma))
+    assert res["Ppk"] == pytest.approx((32.0 / 3 - 10.0) / (3 * sigma))
+    # Within sigma: moving ranges 2, 1 -> 1.5 / 1.128.
+    assert res["Cpk"] == pytest.approx((32.0 / 3 - 10.0) / (3 * 1.5 / 1.128))
 
 
 def test_capability_upper_only_matches_single_tolerance():

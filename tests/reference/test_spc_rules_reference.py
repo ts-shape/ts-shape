@@ -8,8 +8,12 @@ Statistical Quality Control*, Table 5.1). The AIAG SPC manual (2nd ed.,
 2005) lists the same tests.
 
 Every chart has center line 10 and sigma 1: the tolerance rows are
-``9, 10, 11`` (mean 10, sample standard deviation exactly 1), so the zone
-edges are 9/11 (1 sigma), 8/12 (2 sigma) and 7/13 (3 sigma).
+``9, 10, 11`` (mean 10, sample standard deviation exactly 1) and the charts
+use ``sigma_method="std"``, so the zone edges are exactly 9/11 (1 sigma),
+8/12 (2 sigma) and 7/13 (3 sigma). The rules do not depend on how sigma is
+estimated; the default ``MR-bar / 1.128`` estimate is checked in
+``test_kpi_references_quality.py`` and in
+:func:`test_control_limits_are_mean_plus_k_sigma`.
 
 Each chart is a *neutral* pattern that violates no rule, with one
 violation pattern spliced in. The expected flags (the point that completes
@@ -33,7 +37,7 @@ T0 = pd.Timestamp("2024-01-01 00:00")
 N = [10.5, 9.5, 10.5, 11.5, 9.5, 8.5]
 
 
-def _spc(values):
+def _spc(values, sigma_method="std"):
     tol = pd.DataFrame(
         {
             "systime": [T0 - pd.Timedelta(hours=h) for h in (3, 2, 1)],
@@ -56,6 +60,7 @@ def _spc(values):
         tolerance_uuid="tol",
         actual_uuid="act",
         event_uuid="evt",
+        sigma_method=sigma_method,
     )
 
 
@@ -207,6 +212,12 @@ def test_control_limits_are_mean_plus_k_sigma():
     for k in (1, 2, 3):
         assert lim[f"{k}sigma_upper"] == pytest.approx(10.0 + k)
         assert lim[f"{k}sigma_lower"] == pytest.approx(10.0 - k)
+    # Default: individuals chart, sigma = MR-bar / d2 = 1 / 1.128
+    # (Montgomery, Introduction to SQC, Sec. 6.4).
+    lim = _spc(N, sigma_method="moving_range").control_limits().iloc[0]
+    for k in (1, 2, 3):
+        assert lim[f"{k}sigma_upper"] == pytest.approx(10.0 + k / 1.128)
+        assert lim[f"{k}sigma_lower"] == pytest.approx(10.0 - k / 1.128)
 
 
 def test_boundaries_are_strict():

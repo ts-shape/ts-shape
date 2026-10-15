@@ -12,9 +12,16 @@ Sources:
   specification is 4.5 sigma from the mean has 3.4 defects per million
   opportunities, reported as a 6-sigma level with the 1.5 sigma shift.
 
+* AIAG, *Statistical Process Control* reference manual (2nd ed.), and
+  Montgomery Sec. 6.4 / 8.3: Cp / Cpk use the within (short-term) sigma, for
+  individuals ``MR-bar / d2`` with ``d2 = 1.128``; Pp / Ppk use the overall
+  sample standard deviation ``s``.
+
 Data are built so the sample statistics (ddof = 1) are exactly the
-textbook mu and sigma; the hand-computed small-sample references below use
-the same textbook formulas with numpy.
+textbook mu and sigma, so Pp / Ppk reproduce the textbook numbers exactly;
+``sigma_method="std"`` (Cp / Cpk from ``s`` as well) reproduces them for
+Cp / Cpk. The hand-computed small-sample references below use the same
+textbook formulas with numpy.
 """
 
 import numpy as np
@@ -26,6 +33,11 @@ from ts_shape.events.quality.capability_trending import CapabilityTrendingEvents
 from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 
 T0 = pd.Timestamp("2024-01-01 00:00")
+
+
+def _within(values):
+    """Individuals within sigma: mean moving range / d2 (d2 = 1.128, n = 2)."""
+    return np.mean(np.abs(np.diff(values))) / 1.128
 
 
 def _with_moments(n, mean, sd, seed=0):
@@ -74,14 +86,22 @@ def _tde(values, usl=None, lsl=None):
 def test_montgomery_cp_cpk_cpm_example():
     """Montgomery, Introduction to SQC, Sec. 8.3: mu 53, sigma 2, specs 38-62, T 50."""
     x = _with_moments(50, 53.0, 2.0)
-    res = _tde(x, usl=62.0, lsl=38.0).capability_indices(target_value=50.0).iloc[0]
+    tde = _tde(x, usl=62.0, lsl=38.0)
+    res = tde.capability_indices(target_value=50.0).iloc[0]
     assert res["mean"] == pytest.approx(53.0)
     assert res["std"] == pytest.approx(2.0)
-    assert res["Cp"] == pytest.approx(2.0)
-    assert res["Cpk"] == pytest.approx(1.5)
-    # No subgroups: Pp/Ppk equal Cp/Cpk (documented).
+    # Pp / Ppk: overall sigma (exactly 2 by construction).
     assert res["Pp"] == pytest.approx(2.0)
     assert res["Ppk"] == pytest.approx(1.5)
+    # Cp / Cpk: within sigma MR-bar / 1.128 of the same measurements.
+    sw = _within(x)
+    assert res["std_within"] == pytest.approx(sw)
+    assert res["Cp"] == pytest.approx(24.0 / (6 * sw))
+    assert res["Cpk"] == pytest.approx(9.0 / (3 * sw))
+    # sigma_method="std": Cp / Cpk from the overall sigma (the textbook numbers).
+    old = tde.capability_indices(target_value=50.0, sigma_method="std").iloc[0]
+    assert old["Cp"] == pytest.approx(2.0)
+    assert old["Cpk"] == pytest.approx(1.5)
     assert res["Cpm"] == pytest.approx(24 / (6 * np.sqrt(13)))
     assert round(res["Cpm"], 2) == 1.11
     assert (res["usl"], res["lsl"], res["target"]) == (62.0, 38.0, 50.0)
@@ -92,8 +112,8 @@ def test_montgomery_one_sided_cpu():
     x = _with_moments(50, 53.0, 2.0)
     res = _tde(x, usl=62.0).capability_indices().iloc[0]
     assert np.isnan(res["Cp"]) and np.isnan(res["Pp"])
-    assert res["Cpk"] == pytest.approx(1.5)
     assert res["Ppk"] == pytest.approx(1.5)
+    assert res["Cpk"] == pytest.approx(9.0 / (3 * _within(x)))
     assert np.isnan(res["lsl"])
     assert res["target"] == 62.0
     assert np.isnan(res["Cpm"])  # no target_value: Cpm not computed
@@ -102,7 +122,8 @@ def test_montgomery_one_sided_cpu():
 def test_one_sided_lower_cpl():
     x = _with_moments(50, 53.0, 2.0)
     res = _tde(x, lsl=38.0).capability_indices().iloc[0]
-    assert res["Cpk"] == pytest.approx(2.5)  # CPL = (53 - 38) / 6
+    assert res["Ppk"] == pytest.approx(2.5)  # PPL = (53 - 38) / 6
+    assert res["Cpk"] == pytest.approx(15.0 / (3 * _within(x)))
 
 
 def test_hand_computed_small_dataset():
@@ -111,14 +132,18 @@ def test_hand_computed_small_dataset():
     usl, lsl, target = 11.0, 9.0, 10.0
     mu, s = x.mean(), x.std(ddof=1)
     res = _tde(x, usl=usl, lsl=lsl).capability_indices(target_value=target).iloc[0]
-    assert res["Cp"] == pytest.approx((usl - lsl) / (6 * s))
-    assert res["Cpk"] == pytest.approx(min(usl - mu, mu - lsl) / (3 * s))
+    assert res["Pp"] == pytest.approx((usl - lsl) / (6 * s))
+    assert res["Ppk"] == pytest.approx(min(usl - mu, mu - lsl) / (3 * s))
     assert res["Cpm"] == pytest.approx(
         (usl - lsl) / (6 * np.sqrt(s**2 + (mu - target) ** 2))
     )
-    # By hand: mean 10.056, s = 0.158478 -> Cp = 2 / 0.950868, Cpk = 0.944 / 0.475434.
-    assert res["Cp"] == pytest.approx(2.1033, abs=1e-4)
-    assert res["Cpk"] == pytest.approx(1.9855, abs=1e-4)
+    # By hand: mean 10.056, s = 0.158478 -> Pp = 2 / 0.950868, Ppk = 0.944 / 0.475434.
+    assert res["Pp"] == pytest.approx(2.1033, abs=1e-4)
+    assert res["Ppk"] == pytest.approx(1.9855, abs=1e-4)
+    # Moving ranges .25 .44 .26 .11 .27 .13 .29 .38 .15: MR-bar 2.28 / 9
+    # = 0.253333, sigma_within = 0.224586 -> Cp = 2 / 1.347518, Cpk = 0.944 / 0.673759.
+    assert res["Cp"] == pytest.approx(1.4842, abs=1e-4)
+    assert res["Cpk"] == pytest.approx(1.4011, abs=1e-4)
 
 
 def test_latest_spec_is_used():
@@ -140,7 +165,7 @@ def test_latest_spec_is_used():
         upper_tolerance_uuid="usl",
         lower_tolerance_uuid="lsl",
     )
-    assert tde.capability_indices().iloc[0]["Cpk"] == pytest.approx(1.5)
+    assert tde.capability_indices().iloc[0]["Ppk"] == pytest.approx(1.5)
 
 
 # ---------------------------------------------------------------------------
@@ -171,34 +196,51 @@ def _trend_frame(groups, extra=()):
 
 
 def test_capability_over_time_hand_computed():
-    """Per window: Cp/Cpk from the window's sample std (the within-window,
-    short-term sigma); Pp/Ppk from the sample std of *all* readings (the
-    overall, long-term sigma) with the window mean. Montgomery Sec. 8.3 /
-    AIAG SPC manual definitions, with the time window as the subgroup.
+    """Per window (AIAG SPC manual; Montgomery Sec. 6.4 / 8.3): Cp/Cpk from
+    the within sigma MR-bar / 1.128 of the window's consecutive readings,
+    Pp/Ppk from the window's own overall sample std (ddof=1). Before October 2026
+    Pp/Ppk used the std of *all* readings (later windows included).
     """
     usl, lsl = 11.0, 9.0
     cte = CapabilityTrendingEvents(
         _trend_frame(WINDOWS), "x", upper_spec=usl, lower_spec=lsl
     )
     out = cte.capability_over_time(window="1h")
-    overall = np.concatenate(WINDOWS).std(ddof=1)
     assert len(out) == 3
     for w, vals in enumerate(WINDOWS):
         row = out.iloc[w]
-        mu, s = np.mean(vals), np.std(vals, ddof=1)
+        mu, s, sw = np.mean(vals), np.std(vals, ddof=1), _within(vals)
         assert row["start"] == T0 + pd.Timedelta(hours=w)
         assert row["end"] == T0 + pd.Timedelta(hours=w + 1)
         assert row["n_samples"] == 5
         assert row["mean"] == pytest.approx(mu)
         assert row["std"] == pytest.approx(s)
-        assert row["cp"] == pytest.approx((usl - lsl) / (6 * s))
-        assert row["cpk"] == pytest.approx(min(usl - mu, mu - lsl) / (3 * s))
-        assert row["pp"] == pytest.approx((usl - lsl) / (6 * overall))
-        assert row["ppk"] == pytest.approx(min(usl - mu, mu - lsl) / (3 * overall))
-    # Window 1 by hand: s = sqrt(0.1 / 4) = 0.158114, Cp = 2 / 0.948683.
+        assert row["std_within"] == pytest.approx(sw)
+        assert row["cp"] == pytest.approx((usl - lsl) / (6 * sw))
+        assert row["cpk"] == pytest.approx(min(usl - mu, mu - lsl) / (3 * sw))
+        assert row["pp"] == pytest.approx((usl - lsl) / (6 * s))
+        assert row["ppk"] == pytest.approx(min(usl - mu, mu - lsl) / (3 * s))
+    # Window 1 by hand: s = sqrt(0.1 / 4) = 0.158114, Pp = 2 / 0.948683;
+    # moving ranges .2 .1 .2 .4 -> MR-bar 0.225, sigma_within 0.199468,
+    # Cp = 2 / 1.196809.
+    assert out.iloc[0]["pp"] == pytest.approx(2.108185, abs=1e-6)
+    assert out.iloc[0]["cp"] == pytest.approx(1.671111, abs=1e-6)
+    # Window 2 by hand: mean 10.3, Ppk = 0.7 / (3 * 0.158114) = 1.475730;
+    # moving ranges .2 .3 .2 .3 -> sigma_within 0.25 / 1.128 = 0.221631,
+    # Cpk = 0.7 / 0.664894 = 1.052800.
+    assert out.iloc[1]["ppk"] == pytest.approx(1.475730, abs=1e-6)
+    assert out.iloc[1]["cpk"] == pytest.approx(1.052800, abs=1e-6)
+
+
+def test_capability_over_time_std_sigma_method():
+    """``sigma_method="std"``: Cp/Cpk from the window s, equal to Pp/Ppk."""
+    cte = CapabilityTrendingEvents(
+        _trend_frame(WINDOWS), "x", upper_spec=11.0, lower_spec=9.0, sigma_method="std"
+    )
+    out = cte.capability_over_time(window="1h")
+    assert out["cp"].tolist() == out["pp"].tolist()
+    assert out["cpk"].tolist() == out["ppk"].tolist()
     assert out.iloc[0]["cp"] == pytest.approx(2.108185, abs=1e-6)
-    # Window 2 by hand: mean 10.3, Cpk = 0.7 / (3 * 0.158114) = 1.475730.
-    assert out.iloc[1]["cpk"] == pytest.approx(1.475730, abs=1e-6)
 
 
 def test_capability_over_time_montgomery_window():
@@ -211,11 +253,12 @@ def test_capability_over_time_montgomery_window():
         pd.DataFrame(rows), "x", upper_spec=62.0, lower_spec=38.0
     )
     row = cte.capability_over_time(window="1h").iloc[0]
-    assert row["cp"] == pytest.approx(2.0)
-    assert row["cpk"] == pytest.approx(1.5)
-    # One window: overall sigma == within sigma.
+    # Pp / Ppk: the window's sample std, exactly 2.
     assert row["pp"] == pytest.approx(2.0)
     assert row["ppk"] == pytest.approx(1.5)
+    # Cp / Cpk: within sigma MR-bar / 1.128.
+    assert row["cp"] == pytest.approx(24.0 / (6 * _within(x)))
+    assert row["cpk"] == pytest.approx(9.0 / (3 * _within(x)))
 
 
 def test_yield_estimate_six_sigma_3_4_dpmo():
@@ -273,9 +316,11 @@ def test_spec_uuid_limits_follow_the_spec_in_force():
     )
     out = cte.capability_over_time(window="1h")
     s0 = np.std(WINDOWS[0], ddof=1)
-    assert out.iloc[0]["cp"] == pytest.approx(2.0 / (6 * s0))
+    assert out.iloc[0]["pp"] == pytest.approx(2.0 / (6 * s0))
+    assert out.iloc[0]["cp"] == pytest.approx(2.0 / (6 * _within(WINDOWS[0])))
     # Window 2 starts when the tightened spec takes effect.
     s2 = np.std(WINDOWS[2], ddof=1)
-    assert out.iloc[2]["cp"] == pytest.approx(1.0 / (6 * s2))
+    assert out.iloc[2]["pp"] == pytest.approx(1.0 / (6 * s2))
+    assert out.iloc[2]["cp"] == pytest.approx(1.0 / (6 * _within(WINDOWS[2])))
     ys = cte.yield_estimate(window="1h")
     assert ys.iloc[0]["estimated_yield_pct"] > ys.iloc[2]["estimated_yield_pct"]

@@ -8,6 +8,11 @@ from scipy import stats
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import finish_events
+from ts_shape.events.quality.statistical_process_control import (
+    SigmaMethod,
+    _check_sigma_method,
+    _sigma_hat,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 from ts_shape.utils.frames import window_offset
@@ -25,6 +30,21 @@ class CapabilityTrendingEvents(Base):
     referencing signal rows in the DataFrame (matching the
     ToleranceDeviationEvents pattern).
 
+    Sigma (AIAG SPC manual; Montgomery, Introduction to Statistical Quality
+    Control, section 8.3), per window:
+
+    - Cp = (USL - LSL) / 6 sigma_within, Cpk = min(USL - mean,
+      mean - LSL) / 3 sigma_within, with the within (short-term) sigma
+      ``MR-bar / 1.128`` of consecutive samples in the window
+      (``sigma_method="moving_range"``, default);
+    - Pp / Ppk: the same formulas with the window's overall sample
+      standard deviation ``s`` (ddof=1).
+
+    ``sigma_method="std"`` uses ``s`` for Cp/Cpk as well (Cp = Pp, the
+    earlier Cp/Cpk). Before October 2026, Pp/Ppk combined the window mean with the
+    standard deviation of the *whole* signal (later windows included); they
+    now use only the window's own data.
+
     Methods:
     - capability_over_time: Cp/Cpk/Pp/Ppk per time window.
     - detect_capability_drop: Alert when Cpk falls below threshold.
@@ -38,8 +58,8 @@ class CapabilityTrendingEvents(Base):
         >>> out = cap.capability_over_time(window="8h")
         >>> out[["start", "cpk", "ppk"]].round({"cpk": 2, "ppk": 2})
                         start   cpk   ppk
-        0 2025-01-01 00:00:00  1.33  1.08
-        1 2025-01-01 08:00:00  0.83  0.71
+        0 2025-01-01 00:00:00  1.56  1.33
+        1 2025-01-01 08:00:00  0.94  0.83
     """
 
     def __init__(
@@ -54,8 +74,11 @@ class CapabilityTrendingEvents(Base):
         value_column: str = "value_double",
         event_uuid: str = "quality:capability_trend",
         time_column: str = "systime",
+        sigma_method: SigmaMethod = "moving_range",
     ) -> None:
+        _check_sigma_method(sigma_method)
         super().__init__(dataframe, time_column=time_column)
+        self.sigma_method = sigma_method
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -143,17 +166,34 @@ class CapabilityTrendingEvents(Base):
     def capability_over_time(self, window: str = "8h") -> pd.DataFrame:
         """Compute Cp, Cpk, Pp, Ppk per time window.
 
+        Each window uses only its own samples (see the class docstring):
+        Cp/Cpk from the within sigma (``MR-bar / 1.128`` of consecutive
+        samples; the window's ``s`` with ``sigma_method="std"``), Pp/Ppk
+        from the window's sample standard deviation ``s`` (ddof=1).
+
         Args:
             window: Resample window size.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
-            source_uuid, cp, cpk, pp, ppk, mean, std, n_samples.
-            ``end`` is ``start`` plus one ``window``. Without spread
-            (constant values) the indices are NaN; a signal without any
-            spread also emits a :class:`~ts_shape.errors.DataQualityWarning`.
+            source_uuid, cp, cpk, pp, ppk, mean, std (the window's ``s``),
+            std_within (the sigma behind cp/cpk), n_samples.
+            ``end`` is ``start`` plus one ``window``. Windows with fewer than
+            two samples are skipped. Without spread (constant values) the
+            indices are NaN; a signal without any spread also emits a
+            :class:`~ts_shape.errors.DataQualityWarning`.
         """
-        cols = ["start", "cp", "cpk", "pp", "ppk", "mean", "std", "n_samples"]
+        cols = [
+            "start",
+            "cp",
+            "cpk",
+            "pp",
+            "ppk",
+            "mean",
+            "std",
+            "std_within",
+            "n_samples",
+        ]
         if self.signal.empty:
             return finish_events(
                 [],
@@ -167,7 +207,6 @@ class CapabilityTrendingEvents(Base):
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
 
-        # Overall std for Pp/Ppk
         overall_std = sig[self.value_column].std()
         if overall_std == 0 or pd.isna(overall_std):
             warnings.warn(
@@ -176,7 +215,15 @@ class CapabilityTrendingEvents(Base):
                 DataQualityWarning,
                 stacklevel=caller_stacklevel(),
             )
-            overall_std = np.nan
+
+        def _indices(
+            sigma: float, mean: float, usl: float, lsl: float
+        ) -> tuple[float, float]:
+            if not sigma > 0:
+                return np.nan, np.nan
+            return (usl - lsl) / (6 * sigma), min(
+                (usl - mean) / (3 * sigma), (mean - lsl) / (3 * sigma)
+            )
 
         events: list[dict[str, Any]] = []
         for ts, group in sig.resample(window):
@@ -190,25 +237,10 @@ class CapabilityTrendingEvents(Base):
                 continue
 
             mean = float(vals.mean())
-            std = float(vals.std())
-            tol_range = usl - lsl
-
-            if std > 0:
-                cp = tol_range / (6 * std)
-                cpk = min((usl - mean) / (3 * std), (mean - lsl) / (3 * std))
-            else:
-                cp = np.nan
-                cpk = np.nan
-
-            if overall_std > 0 and not np.isnan(overall_std):
-                pp = tol_range / (6 * overall_std)
-                ppk = min(
-                    (usl - mean) / (3 * overall_std),
-                    (mean - lsl) / (3 * overall_std),
-                )
-            else:
-                pp = np.nan
-                ppk = np.nan
+            std = float(vals.std(ddof=1))
+            std_within = _sigma_hat(vals, self.sigma_method)
+            cp, cpk = _indices(std_within, mean, usl, lsl)
+            pp, ppk = _indices(std, mean, usl, lsl)
 
             events.append(
                 {
@@ -219,6 +251,7 @@ class CapabilityTrendingEvents(Base):
                     "ppk": float(ppk),
                     "mean": float(mean),
                     "std": float(std),
+                    "std_within": float(std_within),
                     "n_samples": n,
                 }
             )

@@ -1,5 +1,6 @@
 import logging
 import warnings
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -34,6 +35,41 @@ def _unique_samples(
     return unique.copy()
 
 
+#: d2 for subgroups of n = 2 (the moving range of two consecutive values),
+#: Montgomery, Introduction to Statistical Quality Control, Appendix VI.
+D2_N2 = 1.128
+
+SigmaMethod = Literal["moving_range", "std"]
+_SIGMA_METHODS = ("moving_range", "std")
+
+
+def _check_sigma_method(sigma_method: str) -> None:
+    if sigma_method not in _SIGMA_METHODS:
+        raise ValueError(
+            f"Unknown sigma_method: {sigma_method!r}. Use 'moving_range' or 'std'."
+        )
+
+
+def _sigma_hat(values: pd.Series, sigma_method: str = "moving_range") -> float:
+    """Process sigma of an individuals series.
+
+    ``"moving_range"`` (the Shewhart individuals chart): ``MR-bar / d2`` with
+    ``MR_i = |x_i - x_{i-1}|`` over consecutive values in the given order and
+    ``d2 = 1.128`` (n = 2); Montgomery, Introduction to Statistical Quality
+    Control, section 6.4. ``"std"``: the sample standard deviation (ddof=1),
+    which also contains any between-sample variation (drift, shifts).
+
+    NaN values are dropped first. Fewer than two values give NaN.
+    """
+    _check_sigma_method(sigma_method)
+    vals = pd.to_numeric(values, errors="coerce").dropna().astype(float)
+    if len(vals) < 2:
+        return float("nan")
+    if sigma_method == "std":
+        return float(vals.std(ddof=1))
+    return float(vals.diff().abs().iloc[1:].mean() / D2_N2)
+
+
 def _cusum(
     values: np.ndarray, target: float, slack: float
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -58,7 +94,20 @@ class StatisticalProcessControlEvents(Base):
     Shewhart Control Chart--Tests for Special Causes", Journal of Quality
     Technology 16(4); rules 1, 5 and 6 are the Western Electric zone rules
     (Montgomery, Introduction to Statistical Quality Control, Table 5.1).
-    The center line and sigma come from the ``tolerance_uuid`` rows.
+    The center line and sigma come from the ``tolerance_uuid`` rows (the
+    reference / phase I data).
+
+    Sigma: by default (``sigma_method="moving_range"``) the textbook
+    individuals-chart estimate ``sigma_hat = MR-bar / d2`` with ``d2 = 1.128``,
+    where ``MR-bar`` is the mean moving range of consecutive reference values
+    (Montgomery, Introduction to Statistical Quality Control, section 6.4,
+    "Control charts for individual measurements"). It measures the
+    short-term (common-cause) variation only, so a drift or shift inside the
+    reference does not widen the limits. ``sigma_method="std"`` restores the
+    sample standard deviation (ddof=1) that ts-shape used before October
+    2026. The same sigma is used by :meth:`control_limits`, the rules 1-8 zones,
+    :meth:`detect_cusum_shifts` and the EWMA chart of
+    :meth:`dynamic_control_limits`.
 
     Example:
         >>> import pandas as pd, ts_shape
@@ -83,6 +132,8 @@ class StatisticalProcessControlEvents(Base):
         tolerance_uuid: str,
         actual_uuid: str,
         event_uuid: str,
+        *,
+        sigma_method: SigmaMethod = "moving_range",
     ) -> None:
         """
         Initializes StatisticalProcessControlEvents with UUIDs for tolerance, actual, and event values.
@@ -91,11 +142,18 @@ class StatisticalProcessControlEvents(Base):
         Args:
             dataframe (pd.DataFrame): The input DataFrame containing the data to be processed.
             value_column (str): The column containing the values to monitor.
-            tolerance_uuid (str): UUID identifier for rows that set tolerance values.
+            tolerance_uuid (str): UUID identifier for the reference rows the
+                center line and sigma are estimated from.
             actual_uuid (str): UUID identifier for rows containing actual values.
             event_uuid (str): UUID to assign to generated events.
+            sigma_method: How sigma is estimated from the reference rows.
+                ``"moving_range"`` (default, textbook): ``MR-bar / 1.128``
+                from consecutive reference values. ``"std"``: the sample
+                standard deviation (ddof=1), the behavior before October 2026.
         """
+        _check_sigma_method(sigma_method)
         super().__init__(dataframe)  # Initialize the Base class
+        self.sigma_method: str = sigma_method
         self.value_column: str = value_column
         self.tolerance_uuid: str = tolerance_uuid
         self.actual_uuid: str = actual_uuid
@@ -107,16 +165,31 @@ class StatisticalProcessControlEvents(Base):
 
     calculate_control_limits = deprecated_method("control_limits")
 
+    def _reference_values(self) -> pd.Series:
+        """Reference (tolerance) values in time order."""
+        df = self.dataframe[self.dataframe["uuid"] == self.tolerance_uuid]
+        df = df.sort_values(by="systime", kind="stable")
+        return pd.to_numeric(df[self.value_column], errors="coerce")
+
     def control_limits(self) -> pd.DataFrame:
         """
-        Calculate the control limits (mean ± 1σ, 2σ, 3σ) for the tolerance values.
+        Shewhart individuals-chart limits (center ± 1σ, 2σ, 3σ) from the reference rows.
+
+        Center line ``mean`` is the mean of the reference values; sigma is
+        ``MR-bar / d2`` (``d2 = 1.128``) of consecutive reference values with
+        the default ``sigma_method="moving_range"`` (Montgomery, Introduction
+        to Statistical Quality Control, section 6.4: ``UCL = x-bar +
+        3 MR-bar / d2``, ``LCL = x-bar - 3 MR-bar / d2``), or the sample
+        standard deviation with ``sigma_method="std"``.
 
         Returns:
-            pd.DataFrame: DataFrame with control limits for each tolerance group.
+            pd.DataFrame: One row with columns mean, 1sigma_upper,
+                1sigma_lower, 2sigma_upper, 2sigma_lower, 3sigma_upper and
+                3sigma_lower.
         """
-        df = self.dataframe[self.dataframe["uuid"] == self.tolerance_uuid]
-        mean = df[self.value_column].mean()
-        sigma = df[self.value_column].std()
+        df = self._reference_values()
+        mean = df.mean()
+        sigma = _sigma_hat(df, self.sigma_method)
         if not sigma > 0:
             # Fewer than two tolerance rows (sigma NaN) or a constant signal
             # (sigma 0): the limits are NaN or collapse onto the mean, so the
@@ -146,75 +219,129 @@ class StatisticalProcessControlEvents(Base):
     @keyword_only(1)
     @renamed_kwargs(window="window_size")
     def dynamic_control_limits(
-        self, method: str = "moving_range", window_size: int = 20
+        self,
+        method: Literal["moving_range", "ewma"] = "moving_range",
+        window_size: int = 20,
+        ewma_lambda: float | None = None,
+        n_sigma: float = 3.0,
     ) -> pd.DataFrame:
         """
-        Calculate dynamic control limits that adapt over time.
+        Control limits that adapt over time: a rolling individuals chart or an EWMA chart.
+
+        ``method="moving_range"`` -- rolling Shewhart individuals chart
+        (Montgomery, Introduction to Statistical Quality Control, section
+        6.4). Each actual point ``x_i`` is tested against limits estimated
+        from the ``window_size`` points *before* it, so a point never
+        widens its own limits::
+
+            center_i = mean(x_{i-w}, ..., x_{i-1})
+            sigma_i  = mean(|x_j - x_{j-1}|, j = i-w+1 .. i-1) / 1.128
+
+        (``sigma_method="std"``: ``sigma_i`` is the sample std of the same
+        ``w`` previous points). The first ``window_size`` points have no
+        complete history and get NaN limits, as does any point whose
+        history contains a NaN value.
+
+        ``method="ewma"`` -- EWMA chart (Montgomery, section 9.2)::
+
+            z_i = lambda * x_i + (1 - lambda) * z_{i-1},   z_0 = mu_0
+            limits_i = mu_0 +/- L * sigma * sqrt(lambda / (2 - lambda)
+                                              * (1 - (1 - lambda)^(2 i)))
+
+        ``mu_0`` and ``sigma`` come from the reference (``tolerance_uuid``)
+        rows, sigma by the instance's ``sigma_method``. ``lambda`` is
+        ``ewma_lambda`` when given, else ``2 / (window_size + 1)`` (the
+        smoothing of an EWMA with span ``window_size``). Rows with a NaN
+        value get NaN ``ewma`` and limits and do not advance ``i``.
 
         Args:
-            method (str): Method for calculating dynamic limits. Options:
-                - 'moving_range': Uses moving window statistics
-                - 'ewma': Uses Exponentially Weighted Moving Average
-            window_size (int): Number of rows in the moving window (the EWMA
-                span for ``'ewma'``; default: 20)
+            method: ``"moving_range"`` (default) or ``"ewma"``.
+            window_size: Number of previous points the rolling chart uses
+                (at least 2); for ``"ewma"`` the span that sets ``lambda``
+                when ``ewma_lambda`` is not given (default: 20).
+            ewma_lambda: EWMA weight ``0 < lambda <= 1`` (``"ewma"`` only).
+            n_sigma: Width ``L`` of the ``lcl`` / ``ucl`` columns in sigmas
+                (default 3.0).
 
         Returns:
-            pd.DataFrame: DataFrame with dynamic control limits indexed by time.
-                Columns: systime, mean, 1sigma_upper, 1sigma_lower,
-                2sigma_upper, 2sigma_lower, 3sigma_upper, 3sigma_lower, uuid
-                (the event uuid) and source_uuid (the actual signal's uuid).
+            pd.DataFrame: One row per actual point. Columns: systime, value
+                (the actual value), ewma (``z_i``; ``"ewma"`` only), mean
+                (the center line: ``center_i``, or ``mu_0`` for EWMA),
+                1sigma_upper .. 3sigma_lower (center +/- k sigma_i; for EWMA
+                ``mu_0 +/- k`` times the EWMA statistic's sigma), lcl / ucl
+                (center -/+ ``n_sigma`` times the same sigma), uuid (the
+                event uuid) and source_uuid (the actual signal's uuid). For
+                EWMA compare ``ewma`` (not ``value``) with the limits.
         """
         df = self.dataframe[self.dataframe["uuid"] == self.actual_uuid].copy()
-        df = df.sort_values(by="systime")
+        df = df.sort_values(by="systime", kind="stable")
+        x = pd.to_numeric(df[self.value_column], errors="coerce").astype(float)
+        x = x.reset_index(drop=True)
 
         if method == "moving_range":
-            # Calculate rolling mean and std
-            rolling_mean = (
-                df[self.value_column].rolling(window=window_size, min_periods=1).mean()
-            )
-            rolling_std = (
-                df[self.value_column].rolling(window=window_size, min_periods=1).std()
-            )
-
-            control_limits = pd.DataFrame(
-                {
-                    "systime": df["systime"],
-                    "mean": rolling_mean,
-                    "1sigma_upper": rolling_mean + rolling_std,
-                    "1sigma_lower": rolling_mean - rolling_std,
-                    "2sigma_upper": rolling_mean + 2 * rolling_std,
-                    "2sigma_lower": rolling_mean - 2 * rolling_std,
-                    "3sigma_upper": rolling_mean + 3 * rolling_std,
-                    "3sigma_lower": rolling_mean - 3 * rolling_std,
-                }
-            )
-
+            if window_size < 2:
+                raise ValueError("window_size must be at least 2 for 'moving_range'")
+            center = x.rolling(window=window_size, min_periods=window_size).mean()
+            center = center.shift(1)
+            if self.sigma_method == "moving_range":
+                mr = x.diff().abs()
+                sigma = mr.rolling(
+                    window=window_size - 1, min_periods=window_size - 1
+                ).mean()
+                sigma = sigma.shift(1) / D2_N2
+            else:
+                sigma = x.rolling(window=window_size, min_periods=window_size).std()
+                sigma = sigma.shift(1)
+            columns: dict[str, object] = {
+                "systime": df["systime"].to_numpy(),
+                "value": x,
+            }
         elif method == "ewma":
-            # Calculate EWMA-based control limits
-            # Convert window size to span for EWMA
-            span = window_size
-            ewma_mean = df[self.value_column].ewm(span=span, adjust=False).mean()
-
-            # Calculate EWMA variance
-            squared_diff = (df[self.value_column] - ewma_mean) ** 2
-            ewma_var = squared_diff.ewm(span=span, adjust=False).mean()
-            ewma_std = np.sqrt(ewma_var)
-
-            control_limits = pd.DataFrame(
-                {
-                    "systime": df["systime"],
-                    "mean": ewma_mean,
-                    "1sigma_upper": ewma_mean + ewma_std,
-                    "1sigma_lower": ewma_mean - ewma_std,
-                    "2sigma_upper": ewma_mean + 2 * ewma_std,
-                    "2sigma_lower": ewma_mean - 2 * ewma_std,
-                    "3sigma_upper": ewma_mean + 3 * ewma_std,
-                    "3sigma_lower": ewma_mean - 3 * ewma_std,
-                }
+            lam = 2.0 / (window_size + 1) if ewma_lambda is None else ewma_lambda
+            if not 0 < lam <= 1:
+                raise ValueError(f"ewma_lambda must be in (0, 1], got {lam}")
+            ref = self._reference_values()
+            mu0 = float(ref.mean())
+            ref_sigma = _sigma_hat(ref, self.sigma_method)
+            if not ref_sigma > 0:
+                warnings.warn(
+                    f"EWMA limits for uuid {self.tolerance_uuid!r} are degenerate "
+                    f"(sigma={ref_sigma} from {ref.notna().sum()} reference "
+                    "value(s)); the limits are NaN.",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
+                )
+                ref_sigma = float("nan")
+            values = x.to_numpy()
+            z = np.full(len(values), np.nan)
+            steps = np.full(len(values), np.nan)
+            prev, i = mu0, 0
+            for pos, value in enumerate(values.tolist()):
+                if np.isnan(value):
+                    continue
+                i += 1
+                prev = lam * value + (1 - lam) * prev
+                z[pos] = prev
+                steps[pos] = i
+            sigma = pd.Series(
+                ref_sigma * np.sqrt(lam / (2 - lam) * (1 - (1 - lam) ** (2 * steps)))
             )
+            center = pd.Series(np.where(np.isnan(steps), np.nan, mu0))
+            columns = {
+                "systime": df["systime"].to_numpy(),
+                "value": x,
+                "ewma": z,
+            }
         else:
             raise ValueError(f"Unknown method: {method}. Use 'moving_range' or 'ewma'.")
 
+        columns["mean"] = center
+        for k in (1, 2, 3):
+            columns[f"{k}sigma_upper"] = center + k * sigma
+            columns[f"{k}sigma_lower"] = center - k * sigma
+        columns["lcl"] = center - n_sigma * sigma
+        columns["ucl"] = center + n_sigma * sigma
+        control_limits = pd.DataFrame(columns)
         control_limits["uuid"] = self.event_uuid
         control_limits["source_uuid"] = self.actual_uuid
         return control_limits.reset_index(drop=True)
@@ -538,11 +665,22 @@ class StatisticalProcessControlEvents(Base):
         CUSUM charts are effective at detecting small shifts in the process mean
         and are more sensitive than traditional Shewhart control charts.
 
+        Tabular CUSUM (Montgomery, Introduction to Statistical Quality
+        Control, section 9.1)::
+
+            C+_i = max(0, x_i - (mu_0 + K) + C+_{i-1})
+            C-_i = max(0, (mu_0 - K) - x_i + C-_{i-1}),   C+_0 = C-_0 = 0
+
+        with ``K = k * sigma`` and decision interval ``H = h * sigma``; a
+        point is a shift when ``C+_i > H`` or ``C-_i > H``. ``sigma`` is
+        estimated from the reference rows by the instance's
+        ``sigma_method`` (default ``MR-bar / 1.128``).
+
         Args:
             target (Optional[float]): Target mean value. If None, uses the mean of tolerance data.
-            k (float): Reference value (slack parameter), typically 0.5 to 1.0 times sigma.
+            k (float): Reference value (slack parameter) in sigmas, typically 0.5 to 1.0.
                 Smaller k detects smaller shifts. Default: 0.5
-            h (float): Decision interval (threshold). Typical values are 4-5.
+            h (float): Decision interval in sigmas. Typical values are 4-5.
                 Smaller h gives faster detection but more false alarms. Default: 5.0
 
         Returns:
@@ -563,7 +701,8 @@ class StatisticalProcessControlEvents(Base):
         if target is None:
             target = tolerance_df[self.value_column].mean()
 
-        sigma = tolerance_df[self.value_column].std()
+        tolerance_df = tolerance_df.sort_values(by="systime", kind="stable")
+        sigma = _sigma_hat(tolerance_df[self.value_column], self.sigma_method)
         result_cols = [
             "systime",
             self.value_column,

@@ -51,7 +51,10 @@ a numeric `severity` score.
 
 `StatisticalProcessControlEvents` takes the center line and sigma from a
 reference signal (`tolerance_uuid`, here the in-control run) and checks the
-actual signal against the eight Nelson / Western Electric rules.
+actual signal against the eight Nelson / Western Electric rules. Sigma is the
+individuals-chart estimate MR̄ / 1.128 of consecutive reference values
+(Montgomery, *Introduction to Statistical Quality Control*, §6.4); pass
+`sigma_method="std"` for the sample standard deviation.
 
 ```python
 from ts_shape.events.quality.statistical_process_control import StatisticalProcessControlEvents
@@ -66,8 +69,9 @@ explained = spc.interpret_violations(rules_1_2) # adds interpretation, meaning, 
 shifts = spc.detect_cusum_shifts(k=0.5, h=5.0)  # small sustained shifts of the mean
 ```
 
-`dynamic_control_limits(method="ewma", window_size=20)` computes limits that
-follow the process over time. For several correlated variables use
+`dynamic_control_limits(method="moving_range", window_size=20)` is a rolling
+individuals chart (each point against the 20 points before it), and
+`method="ewma"` an EWMA chart (column `ewma` against `lcl` / `ucl`). For several correlated variables use
 `MultivariateSPCEvents` (Hotelling T²), and for a change of level without
 reference data `ChangePointEvents`.
 
@@ -91,9 +95,10 @@ capability = tolerance.capability_indices(target_value=20.0)  # Cp, Cpk, Pp, Ppk
 
 The limits are signals, so they may change over time; each measurement is
 compared with the limit in force at its timestamp. Give only one of the two
-limits for a one-sided specification. Cp and Cpk use the overall standard
-deviation, because the data has no rational subgroups; they therefore equal
-Pp and Ppk.
+limits for a one-sided specification. Cp and Cpk use the within (short-term)
+sigma MR̄ / 1.128 of consecutive measurements, Pp and Ppk the overall sample
+standard deviation (AIAG SPC manual); `sigma_method="std"` makes Cp/Cpk equal
+Pp/Ppk.
 
 ## Other quality detectors
 
