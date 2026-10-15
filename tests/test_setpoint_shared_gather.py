@@ -99,10 +99,12 @@ def _outputs() -> pd.DataFrame:
 def test_kpis_match_the_former_per_change_implementation():
     expected = pd.read_csv(REFERENCE, dtype=str, keep_default_na=False)
     got = _outputs().astype(str).reset_index(drop=True)
-    # The reference was written with pandas 3 / numpy 2.5. Older numpy sums
-    # long arrays block by block, so the former implementation itself gives
-    # means that differ in the last bit there: numbers are compared to 1e-13
-    # relative, everything else exactly.
+    # The reference was written with pandas 3 / numpy 2.5 on one machine.
+    # Other numpy versions and CPUs (SIMD paths) round some sums differently
+    # in the last bit, and the former implementation differs the same way
+    # there. Numbers are compared to 1e-13 relative plus 1e-12 absolute (a
+    # value near zero that is a difference of terms around 300 carries an
+    # absolute rounding of ~1e-16 * 300), everything else exactly.
     pd.testing.assert_frame_equal(
         got.drop(columns="value"), expected.drop(columns="value")
     )
@@ -111,7 +113,7 @@ def test_kpis_match_the_former_per_change_implementation():
     text = exp_num.isna()
     assert (got_num.isna() == text).all()
     assert (got["value"][text] == expected["value"][text]).all()
-    np.testing.assert_allclose(got_num[~text], exp_num[~text], rtol=1e-13, atol=0)
+    np.testing.assert_allclose(got_num[~text], exp_num[~text], rtol=1e-13, atol=1e-12)
 
 
 if __name__ == "__main__":  # pragma: no cover - regenerates the reference
