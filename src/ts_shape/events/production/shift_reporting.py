@@ -87,10 +87,6 @@ class ShiftReportEvents(Base):
             "shift_3": ("22:00", "06:00"),
         }
 
-    def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        """Assign shift based on time of day."""
-        return assign_shift(timestamp, self.shift_definitions)
-
     @keyword_only(2)
     def shift_production(
         self,

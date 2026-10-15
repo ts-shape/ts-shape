@@ -244,7 +244,7 @@ class MultiProcessTraceabilityEvents(Base):
 
         # Detect parallel activity: for each item, check if any intervals overlap
         timeline["is_parallel"] = False
-        for item_id, grp in timeline.groupby("item_id"):
+        for _, grp in timeline.groupby("item_id"):
             if len(grp) < 2:
                 continue
             idxs = grp.index.tolist()

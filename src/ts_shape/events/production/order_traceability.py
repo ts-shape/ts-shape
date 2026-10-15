@@ -79,7 +79,7 @@ class ValueTraceabilityEvents(Base):
 
         # Pre-filter and parse per-station data
         self._station_data: dict[str, pd.DataFrame] = {}
-        for uuid, name in self.station_uuids.items():
+        for uuid in self.station_uuids:
             sdf = (
                 self.dataframe[self.dataframe["uuid"] == uuid]
                 .copy()

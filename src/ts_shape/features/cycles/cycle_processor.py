@@ -255,15 +255,6 @@ class CycleDataProcessor(Base):
         )
         return split_dfs
 
-    def _filter_by_time_range(
-        self, start_time: pd.Timestamp, end_time: pd.Timestamp
-    ) -> pd.DataFrame:
-        """Rows with ``start_time <= systime < end_time`` (the cycle rule)."""
-        mask = (self.values_df[self.time_column] >= start_time) & (
-            self.values_df[self.time_column] < end_time
-        )
-        return self.values_df[mask]
-
     # ------------------------------------------------------------------
     # Per-cycle results
     # ------------------------------------------------------------------

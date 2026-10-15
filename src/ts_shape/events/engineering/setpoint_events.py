@@ -259,7 +259,7 @@ class SetpointChangeEvents(Base):
         group_id = (rate_mask != rate_mask.shift()).cumsum()
         events: list[dict[str, Any]] = []
         min_d = pd.to_timedelta(min_duration)
-        for gid, seg in sp.groupby(group_id):
+        for _, seg in sp.groupby(group_id):
             seg_mask_true = rate_mask.loc[seg.index]
             if not seg_mask_true.any():
                 continue

@@ -110,10 +110,6 @@ class ShiftHandoverEvents(Base):
             "shift_3": ("22:00", "06:00"),
         }
 
-    def _assign_shift(self, timestamp: pd.Timestamp) -> str:
-        """Assign shift based on time of day."""
-        return assign_shift(timestamp, self.shift_definitions)
-
     def _counter_by_shift(
         self,
         uuid: str,

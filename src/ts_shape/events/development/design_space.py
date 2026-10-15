@@ -205,7 +205,7 @@ class DesignSpaceEvents(Base):
         # Group contiguous outside runs.
         group_id = (outside != np.roll(outside, 1)).cumsum()
         events: list[dict[str, Any]] = []
-        for gid, grp in pd.DataFrame({"out": outside, "gid": group_id}).groupby("gid"):
+        for _, grp in pd.DataFrame({"out": outside, "gid": group_id}).groupby("gid"):
             if not grp["out"].iloc[0]:
                 continue
             idxs = grp.index

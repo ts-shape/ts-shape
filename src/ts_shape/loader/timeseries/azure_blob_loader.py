@@ -261,25 +261,6 @@ class AzureBlobParquetLoader:
             max_workers=max_workers,
         )
 
-    def _iter_matching_blob_names(self, uuids: set[str]) -> Iterable[str]:
-        """
-        Iterate over blob names that end with .parquet and contain any of the given UUIDs.
-
-        Uses server-side prefix filtering when `self.prefix` is provided to reduce listing.
-        """
-        # Stream listing to handle large containers efficiently
-        blob_iter = self.container_client.list_blobs(
-            name_starts_with=self.prefix or None
-        )
-        for blob in blob_iter:
-            name: str = blob.name
-            if not name.endswith(".parquet"):
-                continue
-            # Fast path: check containment against UUID set
-            # Assumes filenames or paths contain the UUID as substring
-            if any(u in name for u in uuids):
-                yield name
-
     def _download_parquet(
         self,
         blob_name: str,

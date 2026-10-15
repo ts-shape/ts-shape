@@ -110,7 +110,7 @@ class VibrationAnalysisEvents(Base):
         group_id = (exceeded != exceeded.shift()).cumsum()
         ends = interval_end_times(sig[self.time_column], interval_end)
         events: list[dict[str, Any]] = []
-        for gid, seg in sig.groupby(group_id):
+        for _, seg in sig.groupby(group_id):
             seg_exc = exceeded.loc[seg.index]
             if not seg_exc.iloc[0]:
                 continue

@@ -337,11 +337,3 @@ class OutlierDetectionEvents(Base):
             return mask, severity
 
         return self._detect(scorer, include_singles)
-
-
-# Example usage:
-# outlier_detector = OutlierDetectionEvents(dataframe=df, value_column='value')
-# detected_outliers_zscore = outlier_detector.detect_outliers_zscore(threshold=3.0)
-# detected_outliers_iqr = outlier_detector.detect_outliers_iqr(threshold=(1.5, 1.5))
-# detected_outliers_mad = outlier_detector.detect_outliers_mad(threshold=3.5)
-# detected_outliers_iforest = outlier_detector.detect_outliers_isolation_forest(contamination=0.1)

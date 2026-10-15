@@ -332,7 +332,7 @@ class SensorDriftEvents(Base):
             direction = "decreasing"
 
         events: list[dict[str, Any]] = []
-        for i, (ts, v) in enumerate(window_values):
+        for ts, v in window_values:
             events.append(
                 {
                     "start": ts,

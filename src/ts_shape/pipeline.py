@@ -604,7 +604,7 @@ class Pipeline:
             source_step = self._steps[0]
             try:
                 dataframe = source_step.executor()
-            except Exception as exc:  # noqa: BLE001 -- re-raised with context
+            except Exception as exc:
                 raise RuntimeError(
                     f"pipeline {self.name!r}: step 0 "
                     f"(source {source_step.name!r}) failed: {exc}"
@@ -642,7 +642,7 @@ class Pipeline:
             try:
                 arg = working.copy() if step.kind == "transform" else working
                 result = step.executor(arg, input_df)
-            except Exception as exc:  # noqa: BLE001 -- re-raised with context
+            except Exception as exc:
                 raise RuntimeError(
                     f"pipeline {self.name!r}: step {index} "
                     f"({step.kind} {step.name!r}) failed: {exc}"
