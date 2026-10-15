@@ -1,7 +1,4 @@
 import pandas as pd
-import pytest
-
-pytest.importorskip("scipy")
 
 from ts_shape.features.stats.numeric_stats import NumericStatistics
 
@@ -23,12 +20,8 @@ def test_numeric_statistics_basic():
     assert NumericStatistics.coefficient_of_variation(df, "x") > 0
 
 
-def test_numeric_statistics_summary_dataframe_and_missing_mode_safe():
+def test_numeric_statistics_summary_dataframe_has_mode():
     df = pd.DataFrame({"x": [1, 2, 2, 3, 4]})
-    # Guard: if column_mode is not implemented in the class, skip
-    if not hasattr(NumericStatistics, "column_mode"):
-        pytest.skip("column_mode not implemented; skipping summary_as_dataframe test")
-
     out = NumericStatistics.summary_as_dataframe(df, "x")
     assert out.shape[0] == 1
     assert "mode" in out.columns
