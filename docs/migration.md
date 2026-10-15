@@ -6,6 +6,118 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 9: KPIs match their textbook definitions
+
+Several KPIs gave wrong numbers. They now follow the published definitions
+(ISO 22400-2, Montgomery *Introduction to Statistical Quality Control*,
+Ogata *Modern Control Engineering*, ISO 50006, Nakajima), and each one is
+pinned by a hand-computed reference test in `tests/reference/`. **Results
+change**; no code change is needed unless you depended on the old values.
+Where an option keeps the old behavior, it is named below.
+
+### Time and parts are booked to the period they belong to
+
+Durations used to be booked to the shift/hour/day of the reading that started
+them, and counter increments to the reading that reported them. Both are now
+split at period boundaries (wall-clock, DST-safe), via the new
+`ts_shape.utils.time_accounting` helpers.
+
+Affected: `DowntimeEvents.downtime_by_shift` / `availability_trend`,
+`ShiftHandoverEvents`, `RuntimeAccountingEvents.runtime_by_window` /
+`operating_hours_meter`, `MicroStopEvents.micro_stop_impact`, `OEEEvents`
+(availability, performance, daily OEE) and `QualityTrackingEvents.nok_by_shift`.
+
+| Probe | Old | New |
+|---|---|---|
+| Stop 07:00–15:00, shift_1 (06–14) availability | 0 % (480 min down) | 12.5 % (60 up / 420 down) |
+| Same stop, `availability_trend(window="1h")`, 07:00 hour | 480 min down | 60 min down (one row per hour) |
+| Night shift 22–06 running at 100 %, OEE day 1 / day 2 | 12.5 % / 0 % | 100 % / 100 % |
+| 30 parts counted 13:50–14:10, shift_1 / shift_2 | 0 / 30 | 15 / 15 |
+
+- A counter increment is spread over `(previous reading, reading]` in
+  proportion to time; a reset counts in the period of the reading that shows
+  it. `handle_resets=False` keeps the per-period `max(0, last - first)`.
+- Part counts in OEE (`actual_parts`, `total_parts`, `reject_parts`,
+  `good_parts`) and shift-handover quantities are floats now.
+- Shift and trend outputs list every period that holds observed time, not only
+  periods that contain a reading.
+- A day without state rows has NaN availability, performance and OEE (was:
+  the counter span as run time, availability 0).
+- Performance or availability above 100 % is no longer clipped; the value is
+  kept and a `DataQualityWarning` names the period.
+- `micro_stop_frequency` still counts a stop in the window it starts in.
+
+### Production
+
+- `PerformanceLossEvents` counts parts (counter increments), not counter rows;
+  cycle time = run time / parts. Counter +2 per minute for 60 min at a 30 s
+  ideal cycle: performance 50 % → 100 %, loss 1770 s → 0 s. A new
+  `run_seconds` column carries the basis.
+- `PeriodSummaryEvents.from_daily_data` recomputes KPIs from summed bases
+  (quality = Σgood/Σtotal, availability = Σrun/Σplanned, OEE = A×P×Q,
+  MTTR = Σrepair/Σfailures, EnPI = Σenergy/Σunits, ...). Ratios without a
+  basis column are weighted means (plain mean with a `DataQualityWarning`);
+  numeric columns with no rule are dropped with a warning instead of summed.
+  A new `aggregations=` argument overrides the rule per column. Quality of
+  900/1000 and 0/10: 45.0 % → 89.1 %; MTTR 1 h and 3 h: 4.0 → 2.0.
+- `MicroStopEvents.micro_stop_impact` gains `performance_loss_pct` (minor
+  stops are a performance loss); `availability_loss_pct` stays with the same
+  value.
+
+### Setpoint response
+
+- `time_to_settle` is the time after which the response stays in the band
+  until the end of the window (last entry, not first). The window now also ends
+  at the next setpoint change. New `settled_within_window` column;
+  `t_settle_seconds` is NaN when the response does not settle. `settled` means
+  settled within the window with a final in-band stretch of at least `hold`.
+  Underdamped step ζ=0.2, ωn=0.1, 2 % band: 18 s → 197 s.
+- `overshoot_pct` / `undershoot_pct` are percent (0–100) like every other
+  `*_pct` column: 0.5266 → 52.66. The fraction is in the new
+  `overshoot_ratio` / `undershoot_ratio` columns.
+
+### Statistical process control and capability
+
+`StatisticalProcessControlEvents(..., sigma_method="moving_range")` (default)
+estimates σ as MR̄/1.128 (individuals chart); `sigma_method="std"` brings back
+the sample standard deviation.
+
+| Probe | Old | New |
+|---|---|---|
+| Reference 1..20: control limits | −7.25 / 28.25 | 7.84 / 13.16 |
+
+- The rule 1–8 zones and `detect_cusum_shifts` use the same σ̂.
+- `dynamic_control_limits(method="moving_range")` tests each point against the
+  `window_size` points before it (center = their mean, σ̂ = their MR̄/1.128);
+  the first `window_size` points have NaN limits.
+- `dynamic_control_limits(method="ewma")` is an EWMA chart:
+  z_i = λx_i + (1−λ)z_{i−1}, limits μ0 ± L·σ̂·√(λ/(2−λ)·[1−(1−λ)^{2i}]).
+  `ewma` is z_i, `mean` is μ0; new `ewma_lambda=` (default 2/(window_size+1))
+  and `n_sigma=` (L) set the new `lcl` / `ucl` columns. Both methods add a
+  `value` column.
+- Cp/Cpk use the within σ (MR̄/1.128) and Pp/Ppk the overall σ (AIAG), in
+  `CapabilityTrendingEvents` (`sigma_method=` on the constructor) and
+  `ToleranceDeviationEvents.capability_indices` (`sigma_method=` on the
+  method). `sigma_method="std"` makes Cp/Cpk equal Pp/Ppk again. New
+  `std_within` column. Per-window Pp/Ppk use the window's own σ (they used the
+  whole signal's). Example x = 10.0, 10.4, 10.2, 10.6, 9.8, specs 9–11:
+  Cp 1.054 → 0.836, Pp unchanged 1.054.
+
+### Energy and supply chain
+
+- The EnPI rolling baseline, `EnergyEfficiencyEvents.sec_trend` and
+  `efficiency_trend` `rolling_avg_efficiency` are Σnumerator/Σdenominator over
+  the window (ISO 50006), not the mean of ratios: EnPI 1 and 3 over 130 kWh /
+  110 units: 2.0 → 1.182.
+- `InventoryMonitoringEvents.stockout_prediction` uses the refill-aware
+  consumption rate (`handle_refills=True`, new); a refill no longer cancels
+  consumption. `handle_refills=False` keeps first-minus-last.
+
+### Documented, unchanged
+
+- `SignalCorrelationEvents.lag_correlation`: positive `lag_periods` means `uuid_b`
+  leads `uuid_a` (b(t) = a(t−5) gives −5). The docstring now says so.
+
 ## October 2026, round 8: legacy code removed
 
 ### Requirements
