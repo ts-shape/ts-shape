@@ -274,6 +274,24 @@ def test_counter_increment_across_a_boundary_is_shared_by_time():
     assert out[("2025-01-02", "shift_2")]["ok_parts"] == pytest.approx(15)
 
 
+def test_shift_handover_counter_increment_across_a_boundary_is_shared_by_time():
+    # 30 parts between 13:50 and 14:10: 15 in each shift (same accounting as
+    # QualityEvents / OEEEvents).
+    t = pd.Series([_ts("13:50"), _ts("14:10")])
+    df = pd.DataFrame({"systime": t, "uuid": "prod", "value_integer": [100, 130]})
+    out = _by_shift(ShiftHandoverEvents(df)._counter_by_shift("prod", "value_integer"))
+    assert out[("2025-01-02", "shift_1")]["quantity"] == pytest.approx(15)
+    assert out[("2025-01-02", "shift_2")]["quantity"] == pytest.approx(15)
+    # The night shift keeps the parts its last hour produced.
+    night = _by_shift(
+        ShiftHandoverEvents(_night("hourly"))._counter_by_shift(
+            "parts", "value_integer"
+        )
+    )
+    assert night[("2025-01-01", "shift_3")]["quantity"] == 480
+    assert night[("2025-01-02", "shift_1")]["quantity"] == 0
+
+
 def test_oee_day_without_state_rows_has_unknown_availability():
     # State only on Jan 1; the counter keeps running on Jan 2.
     state = pd.DataFrame(

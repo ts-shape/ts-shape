@@ -29,6 +29,7 @@ from ts_shape.utils.deprecation import (
 )
 from ts_shape.utils.shifts import assign_shift, production_dates
 from ts_shape.utils.time_accounting import (
+    counter_by_period,
     reading_intervals,
     shift_periods,
     time_by_period,
@@ -134,10 +135,14 @@ class ShiftHandoverEvents(Base):
         When ``handle_resets`` is True a decreasing counter is treated as a
         reset and the post-reset production is counted, and a ``resets`` column
         with the per-shift reset count is added. Increments are computed once
-        over the whole signal and booked to the shift of the reading that
-        reports them, so the shifts add up to the signal total. When
-        ``production_day`` is True
-        an overnight shift's post-midnight readings are attributed to the
+        over the whole signal; the increment between two readings is spread
+        over the time between them and split at the shift boundaries in
+        proportion to time (ISO 22400-2: a part belongs to the shift it was
+        produced in), so the shifts add up to the signal total and the
+        quantities can be fractional. A reset counts in the shift of the
+        reading that shows it. When False each shift reports
+        ``max(0, last - first)`` of its own readings. When ``production_day``
+        is True an overnight shift's post-midnight time is attributed to the
         shift's start date.
         """
         data = (
@@ -155,12 +160,23 @@ class ShiftHandoverEvents(Base):
         data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
         data["date"] = self._group_dates(data, production_day)
 
-        # Increments over the whole signal, booked to the shift of the reading
-        # that reports them, so the shifts add up to the signal total.
-        totals = counter_totals(
-            data, value_column, ["date", "shift"], handle_resets=handle_resets
-        )
-        totals["quantity"] = totals["quantity"].astype(int)
+        keys = ["date", "shift"]
+        if handle_resets:
+            # Increments spread over the time they were produced in, split at
+            # the shift boundaries (same accounting as OEE / quality).
+            times = data[self.time_column]
+            periods = shift_periods(
+                times.iloc[0],
+                times.iloc[-1],
+                self.shift_definitions,
+                production_day=production_day,
+            )
+            totals = counter_by_period(
+                times, data[value_column], periods, data[keys], keys=keys
+            )
+        else:
+            totals = counter_totals(data, value_column, keys, handle_resets=False)
+        totals["quantity"] = totals["quantity"].astype(float)
         cols = ["date", "shift", "quantity"]
         if handle_resets:
             cols.append("resets")
@@ -442,9 +458,12 @@ class ShiftHandoverEvents(Base):
                 nok_parts. A shift boundary is exactly where counters commonly
                 reset, so ``max(0, last - first)`` (``handle_resets=False``) under-reports any
                 shift containing a reset. The increments are computed once over
-                each whole signal (before ``report_date`` is selected) and
-                booked to the shift of the reading that reports them, so the
-                shifts add up to the signal totals; with
+                each whole signal (before ``report_date`` is selected); the
+                increment between two readings is spread over the time
+                between them and split at the shift boundaries in proportion
+                to time, so the shifts add up to the signal totals and
+                ``production`` / ``ok_parts`` / ``nok_parts`` can be
+                fractional; with
                 ``handle_resets=False`` the production between two shifts'
                 readings is lost. The result gains a ``resets`` column
                 with the number of production-counter resets in each shift.
