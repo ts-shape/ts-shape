@@ -405,8 +405,8 @@ def demo_line_throughput(df: pd.DataFrame) -> None:
         UUID_PART_COUNTER, value_column="value_integer", window="1h"
     )
     if not oee.empty:
-        print(f"  Avg OEE score: {oee['oee_score'].mean():.2f}")
-        print(oee[["start", "actual_count", "performance", "oee_score"]].head())
+        print(f"  Avg OEE score: {oee['oee_ratio'].mean():.2f}")
+        print(oee[["start", "actual_count", "performance_ratio", "oee_ratio"]].head())
 
     # throughput_trends
     _subheader("throughput_trends(window='1h', trend_window=6)")
@@ -710,7 +710,7 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
                     "occurrences",
                     "total_minutes",
                     "avg_minutes",
-                    "pct_of_total",
+                    "of_total_pct",
                 ]
             ]
         )
@@ -724,7 +724,7 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
         stopped_value="Stopped",
     )
     if not top.empty:
-        print(top[["reason", "total_minutes", "pct_of_total", "cumulative_pct"]])
+        print(top[["reason", "total_minutes", "of_total_pct", "cumulative_pct"]])
 
     # availability_trend
     _subheader("availability_trend(window='1D')")

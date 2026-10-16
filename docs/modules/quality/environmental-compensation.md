@@ -18,7 +18,7 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": "line1:hall_temp", "value_do
                 pd.DataFrame({"systime": t, "uuid": "line1:width", "value_double": width})])
 
 env = EnvironmentalCompensationEvents(df, "line1:width", env_uuid="line1:hall_temp", env_value=20.0)
-print(env.sensitivity(window="8h")[["window_start", "coefficient", "r_squared"]])
+print(env.sensitivity(window="8h")[["start", "coefficient", "r_squared"]])
 corrected = env.compensated_signal()
 hot = env.detect_env_exceedance(valid_range=(15.0, 25.0), window="1h")
 ```
@@ -27,10 +27,10 @@ hot = env.detect_env_exceedance(valid_range=(15.0, 25.0), window="1h")
 
 | Method | Returns |
 |---|---|
-| `detect_correlation(window='4h')` | per window: `window_start`, `correlation`, `p_value`, `significant` |
-| `sensitivity(window='8h')` | per window: `window_start`, `coefficient`, `intercept`, `r_squared`, `unit_change_per_degree` |
+| `detect_correlation(window='4h')` | per window: `start`, `end`, `duration_seconds`, `correlation`, `p_value`, `significant` |
+| `sensitivity(window='8h')` | per window: `start`, `end`, `duration_seconds`, `coefficient`, `intercept`, `r_squared`, `unit_change_per_degree` |
 | `compensated_signal(coefficient=None)` | per sample: `systime`, `value_double` (measured), `compensated_value`, `correction_applied` |
-| `detect_env_exceedance(valid_range, window='1h')` | windows outside the range: `window_start`, `window_end`, `env_mean`, `env_min`, `env_max`, `exceedance_type` (`high`/`low`/`both`), `severity` |
+| `detect_env_exceedance(valid_range, window='1h')` | windows outside the range: `start`, `end`, `duration_seconds`, `env_mean`, `env_min`, `env_max`, `exceedance_type` (`high`/`low`/`both`), `severity` |
 
 ## Notes
 

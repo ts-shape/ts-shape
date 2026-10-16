@@ -25,7 +25,7 @@ forecast = ttt.crossing_forecast({"warning": 2.0, "change filter": 2.5}, lookbac
 | Method | Returns |
 |---|---|
 | `time_to_threshold(threshold, lookback='1h', direction='auto')` | one row: `current_value`, `slope_per_second`, `threshold`, `estimated_seconds`, `estimated_time`, `confidence`, `direction` |
-| `time_to_threshold_windows(threshold, window='1h', lookback='1h')` | per window: `window_start`, `current_value`, `slope_per_second`, `estimated_seconds`, `confidence`, `direction` |
+| `time_to_threshold_windows(threshold, window='1h', lookback='1h')` | per window: `start`, `end`, `duration_seconds`, `current_value`, `slope_per_second`, `estimated_seconds`, `confidence`, `direction` |
 | `remaining_useful_range(lower_limit, upper_limit, lookback='1h')` | one row: `nearest_bound` (`upper`/`lower`/`none`), `nearest_bound_value`, `estimated_seconds`, `estimated_time`, `confidence` |
 | `crossing_forecast(thresholds, lookback='1h')` | per named threshold: `threshold_value`, `estimated_seconds`, `estimated_time`, `reachable` |
 

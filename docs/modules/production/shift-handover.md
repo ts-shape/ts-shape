@@ -20,7 +20,7 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": u, "value_integer": v}) for 
 
 report = ShiftHandoverEvents(df)
 handover = report.generate_report(counter_uuid="line1:parts", ok_counter_uuid="line1:ok",
-                                  nok_counter_uuid="line1:nok", state_uuid="line1:running",
+                                  nok_counter_uuid="line1:nok", run_state_uuid="line1:running",
                                   targets={"shift_1": 450, "shift_2": 450, "shift_3": 400})
 result = report.highlight_issues(report_df=handover)
 print(result[["date", "shift", "metric", "value", "threshold", "severity"]])
@@ -30,7 +30,7 @@ print(result[["date", "shift", "metric", "value", "threshold", "severity"]])
 
 | Method | Returns |
 |---|---|
-| `generate_report(counter_uuid, ok_counter_uuid, nok_counter_uuid, state_uuid, targets=None, report_date=None)` | one row per shift of `report_date` (default: latest date) |
+| `generate_report(counter_uuid, ok_counter_uuid, nok_counter_uuid, run_state_uuid, targets=None, report_date=None)` | one row per shift of `report_date` (default: latest date) |
 | `from_shift_data(production_df, quality_df=None, downtime_df=None, targets=None, report_date=None)` (static) | the same report from `ShiftReportEvents.shift_production()`, `QualityEvents.nok_by_shift()` and `DowntimeEvents.downtime_by_shift()` outputs |
 | `highlight_issues(report_df=None, thresholds=None)` | one row per metric below threshold: `date`, `shift`, `metric`, `value`, `threshold`, `severity` |
 

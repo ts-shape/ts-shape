@@ -35,9 +35,9 @@ The night shift (22:00-06:00, `shift_3`) is all idle: about 480 kWh over three n
 
 | Method | Returns |
 |---|---|
-| `idle_energy_by_window(meter_uuid, state_uuid, window='1h', idle_threshold=0.1, time_weighted=True)` | per window: `total_energy`, `idle_energy`, `running_energy`, `machine_running_pct` (0-100), `machine_running_ratio` (0-1), `idle_fraction` |
-| `idle_energy_by_shift(meter_uuid, state_uuid, shift_definitions=None, idle_threshold=None)` | one row per shift over all days: `shift`, `total_energy`, `idle_energy`, `waste_fraction` |
-| `idle_energy_trend(meter_uuid, state_uuid, window='1D', trend_window=7, idle_threshold=0.1)` | per window: `idle_energy`, `rolling_avg_idle_energy`, `trend_direction` |
+| `idle_energy_by_window(meter_uuid, run_state_uuid, window='1h', idle_threshold=0.1, time_weighted=True)` | per window: `total_energy`, `idle_energy`, `running_energy`, `machine_running_pct` (0-100), `machine_running_ratio` (0-1), `idle_fraction` |
+| `idle_energy_by_shift(meter_uuid, run_state_uuid, shift_definitions=None, idle_threshold=None)` | one row per shift over all days: `shift`, `total_energy`, `idle_energy`, `waste_fraction` |
+| `idle_energy_trend(meter_uuid, run_state_uuid, window='1D', trend_window=7, idle_threshold=0.1)` | per window: `idle_energy`, `rolling_avg_idle_energy`, `trend_direction` |
 
 ## Notes
 

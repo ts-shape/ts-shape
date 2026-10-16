@@ -28,9 +28,9 @@ All arguments are keyword-only.
 | Method | Returns |
 |---|---|
 | `detect_mode_changes(window='1h', n_modes=2, min_separation=1.0)` | per window: `dominant_mode`, `n_modes_detected`, `mode_values` (list), `mode_changed` |
-| `detect_bimodal(min_samples=30)` | one row over all data: `is_bimodal`, `dip_score`, `n_samples`, `mode_1`, `mode_2`, `valley` |
-| `normality_windows(window='1h', alpha=0.05, min_samples=20)` | per window: `n_samples`, `is_normal`, `p_value`, `skewness`, `kurtosis` |
-| `percentile_tracking(percentiles=(5, 25, 50, 75, 95), window='1h')` | per window: `n_samples` and one column per percentile (`p5`, `p50`, …) |
+| `detect_bimodal(min_samples=30)` | one row over all data: `is_bimodal`, `dip_score`, `sample_count`, `mode_1`, `mode_2`, `valley` |
+| `normality_windows(window='1h', alpha=0.05, min_samples=20)` | per window: `sample_count`, `is_normal`, `p_value`, `skewness`, `kurtosis` |
+| `percentile_tracking(percentiles=(5, 25, 50, 75, 95), window='1h')` | per window: `sample_count` and one column per percentile (`p5`, `p50`, …) |
 
 ## Notes
 

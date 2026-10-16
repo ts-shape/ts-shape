@@ -28,12 +28,12 @@ print(lags[lags["is_best_lag"]])
 
 | Method | Returns |
 |---|---|
-| `rolling_correlation(uuid_a, uuid_b, window='1min', window_size=60)` | per grid point: `systime`, `correlation` |
-| `correlation_breakdown(uuid_a, uuid_b, window='1min', window_size=60, threshold=0.5)` | intervals with correlation below `threshold`: `start`, `end`, `min_correlation`, `duration_seconds` |
-| `lag_correlation(uuid_a, uuid_b, window='1min', max_lag=30)` | one row per lag from `-max_lag` to `+max_lag`: `lag_periods`, `correlation`, `is_best_lag` |
+| `rolling_correlation(signal_uuid_a, signal_uuid_b, window='1min', window_size=60)` | per grid point: `systime`, `correlation` |
+| `correlation_breakdown(signal_uuid_a, signal_uuid_b, window='1min', window_size=60, threshold=0.5)` | intervals with correlation below `threshold`: `start`, `end`, `min_correlation`, `duration_seconds` |
+| `lag_correlation(signal_uuid_a, signal_uuid_b, window='1min', max_lag=30)` | one row per lag from `-max_lag` to `+max_lag`: `lag_periods`, `correlation`, `is_best_lag` |
 
 ## Notes
 
 - Both signals are resampled to the `window` grid; `window_size` and `max_lag` count grid periods, so `window_size=240` with `window="1min"` is 4 hours.
-- Sign convention: `lag_periods = k` pairs `uuid_a` at time t with `uuid_b` at t − k. A positive best lag means `uuid_b` leads (`uuid_a` follows it by k periods); a negative best lag means `uuid_b` lags `uuid_a`. For b(t) = a(t − 5) the best lag is −5. In the example above pressure (`uuid_a`) follows temperature (`uuid_b`) by 5 min, so the best lag is +5.
+- Sign convention: `lag_periods = k` pairs `signal_uuid_a` at time t with `signal_uuid_b` at t − k. A positive best lag means `signal_uuid_b` leads (`signal_uuid_a` follows it by k periods); a negative best lag means `signal_uuid_b` lags `signal_uuid_a`. For b(t) = a(t − 5) the best lag is −5. In the example above pressure (`signal_uuid_a`) follows temperature (`signal_uuid_b`) by 5 min, so the best lag is +5.
 - Breakdown intervals end at the next grid point after the condition stops holding (`interval_end="next_change"`, default) or at the last flagged point (`"last_sample"`).

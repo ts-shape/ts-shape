@@ -945,11 +945,11 @@ class PeriodSummaryEvents(Base):
                 compared metrics are not understated for days containing a reset.
 
         Returns:
-            DataFrame with columns:
-            - metric, period_a_value, period_b_value, change, change_pct.
-              ``period1_value`` / ``period2_value`` are deprecated twins of
-              ``period_a_value`` / ``period_b_value`` (each sits right before
-              its replacement); they are removed in the next major release.
+            DataFrame with columns: metric, period_a_value, period_b_value,
+            change, change_pct. ``period1_value`` / ``period2_value`` are
+            deprecated twins of ``period_a_value`` / ``period_b_value`` (each
+            sits right before its replacement); they are removed in the next
+            major release.
         """
         daily = self._daily_counter(
             counter_uuid, value_column, handle_resets=handle_resets

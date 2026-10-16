@@ -9,6 +9,7 @@ edit_uri: edit/main/docs/
 
 not_in_nav: |
   /reference/index.md
+  /_c6_migration_rows.md
 
 validation:
   omitted_files: warn

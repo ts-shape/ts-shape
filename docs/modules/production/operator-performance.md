@@ -31,7 +31,7 @@ quality = ops.quality_by_operator(operator_uuid="line1:operator", ok_uuid="line1
 | `production_by_operator(operator_uuid, counter_uuid)` | `total_produced`, `shifts_worked`, `avg_per_shift` (+ `resets`) |
 | `operator_efficiency(operator_uuid, counter_uuid, target_per_shift)` | `total_produced`, `target`, `efficiency_pct` |
 | `quality_by_operator(operator_uuid, ok_uuid, nok_uuid)` | `ok_count`, `nok_count`, `first_pass_yield_pct` (+ `resets`) |
-| `operator_comparison(operator_uuid, counter_uuid)` | `total_produced`, `rank`, `pct_of_best` |
+| `operator_comparison(operator_uuid, counter_uuid)` | `total_produced`, `rank`, `of_best_pct` |
 
 ## Notes
 
