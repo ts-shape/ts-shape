@@ -324,7 +324,7 @@ class MaterialBalanceEvents(Base):
         )
 
     @keyword_only(1)
-    @twin_columns({"pct_of_total": "of_total_pct"})
+    @twin_columns({"pct_of_total": "share_of_total_pct"})
     def contribution_breakdown(self, window: str = "1h") -> pd.DataFrame:
         """Each signal's contribution to total input/output per window.
 
@@ -337,7 +337,7 @@ class MaterialBalanceEvents(Base):
             ``source_uuid`` both hold the contributing signal's uuid; ``end``
             is ``start`` + ``window``.
 
-            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            Canonical twin columns: ``share_of_total_pct`` (after ``pct_of_total``); each
             holds the same values as the deprecated column right before it, which is
             removed in the next major release.
         """

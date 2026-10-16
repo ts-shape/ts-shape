@@ -275,7 +275,7 @@ class ProcessStabilityIndexEvents(Base):
         return self._summary(sorted_scores[cols].reset_index(drop=True), cols, window)
 
     @keyword_only(1)
-    @twin_columns({"pct_of_best": "of_best_pct"})
+    @twin_columns({"pct_of_best": "share_of_best_pct"})
     def stability_comparison(self, window: str = "8h") -> pd.DataFrame:
         """Compare each window to the best-observed window.
 
@@ -287,7 +287,7 @@ class ProcessStabilityIndexEvents(Base):
             source_uuid, stability_score,
             best_score, gap_to_best, pct_of_best.
 
-            Canonical twin columns: ``of_best_pct`` (after ``pct_of_best``); each holds
+            Canonical twin columns: ``share_of_best_pct`` (after ``pct_of_best``); each holds
             the same values as the deprecated column right before it, which is removed
             in the next major release.
         """

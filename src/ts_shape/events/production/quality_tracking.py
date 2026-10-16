@@ -500,7 +500,7 @@ class QualityEvents(Base):
 
         return pd.DataFrame(results, columns=part_cols)
 
-    @twin_columns({"pct_of_total": "of_total_pct"})
+    @twin_columns({"pct_of_total": "share_of_total_pct"})
     def nok_by_reason(
         self,
         nok_counter_uuid: str,
@@ -536,7 +536,7 @@ class QualityEvents(Base):
             - resets: Number of counter resets for the reason (only when
                 ``handle_resets=True``)
 
-            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            Canonical twin columns: ``share_of_total_pct`` (after ``pct_of_total``); each
             holds the same values as the deprecated column right before it, which is
             removed in the next major release.
 
@@ -546,8 +546,8 @@ class QualityEvents(Base):
             >>> df = pd.concat([ts_shape.make_timeseries(["nok"], drift=19, **kw),
             ...                 ts_shape.make_id_signal("reason", ["Scratch", "Dent"], freq="1min")])
             >>> out = ts_shape.QualityEvents(df).nok_by_reason("nok", "reason")
-            >>> out[["reason", "nok_parts", "of_total_pct", "resets"]]
-                reason  nok_parts  of_total_pct  resets
+            >>> out[["reason", "nok_parts", "share_of_total_pct", "resets"]]
+                reason  nok_parts  share_of_total_pct  resets
             0     Dent       10.0     52.631579       0
             1  Scratch        9.0     47.368421       0
         """

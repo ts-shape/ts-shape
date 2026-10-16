@@ -392,7 +392,7 @@ class OperatorPerformanceEvents(Base):
 
         return pd.DataFrame(results, columns=columns)
 
-    @twin_columns({"pct_of_best": "of_best_pct"})
+    @twin_columns({"pct_of_best": "share_of_best_pct"})
     def operator_comparison(
         self,
         operator_uuid: str,
@@ -413,7 +413,7 @@ class OperatorPerformanceEvents(Base):
             DataFrame with columns:
             - operator, total_produced, rank, pct_of_best
 
-            Canonical twin columns: ``of_best_pct`` (after ``pct_of_best``); each holds
+            Canonical twin columns: ``share_of_best_pct`` (after ``pct_of_best``); each holds
             the same values as the deprecated column right before it, which is removed
             in the next major release.
         """

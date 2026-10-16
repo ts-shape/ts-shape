@@ -2061,7 +2061,7 @@ CASES = [
             ),
             lambda o, t=t, w=w, ie=ie: add_twin_columns(
                 _ref_thresholdmonitoring_time_above_threshold(o, t, w, interval_end=ie),
-                {"pct_above": "above_pct"},
+                {"pct_above": "time_above_pct"},
             ),
         )
         for t, w, ie in (

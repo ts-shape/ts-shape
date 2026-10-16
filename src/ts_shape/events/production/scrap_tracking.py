@@ -59,8 +59,8 @@ class ScrapEvents(Base):
         >>> reason = ts_shape.make_id_signal("reason", ["Burr", "Crack"], freq="1min")
         >>> out = ts_shape.ScrapEvents(pd.concat([scrap, reason])).scrap_by_reason(
         ...     "scrap_kg", "reason")
-        >>> out[["reason", "scrap_quantity", "of_total_pct"]].round(1)
-          reason  scrap_quantity  of_total_pct
+        >>> out[["reason", "scrap_quantity", "share_of_total_pct"]].round(1)
+          reason  scrap_quantity  share_of_total_pct
         0  Crack             5.0          52.6
         1   Burr             4.5          47.4
     """
@@ -154,7 +154,7 @@ class ScrapEvents(Base):
             data_tz(data[self.time_column]),
         )
 
-    @twin_columns({"pct_of_total": "of_total_pct"})
+    @twin_columns({"pct_of_total": "share_of_total_pct"})
     def scrap_by_reason(
         self,
         scrap_uuid: str,
@@ -188,7 +188,7 @@ class ScrapEvents(Base):
             - resets: Number of counter resets for the reason (only when
                 ``handle_resets=True``)
 
-            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            Canonical twin columns: ``share_of_total_pct`` (after ``pct_of_total``); each
             holds the same values as the deprecated column right before it, which is
             removed in the next major release.
         """

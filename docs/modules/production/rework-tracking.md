@@ -31,7 +31,7 @@ cost = rw.rework_cost(rework_uuid="line1:rework", part_id_uuid="line1:part_id",
 | Method | Returns |
 |---|---|
 | `rework_by_shift(rework_uuid)` | `date`, `shift`, `rework_count` |
-| `rework_by_reason(rework_uuid, reason_uuid)` | `reason`, `rework_count`, `of_total_pct` |
+| `rework_by_reason(rework_uuid, reason_uuid)` | `reason`, `rework_count`, `share_of_total_pct` |
 | `rework_rate(rework_uuid, total_production_uuid)` | per shift: `total_produced`, `rework_count`, `rework_rate_pct` |
 | `rework_cost(rework_uuid, part_id_uuid, rework_costs)` | per part: `rework_count`, `cost_per_rework`, `total_cost` |
 | `rework_trend(rework_uuid, window='1D')` | `period`, `rework_count` |

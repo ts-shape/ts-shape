@@ -155,7 +155,7 @@ class ReworkEvents(Base):
             data_tz(data[self.time_column]),
         )
 
-    @twin_columns({"pct_of_total": "of_total_pct"})
+    @twin_columns({"pct_of_total": "share_of_total_pct"})
     def rework_by_reason(
         self,
         rework_uuid: str,
@@ -189,7 +189,7 @@ class ReworkEvents(Base):
             - resets: Number of counter resets for the reason (only when
                 ``handle_resets=True``)
 
-            Canonical twin columns: ``of_total_pct`` (after ``pct_of_total``); each
+            Canonical twin columns: ``share_of_total_pct`` (after ``pct_of_total``); each
             holds the same values as the deprecated column right before it, which is
             removed in the next major release.
         """

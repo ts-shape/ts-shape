@@ -509,7 +509,9 @@ def test_deprecated_twins_sit_next_to_their_canonical_column():
         ("SamplingResolutionEvents", "sampling_jitter"): {
             "mean_interval_ms": "mean_interval_seconds"
         },
-        ("DowntimeEvents", "downtime_by_reason"): {"pct_of_total": "of_total_pct"},
+        ("DowntimeEvents", "downtime_by_reason"): {
+            "pct_of_total": "share_of_total_pct"
+        },
         **METHOD_TWINS,
     }.items():
         _, plain, _ = harness.sample_results(*key)

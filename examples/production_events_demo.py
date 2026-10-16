@@ -710,7 +710,7 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
                     "occurrences",
                     "total_minutes",
                     "avg_minutes",
-                    "of_total_pct",
+                    "share_of_total_pct",
                 ]
             ]
         )
@@ -724,7 +724,7 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
         stopped_value="Stopped",
     )
     if not top.empty:
-        print(top[["reason", "total_minutes", "of_total_pct", "cumulative_pct"]])
+        print(top[["reason", "total_minutes", "share_of_total_pct", "cumulative_pct"]])
 
     # availability_trend
     _subheader("availability_trend(window='1D')")

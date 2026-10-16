@@ -31,7 +31,7 @@ stats = st.setup_statistics(run_state_uuid="line1:state")
 |---|---|
 | `setup_durations(run_state_uuid, setup_value='Setup')` | one row per setup: `start`, `end`, `duration_seconds`, `date`, `shift` |
 | `setup_by_product(run_state_uuid, part_id_uuid, setup_value='Setup')` | per `from_product` → `to_product`: `avg_seconds`, `min_seconds`, `max_seconds`, `count` |
-| `setup_statistics(run_state_uuid, setup_value='Setup')` | one row: `total_setups`, `total_seconds`, `avg_seconds`, `median_seconds`, `std_seconds`, `of_available_time_pct` |
+| `setup_statistics(run_state_uuid, setup_value='Setup')` | one row: `total_setups`, `total_seconds`, `avg_seconds`, `median_seconds`, `std_seconds`, `share_of_available_time_pct` |
 | `setup_trend(run_state_uuid, setup_value='Setup', window='1W')` | per `period`: `avg_setup_seconds`, `setup_count`, `total_setup_seconds` |
 
 Every `*_seconds` column has a `*_minutes` twin.

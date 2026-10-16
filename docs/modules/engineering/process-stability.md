@@ -28,7 +28,7 @@ All arguments are keyword-only.
 | `stability_score(window='8h')` | per window: `stability_score`, `variance_score`, `bias_score`, `excursion_score`, `smoothness_score`, `grade` |
 | `score_trend(window='8h', n_windows=7)` | per window: `stability_score`, `rolling_avg` (over `n_windows`), `trend_direction`, `score_change` |
 | `worst_periods(window='1h', n=5)` | the `n` lowest-scoring windows with sub-scores and `primary_issue` |
-| `stability_comparison(window='8h')` | per window: `stability_score`, `best_score`, `gap_to_best`, `of_best_pct` |
+| `stability_comparison(window='8h')` | per window: `stability_score`, `best_score`, `gap_to_best`, `share_of_best_pct` |
 
 ## Notes
 

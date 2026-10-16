@@ -326,7 +326,7 @@ class SetupTimeEvents(Base):
         return result.sort_values("avg_minutes", ascending=False).reset_index(drop=True)
 
     @renamed_kwargs(state_uuid="run_state_uuid")
-    @twin_columns({"pct_of_available_time": "of_available_time_pct"})
+    @twin_columns({"pct_of_available_time": "share_of_available_time_pct"})
     def setup_statistics(
         self,
         run_state_uuid: str,
@@ -348,7 +348,7 @@ class SetupTimeEvents(Base):
                 std_seconds, pct_of_available_time
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
-            Canonical twin columns: ``of_available_time_pct`` (after
+            Canonical twin columns: ``share_of_available_time_pct`` (after
             ``pct_of_available_time``); each holds the same values as the deprecated
             column right before it, which is removed in the next major release.
         """

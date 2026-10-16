@@ -194,7 +194,7 @@ class MicroStopEvents(Base):
         )
 
     @keyword_only(1)
-    @twin_columns({"pct_of_window": "of_window_pct"})
+    @twin_columns({"pct_of_window": "share_of_window_pct"})
     def micro_stop_frequency(
         self, window: str = "1h", max_duration: str = "30s"
     ) -> pd.DataFrame:
@@ -209,7 +209,7 @@ class MicroStopEvents(Base):
             duration_seconds, uuid, source_uuid, count, total_lost_time,
             pct_of_window.
 
-            Canonical twin columns: ``of_window_pct`` (after ``pct_of_window``); each
+            Canonical twin columns: ``share_of_window_pct`` (after ``pct_of_window``); each
             holds the same values as the deprecated column right before it, which is
             removed in the next major release.
         """

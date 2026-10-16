@@ -306,7 +306,7 @@ class ThresholdMonitoringEvents(Base):
         )
 
     @keyword_only(2)
-    @twin_columns({"pct_above": "above_pct"})
+    @twin_columns({"pct_above": "time_above_pct"})
     def time_above_threshold(
         self,
         threshold: float,
@@ -330,7 +330,7 @@ class ThresholdMonitoringEvents(Base):
             DataFrame with columns: start, end, duration_seconds, time_above,
             pct_above, exceedance_count. ``end`` is ``start`` + ``window``.
 
-            Canonical twin columns: ``above_pct`` (after ``pct_above``); each holds the
+            Canonical twin columns: ``time_above_pct`` (after ``pct_above``); each holds the
             same values as the deprecated column right before it, which is removed in
             the next major release.
         """
