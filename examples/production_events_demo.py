@@ -709,7 +709,6 @@ def demo_downtime_tracking(df: pd.DataFrame) -> None:
                     "reason",
                     "occurrences",
                     "total_minutes",
-                    "avg_minutes",
                     "share_of_total_pct",
                 ]
             ]
