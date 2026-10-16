@@ -6,6 +6,60 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 11: typed API, docs that run
+
+No result changes except the fixes listed under *Fixes that change output*.
+
+### New and wider imports
+
+- `from ts_shape import X` is fully typed for mypy, pyright and IDEs (it was
+  `object`). Deprecated classes, methods and attributes are reported by type
+  checkers (mypy: `--enable-error-code deprecated`); runtime warnings are
+  unchanged.
+- New top-level exports: every transform and feature class, `ValueMapper`,
+  `PipelineResult`, and `TsShapeWarning`, `DataQualityWarning`,
+  `PerformanceWarning`, `LoaderConfigWarning`, `ColumnNotFoundError`,
+  `LoaderError`. `ts_shape.events` re-exports every detector;
+  `ts_shape.context` has `__all__`; `ts_shape.loader` also exports the Azure
+  flexible-file, Databricks and energy API loaders and `ContextEnricher`.
+- `list_detectors()` lists every top-level public class, now including the
+  transform and feature classes, and no longer imports the modules.
+
+### Import time
+
+`from ts_shape import OutlierDetectionEvents` takes about 0.35 s (was
+1.2–1.9 s): scipy and scikit-learn load only in the methods that use them.
+`outlier_detection.IsolationForest` is no longer a module attribute
+(`SKLEARN_AVAILABLE` is kept). The z-score is computed in numpy, identical to
+current scipy; on scipy older than 1.18 the last bits can differ, nearly
+constant data gives NaN scores, and scipy's "Precision loss" warning is no
+longer emitted.
+
+### PostgreSQL loaders
+
+`TimescaleDBDataAccess` and `DatapointDB` build their URL with the psycopg2
+driver named explicitly (works on SQLAlchemy 2.1) and escape the password.
+New settings: `db_port` (default 5432) and `db_driver` (default
+`"psycopg2"`), as keys of `TimescaleDBDataAccess`'s `db_config` and as
+keyword arguments of `DatapointDB`, which also takes `db_name` (default
+`"config_repository"`). Both
+have a `.url`; without psycopg2 an ImportError names `ts-shape[postgres]`.
+Loader `repr()` shows the settings with passwords, keys, tokens and
+connection strings hidden.
+
+### Fixes that change output
+
+- `PatternRecognition.discover_motifs(top_k > 1)` no longer returns trivial
+  matches: a later motif never starts within `exclusion_zone` (default
+  `window_size // 2`) of an earlier one, so ranks 2+ are different shapes.
+  `top_k=1` is unchanged.
+- `StartupDetectionEvents.detect_startup_by_slope` works with repeated index
+  labels (it raised `IndexError`).
+- `detect_startup_multi_signal` returns its full column set when nothing is
+  found, for `logic="any"` and `"all"` (it returned a frame with no columns).
+- `DatapointDB` gives an empty frame for a device without data points (it
+  raised `KeyError: 'uuid'`).
+
 ## October 2026, round 10: fast at 10 and 100 million rows
 
 Results are unchanged except where listed below; event ids from
