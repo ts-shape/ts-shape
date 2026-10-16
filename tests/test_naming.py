@@ -439,25 +439,20 @@ DEPRECATED_TWINS = {
     "target_cycle_time_s": "target_cycle_time_seconds",
     "period1_value": "period_a_value",
     "period2_value": "period_b_value",
-    **{
-        f"pct_{x}": f"{x}_pct"
-        for x in (
-            "GRR",
-            "PV",
-            "GRR_tolerance",
-            "above",
-            "contribution",
-            "of_available_time",
-            "of_best",
-            "of_total",
-            "of_window",
-            "saturated",
-            "time_at_high",
-            "time_at_low",
-            "time_disturbed",
-            "time_saturated",
-        )
-    },
+    "pct_GRR": "grr_pct",
+    "pct_PV": "pv_pct",
+    "pct_GRR_tolerance": "grr_tolerance_pct",
+    "pct_above": "time_above_pct",
+    "pct_contribution": "contribution_pct",
+    "pct_of_available_time": "share_of_available_time_pct",
+    "pct_of_best": "share_of_best_pct",
+    "pct_of_total": "share_of_total_pct",
+    "pct_of_window": "share_of_window_pct",
+    "pct_saturated": "saturated_pct",
+    "pct_time_at_high": "time_at_high_pct",
+    "pct_time_at_low": "time_at_low_pct",
+    "pct_time_disturbed": "time_disturbed_pct",
+    "pct_time_saturated": "time_saturated_pct",
 }
 
 #: Bare ratio columns of one method, twinned by ``*_ratio`` columns.
