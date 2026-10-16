@@ -799,6 +799,20 @@ def _dtypes_nan(cls: Any, method: str) -> str:
     return "ok"
 
 
+@functools.cache
+def sample_results(cls_name: str, method: str) -> tuple[str, Any, Any]:
+    """``(status, result on the plant data, result on empty input)``.
+
+    Cached for the whole test session, so contract tests that look at the
+    output columns (summary bounds, naming) share one run per method. Use
+    the results read-only.
+    """
+    cls = getattr(ts_shape, cls_name)
+    status, plain = _run(cls, method, _input("base"))
+    _, empty = _run(cls, method, _input("base").iloc[0:0])
+    return status, plain, empty
+
+
 def entries() -> list[tuple[str, str]]:
     return sorted(REGISTRY)
 

@@ -5,15 +5,24 @@
   every public class of ``ts_shape.transform`` and ``ts_shape.features``,
   and the loaders' time ranges (``start`` / ``end``);
 * optional arguments of detectors are keyword-only;
-* ``event_uuid`` defaults look like ``"<pack>:<name>"`` and are unique.
+* ``event_uuid`` defaults look like ``"<pack>:<name>"`` and are unique;
+* no public signature anywhere in ts_shape uses a name from the "Not"
+  column of the Parameters table in docs/naming.md (parsed from the page),
+  except the documented exceptions in :data:`NOT_COLUMN_EXCEPTIONS`;
+* detector output columns follow the "Output columns" rules: a legacy
+  spelling (``window_start``, ``n_samples``, ``pct_<x>``, ``<x>_ms``,
+  ``<x>_s``, ...) appears only as an explicitly listed deprecated twin, next
+  to its canonical column.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import importlib
 import inspect
 import pkgutil
 import re
+from pathlib import Path
 
 import pytest
 
@@ -59,11 +68,17 @@ RETIRED = {
     "value_cols": "value_columns",
     "cycle_uuid_col": "cycle_uuid_column",
     "group_col": "group_column",
+    "df": "dataframe",
+    "state_uuid": "run_state_uuid",
+    "expected_freq": "expected_interval",
+    "uuid_a": "signal_uuid_a",
+    "uuid_b": "signal_uuid_b",
+    "period1": "period_a",
+    "period2": "period_b",
 }
 
-#: Retired only in transform/features (event classes still name a frame
-#: argument ``df`` in internal-style helpers such as the SPC rules).
-RETIRED_TRANSFORM_FEATURES = {**RETIRED, "df": "dataframe"}
+#: Retired in transform/features (the same names as the detectors).
+RETIRED_TRANSFORM_FEATURES = dict(RETIRED)
 
 #: Retired time-range names in the loaders; a range is ``start`` / ``end``.
 RETIRED_LOADER = {
@@ -196,3 +211,308 @@ def test_event_uuid_defaults_are_namespaced_and_unique():
             )
         seen[p.default] = cls_name
     assert not problems, "\n".join(problems)
+
+
+# ---------------------------------------------------------------------------
+# docs/naming.md "Not" column, over every public signature
+# ---------------------------------------------------------------------------
+
+NAMING_MD = Path(__file__).resolve().parents[1] / "docs" / "naming.md"
+
+
+def _not_column() -> dict[str, str]:
+    """Retired parameter names (glob patterns) from the Parameters table.
+
+    ``<role>`` / ``<what>`` placeholders become ``*``. Rows whose "Not" cell
+    describes values rather than names ("an integer ``window``", "free-form
+    defaults such as ...") are skipped.
+    """
+    text = NAMING_MD.read_text(encoding="utf-8")
+    table = text.split("## Parameters", 1)[1].split("\n## ", 1)[0]
+    found: dict[str, str] = {}
+    for line in table.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) != 3 or cells[0] in ("Concept", "") or set(cells[0]) <= {"-"}:
+            continue
+        concept, canonical, retired = cells
+        if re.sub(r"`[^`]*`|[,/ ]", "", retired):
+            continue  # prose, not a list of names
+        for token in re.findall(r"`([^`]+)`", retired):
+            found[re.sub(r"<\w+>", "*", token)] = concept
+    return found
+
+
+NOT_COLUMN = _not_column()
+
+#: ``(qualified callable, parameter)`` -> why it keeps a "Not" name.
+NOT_COLUMN_EXCEPTIONS: dict[tuple[str, str], str] = {
+    # Not a frame argument.
+    ("ts_shape.pipeline:PipelineResult.__init__", "data"): "dataclass field",
+    ("ts_shape.signals.spec:SignalSpec.from_dict", "data"): "a dict, not a frame",
+    ("ts_shape.signals.spec:SignalSpecs.from_dict", "data"): "a dict, not a frame",
+    # Not a value column of the input frame.
+    (
+        "ts_shape.context.value_mapping:ValueMapper.__init__",
+        "mapping_value_column",
+    ): "a column of the mapping table, paired with mapping_key_column",
+    ("ts_shape.utils.signal_checks:remember_uuids", "column"): "internal helper",
+    ("ts_shape.utils.signal_checks:remember_uuids", "uuids"): "internal helper",
+    (
+        "ts_shape.events.quality.sensor_drift:SensorDriftEvents.drift_trend",
+        "metric",
+    ): "the statistic to trend ('mean' / 'std'), not a column",
+    (
+        "ts_shape.features.pattern_recognition:PatternRecognition"
+        ".compute_distance_profile",
+        "metric",
+    ): "a distance metric, not a column",
+    # Sampling interval of generated or partitioned data, not a time bucket.
+    ("ts_shape.datasets:make_timeseries", "freq"): "sampling interval (datasets)",
+    ("ts_shape.datasets:make_id_signal", "freq"): "sampling interval (datasets)",
+    ("ts_shape.signals.primitives:windows", "freq"): "deferred: rename to window",
+    **{
+        (
+            "ts_shape.loader.timeseries.databricks_spark_parquet_loader"
+            f":DatabricksSparkParquetLoader.{m}",
+            p,
+        ): "deferred: loader partition arguments"
+        for m in ("build_paths", "load_by_time_range_and_uuids")
+        for p in ("freq", "uuids")
+    },
+    # A signal's own uuid (a field), not "the signal a detector analyzes".
+    ("ts_shape.signals.spec:SignalSpec.__init__", "uuid"): "dataclass field",
+    ("ts_shape.eventlog.objects:ObjectSpec.__init__", "uuid"): "dataclass field",
+    ("ts_shape.signals.infer:infer_spec", "uuid"): "deferred: rename to signal_uuid",
+    ("ts_shape.datasets:make_id_signal", "uuid"): "deferred: rename to signal_uuid",
+    ("ts_shape.datasets:make_timeseries", "uuids"): "deferred: signal_uuids",
+    (
+        "ts_shape.loader.metadata.metadata_json_loader:MetadataJsonLoader.get_by_uuid",
+        "uuid",
+    ): "deferred: loader lookup argument",
+    (
+        "ts_shape.loader.metadata.metadata_json_loader"
+        ":MetadataJsonLoader.filter_by_uuid",
+        "uuids",
+    ): "deferred: loader lookup argument",
+    **{
+        (f"ts_shape.features.pattern_recognition:PatternRecognition.{m}", "uuid"): (
+            "deferred: concurrent fixes in pattern_recognition.py"
+        )
+        for m in (
+            "discover_motifs",
+            "discover_discords",
+            "similarity_search",
+            "template_match",
+            "compute_distance_profile",
+        )
+    },
+    # Loader uuid lists.
+    **{
+        (f"ts_shape.loader.timeseries.{cls}.{m}", "uuid_list"): (
+            "deferred: loader uuid lists"
+        )
+        for cls in (
+            "azure_blob_loader:AzureBlobParquetLoader",
+            "databricks_unity_parquet_loader:DatabricksUnityParquetLoader",
+        )
+        for m in (
+            "load_files_by_time_range_and_uuids",
+            "stream_files_by_time_range_and_uuids",
+        )
+    },
+    (
+        "ts_shape.loader.timeseries.parquet_loader:ParquetLoader.load_by_uuid_list",
+        "uuid_list",
+    ): "deferred: loader uuid lists",
+    (
+        "ts_shape.loader.timeseries.parquet_loader"
+        ":ParquetLoader.load_files_by_time_range_and_uuids",
+        "uuid_list",
+    ): "deferred: loader uuid lists",
+    (
+        "ts_shape.loader.timeseries.databricks_spark_parquet_loader"
+        ":DatabricksSparkParquetLoader.fetch_data_as_dataframe",
+        "uuids",
+    ): "deferred: loader uuid lists",
+    (
+        "ts_shape.loader.timeseries.s3proxy_parquet_loader:S3ProxyDataAccess.__init__",
+        "uuids",
+    ): "deferred: loader uuid lists",
+    (
+        "ts_shape.loader.timeseries.timescale_loader:TimescaleDBDataAccess.__init__",
+        "uuids",
+    ): "deferred: loader uuid lists",
+    (
+        "ts_shape.loader.combine.integrator:DataIntegratorHybrid.combine_data",
+        "uuids",
+    ): "deferred: loader uuid lists",
+    (
+        "ts_shape.transform.harmonization:DataHarmonizer.merge_multi_signals",
+        "uuids",
+    ): "deferred: rename to signal_uuids",
+    # A hold time of a level, not the shortest event kept.
+    **{
+        (f"ts_shape.events.{key}", "min_hold"): "deferred: hold time, not min_duration"
+        for key in (
+            "engineering.setpoint_events:SetpointChangeEvents.detect_setpoint_steps",
+            "engineering.setpoint_events:SetpointChangeEvents.detect_setpoint_changes",
+            "production.changeover:ChangeoverEvents.detect_changeover",
+        )
+    },
+}
+
+
+def _all_public_callables():
+    for info in pkgutil.walk_packages(ts_shape.__path__, "ts_shape."):
+        if any(part.startswith("_") for part in info.name.split(".")):
+            continue
+        try:
+            module = importlib.import_module(info.name)
+        except ImportError:  # loader backends with optional dependencies
+            continue
+        for name, obj in vars(module).items():
+            if name.startswith("_") or getattr(obj, "__module__", None) != info.name:
+                continue
+            if inspect.isfunction(obj):
+                yield f"{info.name}:{name}", obj
+            elif inspect.isclass(obj):
+                if getattr(obj, "__deprecated_alias_of__", None) is not None:
+                    continue  # deprecated class alias
+                for member, fn in _callables(obj):
+                    yield f"{info.name}:{name}.{member}", fn
+
+
+PUBLIC_CALLABLES = dict(_all_public_callables())
+
+
+def _retired_hits():
+    for qualname, fn in PUBLIC_CALLABLES.items():
+        for p in _params(fn):
+            if p.name in ("self", "cls"):
+                continue
+            for pattern, concept in NOT_COLUMN.items():
+                if fnmatch.fnmatchcase(p.name, pattern):
+                    yield qualname, p.name, concept
+
+
+def test_not_column_is_parsed():
+    assert {"df", "state_uuid", "*_value_column", "uuids", "freq"} <= set(NOT_COLUMN)
+    assert "window" not in NOT_COLUMN  # "an integer `window`" is prose
+    assert len(PUBLIC_CALLABLES) > 500
+
+
+def test_public_signatures_avoid_the_not_column():
+    bad = [
+        f"{q}({p}): naming.md says not this for {concept!r}"
+        for q, p, concept in _retired_hits()
+        if (q, p) not in NOT_COLUMN_EXCEPTIONS
+    ]
+    assert not bad, "\n".join(bad)
+
+
+def test_not_column_exceptions_are_current():
+    hits = {(q, p) for q, p, _ in _retired_hits()}
+    importable = {q.split(":")[0] for q in PUBLIC_CALLABLES}
+    stale = [
+        key
+        for key in NOT_COLUMN_EXCEPTIONS
+        if key not in hits and key[0].split(":")[0] in importable
+    ]
+    assert not stale, f"renamed or gone, drop the exception: {stale}"
+
+
+# ---------------------------------------------------------------------------
+# Output columns (docs/naming.md, "Output columns")
+# ---------------------------------------------------------------------------
+
+#: Legacy output column -> its canonical twin. A legacy spelling is allowed
+#: only here, and only next to its twin (removed in the next major release).
+DEPRECATED_TWINS = {
+    "window_start": "start",
+    "window_end": "end",
+    "time": "systime",
+    "n_samples": "sample_count",
+    "mean_interval_ms": "mean_interval_seconds",
+    "std_interval_ms": "std_interval_seconds",
+    "max_gap_ms": "max_gap_seconds",
+    "avg_cycle_time_s": "avg_cycle_time_seconds",
+    "target_cycle_time_s": "target_cycle_time_seconds",
+    "period1_value": "period_a_value",
+    "period2_value": "period_b_value",
+    **{
+        f"pct_{x}": f"{x}_pct"
+        for x in (
+            "GRR",
+            "PV",
+            "GRR_tolerance",
+            "above",
+            "contribution",
+            "of_available_time",
+            "of_best",
+            "of_total",
+            "of_window",
+            "saturated",
+            "time_at_high",
+            "time_at_low",
+            "time_disturbed",
+            "time_saturated",
+        )
+    },
+}
+
+#: Bare ratio columns of one method, twinned by ``*_ratio`` columns.
+METHOD_TWINS = {
+    ("LineThroughputEvents", "throughput_oee"): {
+        "availability": "availability_ratio",
+        "performance": "performance_ratio",
+        "oee_score": "oee_ratio",
+    },
+}
+
+#: Names that look legacy but are something else (a rate, a speed unit).
+NOT_LEGACY = {"observed_ramp_per_s", "mean_speed_m_s"}
+
+_LEGACY = re.compile(r"^(pct_.+|.+_ms|.+_s|n_samples|window_(start|end)|time)$")
+
+
+def _output_problems(key, frame):
+    cols = set(map(str, frame.columns))
+    twins = {**DEPRECATED_TWINS, **METHOD_TWINS.get(key, {})}
+    for col in cols:
+        if col in twins:
+            if twins[col] not in cols:
+                yield f"{col!r} without its twin {twins[col]!r}"
+        elif _LEGACY.match(col) and col not in NOT_LEGACY:
+            yield f"{col!r} is a legacy spelling (see docs/naming.md)"
+
+
+@pytest.mark.parametrize("key", sorted(REGISTRY), ids=lambda k: ".".join(k))
+def test_output_columns_follow_naming(key):
+    from invariants import harness
+
+    status, plain, empty = harness.sample_results(*key)
+    if status != "ok":
+        pytest.skip(status)
+    problems = [
+        f"{name}: {p}"
+        for name, result in (("result", plain), ("empty result", empty))
+        for frame in harness._frames(result)
+        for p in _output_problems(key, frame)
+    ]
+    assert not problems, "\n".join(problems)
+
+
+def test_deprecated_twins_sit_next_to_their_canonical_column():
+    from invariants import harness
+
+    for key, twins in {
+        ("SamplingResolutionEvents", "sampling_jitter"): {
+            "mean_interval_ms": "mean_interval_seconds"
+        },
+        ("DowntimeEvents", "downtime_by_reason"): {"pct_of_total": "of_total_pct"},
+        **METHOD_TWINS,
+    }.items():
+        _, plain, _ = harness.sample_results(*key)
+        cols = list(plain.columns)
+        for old, new in twins.items():
+            assert cols.index(new) == cols.index(old) + 1, (key, old, cols)
