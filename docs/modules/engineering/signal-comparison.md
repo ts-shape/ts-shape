@@ -17,7 +17,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 cmp = SignalComparisonEvents(df, reference_uuid="pressure_sp")
-print(cmp.detect_divergence("pressure_pv", tolerance=2.0, min_duration="10min"))
+result = cmp.detect_divergence("pressure_pv", tolerance=2.0, min_duration="10min")
+print(result[["start", "end", "max_deviation", "direction"]])
 stats = cmp.deviation_statistics("pressure_pv", window="1h")
 trend = cmp.tracking_error_trend("pressure_pv", window="6h")
 ```

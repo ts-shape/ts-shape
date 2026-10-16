@@ -13,7 +13,7 @@ Two modes of operation:
 
 import logging
 import warnings
-from typing import Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import pandas as pd
 
@@ -26,6 +26,7 @@ from ts_shape.utils.deprecation import (
     caller_stacklevel,
     deprecated_class,
     keyword_only,
+    renamed_kwargs,
 )
 from ts_shape.utils.shifts import assign_shift, production_dates
 from ts_shape.utils.time_accounting import (
@@ -34,6 +35,9 @@ from ts_shape.utils.time_accounting import (
     shift_periods,
     time_by_period,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +57,7 @@ class ShiftHandoverEvents(Base):
         report = ShiftHandoverEvents(df)
         result = report.generate_report(
             counter_uuid='prod', ok_counter_uuid='ok',
-            nok_counter_uuid='nok', state_uuid='state',
+            nok_counter_uuid='nok', run_state_uuid='state',
             targets={'shift_1': 450, 'shift_2': 450},
         )
 
@@ -192,7 +196,7 @@ class ShiftHandoverEvents(Base):
 
     def _availability_by_shift(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         running_value: str | bool,
         value_column: str,
         *,
@@ -205,7 +209,7 @@ class ShiftHandoverEvents(Base):
         inside it.
         """
         data = (
-            self.dataframe[self.dataframe["uuid"] == state_uuid]
+            self.dataframe[self.dataframe["uuid"] == run_state_uuid]
             .copy()
             .sort_values(self.time_column)
         )
@@ -416,12 +420,13 @@ class ShiftHandoverEvents(Base):
     # Raw-signal entry-point
     # ------------------------------------------------------------------
 
+    @renamed_kwargs(state_uuid="run_state_uuid")
     def generate_report(
         self,
         counter_uuid: str,
         ok_counter_uuid: str,
         nok_counter_uuid: str,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         targets: dict[str, float] | None = None,
         quality_target_pct: float = 98.0,
@@ -442,7 +447,7 @@ class ShiftHandoverEvents(Base):
             counter_uuid: UUID of production counter.
             ok_counter_uuid: UUID of good parts counter.
             nok_counter_uuid: UUID of the NOK part counter.
-            state_uuid: UUID of machine state signal.
+            run_state_uuid: UUID of machine state signal.
             targets: Per-shift production targets.
             quality_target_pct: Quality target percentage.
             availability_target_pct: Availability target percentage.
@@ -507,7 +512,7 @@ class ShiftHandoverEvents(Base):
             production_day=production_day,
         )
         avail = self._availability_by_shift(
-            state_uuid,
+            run_state_uuid,
             running_value,
             value_column_state,
             production_day=production_day,
@@ -599,7 +604,7 @@ class ShiftHandoverEvents(Base):
         counter_uuid: str | None = ...,
         ok_counter_uuid: str | None = ...,
         nok_counter_uuid: str | None = ...,
-        state_uuid: str | None = ...,
+        run_state_uuid: str | None = ...,
         *,
         report_df: pd.DataFrame | None = ...,
         thresholds: dict[str, float] | None = ...,
@@ -617,7 +622,7 @@ class ShiftHandoverEvents(Base):
         counter_uuid: str | None = ...,
         ok_counter_uuid: str | None = ...,
         nok_counter_uuid: str | None = ...,
-        state_uuid: str | None = ...,
+        run_state_uuid: str | None = ...,
         *,
         report_df: pd.DataFrame | None = ...,
         thresholds: dict[str, float] | None = ...,
@@ -630,12 +635,13 @@ class ShiftHandoverEvents(Base):
     ) -> list[dict[str, Any]]: ...
 
     @keyword_only(1)
+    @renamed_kwargs(state_uuid="run_state_uuid")
     def highlight_issues(
         self,
         counter_uuid: str | None = None,
         ok_counter_uuid: str | None = None,
         nok_counter_uuid: str | None = None,
-        state_uuid: str | None = None,
+        run_state_uuid: str | None = None,
         *,
         report_df: pd.DataFrame | None = None,
         thresholds: dict[str, float] | None = None,
@@ -660,7 +666,7 @@ class ShiftHandoverEvents(Base):
             counter_uuid: UUID of production counter (raw-signal mode).
             ok_counter_uuid: UUID of good parts counter (raw-signal mode).
             nok_counter_uuid: UUID of the NOK part counter (raw-signal mode).
-            state_uuid: UUID of machine state signal (raw-signal mode).
+            run_state_uuid: UUID of machine state signal (raw-signal mode).
             report_df: Pre-computed report DataFrame (pipeline mode).
                 If provided, UUID arguments are ignored.
             thresholds: Minimum acceptable values for each metric.
@@ -701,12 +707,12 @@ class ShiftHandoverEvents(Base):
 
         if report_df is not None:
             report = report_df
-        elif counter_uuid and ok_counter_uuid and nok_counter_uuid and state_uuid:
+        elif counter_uuid and ok_counter_uuid and nok_counter_uuid and run_state_uuid:
             report = self.generate_report(
                 counter_uuid,
                 ok_counter_uuid,
                 nok_counter_uuid,
-                state_uuid,
+                run_state_uuid,
                 targets=targets,
                 running_value=running_value,
                 value_column_counter=value_column_counter,
@@ -720,7 +726,7 @@ class ShiftHandoverEvents(Base):
                     ("counter_uuid", counter_uuid),
                     ("ok_counter_uuid", ok_counter_uuid),
                     ("nok_counter_uuid", nok_counter_uuid),
-                    ("state_uuid", state_uuid),
+                    ("run_state_uuid", run_state_uuid),
                 )
                 if not val
             ]
@@ -764,4 +770,10 @@ class ShiftHandoverEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-ShiftHandoverReport = deprecated_class(ShiftHandoverEvents, "ShiftHandoverReport")
+if TYPE_CHECKING:
+
+    @deprecated("ShiftHandoverReport is deprecated, use ShiftHandoverEvents")
+    class ShiftHandoverReport(ShiftHandoverEvents): ...
+
+else:
+    ShiftHandoverReport = deprecated_class(ShiftHandoverEvents, "ShiftHandoverReport")

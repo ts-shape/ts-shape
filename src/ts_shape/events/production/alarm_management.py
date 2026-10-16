@@ -5,6 +5,7 @@ and standing alarm identification from boolean alarm signals.
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,9 @@ from ts_shape.utils.deprecation import (
     renamed_kwargs,
 )
 from ts_shape.utils.runs import run_bounds, total_seconds
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +41,25 @@ class AlarmManagementEvents(Base):
         stats = alarms.alarm_duration_statistics()
         chatter = alarms.chattering_detection(min_transitions=5, window='10min')
         standing = alarms.standing_alarms(min_duration='1h')
+
+    Example:
+        >>> import pandas as pd
+        >>> from ts_shape import AlarmManagementEvents
+        >>> df = pd.DataFrame({
+        ...     "systime": pd.to_datetime([
+        ...         "2025-01-01 08:00", "2025-01-01 08:05", "2025-01-01 08:20",
+        ...         "2025-01-01 09:30", "2025-01-01 09:40", "2025-01-01 09:41"]),
+        ...     "uuid": "temp_high",
+        ...     "value_bool": [True, False, True, False, True, False],
+        ... })
+        >>> alarms = AlarmManagementEvents(df, "temp_high")
+        >>> alarms.alarm_duration_statistics()[
+        ...     ["alarm_count", "max_duration_seconds", "total_duration_seconds"]]
+           alarm_count  max_duration_seconds  total_duration_seconds
+        0            3                4200.0                  4560.0
+        >>> alarms.standing_alarms(min_duration="1h")[["start", "end", "duration_seconds"]]
+                        start                 end  duration_seconds
+        0 2025-01-01 08:20:00 2025-01-01 09:30:00            4200.0
     """
 
     def __init__(
@@ -177,7 +200,15 @@ class AlarmManagementEvents(Base):
         counts["source_uuid"] = self.alarm_uuid
         return counts
 
-    alarm_duration_stats = deprecated_method("alarm_duration_statistics")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "AlarmManagementEvents.alarm_duration_stats() is deprecated, use .alarm_duration_statistics()"
+        )
+        def alarm_duration_stats(self) -> pd.DataFrame: ...
+
+    else:
+        alarm_duration_stats = deprecated_method("alarm_duration_statistics")
 
     def alarm_duration_statistics(self) -> pd.DataFrame:
         """Compute min / avg / max / total duration of alarm-ON states.

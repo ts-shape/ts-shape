@@ -111,11 +111,11 @@ class SignalCorrelationEvents(Base):
         return aligned.dropna()
 
     @_window_size_from_int_window
-    @renamed_kwargs(resample="window")
+    @renamed_kwargs(uuid_a="signal_uuid_a", uuid_b="signal_uuid_b", resample="window")
     def rolling_correlation(
         self,
-        uuid_a: str,
-        uuid_b: str,
+        signal_uuid_a: str,
+        signal_uuid_b: str,
         *,
         window: str = "1min",
         window_size: int = 60,
@@ -123,19 +123,21 @@ class SignalCorrelationEvents(Base):
         """Compute rolling Pearson correlation between two signals.
 
         Args:
-            uuid_a: UUID of first signal.
-            uuid_b: UUID of second signal.
+            signal_uuid_a: UUID of first signal.
+            signal_uuid_b: UUID of second signal.
             window: Resample interval for alignment (offset string).
             window_size: Rolling window size, in resampled periods (rows).
 
         Returns:
             DataFrame: systime, uuid, source_uuid, source_uuid_a,
                        source_uuid_b, is_delta, correlation. ``source_uuid``
-                       is ``"<uuid_a>,<uuid_b>"``.
+                       is ``"<signal_uuid_a>,<signal_uuid_b>"``.
         """
         # Keep the regular grid: rolling over dropna()'d rows let a window of
         # `window_size` rows span a multi-day gap.
-        aligned = self._align_signals(uuid_a, uuid_b, window=window, keep_gaps=True)
+        aligned = self._align_signals(
+            signal_uuid_a, signal_uuid_b, window=window, keep_gaps=True
+        )
         if aligned.dropna().empty or len(aligned) < window_size:
             return pd.DataFrame(
                 columns=[
@@ -158,9 +160,9 @@ class SignalCorrelationEvents(Base):
             {
                 "systime": aligned.index,
                 "uuid": self.event_uuid,
-                "source_uuid": f"{uuid_a},{uuid_b}",
-                "source_uuid_a": uuid_a,
-                "source_uuid_b": uuid_b,
+                "source_uuid": f"{signal_uuid_a},{signal_uuid_b}",
+                "source_uuid_a": signal_uuid_a,
+                "source_uuid_b": signal_uuid_b,
                 "is_delta": True,
                 "correlation": corr.values,
             }
@@ -169,11 +171,11 @@ class SignalCorrelationEvents(Base):
         return out.reset_index(drop=True)
 
     @_window_size_from_int_window
-    @renamed_kwargs(resample="window")
+    @renamed_kwargs(uuid_a="signal_uuid_a", uuid_b="signal_uuid_b", resample="window")
     def correlation_breakdown(
         self,
-        uuid_a: str,
-        uuid_b: str,
+        signal_uuid_a: str,
+        signal_uuid_b: str,
         *,
         window: str = "1min",
         window_size: int = 60,
@@ -186,8 +188,8 @@ class SignalCorrelationEvents(Base):
         which may indicate process issues.
 
         Args:
-            uuid_a: UUID of first signal.
-            uuid_b: UUID of second signal.
+            signal_uuid_a: UUID of first signal.
+            signal_uuid_b: UUID of second signal.
             window: Resample interval for alignment (offset string).
             window_size: Rolling window size, in resampled periods (rows).
             threshold: Correlation threshold below which to flag.
@@ -203,7 +205,7 @@ class SignalCorrelationEvents(Base):
                        (same columns) when no breakdown is found.
         """
         corr_df = self.rolling_correlation(
-            uuid_a, uuid_b, window=window, window_size=window_size
+            signal_uuid_a, signal_uuid_b, window=window, window_size=window_size
         )
         cols = [
             "start",
@@ -232,8 +234,8 @@ class SignalCorrelationEvents(Base):
                     "start": grp["systime"].iloc[0],
                     "end": end,
                     "uuid": self.event_uuid,
-                    "source_uuid_a": uuid_a,
-                    "source_uuid_b": uuid_b,
+                    "source_uuid_a": signal_uuid_a,
+                    "source_uuid_b": signal_uuid_b,
                     "is_delta": True,
                     "min_correlation": grp["correlation"].min(),
                     "duration_seconds": (end - grp["systime"].iloc[0]).total_seconds(),
@@ -242,11 +244,11 @@ class SignalCorrelationEvents(Base):
 
         return pd.DataFrame(rows, columns=cols)
 
-    @renamed_kwargs(resample="window")
+    @renamed_kwargs(uuid_a="signal_uuid_a", uuid_b="signal_uuid_b", resample="window")
     def lag_correlation(
         self,
-        uuid_a: str,
-        uuid_b: str,
+        signal_uuid_a: str,
+        signal_uuid_b: str,
         *,
         window: str = "1min",
         max_lag: int = 30,
@@ -263,8 +265,8 @@ class SignalCorrelationEvents(Base):
         ``-5``.
 
         Args:
-            uuid_a: UUID of first signal (reference).
-            uuid_b: UUID of second signal, shifted against the reference.
+            signal_uuid_a: UUID of first signal (reference).
+            signal_uuid_b: UUID of second signal, shifted against the reference.
             window: Resample interval for alignment (offset string).
             max_lag: Maximum lag periods to test (in both directions).
 
@@ -274,7 +276,9 @@ class SignalCorrelationEvents(Base):
         # Shift on the regular grid (gaps kept as NaN) so a lag of k periods
         # is k * window of real time; shifting dropna()'d rows mixed lags
         # across gaps.
-        aligned = self._align_signals(uuid_a, uuid_b, window=window, keep_gaps=True)
+        aligned = self._align_signals(
+            signal_uuid_a, signal_uuid_b, window=window, keep_gaps=True
+        )
         if aligned.dropna().shape[0] < max_lag * 2:
             return pd.DataFrame(columns=["lag_periods", "correlation", "is_best_lag"])
 

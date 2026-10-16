@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
@@ -208,6 +209,13 @@ class LineThroughputEvents(Base):
         )
         return out
 
+    @twin_columns(
+        {
+            "availability": "availability_ratio",
+            "performance": "performance_ratio",
+            "oee_score": "oee_ratio",
+        }
+    )
     def throughput_oee(
         self,
         counter_uuid: str,
@@ -252,6 +260,11 @@ class LineThroughputEvents(Base):
             - planned_seconds: the window length
             - resets (only when ``handle_resets=True``): counter resets in
                 the window (see :meth:`count_parts`)
+
+            Canonical twin columns: ``availability_ratio`` (after ``availability``),
+            ``performance_ratio`` (after ``performance``), ``oee_ratio`` (after
+            ``oee_score``); each holds the same values as the deprecated column right
+            before it, which is removed in the next major release.
         """
         out_cols = [
             "start",

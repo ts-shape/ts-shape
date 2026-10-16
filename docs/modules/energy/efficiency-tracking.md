@@ -30,7 +30,7 @@ sec = ee.specific_energy_consumption("meter:main", "counter:parts", window="1D")
 | Method | Returns |
 |---|---|
 | `efficiency_trend(meter_uuid, counter_uuid, window='1h', trend_window=24)` | per window: `energy`, `units`, `efficiency` (units per kWh), `rolling_avg_efficiency`, `trend_direction` |
-| `idle_energy_waste(meter_uuid, state_uuid, window='15min', idle_threshold=0.0)` | per window: `energy_consumed`, `machine_running_pct`, `machine_running_ratio`, `is_idle_waste`, `waste_energy` |
+| `idle_energy_waste(meter_uuid, run_state_uuid, window='15min', idle_threshold=0.0)` | per window: `energy_consumed`, `machine_running_pct`, `machine_running_ratio`, `is_idle_waste`, `waste_energy` |
 | `specific_energy_consumption(meter_uuid, counter_uuid, window='1D')` | per window: `total_energy`, `total_output`, `sec` (kWh per unit), `sec_trend` |
 | `efficiency_comparison(meter_uuid, counter_uuid, shift_definitions=None)` | per shift: `avg_energy`, `avg_output`, `avg_efficiency`, `total_energy`, `total_output` |
 

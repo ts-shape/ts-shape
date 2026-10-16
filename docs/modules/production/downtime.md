@@ -19,19 +19,20 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": "line1:state", "value_string
                 pd.DataFrame({"systime": t, "uuid": "line1:reason", "value_string": reason})])
 
 dt = DowntimeEvents(df)  # shifts 06-14, 14-22, 22-06
-print(dt.downtime_by_shift(state_uuid="line1:state", max_gap="15min"))
-pareto = dt.top_downtime_reasons(state_uuid="line1:state", reason_uuid="line1:reason", top_n=5)
-trend = dt.availability_trend(state_uuid="line1:state", window="1h", max_gap="15min")
+result = dt.downtime_by_shift(run_state_uuid="line1:state", max_gap="15min")
+print(result[["date", "shift", "downtime_minutes", "uptime_minutes", "availability_pct"]])
+pareto = dt.top_downtime_reasons(run_state_uuid="line1:state", reason_uuid="line1:reason", top_n=5)
+trend = dt.availability_trend(run_state_uuid="line1:state", window="1h", max_gap="15min")
 ```
 
 ## Methods
 
 | Method | Returns |
 |---|---|
-| `downtime_by_shift(state_uuid, running_value='Running', max_gap=None)` | per date and shift: `total_seconds`, `downtime_seconds`, `uptime_seconds`, `availability_pct`, `excluded_seconds` |
-| `downtime_by_reason(state_uuid, reason_uuid, stopped_value='Stopped')` | per reason: `occurrences`, `total_seconds`, `avg_seconds`, `pct_of_total` |
-| `top_downtime_reasons(state_uuid, reason_uuid, top_n=5)` | Pareto: `reason`, `total_seconds`, `pct_of_total`, `cumulative_pct` |
-| `availability_trend(state_uuid, window='1D', max_gap=None)` | per period: `availability_pct`, `uptime_seconds`, `downtime_seconds`, `excluded_seconds` |
+| `downtime_by_shift(run_state_uuid, running_value='Running', max_gap=None)` | per date and shift: `total_seconds`, `downtime_seconds`, `uptime_seconds`, `availability_pct`, `excluded_seconds` |
+| `downtime_by_reason(run_state_uuid, reason_uuid, stopped_value='Stopped')` | per reason: `occurrences`, `total_seconds`, `avg_seconds`, `share_of_total_pct` |
+| `top_downtime_reasons(run_state_uuid, reason_uuid, top_n=5)` | Pareto: `reason`, `total_seconds`, `share_of_total_pct`, `cumulative_pct` |
+| `availability_trend(run_state_uuid, window='1D', max_gap=None)` | per period: `availability_pct`, `uptime_seconds`, `downtime_seconds`, `excluded_seconds` |
 
 Every `*_seconds` column has a `*_minutes` twin.
 

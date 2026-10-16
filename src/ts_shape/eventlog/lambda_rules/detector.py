@@ -19,6 +19,8 @@ from collections.abc import Mapping
 
 import pandas as pd
 
+from ts_shape.utils.deprecation import renamed_kwargs
+
 from ..model import EventLog
 from ..normalizer import to_event_log
 from .evaluator import evaluate
@@ -32,29 +34,31 @@ class LambdaDetector:
         self.spec = spec
         self.detector_name = f"{spec.class_name}.{spec.method_name}"
 
-    def evaluate(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply the rule to ``df`` and return a detector frame.
+    @renamed_kwargs(df="dataframe")
+    def evaluate(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+        """Apply the rule to ``dataframe`` and return a detector frame.
 
         Args:
-            df: Input DataFrame the rule's trigger expression is evaluated on.
+            dataframe: Input DataFrame the rule's trigger expression is evaluated on.
 
         Returns:
             Detector frame whose layout depends on the rule's shape
             (see :func:`~ts_shape.eventlog.lambda_rules.evaluator.evaluate`).
         """
-        return evaluate(self.spec, df)
+        return evaluate(self.spec, dataframe)
 
+    @renamed_kwargs(df="dataframe")
     def to_event_log(
         self,
-        df: pd.DataFrame,
+        dataframe: pd.DataFrame,
         *,
         objects: Mapping[str, object] | None = None,
         qualifiers: Mapping[str, str] | None = None,
     ) -> EventLog:
-        """Evaluate the rule on ``df`` and normalize the result to an event log.
+        """Evaluate the rule on ``dataframe`` and normalize the result to an event log.
 
         Args:
-            df: Input DataFrame the rule is evaluated on.
+            dataframe: Input DataFrame the rule is evaluated on.
             objects: Optional OCEL object bindings, mapping an object type to a
                 column name, callable, Series or scalar; passed through to
                 :func:`~ts_shape.eventlog.to_event_log`. None uses only the
@@ -65,7 +69,7 @@ class LambdaDetector:
         Returns:
             The canonical :class:`~ts_shape.eventlog.model.EventLog`.
         """
-        frame = self.evaluate(df)
+        frame = self.evaluate(dataframe)
         return to_event_log(
             frame,
             detector=self.detector_name,

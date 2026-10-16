@@ -26,7 +26,13 @@ else:
         requests = None
 
 from ts_shape.errors import DataQualityWarning
-from ts_shape.loader._utils import parse_utc_times, require_optional
+from ts_shape.loader._utils import (
+    loader_repr,
+    parse_utc_times,
+    redact_mapping,
+    redact_url,
+    require_optional,
+)
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import caller_stacklevel
 
@@ -74,6 +80,15 @@ class EnergyAPILoader:
         self.base_url = base_url.rstrip("/")
         self.headers = headers or {}
         self.timeout = timeout
+
+    def __repr__(self) -> str:
+        # Header values (tokens) and query values (API keys) are masked.
+        return loader_repr(
+            self,
+            base_url=redact_url(self.base_url),
+            headers=redact_mapping(self.headers),
+            timeout=self.timeout,
+        )
 
     # ------------------------------------------------------------------
     # Public methods

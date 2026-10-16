@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
@@ -34,6 +35,23 @@ class MicroStopEvents(Base):
     - micro_stop_frequency: Count micro-stops per time window.
     - micro_stop_impact: Time lost to micro-stops per window.
     - micro_stop_patterns: Group micro-stops by hour-of-day.
+
+    Example:
+        >>> import pandas as pd
+        >>> from ts_shape import MicroStopEvents
+        >>> df = pd.DataFrame({
+        ...     "systime": pd.to_datetime([
+        ...         "2025-01-01 08:00:00", "2025-01-01 08:10:00", "2025-01-01 08:10:20",
+        ...         "2025-01-01 08:30:00", "2025-01-01 08:30:45", "2025-01-01 09:00:00"]),
+        ...     "uuid": "run",
+        ...     "value_bool": [True, False, True, False, True, True],
+        ... })
+        >>> stops = MicroStopEvents(df, "run").detect_micro_stops(max_duration="30s")
+        >>> stops[["start", "end", "duration_seconds"]]
+                        start                 end  duration_seconds
+        0 2025-01-01 08:10:00 2025-01-01 08:10:20              20.0
+
+        The 45 s stop at 08:30 is longer than ``max_duration`` and is not listed.
     """
 
     def __init__(
@@ -176,6 +194,7 @@ class MicroStopEvents(Base):
         )
 
     @keyword_only(1)
+    @twin_columns({"pct_of_window": "share_of_window_pct"})
     def micro_stop_frequency(
         self, window: str = "1h", max_duration: str = "30s"
     ) -> pd.DataFrame:
@@ -189,6 +208,10 @@ class MicroStopEvents(Base):
             DataFrame with columns: start, end (start + window),
             duration_seconds, uuid, source_uuid, count, total_lost_time,
             pct_of_window.
+
+            Canonical twin columns: ``share_of_window_pct`` (after ``pct_of_window``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         cols = ["start", "count", "total_lost_time", "pct_of_window"]
         stops = self.detect_micro_stops(max_duration=max_duration)

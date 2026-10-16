@@ -18,7 +18,7 @@ df = pd.DataFrame({
     "value_bool": rng.random(500) < 0.15,
 })
 alarms = AlarmManagementEvents(df, alarm_uuid="line1:temp_high_alarm")
-print(alarms.alarm_frequency(window="1h").head())
+print(alarms.alarm_frequency(window="1h").head()[["start", "end", "alarm_count"]])
 chattering = alarms.chattering_detection(min_transitions=5, window="10min")
 standing = alarms.standing_alarms(min_duration="1h")
 ```

@@ -64,12 +64,12 @@ def demo_basic_extraction():
     print(f"Incomplete cycles: {(~cycles_df['is_complete']).sum()}")
 
     print("\nFirst 5 cycles:")
-    print(cycles_df.head())
+    print(cycles_df.head()[["cycle_start", "cycle_end", "is_complete"]])
 
     print("\nIncomplete cycles (if any):")
     incomplete = cycles_df[~cycles_df["is_complete"]]
     if not incomplete.empty:
-        print(incomplete)
+        print(incomplete[["cycle_start", "cycle_end", "is_complete"]])
     else:
         print("No incomplete cycles found")
 
@@ -102,13 +102,7 @@ def demo_validation():
     print("\nSample of validated cycles:")
     print(
         validated_df[
-            [
-                "cycle_start",
-                "cycle_end",
-                "cycle_duration",
-                "is_valid",
-                "validation_issue",
-            ]
+            ["cycle_start", "cycle_duration", "is_valid", "validation_issue"]
         ].head(10)
     )
 
@@ -336,7 +330,11 @@ def main():
 
         print("\nFinal cycles DataFrame shape:", final_df.shape)
         print("\nSample of final result:")
-        print(final_df.head())
+        print(
+            final_df.head()[
+                ["cycle_start", "is_valid", "validation_issue", "has_overlap"]
+            ]
+        )
 
     except Exception as e:
         print(f"\nError during demonstration: {e}")

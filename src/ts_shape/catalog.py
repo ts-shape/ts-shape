@@ -9,10 +9,34 @@ loaders from a REPL or notebook instead of scanning the docs::
 
 from __future__ import annotations
 
-import importlib
-import inspect
-
 import pandas as pd
+
+#: Deprecated class aliases re-exported from ``ts_shape``. They are left out
+#: of the catalog. Listed here so ``list_detectors`` can decide from names
+#: alone, without importing every module (which would pull in scipy and
+#: scikit-learn); ``tests/test_catalog.py`` checks this set against the
+#: classes themselves.
+_DEPRECATED_CLASS_ALIASES = frozenset(
+    {
+        "CycleTimeTracking",
+        "DowntimeTracking",
+        "OEECalculator",
+        "OperatorPerformanceTracking",
+        "OrderTraceabilityEvents",
+        "PartProductionTracking",
+        "PerformanceLossTracking",
+        "PeriodSummary",
+        "ProcessStabilityIndex",
+        "QualityTracking",
+        "ReworkTracking",
+        "ScrapTracking",
+        "SetupTimeTracking",
+        "ShiftHandoverReport",
+        "ShiftReporting",
+        "StatisticalProcessControlRuleBased",
+        "TargetTracking",
+    }
+)
 
 
 def _category_for(module: str) -> str:
@@ -28,14 +52,17 @@ def _category_for(module: str) -> str:
     return parts[1] if len(parts) > 1 else module
 
 
-def _is_listed_class(name: str, module: str) -> bool:
-    """Whether a re-exported name is a current (not deprecated) class."""
-    try:
-        obj = getattr(importlib.import_module(module), name)
-    except ImportError:
-        # An optional backend is missing; decide by the naming convention.
-        return name[:1].isupper() and not name.isupper()
-    return inspect.isclass(obj) and not hasattr(obj, "__deprecated_alias_of__")
+def _is_listed_class(name: str) -> bool:
+    """Whether a re-exported name is a current (not deprecated) class.
+
+    Decided from the name, so no module is imported: classes are CamelCase,
+    functions are snake_case and constants are UPPER_CASE.
+    """
+    return (
+        name[:1].isupper()
+        and not name.isupper()
+        and name not in _DEPRECATED_CLASS_ALIASES
+    )
 
 
 def list_detectors(category: str | None = None) -> pd.DataFrame:
@@ -58,7 +85,7 @@ def list_detectors(category: str | None = None) -> pd.DataFrame:
     rows = [
         {"name": name, "category": _category_for(module), "module": module}
         for name, module in _LAZY.items()
-        if _is_listed_class(name, module)
+        if _is_listed_class(name)
     ]
     df = (
         pd.DataFrame(rows, columns=["name", "category", "module"])

@@ -33,6 +33,26 @@ def _folder_bounds(
 class ParquetLoader:
     """
     This class provides class methods to load parquet files from a specified directory structure.
+
+    Example:
+        Files are named ``<uuid>.parquet`` in ``YYYY/MM/DD/HH`` folders:
+
+        >>> import tempfile
+        >>> from pathlib import Path
+        >>> import ts_shape
+        >>> from ts_shape import ParquetLoader
+        >>> tmp = tempfile.TemporaryDirectory()
+        >>> folder = Path(tmp.name, "2025", "01", "01", "00")
+        >>> folder.mkdir(parents=True)
+        >>> ts_shape.make_timeseries(["temp"], n_points=3, freq="1min", noise=0).to_parquet(
+        ...     folder / "temp.parquet")
+        >>> ParquetLoader.load_by_uuid_list(tmp.name, ["temp"])[
+        ...     ["systime", "uuid", "value_double"]]
+                      systime  uuid  value_double
+        0 2025-01-01 00:00:00  temp         100.0
+        1 2025-01-01 00:01:00  temp         100.0
+        2 2025-01-01 00:02:00  temp         100.0
+        >>> tmp.cleanup()
     """
 
     def __init__(self, base_path: str):

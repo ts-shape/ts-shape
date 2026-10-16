@@ -2,7 +2,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-from scipy.fft import fft, ifft
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
@@ -129,6 +128,8 @@ class PatternRecognition(Base):
             1D array of distances for each position; NaN for a window with a
             missing value.
         """
+        from scipy.fft import fft, ifft
+
         n = len(series)
         m = len(query)
 
@@ -222,6 +223,8 @@ class PatternRecognition(Base):
             missing value, or without any comparable window, has profile
             ``inf`` and index ``-1``.
         """
+        from scipy.fft import fft, ifft
+
         n = len(series)
         m = window_size
         profile_len = max(n - m + 1, 0)
@@ -313,7 +316,11 @@ class PatternRecognition(Base):
             value_column: Column containing numeric values.
             window_size: Length of subsequences to compare.
             top_k: Number of motif pairs to return.
-            exclusion_zone: Indices to exclude around matches. Defaults to window_size // 2.
+            exclusion_zone: Indices to exclude around matches. Defaults to
+                window_size // 2. Also applied between motifs: no member of a
+                returned pair starts within ``exclusion_zone`` of a member of
+                a better-ranked pair, so later motifs are not the first one
+                shifted by a sample or two.
             time_column: Column containing timestamps.
             uuid: Signal to analyze when the frame holds several uuids.
 
@@ -339,7 +346,10 @@ class PatternRecognition(Base):
         # Find top-k motifs (smallest MP values)
         sorted_indices = np.argsort(mp, kind="stable")
         results: list[dict[str, object]] = []
-        used: set[tuple[int, int]] = set()
+        # Window starts of the motifs already returned (both members): a
+        # later pair with a member within exclusion_zone of one is a trivial
+        # match (the same motif shifted by a few samples) and is skipped.
+        used_starts: list[int] = []
 
         for idx in sorted_indices:
             if len(results) >= top_k:
@@ -348,11 +358,11 @@ class PatternRecognition(Base):
             if partner < 0 or not np.isfinite(mp[idx]):
                 continue
             pair = (min(int(idx), partner), max(int(idx), partner))
-            if pair in used:
-                continue
             if abs(int(idx) - partner) <= exclusion_zone:
                 continue
-            used.add(pair)
+            if any(abs(p - u) <= exclusion_zone for p in pair for u in used_starts):
+                continue
+            used_starts.extend(pair)
 
             row: dict[str, object] = {
                 "motif_rank": len(results) + 1,

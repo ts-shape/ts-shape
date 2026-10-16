@@ -72,8 +72,8 @@ class TestPeriodSummary:
         summary = PeriodSummaryEvents(df)
         result = summary.compare_periods(
             counter_uuid="prod_counter",
-            period1=("2024-01-01", "2024-01-07"),
-            period2=("2024-01-08", "2024-01-14"),
+            period_a=("2024-01-01", "2024-01-07"),
+            period_b=("2024-01-08", "2024-01-14"),
         )
         assert not result.empty
         assert "metric" in result.columns
@@ -194,8 +194,8 @@ class TestPeriodSummary:
         assert summary.monthly_summary(counter_uuid="x").empty
         assert summary.compare_periods(
             counter_uuid="x",
-            period1=("2024-01-01", "2024-01-07"),
-            period2=("2024-01-08", "2024-01-14"),
+            period_a=("2024-01-01", "2024-01-07"),
+            period_b=("2024-01-08", "2024-01-14"),
         ).empty
 
 

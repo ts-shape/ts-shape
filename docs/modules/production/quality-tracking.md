@@ -20,7 +20,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 qt = QualityEvents(df)
-print(qt.nok_by_shift(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok"))
+result = qt.nok_by_shift(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok")
+print(result[["date", "shift", "ok_parts", "nok_parts", "first_pass_yield_pct"]])
 by_part = qt.quality_by_part(ok_counter_uuid="line1:ok", nok_counter_uuid="line1:nok", part_id_uuid="line1:part_id")
 ```
 
@@ -30,7 +31,7 @@ by_part = qt.quality_by_part(ok_counter_uuid="line1:ok", nok_counter_uuid="line1
 |---|---|
 | `nok_by_shift(ok_counter_uuid, nok_counter_uuid)` | per date and shift: `ok_parts`, `nok_parts`, `total_parts`, `nok_rate_pct`, `first_pass_yield_pct`, `quality_pct` |
 | `quality_by_part(ok_counter_uuid, nok_counter_uuid, part_id_uuid)` | per part number: same metrics |
-| `nok_by_reason(nok_counter_uuid, defect_reason_uuid)` | per reason: `nok_parts`, `pct_of_total` |
+| `nok_by_reason(nok_counter_uuid, defect_reason_uuid)` | per reason: `nok_parts`, `share_of_total_pct` |
 | `daily_quality_summary(ok_counter_uuid, nok_counter_uuid)` | per date: same metrics as `nok_by_shift` |
 
 ## Notes

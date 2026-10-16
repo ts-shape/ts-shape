@@ -72,6 +72,18 @@ class ProfileReport:
         table: One row per signal with the measured characteristics.
         issue_table: One row per finding (``uuid``, ``severity``, ``issue``,
             ``detail``), most severe first.
+
+    Example:
+        >>> import ts_shape
+        >>> report = ts_shape.profile(ts_shape.make_timeseries(["temp", "pressure"], n_points=100))
+        >>> print(report.summary())
+        ts-shape profile: 2 signal(s)
+          kinds: 2 continuous
+          issues: none
+        >>> report.to_frame()[["uuid", "kind", "encoding", "rows"]]
+               uuid        kind encoding  rows
+        0  pressure  continuous  sampled   100
+        1      temp  continuous  sampled   100
     """
 
     specs: SignalSpecs

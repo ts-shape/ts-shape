@@ -1820,7 +1820,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "quality.capability.over_time",
         _Q,
         S,
-        standard_attrs={"ts_shape:sample_count": "n_samples"},
+        standard_attrs={"ts_shape:sample_count": "sample_count"},
     ),
     ("CapabilityTrendingEvents", "detect_capability_drop"): _r(
         "quality.capability.drop",
@@ -1887,7 +1887,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("CalibrationValidationEvents", "detect_recalibration_need"): _r(
         "quality.calibration.recalibration_need",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "calibration_recalibration_need",
@@ -1897,7 +1897,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("CalibrationValidationEvents", "calibration_stability"): _r(
         "quality.calibration.stability",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "calibration_stability",
@@ -1907,14 +1907,14 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("EnvironmentalCompensationEvents", "detect_correlation"): _r(
         "quality.env_compensation.correlation",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={"ts_shape:method": "env_correlation"},
     ),
     ("EnvironmentalCompensationEvents", "sensitivity"): _r(
         "quality.env_compensation.sensitivity",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "env_sensitivity",
@@ -1934,7 +1934,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("EnvironmentalCompensationEvents", "detect_env_exceedance"): _r(
         "quality.env_compensation.exceedance",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "env_exceedance",
@@ -1944,11 +1944,11 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("MeasurementUncertaintyEvents", "type_a_uncertainty"): _r(
         "quality.uncertainty.type_a",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "uncertainty_type_a",
-            "ts_shape:sample_count": "n_samples",
+            "ts_shape:sample_count": "sample_count",
         },
     ),
     ("MeasurementUncertaintyEvents", "type_b_uncertainty"): _r(
@@ -1961,7 +1961,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("MeasurementUncertaintyEvents", "combined_uncertainty"): _r(
         "quality.uncertainty.combined",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "uncertainty_combined",
@@ -1978,7 +1978,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("SamplingResolutionEvents", "detect_quantization"): _r(
         "quality.sampling.quantization",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "sampling_quantization",
@@ -1988,7 +1988,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("SamplingResolutionEvents", "effective_resolution"): _r(
         "quality.sampling.effective_resolution",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "sampling_effective_resolution",
@@ -1998,7 +1998,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("SamplingResolutionEvents", "detect_aliasing"): _r(
         "quality.sampling.aliasing",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "sampling_aliasing",
@@ -2008,7 +2008,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("SamplingResolutionEvents", "sampling_jitter"): _r(
         "quality.sampling.jitter",
         _Q,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "sampling_jitter",
@@ -2065,7 +2065,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("TimeToThresholdEvents", "time_to_threshold_windows"): _r(
         "engineering.time_to_threshold.window",
         _E,
-        ST,
+        S,
         objs=("signal",),
         standard_attrs={
             "ts_shape:method": "linear_trend",
@@ -2496,7 +2496,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "quality.distribution.bimodal",
         _Q,
         ST,
-        standard_attrs={"ts_shape:sample_count": "n_samples"},
+        standard_attrs={"ts_shape:sample_count": "sample_count"},
     ),
     ("ValueDistributionEvents", "detect_mode_changes"): _r(
         "quality.distribution.mode_change",
@@ -2512,7 +2512,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _Q,
         S,
         standard_attrs={
-            "ts_shape:sample_count": "n_samples",
+            "ts_shape:sample_count": "sample_count",
             "ts_shape:confidence": "p_value",
         },
     ),
@@ -2520,7 +2520,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "quality.distribution.percentile",
         _Q,
         S,
-        standard_attrs={"ts_shape:sample_count": "n_samples"},
+        standard_attrs={"ts_shape:sample_count": "sample_count"},
     ),
     # ---- supplychain -------------------------------------------------------
     ("DemandPatternEvents", "demand_by_period"): _r(

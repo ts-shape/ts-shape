@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,9 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
 from ts_shape.utils.intervals import state_intervals
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +158,17 @@ class DutyCycleEvents(Base):
         ).dt.total_seconds()
         return intervals
 
-    duty_cycle_per_window = deprecated_method("duty_cycle_by_window")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "DutyCycleEvents.duty_cycle_per_window() is deprecated, use .duty_cycle_by_window()"
+        )
+        def duty_cycle_per_window(
+            self, window: str = "1h", *, time_weighted: bool = True
+        ) -> pd.DataFrame: ...
+
+    else:
+        duty_cycle_per_window = deprecated_method("duty_cycle_by_window")
 
     @keyword_only(1)
     def duty_cycle_by_window(

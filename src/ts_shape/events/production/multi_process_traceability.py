@@ -27,6 +27,7 @@ import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import deprecated_attribute, renamed_kwargs
 from ts_shape.utils.runs import Runs, run_bounds, run_labels, total_seconds
 
 logger = logging.getLogger(__name__)
@@ -160,6 +161,12 @@ class MultiProcessTraceabilityEvents(Base):
         station_stats = trace.station_statistics()
     """
 
+    id_value_column = deprecated_attribute("value_column_id")
+    handover_value_column = deprecated_attribute("value_column_handover")
+
+    @renamed_kwargs(
+        id_value_column="value_column_id", handover_value_column="value_column_handover"
+    )
     def __init__(
         self,
         dataframe: pd.DataFrame,
@@ -167,8 +174,8 @@ class MultiProcessTraceabilityEvents(Base):
         *,
         handovers: list[dict[str, str]] | None = None,
         event_uuid: str = "prod:multi_process_trace",
-        id_value_column: str = "value_string",
-        handover_value_column: str = "value_integer",
+        value_column_id: str = "value_string",
+        value_column_handover: str = "value_integer",
         time_column: str = "systime",
     ) -> None:
         """Initialize multi-process traceability.
@@ -184,16 +191,16 @@ class MultiProcessTraceabilityEvents(Base):
                 - to_station: Station name the item arrives at.
                 Handover signal value > 0 (or True) indicates a transfer event.
             event_uuid: UUID to tag derived events with.
-            id_value_column: Column holding item ID strings in process signals.
-            handover_value_column: Column holding handover trigger values.
+            value_column_id: Column holding item ID strings in process signals.
+            value_column_handover: Column holding handover trigger values.
             time_column: Name of timestamp column.
         """
         super().__init__(dataframe, time_column=time_column)
         self.processes = processes
         self.handovers = handovers or []
         self.event_uuid = event_uuid
-        self.id_value_column = id_value_column
-        self.handover_value_column = handover_value_column
+        self.value_column_id = value_column_id
+        self.value_column_handover = value_column_handover
         self.time_column = time_column
 
         # Build station lookup: station_name -> list of id_uuids (parallel cells)
@@ -246,8 +253,8 @@ class MultiProcessTraceabilityEvents(Base):
                 ]
             )
 
-        s = sdf[[self.time_column, self.id_value_column]].copy()
-        s["item_id"] = s[self.id_value_column].fillna("")
+        s = sdf[[self.time_column, self.value_column_id]].copy()
+        s["item_id"] = s[self.value_column_id].fillna("")
 
         # Split on value changes OR large time gaps (>3x median sample interval).
         # This handles the case where the same item revisits a station after
@@ -587,10 +594,10 @@ class MultiProcessTraceabilityEvents(Base):
                 continue
 
             # Find trigger points: value > 0 after being 0 or NaN
-            hvals = hdf[[self.time_column, self.handover_value_column]].copy()
+            hvals = hdf[[self.time_column, self.value_column_handover]].copy()
             hvals["val"] = to_numeric_checked(
-                hvals[self.handover_value_column],
-                what=f"handover {ho_uuid!r} ({self.handover_value_column!r})",
+                hvals[self.value_column_handover],
+                what=f"handover {ho_uuid!r} ({self.value_column_handover!r})",
             ).fillna(0)
             hvals["prev"] = hvals["val"].shift(fill_value=0)
             triggers = hvals[(hvals["val"] > 0) & (hvals["prev"] <= 0)]
@@ -608,7 +615,7 @@ class MultiProcessTraceabilityEvents(Base):
             for fuid in from_uuids:
                 fdf = self._process_data.get(fuid, pd.DataFrame())
                 if not fdf.empty:
-                    from_frames.append(fdf[[self.time_column, self.id_value_column]])
+                    from_frames.append(fdf[[self.time_column, self.value_column_id]])
 
             if not from_frames:
                 continue
@@ -624,7 +631,7 @@ class MultiProcessTraceabilityEvents(Base):
             )
 
             for _, row in merged.iterrows():
-                item_id = row.get(self.id_value_column, "")
+                item_id = row.get(self.value_column_id, "")
                 if pd.isna(item_id) or item_id == "":
                     continue
                 # Get the matching trigger row for handover_value

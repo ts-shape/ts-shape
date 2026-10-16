@@ -4,6 +4,7 @@ import warnings
 import pytest
 
 from ts_shape.utils.deprecation import (
+    deprecated_attribute,
     deprecated_class,
     deprecated_method,
     keyword_only,
@@ -70,3 +71,31 @@ def test_keyword_only_signature_and_positional_shim():
         assert K().method(1, b=5) == (1, 5, 2)
     with pytest.warns(DeprecationWarning, match="passing b positionally"):
         assert K().method(1, 5) == (1, 5, 2)
+
+
+class WithAttr:
+    def __init__(self):
+        self.start = 1
+
+    start_timestamp = deprecated_attribute("start")
+
+
+def test_deprecated_objects_are_marked_pep702_and_warn_once():
+    """``__deprecated__`` is set for tools; the runtime warning is not doubled."""
+    assert Old.__deprecated__ == "Old is deprecated, use New"
+    assert New.__dict__.get("__deprecated__") is None
+    assert New(3).calculate_oee.__deprecated__ == (
+        "New.calculate_oee() is deprecated, use .oee()"
+    )
+    assert WithAttr.__dict__["start_timestamp"].__deprecated__ == (
+        "WithAttr.start_timestamp is deprecated, use WithAttr.start"
+    )
+    for call in (
+        lambda: Old(5),
+        lambda: New(3).calculate_oee(),
+        lambda: WithAttr().start_timestamp,
+    ):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            call()
+        assert [w.category for w in caught] == [DeprecationWarning]

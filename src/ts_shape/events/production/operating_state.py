@@ -1,11 +1,14 @@
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +141,15 @@ class OperatingStateEvents(Base):
             columns=cols,
         )
 
-    state_duration_stats = deprecated_method("state_duration_statistics")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "OperatingStateEvents.state_duration_stats() is deprecated, use .state_duration_statistics()"
+        )
+        def state_duration_stats(self, n_states: int = 2) -> pd.DataFrame: ...
+
+    else:
+        state_duration_stats = deprecated_method("state_duration_statistics")
 
     @keyword_only(1)
     def state_duration_statistics(self, n_states: int = 2) -> pd.DataFrame:

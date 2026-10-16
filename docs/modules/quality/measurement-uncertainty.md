@@ -17,7 +17,8 @@ sources = [
 ]
 
 mu = MeasurementUncertaintyEvents(df, "cmm1:bore_diameter")
-print(mu.combined_uncertainty(window="8h", type_b_sources=sources, coverage_factor=2.0))
+result = mu.combined_uncertainty(window="8h", type_b_sources=sources, coverage_factor=2.0)
+print(result[["start", "type_a", "combined_uncertainty", "expanded_uncertainty"]])
 budget = mu.uncertainty_budget(window="8h", type_b_sources=sources)
 ```
 
@@ -25,15 +26,15 @@ budget = mu.uncertainty_budget(window="8h", type_b_sources=sources)
 
 | Method | Returns |
 |---|---|
-| `type_a_uncertainty(window='8h')` | per window: `window_start`, `mean`, `std`, `n_samples`, `type_a_uncertainty` |
+| `type_a_uncertainty(window='8h')` | per window: `start`, `end`, `duration_seconds`, `mean`, `std`, `sample_count`, `type_a_uncertainty` |
 | `type_b_uncertainty(sources)` (static) | per source: `source`, `distribution`, `half_width`, `divisor`, `type_b_uncertainty` |
 | `combined_uncertainty(window='8h', type_b_sources=None, coverage_factor=2.0)` | per window: `type_a`, `type_b_combined`, `combined_uncertainty`, `expanded_uncertainty`, `coverage_factor` |
-| `uncertainty_budget(window='8h', type_b_sources=None)` | per source: `source`, `uncertainty`, `pct_contribution` |
+| `uncertainty_budget(window='8h', type_b_sources=None)` | per source: `source`, `uncertainty`, `contribution_pct` |
 
 ## Notes
 
 - Type A: `u_A = std / sqrt(n)` per window; windows with fewer than 2 samples are skipped.
 - Type B: `u_B = half_width / divisor`, with divisors `rectangular` √3 (default, also for unknown names), `triangular` √6, `normal` 2, `u-shaped` √2. Each source needs `source` and `half_width`; `distribution` is optional.
 - Combined: `u_c = sqrt(u_A² + Σ u_Bi²)`; expanded: `U = k · u_c` with `k = coverage_factor` (2.0 ≈ 95.45 % coverage).
-- Budget: Type A is averaged over all windows; `pct_contribution` is each source's share of the total variance (`u²`), so the rows sum to 100.
+- Budget: Type A is averaged over all windows; `contribution_pct` is each source's share of the total variance (`u²`), so the rows sum to 100.
 - `part_uuid` is deprecated and has no effect.

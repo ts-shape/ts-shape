@@ -6,6 +6,7 @@ and detects anomalous lead times.
 
 import logging
 import warnings
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -17,6 +18,9 @@ from ts_shape.utils.deprecation import (
     deprecated_method,
     keyword_only,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +86,20 @@ class LeadTimeAnalysisEvents(Base):
         self.event_uuid = event_uuid
         self.time_column = time_column
 
-    calculate_lead_times = deprecated_method("lead_times")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "LeadTimeAnalysisEvents.calculate_lead_times() is deprecated, use .lead_times()"
+        )
+        def calculate_lead_times(
+            self,
+            order_uuid: str,
+            delivery_uuid: str,
+            value_column: str = "value_string",
+        ) -> pd.DataFrame: ...
+
+    else:
+        calculate_lead_times = deprecated_method("lead_times")
 
     @keyword_only(3)
     def lead_times(

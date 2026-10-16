@@ -6,6 +6,106 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 11: typed API, docs that run
+
+No result changes except the fixes listed under *Fixes that change output*.
+
+### New and wider imports
+
+- `from ts_shape import X` is fully typed for mypy, pyright and IDEs (it was
+  `object`). Deprecated classes, methods and attributes are reported by type
+  checkers (mypy: `--enable-error-code deprecated`); runtime warnings are
+  unchanged.
+- New top-level exports: every transform and feature class, `ValueMapper`,
+  `PipelineResult`, and `TsShapeWarning`, `DataQualityWarning`,
+  `PerformanceWarning`, `LoaderConfigWarning`, `ColumnNotFoundError`,
+  `LoaderError`. `ts_shape.events` re-exports every detector;
+  `ts_shape.context` has `__all__`; `ts_shape.loader` also exports the Azure
+  flexible-file, Databricks and energy API loaders and `ContextEnricher`.
+- `list_detectors()` lists every top-level public class, now including the
+  transform and feature classes, and no longer imports the modules.
+
+### Import time
+
+`from ts_shape import OutlierDetectionEvents` takes about 0.35 s (was
+1.2–1.9 s): scipy and scikit-learn load only in the methods that use them.
+`outlier_detection.IsolationForest` is no longer a module attribute
+(`SKLEARN_AVAILABLE` is kept). The z-score is computed in numpy, identical to
+current scipy; on scipy older than 1.18 the last bits can differ, nearly
+constant data gives NaN scores, and scipy's "Precision loss" warning is no
+longer emitted.
+
+### PostgreSQL loaders
+
+`TimescaleDBDataAccess` and `DatapointDB` build their URL with the psycopg2
+driver named explicitly (works on SQLAlchemy 2.1) and escape the password.
+New settings: `db_port` (default 5432) and `db_driver` (default
+`"psycopg2"`), as keys of `TimescaleDBDataAccess`'s `db_config` and as
+keyword arguments of `DatapointDB`, which also takes `db_name` (default
+`"config_repository"`). Both
+have a `.url`; without psycopg2 an ImportError names `ts-shape[postgres]`.
+Loader `repr()` shows the settings with passwords, keys, tokens and
+connection strings hidden.
+
+### Fixes that change output
+
+- `PatternRecognition.discover_motifs(top_k > 1)` no longer returns trivial
+  matches: a later motif never starts within `exclusion_zone` (default
+  `window_size // 2`) of an earlier one, so ranks 2+ are different shapes.
+  `top_k=1` is unchanged.
+- `StartupDetectionEvents.detect_startup_by_slope` works with repeated index
+  labels (it raised `IndexError`).
+- `detect_startup_multi_signal` returns its full column set when nothing is
+  found, for `logic="any"` and `"all"` (it returned a frame with no columns).
+- `DatapointDB` gives an empty frame for a device without data points (it
+  raised `KeyError: 'uuid'`).
+
+### Names follow docs/naming.md
+
+Old names keep working until the next major release: a renamed keyword or attribute warns with a `DeprecationWarning` naming the replacement; a renamed output column stays as a twin with the same values. A canonical column sits right after its legacy twin; window bounds (`start`, `end`, `duration_seconds`) lead every summary.
+
+### Renamed parameters and attributes
+
+| Old | New | Where |
+|---|---|---|
+| `state_uuid` | `run_state_uuid` | `DowntimeEvents` (`downtime_by_shift`, `downtime_by_reason`, `top_downtime_reasons`, `availability_trend`), `SetupTimeEvents` (`setup_durations`, `setup_by_product`, `setup_statistics`, `setup_trend`), `ShiftHandoverEvents` (`generate_report`, `highlight_issues`), `IdleEnergyDetectionEvents` (`idle_energy_by_window`, `idle_energy_by_shift`, `idle_energy_trend`), `EnergyEfficiencyEvents.idle_energy_waste`, `LongDowntimeEvents`, `ReliabilityEvents` |
+| `.state_uuid` (attribute) | `.run_state_uuid` | `LongDowntimeEvents`, `ReliabilityEvents` |
+| `run_value_column` | `value_column_state` | `OEEEvents.performance` |
+| `cut_value_column` | `value_column_cut` | `ContinuousProcessAlignmentEvents.segment_by_cut` |
+| `id_value_column` (argument and attribute) | `value_column_id` | `MultiProcessTraceabilityEvents`, `RoutingTraceabilityEvents` |
+| `handover_value_column` (argument and attribute) | `value_column_handover` | `MultiProcessTraceabilityEvents` |
+| `routing_value_column` (argument and attribute) | `value_column_routing` | `RoutingTraceabilityEvents` |
+| `df` | `dataframe` | `to_event_log`, `object_intervals`, `detect_objects`, `attach_objects`, `run_backtest`, `evaluate` and `LambdaDetector.evaluate` / `.to_event_log` (lambda rules), `EnergyConsumptionEvents.normalize`, `EnergyEfficiencyEvents.normalize`, `StatisticalProcessControlEvents.rule_1` .. `rule_8` |
+| `data` | `dataframe` | `CycleDataProcessor.group_by_cycle_uuid` |
+| `column` | `group_column` | `CycleDataProcessor.split_dataframes_by_group` |
+| `id_column` | `uuid_column` | `EnergyConsumptionEvents.normalize`, `EnergyEfficiencyEvents.normalize` |
+| `expected_freq` | `expected_interval` | `SignalQualityEvents.detect_missing_data`, `data_completeness` |
+| `expected_frequency` | `expected_frequency_hz` | `SamplingResolutionEvents.detect_aliasing` (a frequency in Hz, not an interval) |
+| `uuid_a` / `uuid_b` | `signal_uuid_a` / `signal_uuid_b` | `SignalCorrelationEvents.rolling_correlation`, `correlation_breakdown`, `lag_correlation` |
+| `period1` / `period2` | `period_a` / `period_b` | `PeriodSummaryEvents.compare_periods` |
+| `parquet_only` | `only_parquet` | `AzureBlobParquetLoader.list_structure`, `DatabricksUnityParquetLoader.list_structure` |
+
+### Renamed output columns (old column kept as a twin)
+
+| Old | New | Where |
+|---|---|---|
+| `window_start` only | `start`, `end`, `duration_seconds` lead; `window_start` kept | `SamplingResolutionEvents` (all four methods), `EnvironmentalCompensationEvents.detect_correlation` / `sensitivity` / `detect_env_exceedance` (also keeps `window_end`), `MeasurementUncertaintyEvents.type_a_uncertainty` / `combined_uncertainty`, `CalibrationValidationEvents.detect_recalibration_need` / `calibration_stability`, `TimeToThresholdEvents.time_to_threshold_windows`. The event-log taxonomy now treats them as summaries (they were static), so their events carry the window's time instead of the default timestamp. |
+| `time` | `start`, `end` (= `time`), `duration_seconds` (of `duration`) | `RateOfChangeEvents.detect_step_changes` |
+| `mean_interval_ms`, `std_interval_ms`, `max_gap_ms` | `mean_interval_seconds`, `std_interval_seconds`, `max_gap_seconds` | `SamplingResolutionEvents.sampling_jitter` |
+| `n_samples` | `sample_count` | `CapabilityTrendingEvents.capability_over_time`, `MeasurementUncertaintyEvents.type_a_uncertainty`, `ValueDistributionEvents.detect_bimodal` / `normality_windows` / `percentile_tracking` |
+| `pct_of_total` | `share_of_total_pct` | `DowntimeEvents.downtime_by_reason` / `top_downtime_reasons`, `QualityEvents.nok_by_reason`, `ReworkEvents.rework_by_reason`, `ScrapEvents.scrap_by_reason`, `MaterialBalanceEvents.contribution_breakdown` |
+| `pct_of_best` | `share_of_best_pct` | `OperatorPerformanceEvents.operator_comparison`, `ProcessStabilityIndexEvents.stability_comparison` |
+| `pct_of_window` | `share_of_window_pct` | `MicroStopEvents.micro_stop_frequency` |
+| `pct_of_available_time` | `share_of_available_time_pct` | `SetupTimeEvents.setup_statistics` |
+| `pct_above` | `time_above_pct` | `ThresholdMonitoringEvents.time_above_threshold` |
+| `pct_time_at_high` / `pct_time_at_low` / `pct_time_saturated` | `time_at_high_pct` / `time_at_low_pct` / `time_saturated_pct` | `ControlLoopHealthEvents.output_saturation` |
+| `pct_saturated` | `saturated_pct` | `ControlLoopHealthEvents.loop_health_summary` |
+| `pct_time_disturbed` | `time_disturbed_pct` | `DisturbanceRecoveryEvents.disturbance_frequency` |
+| `pct_GRR` / `pct_PV` / `pct_GRR_tolerance` | `grr_pct` / `pv_pct` / `grr_tolerance_pct` | `GaugeRepeatabilityEvents.gauge_rr_summary` |
+| `pct_contribution` | `contribution_pct` | `MeasurementUncertaintyEvents.uncertainty_budget` |
+| `availability`, `performance`, `oee_score` | `availability_ratio`, `performance_ratio`, `oee_ratio` | `LineThroughputEvents.throughput_oee` |
+| `period1_value`, `period2_value` | `period_a_value`, `period_b_value` | `PeriodSummaryEvents.compare_periods` |
+
 ## October 2026, round 10: fast at 10 and 100 million rows
 
 Results are unchanged except where listed below; event ids from
@@ -587,7 +687,17 @@ The new columns were added next to the old ones; none was removed or renamed. Tw
 - **Merging two summaries on `date` or `(date, shift)`** now finds `start`, `end` and `duration_seconds` on both sides, and pandas suffixes them `_x` / `_y`. Merge on the window instead, or select your columns first:
 
 ```python
+import numpy as np
+import pandas as pd
 from ts_shape import PartProductionEvents, QualityEvents
+
+t = pd.date_range("2024-01-01", periods=96, freq="h")
+df = pd.concat([
+    pd.DataFrame({"systime": t, "uuid": "line1:ok", "value_integer": np.arange(96) * 9}),
+    pd.DataFrame({"systime": t, "uuid": "line1:nok", "value_integer": np.arange(96)}),
+    pd.DataFrame({"systime": t, "uuid": "line1:part", "value_string": "P-100"}),
+    pd.DataFrame({"systime": t, "uuid": "line1:count", "value_integer": np.arange(96) * 10}),
+], ignore_index=True)
 
 quality = QualityEvents(df).daily_quality_summary("line1:ok", "line1:nok")
 production = PartProductionEvents(df).daily_production_summary("line1:part", "line1:count")
@@ -607,6 +717,8 @@ update any remaining imports:
 | `to_flat_df(...)` | `to_event_log_xes(...)` |
 | `to_ocel_tables(...)` | `to_event_log_ocel(...)` |
 
+<!-- no-run -->
+
 ```python
 # Before
 from ts_shape.eventlog import to_flat_df, to_ocel_tables
@@ -620,6 +732,8 @@ from ts_shape.eventlog import to_event_log_xes, to_event_log_ocel
 To fully model OCEL 2.0, `to_event_log_ocel(log)` returns an `OCEL2Tables`
 bundle (object-to-object relations and time-varying object attributes were
 added) instead of a 3-tuple. Access the frames by attribute:
+
+<!-- no-run -->
 
 ```python
 # Before

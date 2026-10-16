@@ -9,14 +9,16 @@ Essential module for daily downtime analysis:
 
 import logging
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from ts_shape.events._compat import state_mask
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import add_period_window, add_shift_window, data_tz
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.deprecation import deprecated_class, renamed_kwargs
 from ts_shape.utils.time_accounting import (
     EXCLUDED,
     grouper_periods,
@@ -24,6 +26,9 @@ from ts_shape.utils.time_accounting import (
     shift_periods,
     time_by_period,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +75,7 @@ class DowntimeEvents(Base):
     """Track machine downtimes by shift and reason.
 
     Each UUID represents one signal:
-    - state_uuid: machine state (running/stopped/idle)
+    - run_state_uuid: machine state (running/stopped/idle)
     - reason_uuid: downtime reason code (optional)
 
     Merge keys: [date, shift] for shift-level, [period] for trend data.
@@ -133,9 +138,10 @@ class DowntimeEvents(Base):
             "shift_3": ("22:00", "06:00"),
         }
 
+    @renamed_kwargs(state_uuid="run_state_uuid")
     def downtime_by_shift(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         running_value: str | bool = "Running",
         value_column: str = "value_string",
@@ -151,7 +157,7 @@ class DowntimeEvents(Base):
         time falls in it.
 
         Args:
-            state_uuid: UUID for machine state signal
+            run_state_uuid: UUID for machine state signal
             running_value: Value that indicates machine is running. A bool
                 matches a boolean run signal (``value_bool`` by default); a
                 boolean run signal is also used, with True as running, when
@@ -200,7 +206,7 @@ class DowntimeEvents(Base):
             0  shift_1              20.0            39.0         66.101695
         """
         state_data = (
-            self.dataframe[self.dataframe["uuid"] == state_uuid]
+            self.dataframe[self.dataframe["uuid"] == run_state_uuid]
             .copy()
             .sort_values(self.time_column)
         )
@@ -213,8 +219,8 @@ class DowntimeEvents(Base):
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
         times = state_data[self.time_column]
 
-        if max_gap is None and state_uuid in self.specs:
-            spec_gap = self.specs[state_uuid].max_gap
+        if max_gap is None and run_state_uuid in self.specs:
+            spec_gap = self.specs[run_state_uuid].max_gap
             max_gap = str(spec_gap) if spec_gap is not None else None
 
         # One interval per reading (held until the next reading), split at
@@ -268,9 +274,11 @@ class DowntimeEvents(Base):
             data_tz(times),
         )
 
+    @renamed_kwargs(state_uuid="run_state_uuid")
+    @twin_columns({"pct_of_total": "share_of_total_pct"})
     def downtime_by_reason(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         reason_uuid: str,
         *,
         stopped_value: str | bool = "Stopped",
@@ -280,7 +288,7 @@ class DowntimeEvents(Base):
         """Analyze downtime by reason code.
 
         Args:
-            state_uuid: UUID for machine state signal
+            run_state_uuid: UUID for machine state signal
             reason_uuid: UUID for downtime reason signal
             stopped_value: Value indicating machine is stopped. A bool
                 matches a boolean run signal (``value_bool`` by default); a
@@ -298,6 +306,10 @@ class DowntimeEvents(Base):
             - pct_of_total: Percentage of total downtime
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
 
+            Canonical twin columns: ``share_of_total_pct`` (after ``pct_of_total``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
+
         Example:
             >>> import pandas as pd, ts_shape
             >>> states = ["Running", "Stopped", "Running", "Stopped", "Running"]
@@ -305,13 +317,13 @@ class DowntimeEvents(Base):
             ...     ts_shape.make_id_signal("reason", ["-", "Jam", "-", "Tool", "-"], hold=10,
             ...                             freq="1min")])
             >>> out = ts_shape.DowntimeEvents(df).downtime_by_reason("state", "reason")
-            >>> out[["reason", "occurrences", "total_minutes", "pct_of_total"]]
-              reason  occurrences  total_minutes  pct_of_total
+            >>> out[["reason", "occurrences", "total_minutes", "share_of_total_pct"]]
+              reason  occurrences  total_minutes  share_of_total_pct
             0    Jam           10           10.0          50.0
             1   Tool           10           10.0          50.0
         """
         state_data = (
-            self.dataframe[self.dataframe["uuid"] == state_uuid]
+            self.dataframe[self.dataframe["uuid"] == run_state_uuid]
             .copy()
             .sort_values(self.time_column)
         )
@@ -390,9 +402,11 @@ class DowntimeEvents(Base):
 
         return reason_stats[_REASON_COLS].reset_index(drop=True)
 
+    @renamed_kwargs(state_uuid="run_state_uuid")
+    @twin_columns({"pct_of_total": "share_of_total_pct"})
     def top_downtime_reasons(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         reason_uuid: str,
         *,
         top_n: int = 5,
@@ -403,7 +417,7 @@ class DowntimeEvents(Base):
         """Get top N downtime reasons (Pareto analysis).
 
         Args:
-            state_uuid: UUID for machine state signal
+            run_state_uuid: UUID for machine state signal
             reason_uuid: UUID for downtime reason signal
             top_n: Number of top reasons to return
             stopped_value: Value indicating machine is stopped (a string, or
@@ -414,6 +428,10 @@ class DowntimeEvents(Base):
         Returns:
             DataFrame with top N reasons and cumulative percentage: reason,
             total_minutes, total_seconds, pct_of_total, cumulative_pct
+
+            Canonical twin columns: ``share_of_total_pct`` (after ``pct_of_total``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
 
         Example:
             >>> import pandas as pd, ts_shape
@@ -427,7 +445,7 @@ class DowntimeEvents(Base):
             0    Jam           10.0            50.0
         """
         reason_stats = self.downtime_by_reason(
-            state_uuid,
+            run_state_uuid,
             reason_uuid,
             stopped_value=stopped_value,
             value_column_state=value_column_state,
@@ -445,9 +463,10 @@ class DowntimeEvents(Base):
 
         return top_reasons[_TOP_COLS]
 
+    @renamed_kwargs(state_uuid="run_state_uuid")
     def availability_trend(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         running_value: str | bool = "Running",
         value_column: str = "value_string",
@@ -462,7 +481,7 @@ class DowntimeEvents(Base):
         window is reported when any observed time falls in it.
 
         Args:
-            state_uuid: UUID for machine state signal
+            run_state_uuid: UUID for machine state signal
             running_value: Value that indicates machine is running (a string,
                 or a bool for a boolean run signal; see
                 :meth:`downtime_by_shift`)
@@ -499,7 +518,7 @@ class DowntimeEvents(Base):
             1 2025-01-01 00:30:00         65.517241              10.0
         """
         state_data = (
-            self.dataframe[self.dataframe["uuid"] == state_uuid]
+            self.dataframe[self.dataframe["uuid"] == run_state_uuid]
             .copy()
             .sort_values(self.time_column)
         )
@@ -549,4 +568,10 @@ class DowntimeEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-DowntimeTracking = deprecated_class(DowntimeEvents, "DowntimeTracking")
+if TYPE_CHECKING:
+
+    @deprecated("DowntimeTracking is deprecated, use DowntimeEvents")
+    class DowntimeTracking(DowntimeEvents): ...
+
+else:
+    DowntimeTracking = deprecated_class(DowntimeEvents, "DowntimeTracking")

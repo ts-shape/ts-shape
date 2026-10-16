@@ -12,7 +12,7 @@ Two modes of operation:
 
 import logging
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -26,6 +26,9 @@ from ts_shape.utils.deprecation import (
     keyword_only,
     renamed_kwargs,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -423,6 +426,19 @@ class PeriodSummaryEvents(Base):
         # Roll up to weekly/monthly
         weekly = PeriodSummaryEvents.from_daily_data(daily, window='W')
         monthly = PeriodSummaryEvents.from_daily_data(daily, window='MS')
+
+    Example:
+        A part counter that rises by 100 a day:
+
+        >>> import ts_shape
+        >>> df = ts_shape.make_timeseries(["counter"], n_points=14, freq="1D",
+        ...     start="2025-01-06", baseline=0, noise=0, drift=1300,
+        ...     value_column="value_integer")
+        >>> weekly = ts_shape.PeriodSummaryEvents(df).weekly_summary("counter")
+        >>> weekly[["start", "end", "total_production", "daily_avg"]]
+               start        end  total_production   daily_avg
+        0 2025-01-06 2025-01-13               600   85.714286
+        1 2025-01-13 2025-01-20               700  100.000000
     """
 
     def __init__(
@@ -907,11 +923,12 @@ class PeriodSummaryEvents(Base):
         )
         return out.drop(columns="_month_start")
 
+    @renamed_kwargs(period1="period_a", period2="period_b")
     def compare_periods(
         self,
         counter_uuid: str,
-        period1: tuple[str, str],
-        period2: tuple[str, str],
+        period_a: tuple[str, str],
+        period_b: tuple[str, str],
         *,
         value_column: str = "value_integer",
         handle_resets: bool = True,
@@ -920,16 +937,19 @@ class PeriodSummaryEvents(Base):
 
         Args:
             counter_uuid: UUID of production counter.
-            period1: Tuple of (start_date, end_date) for first period.
-            period2: Tuple of (start_date, end_date) for second period.
+            period_a: Tuple of (start_date, end_date) for first period.
+            period_b: Tuple of (start_date, end_date) for second period.
             value_column: Column containing counter values.
             handle_resets: When True (default), treat a decreasing counter as a reset and
                 count the production after the reset instead of losing it, so the
                 compared metrics are not understated for days containing a reset.
 
         Returns:
-            DataFrame with columns:
-            - metric, period1_value, period2_value, change, change_pct
+            DataFrame with columns: metric, period_a_value, period_b_value,
+            change, change_pct. ``period1_value`` / ``period2_value`` are
+            deprecated twins of ``period_a_value`` / ``period_b_value`` (each
+            sits right before its replacement); they are removed in the next
+            major release.
         """
         daily = self._daily_counter(
             counter_uuid, value_column, handle_resets=handle_resets
@@ -939,7 +959,9 @@ class PeriodSummaryEvents(Base):
                 columns=[
                     "metric",
                     "period1_value",
+                    "period_a_value",
                     "period2_value",
+                    "period_b_value",
                     "change",
                     "change_pct",
                 ]
@@ -947,10 +969,10 @@ class PeriodSummaryEvents(Base):
 
         daily["date"] = pd.to_datetime(daily["date"]).dt.date
 
-        p1_start = pd.to_datetime(period1[0]).date()
-        p1_end = pd.to_datetime(period1[1]).date()
-        p2_start = pd.to_datetime(period2[0]).date()
-        p2_end = pd.to_datetime(period2[1]).date()
+        p1_start = pd.to_datetime(period_a[0]).date()
+        p1_end = pd.to_datetime(period_a[1]).date()
+        p2_start = pd.to_datetime(period_b[0]).date()
+        p2_end = pd.to_datetime(period_b[1]).date()
 
         p1_data = daily[(daily["date"] >= p1_start) & (daily["date"] <= p1_end)]
         p2_data = daily[(daily["date"] >= p2_start) & (daily["date"] <= p2_end)]
@@ -986,7 +1008,9 @@ class PeriodSummaryEvents(Base):
                 {
                     "metric": metric,
                     "period1_value": v1,
+                    "period_a_value": v1,
                     "period2_value": v2,
+                    "period_b_value": v2,
                     "change": change,
                     "change_pct": change_pct,
                 }
@@ -996,4 +1020,10 @@ class PeriodSummaryEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-PeriodSummary = deprecated_class(PeriodSummaryEvents, "PeriodSummary")
+if TYPE_CHECKING:
+
+    @deprecated("PeriodSummary is deprecated, use PeriodSummaryEvents")
+    class PeriodSummary(PeriodSummaryEvents): ...
+
+else:
+    PeriodSummary = deprecated_class(PeriodSummaryEvents, "PeriodSummary")

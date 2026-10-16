@@ -141,7 +141,7 @@ show_missing = true
 skip_empty = true
 # Fail the build if total coverage regresses below this floor. Set just under
 # the current measured level; ratchet upward as coverage improves.
-fail_under = 82
+fail_under = 93
 
 [tool.black]
 # Kept explicit: black would infer py311-py314 from requires-python and then

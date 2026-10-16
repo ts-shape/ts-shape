@@ -16,7 +16,8 @@ df.loc[1800:, "value_double"] += 20.0  # step
 roc = RateOfChangeEvents(df, "flow_rate")
 rapid = roc.detect_rapid_change(threshold=0.5)
 stats = roc.rate_statistics(window="15min")
-print(roc.detect_step_changes(min_delta=10.0, max_duration="5s"))
+result = roc.detect_step_changes(min_delta=10.0, max_duration="5s")
+print(result[["systime", "value_before", "value_after", "delta"]])
 ```
 
 ## Methods

@@ -2,8 +2,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
+from ts_shape.events._windows import labeled_window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
@@ -89,6 +89,8 @@ class CalibrationValidationEvents(Base):
             DataFrame with columns: reference, measured_mean,
             measured_std, bias, linearity_error.
         """
+        from scipy import stats
+
         cols = ["reference", "measured_mean", "measured_std", "bias", "linearity_error"]
         if not calibration_points:
             return pd.DataFrame(columns=cols)
@@ -205,14 +207,16 @@ class CalibrationValidationEvents(Base):
             max_drift_rate: Maximum acceptable bias change per window.
 
         Returns:
-            DataFrame with columns: window_start, bias, drift_rate,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), bias, drift_rate,
             recalibration_needed, reason.
         """
         cols = ["window_start", "bias", "drift_rate", "recalibration_needed", "reason"]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
         if self.reference_uuid is None and self.reference_value is None:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -254,9 +258,7 @@ class CalibrationValidationEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)
 
     @keyword_only(1)
     def calibration_stability(
@@ -269,9 +271,13 @@ class CalibrationValidationEvents(Base):
             lookback: Number of previous windows for trend assessment.
 
         Returns:
-            DataFrame with columns: window_start, bias_mean, bias_std,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), bias_mean, bias_std,
             bias_trend, stability_score.
         """
+        from scipy import stats
+
         cols = [
             "window_start",
             "bias_mean",
@@ -280,9 +286,9 @@ class CalibrationValidationEvents(Base):
             "stability_score",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
         if self.reference_uuid is None and self.reference_value is None:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -301,7 +307,7 @@ class CalibrationValidationEvents(Base):
             biases.append((ts, bias))
 
         if not biases:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         events: list[dict[str, Any]] = []
         bias_values = [b[1] for b in biases]
@@ -341,6 +347,4 @@ class CalibrationValidationEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)

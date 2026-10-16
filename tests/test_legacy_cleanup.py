@@ -290,7 +290,9 @@ def test_weibull_fit_failure_is_named_in_the_warning(monkeypatch):
     def broken_fit(*args, **kwargs):
         raise RuntimeError("did not converge")
 
-    monkeypatch.setattr(reliability.stats.weibull_min, "fit", broken_fit)
+    from scipy import stats
+
+    monkeypatch.setattr(stats.weibull_min, "fit", broken_fit)
     with pytest.warns(DataQualityWarning, match="RuntimeError: did not converge"):
         reliability.ReliabilityEvents(df, "fault").weibull_fit()
 

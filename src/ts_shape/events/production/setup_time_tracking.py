@@ -8,13 +8,18 @@ Track setup durations to support Single-Minute Exchange of Die improvement:
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import add_period_window
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.deprecation import deprecated_class, renamed_kwargs
 from ts_shape.utils.shifts import assign_shift, production_dates
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +60,7 @@ class SetupTimeEvents(Base):
     """Track and analyze setup/changeover durations.
 
     Each UUID represents one signal:
-    - state_uuid: machine state signal containing a setup indicator value
+    - run_state_uuid: machine state signal containing a setup indicator value
     - part_id_uuid: part number / product type signal (optional)
 
     Merge keys: [date, shift] for shift-level, [period] for trend data,
@@ -76,11 +81,11 @@ class SetupTimeEvents(Base):
         tracker = SetupTimeEvents(df)
 
         # List all setup events
-        events = tracker.setup_durations(state_uuid='machine_state')
+        events = tracker.setup_durations(run_state_uuid='machine_state')
 
         # Setup time by product transition
         by_product = tracker.setup_by_product(
-            state_uuid='machine_state',
+            run_state_uuid='machine_state',
             part_id_uuid='part_number',
         )
     """
@@ -115,13 +120,13 @@ class SetupTimeEvents(Base):
 
     def _extract_setup_intervals(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         setup_value: str,
         value_column: str,
     ) -> pd.DataFrame:
         """Extract start/end intervals where state equals the setup value."""
         data = (
-            self.dataframe[self.dataframe["uuid"] == state_uuid]
+            self.dataframe[self.dataframe["uuid"] == run_state_uuid]
             .copy()
             .sort_values(self.time_column)
         )
@@ -163,9 +168,10 @@ class SetupTimeEvents(Base):
 
         return pd.DataFrame(intervals)
 
+    @renamed_kwargs(state_uuid="run_state_uuid")
     def setup_durations(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         setup_value: str = "Setup",
         value_column: str = "value_string",
@@ -174,7 +180,7 @@ class SetupTimeEvents(Base):
         """List every setup event with duration.
 
         Args:
-            state_uuid: UUID for machine state signal.
+            run_state_uuid: UUID for machine state signal.
             setup_value: Value that indicates a setup state.
             value_column: Column containing state values.
             production_day: Attribute an overnight shift's post-midnight
@@ -185,12 +191,12 @@ class SetupTimeEvents(Base):
         Returns:
             DataFrame with columns:
             - start, end, duration_seconds (float seconds, end - start),
-                uuid (event uuid), source_uuid (state_uuid),
+                uuid (event uuid), source_uuid (run_state_uuid),
                 duration_minutes (convenience: duration_seconds / 60), date,
                 shift
         """
         intervals = self._extract_setup_intervals(
-            state_uuid, setup_value, value_column
+            run_state_uuid, setup_value, value_column
         ).drop(columns=["_dur_s"])
         if intervals.empty:
             return pd.DataFrame(
@@ -220,13 +226,14 @@ class SetupTimeEvents(Base):
             (intervals["end"] - intervals["start"]).dt.total_seconds(),
         )
         intervals.insert(3, "uuid", self.event_uuid)
-        intervals.insert(4, "source_uuid", state_uuid)
+        intervals.insert(4, "source_uuid", run_state_uuid)
 
         return intervals
 
+    @renamed_kwargs(state_uuid="run_state_uuid")
     def setup_by_product(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         part_id_uuid: str,
         *,
         setup_value: str = "Setup",
@@ -236,7 +243,7 @@ class SetupTimeEvents(Base):
         """Setup time statistics by product transition (from → to).
 
         Args:
-            state_uuid: UUID for machine state signal.
+            run_state_uuid: UUID for machine state signal.
             part_id_uuid: UUID for part number / product type signal.
             setup_value: Value indicating setup state.
             value_column_state: Column containing state values.
@@ -249,7 +256,7 @@ class SetupTimeEvents(Base):
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
         """
         intervals = self._extract_setup_intervals(
-            state_uuid, setup_value, value_column_state
+            run_state_uuid, setup_value, value_column_state
         )
         if intervals.empty:
             return pd.DataFrame(columns=_PRODUCT_COLS)
@@ -318,9 +325,11 @@ class SetupTimeEvents(Base):
 
         return result.sort_values("avg_minutes", ascending=False).reset_index(drop=True)
 
+    @renamed_kwargs(state_uuid="run_state_uuid")
+    @twin_columns({"pct_of_available_time": "share_of_available_time_pct"})
     def setup_statistics(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         setup_value: str = "Setup",
         value_column: str = "value_string",
@@ -328,7 +337,7 @@ class SetupTimeEvents(Base):
         """Overall setup time statistics.
 
         Args:
-            state_uuid: UUID for machine state signal.
+            run_state_uuid: UUID for machine state signal.
             setup_value: Value indicating setup state.
             value_column: Column containing state values.
 
@@ -338,8 +347,14 @@ class SetupTimeEvents(Base):
                 avg_seconds, median_minutes, median_seconds, std_minutes,
                 std_seconds, pct_of_available_time
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
+
+            Canonical twin columns: ``share_of_available_time_pct`` (after
+            ``pct_of_available_time``); each holds the same values as the deprecated
+            column right before it, which is removed in the next major release.
         """
-        intervals = self._extract_setup_intervals(state_uuid, setup_value, value_column)
+        intervals = self._extract_setup_intervals(
+            run_state_uuid, setup_value, value_column
+        )
         if intervals.empty:
             return pd.DataFrame(columns=_STATS_COLS)
 
@@ -348,7 +363,7 @@ class SetupTimeEvents(Base):
 
         # Calculate total available time from the data
         state_data = (
-            self.dataframe[self.dataframe["uuid"] == state_uuid]
+            self.dataframe[self.dataframe["uuid"] == run_state_uuid]
             .copy()
             .sort_values(self.time_column)
         )
@@ -378,9 +393,10 @@ class SetupTimeEvents(Base):
             columns=_STATS_COLS,
         )
 
+    @renamed_kwargs(state_uuid="run_state_uuid")
     def setup_trend(
         self,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         setup_value: str = "Setup",
         value_column: str = "value_string",
@@ -389,7 +405,7 @@ class SetupTimeEvents(Base):
         """Track setup time trend over time.
 
         Args:
-            state_uuid: UUID for machine state signal.
+            run_state_uuid: UUID for machine state signal.
             setup_value: Value indicating setup state.
             value_column: Column containing state values.
             window: Time window for aggregation (default '1W').
@@ -404,7 +420,9 @@ class SetupTimeEvents(Base):
                 columns are a convenience)
         """
         trend_cols = _TREND_COLS
-        intervals = self._extract_setup_intervals(state_uuid, setup_value, value_column)
+        intervals = self._extract_setup_intervals(
+            run_state_uuid, setup_value, value_column
+        )
         if intervals.empty:
             return add_period_window(pd.DataFrame(columns=trend_cols), window)
 
@@ -429,4 +447,10 @@ class SetupTimeEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-SetupTimeTracking = deprecated_class(SetupTimeEvents, "SetupTimeTracking")
+if TYPE_CHECKING:
+
+    @deprecated("SetupTimeTracking is deprecated, use SetupTimeEvents")
+    class SetupTimeTracking(SetupTimeEvents): ...
+
+else:
+    SetupTimeTracking = deprecated_class(SetupTimeEvents, "SetupTimeTracking")

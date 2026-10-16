@@ -17,7 +17,7 @@ counts): here the focus is *absolute* run time and an hour-meter reading.
 
 import logging
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -36,6 +36,9 @@ from ts_shape.utils.time_accounting import (
     reading_intervals,
     time_by_period,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +231,17 @@ class RuntimeAccountingEvents(Base):
         }
         return finalize_summary_df(pd.DataFrame([row]))
 
-    runtime_per_window = deprecated_method("runtime_by_window")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "RuntimeAccountingEvents.runtime_per_window() is deprecated, use .runtime_by_window()"
+        )
+        def runtime_per_window(
+            self, window: str = "1D", *, max_gap: str | None = None
+        ) -> pd.DataFrame: ...
+
+    else:
+        runtime_per_window = deprecated_method("runtime_by_window")
 
     @keyword_only(1)
     def runtime_by_window(

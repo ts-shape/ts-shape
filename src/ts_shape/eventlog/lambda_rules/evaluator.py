@@ -18,6 +18,8 @@ from typing import Any, cast
 
 import pandas as pd
 
+from ts_shape.utils.deprecation import renamed_kwargs
+
 from ...utils.coerce import to_numeric_checked
 from .expression import compile_expression
 from .spec import RuleSpec
@@ -32,8 +34,9 @@ _POINT_TIME_CANDIDATES = (
 )
 
 
-def evaluate(spec: RuleSpec, df: pd.DataFrame) -> pd.DataFrame:
-    """Run ``spec`` against ``df`` and return a detector frame.
+@renamed_kwargs(df="dataframe")
+def evaluate(spec: RuleSpec, dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Run ``spec`` against ``dataframe`` and return a detector frame.
 
     The output column conventions match what the shape adapter expects:
 
@@ -49,35 +52,35 @@ def evaluate(spec: RuleSpec, df: pd.DataFrame) -> pd.DataFrame:
 
     Args:
         spec: The rule.
-        df: Input frame the trigger is evaluated on.
+        dataframe: Input frame the trigger is evaluated on.
 
     Returns:
         The detector frame; an empty (typed, for interval rules) frame when
         nothing triggers.
 
     Raises:
-        ColumnNotFoundError: When the trigger names a column ``df`` lacks.
+        ColumnNotFoundError: When the trigger names a column ``dataframe`` lacks.
         ValueError: When the trigger is not boolean, or an interval rule finds
             no time column.
     """
-    if df is None:
+    if dataframe is None:
         return pd.DataFrame()
-    if spec.shape == "interval" and len(df) == 0:
-        return _empty_interval_frame(df, spec, _pick_time_col(df))
-    if len(df) == 0:
-        return df.iloc[0:0].copy()
+    if spec.shape == "interval" and len(dataframe) == 0:
+        return _empty_interval_frame(dataframe, spec, _pick_time_col(dataframe))
+    if len(dataframe) == 0:
+        return dataframe.iloc[0:0].copy()
 
     mask_fn = compile_expression(spec.trigger.expression)
-    mask = mask_fn(df)
+    mask = mask_fn(dataframe)
 
     if spec.shape == "point":
-        return _evaluate_point(df, mask)
+        return _evaluate_point(dataframe, mask)
     if spec.shape == "interval":
-        return _evaluate_interval(df, mask, spec)
+        return _evaluate_interval(dataframe, mask, spec)
     if spec.shape == "summary":
-        return _evaluate_summary(df, mask, spec)
+        return _evaluate_summary(dataframe, mask, spec)
     if spec.shape == "static":
-        return _evaluate_static(df, mask, spec)
+        return _evaluate_static(dataframe, mask, spec)
     raise ValueError(f"unsupported shape {spec.shape!r}")  # pragma: no cover
 
 

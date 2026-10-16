@@ -28,7 +28,6 @@ from typing import TypeAlias
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import (
@@ -56,6 +55,8 @@ def phase2_ucl(p: int, m: int, alpha: float) -> float:
     ``p (m + 1)(m - 1) / (m (m - p)) * F(1 - alpha; p, m - p)`` for a mean
     and covariance estimated from ``m`` reference observations.
     """
+    from scipy import stats
+
     if m <= p:
         raise ValueError(f"need more reference observations ({m}) than variables ({p})")
     return float(
@@ -68,6 +69,8 @@ def phase1_ucl(p: int, m: int, alpha: float) -> float:
 
     ``(m - 1)^2 / m * Beta(1 - alpha; p / 2, (m - p - 1) / 2)``.
     """
+    from scipy import stats
+
     if m <= p + 1:
         raise ValueError(
             f"need at least p + 2 = {p + 2} reference observations, got {m}"

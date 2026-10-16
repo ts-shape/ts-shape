@@ -306,8 +306,14 @@ def window_offset(window: Any) -> Any:
         window: Offset string (``"1h"``, ``"1D"``, ``"MS"``) or offset.
 
     Returns:
-        A pandas offset: ``pd.DateOffset(days=n)`` for a day frequency, else
-        ``to_offset(window)``.
+        A pandas offset; for a day frequency one that adds ``n`` calendar
+        days. On pandas 3 that is ``to_offset(window)`` itself (pandas' own
+        calendar ``Day``, e.g. ``<3 * Days>``); on pandas 2, where ``Day``
+        is a fixed 24 h ``Tick``, it is ``pd.DateOffset(days=n)``. Any other
+        window gives ``to_offset(window)`` (e.g. ``<24 * Hours>`` for
+        ``"24h"``). A ``Timedelta`` window converts to a fixed offset on
+        pandas 3 (``Timedelta("2D")`` -> ``<48 * Hours>``) but to a day
+        offset on pandas 2.
     """
     offset = to_offset(window)
     if isinstance(offset, Tick) and offset.rule_code == "D":

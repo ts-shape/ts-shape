@@ -416,6 +416,21 @@ class Pipeline:
 
     Build with the fluent :meth:`transform` and :meth:`detect` methods, then
     call :meth:`run` -- on as many DataFrames as you like.
+
+    Example:
+        >>> import ts_shape
+        >>> from ts_shape import OutlierDetectionEvents, Pipeline
+        >>> pipe = Pipeline(name="sensor-quality").detect(
+        ...     OutlierDetectionEvents, "detect_outliers_zscore",
+        ...     name="outliers", value_column="value_double")
+        >>> print(pipe.describe())
+        Pipeline 'sensor-quality' (1 steps):
+          0. [detect   ] outliers  value_column='value_double'
+        >>> result = pipe.run(ts_shape.make_timeseries(["temp"], n_outliers=3))
+        >>> result
+        PipelineResult(name='sensor-quality', data=1000 rows, events=['outliers'])
+        >>> len(result.events["outliers"])
+        4
     """
 
     def __init__(self, name: str = "pipeline") -> None:

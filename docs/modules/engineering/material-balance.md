@@ -19,7 +19,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 mb = MaterialBalanceEvents(df, input_uuids=["feed_1", "feed_2"], output_uuids=["product", "waste"])
-print(mb.balance_check(window="1h", tolerance_pct=5.0).tail())
+result = mb.balance_check(window="1h", tolerance_pct=5.0).tail()
+print(result[["start", "total_input", "total_output", "imbalance_pct", "balanced"]])
 events = mb.detect_balance_exceedance(window="1h", tolerance_pct=5.0, min_duration="2h")
 shares = mb.contribution_breakdown(window="1h")
 ```
@@ -33,7 +34,7 @@ All arguments are keyword-only.
 | `balance_check(window='1h', tolerance_pct=5.0)` | `total_input`, `total_output`, `imbalance`, `imbalance_pct`, `balanced` |
 | `imbalance_trend(window='1h')` | `imbalance_pct`, `rolling_avg_imbalance` (last three windows), `trend_direction` |
 | `detect_balance_exceedance(window='1h', tolerance_pct=5.0, min_duration='2h')` | runs of unbalanced windows: `avg_imbalance_pct`, `max_imbalance_pct`, `likely_cause` |
-| `contribution_breakdown(window='1h')` | per window and signal: `uuid`, `role`, `value`, `pct_of_total` |
+| `contribution_breakdown(window='1h')` | per window and signal: `uuid`, `role`, `value`, `share_of_total_pct` |
 
 ## Notes
 

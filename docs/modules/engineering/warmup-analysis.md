@@ -16,7 +16,8 @@ temp = np.interp(np.arange(600), [0, 30, 210, 400, 520, 599], [20, 20, 185, 185,
 df = pd.DataFrame({"systime": t, "uuid": "oven_zone1", "value_double": temp})
 
 wu = WarmUpCoolDownEvents(df, "oven_zone1")
-print(wu.detect_warmup(50.0, min_duration="1min"))
+result = wu.detect_warmup(50.0, min_duration="1min")
+print(result[["start", "start_value", "end_value", "duration_seconds", "avg_rate"]])
 cooldowns = wu.detect_cooldown(30.0, min_duration="1min")
 time_to_temp = wu.time_to_target(180.0, direction="rising")
 ```

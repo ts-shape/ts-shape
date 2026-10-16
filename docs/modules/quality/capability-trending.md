@@ -25,7 +25,7 @@ All arguments are keyword-only.
 
 | Method | Returns (per window) |
 |---|---|
-| `capability_over_time(window='8h')` | `cp`, `cpk`, `pp`, `ppk`, `mean`, `std`, `std_within`, `n_samples` |
+| `capability_over_time(window='8h')` | `cp`, `cpk`, `pp`, `ppk`, `mean`, `std`, `std_within`, `sample_count` |
 | `detect_capability_drop(window='8h', min_cpk=1.33, lookback=5)` | `cpk`, `prev_avg_cpk`, `drop_pct`, `alert` |
 | `capability_forecast(window='8h', horizon=5, threshold=1.33)` | `cpk`, `trend_slope`, `forecast_cpk`, `windows_to_threshold` |
 | `yield_estimate(window='8h')` | `estimated_yield_pct`, `dpmo`, `sigma_level` (assumes a normal distribution per window) |

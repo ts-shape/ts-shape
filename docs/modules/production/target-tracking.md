@@ -18,7 +18,8 @@ tracker = TargetEvents(df)  # shifts shift_1/2/3: 06-14, 14-22, 22-06
 by_shift = tracker.compare_to_target(metric_uuid="line1:parts",
                                      targets={"shift_1": 500, "shift_2": 480, "shift_3": 400})
 daily = tracker.target_achievement_summary(metric_uuid="line1:parts", daily_target=1400)
-print(tracker.target_hit_rate(metric_uuid="line1:parts", daily_target=1400))
+result = tracker.target_hit_rate(metric_uuid="line1:parts", daily_target=1400)
+print(result[["total_days", "days_on_target", "hit_rate_pct", "avg_achievement_pct"]])
 ```
 
 ## Methods

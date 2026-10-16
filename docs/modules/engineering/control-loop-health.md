@@ -19,7 +19,8 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": u, "value_double": v}) for u
 loop = ControlLoopHealthEvents(df, setpoint_uuid="flow_sp", actual_uuid="flow_pv", output_uuid="valve_out")
 integrals = loop.error_integrals(window="1h")
 saturation = loop.output_saturation(upper_limit=100.0, lower_limit=0.0, window="1h")
-print(loop.loop_health_summary(window="8h"))
+result = loop.loop_health_summary(window="8h")
+print(result[["iae", "bias", "oscillation_count", "saturated_pct", "health_grade"]])
 ```
 
 ## Methods
@@ -30,8 +31,8 @@ All arguments are keyword-only.
 |---|---|
 | `error_integrals(window='1h', max_gap=None)` | `iae`, `ise`, `itae`, `bias`, `sample_count` |
 | `detect_oscillation(window='5min', min_crossings=4)` | oscillating windows: `crossing_count`, `estimated_period_seconds`, `amplitude`, `damping_direction` |
-| `output_saturation(upper_limit=100.0, lower_limit=0.0, window='1h')` | `pct_time_at_high`, `pct_time_at_low`, `pct_time_saturated`, `longest_saturation_seconds` (needs `output_uuid`) |
-| `loop_health_summary(window='8h', oscillation_window='5min', min_crossings=4)` | `iae`, `bias`, `oscillation_count`, `pct_saturated`, `health_grade` |
+| `output_saturation(upper_limit=100.0, lower_limit=0.0, window='1h')` | `time_at_high_pct`, `time_at_low_pct`, `time_saturated_pct`, `longest_saturation_seconds` (needs `output_uuid`) |
+| `loop_health_summary(window='8h', oscillation_window='5min', min_crossings=4)` | `iae`, `bias`, `oscillation_count`, `saturated_pct`, `health_grade` |
 
 ## Notes
 

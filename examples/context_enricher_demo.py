@@ -93,7 +93,7 @@ if __name__ == "__main__":
     print("\nSample (temp:zone_a with metadata):")
     print(
         enriched[enriched["uuid"] == "temp:zone_a"][
-            ["systime", "uuid", "value_double", "description", "unit", "area"]
+            ["systime", "value_double", "description", "unit", "area"]
         ].head()
     )
 

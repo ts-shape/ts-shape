@@ -50,7 +50,7 @@ class TestShiftHandoverReport:
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
             nok_counter_uuid="nok_counter",
-            state_uuid="machine_state",
+            run_state_uuid="machine_state",
             targets={"shift_1": 400, "shift_2": 400, "shift_3": 400},
         )
         assert not result.empty
@@ -65,7 +65,7 @@ class TestShiftHandoverReport:
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
             nok_counter_uuid="nok_counter",
-            state_uuid="machine_state",
+            run_state_uuid="machine_state",
             report_date="2024-01-01",
         )
         assert not result.empty
@@ -77,7 +77,7 @@ class TestShiftHandoverReport:
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
             nok_counter_uuid="nok_counter",
-            state_uuid="machine_state",
+            run_state_uuid="machine_state",
             targets={"shift_1": 400, "shift_2": 400, "shift_3": 400},
             thresholds={
                 "production_achievement_pct": 95,
@@ -97,7 +97,7 @@ class TestShiftHandoverReport:
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
             nok_counter_uuid="nok_counter",
-            state_uuid="machine_state",
+            run_state_uuid="machine_state",
             targets={"shift_1": 400, "shift_2": 400, "shift_3": 400},
         )
         issues = report.highlight_issues(
@@ -195,7 +195,7 @@ class TestShiftHandoverReport:
             counter_uuid="x",
             ok_counter_uuid="y",
             nok_counter_uuid="z",
-            state_uuid="w",
+            run_state_uuid="w",
         )
         assert result.empty
 
@@ -206,7 +206,7 @@ class TestShiftHandoverReport:
             counter_uuid="x",
             ok_counter_uuid="y",
             nok_counter_uuid="z",
-            state_uuid="w",
+            run_state_uuid="w",
         )
         assert issues.empty
         assert list(issues.columns) == ShiftHandoverEvents.ISSUE_COLUMNS

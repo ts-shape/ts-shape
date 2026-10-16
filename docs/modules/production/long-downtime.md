@@ -19,7 +19,8 @@ parts = pd.DataFrame({"systime": pd.date_range("2024-01-02 06:00", periods=480, 
 
 df = pd.concat([state, parts], ignore_index=True)
 ld = LongDowntimeEvents(df, "press7:running")
-print(ld.detect_long_downtime(min_gap="3h", data_end=pd.Timestamp("2024-01-03 08:00")))
+result = ld.detect_long_downtime(min_gap="3h", data_end=pd.Timestamp("2024-01-03 08:00"))
+print(result[["start", "end", "duration_seconds"]])
 campaigns = ld.count_events_between_gaps(df, "press7:part_done", min_gap="3h", aggregation="sum")
 ```
 
@@ -35,4 +36,4 @@ campaigns = ld.count_events_between_gaps(df, "press7:part_done", min_gap="3h", a
 - State: `value_column` (`value_bool`) is cast to bool, True = running. For a numeric state pass `value_range=(low, high)`: values inside the inclusive range count as running.
 - `interval_end="next_change"` (default) closes each downtime at the next transition, which works for dense and change-only signals. A downtime still open at the end of the data is bounded by `data_end` (for example "now"), otherwise it is dropped. `"last_sample"` ends a downtime at its last sample, so on a change-only signal every stop is a zero-length row and is missed.
 - `count_events_between_gaps` needs at least two long downtimes and counts only rows strictly between the end of one and the start of the next. `aggregation` is `"count"` (rows), `"sum"` (of `value_column`) or `"transitions"` (value changes, first row included); anything else raises `ValueError`.
-- The constructor raises `ValueError` if `state_uuid` is not in the DataFrame.
+- The constructor raises `ValueError` if `run_state_uuid` is not in the DataFrame.

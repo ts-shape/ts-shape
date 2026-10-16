@@ -98,7 +98,7 @@ if __name__ == "__main__":
     # Hourly consumption
     hourly = ec.consumption_by_window("meter:main", window="1h")
     print("\nHourly consumption (first 5 rows):")
-    print(hourly.head())
+    print(hourly.head()[["start", "end", "consumption"]])
 
     # Peak demand detection
     peaks = ec.peak_demand_detection("meter:main", window="1h", percentile=0.90)

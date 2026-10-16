@@ -11,6 +11,7 @@ import pandas as pd
 from ts_shape.errors import LoaderConfigWarning, LoaderError
 from ts_shape.loader._utils import (
     ErrorsMode,
+    azure_container_repr,
     check_errors_mode,
     describe_failures,
     is_not_found,
@@ -167,6 +168,9 @@ class AzureBlobEnergyLoader:
         self.max_workers = max(1, max_workers)
         self.thousands = thousands
         self.decimal = decimal
+
+    def __repr__(self) -> str:
+        return azure_container_repr(self)
 
     @classmethod
     def from_account_name(

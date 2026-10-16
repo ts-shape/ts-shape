@@ -19,7 +19,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 sc = ScrapEvents(df)
-print(sc.scrap_by_shift(scrap_uuid="line1:scrap_kg"))
+result = sc.scrap_by_shift(scrap_uuid="line1:scrap_kg")
+print(result[["date", "shift", "scrap_quantity"]])
 cost = sc.scrap_cost(scrap_uuid="line1:scrap_kg", part_id_uuid="line1:part_id",
                      material_costs={"PN-100": 3.20, "PN-200": 5.80})
 ```
@@ -29,7 +30,7 @@ cost = sc.scrap_cost(scrap_uuid="line1:scrap_kg", part_id_uuid="line1:part_id",
 | Method | Returns |
 |---|---|
 | `scrap_by_shift(scrap_uuid)` | `date`, `shift`, `scrap_quantity` |
-| `scrap_by_reason(scrap_uuid, reason_uuid)` | `reason`, `scrap_quantity`, `pct_of_total` |
+| `scrap_by_reason(scrap_uuid, reason_uuid)` | `reason`, `scrap_quantity`, `share_of_total_pct` |
 | `scrap_cost(scrap_uuid, part_id_uuid, material_costs)` | per part: `scrap_quantity`, `cost_per_unit`, `total_cost` |
 | `scrap_trend(scrap_uuid, window='1D')` | `period`, `scrap_quantity` |
 

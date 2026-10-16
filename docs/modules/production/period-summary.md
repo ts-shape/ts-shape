@@ -15,11 +15,12 @@ t = pd.date_range("2024-01-01", periods=60 * 144, freq="10min")  # 60 days
 df = pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.arange(len(t)) * 3})
 
 summary = PeriodSummaryEvents(df)
-print(summary.weekly_summary(counter_uuid="line1:parts").head())
+result = summary.weekly_summary(counter_uuid="line1:parts").head()
+print(result[["week_start", "total_production", "daily_avg", "production_days"]])
 monthly = summary.monthly_summary(counter_uuid="line1:parts")
 comparison = summary.compare_periods(counter_uuid="line1:parts",
-                                     period1=("2024-01-01", "2024-01-31"),
-                                     period2=("2024-02-01", "2024-02-29"))
+                                     period_a=("2024-01-01", "2024-01-31"),
+                                     period_b=("2024-02-01", "2024-02-29"))
 ```
 
 ## Methods
@@ -28,7 +29,7 @@ comparison = summary.compare_periods(counter_uuid="line1:parts",
 |---|---|
 | `weekly_summary(counter_uuid, ok_counter_uuid=None, nok_counter_uuid=None)` | per week: `week_start`, `week_end`, `total_production`, `daily_avg`, `production_days` (+ `ok_parts`, `nok_parts`, `quality_pct`, `resets`) |
 | `monthly_summary(counter_uuid, ok_counter_uuid=None, nok_counter_uuid=None)` | per month: `year`, `month`, same metrics |
-| `compare_periods(counter_uuid, period1, period2)` | one row per metric: `metric`, `period1_value`, `period2_value`, `change`, `change_pct` |
+| `compare_periods(counter_uuid, period_a, period_b)` | one row per metric: `metric`, `period_a_value`, `period_b_value`, `change`, `change_pct` |
 | `from_daily_data(daily_df, window='W', date_column='date', aggregations=None)` (static) | `start`, `end`, `days` and the aggregated numeric columns |
 
 ## Notes

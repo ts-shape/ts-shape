@@ -53,6 +53,9 @@ Classes:
   - to_energy_deltas: Emit kWh deltas in the standard ts-shape schema.
   - segment_energy: Per-sample energy contributions (audit trail).
 
+- UnitConverter: Convert engineering units in scalars and DataFrame columns via
+  ``pint`` (the ``units`` extra).
+
 - LambdaProcessor: Apply vectorized callables to columns.
   - apply_function: Apply a Python callable over a column's values.
 
@@ -76,6 +79,38 @@ Classes:
 """
 
 import importlib as _importlib
+from typing import TYPE_CHECKING
+
+# Explicit imports for type checkers and IDEs only (so ``from ts_shape import X``
+# is typed as X, not object); at runtime __getattr__ below imports lazily.
+# tests/typing/test_lazy_exports.py keeps this block in sync with the map.
+if TYPE_CHECKING:
+    from ts_shape.transform.calculator.numeric_calc import IntegerCalc as IntegerCalc
+    from ts_shape.transform.calculator.power_integration import (
+        PowerIntegrator as PowerIntegrator,
+    )
+    from ts_shape.transform.calculator.unit_conversion import (
+        UnitConverter as UnitConverter,
+    )
+    from ts_shape.transform.filter.boolean_filter import BooleanFilter as BooleanFilter
+    from ts_shape.transform.filter.boolean_filter import IsDeltaFilter as IsDeltaFilter
+    from ts_shape.transform.filter.custom_filter import CustomFilter as CustomFilter
+    from ts_shape.transform.filter.datetime_filter import (
+        DateTimeFilter as DateTimeFilter,
+    )
+    from ts_shape.transform.filter.numeric_filter import DoubleFilter as DoubleFilter
+    from ts_shape.transform.filter.numeric_filter import IntegerFilter as IntegerFilter
+    from ts_shape.transform.filter.string_filter import StringFilter as StringFilter
+    from ts_shape.transform.functions.lambda_func import (
+        LambdaProcessor as LambdaProcessor,
+    )
+    from ts_shape.transform.harmonization import DataHarmonizer as DataHarmonizer
+    from ts_shape.transform.time_functions.timestamp_converter import (
+        TimestampConverter as TimestampConverter,
+    )
+    from ts_shape.transform.time_functions.timezone_shift import (
+        TimezoneShift as TimezoneShift,
+    )
 
 # The classes listed above, importable from the pack. They are imported on
 # first access, so a class whose optional dependency is missing only fails
@@ -94,6 +129,7 @@ _CLASSES = {
     "StringFilter": "ts_shape.transform.filter.string_filter",
     "TimestampConverter": "ts_shape.transform.time_functions.timestamp_converter",
     "TimezoneShift": "ts_shape.transform.time_functions.timezone_shift",
+    "UnitConverter": "ts_shape.transform.calculator.unit_conversion",
 }
 
 __all__ = sorted(_CLASSES)

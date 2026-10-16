@@ -16,13 +16,16 @@ fractional, and Latin square designs.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +202,23 @@ class DesignOfExperimentsEvents(Base):
 
         return out
 
-    compute_effects = deprecated_method("effects")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "DesignOfExperimentsEvents.compute_effects() is deprecated, use .effects()"
+        )
+        def compute_effects(
+            self,
+            response_uuid: str,
+            *,
+            statistic: str = "mean",
+            min_duration: str = "5min",
+            stability_tol: float = 0.02,
+            n_levels: dict[str, int] | None = None,
+        ) -> pd.DataFrame: ...
+
+    else:
+        compute_effects = deprecated_method("effects")
 
     def effects(
         self,

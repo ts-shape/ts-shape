@@ -62,6 +62,17 @@ class SignalSpec:
             count; the default) or ``"none"`` (decreases are real, e.g. a
             level that is not cumulative).
         notes: Free-form provenance, e.g. why a field was inferred.
+
+    Example:
+        >>> from ts_shape import SignalSpec
+        >>> spec = SignalSpec("line1:parts", kind="counter",
+        ...     value_column="value_integer", unit="pcs")
+        >>> spec.kind, spec.reset_policy
+        ('counter', 'reset_to_zero')
+        >>> spec.with_(unit="parts").unit
+        'parts'
+        >>> SignalSpec.from_dict(spec.to_dict()) == spec
+        True
     """
 
     uuid: str

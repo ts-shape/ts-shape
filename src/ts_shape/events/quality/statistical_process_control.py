@@ -1,6 +1,6 @@
 import logging
 import warnings
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,9 @@ from ts_shape.utils.deprecation import (
     keyword_only,
     renamed_kwargs,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +100,15 @@ class StatisticalProcessControlEvents(Base):
     The center line and sigma come from the ``tolerance_uuid`` rows (the
     reference / phase I data).
 
+    The rules are building blocks, not detectors: each takes the actual
+    signal's rows (``dataframe``, sorted by time) and, where it needs them,
+    the limits from :meth:`control_limits`, and returns the violating rows
+    with a boolean ``rule_<n>`` column. :meth:`detect_rule_violations` is the
+    detector entry point: it runs the selected rules on this detector's data
+    and returns the event frame (``systime``, ``uuid``, ``source_uuid``,
+    ``rule``, ``severity``, ...). Call a rule directly only to compose a
+    custom check.
+
     Sigma: by default (``sigma_method="moving_range"``) the textbook
     individuals-chart estimate ``sigma_hat = MR-bar / d2`` with ``d2 = 1.128``,
     where ``MR-bar`` is the mean moving range of consecutive reference values
@@ -163,7 +175,15 @@ class StatisticalProcessControlEvents(Base):
             self._validate_uuid(self.dataframe, tolerance_uuid)
             self._validate_uuid(self.dataframe, actual_uuid)
 
-    calculate_control_limits = deprecated_method("control_limits")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "StatisticalProcessControlEvents.calculate_control_limits() is deprecated, use .control_limits()"
+        )
+        def calculate_control_limits(self) -> pd.DataFrame: ...
+
+    else:
+        calculate_control_limits = deprecated_method("control_limits")
 
     def _reference_values(self) -> pd.Series:
         """Reference (tolerance) values in time order."""
@@ -214,7 +234,21 @@ class StatisticalProcessControlEvents(Base):
 
         return pd.DataFrame([control_limits])
 
-    calculate_dynamic_control_limits = deprecated_method("dynamic_control_limits")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "StatisticalProcessControlEvents.calculate_dynamic_control_limits() is deprecated, use .dynamic_control_limits()"
+        )
+        def calculate_dynamic_control_limits(
+            self,
+            method: Literal["moving_range", "ewma"] = "moving_range",
+            window_size: int = 20,
+            ewma_lambda: float | None = None,
+            n_sigma: float = 3.0,
+        ) -> pd.DataFrame: ...
+
+    else:
+        calculate_dynamic_control_limits = deprecated_method("dynamic_control_limits")
 
     @keyword_only(1)
     @renamed_kwargs(window="window_size")
@@ -447,12 +481,16 @@ class StatisticalProcessControlEvents(Base):
         out[rule] = self._rule_mask(rule, out[self.value_column], limits).astype(bool)
         return out[out[rule]]
 
-    def rule_1(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
+    @renamed_kwargs(df="dataframe")
+    def rule_1(self, dataframe: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 1 (Nelson 1984, test 1): one point more than 3σ from the center line.
 
+        A building block of :meth:`detect_rule_violations` (see the class
+        docstring).
+
         Args:
-            df: Rows of the actual signal, sorted by time. Not modified.
+            dataframe: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
@@ -460,66 +498,82 @@ class StatisticalProcessControlEvents(Base):
             pd.DataFrame: The violating rows (a copy) with a boolean
                 ``rule_1`` column.
         """
-        return self._apply_rule("rule_1", df, limits)
+        return self._apply_rule("rule_1", dataframe, limits)
 
+    @renamed_kwargs(df="dataframe")
     def rule_2(
-        self, df: pd.DataFrame, *, limits: pd.DataFrame | None = None
+        self, dataframe: pd.DataFrame, *, limits: pd.DataFrame | None = None
     ) -> pd.DataFrame:
         """
         Rule 2 (Nelson 1984, test 2): nine points in a row on the same side of the center line.
 
+        A building block of :meth:`detect_rule_violations` (see the class
+        docstring).
+
         Args:
-            df: Rows of the actual signal, sorted by time. Not modified.
+            dataframe: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 the center line is ``limits["mean"]``. When omitted, the
-                mean of ``df``'s values is used as the center line.
+                mean of ``dataframe``'s values is used as the center line.
 
         Returns:
             pd.DataFrame: The violating rows (a copy) with a boolean
                 ``rule_2`` column (the ninth point of each run is flagged).
         """
-        return self._apply_rule("rule_2", df, limits)
+        return self._apply_rule("rule_2", dataframe, limits)
 
-    def rule_3(self, df: pd.DataFrame) -> pd.DataFrame:
+    @renamed_kwargs(df="dataframe")
+    def rule_3(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 3 (Nelson 1984, test 3): six points in a row steadily increasing or decreasing.
+
+        A building block of :meth:`detect_rule_violations` (see the class
+        docstring).
 
         Six points means five consecutive strictly positive (or strictly
         negative) differences; an unchanged value breaks the run.
 
         Args:
-            df: Rows of the actual signal, sorted by time. Not modified.
+            dataframe: Rows of the actual signal, sorted by time. Not modified.
 
         Returns:
             pd.DataFrame: The violating rows (a copy) with a boolean
                 ``rule_3`` column (the sixth point of each run is flagged).
         """
-        return self._apply_rule("rule_3", df, None)
+        return self._apply_rule("rule_3", dataframe, None)
 
-    def rule_4(self, df: pd.DataFrame) -> pd.DataFrame:
+    @renamed_kwargs(df="dataframe")
+    def rule_4(self, dataframe: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 4 (Nelson 1984, test 4): fourteen points in a row alternating up and down.
+
+        A building block of :meth:`detect_rule_violations` (see the class
+        docstring).
 
         Fourteen points means thirteen consecutive non-zero differences
         whose signs alternate; an unchanged value breaks the run.
 
         Args:
-            df: Rows of the actual signal, sorted by time. Not modified.
+            dataframe: Rows of the actual signal, sorted by time. Not modified.
 
         Returns:
             pd.DataFrame: The violating rows (a copy) with a boolean
                 ``rule_4`` column (the fourteenth point of each run is flagged).
         """
-        return self._apply_rule("rule_4", df, None)
+        return self._apply_rule("rule_4", dataframe, None)
 
-    def rule_5(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
+    @renamed_kwargs(df="dataframe")
+    def rule_5(self, dataframe: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 5 (Nelson 1984, test 5): two out of three points in a row more than 2σ from the center line, same side.
+
+        A building block of :meth:`detect_rule_violations` (see the class
+        docstring).
 
         Points beyond 3σ count as beyond 2σ (zone A or beyond).
 
         Args:
-            df: Rows of the actual signal, sorted by time. Not modified.
+            dataframe: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
@@ -528,16 +582,20 @@ class StatisticalProcessControlEvents(Base):
                 ``rule_5`` column (the last point of each qualifying
                 three-point window is flagged).
         """
-        return self._apply_rule("rule_5", df, limits)
+        return self._apply_rule("rule_5", dataframe, limits)
 
-    def rule_6(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
+    @renamed_kwargs(df="dataframe")
+    def rule_6(self, dataframe: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 6 (Nelson 1984, test 6): four out of five points in a row more than 1σ from the center line, same side.
+
+        A building block of :meth:`detect_rule_violations` (see the class
+        docstring).
 
         Points beyond 2σ or 3σ count as beyond 1σ (zone B or beyond).
 
         Args:
-            df: Rows of the actual signal, sorted by time. Not modified.
+            dataframe: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
@@ -546,14 +604,18 @@ class StatisticalProcessControlEvents(Base):
                 ``rule_6`` column (the last point of each qualifying
                 five-point window is flagged).
         """
-        return self._apply_rule("rule_6", df, limits)
+        return self._apply_rule("rule_6", dataframe, limits)
 
-    def rule_7(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
+    @renamed_kwargs(df="dataframe")
+    def rule_7(self, dataframe: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 7 (Nelson 1984, test 7): fifteen points in a row within 1σ of the center line (either side).
 
+        A building block of :meth:`detect_rule_violations` (see the class
+        docstring).
+
         Args:
-            df: Rows of the actual signal, sorted by time. Not modified.
+            dataframe: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
@@ -561,17 +623,21 @@ class StatisticalProcessControlEvents(Base):
             pd.DataFrame: The violating rows (a copy) with a boolean
                 ``rule_7`` column.
         """
-        return self._apply_rule("rule_7", df, limits)
+        return self._apply_rule("rule_7", dataframe, limits)
 
-    def rule_8(self, df: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
+    @renamed_kwargs(df="dataframe")
+    def rule_8(self, dataframe: pd.DataFrame, limits: pd.DataFrame) -> pd.DataFrame:
         """
         Rule 8 (Nelson 1984, test 8): eight points in a row with none within 1σ of the center line.
+
+        A building block of :meth:`detect_rule_violations` (see the class
+        docstring).
 
         The points may lie on either side of the center line; what matters
         is that none falls in zone C (within 1σ).
 
         Args:
-            df: Rows of the actual signal, sorted by time. Not modified.
+            dataframe: Rows of the actual signal, sorted by time. Not modified.
             limits: Control limits as returned by :meth:`control_limits`;
                 only the first row is used.
 
@@ -579,9 +645,19 @@ class StatisticalProcessControlEvents(Base):
             pd.DataFrame: The violating rows (a copy) with a boolean
                 ``rule_8`` column.
         """
-        return self._apply_rule("rule_8", df, limits)
+        return self._apply_rule("rule_8", dataframe, limits)
 
-    apply_rules_vectorized = deprecated_method("detect_rule_violations")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "StatisticalProcessControlEvents.apply_rules_vectorized() is deprecated, use .detect_rule_violations()"
+        )
+        def apply_rules_vectorized(
+            self, selected_rules: list[str] | None = None
+        ) -> pd.DataFrame: ...
+
+    else:
+        apply_rules_vectorized = deprecated_method("detect_rule_violations")
 
     @keyword_only(1)
     def detect_rule_violations(
@@ -861,7 +937,17 @@ class StatisticalProcessControlEvents(Base):
 
         return result
 
-    process = deprecated_method("detect_violations")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "StatisticalProcessControlEvents.process() is deprecated, use .detect_violations()"
+        )
+        def process(
+            self, selected_rules: list[str] | None = None, include_severity: bool = True
+        ) -> pd.DataFrame: ...
+
+    else:
+        process = deprecated_method("detect_violations")
 
     @keyword_only(1)
     def detect_violations(
@@ -959,6 +1045,14 @@ class StatisticalProcessControlEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-StatisticalProcessControlRuleBased = deprecated_class(
-    StatisticalProcessControlEvents, "StatisticalProcessControlRuleBased"
-)
+if TYPE_CHECKING:
+
+    @deprecated(
+        "StatisticalProcessControlRuleBased is deprecated, use StatisticalProcessControlEvents"
+    )
+    class StatisticalProcessControlRuleBased(StatisticalProcessControlEvents): ...
+
+else:
+    StatisticalProcessControlRuleBased = deprecated_class(
+        StatisticalProcessControlEvents, "StatisticalProcessControlRuleBased"
+    )

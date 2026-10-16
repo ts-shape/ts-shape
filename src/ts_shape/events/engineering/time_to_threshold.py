@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._windows import labeled_window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 
@@ -170,7 +171,9 @@ class TimeToThresholdEvents(Base):
             lookback: Lookback period for trend estimation.
 
         Returns:
-            DataFrame with columns: window_start, current_value,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), current_value,
             slope_per_second, estimated_seconds, confidence, direction.
         """
         cols = [
@@ -182,7 +185,7 @@ class TimeToThresholdEvents(Base):
             "direction",
         ]
         if self.signal.empty or len(self.signal) < 2:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -227,9 +230,7 @@ class TimeToThresholdEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)
 
     @keyword_only(3)
     @renamed_kwargs(lower_bound="lower_limit", upper_bound="upper_limit")

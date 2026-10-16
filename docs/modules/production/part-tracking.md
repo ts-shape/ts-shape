@@ -19,7 +19,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 pt = PartProductionEvents(df)
-print(pt.production_by_part(part_id_uuid="part_id", counter_uuid="part_counter", window="1h").head())
+result = pt.production_by_part(part_id_uuid="part_id", counter_uuid="part_counter", window="1h").head()
+print(result[["start", "part_number", "quantity", "resets"]])
 totals = pt.production_totals(part_id_uuid="part_id", counter_uuid="part_counter")
 resets = pt.detect_resets(part_id_uuid="part_id", counter_uuid="part_counter")
 ```

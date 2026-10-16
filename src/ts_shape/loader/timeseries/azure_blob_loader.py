@@ -11,6 +11,7 @@ import pandas as pd
 from ts_shape.errors import DataQualityWarning, LoaderConfigWarning, LoaderError
 from ts_shape.loader._utils import (
     ErrorsMode,
+    azure_container_repr,
     check_errors_mode,
     describe_failures,
     is_not_found,
@@ -225,6 +226,9 @@ class AzureBlobParquetLoader:
         # Pattern for hour-level subpath; tokens: {Y} {m} {d} {H}
         # Default matches many data lake layouts: YYYY/MM/DD/HH/
         self.hour_pattern = hour_pattern
+
+    def __repr__(self) -> str:
+        return azure_container_repr(self)
 
     @classmethod
     def from_account_name(
@@ -825,14 +829,15 @@ class AzureBlobParquetLoader:
             missing_ok=missing_ok,
         )
 
+    @renamed_kwargs(parquet_only="only_parquet")
     def list_structure(
-        self, parquet_only: bool = True, limit: int | None = None
+        self, only_parquet: bool = True, limit: int | None = None
     ) -> dict[str, list[str]]:
         """
         List folder prefixes (hours) and blob names under the configured `prefix`.
 
         Args:
-            parquet_only: If True, only include blobs ending with .parquet.
+            only_parquet: If True, only include blobs ending with .parquet.
             limit: Optional cap on number of files collected for quick inspection.
 
         Returns:
@@ -849,7 +854,7 @@ class AzureBlobParquetLoader:
         )
         for b in blob_iter:
             name = str(b.name)
-            if parquet_only and not name.endswith(".parquet"):
+            if only_parquet and not name.endswith(".parquet"):
                 continue
             files.append(name)
             # Derive hour-level folder prefix
@@ -973,6 +978,9 @@ class AzureBlobFlexibleFileLoader:
         if not AzureBlobFlexibleFileLoader._parsers_initialized:
             self._enable_builtin_parsers()
             AzureBlobFlexibleFileLoader._parsers_initialized = True
+
+    def __repr__(self) -> str:
+        return azure_container_repr(self)
 
     # ---- Shared helpers with Parquet loader ----
     def _hour_prefix(self, ts: pd.Timestamp) -> str:

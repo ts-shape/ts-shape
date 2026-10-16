@@ -139,6 +139,55 @@ Classes:
 """
 
 import importlib as _importlib
+from typing import TYPE_CHECKING
+
+# Explicit imports for type checkers and IDEs only (so ``from ts_shape import X``
+# is typed as X, not object); at runtime __getattr__ below imports lazily.
+# tests/typing/test_lazy_exports.py keeps this block in sync with the map.
+if TYPE_CHECKING:
+    from ts_shape.features.cross_signal import (
+        CrossSignalAnalytics as CrossSignalAnalytics,
+    )
+    from ts_shape.features.cycles.cycle_processor import (
+        CycleDataProcessor as CycleDataProcessor,
+    )
+    from ts_shape.features.cycles.cycles_extractor import (
+        CycleExtractor as CycleExtractor,
+    )
+    from ts_shape.features.export import FeatureMatrixExporter as FeatureMatrixExporter
+    from ts_shape.features.pattern_recognition import (
+        PatternRecognition as PatternRecognition,
+    )
+    from ts_shape.features.segment_analysis.profile_comparison import (
+        ProfileComparison as ProfileComparison,
+    )
+    from ts_shape.features.segment_analysis.segment_extractor import (
+        SegmentExtractor as SegmentExtractor,
+    )
+    from ts_shape.features.segment_analysis.segment_processor import (
+        SegmentProcessor as SegmentProcessor,
+    )
+    from ts_shape.features.segment_analysis.time_windowed_features import (
+        TimeWindowedFeatureTable as TimeWindowedFeatureTable,
+    )
+    from ts_shape.features.stats.boolean_stats import (
+        BooleanStatistics as BooleanStatistics,
+    )
+    from ts_shape.features.stats.feature_table import (
+        DescriptiveFeatures as DescriptiveFeatures,
+    )
+    from ts_shape.features.stats.numeric_stats import (
+        NumericStatistics as NumericStatistics,
+    )
+    from ts_shape.features.stats.string_stats import (
+        StringStatistics as StringStatistics,
+    )
+    from ts_shape.features.stats.timestamp_stats import (
+        TimestampStatistics as TimestampStatistics,
+    )
+    from ts_shape.features.time_stats.time_stats_numeric import (
+        TimeGroupedStatistics as TimeGroupedStatistics,
+    )
 
 # The classes listed above, importable from the pack. They are imported on
 # first access, so a class whose optional dependency is missing only fails

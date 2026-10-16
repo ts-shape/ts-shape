@@ -12,9 +12,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats as sp_stats
 
 from ts_shape.errors import DataQualityWarning
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import caller_stacklevel, keyword_only, renamed_kwargs
@@ -146,6 +146,7 @@ class ValueDistributionEvents(Base):
         )
 
     @keyword_only(1)
+    @twin_columns({"n_samples": "sample_count"})
     def detect_bimodal(self, min_samples: int = 30) -> pd.DataFrame:
         """Test whether the overall signal distribution is bimodal.
 
@@ -161,7 +162,13 @@ class ValueDistributionEvents(Base):
             n_samples, mode_1, mode_2, valley (empty when there are fewer
             than ``min_samples`` values). A constant signal is unimodal with
             ``mode_1`` at its value.
+
+            Canonical twin columns: ``sample_count`` (after ``n_samples``); each holds
+            the same values as the deprecated column right before it, which is removed
+            in the next major release.
         """
+        from scipy import stats as sp_stats
+
         cols = ["is_bimodal", "dip_score", "n_samples", "mode_1", "mode_2", "valley"]
         vals = self.signal[self.value_column].dropna().values
         if len(vals) < min_samples:
@@ -244,6 +251,7 @@ class ValueDistributionEvents(Base):
 
     @keyword_only(1)
     @renamed_kwargs(freq="window")
+    @twin_columns({"n_samples": "sample_count"})
     def normality_windows(
         self,
         window: str = "1h",
@@ -263,7 +271,13 @@ class ValueDistributionEvents(Base):
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, n_samples, is_normal, p_value, skewness, kurtosis.
             ``end`` is ``start`` plus one ``window``.
+
+            Canonical twin columns: ``sample_count`` (after ``n_samples``); each holds
+            the same values as the deprecated column right before it, which is removed
+            in the next major release.
         """
+        from scipy import stats as sp_stats
+
         cols = [
             "start",
             "n_samples",
@@ -344,6 +358,7 @@ class ValueDistributionEvents(Base):
 
     @keyword_only(1)
     @renamed_kwargs(freq="window")
+    @twin_columns({"n_samples": "sample_count"})
     def percentile_tracking(
         self,
         percentiles: Sequence[float] = (5, 25, 50, 75, 95),
@@ -362,6 +377,10 @@ class ValueDistributionEvents(Base):
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, n_samples, plus one column per percentile (e.g.
             ``p5``, ``p95``). ``end`` is ``start`` plus one ``window``.
+
+            Canonical twin columns: ``sample_count`` (after ``n_samples``); each holds
+            the same values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         pct_cols = [f"p{int(p)}" for p in percentiles]
         cols = ["start", "n_samples"] + pct_cols
@@ -415,6 +434,8 @@ class ValueDistributionEvents(Base):
         values: np.ndarray, max_modes: int, min_separation: float
     ) -> list[float]:
         """Find up to *max_modes* peaks in the value distribution via KDE."""
+        from scipy import stats as sp_stats
+
         if len(values) < 5:
             return []
 

@@ -18,7 +18,8 @@ df = pd.concat([
 ], ignore_index=True)
 
 tp = LineThroughputEvents(df)
-print(tp.count_parts(counter_uuid="line1:part_counter", window="15min").head())
+result = tp.count_parts(counter_uuid="line1:part_counter", window="15min").head()
+print(result[["start", "end", "count", "resets"]])
 takt = tp.takt_adherence(cycle_uuid="line1:cycle_trigger", takt_time="55s")
 oee = tp.throughput_oee(counter_uuid="line1:part_counter", window="1h", target_rate=60)
 ```
@@ -29,7 +30,7 @@ oee = tp.throughput_oee(counter_uuid="line1:part_counter", window="1h", target_r
 |---|---|
 | `count_parts(counter_uuid, window='1min', handle_resets=True)` | per window: `count` (+ `resets`) |
 | `takt_adherence(cycle_uuid, takt_time='60s', min_violation='0s')` | one row per cycle: `systime`, `cycle_time_seconds`, `violation` |
-| `throughput_oee(counter_uuid, window='1h', target_rate=None, availability_threshold=0.0)` | per window: `actual_count`, `target_count`, `availability`, `performance`, `oee_score` (0-1), `run_seconds`, `planned_seconds` (+ `resets`) |
+| `throughput_oee(counter_uuid, window='1h', target_rate=None, availability_threshold=0.0)` | per window: `actual_count`, `target_count`, `availability_ratio`, `performance_ratio`, `oee_ratio` (0-1), `run_seconds`, `planned_seconds` (+ `resets`) |
 | `throughput_trends(counter_uuid, window='1h', trend_window=24)` | per window: `count`, `moving_avg`, `trend_direction`, `degradation_detected` |
 | `cycle_quality_check(cycle_uuid, expected_cycle_time=None, tolerance_pct=0.1)` | one row per cycle: `cycle_time_seconds`, `expected_time`, `deviation_pct`, `is_valid`, `quality_flag` |
 

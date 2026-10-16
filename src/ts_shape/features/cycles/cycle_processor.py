@@ -238,36 +238,38 @@ class CycleDataProcessor(Base):
         )
         return result
 
+    @renamed_kwargs(data="dataframe")
     def group_by_cycle_uuid(
-        self, data: pd.DataFrame | None = None
+        self, dataframe: pd.DataFrame | None = None
     ) -> list[pd.DataFrame]:
         """
         Group the DataFrame by the cycle_uuid column, resulting in a list of DataFrames, each containing data for one cycle.
 
         Args:
-            data: DataFrame containing the data to be grouped by cycle_uuid. If None,
+            dataframe: DataFrame to be grouped by cycle_uuid. If None,
                 uses ``merge_dataframes_by_cycle()``.
 
         Returns:
             List of DataFrames, one per cycle uuid, in order of first appearance.
         """
-        if data is None:
-            data = self.merge_dataframes_by_cycle()
+        if dataframe is None:
+            dataframe = self.merge_dataframes_by_cycle()
 
-        if self.cycle_uuid_column not in data.columns:
+        if self.cycle_uuid_column not in dataframe.columns:
             logger.warning(
-                f"Column '{self.cycle_uuid_column}' not found in data. Cannot group."
+                f"Column '{self.cycle_uuid_column}' not found in dataframe. Cannot group."
             )
             return []
 
         grouped_dataframes = [
-            group for _, group in data.groupby(self.cycle_uuid_column, sort=False)
+            group for _, group in dataframe.groupby(self.cycle_uuid_column, sort=False)
         ]
         logger.info(f"Grouped data into {len(grouped_dataframes)} cycle UUID groups.")
         return grouped_dataframes
 
+    @renamed_kwargs(column="group_column")
     def split_dataframes_by_group(
-        self, dfs: list[pd.DataFrame], column: str
+        self, dfs: list[pd.DataFrame], group_column: str
     ) -> list[pd.DataFrame]:
         """
         Splits a list of DataFrames by groups based on a specified column.
@@ -275,29 +277,31 @@ class CycleDataProcessor(Base):
 
         Args:
             dfs: List of DataFrames to be split.
-            column: Column name to group by.
+            group_column: Column name to group by.
 
         Returns:
             List of DataFrames, each corresponding to a group in the original DataFrames.
-                Rows whose ``column`` is missing are left out.
+                Rows whose ``group_column`` is missing are left out.
 
         Raises:
-            ColumnNotFoundError: If one of ``dfs`` has no ``column`` (it was
+            ColumnNotFoundError: If one of ``dfs`` has no ``group_column`` (it was
                 skipped with a log message before).
         """
         split_dfs = []
         for position, df in enumerate(dfs):
             require_columns(
                 df,
-                (column,),
+                (group_column,),
                 where=f"CycleDataProcessor.split_dataframes_by_group: dfs[{position}]",
             )
-            groups = df.groupby(column)
+            groups = df.groupby(group_column)
             for _, group in groups:
                 split_dfs.append(group)
 
         logger.info(
-            "Split data into %d groups based on column %r.", len(split_dfs), column
+            "Split data into %d groups based on group_column %r.",
+            len(split_dfs),
+            group_column,
         )
         return split_dfs
 

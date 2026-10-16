@@ -19,7 +19,8 @@ df = pd.DataFrame(rows, columns=["value_string", "operator", "value_double"])
 df["systime"], df["uuid"] = pd.date_range("2024-01-01", periods=len(df), freq="1min"), "gauge_01"
 
 grr = GaugeRepeatabilityEvents(df, "gauge_01", operator_column="operator")
-print(grr.gauge_rr_summary(tolerance_range=10.0))
+result = grr.gauge_rr_summary(tolerance_range=10.0)
+print(result[["GRR", "grr_pct", "pv_pct", "ndc", "grr_tolerance_pct"]])
 bias = grr.measurement_bias({"P0": 10.0, "P1": 10.5})
 ```
 
@@ -29,7 +30,7 @@ bias = grr.measurement_bias({"P0": 10.0, "P1": 10.5})
 |---|---|
 | `repeatability(n_trials=None)` | per part: `mean`, `range`, `repeatability_std`, `EV` |
 | `reproducibility()` | per operator: `mean`, `reproducibility_std`, `AV` (needs `operator_column`) |
-| `gauge_rr_summary(tolerance_range=None)` | one row: `EV`, `AV`, `GRR`, `PV`, `TV`, `pct_GRR`, `pct_PV`, `ndc` (+ `pct_GRR_tolerance`) |
+| `gauge_rr_summary(tolerance_range=None)` | one row: `EV`, `AV`, `GRR`, `PV`, `TV`, `grr_pct`, `pv_pct`, `ndc` (+ `grr_tolerance_pct`) |
 | `measurement_bias(reference_values)` | per part: `measured_mean`, `reference`, `bias`, `bias_pct` |
 
 ## Notes
@@ -38,4 +39,4 @@ bias = grr.measurement_bias({"P0": 10.0, "P1": 10.5})
 - With `operator_column`, ranges and standard deviations are taken within each operator × part cell and averaged per part (AIAG average-and-range method).
 - `AV = sqrt((X_diff · K2)² − EV² / (n · r))` with `X_diff` the range of operator means, `n` parts and `r` trials; a negative radicand gives `AV = 0`.
 - `n_trials=None` detects the number of trials from the data.
-- `pct_GRR_tolerance` (needs `tolerance_range` = USL − LSL) is the share of the tolerance used by the gauge. Under AIAG guidance below 10 % is acceptable, 10-30 % may be acceptable, above 30 % is not.
+- `grr_tolerance_pct` (needs `tolerance_range` = USL − LSL) is the share of the tolerance used by the gauge. Under AIAG guidance below 10 % is acceptable, 10-30 % may be acceptable, above 30 % is not.

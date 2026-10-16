@@ -8,6 +8,7 @@ from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
     finalize_summary_df,
+    twin_columns,
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
@@ -264,6 +265,13 @@ class ControlLoopHealthEvents(Base):
 
     @keyword_only(1)
     @renamed_kwargs(high_limit="upper_limit", low_limit="lower_limit")
+    @twin_columns(
+        {
+            "pct_time_at_high": "time_at_high_pct",
+            "pct_time_at_low": "time_at_low_pct",
+            "pct_time_saturated": "time_saturated_pct",
+        }
+    )
     def output_saturation(
         self,
         upper_limit: float = 100.0,
@@ -287,6 +295,11 @@ class ControlLoopHealthEvents(Base):
             source_uuid (the output uuid), pct_time_at_high, pct_time_at_low,
             pct_time_saturated, longest_saturation_seconds. One row per
             window; ``end`` is ``start`` + ``window``.
+
+            Canonical twin columns: ``time_at_high_pct`` (after ``pct_time_at_high``),
+            ``time_at_low_pct`` (after ``pct_time_at_low``), ``time_saturated_pct``
+            (after ``pct_time_saturated``); each holds the same values as the deprecated
+            column right before it, which is removed in the next major release.
         """
         cols = [
             "start",
@@ -342,6 +355,7 @@ class ControlLoopHealthEvents(Base):
         )
 
     @keyword_only(1)
+    @twin_columns({"pct_saturated": "saturated_pct"})
     def loop_health_summary(
         self,
         window: str = "8h",
@@ -369,6 +383,10 @@ class ControlLoopHealthEvents(Base):
             DataFrame with columns: start, end, duration_seconds, iae, bias,
             oscillation_count, pct_saturated, health_grade. ``end`` is
             ``start`` + ``window``.
+
+            Canonical twin columns: ``saturated_pct`` (after ``pct_saturated``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         cols = [
             "start",

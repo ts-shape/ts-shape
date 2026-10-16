@@ -62,7 +62,10 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from ts_shape.utils.deprecation import caller_stacklevel
+from ts_shape.utils.deprecation import (
+    caller_stacklevel,
+    renamed_kwargs,
+)
 
 from ..errors import ColumnNotFoundError, DataQualityWarning
 from ..utils.frames import require_columns, to_ns
@@ -393,8 +396,9 @@ def _detect(
     return intervals, extra
 
 
+@renamed_kwargs(df="dataframe")
 def object_intervals(
-    df: pd.DataFrame,
+    dataframe: pd.DataFrame,
     specs: Sequence[ObjectSpec],
     *,
     uuid_column: str = "uuid",
@@ -414,7 +418,9 @@ def object_intervals(
     re-appears later yields another row with the same ``oid``. An empty frame
     or no matching signal gives an empty frame with the full column set.
     """
-    intervals, _ = _detect(df, specs, uuid_column=uuid_column, time_column=time_column)
+    intervals, _ = _detect(
+        dataframe, specs, uuid_column=uuid_column, time_column=time_column
+    )
     return intervals
 
 
@@ -472,8 +478,9 @@ def _capture_attribute(
     return pd.Series(at_start, dtype="object"), during
 
 
+@renamed_kwargs(df="dataframe")
 def detect_objects(
-    df: pd.DataFrame,
+    dataframe: pd.DataFrame,
     specs: Sequence[ObjectSpec],
     *,
     uuid_column: str = "uuid",
@@ -500,7 +507,7 @@ def detect_objects(
     object-to-object relations entirely.
 
     Args:
-        df: Long-format frame with the id signals.
+        dataframe: Long-format frame with the id signals.
         specs: Which signal carries which object type.
         uuid_column: Signal identifier column.
         time_column: Timestamp column.
@@ -513,11 +520,11 @@ def detect_objects(
         and no events.
 
     Raises:
-        ColumnNotFoundError: When ``df`` lacks the uuid, time or a spec's
+        ColumnNotFoundError: When ``dataframe`` lacks the uuid, time or a spec's
             value column.
     """
     intervals, extra = _detect(
-        df, specs, uuid_column=uuid_column, time_column=time_column
+        dataframe, specs, uuid_column=uuid_column, time_column=time_column
     )
     log = EventLog(
         objects=_objects_table(intervals),
@@ -529,9 +536,10 @@ def detect_objects(
     return log
 
 
+@renamed_kwargs(df="dataframe")
 def attach_objects(
     event_log: EventLog,
-    df: pd.DataFrame,
+    dataframe: pd.DataFrame,
     specs: Sequence[ObjectSpec],
     *,
     qualifiers: Mapping[str, str] | None = None,
@@ -549,14 +557,14 @@ def attach_objects(
     output of *any* event detector — no per-detector changes required. See
     :func:`detect_objects` for ``hierarchy`` (declared ``part_of`` edges).
 
-    This is a convenience over :func:`relate`: it first segments ``df`` into an
+    This is a convenience over :func:`relate`: it first segments ``dataframe`` into an
     object-interval table via :func:`object_intervals`, then relates the events
     to it. When you already hold an interval/object table, call :func:`relate`
     directly and skip the raw signals.
 
     Args:
         event_log: The events to link.
-        df: Long-format frame with the id signals.
+        dataframe: Long-format frame with the id signals.
         specs: Which signal carries which object type.
         qualifiers: Relation qualifier per object type.
         uuid_column: Signal identifier column.
@@ -569,7 +577,7 @@ def attach_objects(
         ``event_log`` merged with the detected objects and the new relations.
     """
     intervals, extra = _detect(
-        df, specs, uuid_column=uuid_column, time_column=time_column
+        dataframe, specs, uuid_column=uuid_column, time_column=time_column
     )
     return _relate(
         event_log,

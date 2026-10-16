@@ -8,6 +8,7 @@ from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
     finalize_summary_df,
+    twin_columns,
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
@@ -81,6 +82,25 @@ class ThresholdMonitoringEvents(Base):
     - threshold_with_hysteresis: Alarm entry/exit with separate high/low thresholds.
     - time_above_threshold: Time and percentage above a threshold per window.
     - threshold_exceedance_trend: Track exceedance frequency over time.
+
+    Example:
+        >>> import pandas as pd
+        >>> from ts_shape import ThresholdMonitoringEvents
+        >>> df = pd.DataFrame({
+        ...     "systime": pd.date_range("2025-01-01 08:00", periods=6, freq="1min"),
+        ...     "uuid": "temp",
+        ...     "value_double": [70.0, 82.0, 91.0, 85.0, 75.0, 70.0],
+        ... })
+        >>> monitor = ThresholdMonitoringEvents(df, "temp")
+        >>> monitor.multi_level_threshold({"warning": 80.0, "alarm": 90.0})[
+        ...     ["start", "end", "level"]]
+                        start                 end    level
+        0 2025-01-01 08:02:00 2025-01-01 08:03:00    alarm
+        1 2025-01-01 08:01:00 2025-01-01 08:04:00  warning
+        >>> monitor.threshold_with_hysteresis(upper_limit=80.0, lower_limit=76.0)[
+        ...     ["start", "end", "duration_seconds"]]
+                        start                 end  duration_seconds
+        0 2025-01-01 08:01:00 2025-01-01 08:04:00             180.0
     """
 
     def __init__(
@@ -286,6 +306,7 @@ class ThresholdMonitoringEvents(Base):
         )
 
     @keyword_only(2)
+    @twin_columns({"pct_above": "time_above_pct"})
     def time_above_threshold(
         self,
         threshold: float,
@@ -308,6 +329,10 @@ class ThresholdMonitoringEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, time_above,
             pct_above, exceedance_count. ``end`` is ``start`` + ``window``.
+
+            Canonical twin columns: ``time_above_pct`` (after ``pct_above``); each holds the
+            same values as the deprecated column right before it, which is removed in
+            the next major release.
         """
         cols = ["start", "time_above", "pct_above", "exceedance_count"]
         if self.signal.empty:

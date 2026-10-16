@@ -15,7 +15,8 @@ df.loc[900:, "value_double"] += 25.0  # new operating point
 
 op = OperatingRangeEvents(df, "extruder_speed")
 envelope = op.operating_envelope(window="1h")
-print(op.detect_regime_change(window="1h", shift_threshold=2.0))
+result = op.detect_regime_change(window="1h", shift_threshold=2.0)
+print(result[["start", "prev_mean", "new_mean", "shift_magnitude"]])
 in_range = op.time_in_range(180.0, 220.0, window="1h")
 histogram = op.value_distribution(n_bins=10)
 ```

@@ -16,7 +16,8 @@ df = pd.DataFrame({
     "value_bool": [True] * 20 + [False] * 5 + [True] * 40 + [False] * 10 + [True] * 45,
 })
 events = MachineStateEvents(df, run_state_uuid="line1:running")
-print(events.detect_run_idle(min_duration="1min"))
+result = events.detect_run_idle(min_duration="1min")
+print(result[["start", "end", "state", "duration_seconds"]])
 transitions = events.transition_events()
 quality = events.state_quality_metrics()
 ```

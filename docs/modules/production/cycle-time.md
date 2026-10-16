@@ -18,7 +18,8 @@ df = pd.concat([
 
 ct = CycleTimeEvents(df)
 ids = dict(part_id_uuid="line1:part_number", cycle_trigger_uuid="line1:cycle_done")
-print(ct.cycle_time_statistics(**ids, max_cycle_gap="5min"))
+result = ct.cycle_time_statistics(**ids, max_cycle_gap="5min")
+print(result[["part_number", "count", "min_seconds", "avg_seconds", "max_seconds"]])
 slow = ct.detect_slow_cycles(**ids, threshold_factor=1.5)
 trend = ct.cycle_time_trend(**ids, part_number="PN-100", window_size=20)
 ```

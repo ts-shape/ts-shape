@@ -9,7 +9,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
@@ -32,6 +31,23 @@ class SensorDriftEvents(Base):
     - detect_span_drift: Track measurement sensitivity changes over time.
     - drift_trend: Rolling linear trend analysis on signal statistics.
     - calibration_health: Composite health score per window.
+
+    Example:
+        A probe that should read 10.0 and drifts upward by 2.0 over two days:
+
+        >>> import ts_shape
+        >>> df = ts_shape.make_timeseries(["probe"], n_points=48, freq="1h",
+        ...     baseline=10, noise=0.1, drift=2.0)
+        >>> drift = ts_shape.SensorDriftEvents(df, "probe", reference_value=10.0)
+        >>> drift.detect_zero_drift(window="8h", threshold=0.5)[
+        ...     ["start", "mean_offset", "severity"]].round({"mean_offset": 2})
+                        start  mean_offset  severity
+        0 2025-01-01 00:00:00         0.12       low
+        1 2025-01-01 08:00:00         0.51  critical
+        2 2025-01-01 16:00:00         0.84  critical
+        3 2025-01-02 00:00:00         1.20  critical
+        4 2025-01-02 08:00:00         1.50  critical
+        5 2025-01-02 16:00:00         1.88  critical
     """
 
     def __init__(
@@ -278,6 +294,8 @@ class SensorDriftEvents(Base):
             source_uuid, value, slope, r_squared, direction.
             ``end`` is ``start`` plus one ``window``.
         """
+        from scipy import stats
+
         cols = ["start", "value", "slope", "r_squared", "direction"]
         if self.signal.empty:
             return finish_events(

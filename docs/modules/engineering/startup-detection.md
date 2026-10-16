@@ -17,7 +17,8 @@ df = pd.DataFrame({"systime": t, "uuid": "motor_current", "value_double": curren
 
 sd = StartupDetectionEvents(df, target_uuid="motor_current")
 startups = sd.detect_startup_by_threshold(threshold=5.0, hysteresis=(5.0, 4.5), min_above="10s")
-print(sd.assess_startup_quality(startups))
+result = sd.assess_startup_quality(startups)
+print(result[["start", "smoothness_score", "stability_score", "value_change"]])
 failed = sd.detect_failed_startups(threshold=5.0, completion_threshold=10.0, max_completion_time="5min")
 ```
 

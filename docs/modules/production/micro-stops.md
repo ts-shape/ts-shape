@@ -18,7 +18,8 @@ df = pd.DataFrame({
 })
 ms = MicroStopEvents(df, run_state_uuid="line1:running")
 stops = ms.detect_micro_stops(max_duration="30s")
-print(ms.micro_stop_impact(window="15min", max_duration="30s").head())
+result = ms.micro_stop_impact(window="15min", max_duration="30s").head()
+print(result[["start", "total_micro_stop_time", "performance_loss_pct"]])
 patterns = ms.micro_stop_patterns(hour_grouping=True)
 ```
 
@@ -27,7 +28,7 @@ patterns = ms.micro_stop_patterns(hour_grouping=True)
 | Method | Returns |
 |---|---|
 | `detect_micro_stops(max_duration='30s', min_duration='0s')` | `start`, `end`, `duration_seconds`, `duration`, `preceding_run_duration` |
-| `micro_stop_frequency(window='1h', max_duration='30s')` | per window: `count`, `total_lost_time`, `pct_of_window` |
+| `micro_stop_frequency(window='1h', max_duration='30s')` | per window: `count`, `total_lost_time`, `share_of_window_pct` |
 | `micro_stop_impact(window='1h', max_duration='30s')` | per window: `total_run_time`, `total_micro_stop_time`, `performance_loss_pct` (= `availability_loss_pct`) |
 | `micro_stop_patterns(hour_grouping=True, max_duration='30s')` | per `hour` of day (or 8-hour `shift` block with `hour_grouping=False`): `avg_count`, `avg_lost_time` |
 

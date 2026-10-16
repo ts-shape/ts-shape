@@ -19,15 +19,20 @@ from __future__ import annotations
 import functools
 import logging
 import time
+import urllib.parse
 import warnings
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning, LoaderError
 from ts_shape.utils.deprecation import caller_stacklevel
+
+if TYPE_CHECKING:
+    from sqlalchemy import URL
+    from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +209,137 @@ def require_optional(obj: object, package: str, extra: str) -> None:
     """
     if obj is None:
         raise missing_optional(package, extra)
+
+
+#: Default DB-API driver of the PostgreSQL loaders (the ``postgres`` extra).
+POSTGRES_DRIVER = "psycopg2"
+
+
+def postgres_url(
+    *,
+    username: str,
+    password: str,
+    host: str,
+    database: str,
+    port: int | str = 5432,
+    driver: str = POSTGRES_DRIVER,
+) -> URL:
+    """Connection URL of a PostgreSQL / TimescaleDB database.
+
+    Built with :meth:`sqlalchemy.URL.create`, so a password with ``@``, ``:``,
+    ``/`` or ``%`` needs no escaping, and with an explicit driver: SQLAlchemy
+    2.1 changed the default PostgreSQL driver from psycopg2 to psycopg 3.
+
+    Args:
+        username: Database user.
+        password: Database password, as is (not URL-encoded).
+        host: Host name or address.
+        database: Database name.
+        port: Port. Default 5432.
+        driver: DB-API driver name. Default ``"psycopg2"`` (the ``postgres``
+            extra); ``"psycopg"`` and ``"pg8000"`` also work when installed.
+
+    Returns:
+        The URL. Its ``str()`` / ``repr()`` mask the password.
+    """
+    try:
+        from sqlalchemy import URL
+    except ImportError as exc:
+        raise missing_optional("sqlalchemy", "sql") from exc
+
+    return URL.create(
+        f"postgresql+{driver}",
+        username=username,
+        password=password,
+        host=host,
+        port=int(port),
+        database=database,
+    )
+
+
+def create_postgres_engine(
+    create_engine: Callable[..., Engine], url: URL, **kwargs: Any
+) -> Engine:
+    """``create_engine(url)``, naming the extra to install when the driver is missing.
+
+    Args:
+        create_engine: :func:`sqlalchemy.create_engine` (passed in so tests can
+            replace the loader module's name).
+        url: The connection URL, see :func:`postgres_url`.
+        **kwargs: Passed to ``create_engine``.
+
+    Raises:
+        ImportError: The DB-API driver is not installed; for psycopg2 the
+            message names ``pip install ts-shape[postgres]``.
+    """
+    try:
+        return create_engine(url, **kwargs)
+    except ImportError as exc:
+        if url.get_driver_name() == POSTGRES_DRIVER:
+            raise missing_optional("psycopg2-binary", "postgres") from exc
+        raise
+
+
+#: Shown in a loader's ``repr`` in place of a secret.
+REDACTED = "***"
+
+
+def redact_url(url: str) -> str:
+    """``url`` with its password and query-string values replaced by ``***``.
+
+    Query values often carry a SAS signature or an API key, and
+    ``user:password@`` a password, so neither appears in a ``repr``.
+    ``"https://u:pw@host/path?sig=abc"`` gives
+    ``"https://u:***@host/path?sig=***"``.
+    """
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return REDACTED
+    netloc = parts.netloc
+    if parts.password is not None:
+        userinfo, _, hostport = netloc.rpartition("@")
+        user = userinfo.split(":", 1)[0]
+        netloc = f"{user}:{REDACTED}@{hostport}"
+    query = "&".join(
+        f"{key}={REDACTED}" if sep else key
+        for key, sep, _ in (
+            item.partition("=") for item in parts.query.split("&") if item
+        )
+    )
+    return urllib.parse.urlunsplit(
+        (parts.scheme, netloc, parts.path, query, parts.fragment)
+    )
+
+
+def redact_mapping(mapping: dict[str, Any] | None) -> dict[str, str]:
+    """``mapping`` with every value replaced by ``***`` (headers, configs)."""
+    return {key: REDACTED for key in (mapping or {})}
+
+
+def loader_repr(obj: object, **fields: Any) -> str:
+    """``ClassName(field=value, ...)`` for a loader's ``__repr__``.
+
+    Callers pass only what is safe to show: never a password, key, token,
+    connection string or SAS URL (use :func:`redact_url` for URLs).
+    """
+    shown = ", ".join(f"{name}={value!r}" for name, value in fields.items())
+    return f"{type(obj).__name__}({shown})"
+
+
+def azure_container_repr(obj: Any) -> str:
+    """``repr`` of an Azure Blob loader: account, container and prefix only.
+
+    The connection string, SAS token or credential the loader was created
+    with is not shown.
+    """
+    client = obj.container_client
+    return loader_repr(
+        obj,
+        account_name=getattr(client, "account_name", None),
+        container_name=getattr(client, "container_name", None),
+        prefix=obj.prefix,
+    )
 
 
 def parse_utc_times(values: pd.Series) -> pd.Series:

@@ -19,7 +19,8 @@ df = pd.concat([
 roles = {"upstream_run": "line1:st1:run", "downstream_run": "line1:st2:run"}
 fc = FlowConstraintEvents(df)
 blocked = fc.blocked_events(roles=roles, tolerance="1s", min_duration="1min")
-print(fc.flow_constraint_analytics(roles=roles, tolerance="1s"))
+result = fc.flow_constraint_analytics(roles=roles, tolerance="1s")
+print(result[["constraint_type", "event_count", "total_duration_seconds", "severe_count"]])
 ```
 
 ## Methods

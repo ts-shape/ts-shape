@@ -2,7 +2,7 @@ import logging
 import operator
 import warnings
 from collections.abc import Callable
-from typing import Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
 import pandas as pd
@@ -23,6 +23,9 @@ from ts_shape.utils.deprecation import (
     deprecated_method,
     keyword_only,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +282,15 @@ class ToleranceDeviationEvents(Base):
                 positions += [int(earliest[g]), int(latest[g])]
         return [filtered_df.iloc[positions]]
 
-    process_and_group_data_with_events = deprecated_method("detect_deviations")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "ToleranceDeviationEvents.process_and_group_data_with_events() is deprecated, use .detect_deviations()"
+        )
+        def process_and_group_data_with_events(self) -> pd.DataFrame: ...
+
+    else:
+        process_and_group_data_with_events = deprecated_method("detect_deviations")
 
     def detect_deviations(self) -> pd.DataFrame:
         """
@@ -547,7 +558,21 @@ class ToleranceDeviationEvents(Base):
 
         return events_df
 
-    compute_capability_indices = deprecated_method("capability_indices")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "ToleranceDeviationEvents.compute_capability_indices() is deprecated, use .capability_indices()"
+        )
+        def compute_capability_indices(
+            self,
+            target_value: float | None = None,
+            *,
+            as_frame: bool = True,
+            sigma_method: SigmaMethod = "moving_range",
+        ) -> pd.DataFrame | dict[str, float]: ...
+
+    else:
+        compute_capability_indices = deprecated_method("capability_indices")
 
     @overload
     def capability_indices(

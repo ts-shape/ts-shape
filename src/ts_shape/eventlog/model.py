@@ -33,6 +33,21 @@ class EventLog:
     natural object association (e.g. a global cross-signal correlation
     statistic); ``o2o`` / ``object_changes`` are empty unless supplied. Use
     :attr:`has_objects` to check before calling :func:`to_event_log_xes`.
+
+    Example:
+        Built by :func:`~ts_shape.to_event_log` from a detector's output:
+
+        >>> import ts_shape
+        >>> df = ts_shape.make_timeseries(["temp"], n_outliers=3)
+        >>> out = ts_shape.OutlierDetectionEvents(df, "value_double").detect_outliers_zscore()
+        >>> log = ts_shape.to_event_log(
+        ...     out, detector="OutlierDetectionEvents.detect_outliers_zscore")
+        >>> len(log.events), log.has_objects
+        (4, True)
+        >>> log.events[["ocel:activity", "ocel:timestamp"]].head(2)
+                    ocel:activity            ocel:timestamp
+        0  quality.outlier.zscore 2025-01-01 01:34:30+00:00
+        1  quality.outlier.zscore 2025-01-01 03:21:00+00:00
     """
 
     events: pd.DataFrame = field(default_factory=schema.empty_events)

@@ -128,12 +128,14 @@ quality, 90 % availability).
 | When are product changes, how long are setups? | `ChangeoverEvents`, `SetupTimeEvents` | [Changeover](../modules/production/changeover.md), [Setup time](../modules/production/setup-time.md) |
 | Scrap, rework, NOK by reason and cost? | `ScrapEvents`, `ReworkEvents`, `QualityEvents` | [Scrap](../modules/production/scrap-tracking.md), [Rework](../modules/production/rework-tracking.md), [Quality tracking](../modules/production/quality-tracking.md) |
 | Actual against target per shift or day? | `TargetEvents` | [Target tracking](../modules/production/target-tracking.md) |
+| Actual against a production schedule or work orders? | `ProductionScheduleAdherenceEvents` | [Schedule adherence](../modules/production/schedule-adherence.md) |
 | Output and quality per operator? | `OperatorPerformanceEvents` | [Operator performance](../modules/production/operator-performance.md) |
 | Weekly and monthly roll-ups? | `PeriodSummaryEvents` | [Period summary](../modules/production/period-summary.md) |
 | Batches, their durations and yield? | `BatchTrackingEvents` | [Batch tracking](../modules/production/batch-tracking.md) |
 | Alarm floods, chattering and standing alarms? | `AlarmManagementEvents` | [Alarm management](../modules/production/alarm-management.md) |
 | How often does a pump or valve cycle? | `DutyCycleEvents` | [Duty cycle](../modules/production/duty-cycle.md) |
 | Operating hours and starts? | `RuntimeAccountingEvents` | [Runtime accounting](../modules/production/runtime-accounting.md) |
+| Machine states without a run/idle flag, from current or power? | `OperatingStateEvents` | [Operating state](../modules/production/operating-state.md) |
 
 ## Traceability
 

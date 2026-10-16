@@ -100,7 +100,7 @@ class TestNormalizeStatic:
             }
         )
         out = EnergyConsumptionEvents.normalize(
-            raw, series_id="ignored", id_column="id"
+            raw, series_id="ignored", uuid_column="id"
         )
         assert out["uuid"].iloc[0] == "meter_42"
 

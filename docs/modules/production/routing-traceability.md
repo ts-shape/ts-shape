@@ -37,5 +37,5 @@ stats = tracer.station_statistics()
 
 - Each routing sample is assigned the most recent item ID at that time; contiguous samples with the same (item, step) form one interval.
 - `state_map` translates routing values (int, float or str keys) to names; without it the raw values are the labels. `station_map` is a deprecated alias.
-- Defaults: ID in `value_string`, routing value in `value_integer` (`id_value_column=`, `routing_value_column=` to change).
+- Defaults: ID in `value_string`, routing value in `value_integer` (`value_column_id=`, `value_column_routing=` to change).
 - By default an interval ends at its last routing sample, so a change-only routing signal gives a dwell of 0; `infer_dwell_from_next=True` ends it at the item's next routing arrival.

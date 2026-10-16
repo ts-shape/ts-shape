@@ -7,7 +7,7 @@ Generic module for comparing any metric to targets:
 """
 
 import logging
-from typing import Literal, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 import pandas as pd
 
@@ -17,6 +17,9 @@ from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -353,4 +356,10 @@ class TargetEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-TargetTracking = deprecated_class(TargetEvents, "TargetTracking")
+if TYPE_CHECKING:
+
+    @deprecated("TargetTracking is deprecated, use TargetEvents")
+    class TargetTracking(TargetEvents): ...
+
+else:
+    TargetTracking = deprecated_class(TargetEvents, "TargetTracking")

@@ -1,3 +1,20 @@
+# October 16, 2026 (round 11)
+Typed API, docs that run, coverage gate 93.
+feat: top-level imports are typed; deprecated names are visible to type
+  checkers; transforms, features, ValueMapper, PipelineResult and the
+  warnings/errors are top-level exports; loaders have redacting reprs.
+perf: scipy and scikit-learn are imported lazily; list_detectors does not
+  import modules.
+fix: PostgreSQL loaders name the psycopg2 driver (SQLAlchemy 2.1), escape
+  the password and take db_port / db_driver; discover_motifs applies an
+  exclusion zone between motifs; startup by slope with repeated index
+  labels; empty multi-signal startup results keep their columns;
+  DatapointDB with an empty device.
+docs: every python block on the docs pages runs as a test; new module pages
+  and guides (context, ML features, maintenance, energy); runnable class
+  examples. See docs/migration.md.
+chore: coverage floor 82 -> 93.
+
 # October 15, 2026 (round 10)
 Fast at 10 and 100 million rows; results unchanged.
 perf: detector construction copies, sorts and converts only what it must

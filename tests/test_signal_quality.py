@@ -76,7 +76,9 @@ def out_of_range_df():
 class TestDetectMissingData:
     def test_finds_gap(self, regular_df):
         detector = SignalQualityEvents(regular_df, "sensor_1")
-        gaps = detector.detect_missing_data(expected_freq="1s", tolerance_factor=2.0)
+        gaps = detector.detect_missing_data(
+            expected_interval="1s", tolerance_factor=2.0
+        )
         assert len(gaps) == 1
         assert gaps.iloc[0]["gap_duration"] >= pd.Timedelta("25s")
 
@@ -92,7 +94,7 @@ class TestDetectMissingData:
         ]
         df = pd.DataFrame(rows)
         detector = SignalQualityEvents(df, "s1")
-        gaps = detector.detect_missing_data(expected_freq="1s")
+        gaps = detector.detect_missing_data(expected_interval="1s")
         assert len(gaps) == 0
 
 
@@ -141,7 +143,7 @@ class TestDetectOutOfRange:
 class TestDataCompleteness:
     def test_completeness_with_gap(self, regular_df):
         detector = SignalQualityEvents(regular_df, "sensor_1")
-        comp = detector.data_completeness(window="1h", expected_freq="1s")
+        comp = detector.data_completeness(window="1h", expected_interval="1s")
         assert len(comp) > 0
         # With a 30s gap in 230s of data, completeness should be < 100%
         assert comp.iloc[0]["completeness_pct"] < 100

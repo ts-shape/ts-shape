@@ -9,9 +9,11 @@ Track rework events and their impact:
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import (
     add_period_window,
     add_shift_window,
@@ -25,6 +27,9 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +155,7 @@ class ReworkEvents(Base):
             data_tz(data[self.time_column]),
         )
 
+    @twin_columns({"pct_of_total": "share_of_total_pct"})
     def rework_by_reason(
         self,
         rework_uuid: str,
@@ -182,6 +188,10 @@ class ReworkEvents(Base):
             - reason, rework_count, pct_of_total
             - resets: Number of counter resets for the reason (only when
                 ``handle_resets=True``)
+
+            Canonical twin columns: ``share_of_total_pct`` (after ``pct_of_total``); each
+            holds the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         columns = ["reason", "rework_count", "pct_of_total"]
         if handle_resets:
@@ -510,4 +520,10 @@ class ReworkEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-ReworkTracking = deprecated_class(ReworkEvents, "ReworkTracking")
+if TYPE_CHECKING:
+
+    @deprecated("ReworkTracking is deprecated, use ReworkEvents")
+    class ReworkTracking(ReworkEvents): ...
+
+else:
+    ReworkTracking = deprecated_class(ReworkEvents, "ReworkTracking")

@@ -17,7 +17,8 @@ df = pd.DataFrame({
     "value_bool": np.arange(2880) % 60 < 45,  # 45 min on, 15 min off
 })
 rt = RuntimeAccountingEvents(df, "comp2:motor_running")
-print(rt.runtime_summary(max_gap="15min"))
+result = rt.runtime_summary(max_gap="15min")
+print(result[["run_hours", "start_count", "longest_run_seconds", "utilization_pct"]])
 daily = rt.runtime_by_window(window="1D", max_gap="15min")
 meter = rt.operating_hours_meter(window="1h", max_gap="15min")
 ```

@@ -12,7 +12,7 @@ else:
     except ImportError:  # optional extra: ts-shape[api]
         requests = None
 
-from ts_shape.loader._utils import require_optional
+from ts_shape.loader._utils import REDACTED, loader_repr, redact_url, require_optional
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,14 @@ class DatapointAPI:
             "Authorization": f"Bearer {api_token}",
         }
         self._api_access()
+
+    def __repr__(self) -> str:
+        return loader_repr(
+            self,
+            device_names=self.device_names,
+            base_url=redact_url(self.base_url),
+            api_token=REDACTED,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers

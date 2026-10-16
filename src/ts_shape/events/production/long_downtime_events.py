@@ -5,7 +5,11 @@ import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import (
+    deprecated_attribute,
+    keyword_only,
+    renamed_kwargs,
+)
 from ts_shape.utils.intervals import state_intervals
 
 logger = logging.getLogger(__name__)
@@ -25,10 +29,13 @@ class LongDowntimeEvents(Base):
         long-downtime boundaries.
     """
 
+    state_uuid = deprecated_attribute("run_state_uuid")
+
+    @renamed_kwargs(state_uuid="run_state_uuid")
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        state_uuid: str,
+        run_state_uuid: str,
         *,
         event_uuid: str = "prod:long_downtime",
         value_column: str = "value_bool",
@@ -36,7 +43,7 @@ class LongDowntimeEvents(Base):
         value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
         super().__init__(dataframe, time_column=time_column)
-        self.state_uuid = state_uuid
+        self.run_state_uuid = run_state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
@@ -44,14 +51,14 @@ class LongDowntimeEvents(Base):
         if (
             "uuid" in self.dataframe.columns
             and not self.dataframe.empty
-            and state_uuid not in self.dataframe["uuid"].values
+            and run_state_uuid not in self.dataframe["uuid"].values
         ):
             raise ValueError(
-                f"UUID '{state_uuid}' not found in dataframe. "
+                f"UUID '{run_state_uuid}' not found in dataframe. "
                 f"Available UUIDs: {list(self.dataframe['uuid'].unique())}"
             )
         self.series = (
-            self.dataframe[self.dataframe["uuid"] == self.state_uuid]
+            self.dataframe[self.dataframe["uuid"] == self.run_state_uuid]
             .copy()
             .sort_values(self.time_column)
         )
@@ -140,7 +147,7 @@ class LongDowntimeEvents(Base):
                     "end": interval["end"],
                     "duration_seconds": interval["duration_seconds"],
                     "uuid": self.event_uuid,
-                    "source_uuid": self.state_uuid,
+                    "source_uuid": self.run_state_uuid,
                     "is_delta": True,
                 }
             )
@@ -256,7 +263,7 @@ class LongDowntimeEvents(Base):
                     "event_count": event_count,
                     "downtime_index": following_index,
                     "uuid": self.event_uuid,
-                    "source_uuid": self.state_uuid,
+                    "source_uuid": self.run_state_uuid,
                     "is_delta": True,
                 }
             )

@@ -1,12 +1,16 @@
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class, keyword_only
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +275,7 @@ class ProcessStabilityIndexEvents(Base):
         return self._summary(sorted_scores[cols].reset_index(drop=True), cols, window)
 
     @keyword_only(1)
+    @twin_columns({"pct_of_best": "share_of_best_pct"})
     def stability_comparison(self, window: str = "8h") -> pd.DataFrame:
         """Compare each window to the best-observed window.
 
@@ -281,6 +286,10 @@ class ProcessStabilityIndexEvents(Base):
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, stability_score,
             best_score, gap_to_best, pct_of_best.
+
+            Canonical twin columns: ``share_of_best_pct`` (after ``pct_of_best``); each holds
+            the same values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         cols = [
             "start",
@@ -305,6 +314,12 @@ class ProcessStabilityIndexEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-ProcessStabilityIndex = deprecated_class(
-    ProcessStabilityIndexEvents, "ProcessStabilityIndex"
-)
+if TYPE_CHECKING:
+
+    @deprecated("ProcessStabilityIndex is deprecated, use ProcessStabilityIndexEvents")
+    class ProcessStabilityIndex(ProcessStabilityIndexEvents): ...
+
+else:
+    ProcessStabilityIndex = deprecated_class(
+        ProcessStabilityIndexEvents, "ProcessStabilityIndex"
+    )

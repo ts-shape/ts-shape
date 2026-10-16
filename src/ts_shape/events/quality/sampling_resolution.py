@@ -3,8 +3,21 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import add_twin_columns
+from ts_shape.events._windows import labeled_window_summary
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import (
+    keyword_only,
+    renamed_kwargs,
+)
+
+#: Legacy millisecond columns of ``sampling_jitter`` -> their ``_seconds`` twins.
+_MS_TWINS = {
+    "mean_interval_ms": "mean_interval_seconds",
+    "std_interval_ms": "std_interval_seconds",
+    "max_gap_ms": "max_gap_seconds",
+}
+_MS_SCALE = dict.fromkeys(_MS_TWINS, 1e-3)
 
 
 class SamplingResolutionEvents(Base):
@@ -58,7 +71,9 @@ class SamplingResolutionEvents(Base):
                 below which signal is flagged as quantized.
 
         Returns:
-            DataFrame with columns: window_start, n_unique_values,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), n_unique_values,
             expected_unique, quantization_step, quantization_ratio,
             quantized.
         """
@@ -71,7 +86,7 @@ class SamplingResolutionEvents(Base):
             "quantized",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -124,9 +139,7 @@ class SamplingResolutionEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)
 
     @keyword_only(1)
     def effective_resolution(self, window: str = "1h") -> pd.DataFrame:
@@ -136,7 +149,9 @@ class SamplingResolutionEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, theoretical_resolution,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), theoretical_resolution,
             effective_resolution, resolution_ratio, assessment.
         """
         cols = [
@@ -147,7 +162,7 @@ class SamplingResolutionEvents(Base):
             "assessment",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -196,25 +211,26 @@ class SamplingResolutionEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)
 
     @keyword_only(1)
+    @renamed_kwargs(expected_frequency="expected_frequency_hz")
     def detect_aliasing(
         self,
         window: str = "1h",
-        expected_frequency: float | None = None,
+        expected_frequency_hz: float | None = None,
     ) -> pd.DataFrame:
         """Check for Nyquist violations using FFT.
 
         Args:
             window: Resample window size.
-            expected_frequency: Known process frequency in Hz. If None,
+            expected_frequency_hz: Known process frequency in Hz. If None,
                 dominant frequency is estimated from FFT.
 
         Returns:
-            DataFrame with columns: window_start, sampling_rate_hz,
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), sampling_rate_hz,
             nyquist_hz, dominant_frequency, aliasing_risk.
         """
         cols = [
@@ -225,7 +241,7 @@ class SamplingResolutionEvents(Base):
             "aliasing_risk",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return labeled_window_summary([], cols, window)
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -263,7 +279,9 @@ class SamplingResolutionEvents(Base):
                 dominant_freq = 0.0
 
             check_freq = (
-                expected_frequency if expected_frequency is not None else dominant_freq
+                expected_frequency_hz
+                if expected_frequency_hz is not None
+                else dominant_freq
             )
 
             if check_freq > nyquist * 0.9:
@@ -285,9 +303,7 @@ class SamplingResolutionEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
-        )
+        return labeled_window_summary(events, cols, window)
 
     @keyword_only(1)
     def sampling_jitter(self, window: str = "1h") -> pd.DataFrame:
@@ -297,8 +313,13 @@ class SamplingResolutionEvents(Base):
             window: Resample window size.
 
         Returns:
-            DataFrame with columns: window_start, mean_interval_ms,
-            std_interval_ms, jitter_pct, max_gap_ms, regularity_score.
+            Summary DataFrame with columns: start, end, duration_seconds
+            (the window bounds), window_start (the resample label; a
+            deprecated twin of ``start``), mean_interval_ms,
+            mean_interval_seconds, std_interval_ms, std_interval_seconds,
+            jitter_pct, max_gap_ms, max_gap_seconds, regularity_score. Each
+            ``*_seconds`` column follows its legacy ``*_ms`` twin (the same
+            value in seconds); the ``*_ms`` columns are deprecated.
         """
         cols = [
             "window_start",
@@ -309,7 +330,9 @@ class SamplingResolutionEvents(Base):
             "regularity_score",
         ]
         if self.signal.empty:
-            return pd.DataFrame(columns=cols)
+            return add_twin_columns(
+                labeled_window_summary([], cols, window), _MS_TWINS, scale=_MS_SCALE
+            )
 
         sig = self.signal[[self.time_column, self.value_column]].copy()
         sig = sig.set_index(self.time_column)
@@ -344,6 +367,6 @@ class SamplingResolutionEvents(Base):
                 }
             )
 
-        return (
-            pd.DataFrame(events, columns=cols) if events else pd.DataFrame(columns=cols)
+        return add_twin_columns(
+            labeled_window_summary(events, cols, window), _MS_TWINS, scale=_MS_SCALE
         )

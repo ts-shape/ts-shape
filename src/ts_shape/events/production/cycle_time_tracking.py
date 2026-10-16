@@ -8,6 +8,7 @@ Simple, practical module for cycle time analysis:
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,9 @@ import pandas as pd
 from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -536,4 +540,10 @@ class CycleTimeEvents(Base):
 
 
 #: Deprecated name, removed in the next major release.
-CycleTimeTracking = deprecated_class(CycleTimeEvents, "CycleTimeTracking")
+if TYPE_CHECKING:
+
+    @deprecated("CycleTimeTracking is deprecated, use CycleTimeEvents")
+    class CycleTimeTracking(CycleTimeEvents): ...
+
+else:
+    CycleTimeTracking = deprecated_class(CycleTimeEvents, "CycleTimeTracking")

@@ -16,7 +16,8 @@ df = pd.DataFrame({"systime": t, "uuid": "line1:parts", "value_integer": np.aran
 
 reporter = ShiftReportEvents(df, shift_definitions={
     "morning": ("06:00", "14:00"), "afternoon": ("14:00", "22:00"), "night": ("22:00", "06:00")})
-print(reporter.shift_production(counter_uuid="line1:parts").head())
+result = reporter.shift_production(counter_uuid="line1:parts").head()
+print(result[["date", "shift", "quantity"]])
 comparison = reporter.shift_comparison(counter_uuid="line1:parts", days=7)
 result = reporter.shift_targets(counter_uuid="line1:parts",
                                 targets={"morning": 250, "afternoon": 240, "night": 200})

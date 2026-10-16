@@ -14,19 +14,20 @@ df = ts_shape.make_timeseries(["tank_level"], n_points=7200, freq="1s", baseline
 df = df.drop(index=range(3000, 3100))  # 100 s outage
 
 sq = SignalQualityEvents(df, signal_uuid="tank_level")
-print(sq.detect_missing_data(expected_freq="1s", tolerance_factor=2.0))
+result = sq.detect_missing_data(expected_interval="1s", tolerance_factor=2.0)
+print(result[["start", "gap_duration", "expected_samples_missing"]])
 out_of_range = sq.detect_out_of_range(min_value=0.0, max_value=100.0)
-completeness = sq.data_completeness(window="1h", expected_freq="1s")
+completeness = sq.data_completeness(window="1h", expected_interval="1s")
 ```
 
 ## Methods
 
 | Method | Returns |
 |---|---|
-| `detect_missing_data(expected_freq='1s', tolerance_factor=2.0)` | gaps longer than `tolerance_factor × expected_freq`: `start`, `end`, `gap_duration`, `expected_samples_missing` |
+| `detect_missing_data(expected_interval='1s', tolerance_factor=2.0)` | gaps longer than `tolerance_factor × expected_interval`: `start`, `end`, `gap_duration`, `expected_samples_missing` |
 | `sampling_regularity(window='1h')` | per window: `mean_interval`, `std_interval`, `min_interval`, `max_interval`, `regularity_score` |
 | `detect_out_of_range(min_value, max_value, interval_end='next_change')` | intervals outside the range: `start`, `end`, `duration`, `min_observed`, `max_observed`, `direction` |
-| `data_completeness(window='1h', expected_freq='1s')` | per window: `expected_count`, `actual_count`, `completeness_pct` |
+| `data_completeness(window='1h', expected_interval='1s')` | per window: `expected_count`, `actual_count`, `completeness_pct` |
 
 ## Notes
 

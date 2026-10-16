@@ -17,7 +17,8 @@ df = pd.DataFrame({"systime": t, "uuid": "reactor_temp",
                    "value_double": level + np.random.default_rng(0).normal(0, 0.3, 7200)})
 
 ss = SteadyStateDetectionEvents(df, "reactor_temp")
-print(ss.detect_steady_state(window="5min", std_threshold=1.0, min_duration="10min"))
+result = ss.detect_steady_state(window="5min", std_threshold=1.0, min_duration="10min")
+print(result[["start", "end", "mean_value", "std_value"]])
 summary = ss.steady_state_statistics(window="5min", std_threshold=1.0)
 bands = ss.steady_state_value_bands(window="5min", std_threshold=1.0)
 ```

@@ -4,9 +4,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 from ts_shape.errors import DataQualityWarning
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import finish_events
 from ts_shape.events.quality.statistical_process_control import (
     SigmaMethod,
@@ -163,6 +163,7 @@ class CapabilityTrendingEvents(Base):
         return float(usl), float(lsl)
 
     @keyword_only(1)
+    @twin_columns({"n_samples": "sample_count"})
     def capability_over_time(self, window: str = "8h") -> pd.DataFrame:
         """Compute Cp, Cpk, Pp, Ppk per time window.
 
@@ -182,6 +183,10 @@ class CapabilityTrendingEvents(Base):
             two samples are skipped. Without spread (constant values) the
             indices are NaN; a signal without any spread also emits a
             :class:`~ts_shape.errors.DataQualityWarning`.
+
+            Canonical twin columns: ``sample_count`` (after ``n_samples``); each holds
+            the same values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         cols = [
             "start",
@@ -355,6 +360,8 @@ class CapabilityTrendingEvents(Base):
             source_uuid, cpk, trend_slope, forecast_cpk,
             windows_to_threshold. ``end`` is ``start`` plus one ``window``.
         """
+        from scipy import stats
+
         cols = [
             "start",
             "cpk",
@@ -439,6 +446,8 @@ class CapabilityTrendingEvents(Base):
             source_uuid, estimated_yield_pct, dpmo, sigma_level.
             ``end`` is ``start`` plus one ``window``.
         """
+        from scipy import stats
+
         cols = ["start", "estimated_yield_pct", "dpmo", "sigma_level"]
         if self.signal.empty:
             return finish_events(

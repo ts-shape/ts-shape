@@ -41,7 +41,7 @@ def test_generate_report_under_reports_without_reset_handling():
         counter_uuid="prod_counter",
         ok_counter_uuid="ok_counter",
         nok_counter_uuid="nok_counter",
-        state_uuid="machine_state",
+        run_state_uuid="machine_state",
         handle_resets=False,
     )
     assert list(result.columns) == [
@@ -62,7 +62,7 @@ def test_generate_report_handles_resets():
         counter_uuid="prod_counter",
         ok_counter_uuid="ok_counter",
         nok_counter_uuid="nok_counter",
-        state_uuid="machine_state",
+        run_state_uuid="machine_state",
         handle_resets=True,
     )
     assert "resets" in result.columns
@@ -83,7 +83,7 @@ def test_generate_report_default_is_reset_aware():
             counter_uuid="prod_counter",
             ok_counter_uuid="ok_counter",
             nok_counter_uuid="nok_counter",
-            state_uuid="machine_state",
+            run_state_uuid="machine_state",
             **kw,
         )
 

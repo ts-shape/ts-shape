@@ -18,7 +18,8 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": u, "value_bool": np.arange(3
                 for u, k in zip(stations, [50, 55, 45])], ignore_index=True)
 
 lb = LineBalancingEvents(df, station_uuids=stations)
-print(lb.balance_metrics(takt_time="60s", window="1h", require_all_stations=True))
+result = lb.balance_metrics(takt_time="60s", window="1h", require_all_stations=True)
+print(result[["bottleneck_uuid", "takt_seconds", "balance_efficiency_pct", "smoothness_index"]])
 yamazumi = lb.yamazumi(demand=480, available_time="8h")  # takt 60 s
 ```
 

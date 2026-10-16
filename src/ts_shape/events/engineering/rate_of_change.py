@@ -171,11 +171,23 @@ class RateOfChangeEvents(Base):
             max_duration: Maximum time window for the step to occur.
 
         Returns:
-            DataFrame with columns: systime, uuid, source_uuid, time,
-            value_before, value_after, delta, duration. ``systime`` equals
-            ``time`` (the instant after the jump).
+            DataFrame with columns: systime, uuid, source_uuid, time, start,
+            end, value_before, value_after, delta, duration,
+            duration_seconds. ``systime`` and ``end`` equal ``time`` (the
+            instant after the jump; ``time`` is a deprecated twin), ``start``
+            is the sample before the jump, and ``duration_seconds`` is the
+            float-seconds twin of the Timedelta ``duration``.
         """
-        cols = ["time", "value_before", "value_after", "delta", "duration"]
+        cols = [
+            "time",
+            "start",
+            "end",
+            "value_before",
+            "value_after",
+            "delta",
+            "duration",
+            "duration_seconds",
+        ]
         empty = empty_event_df("point", cols)
         if self.signal.empty or len(self.signal) < 2:
             return empty
@@ -197,10 +209,15 @@ class RateOfChangeEvents(Base):
         out = pd.DataFrame(
             {
                 "time": times[hit + 1],
+                "start": times[hit],
+                "end": times[hit + 1],
                 "value_before": values[hit].astype(np.float64),
                 "value_after": values[hit + 1].astype(np.float64),
                 "delta": delta[hit].astype(np.float64),
                 "duration": duration[hit],
+                "duration_seconds": (
+                    pd.to_timedelta(duration[hit]).total_seconds().astype(np.float64)
+                ),
             },
             columns=cols,
         )

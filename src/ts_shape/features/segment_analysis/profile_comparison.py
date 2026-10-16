@@ -2,8 +2,6 @@ import logging
 
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import cut_tree, fcluster, linkage
-from scipy.spatial.distance import pdist, squareform
 
 from ts_shape.errors import ColumnNotFoundError
 from ts_shape.utils.base import Base
@@ -105,6 +103,8 @@ class ProfileComparison(Base):
             Square DataFrame indexed by group values with pairwise distances;
                 empty for empty profiles.
         """
+        from scipy.spatial.distance import pdist, squareform
+
         require_columns(
             metric_profiles,
             [group_column],
@@ -157,6 +157,9 @@ class ProfileComparison(Base):
         Returns:
             DataFrame with columns [label, cluster].
         """
+        from scipy.cluster.hierarchy import cut_tree, fcluster, linkage
+        from scipy.spatial.distance import squareform
+
         labels = distance_matrix.index.tolist()
 
         if len(labels) < 2:
@@ -342,6 +345,8 @@ class ProfileComparison(Base):
             ColumnNotFoundError: If the uuid column or the segment column is
                 missing.
         """
+        from scipy.spatial.distance import pdist
+
         where = "ProfileComparison.find_similar_pairs"
         group_column = cls._segment_key(metric_profiles, group_column, where)
         require_columns(metric_profiles, [uuid_column], where=where)

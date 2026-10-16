@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -9,6 +9,9 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only, renamed_kwargs
 from ts_shape.utils.frames import window_offset
 from ts_shape.utils.runs import total_seconds
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +76,15 @@ class DataGapAnalysisEvents(Base):
     # Public methods
     # ------------------------------------------------------------------
 
-    find_gaps = deprecated_method("detect_gaps")
+    if TYPE_CHECKING:
+
+        @deprecated(
+            "DataGapAnalysisEvents.find_gaps() is deprecated, use .detect_gaps()"
+        )
+        def find_gaps(self, min_gap: str = "5s") -> pd.DataFrame: ...
+
+    else:
+        find_gaps = deprecated_method("detect_gaps")
 
     @keyword_only(1)
     def detect_gaps(self, min_gap: str = "5s") -> pd.DataFrame:

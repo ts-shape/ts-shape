@@ -27,8 +27,8 @@ stability = cal.calibration_stability(window="8h", lookback=10)
 |---|---|
 | `linearity_assessment(calibration_points)` (static) | per reference point: `reference`, `measured_mean`, `measured_std`, `bias`, `linearity_error` |
 | `calibration_curve(calibration_points, degree=1)` (static) | per polynomial coefficient: `coefficient_index`, `coefficient_value`, `r_squared`, `max_residual` |
-| `detect_recalibration_need(window='1D', max_bias=None, max_drift_rate=None)` | per window: `window_start`, `bias`, `drift_rate`, `recalibration_needed`, `reason` |
-| `calibration_stability(window='8h', lookback=10)` | per window: `window_start`, `bias_mean`, `bias_std`, `bias_trend`, `stability_score` |
+| `detect_recalibration_need(window='1D', max_bias=None, max_drift_rate=None)` | per window: `start`, `end`, `duration_seconds`, `bias`, `drift_rate`, `recalibration_needed`, `reason` |
+| `calibration_stability(window='8h', lookback=10)` | per window: `start`, `end`, `duration_seconds`, `bias_mean`, `bias_std`, `bias_trend`, `stability_score` |
 
 ## Notes
 

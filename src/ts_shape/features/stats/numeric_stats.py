@@ -2,7 +2,6 @@ import logging
 from typing import cast
 
 import pandas as pd
-from scipy import stats
 
 from ts_shape.features.stats._values import numeric_values
 from ts_shape.utils.base import Base
@@ -229,6 +228,8 @@ class NumericStatistics(Base):
             Third minus first quartile of the non-missing values; NaN when
                 there is none.
         """
+        from scipy import stats
+
         values = numeric_values(
             dataframe, value_column, where="NumericStatistics.column_iqr"
         )

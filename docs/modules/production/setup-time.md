@@ -19,19 +19,20 @@ df = pd.concat([
 ], ignore_index=True)
 
 st = SetupTimeEvents(df)
-print(st.setup_durations(state_uuid="line1:state", setup_value="Setup"))
-by_product = st.setup_by_product(state_uuid="line1:state", part_id_uuid="line1:part_id")
-stats = st.setup_statistics(state_uuid="line1:state")
+result = st.setup_durations(run_state_uuid="line1:state", setup_value="Setup")
+print(result[["start", "end", "duration_minutes", "shift"]])
+by_product = st.setup_by_product(run_state_uuid="line1:state", part_id_uuid="line1:part_id")
+stats = st.setup_statistics(run_state_uuid="line1:state")
 ```
 
 ## Methods
 
 | Method | Returns |
 |---|---|
-| `setup_durations(state_uuid, setup_value='Setup')` | one row per setup: `start`, `end`, `duration_seconds`, `date`, `shift` |
-| `setup_by_product(state_uuid, part_id_uuid, setup_value='Setup')` | per `from_product` → `to_product`: `avg_seconds`, `min_seconds`, `max_seconds`, `count` |
-| `setup_statistics(state_uuid, setup_value='Setup')` | one row: `total_setups`, `total_seconds`, `avg_seconds`, `median_seconds`, `std_seconds`, `pct_of_available_time` |
-| `setup_trend(state_uuid, setup_value='Setup', window='1W')` | per `period`: `avg_setup_seconds`, `setup_count`, `total_setup_seconds` |
+| `setup_durations(run_state_uuid, setup_value='Setup')` | one row per setup: `start`, `end`, `duration_seconds`, `date`, `shift` |
+| `setup_by_product(run_state_uuid, part_id_uuid, setup_value='Setup')` | per `from_product` → `to_product`: `avg_seconds`, `min_seconds`, `max_seconds`, `count` |
+| `setup_statistics(run_state_uuid, setup_value='Setup')` | one row: `total_setups`, `total_seconds`, `avg_seconds`, `median_seconds`, `std_seconds`, `share_of_available_time_pct` |
+| `setup_trend(run_state_uuid, setup_value='Setup', window='1W')` | per `period`: `avg_setup_seconds`, `setup_count`, `total_setup_seconds` |
 
 Every `*_seconds` column has a `*_minutes` twin.
 

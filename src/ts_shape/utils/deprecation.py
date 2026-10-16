@@ -13,6 +13,13 @@ are removed in the next major release (see ``docs/naming.md``).
 
 The wrapped callables report the *new* signature to :func:`inspect.signature`
 (and so to the API reference and IDEs).
+
+The deprecated objects are also marked the PEP 702 way (``__deprecated__``,
+via :func:`warnings.deprecated` on Python 3.13+), without a second runtime
+warning. Static type checkers only see a ``@deprecated`` decorator written in
+the source, so the defining modules also declare each alias with
+``typing_extensions.deprecated`` inside an ``if TYPE_CHECKING:`` block; mypy
+(``--enable-error-code deprecated``), pyright and IDEs then flag its use.
 """
 
 from __future__ import annotations
@@ -23,7 +30,7 @@ import sys
 import warnings
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 __all__ = [
     "renamed_kwargs",
@@ -38,6 +45,38 @@ F = TypeVar("F", bound=Callable[..., Any])
 C = TypeVar("C", bound=type)
 
 REMOVAL = "the next major release"
+
+if TYPE_CHECKING:
+    from typing_extensions import deprecated as _static_deprecated
+else:
+
+    def _static_deprecated(message: str) -> Callable[[F], F]:
+        """``typing_extensions.deprecated`` for type checkers, a no-op at runtime."""
+        return lambda func: func
+
+
+if sys.version_info >= (3, 13):
+    from warnings import deprecated as _pep702_deprecated
+else:  # pragma: no cover - exercised on Python 3.11/3.12
+    _pep702_deprecated = None
+
+
+def _mark_deprecated(obj: Any, message: str) -> Any:
+    """Mark ``obj`` deprecated for introspection (PEP 702), without warning.
+
+    ``category=None`` makes :func:`warnings.deprecated` only set
+    ``__deprecated__``; the helpers below emit their own warning (with the
+    stack level pointing at the user's code), so there is no double warning.
+    Before Python 3.13 the attribute is set directly, which is all the
+    decorator does with ``category=None`` (no ``typing_extensions`` import).
+    """
+    if _pep702_deprecated is not None and callable(obj):
+        return _pep702_deprecated(message, category=None)(obj)
+    try:
+        obj.__deprecated__ = message
+    except (AttributeError, TypeError):  # pragma: no cover - read-only object
+        pass
+    return obj
 
 
 _PACKAGE_DIR = Path(__file__).resolve().parent.parent
@@ -123,15 +162,15 @@ def deprecated_method(new_name: str) -> Any:
             target = getattr(owner if obj is None else obj, new_name)
             cls_name = (owner or type(obj)).__name__
 
+            message = f"{cls_name}.{self.old_name}() is deprecated, use .{new_name}()"
+
             @functools.wraps(target)
             def forward(*args: Any, **kwargs: Any) -> Any:
-                _warn(
-                    f"{cls_name}.{self.old_name}() is deprecated, use " f".{new_name}()"
-                )
+                _warn(message)
                 return target(*args, **kwargs)
 
             forward.__deprecated_alias_of__ = new_name  # type: ignore[attr-defined]
-            return forward
+            return _mark_deprecated(forward, message)
 
     return _Forward()
 
@@ -143,8 +182,10 @@ def deprecated_class(new_cls: C, old_name: str) -> C:
     event-log taxonomy (which resolves aliases) keep working.
     """
 
+    message = f"{old_name} is deprecated, use {new_cls.__name__}"
+
     def __init__(self: Any, *args: Any, **kwargs: Any) -> None:
-        _warn(f"{old_name} is deprecated, use {new_cls.__name__}")
+        _warn(message)
         new_cls.__init__(self, *args, **kwargs)  # type: ignore[misc]
 
     alias = type(
@@ -157,7 +198,7 @@ def deprecated_class(new_cls: C, old_name: str) -> C:
             "__deprecated_alias_of__": new_cls,
         },
     )
-    return alias  # type: ignore[return-value]
+    return _mark_deprecated(alias, message)  # type: ignore[no-any-return]
 
 
 def keyword_only(n_positional: int) -> Callable[[F], F]:
@@ -227,6 +268,8 @@ class deprecated_attribute:  # noqa: N801 - used like a decorator/property
     def __set_name__(self, owner: type, name: str) -> None:
         self.old_name = name
         self.owner = owner.__name__
+        # Seen when the attribute is looked up on the class (PEP 702).
+        self.__deprecated__ = self._message()
 
     def _message(self) -> str:
         return (
@@ -234,12 +277,16 @@ class deprecated_attribute:  # noqa: N801 - used like a decorator/property
             f"{self.owner}.{self.new_name}"
         )
 
+    # Type checkers flag every read or write of an attribute declared with this
+    # descriptor; the runtime warning names the replacement.
+    @_static_deprecated("deprecated attribute; the warning names its replacement")
     def __get__(self, obj: Any, objtype: Any = None) -> Any:
         if obj is None:
             return self
         _warn(self._message())
         return getattr(obj, self.new_name)
 
+    @_static_deprecated("deprecated attribute; the warning names its replacement")
     def __set__(self, obj: Any, value: Any) -> None:
         _warn(self._message())
         setattr(obj, self.new_name, value)
