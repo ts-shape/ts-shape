@@ -40,7 +40,8 @@ your tests with `-W error::DeprecationWarning`. The dated record is the
   `compute(output_format="windowed", window=...)`): one row per time window,
   `start`, `end`, `duration_seconds`, then `{uuid}__{feature}` for every
   signal. Every window from the first to the last timestamp is present; a
-  signal without data in a window is NaN. See
+  signal without data in a window is NaN, its counts (`total_rows`,
+  `true_count`, ...) are 0. `metrics=` selects features by name. See
   [Features for ML](guides/ml-features.md).
 
 ## October 2026, round 11: typed API, docs that run

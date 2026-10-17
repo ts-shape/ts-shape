@@ -9,7 +9,7 @@ fix: the EnPI regression baseline leaves windows without output out of the
   fit and warns (DataQualityWarning); window_offset(Timedelta) is a fixed
   duration on pandas 2.2 as on pandas 3.
 feat: DescriptiveFeatures.compute_windowed: one row per time window with the
-  features of every signal; empty windows are NaN.
+  features of every signal; empty windows are NaN (counts 0).
   See docs/migration.md.
 
 # October 16, 2026 (round 11)
