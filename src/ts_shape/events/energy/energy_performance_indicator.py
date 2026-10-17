@@ -1,12 +1,14 @@
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_per_window
-from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +160,8 @@ class EnergyPerformanceIndicatorEvents(Base):
         ``baseline="regression"`` is the ISO 50006 energy baseline: fit
         ``energy = a + b * units`` on a fixed baseline period, then compare
         each window's energy with what the model expects for its output.
+        Baseline windows without production output (zero or missing units)
+        are left out of the fit, with a ``DataQualityWarning`` naming them.
         ``baseline_enpi`` is that expected energy per unit and
         ``deviation_pct`` is ``(actual - expected) / expected`` energy, so
         the comparison is normalized for production volume. Two columns are
@@ -268,12 +272,24 @@ class EnergyPerformanceIndicatorEvents(Base):
             ref = base[(base["start"] >= start) & (base["start"] < end)]
         x = ref["units_produced"].to_numpy(dtype=float)
         y = ref["energy_kwh"].to_numpy(dtype=float)
-        ok = np.isfinite(x) & np.isfinite(y)
+        # A window without output (a stop, a warm-up, the counter's first
+        # window) is not on the energy-vs-output line: its energy is base
+        # load only and would pull the fit's intercept and slope.
+        idle = ~(x > 0)
+        if idle.any():
+            starts = ", ".join(str(t) for t in ref["start"][idle])
+            warnings.warn(
+                f"regression baseline: {int(idle.sum())} baseline window(s) "
+                f"without production output left out of the fit ({starts})",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
+        ok = ~idle & np.isfinite(y)
         x, y = x[ok], y[ok]
         if len(x) < 2 or np.ptp(x) == 0:
             raise ValueError(
                 "regression baseline needs at least two baseline windows with "
-                "different production volumes"
+                "production output and different production volumes"
             )
         slope, intercept = np.polyfit(x, y, 1)
         expected: np.ndarray = intercept + slope * base["units_produced"].to_numpy(

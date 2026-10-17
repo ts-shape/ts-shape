@@ -116,11 +116,16 @@ def _nanmean(values: np.ndarray, valid: np.ndarray) -> float:
     return float(np.where(valid, values, 0.0).sum() / count)
 
 
-def _held_signs(err: np.ndarray) -> np.ndarray:
+def _held_signs(err: np.ndarray, deadband: float = 0.0) -> np.ndarray:
     """``np.sign(err)`` with 0 (and NaN) replaced by the previous sign, the
     leading ones by the first sign (``replace(0, nan).ffill().bfill()``);
-    all NaN when there is no sign."""
-    signs = np.sign(err)
+    all NaN when there is no sign.
+
+    With a ``deadband`` a sample counts as signed only when ``|err|`` exceeds
+    it, so the sign flips (a crossing) only once the error leaves the band
+    on the other side: hysteresis around the setpoint.
+    """
+    signs = np.where(np.abs(err) > deadband, np.sign(err), 0.0)
     known = ~(np.isnan(signs) | (signs == 0))
     if not known.any():
         return np.full(len(err), np.nan)
@@ -636,7 +641,24 @@ class SetpointChangeEvents(Base):
         )
         return self._kpi_frame(rows, _SETTLE_COLS, actual_uuid, lookahead)
 
-    def _overshoot_rows(self, actual_uuid: str, window: str) -> list[dict[str, Any]]:
+    def _deadbands(
+        self, deadband: float, settle_pct: float | None = None
+    ) -> np.ndarray:
+        """Per-change oscillation deadband: ``settle_pct`` of the step when
+        given (the settle band), else the absolute ``deadband``."""
+        if not np.isfinite(deadband) or deadband < 0:
+            raise ValueError(f"deadband must be >= 0, got {deadband!r}")
+        delta = np.asarray(self._change_table().delta, dtype=float)
+        bands: np.ndarray = (
+            np.abs(delta) * settle_pct
+            if settle_pct is not None
+            else np.full(len(delta), float(deadband))
+        )
+        return bands
+
+    def _overshoot_rows(
+        self, actual_uuid: str, window: str, deadbands: np.ndarray
+    ) -> list[dict[str, Any]]:
         ch = self._change_table()
         resp = self._responses(actual_uuid, pd.to_timedelta(window))
         out_rows: list[dict[str, Any]] = []
@@ -694,10 +716,12 @@ class SetpointChangeEvents(Base):
             )
             undershoot_ratio = undershoot_abs / abs(delta) if delta != 0 else None
 
-            # Oscillation detection: count zero crossings. A sample exactly
-            # on the setpoint holds the previous sign so a crossing through
-            # an exact zero is counted once, not twice.
-            err_sign = _held_signs(err)
+            # Oscillation detection: count crossings of the deadband around
+            # the setpoint. A sample inside the band (or exactly on the
+            # setpoint) holds the previous sign, so noise around the
+            # setpoint is not counted and a crossing through an exact zero
+            # is counted once, not twice.
+            err_sign = _held_signs(err, deadbands[i])
             changes = err_sign[1:] != err_sign[:-1]
             oscillation_count = max(0, int(changes[~np.isnan(err_sign[1:])].sum()))
 
@@ -750,6 +774,7 @@ class SetpointChangeEvents(Base):
         actual_uuid: str,
         *,
         window: str = "10min",
+        deadband: float = 0.0,
     ) -> pd.DataFrame:
         """
         For each change, compute peak overshoot, undershoot, and oscillation metrics
@@ -759,6 +784,11 @@ class SetpointChangeEvents(Base):
             actual_uuid: UUID of the actual (process value) signal.
             window: Lookahead window after each setpoint change in which the peak,
                 undershoot and oscillations are measured (pandas offset string).
+            deadband: Absolute band around the new setpoint for
+                ``oscillation_count``. A crossing counts only once the error
+                leaves the band on the other side, so measurement noise
+                around the setpoint is not counted. ``0`` counts every sign
+                change of the error.
 
         Returns:
             DataFrame with columns: start, end (start + the lookahead window),
@@ -773,7 +803,11 @@ class SetpointChangeEvents(Base):
             ``undershoot_pct`` / ``undershoot_ratio`` are the swing back past
             the new setpoint after it is first reached, in the same two units.
         """
-        rows = [] if self.sp.empty else self._overshoot_rows(actual_uuid, window)
+        rows = (
+            []
+            if self.sp.empty
+            else self._overshoot_rows(actual_uuid, window, self._deadbands(deadband))
+        )
         return self._kpi_frame(rows, _OVERSHOOT_COLS, actual_uuid, window)
 
     def _settle_derivative_rows(
@@ -1021,7 +1055,11 @@ class SetpointChangeEvents(Base):
         return self._kpi_frame(rows, _DECAY_COLS, actual_uuid, lookahead)
 
     def _frequency_rows(
-        self, actual_uuid: str, window: str, min_oscillations: int
+        self,
+        actual_uuid: str,
+        window: str,
+        min_oscillations: int,
+        deadbands: np.ndarray,
     ) -> list[dict[str, Any]]:
         ch = self._change_table()
         resp = self._responses(actual_uuid, pd.to_timedelta(window))
@@ -1036,11 +1074,11 @@ class SetpointChangeEvents(Base):
                 "period_seconds": None,
             }
             if hi > lo:
-                # Detect zero crossings. A sample exactly on the setpoint
-                # (sign 0) holds the previous sign; otherwise one crossing
-                # through an exact zero counted twice, 1 sample apart, halving
-                # the period.
-                err_sign = _held_signs(resp.values[lo:hi] - ch.s_new[i])
+                # Detect crossings of the deadband. A sample inside the band
+                # (or exactly on the setpoint) holds the previous sign;
+                # otherwise noise, or one crossing through an exact zero,
+                # counted extra crossings and shortened the period.
+                err_sign = _held_signs(resp.values[lo:hi] - ch.s_new[i], deadbands[i])
                 sign_changes = np.where(np.diff(err_sign) != 0)[0]
                 # each oscillation has 2 crossings
                 if len(sign_changes) >= min_oscillations * 2:
@@ -1062,15 +1100,19 @@ class SetpointChangeEvents(Base):
         *,
         window: str = "10min",
         min_oscillations: int = 2,
+        deadband: float = 0.0,
     ) -> pd.DataFrame:
         """
         Estimate the frequency of oscillations during settling.
-        Counts zero crossings and estimates period.
+        Counts crossings of the setpoint and estimates the period.
 
         Args:
             actual_uuid: UUID of the actual/process value signal
             window: Time window for analysis
             min_oscillations: Minimum number of oscillations to compute frequency
+            deadband: Absolute band around the new setpoint; a crossing
+                counts only once the error leaves the band on the other side
+                (see ``overshoot_metrics``). ``0`` counts every sign change.
 
         Returns:
             DataFrame with columns: start, end (start + the lookahead window),
@@ -1080,7 +1122,9 @@ class SetpointChangeEvents(Base):
         rows = (
             []
             if self.sp.empty
-            else self._frequency_rows(actual_uuid, window, min_oscillations)
+            else self._frequency_rows(
+                actual_uuid, window, min_oscillations, self._deadbands(deadband)
+            )
         )
         return self._kpi_frame(rows, _FREQUENCY_COLS, actual_uuid, window)
 
@@ -1111,6 +1155,7 @@ class SetpointChangeEvents(Base):
         hold: str = "0s",
         lookahead: str = "10min",
         rate_threshold: float = 0.01,
+        deadband: float | None = None,
     ) -> pd.DataFrame:
         """
         Comprehensive control quality metrics combining multiple performance indicators.
@@ -1130,6 +1175,13 @@ class SetpointChangeEvents(Base):
             hold: Minimum duration to confirm settling
             lookahead: Time window for all analyses
             rate_threshold: Rate threshold for derivative-based settling
+            deadband: Absolute band around the new setpoint for
+                ``oscillation_count`` and ``oscillation_freq_hz``: a crossing
+                counts only once the error leaves the band on the other
+                side. None (the default) uses the settle band, ``tol`` or
+                ``settle_pct`` of each step, so noise inside the band a
+                settled response may stay in is not counted as oscillation.
+                ``0`` counts every sign change of the error.
 
         Returns:
             DataFrame with comprehensive metrics including:
@@ -1195,11 +1247,18 @@ class SetpointChangeEvents(Base):
             _SETTLE_DERIVATIVE_COLS,
         )
         rise_df = kpi(self._rise_rows(actual_uuid, 0.1, 0.9, lookahead), _RISE_COLS)
+        deadbands = (
+            self._deadbands(tol, settle_pct)
+            if deadband is None
+            else self._deadbands(deadband)
+        )
         overshoot_df = kpi(
-            self._overshoot_rows(actual_uuid, lookahead), _OVERSHOOT_COLS
+            self._overshoot_rows(actual_uuid, lookahead, deadbands), _OVERSHOOT_COLS
         )
         decay_df = kpi(self._decay_rows(actual_uuid, lookahead, 5), _DECAY_COLS)
-        freq_df = kpi(self._frequency_rows(actual_uuid, lookahead, 2), _FREQUENCY_COLS)
+        freq_df = kpi(
+            self._frequency_rows(actual_uuid, lookahead, 2, deadbands), _FREQUENCY_COLS
+        )
         ss_error_df = pd.DataFrame(
             self._steady_state_rows(actual_uuid, lookahead),
             columns=["start", "steady_state_error"],

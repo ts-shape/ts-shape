@@ -6,6 +6,43 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 12: oscillations, EnPI baseline, windowed features
+
+### Results that change
+
+- `SetpointChangeEvents.control_quality_metrics`: `oscillation_count` and
+  `oscillation_freq_hz` count a crossing of the setpoint only once the error
+  leaves a band around it on the other side. The band (`deadband=`) defaults
+  to the settle band, `tol` or `settle_pct` of each step, so noise a settled
+  response shows inside the band is no longer counted as oscillation. A step
+  that swings three times and then sits in ±0.1 noise with `tol=0.5`:
+  82 → 3. With the default `tol=0.0` nothing changes; `deadband=0` restores
+  the former count. `overshoot_metrics` and `oscillation_frequency` take the
+  same `deadband=` and default to `0` (unchanged).
+- `EnergyPerformanceIndicatorEvents.enpi_vs_baseline(baseline="regression")`
+  leaves baseline windows without output (zero or missing units) out of the
+  `energy = a + b * units` fit and names them in a `DataQualityWarning`. A
+  window with energy but no units (the counter's first window, a stop day)
+  formerly pulled the fit: with a 600 kWh idle day before nine days on
+  `200 + 2 * units` the intercept was ~330 instead of 200. Results change only
+  when the baseline period has such windows.
+- `ts_shape.utils.frames.window_offset` with a `Timedelta` (or
+  `datetime.timedelta` / `numpy.timedelta64`) window returns a fixed
+  duration on pandas 2.2 as on pandas 3: `Timedelta("2D")` → `<48 * Hours>`
+  (pandas 2.2 formerly gave a two-calendar-day offset, 47 h across the spring
+  DST change). Window ends of every method that takes a `Timedelta` window
+  are affected on pandas 2.2 only. Offset strings like `"1D"` stay calendar
+  days.
+
+### New
+
+- `DescriptiveFeatures.compute_windowed(window="1s", metrics=None)` (also
+  `compute(output_format="windowed", window=...)`): one row per time window,
+  `start`, `end`, `duration_seconds`, then `{uuid}__{feature}` for every
+  signal. Every window from the first to the last timestamp is present; a
+  signal without data in a window is NaN. See
+  [Features for ML](guides/ml-features.md).
+
 ## October 2026, round 11: typed API, docs that run
 
 No result changes except the fixes listed under *Fixes that change output*.

@@ -168,6 +168,67 @@ def test_percent_overshoot_is_percent():
     assert row["undershoot_pct"] == pytest.approx(100 * row["undershoot_ratio"])
 
 
+def _swings_then_noise() -> pd.DataFrame:
+    """A step 0 -> 10 whose error swings -10, +3, -2, +1 and then sits in
+    +/-0.1 noise that flips sign on every sample (100 s at 1 Hz)."""
+    err = np.r_[[-10.0] * 5, [3.0] * 5, [-2.0] * 5, [1.0] * 5, np.tile([0.1, -0.1], 40)]
+    sp = pd.DataFrame(
+        {
+            "systime": [T0 - pd.Timedelta("10s"), T0],
+            "uuid": "sp",
+            "value_double": [0.0, 10.0],
+        }
+    )
+    pv = pd.DataFrame(
+        {
+            "systime": T0 + pd.to_timedelta(np.arange(len(err)), unit="s"),
+            "uuid": "pv",
+            "value_double": 10.0 + err,
+        }
+    )
+    return pd.concat([sp, pv], ignore_index=True)
+
+
+def test_oscillation_count_ignores_noise_inside_settle_band():
+    """Three swings through the setpoint (-10 -> +3 -> -2 -> +1); the +/-0.1
+    noise afterwards stays inside the 0.5 settle band and is no oscillation.
+
+    The former count of every sign change of the error was 3 + 79 = 82
+    (80 noise samples alternate sign 79 times).
+    """
+    ev = SetpointChangeEvents(_swings_then_noise(), "sp")
+    row = ev.control_quality_metrics("pv", tol=0.5, lookahead="100s").iloc[0]
+    assert row["oscillation_count"] == 3
+    # The settle band of settle_pct is 5 % of the 10-unit step = 0.5 as well.
+    pct = ev.control_quality_metrics("pv", settle_pct=0.05, lookahead="100s")
+    assert pct.iloc[0]["oscillation_count"] == 3
+    # deadband=0 restores counting every sign change.
+    raw = ev.control_quality_metrics("pv", tol=0.5, lookahead="100s", deadband=0)
+    assert raw.iloc[0]["oscillation_count"] == 82
+    assert ev.overshoot_metrics("pv", window="100s").iloc[0]["oscillation_count"] == 82
+    banded = ev.overshoot_metrics("pv", window="100s", deadband=0.5)
+    assert banded.iloc[0]["oscillation_count"] == 3
+
+
+def test_oscillation_frequency_from_swings_outside_deadband():
+    """Crossings at 5, 10 and 15 s: two half periods of 5 s, period 10 s."""
+    ev = SetpointChangeEvents(_swings_then_noise(), "sp")
+    out = ev.oscillation_frequency(
+        "pv", window="100s", min_oscillations=1, deadband=0.5
+    ).iloc[0]
+    assert out["period_seconds"] == pytest.approx(10.0)
+    assert out["oscillation_freq_hz"] == pytest.approx(0.1)
+    cqm = ev.control_quality_metrics("pv", tol=0.5, lookahead="100s").iloc[0]
+    # control_quality_metrics needs 2 oscillations (4 crossings): only 3 here.
+    assert pd.isna(cqm["oscillation_freq_hz"])
+
+
+def test_negative_deadband_rejected():
+    ev = SetpointChangeEvents(_swings_then_noise(), "sp")
+    with pytest.raises(ValueError, match="deadband"):
+        ev.overshoot_metrics("pv", deadband=-1.0)
+
+
 # ---------------------------------------------------------------------------
 # A5. PeriodSummaryEvents.from_daily_data -- ratios from summed bases
 # ---------------------------------------------------------------------------
@@ -403,3 +464,45 @@ def test_lag_sign_convention():
     best = out.loc[out["is_best_lag"]].iloc[0]
     assert best["lag_periods"] == -5
     assert best["correlation"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# EnPI regression baseline -- ISO 50006: fit only windows with output
+# ---------------------------------------------------------------------------
+
+
+def _regression_frame() -> pd.DataFrame:
+    """Days 1-9 on the line energy = 200 + 2 * units; day 0 used 600 kWh
+    with no output (the counter's stop/warm-up day)."""
+    units = [0, 50, 120, 80, 200, 150, 60, 250, 90, 170]
+    rows, count = [], 0
+    day0 = pd.Timestamp("2024-01-01", tz="UTC")
+    for d, u in enumerate(units):
+        day = day0 + pd.Timedelta(days=d)
+        energy = 600.0 if u == 0 else 200.0 + 2.0 * u
+        rows.append((day + pd.Timedelta(hours=12), "meter", energy, None))
+        rows.append((day, "counter", None, count))
+        count += u
+        rows.append((day + pd.Timedelta(hours=23, minutes=59), "counter", None, count))
+    return pd.DataFrame(
+        rows, columns=["systime", "uuid", "value_double", "value_integer"]
+    )
+
+
+def test_enpi_regression_baseline_skips_windows_without_output():
+    """The fit recovers a = 200 kWh, b = 2 kWh/unit exactly. With the
+    zero-output day in the fit (formerly) the intercept rose to ~330."""
+    ev = EnergyPerformanceIndicatorEvents(_regression_frame())
+    with pytest.warns(DataQualityWarning, match=r"1 baseline window.*2024-01-01"):
+        out = ev.enpi_vs_baseline(
+            "meter", "counter", window="1D", baseline="regression", baseline_window=10
+        )
+    on_line = out.iloc[1:]
+    assert on_line["deviation_pct"].abs().max() < 1e-9
+    assert out["expected_energy_kwh"].iloc[0] == pytest.approx(200.0)
+    assert on_line["baseline_enpi"].iloc[0] == pytest.approx(200.0 / 50 + 2.0)
+    # The former fit, including the idle day:
+    units = np.array([0, 50, 120, 80, 200, 150, 60, 250, 90, 170], dtype=float)
+    energy = np.where(units == 0, 600.0, 200.0 + 2.0 * units)
+    old_slope, old_intercept = np.polyfit(units, energy, 1)
+    assert old_intercept > 300 and old_slope < 1.5

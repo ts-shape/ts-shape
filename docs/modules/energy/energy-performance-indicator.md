@@ -47,7 +47,7 @@ From February 15 the line uses 17 % more energy than the baseline model expects 
 ## Notes
 
 - Meter values are kWh per reading (deltas), summed per window; the production counter is cumulative and reset-aware.
-- The first window has no counter increment (there is no earlier reading), so its `enpi` is NaN. Start `baseline_period` after it: the regression fit uses every window in the period, and a window with energy but no units distorts it.
+- The first window has no counter increment (there is no earlier reading), so its `enpi` is NaN. The regression fit leaves out windows without output (zero or missing units, such as this first window or a stop day) and names them in a `DataQualityWarning`; their energy is base load only and would pull the fit.
 - `baseline='rolling'` (default) divides the summed energy of the last `baseline_window` windows by their summed output. It follows the process, so it never shows a lasting improvement, and a fixed base load makes kWh/unit look worse whenever output is low.
 - `baseline='regression'` fits `energy = a + b * units` on `baseline_period` (default: the first `baseline_window` windows) and compares each window's energy with the model's expectation for its output, so the comparison is normalized for volume. The cumulative sum of `energy_savings_kwh` is the CUSUM of savings.
 - `deviation_threshold` is a fraction (0.1 = 10 %). `trend` is `improving`, `degrading` or `stable` by the slope of a 7-window rolling EnPI.
