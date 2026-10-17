@@ -563,6 +563,10 @@ REGISTRY: dict[str, Case] = {
     "DescriptiveFeatures.compute": Case(
         lambda df: DescriptiveFeatures(df).compute(), required=("uuid",)
     ),
+    "DescriptiveFeatures.compute_windowed": Case(
+        lambda df: DescriptiveFeatures(df).compute_windowed("10min"),
+        required=("uuid", "systime"),
+    ),
     # -- features.time_stats --------------------------------------------------
     "TimeGroupedStatistics.calculate_statistic": Case(
         lambda df: TimeGroupedStatistics.calculate_statistic(df, window="10min"),
