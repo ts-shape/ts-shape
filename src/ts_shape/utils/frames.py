@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Callable, Iterable
+from datetime import timedelta
 from typing import Any, TypeVar
 
 import numpy as np
@@ -311,10 +312,16 @@ def window_offset(window: Any) -> Any:
         calendar ``Day``, e.g. ``<3 * Days>``); on pandas 2, where ``Day``
         is a fixed 24 h ``Tick``, it is ``pd.DateOffset(days=n)``. Any other
         window gives ``to_offset(window)`` (e.g. ``<24 * Hours>`` for
-        ``"24h"``). A ``Timedelta`` window converts to a fixed offset on
-        pandas 3 (``Timedelta("2D")`` -> ``<48 * Hours>``) but to a day
-        offset on pandas 2.
+        ``"24h"``). A ``Timedelta`` (or ``datetime.timedelta`` /
+        ``numpy.timedelta64``) window is a fixed duration on both pandas
+        versions: ``Timedelta("2D")`` -> ``<48 * Hours>``.
     """
+    if isinstance(window, (timedelta, np.timedelta64)):
+        offset = to_offset(pd.Timedelta(window))
+        if isinstance(offset, Tick) and offset.rule_code == "D":
+            # pandas 2 renders whole days as its fixed-length Day tick.
+            return pd.offsets.Hour(24 * offset.n)
+        return offset
     offset = to_offset(window)
     if isinstance(offset, Tick) and offset.rule_code == "D":
         return pd.DateOffset(days=offset.n)

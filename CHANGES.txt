@@ -1,3 +1,17 @@
+# October 17, 2026 (round 12)
+Oscillations with a deadband, EnPI baseline without idle windows, windowed
+descriptive features.
+change: SetpointChangeEvents oscillation_count / oscillation_freq_hz count
+  crossings of a deadband around the setpoint; control_quality_metrics uses
+  the settle band (tol / settle_pct) by default, deadband=0 restores the
+  former count.
+fix: the EnPI regression baseline leaves windows without output out of the
+  fit and warns (DataQualityWarning); window_offset(Timedelta) is a fixed
+  duration on pandas 2.2 as on pandas 3.
+feat: DescriptiveFeatures.compute_windowed: one row per time window with the
+  features of every signal; empty windows are NaN (counts 0).
+  See docs/migration.md.
+
 # October 16, 2026 (round 11)
 Typed API, docs that run, coverage gate 93.
 feat: top-level imports are typed; deprecated names are visible to type

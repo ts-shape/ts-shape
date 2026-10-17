@@ -52,6 +52,46 @@ print(round(temp_stats["mean"], 2), round(temp_stats["std"], 2), round(temp_stat
 - Numeric statistics include mean, median, std, quantiles, IQR, MAD,
   skewness, kurtosis and the 10th and 90th percentiles.
 
+### Statistics per time window
+
+`compute_windowed(window)` (or `compute(output_format="windowed", window=...)`)
+puts the same statistics on a time grid: one row per window, starting with
+`start`, `end` and `duration_seconds`, and in that row every feature of every
+signal as `{uuid}__{feature}`.
+
+```python
+hourly = DescriptiveFeatures(df).compute_windowed(
+    "1h", metrics=["total_rows", "mean", "most_frequent"]
+)
+cols = ["start", "press:temp__mean", "press:order__most_frequent"]
+print(hourly[cols].round({"press:temp__mean": 2}))
+```
+
+- The feature names are those of `compute()`: the `overall` keys
+  (`total_rows`, `total_time`, `is_delta_*`, plus `total_time_seconds`) and
+  the keys of `numeric_stats`, `boolean_stats` or `string_stats`, chosen by
+  the value column each signal fills (`value_double` / `value_integer`,
+  `value_bool`, `value_string`). Each cell equals `compute()` run on that
+  window's rows of that signal.
+- `metrics=` picks features; a name that does not fit a signal's kind is
+  skipped for that signal (above, the order signal has no `mean`), an unknown
+  name raises `ValueError` listing the valid ones.
+- Every window from the first to the last timestamp is a row. A window
+  without rows of a signal gives NaN for that signal (the order signal
+  changes every two hours), except for counts such as `total_rows`,
+  `true_count` or `count_null`, which are 0.
+- Windows are those of `pd.Grouper(freq=window)`, wall-clock windows in the
+  data's time zone: a `"1D"` window on a DST day lasts 23 or 25 hours.
+- All statistics are grouped aggregations, so a million rows in 1 s windows
+  take a few seconds.
+
+**Which to pick:** `TimeWindowedFeatureTable` (see
+[Cycles and segments](feature-extraction.md)) works on the output of
+`SegmentProcessor.apply_ranges`: it splits each window by segment, reads one
+numeric column (`value_double`) and drops groups with fewer than 2 values.
+`compute_windowed` describes every signal of the frame by its own kind
+(numeric, boolean or string), keeps every window and has no segments.
+
 ## One feature row per order
 
 Cut the signals into orders (see [Cycles and segments](feature-extraction.md)) and
