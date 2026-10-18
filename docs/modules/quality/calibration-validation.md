@@ -26,7 +26,7 @@ stability = cal.calibration_stability(window="8h", lookback=10)
 | Method | Returns |
 |---|---|
 | `linearity_assessment(calibration_points)` (static) | per reference point: `reference`, `measured_mean`, `measured_std`, `bias`, `linearity_error` |
-| `calibration_curve(calibration_points, degree=1)` (static) | per polynomial coefficient: `coefficient_index`, `coefficient_value`, `r_squared`, `max_residual` |
+| `calibration_curve(calibration_points, degree=1)` (static) | per polynomial coefficient: `coefficient_index`, `power`, `coefficient_value`, `r_squared`, `max_residual` |
 | `detect_recalibration_need(window='1D', max_bias=None, max_drift_rate=None)` | per window: `start`, `end`, `duration_seconds`, `bias`, `drift_rate`, `recalibration_needed`, `reason` |
 | `calibration_stability(window='8h', lookback=10)` | per window: `start`, `end`, `duration_seconds`, `bias_mean`, `bias_std`, `bias_trend`, `stability_score` |
 
@@ -36,5 +36,5 @@ stability = cal.calibration_stability(window="8h", lookback=10)
 - The window methods need a reference: `reference_value` (a constant, e.g. a check standard) or `reference_uuid` (that signal's mean in the same window). Without one they return an empty frame. Windows with fewer than 2 samples or no reference data are skipped. `window` is a fixed length (`"8h"`) or a calendar frequency (`"1D"` a calendar day, `"W"`, `"MS"`); the reference is averaged over the window's true bounds.
 - `bias` = window mean − reference. `drift_rate` is the bias change from the previous window (0 for the first).
 - `linearity_error` is each point's residual from a straight line fitted through all points (at least 2 points).
-- `calibration_curve` coefficients come from `numpy.polyfit`, highest power first; the degree is capped at number of points − 1.
+- `calibration_curve` fits the instrument response, measured = f(reference) (invert it to correct readings). The coefficients come from `numpy.polyfit`, highest power first; `power` is the exponent each one multiplies (degree used − `coefficient_index`), and the degree is capped at number of points − 1.
 - `stability_score` starts at 100 and deducts up to 50 for the bias magnitude, 30 for its spread and 20 for its trend (slope over the `lookback` windows). The penalties are in signal units, so scores are only comparable between signals of similar scale.

@@ -9,6 +9,7 @@ from ts_shape.events._output import (
     finalize_interval_df,
     finalize_point_df,
     finalize_summary_df,
+    twin_columns,
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
@@ -145,15 +146,34 @@ class RateOfChangeEvents(Base):
         )
 
     @keyword_only(1)
+    @twin_columns(
+        {
+            "mean_rate": "mean_abs_rate",
+            "std_rate": "std_abs_rate",
+            "max_rate": "max_abs_rate",
+            "min_rate": "min_abs_rate",
+        }
+    )
     def rate_statistics(self, window: str = "1h") -> pd.DataFrame:
-        """Per-window rate of change statistics.
+        """Per-window statistics of the absolute rate of change.
+
+        The statistics are over ``|rate|`` (signal units per second between
+        consecutive samples), so a falling signal gives positive values.
 
         Args:
             window: Resample window.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, mean_rate,
-            std_rate, max_rate, min_rate. ``end`` is ``start`` + ``window``.
+            mean_abs_rate, std_rate, std_abs_rate, max_rate, max_abs_rate,
+            min_rate, min_abs_rate. ``end`` is ``start`` + ``window``.
+
+            Canonical twin columns: ``mean_abs_rate``, ``std_abs_rate``,
+            ``max_abs_rate`` and ``min_abs_rate``, each right after the
+            column of the same values. The ``*_rate`` columns hold absolute
+            values today; in the next major release they become statistics
+            of the signed rate, so read the ``*_abs_rate`` columns for the
+            absolute rate.
         """
         cols = ["start", "mean_rate", "std_rate", "max_rate", "min_rate"]
         rate_df = self._compute_rate()

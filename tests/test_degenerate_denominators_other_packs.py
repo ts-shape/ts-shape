@@ -46,11 +46,15 @@ def test_steady_state_sparse_samples_are_not_steady():
     ).empty
 
 
-def test_demand_empty_periods_are_not_zero_demand():
+def test_demand_empty_periods_are_zero_demand_or_dropped():
+    # Each row is one order: a day without rows had no demand, so the
+    # default keeps it as zero; empty_periods="drop" is the former output.
     t = pd.to_datetime(["2024-01-01", "2024-01-05"])
     df = pd.DataFrame({"systime": t, "uuid": "d", "value_double": [5.0, 7.0]})
-    out = DemandPatternEvents(df, "d").demand_by_period(window="1D")
-    assert len(out) == 2
+    ev = DemandPatternEvents(df, "d")
+    out = ev.demand_by_period(window="1D")
+    assert out["total_demand"].tolist() == [5.0, 0.0, 0.0, 0.0, 7.0]
+    assert len(ev.demand_by_period(window="1D", empty_periods="drop")) == 2
 
 
 def test_seasonality_accepts_calendar_period():

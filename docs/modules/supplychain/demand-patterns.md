@@ -25,11 +25,14 @@ All arguments are keyword-only.
 
 | Method | Returns |
 |---|---|
-| `demand_by_period(window='1D')` | per period: `total_demand`, `avg_demand`, `peak_demand` |
-| `detect_demand_spikes(threshold_factor=2.0, window='1D')` | periods above mean + `threshold_factor` × std of the period totals: `demand`, `baseline_mean`, `spike_magnitude` |
-| `seasonality_summary(window='1D')` | per `period_label`: `avg_demand`, `std_demand`, `min_demand`, `max_demand` |
+| `demand_by_period(window='1D', empty_periods='zero')` | per period: `total_demand`, `avg_demand`, `peak_demand`, `order_count` |
+| `detect_demand_spikes(threshold_factor=2.0, window='1D', empty_periods='zero')` | periods above mean + `threshold_factor` × std of the period totals: `demand`, `baseline_mean`, `spike_magnitude` |
+| `seasonality_summary(window='1D', empty_periods='zero')` | per `period_label`: `avg_demand`, `std_demand`, `min_demand`, `max_demand` |
 
 ## Notes
 
+- Each row of the demand signal is one order (event-encoded demand), so a period without rows is a period without demand. `demand_by_period` returns every period from the first to the last one with data; an empty period has `total_demand = 0`, `peak_demand = 0`, `order_count = 0` and no `avg_demand` (the mean order size). `empty_periods='drop'` leaves the empty periods out instead (the behaviour before this option).
+- `detect_demand_spikes` and `seasonality_summary` work on these period totals, so by default the zero periods count: the spike baseline is the mean and std over the whole span, and a weekday without orders averages low. Pass `empty_periods='drop'` to use only periods with orders.
+- A cumulative counter (a running order total) is not event-encoded: difference it into per-order quantities first, or its readings are summed as if each were a new order.
 - `seasonality_summary` groups by day of week (Monday = 0 … Sunday = 6) with `window='1D'` and by hour of day (0-23) with any sub-daily window.
 - Known promotions or one-off orders distort the seasonality; drop them (e.g. the periods from `detect_demand_spikes`) first.

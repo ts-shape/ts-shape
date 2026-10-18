@@ -172,16 +172,32 @@ class CalibrationValidationEvents(Base):
     ) -> pd.DataFrame:
         """Fit polynomial calibration curve.
 
+        The fit is the instrument response: the mean measured value as a
+        polynomial of the reference value, ``measured = f(reference)`` (to
+        correct readings, invert it). The degree is capped at the number of
+        calibration points minus one.
+
         Args:
             calibration_points: Dict mapping reference values to
                 measured value lists.
             degree: Polynomial degree (1=linear, 2=quadratic, etc).
 
         Returns:
-            DataFrame with columns: coefficient_index, coefficient_value,
-            r_squared, max_residual.
+            DataFrame with one row per coefficient and columns:
+            coefficient_index, power, coefficient_value, r_squared,
+            max_residual. The coefficients come highest power first
+            (``numpy.polyfit`` order, ready for ``numpy.polyval``):
+            ``coefficient_index`` is the position in that order and
+            ``power`` the exponent of the reference value it multiplies
+            (``degree_used - coefficient_index``).
         """
-        cols = ["coefficient_index", "coefficient_value", "r_squared", "max_residual"]
+        cols = [
+            "coefficient_index",
+            "power",
+            "coefficient_value",
+            "r_squared",
+            "max_residual",
+        ]
         if not calibration_points or len(calibration_points) < 2:
             return pd.DataFrame(columns=cols)
 
@@ -192,7 +208,8 @@ class CalibrationValidationEvents(Base):
         mean_arr = np.array(means)
 
         # Fit polynomial
-        coeffs = np.polyfit(ref_arr, mean_arr, min(degree, len(refs) - 1))
+        degree_used = min(degree, len(refs) - 1)
+        coeffs = np.polyfit(ref_arr, mean_arr, degree_used)
         predicted = np.polyval(coeffs, ref_arr)
 
         # R² calculation
@@ -207,6 +224,7 @@ class CalibrationValidationEvents(Base):
             events.append(
                 {
                     "coefficient_index": i,
+                    "power": degree_used - i,
                     "coefficient_value": float(c),
                     "r_squared": float(r_squared),
                     "max_residual": float(max_residual),

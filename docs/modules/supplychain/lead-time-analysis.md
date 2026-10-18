@@ -32,6 +32,7 @@ late = lt.detect_lead_time_anomalies("po_placed", "po_received", threshold_facto
 
 ## Notes
 
-- The order identifier is read from `value_string` (`value_column=` to change). When the deliveries carry identifiers found among the orders, each order is matched to the first delivery with the same identifier at or after it, and unmatched orders are left out; otherwise each order, in time order, is paired with the first not yet used delivery at or after it. Orders and deliveries left without a partner are dropped with a `DataQualityWarning`; a lead time is never negative.
+- The order identifier is read from `value_string` (`value_column=` to change). Each order, in time order, is paired with the first not yet used delivery at or after it. When the deliveries carry identifiers found among the orders, this one-to-one pairing runs within each identifier: two orders `PO-1` need two `PO-1` deliveries, and one delivery never closes two orders. Otherwise it runs over all orders and deliveries. Orders and deliveries left without a partner (on the identifier path also rows without an identifier, or with one the other side lacks) are dropped with a `DataQualityWarning`; a lead time is never negative.
+- A multi-line purchase order with partial deliveries needs line-level identifiers (e.g. `PO-1/10`, `PO-1/20`), one order row and one delivery row per line; with only the PO number, its lines are paired in time order.
 - For per-supplier statistics, use one signal pair per supplier or filter the frame first.
 - `calculate_lead_times` is the deprecated name of `lead_times`.

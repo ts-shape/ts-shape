@@ -195,6 +195,7 @@ class MicroStopEvents(Base):
     @keyword_only(1)
     @twin_columns(
         {
+            "count": "micro_stop_count",
             "total_lost_time": "total_lost_time_seconds",
             "pct_of_window": "share_of_window_pct",
         }
@@ -215,9 +216,9 @@ class MicroStopEvents(Base):
 
             ``total_lost_time`` is in seconds.
 
-            Canonical twin columns: ``total_lost_time_seconds`` (after
-            ``total_lost_time``) and ``share_of_window_pct`` (after
-            ``pct_of_window``); each holds the same values as the deprecated
+            Canonical twin columns: ``micro_stop_count`` (after ``count``),
+            ``total_lost_time_seconds`` (after ``total_lost_time``) and
+            ``share_of_window_pct`` (after ``pct_of_window``); each holds the same values as the deprecated
             column right before it, which is removed in the next major release.
         """
         cols = ["start", "count", "total_lost_time", "pct_of_window"]
