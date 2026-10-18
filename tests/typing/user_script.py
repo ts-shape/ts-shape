@@ -65,7 +65,7 @@ def main() -> None:
 
     outliers: pd.DataFrame = OutlierDetectionEvents(
         temp, value_column="value_double"
-    ).detect_outliers_zscore(threshold=4.0)
+    ).detect_outliers_zscore(n_sigma=4.0)
     intervals: pd.DataFrame = MachineStateEvents(
         df, run_state_uuid="oven:running"
     ).detect_run_idle(min_duration="5min")
@@ -92,7 +92,7 @@ def main() -> None:
             "detect_outliers_zscore",
             name="outliers",
             value_column="value_double",
-            threshold=3.0,
+            n_sigma=3.0,
         )
         .run(temp)
     )

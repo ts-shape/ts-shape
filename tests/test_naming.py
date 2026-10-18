@@ -294,18 +294,6 @@ NOT_COLUMN_EXCEPTIONS: dict[tuple[str, str], str] = {
         ":MetadataJsonLoader.filter_by_uuid",
         "uuids",
     ): "deferred: loader lookup argument",
-    **{
-        (f"ts_shape.features.pattern_recognition:PatternRecognition.{m}", "uuid"): (
-            "deferred: concurrent fixes in pattern_recognition.py"
-        )
-        for m in (
-            "discover_motifs",
-            "discover_discords",
-            "similarity_search",
-            "template_match",
-            "compute_distance_profile",
-        )
-    },
     # Loader uuid lists.
     **{
         (f"ts_shape.loader.timeseries.{cls}.{m}", "uuid_list"): (
@@ -350,15 +338,6 @@ NOT_COLUMN_EXCEPTIONS: dict[tuple[str, str], str] = {
         "ts_shape.transform.harmonization:DataHarmonizer.merge_multi_signals",
         "uuids",
     ): "deferred: rename to signal_uuids",
-    # A hold time of a level, not the shortest event kept.
-    **{
-        (f"ts_shape.events.{key}", "min_hold"): "deferred: hold time, not min_duration"
-        for key in (
-            "engineering.setpoint_events:SetpointChangeEvents.detect_setpoint_steps",
-            "engineering.setpoint_events:SetpointChangeEvents.detect_setpoint_changes",
-            "production.changeover:ChangeoverEvents.detect_changeover",
-        )
-    },
 }
 
 
@@ -455,13 +434,34 @@ DEPRECATED_TWINS = {
     "pct_time_saturated": "time_saturated_pct",
 }
 
-#: Bare ratio columns of one method, twinned by ``*_ratio`` columns.
+#: Legacy columns of one method (bare ratios, seconds without a unit,
+#: upper-case indices) and their canonical twins.
 METHOD_TWINS = {
     ("LineThroughputEvents", "throughput_oee"): {
         "availability": "availability_ratio",
         "performance": "performance_ratio",
         "oee_score": "oee_ratio",
     },
+    # Seconds without a unit in the name, twinned by ``*_seconds``.
+    ("MicroStopEvents", "micro_stop_frequency"): {
+        "total_lost_time": "total_lost_time_seconds",
+    },
+    ("MicroStopEvents", "micro_stop_impact"): {
+        "total_run_time": "total_run_time_seconds",
+        "total_micro_stop_time": "total_micro_stop_time_seconds",
+    },
+    ("MicroStopEvents", "micro_stop_patterns"): {
+        "avg_lost_time": "avg_lost_time_seconds",
+    },
+    ("OperatingStateEvents", "state_duration_statistics"): {
+        "mean_duration": "mean_duration_seconds",
+        "std_duration": "std_duration_seconds",
+        "min_duration": "min_duration_seconds",
+        "max_duration": "max_duration_seconds",
+        "total_duration": "total_duration_seconds",
+    },
+    # Capability indices in lower case.
+    ("ToleranceDeviationEvents", "capability_indices"): {"Cp": "cp", "Cpk": "cpk"},
 }
 
 #: Names that look legacy but are something else (a rate, a speed unit).

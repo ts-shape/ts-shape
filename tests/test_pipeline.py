@@ -96,7 +96,7 @@ def test_detect_step_stores_events_and_leaves_channel_unchanged():
             "detect_outliers_zscore",
             name="outliers",
             value_column="value_double",
-            threshold=2.0,
+            n_sigma=2.0,
         )
         .run(df)
     )
@@ -117,7 +117,7 @@ def test_full_transform_then_detect():
             "detect_outliers_zscore",
             name="outliers",
             value_column="value_double",
-            threshold=2.0,
+            n_sigma=2.0,
         )
         .run(df)
     )
@@ -131,8 +131,8 @@ def test_full_transform_then_detect():
 
 
 def test_kwarg_routing_splits_init_and_method():
-    # value_column -> __init__, threshold -> method. A successful run proves
-    # routing: __init__ rejects 'threshold' and the method rejects
+    # value_column -> __init__, n_sigma -> method. A successful run proves
+    # routing: __init__ rejects 'n_sigma' and the method rejects
     # 'value_column' if mis-routed.
     df = _signal()
     result = (
@@ -142,7 +142,7 @@ def test_kwarg_routing_splits_init_and_method():
             "detect_outliers_zscore",
             name="o",
             value_column="value_double",
-            threshold=3.0,
+            n_sigma=3.0,
         )
         .run(df)
     )
@@ -212,7 +212,7 @@ def test_pipeline_is_reusable_across_dataframes():
         "detect_outliers_zscore",
         name="o",
         value_column="value_double",
-        threshold=2.0,
+        n_sigma=2.0,
     )
     few = pipe.run(_signal(n_outliers=2))
     many = pipe.run(_signal(n_outliers=40))
@@ -228,7 +228,7 @@ def test_to_event_log_combined_and_per_step():
             "detect_outliers_zscore",
             name="o",
             value_column="value_double",
-            threshold=2.0,
+            n_sigma=2.0,
         )
         .run(df)
     )
@@ -246,7 +246,7 @@ def test_to_event_log_without_detector_identity_raises():
     # Callable-form detect step -> no "Class.method" identity.
     result = (
         Pipeline()
-        .detect(lambda _d: detector.detect_outliers_zscore(threshold=2.0), name="o")
+        .detect(lambda _d: detector.detect_outliers_zscore(n_sigma=2.0), name="o")
         .run(df)
     )
     assert "o" in result.events
@@ -350,7 +350,7 @@ def test_run_steps_returns_every_intermediate():
             "detect_outliers_zscore",
             name="outliers",
             value_column="value_double",
-            threshold=2.0,
+            n_sigma=2.0,
         )
         .run_steps(df)
     )
@@ -428,7 +428,7 @@ def test_source_then_transform_then_detect():
             "detect_outliers_zscore",
             name="outliers",
             value_column="value_double",
-            threshold=2.0,
+            n_sigma=2.0,
         )
         .run()
     )

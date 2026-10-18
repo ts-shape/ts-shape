@@ -61,7 +61,7 @@ df = pd.concat([temp, running], ignore_index=True)
 
 print(profile(df).summary())   # signal kinds, gaps, counter resets, duplicates
 
-outliers = OutlierDetectionEvents(temp, value_column="value_double").detect_outliers_zscore(threshold=4.0)
+outliers = OutlierDetectionEvents(temp, value_column="value_double").detect_outliers_zscore(n_sigma=4.0)
 intervals = MachineStateEvents(df, run_state_uuid="oven:running").detect_run_idle(min_duration="5min")
 
 log = concat(

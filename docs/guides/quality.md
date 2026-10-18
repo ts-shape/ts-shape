@@ -31,8 +31,8 @@ df = pd.concat([reference, measured, spec_limits], ignore_index=True)
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
 detector = OutlierDetectionEvents(df, value_column="value_double", signal_uuids=["shaft:diameter"])
-zscore = detector.detect_outliers_zscore(threshold=3.0)
-mad = detector.detect_outliers_mad(threshold=3.5)
+zscore = detector.detect_outliers_zscore(n_sigma=3.0)
+mad = detector.detect_outliers_mad(n_sigma=3.5)
 iqr = detector.detect_outliers_iqr(threshold=(1.5, 1.5))
 ```
 
@@ -82,8 +82,8 @@ from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 
 tolerance = ToleranceDeviationEvents(
     df,
-    tolerance_column="value_double",
-    actual_column="value_double",
+    value_column_tolerance="value_double",
+    value_column_actual="value_double",
     actual_uuid="shaft:diameter",
     upper_tolerance_uuid="shaft:usl",
     lower_tolerance_uuid="shaft:lsl",

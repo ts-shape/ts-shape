@@ -241,7 +241,7 @@ def test_cycle_processor_column_checks():
     cycles, values = _cycles_and_values()
     with pytest.raises(ColumnNotFoundError, match="'cycle_start', 'cycle_end'"):
         CycleDataProcessor(cycles.drop(columns=["cycle_start", "cycle_end"]), values)
-    with pytest.raises(ColumnNotFoundError, match="values_df: column 'systime'"):
+    with pytest.raises(ColumnNotFoundError, match="dataframe_values: column 'systime'"):
         CycleDataProcessor(cycles, values.rename(columns={"systime": "t"}))
     proc = CycleDataProcessor(cycles, values)
     groups = proc.group_by_cycle_uuid()

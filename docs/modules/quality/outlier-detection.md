@@ -13,18 +13,18 @@ from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 df = ts_shape.make_timeseries(["press:force", "press:temp"], n_points=500, n_outliers=4)
 
 detector = OutlierDetectionEvents(df, value_column="value_double", time_threshold="5min")
-outliers = detector.detect_outliers_zscore(threshold=3.0)
+outliers = detector.detect_outliers_zscore(n_sigma=3.0)
 print(outliers[["systime", "source_uuid", "value_double", "severity"]])
-robust = detector.detect_outliers_mad(threshold=3.5)
+robust = detector.detect_outliers_mad(n_sigma=3.5)
 ```
 
 ## Methods
 
 | Method | Use for |
 |---|---|
-| `detect_outliers_zscore(threshold=3.0)` | roughly normal signals |
+| `detect_outliers_zscore(n_sigma=3.0)` | roughly normal signals |
 | `detect_outliers_iqr(threshold=(1.5, 1.5))` | skewed signals; lower and upper IQR multipliers |
-| `detect_outliers_mad(threshold=3.5)` | heavy-tailed or noisy signals (modified z-score) |
+| `detect_outliers_mad(n_sigma=3.5)` | heavy-tailed or noisy signals (modified z-score) |
 | `detect_outliers_isolation_forest(contamination=0.1, random_state=42)` | needs scikit-learn |
 
 Each returns the outlier rows as point events: the original columns, `source_uuid` (the signal), `uuid` (the event UUID) and `severity` (the score).

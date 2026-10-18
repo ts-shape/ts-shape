@@ -35,15 +35,15 @@ The cut that ran on is the one `high` interval longer than 25 minutes; it is rep
 
 | Method | Returns |
 |---|---|
-| `infer_states(n_states=2, min_duration='0s')` | intervals: `start`, `end`, `state` (0 = lowest), `state_label`, `mean_value`, `duration_seconds` |
-| `state_duration_statistics(n_states=2)` | one row per state: `count`, `mean_duration`, `std_duration`, `min_duration`, `max_duration`, `total_duration` (seconds) |
-| `unusual_state_sequence(n_states=2, expected_order=None)` | one row per transition: `transition_time`, `from_state`, `to_state`, `from_label`, `to_label`, `is_unusual` |
-| `dwell_time_violation(state, max_duration, n_states=2)` | intervals of `state` longer than `max_duration`: `duration_seconds`, `excess_seconds` |
+| `infer_states(n_states=2, min_duration='0s', interval_end='next_change')` | intervals: `start`, `end`, `state` (0 = lowest), `state_label`, `mean_value`, `duration_seconds` |
+| `state_duration_statistics(n_states=2, interval_end='next_change')` | one row per state: `count`, `mean_duration_seconds`, `std_duration_seconds`, `min_duration_seconds`, `max_duration_seconds`, `total_duration_seconds` (each right after its deprecated twin without `_seconds`) |
+| `unusual_state_sequence(n_states=2, expected_order=None, interval_end='next_change')` | one row per transition: `transition_time`, `from_state`, `to_state`, `from_label`, `to_label`, `is_unusual` |
+| `dwell_time_violation(state, max_duration, n_states=2, interval_end='next_change')` | intervals of `state` longer than `max_duration`: `duration_seconds`, `excess_seconds` |
 
 ## Notes
 
 - States are value bins at the quantiles of the signal: with `n_states=2` the split is the median. A machine that spends most of its time in one state gets that state split in two, so choose `n_states` (and the time span) so the states are of similar weight, or threshold the signal yourself and use [MachineStateEvents](machine-state.md).
 - Labels are `low`/`high` for two states, `low`/`mid`/`high` for three, `state_0` … otherwise. `state` numbers count from the lowest values.
-- An interval ends at its last sample, so a phase of 15 minutes sampled every 30 s lasts 870 s.
+- An interval ends where the next state starts (`interval_end="next_change"`, the default), so the intervals cover the signal without gaps and a phase of 15 minutes sampled every 30 s lasts 900 s; the last interval ends at the last sample. `interval_end="last_sample"` ends each interval at its own last sample, the behavior before October 2026: the same phase lasts 870 s, and one sampling period per interval belongs to no state. In the example the cut that ran on lasts 2700 s (2670 s with `"last_sample"`).
 - Without `expected_order`, a transition is normal when it accounts for at least 10 % of all transitions. `expected_order=[0, 1, 0]` allows exactly the transitions 0→1 and 1→0.
 - Samples without a value are ignored; with fewer valued samples than `n_states` the result is empty.

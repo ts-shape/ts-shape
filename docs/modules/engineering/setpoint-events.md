@@ -18,7 +18,7 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": "temp_sp", "value_double": s
                 pd.DataFrame({"systime": t, "uuid": "temp_pv", "value_double": pv})])
 
 sc = SetpointChangeEvents(df, setpoint_uuid="temp_sp")
-steps = sc.detect_setpoint_steps(min_delta=5.0, min_hold="30s")
+steps = sc.detect_setpoint_steps(min_delta=5.0, min_duration="30s")
 settle = sc.time_to_settle("temp_pv", settle_pct=0.02, hold="30s", lookahead="15min")
 print(sc.control_quality_metrics("temp_pv", tol=0.5, lookahead="15min").T)
 ```
@@ -27,9 +27,9 @@ print(sc.control_quality_metrics("temp_pv", tol=0.5, lookahead="15min").T)
 
 | Method | Returns (one row per setpoint change) |
 |---|---|
-| `detect_setpoint_steps(min_delta, min_hold='0s')` | `magnitude`, `prev_level`, `new_level` |
+| `detect_setpoint_steps(min_delta, min_duration='0s')` | `magnitude`, `prev_level`, `new_level` |
 | `detect_setpoint_ramps(min_rate, min_duration='0s')` | ramp intervals: `avg_rate`, `delta` |
-| `detect_setpoint_changes(min_delta=0.0, min_rate=None)` | steps and ramps in one table with `change_type` |
+| `detect_setpoint_changes(min_delta=0.0, min_rate=None, min_step_duration='0s', min_duration='0s')` | steps and ramps in one table with `change_type` |
 | `time_to_settle(actual_uuid, tol=0.0, settle_pct=None, hold='0s', lookahead='10min')` | `t_settle_seconds`, `settled`, `settled_within_window` |
 | `time_to_settle_derivative(actual_uuid, rate_threshold=0.01)` | `t_settle_seconds`, `settled`, `final_rate` |
 | `rise_time(actual_uuid, start_pct=0.1, end_pct=0.9)` | `rise_time_seconds`, `reached_end` |
@@ -40,7 +40,7 @@ print(sc.control_quality_metrics("temp_pv", tol=0.5, lookahead="15min").T)
 
 ## Notes
 
-- A step is a change of at least `min_delta` whose new level holds for `min_hold` (no further change within it). `filter_noise=True` drops changes below `noise_threshold`.
+- A step is a change of at least `min_delta` whose new level holds for `min_duration` (no further change within it); `detect_setpoint_changes` takes it as `min_step_duration`, since its `min_duration` is the ramp duration. The former name `min_hold` still works and warns. `filter_noise=True` drops changes below `noise_threshold`.
 - A ramp is a run where |dS/dt| ≥ `min_rate` (setpoint units per second) lasting at least `min_duration`.
 - The settling time (Ogata) is the time after which the actual value enters the ±`tol` band around the new setpoint and stays inside it until the end of the evaluation window, not the first entry: an underdamped response crosses the band on every swing. The window ends after `lookahead` or at the next setpoint change, whichever is first. `settled_within_window` is False (and `t_settle_seconds` NaN) when the value is outside the band at the window's end; `settled` additionally requires the final in-band stretch to last `hold`. `settle_pct` (fraction of the step size, e.g. 0.02) takes precedence over `tol`.
 - `overshoot_pct` / `undershoot_pct` are percent of the step size (Ogata's maximum percent overshoot); `overshoot_ratio` / `undershoot_ratio` are the same as fractions.

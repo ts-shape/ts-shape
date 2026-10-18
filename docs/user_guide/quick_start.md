@@ -53,7 +53,7 @@ its methods; each method returns a DataFrame.
 
 ```python
 outliers = ts_shape.OutlierDetectionEvents(temp, value_column="value_double")
-spikes = outliers.detect_outliers_zscore(threshold=4.0)
+spikes = outliers.detect_outliers_zscore(n_sigma=4.0)
 
 state = ts_shape.MachineStateEvents(df, run_state_uuid="oven:running")
 intervals = state.detect_run_idle(min_duration="5min")

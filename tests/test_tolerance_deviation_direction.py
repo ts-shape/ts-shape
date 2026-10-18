@@ -36,8 +36,8 @@ def _events(df, **kw):
     with pytest.warns(DeprecationWarning, match="tolerance_uuid is deprecated"):
         return ToleranceDeviationEvents(
             dataframe=df,
-            tolerance_column="value_double",
-            actual_column="value_double",
+            value_column_tolerance="value_double",
+            value_column_actual="value_double",
             tolerance_uuid="tol",
             actual_uuid="act",
             event_uuid="evt",

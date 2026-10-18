@@ -10,17 +10,16 @@ from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 from ts_shape.utils.runs import total_seconds
-from ts_shape.utils.shifts import assign_shift
+from ts_shape.utils.shifts import DEFAULT_SHIFTS, assign_shift, production_dates
 from ts_shape.utils.time_accounting import grouper_periods, time_by_period
 
 logger = logging.getLogger(__name__)
 
 
-# Fixed shift grid of ``pattern_analysis(by="shift")``.
-_HOUR_SHIFTS: dict[str, tuple[str, str]] = {
-    "morning": ("06:00", "14:00"),
-    "afternoon": ("14:00", "22:00"),
-    "night": ("22:00", "06:00"),
+#: Seconds columns of ``micro_stop_impact`` and their ``*_seconds`` twins.
+_IMPACT_TWINS = {
+    "total_run_time": "total_run_time_seconds",
+    "total_micro_stop_time": "total_micro_stop_time_seconds",
 }
 
 
@@ -34,7 +33,7 @@ class MicroStopEvents(Base):
     - detect_micro_stops: Find idle intervals shorter than max_duration.
     - micro_stop_frequency: Count micro-stops per time window.
     - micro_stop_impact: Time lost to micro-stops per window.
-    - micro_stop_patterns: Group micro-stops by hour-of-day.
+    - micro_stop_patterns: Group micro-stops by hour-of-day or shift.
 
     Example:
         >>> import pandas as pd
@@ -194,7 +193,12 @@ class MicroStopEvents(Base):
         )
 
     @keyword_only(1)
-    @twin_columns({"pct_of_window": "share_of_window_pct"})
+    @twin_columns(
+        {
+            "total_lost_time": "total_lost_time_seconds",
+            "pct_of_window": "share_of_window_pct",
+        }
+    )
     def micro_stop_frequency(
         self, window: str = "1h", max_duration: str = "30s"
     ) -> pd.DataFrame:
@@ -209,9 +213,12 @@ class MicroStopEvents(Base):
             duration_seconds, uuid, source_uuid, count, total_lost_time,
             pct_of_window.
 
-            Canonical twin columns: ``share_of_window_pct`` (after ``pct_of_window``); each
-            holds the same values as the deprecated column right before it, which is
-            removed in the next major release.
+            ``total_lost_time`` is in seconds.
+
+            Canonical twin columns: ``total_lost_time_seconds`` (after
+            ``total_lost_time``) and ``share_of_window_pct`` (after
+            ``pct_of_window``); each holds the same values as the deprecated
+            column right before it, which is removed in the next major release.
         """
         cols = ["start", "count", "total_lost_time", "pct_of_window"]
         stops = self.detect_micro_stops(max_duration=max_duration)
@@ -244,6 +251,7 @@ class MicroStopEvents(Base):
         return self._with_window(result[cols], window)
 
     @keyword_only(1)
+    @twin_columns(_IMPACT_TWINS)
     def micro_stop_impact(
         self, window: str = "1h", max_duration: str = "30s"
     ) -> pd.DataFrame:
@@ -264,6 +272,11 @@ class MicroStopEvents(Base):
             duration_seconds, uuid, source_uuid, total_run_time,
             total_micro_stop_time, performance_loss_pct,
             availability_loss_pct.
+
+            ``total_run_time`` and ``total_micro_stop_time`` are in seconds;
+            their canonical twins ``total_run_time_seconds`` and
+            ``total_micro_stop_time_seconds`` follow each of them (the old
+            names are removed in the next major release).
 
             ``performance_loss_pct`` is the micro-stop time as a percentage of
             run + micro-stop time. Minor stops are a *performance* loss in
@@ -349,73 +362,68 @@ class MicroStopEvents(Base):
         return out
 
     @keyword_only(1)
+    @twin_columns({"avg_lost_time": "avg_lost_time_seconds"})
     def micro_stop_patterns(
-        self, hour_grouping: bool = True, max_duration: str = "30s"
+        self,
+        hour_grouping: bool = True,
+        max_duration: str = "30s",
+        shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> pd.DataFrame:
-        """Group micro-stops by hour-of-day to find clustering patterns.
+        """Group micro-stops by hour-of-day or shift to find clustering patterns.
+
+        Each stop counts in the hour (or shift) it starts in. The count and
+        lost time are summed per day and averaged over the days that have
+        stops in that hour (or shift).
 
         Args:
-            hour_grouping: If True, group by hour. If False, group by shift (8h blocks).
+            hour_grouping: If True, group by hour of day. If False, group by
+                shift.
             max_duration: Maximum idle duration to qualify as micro-stop.
+            shift_definitions: Shift name -> ``(start, end)`` times for
+                ``hour_grouping=False``. Default: three 8-hour shifts
+                ``shift_1`` (06:00-14:00), ``shift_2`` (14:00-22:00) and
+                ``shift_3`` (22:00-06:00), as everywhere in ts-shape. A shift
+                that crosses midnight is one shift per night: its stops after
+                midnight count on the shift's start date.
 
         Returns:
-            DataFrame with columns: hour (or shift), avg_count, avg_lost_time.
+            DataFrame with columns: hour (or shift), avg_count, avg_lost_time,
+            avg_lost_time_seconds. ``avg_lost_time`` is in seconds; its
+            canonical twin ``avg_lost_time_seconds`` follows it (the old name
+            is removed in the next major release).
         """
+        key = "hour" if hour_grouping else "shift"
         stops = self.detect_micro_stops(max_duration=max_duration)
         if stops.empty:
-            if hour_grouping:
-                return pd.DataFrame(columns=["hour", "avg_count", "avg_lost_time"])
-            else:
-                return pd.DataFrame(columns=["shift", "avg_count", "avg_lost_time"])
+            return pd.DataFrame(columns=[key, "avg_count", "avg_lost_time"])
 
         stops["duration_seconds"] = stops["duration"].dt.total_seconds()
 
         if hour_grouping:
             stops["group"] = stops["start"].dt.hour
             stops["date"] = stops["start"].dt.date
-
-            daily_counts = (
-                stops.groupby(["date", "group"])
-                .agg(
-                    count=("duration_seconds", "count"),
-                    lost_time=("duration_seconds", "sum"),
-                )
-                .reset_index()
-            )
-
-            result = (
-                daily_counts.groupby("group")
-                .agg(
-                    avg_count=("count", "mean"),
-                    avg_lost_time=("lost_time", "mean"),
-                )
-                .reset_index()
-                .rename(columns={"group": "hour"})
-            )
-
-            return result
         else:
+            shifts = shift_definitions or DEFAULT_SHIFTS
+            stops["group"] = assign_shift(stops["start"], shifts)
+            # A night shift crossing midnight is one group per night: the
+            # stops after midnight belong to the shift's start date.
+            stops["date"] = production_dates(stops["start"], stops["group"], shifts)
 
-            stops["group"] = assign_shift(stops["start"], _HOUR_SHIFTS)
-            stops["date"] = stops["start"].dt.date
-
-            daily_counts = (
-                stops.groupby(["date", "group"])
-                .agg(
-                    count=("duration_seconds", "count"),
-                    lost_time=("duration_seconds", "sum"),
-                )
-                .reset_index()
+        daily_counts = (
+            stops.groupby(["date", "group"])
+            .agg(
+                count=("duration_seconds", "count"),
+                lost_time=("duration_seconds", "sum"),
             )
+            .reset_index()
+        )
 
-            result = (
-                daily_counts.groupby("group")
-                .agg(
-                    avg_count=("count", "mean"),
-                    avg_lost_time=("lost_time", "mean"),
-                )
-                .reset_index()
-                .rename(columns={"group": "shift"})
+        return (
+            daily_counts.groupby("group")
+            .agg(
+                avg_count=("count", "mean"),
+                avg_lost_time=("lost_time", "mean"),
             )
-
-            return result
+            .reset_index()
+            .rename(columns={"group": key})
+        )

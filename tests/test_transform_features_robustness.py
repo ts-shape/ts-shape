@@ -147,7 +147,7 @@ def test_pattern_recognition_needs_uuid_for_several_signals():
     df = pd.concat([_pattern_frame(), _pattern_frame().assign(uuid="t")])
     with pytest.raises(ValueError, match="uuid="):
         PatternRecognition.discover_discords(df, window_size=20)
-    out = PatternRecognition.discover_discords(df, window_size=20, uuid="t")
+    out = PatternRecognition.discover_discords(df, window_size=20, signal_uuid="t")
     assert len(out) > 0
 
 

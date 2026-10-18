@@ -33,8 +33,8 @@ def test_tolerance_deviation_events_grouping():
     with pytest.warns(DeprecationWarning, match="tolerance_uuid is deprecated"):
         tde = ToleranceDeviationEvents(
             dataframe=df.copy(),
-            tolerance_column="value_double",
-            actual_column="value_double",
+            value_column_tolerance="value_double",
+            value_column_actual="value_double",
             tolerance_uuid=tol_uuid,
             actual_uuid=act_uuid,
             event_uuid=evt_uuid,

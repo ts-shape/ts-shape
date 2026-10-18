@@ -92,7 +92,7 @@ OEE and Advanced Analytics:
   - detect_micro_stops: Find idle intervals shorter than max_duration.
   - micro_stop_frequency: Count micro-stops per window.
   - micro_stop_impact: Time lost to micro-stops per window.
-  - micro_stop_patterns: Group micro-stops by hour-of-day.
+  - micro_stop_patterns: Group micro-stops by hour-of-day or shift.
 
 - DutyCycleEvents: Analyze on/off patterns from boolean signals.
   - duty_cycle_by_window: On-time percentage per window.

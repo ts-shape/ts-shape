@@ -43,7 +43,7 @@ def demo_sensor_quality() -> None:
             "detect_outliers_zscore",
             name="outliers",
             value_column="value_double",
-            threshold=3.0,
+            n_sigma=3.0,
         )
     )
     print(pipe)
@@ -96,7 +96,7 @@ def demo_reuse() -> None:
         "detect_outliers_zscore",
         name="outliers",
         value_column="value_double",
-        threshold=3.0,
+        n_sigma=3.0,
     )
 
     for label, n_outliers in [("calm day", 2), ("rough day", 30)]:

@@ -19,7 +19,7 @@ df = pd.DataFrame({
 ms = MicroStopEvents(df, run_state_uuid="line1:running")
 stops = ms.detect_micro_stops(max_duration="30s")
 result = ms.micro_stop_impact(window="15min", max_duration="30s").head()
-print(result[["start", "total_micro_stop_time", "performance_loss_pct"]])
+print(result[["start", "total_micro_stop_time_seconds", "performance_loss_pct"]])
 patterns = ms.micro_stop_patterns(hour_grouping=True)
 ```
 
@@ -28,9 +28,9 @@ patterns = ms.micro_stop_patterns(hour_grouping=True)
 | Method | Returns |
 |---|---|
 | `detect_micro_stops(max_duration='30s', min_duration='0s')` | `start`, `end`, `duration_seconds`, `duration`, `preceding_run_duration` |
-| `micro_stop_frequency(window='1h', max_duration='30s')` | per window: `count`, `total_lost_time`, `share_of_window_pct` |
-| `micro_stop_impact(window='1h', max_duration='30s')` | per window: `total_run_time`, `total_micro_stop_time`, `performance_loss_pct` (= `availability_loss_pct`) |
-| `micro_stop_patterns(hour_grouping=True, max_duration='30s')` | per `hour` of day (or 8-hour `shift` block with `hour_grouping=False`): `avg_count`, `avg_lost_time` |
+| `micro_stop_frequency(window='1h', max_duration='30s')` | per window: `count`, `total_lost_time_seconds`, `share_of_window_pct` |
+| `micro_stop_impact(window='1h', max_duration='30s')` | per window: `total_run_time_seconds`, `total_micro_stop_time_seconds`, `performance_loss_pct` (= `availability_loss_pct`) |
+| `micro_stop_patterns(hour_grouping=True, max_duration='30s', shift_definitions=None)` | per `hour` of day (or per `shift` with `hour_grouping=False`): `avg_count`, `avg_lost_time_seconds` |
 
 ## Notes
 
@@ -39,3 +39,5 @@ patterns = ms.micro_stop_patterns(hour_grouping=True)
 - `micro_stop_impact` classifies a stop by its full duration and splits its time and the run time at the window boundaries; `micro_stop_frequency` counts each stop (and its lost time) in the window it starts in.
 - `performance_loss_pct` is the micro-stop time as a share of run + micro-stop time. Minor stoppages are a performance (speed) loss in Nakajima's six big losses, not an availability loss; `availability_loss_pct` carries the same value under its original name for compatibility.
 - Intervals close at the next transition by default (`interval_end="next_change"`), so a run signal logged only on change is measured correctly; `data_end` bounds the last open interval. With `interval_end="last_sample"`, every interval of such a signal has zero duration and no lost time is reported.
+- `total_lost_time`, `total_run_time`, `total_micro_stop_time` and `avg_lost_time` are kept as deprecated twins (seconds) right before their `_seconds` columns.
+- `micro_stop_patterns(hour_grouping=False)` groups by the shifts in `shift_definitions`, by default `shift_1` (06:00-14:00), `shift_2` (14:00-22:00) and `shift_3` (22:00-06:00) as in the rest of ts-shape (formerly the fixed names `morning`, `afternoon`, `night`; pass them as `shift_definitions` to keep them). A night shift that crosses midnight is one shift: its stops after midnight count on the shift's start date. `avg_count` and `avg_lost_time_seconds` average over the days (shifts) that had stops.

@@ -216,7 +216,7 @@ def demo_outlier_detection():
 
     # --- Z-score method ---
     print("--- Z-score method (threshold=3.0) ---")
-    zscore_events = detector.detect_outliers_zscore(threshold=3.0)
+    zscore_events = detector.detect_outliers_zscore(n_sigma=3.0)
     print(f"  Detected {len(zscore_events)} outlier event rows")
     if not zscore_events.empty:
         print(
@@ -240,7 +240,7 @@ def demo_outlier_detection():
 
     # --- MAD method ---
     print("--- MAD method (threshold=3.5) ---")
-    mad_events = detector.detect_outliers_mad(threshold=3.5)
+    mad_events = detector.detect_outliers_mad(n_sigma=3.5)
     print(f"  Detected {len(mad_events)} outlier event rows")
     if not mad_events.empty:
         print(
@@ -349,8 +349,8 @@ def demo_tolerance_deviation():
 
     tol = ToleranceDeviationEvents(
         dataframe=df,
-        tolerance_column="value_double",
-        actual_column="value_double",
+        value_column_tolerance="value_double",
+        value_column_actual="value_double",
         actual_uuid="bore_measurement",
         event_uuid="tolerance_deviation_event",
         upper_tolerance_uuid="upper_spec_limit",
@@ -379,15 +379,15 @@ def demo_tolerance_deviation():
     # --- Process capability indices ---
     print("\n--- Process capability indices ---")
     capability = tol.capability_indices().iloc[0]
-    print(f"  Cp  = {capability['Cp']:.4f}  (potential capability)")
-    print(f"  Cpk = {capability['Cpk']:.4f}  (actual capability)")
+    print(f"  Cp  = {capability['cp']:.4f}  (potential capability)")
+    print(f"  Cpk = {capability['cpk']:.4f}  (actual capability)")
     print(f"  Pp  = {capability['Pp']:.4f}  (process performance)")
     print(f"  Ppk = {capability['Ppk']:.4f}  (process performance index)")
     print(f"  USL = {capability['usl']:.4f} mm")
     print(f"  LSL = {capability['lsl']:.4f} mm")
     print(f"  Process mean = {capability['mean']:.4f} mm")
     print(f"  Process std  = {capability['std']:.6f} mm")
-    if capability["Cpk"] >= 1.33:
+    if capability["cpk"] >= 1.33:
         print("  --> Process is CAPABLE (Cpk >= 1.33)")
     else:
         print(

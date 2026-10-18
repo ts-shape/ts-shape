@@ -187,7 +187,7 @@ def test_changeover_detect_and_window_stable_band():
 
     co = ChangeoverEvents(df)
     changes = co.detect_changeover(
-        product_uuid="prod", value_column="value_string", min_hold="0s"
+        product_uuid="prod", value_column="value_string", min_duration="0s"
     )
     assert not changes.empty
     win = co.changeover_window(

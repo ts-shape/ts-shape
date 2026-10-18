@@ -17,7 +17,7 @@ pipe = (
     Pipeline(name="sensor-quality")
     .transform(IntegerCalc, "scale_column", value_column="value_double", factor=0.1)
     .detect(OutlierDetectionEvents, "detect_outliers_zscore",
-            name="outliers", value_column="value_double", threshold=3.0)
+            name="outliers", value_column="value_double", n_sigma=3.0)
 )
 
 result = pipe.run(df)
@@ -69,7 +69,7 @@ pipe = (
     Pipeline(name="quality-from-source")
     .source(ts_shape.make_timeseries, uuids=["sensor:temp"], n_points=500, n_outliers=3)
     .detect(OutlierDetectionEvents, "detect_outliers_zscore",
-            name="outliers", value_column="value_double", threshold=3.0)
+            name="outliers", value_column="value_double", n_sigma=3.0)
 )
 result = pipe.run()
 ```

@@ -25,7 +25,7 @@ df = ts_shape.make_timeseries(["press:temp"], n_points=2000, n_outliers=5)
 print(ts_shape.profile(df).summary())   # signal kinds, gaps, resets, duplicates
 
 outliers = ts_shape.OutlierDetectionEvents(df, value_column="value_double")
-events = outliers.detect_outliers_zscore(threshold=4.0)
+events = outliers.detect_outliers_zscore(n_sigma=4.0)
 
 log = ts_shape.to_event_log(events, detector="OutlierDetectionEvents.detect_outliers_zscore")
 print(log.events[["ocel:activity", "ocel:timestamp", "ts_shape:value"]])

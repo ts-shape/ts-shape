@@ -69,8 +69,8 @@ def _tolerance_frame(values, usl=None, lsl=None):
 def _tde(values, usl=None, lsl=None):
     return ToleranceDeviationEvents(
         _tolerance_frame(values, usl, lsl),
-        tolerance_column="value_double",
-        actual_column="value_double",
+        value_column_tolerance="value_double",
+        value_column_actual="value_double",
         actual_uuid="x",
         event_uuid="dev",
         upper_tolerance_uuid="usl" if usl is not None else None,
@@ -159,8 +159,8 @@ def test_latest_spec_is_used():
     )
     tde = ToleranceDeviationEvents(
         pd.concat([df, later], ignore_index=True),
-        tolerance_column="value_double",
-        actual_column="value_double",
+        value_column_tolerance="value_double",
+        value_column_actual="value_double",
         actual_uuid="x",
         upper_tolerance_uuid="usl",
         lower_tolerance_uuid="lsl",

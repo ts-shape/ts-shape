@@ -9,7 +9,7 @@ import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events._compat import summary_bounds, warn_dict_return
-from ts_shape.events._output import drop_duplicate_events
+from ts_shape.events._output import drop_duplicate_events, twin_columns
 from ts_shape.events.quality.statistical_process_control import (
     SigmaMethod,
     _check_sigma_method,
@@ -19,8 +19,10 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import (
     REMOVAL,
     caller_stacklevel,
+    deprecated_attribute,
     deprecated_method,
     keyword_only,
+    renamed_kwargs,
 )
 
 if TYPE_CHECKING:
@@ -81,12 +83,18 @@ class ToleranceDeviationEvents(Base):
     #: Any out-of-tolerance value is a real deviation.
     _severity_levels = {"*": {"minor": "warn"}}
 
+    tolerance_column = deprecated_attribute("value_column_tolerance")
+    actual_column = deprecated_attribute("value_column_actual")
+
     @keyword_only(4)
+    @renamed_kwargs(
+        tolerance_column="value_column_tolerance", actual_column="value_column_actual"
+    )
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        tolerance_column: str,
-        actual_column: str,
+        value_column_tolerance: str,
+        value_column_actual: str,
         tolerance_uuid: str | None = None,
         actual_uuid: str | None = None,
         event_uuid: str | None = None,
@@ -103,8 +111,10 @@ class ToleranceDeviationEvents(Base):
 
         Args:
             dataframe: Input DataFrame with measurement data
-            tolerance_column: Column name containing tolerance values
-            actual_column: Column name containing actual measurement values
+            value_column_tolerance: Column name containing tolerance values
+                (formerly ``tolerance_column``)
+            value_column_actual: Column name containing actual measurement
+                values (formerly ``actual_column``)
             tolerance_uuid: Deprecated (removed in the next major release; passing it without
                 ``upper_tolerance_uuid``/``lower_tolerance_uuid`` emits a
                 ``DeprecationWarning``). UUID of a single tolerance signal
@@ -133,8 +143,8 @@ class ToleranceDeviationEvents(Base):
             )
         super().__init__(dataframe)  # Inherit and initialize Base class
 
-        self.tolerance_column: str = tolerance_column
-        self.actual_column: str = actual_column
+        self.value_column_tolerance: str = value_column_tolerance
+        self.value_column_actual: str = value_column_actual
         self.actual_uuid: str = actual_uuid
         self.event_uuid: str | None = event_uuid
         self.compare_func: Callable[[pd.Series, pd.Series], pd.Series] = compare_func
@@ -334,7 +344,7 @@ class ToleranceDeviationEvents(Base):
         Returns:
             pd.DataFrame: A DataFrame of processed and grouped event data with enhanced metrics.
             Columns: systime, uuid (the event uuid), source_uuid (the actual
-            measurement signal's uuid), the value columns (``actual_column``
+            measurement signal's uuid), the value columns (``value_column_actual``
             holds the measured value), is_delta, deviation_abs,
             deviation_pct and severity.
         """
@@ -394,7 +404,9 @@ class ToleranceDeviationEvents(Base):
         # signal is a setting, whatever its ``is_delta`` flag: a snapshot
         # (``is_delta=False``) of a limit is as valid as a change.
         is_setting = df["uuid"].eq(self.tolerance_uuid)
-        df["tolerance_value"] = df[self.tolerance_column].where(is_setting).ffill()
+        df["tolerance_value"] = (
+            df[self.value_column_tolerance].where(is_setting).ffill()
+        )
 
         # Store original tolerance for deviation calculations
         df["upper_tolerance"] = df["tolerance_value"]
@@ -409,7 +421,7 @@ class ToleranceDeviationEvents(Base):
         # Calculate deviations for all rows with actual values
         actual_mask = df["uuid"] == self.actual_uuid
         df.loc[actual_mask, "deviation_abs"] = np.abs(
-            df.loc[actual_mask, self.actual_column]
+            df.loc[actual_mask, self.value_column_actual]
             - df.loc[actual_mask, "tolerance_value"]
         )
 
@@ -428,13 +440,13 @@ class ToleranceDeviationEvents(Base):
                 np.abs(row["upper_tolerance"] - row["lower_tolerance"]),
                 row["upper_tolerance"],
                 row["lower_tolerance"],
-                row[self.actual_column],
+                row[self.value_column_actual],
             ),
             axis=1,
         )
 
         # Apply comparison function to compare actual values with tolerance values
-        df = df[self.compare_func(df[self.actual_column], df["tolerance_value"])]
+        df = df[self.compare_func(df[self.value_column_actual], df["tolerance_value"])]
         df["value_bool"] = True  # Assign True in the value_bool column for kept rows
 
         # Group the actual signal's events that are close in time. Gaps are
@@ -492,7 +504,7 @@ class ToleranceDeviationEvents(Base):
             # Every row of a limit signal sets the limit, whatever its
             # ``is_delta`` flag (snapshot limits are valid limits).
             setting = df["uuid"] == uuid
-            df[col] = df[self.tolerance_column].where(setting).ffill()
+            df[col] = df[self.value_column_tolerance].where(setting).ffill()
 
         # Remove tolerance setting rows from the dataset
         configured = [uuid for uuid in sides.values() if uuid is not None]
@@ -504,7 +516,7 @@ class ToleranceDeviationEvents(Base):
 
         upper = df["upper_tolerance"].astype(float)
         lower = df["lower_tolerance"].astype(float)
-        actual = df[self.actual_column]
+        actual = df[self.value_column_actual]
 
         # Tolerance range: the band width when two-sided; the magnitude of
         # the single limit when one-sided.
@@ -545,7 +557,7 @@ class ToleranceDeviationEvents(Base):
             df.loc[actual_mask, "tolerance_range"].to_numpy(dtype=float),
             df.loc[actual_mask, "upper_tolerance"].fillna(np.inf).to_numpy(float),
             df.loc[actual_mask, "lower_tolerance"].fillna(-np.inf).to_numpy(float),
-            df.loc[actual_mask, self.actual_column].to_numpy(dtype=float),
+            df.loc[actual_mask, self.value_column_actual].to_numpy(dtype=float),
         )
 
         # Check if values are outside tolerance bounds (NaN compares False)
@@ -621,6 +633,7 @@ class ToleranceDeviationEvents(Base):
     ) -> dict[str, float]: ...
 
     @keyword_only(1)
+    @twin_columns({"Cp": "cp", "Cpk": "cpk"})
     def capability_indices(
         self,
         target_value: float | None = None,
@@ -683,6 +696,10 @@ class ToleranceDeviationEvents(Base):
             Cpk), usl, lsl, target, and sample_count (the
             number of measurements the indices are computed from).
 
+            Canonical twin columns: ``cp`` (after ``Cp``) and ``cpk`` (after
+            ``Cpk``); each holds the same values as the deprecated column
+            right before it, which is removed in the next major release.
+
             With ``as_frame=False`` (deprecated), a dictionary containing:
                 - 'Cp': Process capability
                 - 'Cpk': Process capability index
@@ -732,7 +749,7 @@ class ToleranceDeviationEvents(Base):
                 raise ValueError(
                     f"No tolerance data found for uuid: {self.tolerance_uuid}"
                 )
-            usl = tolerance_rows[self.tolerance_column].iloc[-1]
+            usl = tolerance_rows[self.value_column_tolerance].iloc[-1]
             lsl = np.nan
         else:
             limits = {}
@@ -746,12 +763,12 @@ class ToleranceDeviationEvents(Base):
                 rows = df[df["uuid"] == uuid]
                 if rows.empty:
                     raise ValueError(f"No {side} tolerance data found for uuid: {uuid}")
-                limits[side] = rows[self.tolerance_column].iloc[-1]
+                limits[side] = rows[self.value_column_tolerance].iloc[-1]
             usl, lsl = limits["upper"], limits["lower"]
 
         # Get actual measurements
         actual_rows = df[df["uuid"] == self.actual_uuid]
-        actual_data = actual_rows[self.actual_column].dropna()
+        actual_data = actual_rows[self.value_column_actual].dropna()
 
         if actual_rows.empty:
             raise ValueError(

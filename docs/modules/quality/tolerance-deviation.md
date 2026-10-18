@@ -17,7 +17,7 @@ df = pd.concat([
     ts_shape.make_timeseries(["shaft_diameter:lsl"], n_points=1, baseline=49.0, noise=0),
 ], ignore_index=True)
 
-tdev = ToleranceDeviationEvents(df, tolerance_column="value_double", actual_column="value_double",
+tdev = ToleranceDeviationEvents(df, value_column_tolerance="value_double", value_column_actual="value_double",
                                 actual_uuid="shaft_diameter", upper_tolerance_uuid="shaft_diameter:usl",
                                 lower_tolerance_uuid="shaft_diameter:lsl", event_uuid="quality:tolerance")
 print(tdev.detect_deviations()[["systime", "value_double", "deviation_abs", "severity"]])
