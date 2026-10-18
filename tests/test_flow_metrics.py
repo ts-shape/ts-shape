@@ -69,7 +69,7 @@ def test_littles_law_consistency_holds_in_steady_state():
     df = _make_flow(entry_period=60, exit_period=60, lag=300, n=300)
     flow = FlowMetricsEvents(df, entry_uuid="in", exit_uuid="out")
     fs = flow.flow_summary(value_add_seconds=120, window="1h")
-    interior = fs["consistency_ratio"].dropna()
+    interior = fs["consistency_factor"].dropna()
     assert (abs(interior - 1.0) < 0.2).any()
     # PCE = value-add / lead time = 120 / 300 = 40 %
     pce = fs["process_cycle_efficiency_pct"].dropna()

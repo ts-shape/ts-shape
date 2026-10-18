@@ -118,7 +118,7 @@ def test_weibull_fit_recovers_parameters(beta, pattern):
     fit = rel.weibull_fit().iloc[0]
     assert fit["beta"] == pytest.approx(beta, rel=0.12)
     assert fit["eta_hours"] == pytest.approx(eta, rel=0.12)
-    assert fit["n_censored"] == 1
+    assert fit["censored_count"] == 1
     assert fit["failure_pattern"] == pattern
     from math import gamma, log
 

@@ -19,7 +19,7 @@ df = pd.concat([
 spc = StatisticalProcessControlEvents(df, value_column="value_double", tolerance_uuid="limit:temp",
                                       actual_uuid="sensor:temp", event_uuid="spc:temp")
 violations = spc.detect_violations()
-print(violations["triggered_rule"].value_counts())
+print(violations["rule"].value_counts())
 shifts = spc.detect_cusum_shifts(k=0.5, h=5.0)
 ```
 
@@ -28,7 +28,7 @@ shifts = spc.detect_cusum_shifts(k=0.5, h=5.0)
 | Method | Returns |
 |---|---|
 | `control_limits()` | individuals-chart center line and ±1σ/2σ/3σ limits from the reference rows |
-| `detect_violations(selected_rules=None, include_severity=True)` | one row per violating point: `systime`, value, `triggered_rule`, `severity` |
+| `detect_violations(selected_rules=None, include_severity=True)` | one row per violating point: `systime`, `value`, `rule`, `severity` |
 | `detect_rule_violations(selected_rules=None)` | one row per point and rule: `systime`, `value`, `rule`, `severity` |
 | `dynamic_control_limits(method='moving_range', window_size=20, ewma_lambda=None, n_sigma=3.0)` | limits per `systime`: `value`, `mean`, `1sigma_upper` … `3sigma_lower`, `lcl`, `ucl`; `method='ewma'` adds the EWMA statistic `ewma` (see below) |
 | `detect_cusum_shifts(target=None, k=0.5, h=5.0)` | `systime`, value, `cusum_high`, `cusum_low`, `shift_direction`, `severity` |

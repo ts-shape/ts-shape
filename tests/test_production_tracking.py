@@ -399,7 +399,7 @@ def test_cycle_time_statistics(sample_cycle_data):
 
     assert not result.empty
     assert "part_number" in result.columns
-    assert "count" in result.columns
+    assert "cycle_count" in result.columns
     assert "min_seconds" in result.columns
     assert "avg_seconds" in result.columns
     assert "max_seconds" in result.columns
@@ -409,7 +409,7 @@ def test_cycle_time_statistics(sample_cycle_data):
     # Check that statistics are ordered correctly
     for _, row in result.iterrows():
         assert row["min_seconds"] <= row["avg_seconds"] <= row["max_seconds"]
-        assert row["count"] > 0
+        assert row["cycle_count"] > 0
 
 
 def test_detect_slow_cycles(sample_cycle_data):
@@ -468,13 +468,17 @@ def test_hourly_cycle_time_summary(sample_cycle_data):
     assert "hour" in result.columns
     assert "part_number" in result.columns
     assert "cycles_completed" in result.columns
-    assert "avg_cycle_time" in result.columns
-    assert "min_cycle_time" in result.columns
-    assert "max_cycle_time" in result.columns
+    assert "avg_cycle_time_seconds" in result.columns
+    assert "min_cycle_time_seconds" in result.columns
+    assert "max_cycle_time_seconds" in result.columns
 
     # Check statistics ordering
     for _, row in result.iterrows():
-        assert row["min_cycle_time"] <= row["avg_cycle_time"] <= row["max_cycle_time"]
+        assert (
+            row["min_cycle_time_seconds"]
+            <= row["avg_cycle_time_seconds"]
+            <= row["max_cycle_time_seconds"]
+        )
         assert row["cycles_completed"] > 0
 
 

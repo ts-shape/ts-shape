@@ -30,7 +30,7 @@ survival = rel.reliability_at([100], age_hours=200)  # 100 more hours after 200 
 |---|---|
 | `failure_events()` | one interval per failure: `repair_hours`, `operating_hours_before`, `first_observed` |
 | `mtbf_mttr(window=None, tz=None)` | one row, or one per calendar window (e.g. `window="MS"`): `operating_hours`, `repair_hours`, `no_data_hours`, `failures`, `mtbf_hours`, `mtbf_iso22400_hours`, `mttr_hours`, `availability_pct`, `failure_rate_per_hour` |
-| `weibull_fit(include_initial=False)` | one row: `beta`, `eta_hours`, `mttf_hours`, `b10_hours`, `n_failures`, `n_censored`, `failure_pattern` |
+| `weibull_fit(include_initial=False)` | one row: `beta`, `eta_hours`, `mttf_hours`, `b10_hours`, `failure_count`, `censored_count`, `failure_pattern` |
 | `reliability_at(hours, age_hours=0.0)` | per horizon: `reliability`, `failure_probability`, `hazard_per_hour` |
 
 ## Notes

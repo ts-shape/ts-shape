@@ -72,6 +72,7 @@ class ValueDistributionEvents(Base):
     # ------------------------------------------------------------------
 
     @keyword_only(1)
+    @twin_columns({"n_modes_detected": "mode_count"})
     def detect_mode_changes(
         self,
         window: str = "1h",
@@ -91,8 +92,13 @@ class ValueDistributionEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
-            source_uuid, dominant_mode, n_modes_detected, mode_values,
-            mode_changed. ``end`` is ``start`` plus one ``window``.
+            source_uuid, dominant_mode, n_modes_detected, mode_count (the
+            number of modes found in the window), mode_values, mode_changed.
+            ``end`` is ``start`` plus one ``window``.
+
+            Canonical twin columns: ``mode_count`` (after ``n_modes_detected``); it holds the same
+            values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         cols = [
             "start",

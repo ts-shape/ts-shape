@@ -1,4 +1,5 @@
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -8,6 +9,7 @@ from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import counter_increments
+from ts_shape.utils.deprecation import caller_stacklevel
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ class LineThroughputEvents(Base):
         self.event_uuid = event_uuid
         self.time_column = time_column
 
+    @twin_columns({"count": "part_count"})
     def count_parts(
         self,
         counter_uuid: str,
@@ -69,8 +72,12 @@ class LineThroughputEvents(Base):
 
         Returns:
             DataFrame with columns: start, end (start + window),
-            duration_seconds, uuid, source_uuid, is_delta, count (plus
-            ``resets`` when ``handle_resets=True``).
+            duration_seconds, uuid, source_uuid, is_delta, count,
+            part_count (plus ``resets`` when ``handle_resets=True``).
+
+            Canonical twin columns: ``part_count`` (after ``count``); it holds
+            the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         base_columns = [
             "start",
@@ -303,10 +310,10 @@ class LineThroughputEvents(Base):
 
         # Calculate target rate if not provided
         if target_rate is None:
-            target_rate = parts_df["count"].quantile(0.95)
+            target_rate = parts_df["part_count"].quantile(0.95)
 
         parts_df["target_count"] = target_rate
-        parts_df["actual_count"] = parts_df["count"]
+        parts_df["actual_count"] = parts_df["part_count"]
 
         # Availability proxy: a window is available when it produced something
         # AND reached at least availability_threshold of the target rate. With
@@ -314,14 +321,18 @@ class LineThroughputEvents(Base):
         # matching the historical behavior.
         min_count = availability_threshold * (target_rate or 0.0)
         parts_df["availability"] = np.where(
-            (parts_df["count"] > 0) & (parts_df["count"] >= min_count), 1.0, 0.0
+            (parts_df["part_count"] > 0) & (parts_df["part_count"] >= min_count),
+            1.0,
+            0.0,
         )
 
         # Performance: actual vs target rate. A non-positive target rate (flat
         # counter, long stoppage, or an explicit 0) would otherwise yield
         # inf/NaN performance; treat it as no performance instead.
         if target_rate and target_rate > 0:
-            parts_df["performance"] = np.minimum(parts_df["count"] / target_rate, 1.0)
+            parts_df["performance"] = np.minimum(
+                parts_df["part_count"] / target_rate, 1.0
+            )
         else:
             parts_df["performance"] = 0.0
 
@@ -337,6 +348,7 @@ class LineThroughputEvents(Base):
 
         return parts_df[out_cols]
 
+    @twin_columns({"count": "part_count"})
     def throughput_trends(
         self,
         counter_uuid: str,
@@ -355,8 +367,13 @@ class LineThroughputEvents(Base):
 
         Returns:
             DataFrame with columns: start, end (start + window),
-            duration_seconds, uuid, source_uuid, is_delta, count, moving_avg,
-            trend_direction, degradation_detected
+            duration_seconds, uuid, source_uuid, is_delta, count, part_count,
+            moving_avg (parts per window), trend_direction,
+            degradation_detected.
+
+            Canonical twin columns: ``part_count`` (after ``count``); it holds
+            the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         parts_df = self.count_parts(
             counter_uuid, value_column=value_column, window=window
@@ -380,7 +397,7 @@ class LineThroughputEvents(Base):
 
         # Calculate moving average
         parts_df["moving_avg"] = (
-            parts_df["count"].rolling(window=trend_window, min_periods=1).mean()
+            parts_df["part_count"].rolling(window=trend_window, min_periods=1).mean()
         )
 
         # Calculate trend (positive, negative, stable)
@@ -392,7 +409,7 @@ class LineThroughputEvents(Base):
         )
 
         # Detect degradation (current significantly below moving average)
-        parts_df["degradation_detected"] = parts_df["count"] < (
+        parts_df["degradation_detected"] = parts_df["part_count"] < (
             parts_df["moving_avg"] * 0.85
         )
 
@@ -411,44 +428,73 @@ class LineThroughputEvents(Base):
             ]
         ]
 
+    @twin_columns({"expected_time": "expected_time_seconds"})
     def cycle_quality_check(
         self,
         cycle_uuid: str,
         *,
         value_column: str = "value_bool",
         expected_cycle_time: float | None = None,
-        tolerance_pct: float = 0.1,
+        tolerance_pct: float = 10.0,
+        tolerance_ratio: float | None = None,
     ) -> pd.DataFrame:
         """Enhanced cycle detection with quality validation.
+
+        A cycle is valid when its relative deviation from the expected cycle
+        time, ``|cycle_time - expected| / expected``, is at most the
+        tolerance. The ``quality_flag`` bins derive from the same tolerance:
+        ``"good"`` up to the tolerance (the valid cycles), ``"warning"`` up
+        to 2.5 times the tolerance, ``"critical"`` above. With the default
+        10 % tolerance these are the former fixed bins (10 % and 25 %).
 
         Args:
             cycle_uuid: UUID for the cycle trigger signal
             value_column: Column containing cycle trigger (bool/integer)
             expected_cycle_time: Expected cycle time in seconds. If None, uses median
-            tolerance_pct: Tolerance percentage for cycle time validation
+            tolerance_pct: Allowed deviation from the expected cycle time, in
+                percent (0-100, default 10.0 = 10 %), as
+                ``MaterialBalanceEvents.balance_check(tolerance_pct=...)``.
+                Deprecated: a value below 1 is read as the former fraction
+                (``0.1`` = 10 %) and emits a ``DeprecationWarning``; pass
+                ``tolerance_pct=10.0`` or ``tolerance_ratio=0.1`` instead.
+                Until the next major release, a tolerance below 1 % is given
+                with ``tolerance_ratio``.
+            tolerance_ratio: The same tolerance as a fraction (0-1, ``0.1`` =
+                10 %). When given, it replaces ``tolerance_pct``.
 
         Returns:
-            DataFrame with cycle times, validation status, and quality flags
+            DataFrame with columns: systime, uuid, source_uuid, is_delta,
+            cycle_time_seconds, expected_time, expected_time_seconds (the
+            expected cycle time in seconds), deviation_pct (relative
+            deviation in percent, 0-100 for a cycle up to twice the expected
+            time), deviation_ratio (the same deviation as a fraction,
+            ``deviation_pct / 100``), is_valid, quality_flag.
+
+            Canonical twin columns: ``expected_time_seconds`` (after
+            ``expected_time``); it holds the same values as the deprecated
+            column right before it, which is removed in the next major
+            release.
         """
+        tolerance = self._cycle_tolerance(tolerance_pct, tolerance_ratio)
+        columns = [
+            "systime",
+            "uuid",
+            "source_uuid",
+            "is_delta",
+            "cycle_time_seconds",
+            "expected_time",
+            "deviation_pct",
+            "deviation_ratio",
+            "is_valid",
+            "quality_flag",
+        ]
         s = (
             self.dataframe[self.dataframe["uuid"] == cycle_uuid]
             .copy()
             .sort_values(self.time_column)
         )
         if s.empty:
-            return pd.DataFrame(
-                columns=[
-                    "systime",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "cycle_time_seconds",
-                    "expected_time",
-                    "deviation_pct",
-                    "is_valid",
-                    "quality_flag",
-                ]
-            )
+            return pd.DataFrame(columns=columns)
 
         s[self.time_column] = pd.to_datetime(s[self.time_column])
 
@@ -470,19 +516,7 @@ class LineThroughputEvents(Base):
             times = edges[self.time_column].reset_index(drop=True)
 
         if len(times) < 2:
-            return pd.DataFrame(
-                columns=[
-                    "systime",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "cycle_time_seconds",
-                    "expected_time",
-                    "deviation_pct",
-                    "is_valid",
-                    "quality_flag",
-                ]
-            )
+            return pd.DataFrame(columns=columns)
 
         cycle_times = (times.diff().dt.total_seconds()).iloc[1:].reset_index(drop=True)
 
@@ -493,32 +527,21 @@ class LineThroughputEvents(Base):
         # A non-positive (or NaN) reference has no meaningful deviation and
         # would divide by zero; return the typed empty frame instead.
         if pd.isna(expected_cycle_time) or expected_cycle_time <= 0:
-            return pd.DataFrame(
-                columns=[
-                    "systime",
-                    "uuid",
-                    "source_uuid",
-                    "is_delta",
-                    "cycle_time_seconds",
-                    "expected_time",
-                    "deviation_pct",
-                    "is_valid",
-                    "quality_flag",
-                ]
-            )
+            return pd.DataFrame(columns=columns)
 
-        # Calculate deviation
-        deviation_pct = (
+        # Relative deviation from the expected cycle time, as a fraction
+        deviation_ratio = (
             (cycle_times - expected_cycle_time) / expected_cycle_time
         ).abs()
 
         # Validate cycles
-        is_valid = deviation_pct <= tolerance_pct
+        is_valid = deviation_ratio <= tolerance
 
-        # Quality flags: good, warning, critical
+        # Quality flags: good (within tolerance), warning (within 2.5x the
+        # tolerance), critical (beyond)
         quality_flag = pd.cut(
-            deviation_pct,
-            bins=[-np.inf, 0.1, 0.25, np.inf],
+            deviation_ratio,
+            bins=[-np.inf, tolerance, 2.5 * tolerance, np.inf],
             labels=["good", "warning", "critical"],
         )
 
@@ -530,9 +553,31 @@ class LineThroughputEvents(Base):
                 "is_delta": True,
                 "cycle_time_seconds": cycle_times,
                 "expected_time": expected_cycle_time,
-                "deviation_pct": deviation_pct,
+                "deviation_pct": deviation_ratio * 100,
+                "deviation_ratio": deviation_ratio,
                 "is_valid": is_valid,
                 "quality_flag": quality_flag,
             }
         )
         return out
+
+    @staticmethod
+    def _cycle_tolerance(tolerance_pct: float, tolerance_ratio: float | None) -> float:
+        """The cycle-time tolerance of :meth:`cycle_quality_check` as a fraction."""
+        if tolerance_ratio is not None:
+            if tolerance_pct != 10.0:
+                raise ValueError("pass either tolerance_pct or tolerance_ratio")
+            return float(tolerance_ratio)
+        if 0 < tolerance_pct < 1:
+            warnings.warn(
+                "cycle_quality_check(tolerance_pct=...) is a percent (0-100); "
+                f"reading {tolerance_pct!r} as the former fraction "
+                f"({tolerance_pct * 100:g} %) is deprecated, pass "
+                f"tolerance_pct={tolerance_pct * 100:g} or "
+                f"tolerance_ratio={tolerance_pct!r}; values below 1 will be read "
+                "as percent in the next major release",
+                DeprecationWarning,
+                stacklevel=caller_stacklevel(),
+            )
+            return float(tolerance_pct)
+        return float(tolerance_pct) / 100

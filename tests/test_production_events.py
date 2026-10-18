@@ -135,7 +135,7 @@ def test_line_throughput_count_and_takt():
     lte = LineThroughputEvents(df)
     counts = lte.count_parts(counter_uuid="cnt", window="2min")
     assert not counts.empty
-    assert "count" in counts.columns
+    assert "part_count" in counts.columns
 
     # Use boolean trigger to define cycle boundaries, takt=90s
     tb = pd.DataFrame(

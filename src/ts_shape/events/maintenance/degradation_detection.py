@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events.maintenance._rolling import (
     py_max,
     py_min,
@@ -343,6 +344,7 @@ class DegradationDetectionEvents(Base):
         )
 
     @keyword_only(1)
+    @twin_columns({"variance_ratio": "variance_factor"})
     def health_score(
         self,
         window: str = "1h",
@@ -358,7 +360,14 @@ class DegradationDetectionEvents(Base):
 
         Returns:
             DataFrame with columns: systime, uuid, source_uuid, is_delta,
-            health_score, mean_drift_pct, variance_ratio, trend_slope.
+            health_score, mean_drift_pct, variance_ratio, variance_factor
+            (current / baseline variance; above 1 when the variance grew),
+            trend_slope.
+
+            Canonical twin columns: ``variance_factor`` (after
+            ``variance_ratio``, which is not a 0-1 fraction); it holds the
+            same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         cols = [
             "systime",

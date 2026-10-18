@@ -231,6 +231,7 @@ class SetupTimeEvents(Base):
         return intervals
 
     @renamed_kwargs(state_uuid="run_state_uuid")
+    @twin_columns({"count": "setup_count"})
     def setup_by_product(
         self,
         run_state_uuid: str,
@@ -252,8 +253,12 @@ class SetupTimeEvents(Base):
         Returns:
             DataFrame with columns:
             - from_product, to_product, avg_minutes, avg_seconds, min_minutes,
-                min_seconds, max_minutes, max_seconds, count
+                min_seconds, max_minutes, max_seconds, count, setup_count
             The ``*_minutes`` columns are a convenience (``*_seconds`` / 60).
+
+            Canonical twin columns: ``setup_count`` (after ``count``); it holds the same
+            values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         intervals = self._extract_setup_intervals(
             run_state_uuid, setup_value, value_column_state

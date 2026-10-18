@@ -91,7 +91,7 @@ def test_health_score_matches_naive_reference() -> None:
         m = ((t > t.iloc[i] - pd.Timedelta("15min")) & (t <= t.iloc[i])).to_numpy()
         if m.sum() < 2:
             continue
-        assert out["variance_ratio"].iloc[i] == pytest.approx(
+        assert out["variance_factor"].iloc[i] == pytest.approx(
             y[m].var(ddof=1) / base_var, rel=1e-9
         )
         if np.ptp(x[m]) > 0:

@@ -16,7 +16,7 @@ tm = ThresholdMonitoringEvents(df, "reactor_pressure")
 levels = tm.multi_level_threshold({"warning": 85.0, "alarm": 92.0, "critical": 98.0}, direction="above")
 alarms = tm.threshold_with_hysteresis(upper_limit=90.0, lower_limit=85.0)
 result = tm.time_above_threshold(85.0, window="1h").tail()
-print(result[["start", "time_above", "time_above_pct", "exceedance_count"]])
+print(result[["start", "time_above_seconds", "time_above_pct", "exceedance_count"]])
 ```
 
 ## Methods
@@ -25,8 +25,8 @@ print(result[["start", "time_above", "time_above_pct", "exceedance_count"]])
 |---|---|
 | `multi_level_threshold(levels, direction='above')` | intervals per level: `start`, `end`, `duration`, `level`, `peak_value` |
 | `threshold_with_hysteresis(upper_limit, lower_limit, max_gap=None)` | alarm intervals: `start`, `end`, `duration`, `peak_value`. With `max_gap` (e.g. `"15min"`) an alarm ends at its last sample before a longer gap; after the gap the signal must reach `upper_limit` again |
-| `time_above_threshold(threshold, window='1h')` | per window: `time_above`, `time_above_pct`, `exceedance_count` |
-| `threshold_exceedance_trend(threshold, window='1D')` | per window: `exceedance_count`, `total_duration`, `trend_direction` |
+| `time_above_threshold(threshold, window='1h')` | per window: `time_above_seconds`, `time_above_pct`, `exceedance_count` |
+| `threshold_exceedance_trend(threshold, window='1D')` | per window: `exceedance_count`, `total_duration_seconds`, `trend_direction` |
 
 ## Notes
 

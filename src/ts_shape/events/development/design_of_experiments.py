@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method
 
@@ -231,6 +232,7 @@ class DesignOfExperimentsEvents(Base):
     else:
         compute_effects = deprecated_method("effects")
 
+    @twin_columns({"n_runs": "run_count"})
     def effects(
         self,
         response_uuid: str,
@@ -255,10 +257,14 @@ class DesignOfExperimentsEvents(Base):
 
         Returns:
             Summary DataFrame with one row per (factor, level), columns:
-            ``factor``, ``level``, ``n_runs``, ``response_mean``,
-            ``response_std``, ``main_effect``.
+            ``factor``, ``level``, ``n_runs``, ``run_count`` (runs at the
+            level), ``response_mean``, ``response_std``, ``main_effect``.
             ``main_effect`` is ``response_mean`` minus the grand mean
             across all runs.
+
+            Canonical twin columns: ``run_count`` (after ``n_runs``); it holds
+            the same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         cols = [
             "factor",

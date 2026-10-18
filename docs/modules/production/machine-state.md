@@ -29,7 +29,7 @@ quality = events.state_quality_metrics()
 | `detect_run_idle(min_duration='0s', interval_end=None, data_end=None)` | `start`, `end`, `state` (`run`/`idle`), `duration_seconds` |
 | `transition_events()` | `systime`, `transition` (`idle_to_run`/`run_to_idle`), `time_since_last_transition_seconds` |
 | `detect_rapid_transitions(threshold='5s', min_count=3)` | bursts of at least `min_count` transitions within `threshold`: `start`, `end`, `transition_count`, `duration_seconds` |
-| `state_quality_metrics(interval_end=None)` | one row: `total_transitions`, `avg_run_duration`, `avg_idle_duration`, `run_idle_ratio` (NaN without idle time), `data_gaps_detected`, `rapid_transitions_detected` |
+| `state_quality_metrics(interval_end=None)` | one row: `total_transitions`, `avg_run_duration_seconds`, `avg_idle_duration_seconds`, `run_idle_factor` (run / idle time; NaN without idle time), `data_gaps_detected`, `rapid_transitions_detected` |
 
 ## Notes
 

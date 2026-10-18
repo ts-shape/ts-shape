@@ -253,7 +253,7 @@ def demo_degradation_detection(df: pd.DataFrame):
                 "systime",
                 "health_score",
                 "mean_drift_pct",
-                "variance_ratio",
+                "variance_factor",
                 "trend_slope",
             ]
         ]

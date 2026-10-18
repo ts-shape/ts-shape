@@ -228,7 +228,7 @@ def test_time_above_threshold_keeps_held_windows_and_first_exceedance():
     df = _rows("s", [(0, 100.0), (180, 0.0), (200, 0.0)])
     out = ThresholdMonitoringEvents(df, "s").time_above_threshold(50, window="1h")
     assert out["start"].tolist() == [_at(0), _at(60), _at(120), _at(180)]
-    assert out["time_above"].tolist() == [3600.0, 3600.0, 3600.0, 0.0]
+    assert out["time_above_seconds"].tolist() == [3600.0, 3600.0, 3600.0, 0.0]
     assert out["pct_above"].tolist() == [100.0, 100.0, 100.0, 0.0]
     assert out["exceedance_count"].tolist() == [1, 0, 0, 0]
 

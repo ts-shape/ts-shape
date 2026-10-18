@@ -199,10 +199,10 @@ def test_vectorized_and_per_rule_paths_agree():
 def test_detect_violations_includes_rule_and_severity_by_default():
     spc = _spc([10.0] * 20 + [30.0])
     out = spc.detect_violations()
-    assert {"triggered_rule", "severity"} <= set(out.columns)
-    assert "rule_1" in set(out["triggered_rule"])
+    assert {"rule", "severity"} <= set(out.columns)
+    assert "rule_1" in set(out["rule"])
     plain = spc.detect_violations(include_severity=False)
-    assert "triggered_rule" not in plain.columns
+    assert "rule" not in plain.columns
     # An empty result keeps the same columns.
     empty = spc.detect_violations(selected_rules=["rule_1"]).iloc[0:0]
     none = _spc([10.0, 10.5, 9.5, 10.0]).detect_violations(selected_rules=["rule_1"])

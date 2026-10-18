@@ -27,7 +27,7 @@ late = lt.detect_lead_time_anomalies("po_placed", "po_received", threshold_facto
 | Method | Returns |
 |---|---|
 | `lead_times(order_uuid, delivery_uuid)` | per order: `order_time`, `delivery_time`, `lead_time_seconds`, `lead_time_hours`, `order_id` |
-| `lead_time_statistics(order_uuid, delivery_uuid)` | one row: `mean_hours`, `std_hours`, `min_hours`, `max_hours`, `p95_hours`, `count` |
+| `lead_time_statistics(order_uuid, delivery_uuid)` | one row: `mean_hours`, `std_hours`, `min_hours`, `max_hours`, `p95_hours`, `order_count` |
 | `detect_lead_time_anomalies(order_uuid, delivery_uuid, threshold_factor=2.0)` | lead times above mean + `threshold_factor` × std: `order_time`, `delivery_time`, `lead_time_hours`, `z_score` (`systime` = delivery time) |
 
 ## Notes

@@ -35,7 +35,7 @@ def test_throughput_trends_hand_computed():
     )
     assert list(out["start"]) == [T0 + pd.Timedelta(hours=h) for h in range(5)]
     assert list(out["end"]) == [T0 + pd.Timedelta(hours=h + 1) for h in range(5)]
-    assert list(out["count"]) == [5, 15, 12, 24, 2]
+    assert list(out["part_count"]) == [5, 15, 12, 24, 2]
     # Rolling mean over the current and previous window (min_periods=1).
     assert out["moving_avg"].tolist() == pytest.approx([5, 10, 13.5, 18, 13])
     # Slope +5, +3.5, +4.5, -5 against the +-0.5 stable band.

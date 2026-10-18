@@ -11,8 +11,10 @@
   except the documented exceptions in :data:`NOT_COLUMN_EXCEPTIONS`;
 * detector output columns follow the "Output columns" rules: a legacy
   spelling (``window_start``, ``n_samples``, ``pct_<x>``, ``<x>_ms``,
-  ``<x>_s``, ...) appears only as an explicitly listed deprecated twin, next
-  to its canonical column.
+  ``<x>_s``, a bare ``count``, ``n_<x>``, ...) appears only as an explicitly
+  listed deprecated twin, right before its canonical column; a numeric
+  duration column carries a unit suffix; a ``_ratio`` column stays within
+  0-1 on the harness data (an unbounded quotient is a ``_factor``).
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import pkgutil
 import re
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 import ts_shape
@@ -432,10 +435,45 @@ DEPRECATED_TWINS = {
     "pct_time_at_low": "time_at_low_pct",
     "pct_time_disturbed": "time_disturbed_pct",
     "pct_time_saturated": "time_saturated_pct",
+    # Unitless durations (float seconds) -> ``_seconds``.
+    "on_time": "on_time_seconds",
+    "off_time": "off_time_seconds",
+    "avg_on_duration": "avg_on_duration_seconds",
+    "avg_off_duration": "avg_off_duration_seconds",
+    "avg_run_duration": "avg_run_duration_seconds",
+    "avg_idle_duration": "avg_idle_duration_seconds",
+    "time_above": "time_above_seconds",
+    "mean_interval": "mean_interval_seconds",
+    "std_interval": "std_interval_seconds",
+    "min_interval": "min_interval_seconds",
+    "max_interval": "max_interval_seconds",
+    "avg_cycle_time": "avg_cycle_time_seconds",
+    "min_cycle_time": "min_cycle_time_seconds",
+    "max_cycle_time": "max_cycle_time_seconds",
+    "cycle_time_mean": "cycle_time_mean_seconds",
+    "cycle_time_median": "cycle_time_median_seconds",
+    "cycle_time_std": "cycle_time_std_seconds",
+    "bottleneck_cycle_time": "bottleneck_cycle_time_seconds",
+    "expected_time": "expected_time_seconds",
+    "deviation_from_median_duration": "deviation_from_median_duration_seconds",
+    # ``n_<thing>`` -> ``<thing>_count``.
+    "n_stations": "station_count",
+    "n_failures": "failure_count",
+    "n_censored": "censored_count",
+    "n_unique_values": "unique_value_count",
+    "n_modes_detected": "mode_count",
+    "n_runs": "run_count",
+    # ``_ratio`` columns that are not 0-1 fractions -> ``_factor``.
+    "run_idle_ratio": "run_idle_factor",
+    "variance_ratio": "variance_factor",
+    "consistency_ratio": "consistency_factor",
+    "resolution_ratio": "resolution_factor",
+    # SPC: the column names of detect_rule_violations.
+    "triggered_rule": "rule",
 }
 
 #: Legacy columns of one method (bare ratios, seconds without a unit,
-#: upper-case indices) and their canonical twins.
+#: upper-case indices, bare ``count``) and their canonical twins.
 METHOD_TWINS = {
     ("LineThroughputEvents", "throughput_oee"): {
         "availability": "availability_ratio",
@@ -462,23 +500,96 @@ METHOD_TWINS = {
     },
     # Capability indices in lower case.
     ("ToleranceDeviationEvents", "capability_indices"): {"Cp": "cp", "Cpk": "cpk"},
+    ("CycleTimeEvents", "cycle_time_statistics"): {"count": "cycle_count"},
+    ("CycleTimeEvents", "cycle_time_trend"): {"moving_avg": "moving_avg_seconds"},
+    ("LeadTimeAnalysisEvents", "lead_time_statistics"): {"count": "order_count"},
+    ("SetupTimeEvents", "setup_by_product"): {"count": "setup_count"},
+    ("ProcessWindowEvents", "windowed_statistics"): {"count": "sample_count"},
+    ("OperatingRangeEvents", "value_distribution"): {"count": "sample_count"},
+    ("BatchTrackingEvents", "batch_duration_statistics"): {"count": "batch_count"},
+    ("LineThroughputEvents", "count_parts"): {"count": "part_count"},
+    ("LineThroughputEvents", "throughput_trends"): {"count": "part_count"},
+    ("ThresholdMonitoringEvents", "threshold_exceedance_trend"): {
+        "total_duration": "total_duration_seconds"
+    },
+    ("StatisticalProcessControlEvents", "detect_violations"): {"value_double": "value"},
+}
+
+#: ``(class, method)`` -> legacy-looking columns not renamed yet, with why.
+#: Each column must still be produced (see
+#: :func:`test_pending_output_renames_are_current`).
+PENDING_OUTPUT_RENAMES: dict[tuple[str, str], dict[str, str]] = {
+    ("OperatingStateEvents", "state_duration_statistics"): {
+        "count": "deferred: bare count, renamed in a later round"
+    },
+    ("MicroStopEvents", "micro_stop_frequency"): {
+        "count": "deferred: bare count, renamed in a later round"
+    },
+    **{
+        ("SetpointChangeEvents", method): {
+            "undershoot_ratio": "a fraction of the step that can exceed 1 by definition"
+        }
+        for method in ("overshoot_metrics", "control_quality_metrics")
+    },
 }
 
 #: Names that look legacy but are something else (a rate, a speed unit).
 NOT_LEGACY = {"observed_ramp_per_s", "mean_speed_m_s"}
 
-_LEGACY = re.compile(r"^(pct_.+|.+_ms|.+_s|n_samples|window_(start|end)|time)$")
+_LEGACY = re.compile(r"^(pct_.+|.+_ms|.+_s|n_.+|count|window_(start|end)|time)$")
+
+#: A column naming a duration: ``duration``, ``interval`` or ``time`` as a
+#: word of the name (``on_time``, ``mean_interval``, ``cycle_time_std``).
+_DURATION_WORD = re.compile(r"(^|_)(duration|interval|time)(_|$)")
+
+#: Suffixes that give a duration-like name its unit, or say it is no duration.
+_UNIT_SUFFIX = re.compile(
+    r"_(seconds|minutes|hours|days|ms|s|pct|ratio|factor|count|index|score"
+    r"|rate|hz|per_[a-z]+)$"
+)
+
+#: Legacy labels that do not sit right before their twin: window bounds lead
+#: every summary (docs/naming.md, "Renamed columns").
+_LEADING_TWINS = {"window_start", "window_end", "time"}
 
 
-def _output_problems(key, frame):
-    cols = set(map(str, frame.columns))
+def _is_number(series) -> bool:
+    return pd.api.types.is_numeric_dtype(series) and not (
+        pd.api.types.is_bool_dtype(series)
+    )
+
+
+def _output_problems(key, frame, *, check_values=True):
+    columns = list(map(str, frame.columns))
+    cols = set(columns)
     twins = {**DEPRECATED_TWINS, **METHOD_TWINS.get(key, {})}
-    for col in cols:
+    pending = PENDING_OUTPUT_RENAMES.get(key, {})
+    for i, col in enumerate(columns):
+        if col in pending:
+            continue
         if col in twins:
             if twins[col] not in cols:
                 yield f"{col!r} without its twin {twins[col]!r}"
-        elif _LEGACY.match(col) and col not in NOT_LEGACY:
+            elif col not in _LEADING_TWINS and columns.index(twins[col]) != i + 1:
+                yield f"{twins[col]!r} does not sit right after {col!r}"
+            continue
+        if _LEGACY.match(col) and col not in NOT_LEGACY:
             yield f"{col!r} is a legacy spelling (see docs/naming.md)"
+            continue
+        series = frame.iloc[:, i]
+        if (
+            _DURATION_WORD.search(col)
+            and not _UNIT_SUFFIX.search(col)
+            and _is_number(series)
+        ):
+            yield f"{col!r} is a duration without a unit suffix (`_seconds`)"
+        if check_values and col.endswith("_ratio") and _is_number(series):
+            peak = pd.to_numeric(series, errors="coerce").abs().max()
+            if pd.notna(peak) and peak > 1 + 1e-9:
+                yield (
+                    f"{col!r} reaches {peak:g}: a `_ratio` is a 0-1 fraction, "
+                    "an unbounded quotient is a `_factor`"
+                )
 
 
 @pytest.mark.parametrize("key", sorted(REGISTRY), ids=lambda k: ".".join(k))
@@ -492,9 +603,60 @@ def test_output_columns_follow_naming(key):
         f"{name}: {p}"
         for name, result in (("result", plain), ("empty result", empty))
         for frame in harness._frames(result)
-        for p in _output_problems(key, frame)
+        for p in _output_problems(key, frame, check_values=name == "result")
     ]
     assert not problems, "\n".join(problems)
+
+
+def test_pending_output_renames_are_current():
+    from invariants import harness
+
+    stale = []
+    for key, columns in PENDING_OUTPUT_RENAMES.items():
+        status, plain, empty = harness.sample_results(*key)
+        if status != "ok":
+            continue
+        produced = {
+            str(c)
+            for result in (plain, empty)
+            for frame in harness._frames(result)
+            for c in frame.columns
+        }
+        stale += [(key, col) for col in columns if col not in produced]
+    assert not stale, f"renamed or gone, drop the pending entry: {stale}"
+
+
+@pytest.mark.parametrize(
+    "frame, problem",
+    [
+        (pd.DataFrame({"idle_time": [1.5]}), "without a unit suffix"),
+        (pd.DataFrame({"lead_time_std": [1.5]}), "without a unit suffix"),
+        (pd.DataFrame({"count": [3]}), "legacy spelling"),
+        (pd.DataFrame({"n_cycles": [3]}), "legacy spelling"),
+        (pd.DataFrame({"spread_ratio": [0.5, 2.0]}), "a `_factor`"),
+        (
+            pd.DataFrame({"n_runs": [3], "x": [1], "run_count": [3]}),
+            "does not sit right after",
+        ),
+    ],
+)
+def test_output_lint_flags(frame, problem):
+    problems = list(_output_problems(("X", "y"), frame))
+    assert any(problem in p for p in problems), problems
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        pd.DataFrame({"on_time_seconds": [1.5], "duration_seconds": [2.0]}),
+        pd.DataFrame({"time_above_pct": [50.0], "cycle_count": [3]}),
+        pd.DataFrame({"duration": pd.to_timedelta([1], unit="s")}),
+        pd.DataFrame({"availability_ratio": [1.0], "variance_factor": [3.0]}),
+        pd.DataFrame({"n_runs": [3], "run_count": [3]}),
+    ],
+)
+def test_output_lint_accepts(frame):
+    assert not list(_output_problems(("X", "y"), frame))
 
 
 def test_deprecated_twins_sit_next_to_their_canonical_column():
@@ -509,7 +671,9 @@ def test_deprecated_twins_sit_next_to_their_canonical_column():
         },
         **METHOD_TWINS,
     }.items():
-        _, plain, _ = harness.sample_results(*key)
+        status, plain, _ = harness.sample_results(*key)
+        if status != "ok":
+            continue
         cols = list(plain.columns)
         for old, new in twins.items():
             assert cols.index(new) == cols.index(old) + 1, (key, old, cols)

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.events._compat import summary_bounds, warn_dict_return
+from ts_shape.events._output import twin_columns
 from ts_shape.signals.primitives import intervals as spec_intervals
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
@@ -392,6 +393,13 @@ class MachineStateEvents(Base):
         as_frame: Literal[False],
     ) -> dict[str, Any]: ...
 
+    @twin_columns(
+        {
+            "avg_run_duration": "avg_run_duration_seconds",
+            "avg_idle_duration": "avg_idle_duration_seconds",
+            "run_idle_ratio": "run_idle_factor",
+        }
+    )
     def state_quality_metrics(
         self,
         *,
@@ -419,6 +427,14 @@ class MachineStateEvents(Base):
             columns start, end, duration_seconds (the span of the state
             signal; NaT / 0 without data), uuid (event uuid), source_uuid
             (run-state uuid), followed by the metrics below.
+
+            Canonical twin columns: ``avg_run_duration_seconds`` (after
+            ``avg_run_duration``), ``avg_idle_duration_seconds`` (after
+            ``avg_idle_duration``), ``run_idle_factor`` (after
+            ``run_idle_ratio``, which is not a 0-1 fraction); each holds the
+            same values as the deprecated column right before it, which is
+            removed in the next major release. The dictionary form keeps the
+            old keys.
 
             With ``as_frame=False`` (deprecated), a dictionary with:
 

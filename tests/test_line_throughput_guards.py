@@ -92,4 +92,4 @@ def test_count_parts_warns_on_non_numeric_counter_values():
     )
     with pytest.warns(DataQualityWarning, match="1 non-null value"):
         res = LineThroughputEvents(df).count_parts("counter", window="1min")
-    assert res["count"].sum() == 30
+    assert res["part_count"].sum() == 30

@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
+from ts_shape.events._output import twin_columns
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import (
     caller_stacklevel,
@@ -236,6 +237,7 @@ class LeadTimeAnalysisEvents(Base):
         return result
 
     @keyword_only(3)
+    @twin_columns({"count": "order_count"})
     def lead_time_statistics(
         self,
         order_uuid: str,
@@ -251,7 +253,12 @@ class LeadTimeAnalysisEvents(Base):
 
         Returns:
             Single-row DataFrame with columns: mean_hours, std_hours,
-            min_hours, max_hours, p95_hours, count.
+            min_hours, max_hours, p95_hours, count, order_count (the number
+            of matched orders).
+
+            Canonical twin columns: ``order_count`` (after ``count``); it holds the same
+            values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         empty_cols = [
             "mean_hours",

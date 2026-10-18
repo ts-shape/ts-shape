@@ -5,7 +5,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._output import empty_event_df, finalize_summary_df
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_summary_df,
+    twin_columns,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.runs import total_seconds, true_runs
@@ -264,6 +268,9 @@ class WarmUpCoolDownEvents(Base):
         )
 
     @keyword_only(2)
+    @twin_columns(
+        {"deviation_from_median_duration": "deviation_from_median_duration_seconds"}
+    )
     def warmup_consistency(
         self,
         min_rise: float,
@@ -280,8 +287,15 @@ class WarmUpCoolDownEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, warmup_index, avg_rate,
-            deviation_from_median_duration. ``start`` / ``end`` are the
-            warm-up's bounds.
+            deviation_from_median_duration,
+            deviation_from_median_duration_seconds. ``start`` / ``end`` are
+            the warm-up's bounds; the deviation from the median warm-up
+            duration is in seconds.
+
+            Canonical twin columns: ``deviation_from_median_duration_seconds``
+            (after ``deviation_from_median_duration``); it holds the same
+            values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         extra = [
             "uuid",

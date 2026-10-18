@@ -48,8 +48,8 @@ class TestDutyCyclePerWindow:
     def test_columns(self, fifty_pct_df):
         detector = DutyCycleEvents(fifty_pct_df, "motor_1")
         result = detector.duty_cycle_by_window(window="1h")
-        assert "on_time" in result.columns
-        assert "off_time" in result.columns
+        assert "on_time_seconds" in result.columns
+        assert "off_time_seconds" in result.columns
         assert "duty_cycle_pct" in result.columns
 
 

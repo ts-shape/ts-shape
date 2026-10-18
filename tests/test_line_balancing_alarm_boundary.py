@@ -44,10 +44,10 @@ def test_line_balancing_require_all_stations_penalises_dead_station():
 
     naive = lb.balance_metrics(window="1h")
     # Only 2 stations counted; line looks nearly perfectly balanced.
-    assert (naive["n_stations"] == 2).all()
+    assert (naive["station_count"] == 2).all()
 
     fixed = lb.balance_metrics(window="1h", require_all_stations=True)
-    assert (fixed["n_stations"] == 3).all()
+    assert (fixed["station_count"] == 3).all()
     assert "stations_missing" in fixed.columns
     assert (fixed["stations_missing"] == 1).all()
     # Denominator now includes the dead station -> efficiency drops below naive.

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
+from ts_shape.events._output import add_twin_columns
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import (
     caller_stacklevel,
@@ -965,11 +966,18 @@ class StatisticalProcessControlEvents(Base):
         Returns:
             pd.DataFrame: One row per violating point (a point that violates
                 several rules is reported once, with the first selected rule
-                that flagged it). Columns: [systime, value_column, uuid,
-                triggered_rule, severity, source_uuid]; without
-                ``triggered_rule`` and ``severity`` when
+                that flagged it). Columns: [systime, value_column, value,
+                uuid, triggered_rule, rule, severity, source_uuid]; without
+                ``triggered_rule``, ``rule`` and ``severity`` when
                 ``include_severity=False``. ``source_uuid`` is the actual
                 signal's uuid. An empty result has the same columns.
+                ``value`` and ``rule`` are the column names of
+                :meth:`detect_rule_violations`.
+
+                Canonical twin columns: ``value`` (after the value column,
+                e.g. ``value_double``), ``rule`` (after ``triggered_rule``);
+                each holds the same values as the deprecated column right
+                before it, which is removed in the next major release.
         """
         df = self.dataframe[self.dataframe["uuid"] == self.actual_uuid].copy()
         df["systime"] = pd.to_datetime(df["systime"])
@@ -1028,20 +1036,27 @@ class StatisticalProcessControlEvents(Base):
         events["uuid"] = self.event_uuid
         events["source_uuid"] = self.actual_uuid
 
+        twins = {self.value_column: "value", "triggered_rule": "rule"}
         if include_severity:
-            return events[
-                [
-                    "systime",
-                    self.value_column,
-                    "uuid",
-                    "triggered_rule",
-                    "severity",
-                    "source_uuid",
-                ]
-            ].drop_duplicates()
-        return events[
-            ["systime", self.value_column, "uuid", "source_uuid"]
-        ].drop_duplicates()
+            return add_twin_columns(
+                events[
+                    [
+                        "systime",
+                        self.value_column,
+                        "uuid",
+                        "triggered_rule",
+                        "severity",
+                        "source_uuid",
+                    ]
+                ].drop_duplicates(),
+                twins,
+            )
+        return add_twin_columns(
+            events[
+                ["systime", self.value_column, "uuid", "source_uuid"]
+            ].drop_duplicates(),
+            twins,
+        )
 
 
 #: Deprecated name, removed in the next major release.

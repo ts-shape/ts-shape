@@ -168,5 +168,7 @@ def test_sampling_regularity_full_precision():
     df = pd.DataFrame({"systime": t, "uuid": "s", "value_double": 1.0})
     out = SignalQualityEvents(df, "s").sampling_regularity(window="1h")
     intervals = pd.Series([1.0, 2.0] * 10)
-    assert out.iloc[0]["std_interval"] == pytest.approx(intervals.std(), abs=1e-12)
-    assert out.iloc[0]["std_interval"] != round(intervals.std(), 4)
+    assert out.iloc[0]["std_interval_seconds"] == pytest.approx(
+        intervals.std(), abs=1e-12
+    )
+    assert out.iloc[0]["std_interval_seconds"] != round(intervals.std(), 4)
