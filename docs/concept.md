@@ -56,7 +56,9 @@ that inherits from `ts_shape.utils.base.Base`. The base class:
 - converts nullable, pyarrow and text-number value columns to NumPy dtypes once;
 - raises `ColumnNotFoundError` when the time or uuid column is missing, and
   warns with `DataQualityWarning` when a signal uuid you pass is not in the
-  data.
+  data, or when a signal's values are in another `value_*` column than the
+  one the detector reads (a counter in `value_double` read from
+  `value_integer`); the warning names the `value_column=` to pass.
 
 You configure the detector in the constructor and call its methods:
 

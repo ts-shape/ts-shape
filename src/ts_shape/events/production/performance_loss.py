@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from ts_shape.errors import ColumnNotFoundError
 from ts_shape.events._windows import (
     add_period_window,
     add_shift_window,
@@ -187,13 +188,20 @@ class PerformanceLossEvents(Base):
         after the baseline reading is counted (its interval runs from the
         baseline). Readings with no increment do not end an interval. For a
         trigger signal (non-numeric ``value_column``) each row is one part
-        and the first row is the baseline.
+        and the first row is the baseline. A ``value_column`` the frame does
+        not have raises :class:`~ts_shape.errors.ColumnNotFoundError` (it is
+        not read as a trigger signal).
 
         When ``max_cycle_gap`` is set, intervals longer than it are dropped
         (with their parts) as stoppages (breaks, downtime) rather than
         counted as slow cycles.
         """
         cols = [self.time_column, "parts", "interval_s", "cycle_time_s"]
+        if value_column not in self.dataframe.columns and not self.dataframe.empty:
+            raise ColumnNotFoundError(
+                f"PerformanceLossEvents: the data has no {value_column!r} column "
+                f"for signal {cycle_uuid!r}. Columns: {list(self.dataframe.columns)}"
+            )
         data = (
             self.dataframe[self.dataframe["uuid"] == cycle_uuid]
             .copy()
@@ -204,9 +212,7 @@ class PerformanceLossEvents(Base):
 
         data[self.time_column] = pd.to_datetime(data[self.time_column])
 
-        if value_column in data.columns and pd.api.types.is_numeric_dtype(
-            data[value_column]
-        ):
+        if pd.api.types.is_numeric_dtype(data[value_column]):
             # Counter: the reset-aware increments are the parts produced. The
             # first reading is the baseline the first increment is measured
             # from, so it stays in to anchor the first interval.

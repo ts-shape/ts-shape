@@ -31,7 +31,14 @@ MAX_GAP_PERIODS = 5
 STATE_MAX_CARDINALITY = 16
 
 
-def _value_column(group: pd.DataFrame) -> str | None:
+def most_populated_value_column(group: pd.DataFrame) -> str | None:
+    """The ``value_*`` column with the most values in ``group``, or None.
+
+    Ties go to the first of ``value_double``, ``value_integer``,
+    ``value_bool``, ``value_string``; None when no value column has a value.
+    Also used by the detectors' value-column check
+    (:func:`ts_shape.utils.signal_checks.warn_if_values_elsewhere`).
+    """
     present = [c for c in _VALUE_COLUMNS if c in group.columns]
     counts = {c: int(group[c].notna().sum()) for c in present}
     best = max(counts, key=lambda c: counts[c], default=None)
@@ -217,7 +224,7 @@ def infer_spec(
     tz = str(times.dt.tz) if getattr(times.dt, "tz", None) is not None else None
     period, cv = _interval_stats(times)
 
-    value_column = _value_column(g) or "value_double"
+    value_column = most_populated_value_column(g) or "value_double"
     values = g[value_column].dropna() if value_column in g.columns else pd.Series()
     notes["value_column"] = "most populated value_* column"
 

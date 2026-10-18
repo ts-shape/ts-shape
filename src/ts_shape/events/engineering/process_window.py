@@ -57,7 +57,9 @@ class ProcessWindowEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, count, mean, std, min, max, median, p25, p75, range.
-            ``end`` is ``start`` + ``window``.
+            ``end`` is ``start`` + ``window``. ``std`` is the sample standard
+            deviation (``ddof=1``), so it is NaN for a window with a single
+            value.
         """
         cols = [
             "start",
@@ -87,7 +89,8 @@ class ProcessWindowEvents(Base):
                     "start": start,
                     "count": len(vals),
                     "mean": float(vals.mean()),
-                    "std": float(vals.std()) if len(vals) > 1 else 0.0,
+                    # ddof=1: undefined (NaN) for a single value.
+                    "std": float(vals.std()) if len(vals) > 1 else float("nan"),
                     "min": float(vals.min()),
                     "max": float(vals.max()),
                     "median": float(vals.median()),
@@ -124,6 +127,7 @@ class ProcessWindowEvents(Base):
         """Flag windows where mean shifts significantly from the previous window.
 
         A shift is detected when |current_mean - prev_mean| > sensitivity * prev_std.
+        A previous window without a std (a single value: NaN) is skipped.
 
         Args:
             window: Resample window passed to :meth:`windowed_statistics`.
@@ -154,6 +158,8 @@ class ProcessWindowEvents(Base):
         for i in range(1, len(stats)):
             prev = stats.iloc[i - 1]
             curr = stats.iloc[i]
+            if pd.isna(prev["std"]):
+                continue
             prev_std = prev["std"] if prev["std"] > 0 else 1e-10
             shift = abs(curr["mean"] - prev["mean"]) / prev_std
             if shift > sensitivity:
@@ -180,7 +186,10 @@ class ProcessWindowEvents(Base):
         """Flag windows where variance changes significantly.
 
         A change is detected when (current_std / prev_std) > ratio_threshold
-        or < (1 / ratio_threshold).
+        or < (1 / ratio_threshold). Window pairs where either std is NaN (a
+        single-value window) are skipped. A change from a constant window
+        (``prev_std == 0``) to a varying one is flagged with ``variance_ratio``
+        NaN: the ratio is undefined, never ``inf``.
 
         Args:
             window: Resample window passed to :meth:`windowed_statistics`.
@@ -211,13 +220,20 @@ class ProcessWindowEvents(Base):
         for i in range(1, len(stats)):
             prev = stats.iloc[i - 1]
             curr = stats.iloc[i]
+            if pd.isna(prev["std"]) or pd.isna(curr["std"]):
+                continue
             if prev["std"] == 0 and curr["std"] == 0:
                 continue
             if prev["std"] == 0:
-                ratio = float("inf")
+                # Undefined ratio (constant -> varying): flagged, ratio NaN.
+                ratio = float("nan")
+                flagged = True
             else:
                 ratio = curr["std"] / prev["std"]
-            if ratio > ratio_threshold or (ratio > 0 and ratio < 1.0 / ratio_threshold):
+                flagged = ratio > ratio_threshold or (
+                    ratio > 0 and ratio < 1.0 / ratio_threshold
+                )
+            if flagged:
                 events.append(
                     {
                         "start": prev["start"],

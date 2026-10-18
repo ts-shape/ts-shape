@@ -36,4 +36,4 @@ All arguments are keyword-only; each method also takes `baseline_window` and `n_
 
 - A disturbance is where the signal deviates from the rolling mean over `baseline_window` by more than `n_sigma` rolling standard deviations, for at least `min_duration`. With `setpoint_uuid=` in the constructor, the setpoint replaces the rolling baseline.
 - Recovered means the deviation has fallen to within `1 − recovery_pct` of the peak deviation, searched up to `max_recovery` after the upset.
-- `before_after_comparison` compares `comparison_window` just before the start and just after the end; upsets with fewer than two samples on either side are skipped.
+- `before_after_comparison` compares `comparison_window` just before the start and just after the end; upsets with fewer than two samples on either side are skipped. `variance_ratio` is `post_std / pre_std`, NaN (never `inf`) when `pre_std` is 0.

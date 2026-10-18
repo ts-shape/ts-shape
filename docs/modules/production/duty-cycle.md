@@ -34,7 +34,8 @@ excessive = dc.excessive_cycling(max_transitions=20, window="15min")
 
 ## Notes
 
-- Missing values count as off.
+- A missing value (`None`, `NaN`, `pd.NA`) is unknown, not off: the time from that sample to the next is in neither `on_time` nor `off_time`, in no on/off interval and no transition. `duty_cycle_pct` is the on share of the known time (NaN for a window without any).
+- With `data_end=` in the constructor, the last interval is held until `data_end`, and `duty_cycle_by_window` (time-weighted) and `cycle_count` report the windows up to it. A naive `data_end` on tz-aware data is local time of the data's timezone.
 - Intervals close at the next transition by default (`interval_end="next_change"`), so signals that only log a row per change are measured correctly. `interval_end="last_sample"` ends each interval at its own last sample.
 - `time_weighted=True` (default) weights each sample by the time to the next one. `time_weighted=False` averages the samples, which matches the time share only for uniform sampling (`On@09:00, Off@09:59` reads 50 %).
 - For absolute run hours, start counts and an hour meter, use [RuntimeAccountingEvents](runtime-accounting.md).

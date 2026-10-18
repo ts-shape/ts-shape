@@ -114,6 +114,9 @@ print(X[["press:pressure__value_double__mean", "press:pressure__value_double__ma
   are `mean`, `std`, `min` and `max`; pass `agg_funcs={"p90": lambda s: s.quantile(0.9)}`
   (names to pandas aggregation strings or callables) for others.
 - Without `group_column` the whole frame is one row.
+- Without `value_columns`, the numeric `value_*` columns are used; a
+  `value_*` column stored as `object` (a JSON or CSV load) that holds numbers
+  counts too and is coerced with `pd.to_numeric(errors="coerce")`.
 - For features per time window and order, see `TimeWindowedFeatureTable`
   ([Cycles and segments](feature-extraction.md)).
 
@@ -213,6 +216,10 @@ The temperature leads the pressure by three samples (three minutes).
 
 - Lags count rows of the wide frame, so resample irregular signals to a
   uniform grid first.
+- Numbers stored as `object` or text are signals too: they are coerced with
+  `pd.to_numeric(errors="coerce")` (other values become NaN, with a
+  `DataQualityWarning`). A column without any number (labels, ids) is not a
+  signal.
 - `lead_lag` uses cross-correlation; `granger_causality` an F-test of
   whether past values of one signal improve the prediction of the other.
   `transfer_entropy` measures directed information flow in bits, also for

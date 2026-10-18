@@ -33,7 +33,7 @@ trend = perf.performance_trend(cycle_uuid="line1:parts", target_cycle_time=4.5, 
 ## Notes
 
 - Performance = `target_cycle_time` × `actual_parts` / `run_seconds` (ISO 22400-2), and `avg_cycle_time_seconds` = `run_seconds` / `actual_parts`. `target_cycle_time` is in seconds.
-- A numeric signal (`value_integer` by default) is a part counter: `actual_parts` is the sum of its reset-aware increments, so a counter that steps by 2 counts 2 parts, and the first increase after the first reading counts. `run_seconds` is the summed time between readings that report production. A non-numeric signal counts every row as one cycle.
+- A numeric signal (`value_integer` by default) is a part counter: `actual_parts` is the sum of its reset-aware increments, so a counter that steps by 2 counts 2 parts, and the first increase after the first reading counts. `run_seconds` is the summed time between readings that report production. A non-numeric signal counts every row as one cycle. A `value_column` the data does not have raises `ColumnNotFoundError` (it is not read as a trigger signal).
 - Set `max_cycle_gap` (e.g. `"5min"`): longer intervals are dropped as stops. Without it, breaks and downtime count as very slow cycles and show up as a large speed loss.
 - One `target_cycle_time` per call; for a line running several part numbers, filter the data to one part per call.
 - `loss_minutes` and the `*_s` cycle-time columns duplicate the `*_seconds` columns. Default shifts are 06-14, 14-22, 22-06; a night shift belongs to its start date (`production_day=True`).

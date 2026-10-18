@@ -34,6 +34,7 @@ All arguments are keyword-only.
 ## Notes
 
 - A mean shift is flagged when |current mean − previous mean| > `sensitivity` × the previous window's standard deviation.
-- A variance change is flagged when current std / previous std is above `ratio_threshold` or below its reciprocal.
+- `std` is the sample standard deviation (ddof=1): NaN for a window with one value. Such windows take no part in mean-shift or variance-change detection.
+- A variance change is flagged when current std / previous std is above `ratio_threshold` or below its reciprocal. A change from a constant window (std 0) to a varying one is flagged with `variance_ratio` NaN: the ratio is never `inf`.
 - In both, `start` is the previous window's start and `end` the current window's start.
 - `is_anomalous`: the window mean lies more than 2 standard deviations of all window means from their average.

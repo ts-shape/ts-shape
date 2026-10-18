@@ -8,6 +8,7 @@ import logging
 import warnings
 from collections.abc import Callable
 
+import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
 
@@ -17,6 +18,23 @@ from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import require_columns
 
 logger = logging.getLogger(__name__)
+
+
+_TEXT_VALUE_COLUMNS = ("value_string", "value_bool")
+
+
+def _holds_numbers(name: object, column: pd.Series) -> bool:
+    """A numeric, non-boolean column, or an ``object`` column of numbers."""
+    if ptypes.is_bool_dtype(column.dtype):
+        return False
+    if ptypes.is_numeric_dtype(column.dtype):
+        return True
+    if name in _TEXT_VALUE_COLUMNS or not ptypes.is_object_dtype(column.dtype):
+        return False
+    known = column.dropna()
+    if known.empty or known.map(lambda v: isinstance(v, (bool, np.bool_))).any():
+        return False
+    return bool(pd.to_numeric(known, errors="coerce").notna().any())
 
 
 class FeatureMatrixExporter:
@@ -66,7 +84,11 @@ class FeatureMatrixExporter:
                 (e.g. ``'uuid'``).
             value_columns: Numeric columns to aggregate. If ``None``, the numeric
                 ``value_*`` columns (``value_double``, ``value_integer``) are
-                used; flags such as ``is_delta`` are not features.
+                used; flags such as ``is_delta`` are not features. A
+                ``value_*`` column (other than ``value_string`` /
+                ``value_bool``) stored as ``object`` that holds numbers counts
+                as numeric; its values are coerced with
+                ``pd.to_numeric(errors="coerce")``.
             agg_funcs: Mapping of ``name -> callable`` or pandas agg string.
                 Defaults to ``mean``, ``std`` (sample standard deviation,
                 ``ddof=1``), ``min``, ``max``.
@@ -94,8 +116,7 @@ class FeatureMatrixExporter:
                 for c in dataframe.columns
                 if str(c).startswith("value_")
                 and c != uuid_column
-                and ptypes.is_numeric_dtype(dataframe[c].dtype)
-                and not ptypes.is_bool_dtype(dataframe[c].dtype)
+                and _holds_numbers(c, dataframe[c])
             ]
         if not value_columns:
             raise ValueError("No numeric value columns found to aggregate.")

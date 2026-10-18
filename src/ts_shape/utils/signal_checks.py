@@ -13,7 +13,13 @@ its signal arguments are checked the same way, whichever pack it is in:
 * a column argument (``value_column``, ``value_column_<role>``,
   ``<role>_column``) that names a column the frame does not have raises
   :class:`~ts_shape.errors.ColumnNotFoundError` listing the columns, when the
-  method looks it up.
+  method looks it up;
+* a signal whose values are in a different ``value_*`` column than the one
+  selected for it (a counter in ``value_double`` read from
+  ``value_integer``) emits a :class:`~ts_shape.errors.DataQualityWarning`
+  naming the column to pass (:func:`warn_if_values_elsewhere`). It is checked
+  after the constructor on the signal rows the detector already selected,
+  and after a method call that returned an empty frame.
 
 The checks never change a result.
 """
@@ -37,6 +43,12 @@ from ts_shape.utils.normalize import unique_text
 _NOT_SIGNALS = {"event_uuid", "uuid_column"}
 
 _CHECKING = "_ts_shape_checking"
+# ``(checked pairs, pending pairs)`` of ``(uuid, value column)`` on this
+# detector: a pair's signal rows are looked up at most once, and the
+# constructor's pairs without selected rows wait for an empty result.
+_VALUE_CHECKED = "_ts_shape_value_checked"
+#: The long-format value columns a signal's values can be in.
+VALUE_COLUMNS = ("value_double", "value_integer", "value_bool", "value_string")
 # The uuids of ``obj.dataframe``, kept by ``Base`` (which already computed
 # them) so a method call does not scan the uuid column again.
 _UUIDS = "_ts_shape_uuids"
@@ -137,6 +149,187 @@ def check_signals(obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict) -
         )
 
 
+def warn_if_values_elsewhere(
+    rows: pd.DataFrame,
+    signal_uuid: str,
+    value_column: str,
+    *,
+    where: str | None = None,
+    stacklevel: int | None = None,
+) -> bool:
+    """Warn when ``signal_uuid``'s values are in another ``value_*`` column.
+
+    ``rows`` are the signal's rows (already selected; nothing else is
+    scanned). When ``value_column`` exists but holds no value in them while
+    another of ``value_double`` / ``value_integer`` / ``value_bool`` /
+    ``value_string`` does, the result computed from ``value_column`` is empty
+    or meaningless: a :class:`~ts_shape.errors.DataQualityWarning` names the
+    most populated column
+    (:func:`ts_shape.signals.infer.most_populated_value_column`). The result is
+    not changed.
+
+    Args:
+        rows: The signal's rows.
+        signal_uuid: The signal's uuid (for the message).
+        value_column: The column the values are read from.
+        where: Prefix for the message (e.g. the detector's class name).
+        stacklevel: ``warnings.warn`` stacklevel; default: the first frame
+            outside ts_shape.
+
+    Returns:
+        Whether a warning was emitted.
+    """
+    if (
+        not isinstance(rows, pd.DataFrame)
+        or rows.empty
+        or value_column not in VALUE_COLUMNS
+        or value_column not in rows.columns
+        or rows[value_column].notna().any()
+    ):
+        return False
+    from ts_shape.signals.infer import most_populated_value_column
+
+    best = most_populated_value_column(rows)
+    if best is None or best == value_column:
+        return False
+    prefix = f"{where}: " if where else ""
+    warnings.warn(
+        f"{prefix}signal {signal_uuid!r} has no values in {value_column}; its values "
+        f"are in {best} — pass value_column={best!r}",
+        DataQualityWarning,
+        stacklevel=stacklevel if stacklevel is not None else caller_stacklevel(),
+    )
+    return True
+
+
+def _value_columns_of(named: Mapping[str, Any]) -> dict[str, str]:
+    """``{argument: column}`` of the value-column arguments in ``named``."""
+    return {
+        n: v
+        for n, v in named.items()
+        if isinstance(n, str)
+        and (n == "value_column" or n.startswith("value_column_"))
+        and isinstance(v, str)
+        and v in VALUE_COLUMNS
+    }
+
+
+def _uuid_arguments(name: str, value: Any) -> list[str]:
+    """Signal uuids an argument names: ``*_uuid(s)``, ``uuid_<x>``, ``*_uuid_<x>``."""
+    if name == "uuid_column":
+        return []
+    if name.startswith("uuid_"):
+        name = f"{name[len('uuid_'):]}_uuid"
+    elif "_uuid_" in name:
+        name = f"{name.replace('_uuid_', '_')}_uuid"
+    return _signal_values(name, value)
+
+
+def _value_pairs(
+    named: Mapping[str, Any], fallback: str | None = None
+) -> list[tuple[str, str]]:
+    """``(uuid, value column)`` pairs of the arguments in ``named``.
+
+    A ``value_column_<role>`` belongs to the uuid arguments whose name
+    contains ``<role>`` (the longest role wins); a plain ``value_column`` to
+    every other uuid argument. Without any value-column argument the uuids
+    go with ``fallback`` (the detector's own ``value_column``).
+    """
+    columns = _value_columns_of(named)
+    if not columns and fallback is not None:
+        columns = {"value_column": fallback}
+    if not columns:
+        return []
+    roles = {
+        n[len("value_column_") :]: c for n, c in columns.items() if n != "value_column"
+    }
+    pairs: list[tuple[str, str]] = []
+    for name, value in named.items():
+        uuids = _uuid_arguments(name, value) if isinstance(name, str) else []
+        if not uuids:
+            continue
+        matching = [r for r in roles if r and r in name]
+        if matching:
+            column = roles[max(matching, key=len)]
+        elif "value_column" in columns:
+            column = columns["value_column"]
+        else:
+            continue
+        pairs.extend((u, column) for u in uuids)
+    return list(dict.fromkeys(pairs))
+
+
+def _value_state(obj: Any) -> tuple[set[tuple[str, str]], list[tuple[str, str]]]:
+    """The pairs already checked on ``obj`` and the constructor's pending ones."""
+    state = getattr(obj, _VALUE_CHECKED, None)
+    if state is None:
+        state = (set(), [])
+        try:
+            object.__setattr__(obj, _VALUE_CHECKED, state)
+        except (AttributeError, TypeError):
+            pass
+    return state
+
+
+def _selected_rows(obj: Any, frame: pd.DataFrame, column: str, uuid: str) -> Any:
+    """Rows of ``uuid`` the detector already holds as an attribute, or None."""
+    for value in vars(obj).values() if hasattr(obj, "__dict__") else ():
+        if (
+            isinstance(value, pd.DataFrame)
+            and value is not frame
+            and not value.empty
+            and column in value.columns
+            and len(value) <= len(frame)
+        ):
+            ids = value[column]
+            if ids.iloc[0] == uuid and bool((ids == uuid).all()):
+                return value
+    return None
+
+
+def check_value_columns(obj: Any, named: Mapping[str, Any], *, lookup: bool) -> None:
+    """:func:`warn_if_values_elsewhere` for each signal of a detector call.
+
+    ``named`` are the call's arguments (defaults applied). A call's value
+    columns go with the call's signals; signals named without a value-column
+    argument go with the detector's stored ``value_column``, and the
+    constructor's pairs that could not be checked yet are added. Each
+    ``(uuid, column)`` pair is checked once per detector. The signal's rows
+    are the ones the detector already selected (an attribute holding only
+    that uuid's rows); with ``lookup=True`` (after a call that returned an
+    empty frame) they are otherwise selected from ``obj.dataframe``.
+    """
+    frame, column = _frame_uuids(obj)
+    if frame is None or frame.empty or column not in frame.columns:
+        return
+    stored = getattr(obj, "value_column", None)
+    fallback = stored if isinstance(stored, str) else None
+    done, pending = _value_state(obj)
+    pairs = _value_pairs(named, fallback)
+    if lookup:
+        pairs = list(dict.fromkeys(pairs + pending))
+    if not pairs:
+        return
+    present: set[str] | None = None
+    for uuid, value_column in pairs:
+        if (uuid, value_column) in done or value_column not in frame.columns:
+            continue
+        rows = _selected_rows(obj, frame, column, uuid)
+        if rows is None:
+            if not lookup:
+                pending.append((uuid, value_column))
+                continue
+            if present is None:
+                present = _present_uuids(obj, frame, column)
+            if uuid not in present:
+                done.add((uuid, value_column))
+                continue
+            values = [c for c in VALUE_COLUMNS if c in frame.columns]
+            rows = frame.loc[(frame[column] == uuid).to_numpy(), values]
+        done.add((uuid, value_column))
+        warn_if_values_elsewhere(rows, uuid, value_column, where=type(obj).__name__)
+
+
 def _column_arguments(obj: Any, bound: Mapping[str, Any]) -> set[str]:
     """Column names the caller passed or the detector stored."""
     named = {**vars(obj), **bound} if hasattr(obj, "__dict__") else dict(bound)
@@ -208,7 +401,12 @@ def checked(fn: Callable[..., Any]) -> Callable[..., Any]:
         check_signals(self, fn, args, kwargs)
         object.__setattr__(self, _CHECKING, True)
         try:
-            return _with_severity_level(self, fn.__name__, fn(self, *args, **kwargs))
+            result = fn(self, *args, **kwargs)
+            if isinstance(result, pd.DataFrame) and result.empty:
+                check_value_columns(
+                    self, _bound_arguments(fn, self, args, kwargs), lookup=True
+                )
+            return _with_severity_level(self, fn.__name__, result)
         except KeyError as err:
             bound = _bound_arguments(fn, self, args, kwargs)
             frame, _ = _frame_uuids(self)
@@ -257,6 +455,9 @@ def checked_init(fn: Callable[..., Any]) -> Callable[..., Any]:
             raise error from err
         if type(self).__init__ is wrapper or not getattr(self, _CHECKING, False):
             check_signals(self, fn, args, kwargs)
+            check_value_columns(
+                self, _bound_arguments(fn, self, args, kwargs), lookup=False
+            )
 
     _mark_checked(wrapper)
     return wrapper
