@@ -29,7 +29,7 @@ capability = tdev.capability_indices(target_value=50.0)
 | Method | Returns |
 |---|---|
 | `detect_deviations()` | out-of-tolerance events: `systime`, the measured value, `deviation_abs`, `deviation_pct`, `severity` (`minor`/`major`/`critical`) |
-| `capability_indices(target_value=None, sigma_method='moving_range')` | one row: `Cp`, `Cpk`, `Pp`, `Ppk`, `Cpm`, `mean`, `std`, `std_within`, `usl`, `lsl`, `target`, `sample_count` |
+| `capability_indices(target_value=None, sigma_method='moving_range')` | one row: `cp`, `cpk`, `pp`, `ppk`, `cpm` (each after its deprecated upper-case twin), `mean`, `std`, `std_within`, `usl`, `lsl`, `target`, `sample_count` |
 
 ## Notes
 

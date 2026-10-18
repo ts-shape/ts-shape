@@ -633,7 +633,7 @@ class ToleranceDeviationEvents(Base):
     ) -> dict[str, float]: ...
 
     @keyword_only(1)
-    @twin_columns({"Cp": "cp", "Cpk": "cpk"})
+    @twin_columns({"Cp": "cp", "Cpk": "cpk", "Pp": "pp", "Ppk": "ppk", "Cpm": "cpm"})
     def capability_indices(
         self,
         target_value: float | None = None,
@@ -696,8 +696,8 @@ class ToleranceDeviationEvents(Base):
             Cpk), usl, lsl, target, and sample_count (the
             number of measurements the indices are computed from).
 
-            Canonical twin columns: ``cp`` (after ``Cp``) and ``cpk`` (after
-            ``Cpk``); each holds the same values as the deprecated column
+            Canonical twin columns: ``cp``, ``cpk``, ``pp``, ``ppk`` and
+            ``cpm``, each right after its upper-case column; each holds the same values as the deprecated column
             right before it, which is removed in the next major release.
 
             With ``as_frame=False`` (deprecated), a dictionary containing:

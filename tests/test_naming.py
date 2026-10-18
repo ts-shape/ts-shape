@@ -499,7 +499,13 @@ METHOD_TWINS = {
         "total_duration": "total_duration_seconds",
     },
     # Capability indices in lower case.
-    ("ToleranceDeviationEvents", "capability_indices"): {"Cp": "cp", "Cpk": "cpk"},
+    ("ToleranceDeviationEvents", "capability_indices"): {
+        "Cp": "cp",
+        "Cpk": "cpk",
+        "Pp": "pp",
+        "Ppk": "ppk",
+        "Cpm": "cpm",
+    },
     ("CycleTimeEvents", "cycle_time_statistics"): {"count": "cycle_count"},
     ("CycleTimeEvents", "cycle_time_trend"): {"moving_avg": "moving_avg_seconds"},
     ("LeadTimeAnalysisEvents", "lead_time_statistics"): {"count": "order_count"},
