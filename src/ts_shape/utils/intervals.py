@@ -21,6 +21,8 @@ sample that carries the state instead.
 
 import pandas as pd
 
+from ts_shape.utils.frames import localize_like
+
 __all__ = ["state_intervals", "interval_end_times", "INTERVAL_END_MODES"]
 
 INTERVAL_END_MODES = ("last_sample", "next_change")
@@ -88,7 +90,8 @@ def state_intervals(
               collapses to zero-length intervals on change-encoded signals.
         data_end: Optional bound for the final open interval when
             ``interval_end="next_change"`` (e.g. the end of the data window or
-            "now"). Ignored in ``"last_sample"`` mode.
+            "now"). Ignored in ``"last_sample"`` mode. A naive value or text
+            on tz-aware data is read as local time of the data's timezone.
 
     Returns:
         DataFrame with columns ``start``, ``end``, ``state``,
@@ -124,7 +127,9 @@ def state_intervals(
         fallback = agg["_last_sample"]
         if data_end is not None:
             fallback = fallback.copy()
-            fallback.iloc[-1] = pd.Timestamp(data_end)
+            # A naive / text bound on tz-aware data is local wall time of the
+            # data's timezone (the rule of ``utils.frames.localize_like``).
+            fallback.iloc[-1] = localize_like(data_end, fallback)
         end = end.fillna(fallback)
     else:
         end = agg["_last_sample"]

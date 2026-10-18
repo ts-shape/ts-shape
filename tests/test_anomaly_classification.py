@@ -162,8 +162,12 @@ class TestSlopePerSecond:
         assert list(per_sample["anomaly_type"]) == list(per_s["anomaly_type"])
         d0 = per_sample[per_sample["anomaly_type"] == "drift"]["details"]
         d1 = per_s[per_s["anomaly_type"] == "drift"]["details"]
-        assert list(d0) == ["slope=0.040000, direction=increasing"]
-        assert list(d1) == ["slope=0.004000, direction=increasing"]
+        # The half-open window [00:50, 00:55) holds samples 300..329 (the
+        # 00:55 sample belongs to the next window): 30 ramp samples plus the
+        # alternating noise, whose own slope over an even count is
+        # -0.3 * 15 / (30 * (30**2 - 1) / 12) = -0.002002 per sample.
+        assert list(d0) == ["slope=0.037998, direction=increasing"]
+        assert list(d1) == ["slope=0.003800, direction=increasing"]
 
     def test_invalid_slope_per(self):
         det = AnomalyClassificationEvents(_ramp(10), "sensor_1")
@@ -203,8 +207,10 @@ class TestDefaults:
         out = AnomalyClassificationEvents(df, "s").detect_drift(
             window="300s", min_slope=0.005
         )
-        assert len(out) == 1
-        assert out["slope"].iloc[0] == pytest.approx(0.01)
+        # [0, 300 s) with the NaN left out, and the trailing partial window
+        # [300 s, 600 s) holding samples 300..399.
+        assert len(out) == 2
+        assert out["slope"].tolist() == pytest.approx([0.01, 0.01])
 
     def test_flatline_default_ignores_regular_slow_sampling(self):
         # One sample per minute, every value different: no sample is stuck,

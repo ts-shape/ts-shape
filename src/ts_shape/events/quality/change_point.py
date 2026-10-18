@@ -344,7 +344,8 @@ class ChangePointEvents(Base):
             ``uuid``, ``source_uuid``, ``value`` (the new level),
             ``mean_before``, ``mean_after``, ``std_before``, ``std_after``,
             ``shift`` (``mean_after - mean_before``) and ``shift_sigma``
-            (the shift in units of the pooled segment std).
+            (the shift in units of the pooled segment std; NaN when both
+            segments are constant, never ``inf``).
         """
         if len(self.signal) < 2 * min_size:
             return empty_event_df("point", _POINT_COLS)
@@ -365,7 +366,7 @@ class ChangePointEvents(Base):
                     "std_before": sd_b,
                     "std_after": sd_a,
                     "shift": shift,
-                    "shift_sigma": shift / pooled if pooled > 0 else np.inf,
+                    "shift_sigma": shift / pooled if pooled > 0 else np.nan,
                 }
             )
         if not rows:

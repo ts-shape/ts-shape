@@ -322,13 +322,20 @@ class ThresholdMonitoringEvents(Base):
             interval_end: ``"next_change"`` (default) holds each value until
                 the next sample and measures the real time above the threshold
                 inside each window (``pct_above`` is relative to the window
-                length). ``"last_sample"`` estimates the time as the fraction of
-                *samples* above the threshold times the window length, which is
-                only right for uniform sampling.
+                length). A window without a sample of its own that a held
+                value covers is reported too. The time after the last sample
+                is not counted. ``"last_sample"`` estimates the time as the
+                fraction of *samples* above the threshold times the window
+                length, which is only right for uniform sampling; it reports
+                only windows that contain samples.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, time_above,
             pct_above, exceedance_count. ``end`` is ``start`` + ``window``.
+            ``exceedance_count`` counts the samples that start an exceedance
+            (at or above ``threshold`` while the previous sample was below);
+            a signal that is already above at its first sample starts one
+            there.
 
             Canonical twin columns: ``time_above_pct`` (after ``pct_above``); each holds the
             same values as the deprecated column right before it, which is removed in
@@ -342,8 +349,10 @@ class ThresholdMonitoringEvents(Base):
         sig = sig.set_index(self.time_column)
         sig["above"] = (sig[self.value_column] >= threshold).astype(float)
 
-        # Count transitions into above state
-        sig["enter_above"] = (sig["above"].diff() == 1).astype(int)
+        # Count transitions into above state; the first sample starts an
+        # exceedance when it is already above.
+        prev_above = sig["above"].shift(1, fill_value=0.0)
+        sig["enter_above"] = ((sig["above"] == 1) & (prev_above == 0)).astype(int)
 
         window_td = pd.to_timedelta(window)
         resampled = sig.resample(window).agg(
@@ -360,7 +369,12 @@ class ThresholdMonitoringEvents(Base):
                 sig["above"], resampled.index, window_td
             )
 
-        kept = resampled[resampled["sample_count"] != 0]
+        if interval_end == "next_change":
+            # Every window between the first and the last sample holds a
+            # value, with or without a sample of its own.
+            kept = resampled
+        else:
+            kept = resampled[resampled["sample_count"] != 0]
         if kept.empty:
             return empty_event_df("summary", cols[1:])
         above_frac = kept["above_frac"].to_numpy(dtype=np.float64)

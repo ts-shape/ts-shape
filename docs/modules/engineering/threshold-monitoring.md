@@ -32,4 +32,4 @@ print(result[["start", "time_above", "time_above_pct", "exceedance_count"]])
 
 - `levels` maps names to values, e.g. `{"warning": 80, "alarm": 90}`; `direction` is `"above"` or `"below"`.
 - Hysteresis: the alarm starts when the signal crosses `upper_limit` and ends when it drops below `lower_limit`, which avoids chattering near a single limit.
-- With `interval_end="next_change"` (default) intervals end at the next sample and `time_above_threshold` holds each value until the next sample, so it measures real time. `"last_sample"` uses the share of samples × window length, which is right only for uniform sampling.
+- With `interval_end="next_change"` (default) intervals end at the next sample and `time_above_threshold` holds each value until the next sample, so it measures real time; a window that a held value covers without any sample of its own is reported too. `exceedance_count` counts the samples that start an exceedance, including the first sample when the signal starts above the threshold. `"last_sample"` uses the share of samples × window length, which is right only for uniform sampling.

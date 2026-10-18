@@ -32,4 +32,5 @@ spread_changes = cp.detect_change_points(cost="normal_meanvar")
 - `penalty=None` uses the BIC (`2 log n` for `normal_mean`, `3 log n` for `normal_meanvar`) and finds no changes on stationary noise. Raise it to keep only larger shifts.
 - `normal_mean` estimates one noise level for the whole signal, robustly from first differences, so level shifts do not inflate it. On a signal whose spread changes it over-segments the noisy stretch; use `normal_meanvar` there.
 - `min_size` is the minimum number of samples per segment.
+- `shift_sigma` is the shift in pooled segment standard deviations; NaN (never `inf`) when both segments are constant.
 - The functions `pelt(x, ...)` and `binseg(x, ...)` in the same module work on any 1-D array and return the indices where new segments start.

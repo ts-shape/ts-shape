@@ -54,7 +54,7 @@ class RateOfChangeEvents(Base):
     def _compute_rate(self) -> pd.DataFrame:
         """Compute rate of change (value_diff / time_diff_seconds)."""
         if self.signal.empty or len(self.signal) < 2:
-            return pd.DataFrame(columns=[self.time_column, "rate"])
+            return pd.DataFrame(columns=[self.time_column, "rate", "prev_time"])
 
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -64,6 +64,8 @@ class RateOfChangeEvents(Base):
         value_diff = sig[self.value_column].diff()
         time_diff = sig[self.time_column].diff().dt.total_seconds()
         sig["rate"] = value_diff / time_diff.replace(0, np.nan)
+        # The rate at sample i describes the step from sample i-1 to i.
+        sig["prev_time"] = sig[self.time_column].shift()
         return sig.dropna(subset=["rate"])
 
     @keyword_only(2)
@@ -73,7 +75,11 @@ class RateOfChangeEvents(Base):
         """Flag intervals where rate of change exceeds threshold.
 
         Each run of consecutive samples whose absolute rate is at or above
-        ``threshold`` becomes one interval.
+        ``threshold`` becomes one interval. The rate at a sample describes the
+        step from the previous sample to it, so an interval starts at the
+        sample *before* the first fast step and ends at the last sample of
+        the run: a single fast step from ``t[i-1]`` to ``t[i]`` lasts
+        ``t[i] - t[i-1]``, not zero.
 
         Args:
             threshold: Minimum absolute rate (units/second) to flag.
@@ -110,10 +116,11 @@ class RateOfChangeEvents(Base):
         # largest magnitude (first one on ties).
         runs = true_runs(rapid)
         times = rate_df[self.time_column].array
+        prev_times = rate_df["prev_time"].array
         max_rate = rate[run_argmax(np.abs(rate), runs)]
         events = pd.DataFrame(
             {
-                "start": times[runs.starts],
+                "start": prev_times[runs.starts],
                 "end": times[runs.last],
                 "max_rate": max_rate,
                 "direction": np.where(max_rate > 0, "increasing", "decreasing").astype(

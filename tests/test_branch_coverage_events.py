@@ -319,9 +319,10 @@ def test_slope_startup_repeated_labels_hand_built():
     out = StartupDetectionEvents(df, "sig").detect_startup_by_slope(
         min_slope=0.5, min_duration="1s"
     )
-    assert out["start"].tolist() == [t0 + pd.Timedelta("2s"), t0 + pd.Timedelta("7s")]
+    # A run starts at the sample before its first rising step.
+    assert out["start"].tolist() == [t0 + pd.Timedelta("1s"), t0 + pd.Timedelta("6s")]
     assert out["end"].tolist() == [t0 + pd.Timedelta("4s"), t0 + pd.Timedelta("9s")]
-    assert out["duration_seconds"].tolist() == [2.0, 2.0]
+    assert out["duration_seconds"].tolist() == [3.0, 3.0]
     assert out["avg_slope"].tolist() == [1.0, 1.0]
     assert out["method"].tolist() == ["slope", "slope"]
 

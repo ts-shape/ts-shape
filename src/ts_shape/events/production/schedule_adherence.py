@@ -24,6 +24,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import ColumnNotFoundError
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.counters import (
@@ -33,6 +34,8 @@ from ts_shape.utils.counters import (
 )
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_ORDER_ID = "order_id"
 
 
 class ProductionScheduleAdherenceEvents(Base):
@@ -86,12 +89,16 @@ class ProductionScheduleAdherenceEvents(Base):
             schedule_end_column: Period-end column of ``schedule``.
             planned_qty_column: Planned-quantity column of ``schedule``.
             order_id_column: Optional order-identifier column of ``schedule``.
-                Missing is fine — the emitted ``order_id`` is then ``None``.
+                With the default name a schedule without the column is fine —
+                the emitted ``order_id`` is then ``None``; a name passed
+                explicitly must exist.
 
         Raises:
             TypeError: If ``schedule`` is not a DataFrame.
-            ValueError: If ``schedule`` lacks a required column, or a period
-                ends before it starts.
+            ColumnNotFoundError: If ``schedule`` lacks a required column, or
+                an explicitly named ``order_id_column`` (a ``ValueError``
+                subclass, so ``except ValueError`` keeps working).
+            ValueError: If a period ends before it starts.
         """
         super().__init__(dataframe, time_column=time_column)
         if not isinstance(schedule, pd.DataFrame):
@@ -121,8 +128,12 @@ class ProductionScheduleAdherenceEvents(Base):
             self.planned_qty_column,
         )
         missing = [c for c in required if c not in schedule.columns]
+        if self.order_id_column != _DEFAULT_ORDER_ID and (
+            self.order_id_column not in schedule.columns
+        ):
+            missing.append(self.order_id_column)
         if missing:
-            raise ValueError(
+            raise ColumnNotFoundError(
                 f"schedule is missing required column(s) {missing}. "
                 f"Got columns: {list(schedule.columns)}"
             )

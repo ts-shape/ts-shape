@@ -42,12 +42,18 @@ COL_SEVERITY_LEVEL = "severity_level"
 SEVERITY_LEVELS: tuple[str, ...] = ("info", "warn", "critical")
 
 #: How detector-specific severity labels map onto :data:`SEVERITY_LEVELS`.
-#: Detectors whose labels mean something else pass their own overrides to
-#: :func:`add_severity_level`.
+#: The one authoritative table: :func:`add_severity_level` builds the
+#: ``severity_level`` column from it, and the event log
+#: (:func:`ts_shape.eventlog.to_event_log`) takes ``ts_shape:severity`` from
+#: that column, or from this table for a frame without it. Detectors whose
+#: labels mean something else declare their own overrides
+#: (``_severity_levels``), which reach the event log through
+#: ``severity_level``.
 DEFAULT_SEVERITY_LEVEL: dict[str, str] = {
     "info": "info",
     "ok": "info",
     "low": "info",
+    "minor": "info",
     "warn": "warn",
     "warning": "warn",
     "medium": "warn",
@@ -55,6 +61,8 @@ DEFAULT_SEVERITY_LEVEL: dict[str, str] = {
     "high": "critical",
     "major": "critical",
     "severe": "critical",
+    "alarm": "critical",
+    "error": "critical",
     "critical": "critical",
 }
 

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
 
+from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,27 @@ def _is_signal(series: pd.Series) -> bool:
     return ptypes.is_numeric_dtype(series.dtype) and not ptypes.is_bool_dtype(
         series.dtype
     )
+
+
+def _numeric_object(series: pd.Series) -> pd.Series | None:
+    """An ``object`` / text column of numbers as numbers, else ``None``.
+
+    Numbers stored as ``object`` (a JSON or CSV load, a column of Python
+    floats or numeric text) are read as a signal, as the detectors do with
+    ``pd.to_numeric(errors="coerce")``; a column without a single numeric
+    value (labels, ids) is not a signal. Booleans are not signals.
+    """
+    if not (
+        ptypes.is_object_dtype(series.dtype) or ptypes.is_string_dtype(series.dtype)
+    ):
+        return None
+    known = series.dropna()
+    if known.empty or known.map(lambda v: isinstance(v, (bool, np.bool_))).any():
+        return None
+    numeric = pd.to_numeric(known, errors="coerce")
+    if not numeric.notna().any() or ptypes.is_bool_dtype(numeric.dtype):
+        return None
+    return to_numeric_checked(series, what=f"column {series.name!r}")
 
 
 class CrossSignalAnalytics:
@@ -43,7 +65,11 @@ class CrossSignalAnalytics:
         Args:
             dataframe: Wide frame, one numeric column per signal. NumPy,
                 nullable (``Float64``, ``Int64``) and pyarrow numeric columns
-                are signals; they are read as ``float64``.
+                are signals; they are read as ``float64``. An ``object`` /
+                text column holding numbers is coerced with
+                ``pd.to_numeric(errors="coerce")`` (values that are not
+                numeric become NaN, with a ``DataQualityWarning``); a column
+                with no numeric value is not a signal.
             time_column: Time column; when present, rows are sorted by it and
                 it becomes the index.
 
@@ -54,7 +80,16 @@ class CrossSignalAnalytics:
         if time_column in df.columns:
             df[time_column] = as_datetime(df[time_column], where="CrossSignalAnalytics")
             df = df.sort_values(time_column, kind="stable").set_index(time_column)
-        self.signals = [col for col in df.columns if _is_signal(df[col])]
+        signals = []
+        for col in df.columns:
+            if _is_signal(df[col]):
+                signals.append(col)
+                continue
+            coerced = _numeric_object(df[col])
+            if coerced is not None:
+                df[col] = coerced
+                signals.append(col)
+        self.signals = signals
         for col in self.signals:
             df[col] = np.asarray(
                 df[col].to_numpy(dtype="float64", na_value=np.nan), dtype="float64"

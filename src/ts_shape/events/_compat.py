@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import ColumnNotFoundError
 from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel
 
@@ -70,7 +71,21 @@ def state_mask(
     and the default ``value_column="value_string"`` the ``value_bool`` column
     is read; any other ``value_column`` is read as given. Missing booleans
     match nothing.
+
+    Raises:
+        ColumnNotFoundError: When ``value_column`` is neither the default
+            ``"value_string"`` nor ``"value_bool"`` and ``data`` has no such
+            column (a misspelled column is not silently replaced by
+            ``value_bool``).
     """
+    if value_column not in data.columns and value_column not in (
+        _STRING_COLUMN,
+        _BOOL_COLUMN,
+    ):
+        raise ColumnNotFoundError(
+            f"the data has no {value_column!r} column for the state signal. "
+            f"Columns: {list(data.columns)}"
+        )
     if not uses_bool_state(data, value_column, value):
         return data[value_column] == value
     if isinstance(value, (bool, np.bool_)):

@@ -6,6 +6,94 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 13: audit fixes
+
+Fixes from an audit of the engineering, quality and maintenance packs. Each
+one is pinned by a hand-computed test in `tests/reference/test_round13_*.py`.
+
+### Engineering: time-weighted results
+
+- `ControlLoopHealthEvents.error_integrals`: IAE, ISE and ITAE integrate the
+  held error over each window, split at the window edges. Time that crossed a
+  window edge was lost: a constant error of 1 sampled every 30 min gave IAE
+  1800 per hour instead of 3600. ITAE measures time from the window start.
+  A window covered by a held value but without samples is now reported.
+- `ControlLoopHealthEvents.output_saturation`: the `pct_time_at_*` columns
+  are shares of observed time, not of samples (33.3 % → 90.9 % on an output
+  held at 100 for 50 of 55 minutes); `longest_saturation_seconds` is the
+  held run length (a single sample held for 50 min was 0 s).
+- `ThresholdMonitoringEvents.time_above_threshold` (`next_change`): windows
+  covered by a held value are reported even without samples, and a signal
+  that starts above the threshold counts one exceedance.
+- `SteadyStateDetectionEvents.detect_steady_state`: the statistics use the
+  steady samples only; the first sample after the steady period was
+  included (20 zeros then 100: mean 5.0 → 0.0). `steady_state_statistics`
+  returns NaN, not 0.0, when there is no steady period or no time span.
+- `WarmUpCoolDownEvents.time_to_target`: overshoot is measured until the next
+  ramp starts, not over the rest of the data.
+- `RateOfChangeEvents.detect_rapid_change` and
+  `StartupDetectionEvents.detect_startup_by_slope`: an interval starts at the
+  sample before the first fast step (a single jump lasts one sample
+  interval, not 0 s).
+- `StartupDetectionEvents.assess_startup_quality`: the stability tail has at
+  least two samples; a short startup ending flat scores 1.0 (was 0.0).
+
+### Quality
+
+- `ToleranceDeviationEvents`: `tolerance_lag` delays the limits, not the
+  reported event times. All limit rows are used, also with `is_delta=False`,
+  and a frame without an `is_delta` column works. `capability_indices` for a
+  missing signal returns an empty frame with a warning instead of raising.
+- `AnomalyClassificationEvents`: `detect_flatline` ends a run when the value
+  leaves the tolerance around the run's first value (a slow ramp was reported
+  as a stuck sensor). Windows are half-open and the last partial window is
+  evaluated (a drift in the last 30 min of 90 min of data was missed).
+- `SamplingResolutionEvents` and `ControlLoopHealthEvents`: sampling
+  intervals are no longer truncated to whole milliseconds (1.5 ms sampling
+  read as 1000 Hz; 0.5 ms sampling returned nothing).
+- `DataGapAnalysisEvents`: a gap is an interval *longer* than `min_gap`, as
+  documented. The default `min_gap=None` is twice the median sampling
+  interval (as in `coverage_by_period`), so regular data has no gaps.
+  `gap_summary` reports the real data span and NaN shortest/mean gap when
+  there are no gaps.
+- Calendar windows such as `"MS"` work in
+  `CalibrationValidationEvents.detect_recalibration_need`,
+  `calibration_stability` and
+  `EnvironmentalCompensationEvents.detect_env_exceedance` (they raised).
+
+### Maintenance, transforms, severity
+
+- `AssetHealthIndexEvents.health_events`: a recovery to a better band is
+  `direction="above"`.
+- `IntegerCalc.power_column`: negative exponents and results beyond int64 are
+  float (`2 ** 64` wrapped to 0).
+- One severity table: the event log's `ts_shape:severity` equals the
+  detector's `severity_level` column. Changed in the event log: tolerance
+  `major` → critical (was warn), CUSUM `high` → warn (was critical),
+  flow-constraint `severe` → critical (was missing). `minor` is `info` and
+  threshold `alarm` is `critical` in `severity_level`.
+
+### Robustness
+
+- A signal whose values are in another `value_*` column than the one the
+  method reads now emits a `DataQualityWarning` naming the column to pass
+  (`value_column=...`). Results are unchanged.
+- `MachineStateEvents` and `DutyCycleEvents`: a missing state (`NaN`,
+  `pd.NA`) is unknown time, not idle/off; ratios use the known time. Averages
+  over no intervals are NaN. `duty_cycle_by_window` and `cycle_count` extend
+  to the constructor's `data_end`.
+- `MicroStopEvents` and `DutyCycleEvents.on_off_intervals` accept a naive or
+  string `data_end` on tz-aware data (local wall time; it raised).
+- A `value_column` that does not exist raises `ColumnNotFoundError` in
+  `PerformanceLossEvents` and in the state-based detectors (it fell back
+  silently). `ProductionScheduleAdherenceEvents` raises
+  `ColumnNotFoundError` (a `ValueError`) for missing schedule columns.
+- Variance ratios and `shift_sigma` are NaN, not `inf`, when the reference
+  spread is undefined (`ProcessWindowEvents`, `DisturbanceRecoveryEvents`,
+  `ChangePointEvents`).
+- `CrossSignalAnalytics` and `FeatureMatrixExporter` accept numbers stored as
+  object dtype.
+
 ## October 2026, round 12: oscillations, EnPI baseline, windowed features
 
 ### Results that change

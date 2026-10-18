@@ -316,7 +316,10 @@ class WarmUpCoolDownEvents(Base):
         Returns:
             DataFrame with columns: start, end (= target_reached_at),
             duration_seconds, uuid, source_uuid, target_reached_at,
-            time_to_target_seconds, overshoot.
+            time_to_target_seconds, overshoot. ``overshoot`` is how far the
+            signal goes beyond the target (0 when it does not) from the
+            time the target is reached until the next ramp starts, or the
+            end of the data for the last ramp.
         """
         cols = ["start", "target_reached_at", "time_to_target_seconds", "overshoot"]
         empty = empty_event_df("summary", ["uuid", "source_uuid", *cols[1:]])
@@ -335,9 +338,8 @@ class WarmUpCoolDownEvents(Base):
             return empty
 
         # Index arithmetic on the sorted series instead of a full-series mask
-        # per ramp: the first sample at/after each ramp start, the first sample
-        # from there that meets the target, and the extreme of every sample at
-        # or after the time the target was reached (pandas max/min skip NaN).
+        # per ramp: the first sample at/after each ramp start and the first
+        # sample from there that meets the target.
         times = sig[self.time_column]
         values = sig[self.value_column].to_numpy(dtype=float)
         n = len(values)
@@ -349,11 +351,8 @@ class WarmUpCoolDownEvents(Base):
             )
         next_hit = np.minimum.accumulate(np.where(hit, np.arange(n), n)[::-1])[::-1]
         next_hit = np.append(next_hit, n)
-        if direction == "rising":
-            tail_extreme = np.fmax.accumulate(values[::-1])[::-1]
-        else:
-            tail_extreme = np.fmin.accumulate(values[::-1])[::-1]
         firsts = times.searchsorted(pd.Series([r["start"] for r in ramps]), side="left")
+        ramp_firsts = np.asarray(firsts, dtype=np.int64)
 
         events: list[dict[str, Any]] = []
         for r, first in zip(ramps, firsts):
@@ -363,12 +362,18 @@ class WarmUpCoolDownEvents(Base):
             reached_time = times.iloc[j]
             time_to = (reached_time - r["start"]).total_seconds()
 
-            # Overshoot: max beyond target after reaching it
-            k = times.searchsorted(reached_time, side="left")
+            # Overshoot: the extreme beyond the target from the time it is
+            # reached until the next ramp starts (or the data ends), so a
+            # later, separate ramp's peak is not booked to this one. pandas
+            # max/min skip NaN, hence fmax/fmin.
+            k = int(times.searchsorted(reached_time, side="left"))
+            nxt = np.searchsorted(ramp_firsts, k, side="right")
+            stop = int(ramp_firsts[nxt]) if nxt < ramp_firsts.size else n
+            span = values[k : max(stop, k + 1)]
             if direction == "rising":
-                overshoot = max(float(tail_extreme[k]) - target_value, 0.0)
+                overshoot = max(float(np.fmax.reduce(span)) - target_value, 0.0)
             else:
-                overshoot = max(target_value - float(tail_extreme[k]), 0.0)
+                overshoot = max(target_value - float(np.fmin.reduce(span)), 0.0)
 
             events.append(
                 {

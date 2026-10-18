@@ -14,6 +14,26 @@ from ts_shape.utils.intervals import interval_end_times
 logger = logging.getLogger(__name__)
 
 
+#: Look-ahead (samples) of the vectorized flatline run split.
+_RUN_LOOKAHEAD = 32
+
+
+def _first_out_of_band(v: np.ndarray, s: int, e: int, tolerance: float) -> int:
+    """First ``j`` in ``(s, e)`` with ``not |v[j] - v[s]| <= tolerance``, else ``e``.
+
+    Searched in chunks that double in size, so a long run costs O(length).
+    """
+    anchor = v[s]
+    j, chunk = s + 1, 64
+    while j < e:
+        hi = min(j + chunk, e)
+        hits = np.flatnonzero(~(np.abs(v[j:hi] - anchor) <= tolerance))
+        if hits.size:
+            return j + int(hits[0])
+        j, chunk = hi, chunk * 2
+    return e
+
+
 class AnomalyClassificationEvents(Base):
     """Quality: Anomaly Classification
 
@@ -61,14 +81,17 @@ class AnomalyClassificationEvents(Base):
         """Detect intervals where the signal is stuck at a constant value.
 
         A run starts at its first sample (the value was already stuck there)
-        and continues while each sample is within ``tolerance`` of the
-        previous one. Samples at the same timestamp (duplicates) add no
+        and continues while each sample is within ``tolerance`` of the run's
+        first value (its anchor): ``|v - anchor| <= tolerance``. Comparing
+        consecutive samples instead would let a slow ramp (each step within
+        ``tolerance``) pass as one long flatline. Samples at the same timestamp (duplicates) add no
         duration: a run whose samples all share one timestamp counts as a
         single sample.
 
         Args:
             min_duration: Minimum duration to qualify as a flatline.
-            tolerance: Maximum step between consecutive samples to count as flat.
+            tolerance: Largest distance from the run's first value that
+                still counts as flat.
             interval_end: ``"next_change"`` (default) ends a run at the
                 next differing sample, so a historian with a deadband -- one
                 row, then nothing until the value moves -- still reports a
@@ -103,16 +126,16 @@ class AnomalyClassificationEvents(Base):
         steps_all = times.diff()
 
         values = sig[self.value_column]
-        # A new run starts wherever the step from the previous sample exceeds
-        # the tolerance (or there is no comparable previous sample).
-        new_run = ~(values.diff().abs() <= tolerance)
+        gap_before = np.zeros(len(sig), dtype=bool)
         if max_gap is not None:
             # A gap longer than max_gap is "no data": split the run there and
             # end the run before it at its own last sample.
             gap_before = (steps_all > pd.Timedelta(max_gap)).to_numpy()
-            new_run |= gap_before
             gap_after = np.append(gap_before[1:], False)
             ends = ends.where(~gap_after, times)
+        new_run = self._anchor_run_starts(
+            values.to_numpy(dtype=float), float(tolerance), gap_before
+        )
 
         # A one-sample run is only a flatline when the silence after it is
         # longer than the signal's usual sampling interval (a deadband
@@ -123,7 +146,7 @@ class AnomalyClassificationEvents(Base):
         typical_step = steps.median() if len(steps) >= 2 else pd.Timedelta(0)
 
         # Runs as index ranges [first, last] (vectorized; no per-run groupby).
-        first = np.flatnonzero(new_run.to_numpy())
+        first = np.flatnonzero(new_run)
         last = np.append(first[1:], len(sig)) - 1
         stuck = values.to_numpy(dtype=float)[first]
         start = times.iloc[first].reset_index(drop=True)
@@ -153,11 +176,116 @@ class AnomalyClassificationEvents(Base):
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
         )
 
+    @staticmethod
+    def _anchor_run_starts(
+        v: np.ndarray, tolerance: float, gap_before: np.ndarray
+    ) -> np.ndarray:
+        """Mask of the samples that start a flatline run.
+
+        A run continues while ``|v[j] - v[start]| <= tolerance``; a NaN, a
+        ``gap_before`` sample or the first sample starts a new run.
+
+        Every run lies inside a *segment* whose consecutive steps are at most
+        ``2 * tolerance`` (two samples within ``tolerance`` of one anchor are
+        at most ``2 * tolerance`` apart), so segments are found vectorized.
+        A segment whose range (max - min) is within ``tolerance`` -- the
+        stuck-sensor case -- is one run. In the other multi-sample segments
+        the next out-of-band sample of every position is found vectorized
+        over a short look-ahead, and the run starts are followed from the
+        segment start (a run longer than the look-ahead is searched forward
+        in doubling NumPy chunks). Cost: O(n * look-ahead) array work at
+        worst plus one cheap Python step per run inside such a segment (a
+        slow ramp, a noisy signal near ``tolerance``); noisy signals with
+        steps above ``2 * tolerance`` and stuck signals need neither.
+        """
+        n = len(v)
+        starts = np.ones(n, dtype=bool)
+        if n < 2:
+            return starts
+        with np.errstate(invalid="ignore"):
+            starts[1:] = ~(np.abs(np.diff(v)) <= 2 * tolerance)
+        starts |= gap_before
+        seg_first = np.flatnonzero(starts)
+        seg_end = np.append(seg_first[1:], n)
+        multi = (seg_end - seg_first) >= 2
+        if not multi.any():
+            return starts
+        with np.errstate(invalid="ignore"):
+            seg_range = np.maximum.reduceat(v, seg_first) - np.minimum.reduceat(
+                v, seg_first
+            )
+        split = multi & ~(seg_range <= tolerance)
+        if not split.any():
+            return starts
+        firsts, ends = seg_first[split], seg_end[split]
+        lens = ends - firsts
+        block = np.cumsum(lens) - lens  # where each segment starts in ``pos``
+        # Every position of the segments to split, with its segment's end.
+        pos = np.repeat(firsts - block, lens) + np.arange(int(lens.sum()))
+        pos_end = np.repeat(ends, lens)
+        # nxt[k]: the first later sample of its segment outside the band of
+        # pos[k] (the segment end when there is none), found for all
+        # positions at once over a short look-ahead; -1 where the look-ahead
+        # did not decide.
+        nxt = np.full(len(pos), -1, dtype=np.int64)
+        undecided = np.arange(len(pos))
+        for step in range(1, _RUN_LOOKAHEAD + 1):
+            cand = pos[undecided] + step
+            past = cand >= pos_end[undecided]
+            nxt[undecided[past]] = pos_end[undecided[past]]
+            live = undecided[~past]
+            p_live = pos[live]
+            out = ~(np.abs(v[p_live + step] - v[p_live]) <= tolerance)
+            nxt[live[out]] = p_live[out] + step
+            undecided = live[~out]
+            if not len(undecided):
+                break
+        # Follow the run starts: one cheap Python step per run; a start the
+        # look-ahead left undecided is searched forward in growing chunks.
+        for s, e, b in zip(firsts.tolist(), ends.tolist(), (block - firsts).tolist()):
+            while True:
+                j = int(nxt[b + s])
+                if j < 0:
+                    j = _first_out_of_band(v, s, e, tolerance)
+                if j >= e:
+                    break
+                starts[j] = True
+                s = j
+        return starts
+
+    @staticmethod
+    def _window_grid(
+        sig: pd.DataFrame, window_td: pd.Timedelta
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Half-open windows ``[t0 + k*window, t0 + (k+1)*window)`` over the data.
+
+        They cover every sample: the trailing partial window is included,
+        and a sample on a window edge belongs to the later window only.
+
+        Returns:
+            ``(k, lo, hi)``: window numbers and the index range ``[lo, hi)``
+            of each window's samples.
+        """
+        if window_td <= pd.Timedelta(0):
+            raise ValueError(f"window must be positive, got {window_td!r}")
+        t_ns = pd.DatetimeIndex(sig.index).as_unit("ns").asi8  # UTC for tz-aware
+        w_ns = int(window_td.value)
+        k = np.arange(int((t_ns[-1] - t_ns[0]) // w_ns) + 1, dtype=np.int64)
+        starts_ns = t_ns[0] + w_ns * k
+        lo = np.searchsorted(t_ns, starts_ns, side="left")
+        hi = np.searchsorted(t_ns, starts_ns + w_ns, side="left")
+        return k, lo, hi
+
     @keyword_only(1)
     def detect_oscillation(
         self, window: str = "1min", min_crossings: int = 6
     ) -> pd.DataFrame:
         """Detect windows with excessive zero-crossings of the detrended signal.
+
+        Windows are half-open, ``[t0 + k*window, t0 + (k+1)*window)`` from
+        the first sample ``t0``, and cover every sample: a sample on a window
+        edge belongs to the later window, and the trailing partial window is
+        evaluated too (with at least 3 samples).
 
         Args:
             window: Window size for analysis.
@@ -184,18 +312,14 @@ class AnomalyClassificationEvents(Base):
         if window_td <= pd.Timedelta(0):
             raise ValueError(f"window must be positive, got {window!r}")
 
-        # Consecutive windows [start + k*window, start + (k+1)*window] (both
-        # ends included, as label slicing does) as index ranges, evaluated
-        # together: crossings of the line joining each window's first and
-        # last value (computed as np.linspace does), and its peak-to-peak.
-        t_ns = pd.DatetimeIndex(sig.index).as_unit("ns").asi8  # UTC for tz-aware
-        w_ns = int(window_td.value)
-        n_win = int((t_ns[-1] - t_ns[0]) // w_ns)
+        # Consecutive half-open windows [start + k*window, start + (k+1)*window)
+        # covering all samples (the trailing partial window included) as
+        # index ranges, evaluated together: crossings of the line joining
+        # each window's first and last value (computed as np.linspace does),
+        # and its peak-to-peak.
         events: list[dict[str, Any]] = []
-        if n_win > 0:
-            starts_ns = t_ns[0] + w_ns * np.arange(n_win, dtype=np.int64)
-            lo = np.searchsorted(t_ns, starts_ns, side="left")
-            hi = np.searchsorted(t_ns, starts_ns + w_ns, side="right")
+        win_k, lo, hi = self._window_grid(sig, window_td)
+        if len(win_k):
             lens = hi - lo
             ok = np.flatnonzero(lens >= 3)
             if len(ok):
@@ -223,8 +347,8 @@ class AnomalyClassificationEvents(Base):
                     vals, offs
                 )
                 hit = crossings >= min_crossings
-                for k, c, amp in zip(ok[hit], crossings[hit], amplitude[hit]):
-                    current = sig.index[0] + k * window_td
+                for k, c, amp in zip(win_k[ok[hit]], crossings[hit], amplitude[hit]):
+                    current = sig.index[0] + int(k) * window_td
                     events.append(
                         {
                             "start": current,
@@ -285,7 +409,10 @@ class AnomalyClassificationEvents(Base):
     ) -> pd.DataFrame:
         """Detect windows where the rolling slope exceeds a threshold.
 
-        A least-squares line is fitted to each non-overlapping window. With
+        A least-squares line is fitted to each non-overlapping half-open
+        window ``[t0 + k*window, t0 + (k+1)*window)`` (``t0`` the first
+        sample) with at least 3 samples; the trailing partial window is
+        evaluated too, and its ``end`` is the full window end. With
         the default ``slope_per="second"`` the x-axis is elapsed time, so
         ``slope`` and ``min_slope`` are in signal units per second regardless
         of the sampling rate (and irregular sampling is handled correctly).
@@ -323,14 +450,13 @@ class AnomalyClassificationEvents(Base):
         window_td = pd.to_timedelta(window)
 
         events: list[dict[str, Any]] = []
-        start_time = sig.index[0]
-        end_time = sig.index[-1]
-        current = start_time
-
-        while current + window_td <= end_time:
+        series = sig[self.value_column]
+        for k, a, b in zip(*self._window_grid(sig, window_td)):
+            if b - a < 3:
+                continue
+            current = sig.index[0] + int(k) * window_td
             win_end = current + window_td
-            win = sig.loc[current:win_end, self.value_column]
-            slope = self._fit_slope(win, slope_per) if len(win) >= 3 else None
+            slope = self._fit_slope(series.iloc[a:b], slope_per)
             if slope is not None and abs(slope) >= min_slope:
                 events.append(
                     {
@@ -340,7 +466,6 @@ class AnomalyClassificationEvents(Base):
                         "direction": "increasing" if slope > 0 else "decreasing",
                     }
                 )
-            current = win_end
 
         return finish_events(
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
@@ -354,6 +479,10 @@ class AnomalyClassificationEvents(Base):
         """Detect anomalous windows and classify by type.
 
         Types: spike, drift, oscillation, flatline, level_shift.
+
+        Windows are half-open, ``[t0 + k*window, t0 + (k+1)*window)`` from
+        the first sample ``t0``, and cover every sample, the trailing
+        partial window included (a window needs at least 3 samples).
 
         A window is a drift when its least-squares slope exceeds 0.1 × the
         signal's overall std per sample. With the default
@@ -402,16 +531,13 @@ class AnomalyClassificationEvents(Base):
             )
 
         events: list[dict[str, Any]] = []
-        start_time = sig.index[0]
-        end_time = sig.index[-1]
-        current = start_time
-
-        while current + window_td <= end_time:
-            win_end = current + window_td
-            win = sig.loc[current:win_end, self.value_column]
-            if len(win) < 3:
-                current = win_end
+        series = sig[self.value_column]
+        for k, a, b in zip(*self._window_grid(sig, window_td)):
+            if b - a < 3:
                 continue
+            current = sig.index[0] + int(k) * window_td
+            win_end = current + window_td
+            win = series.iloc[a:b]
 
             values = win.values
             win_std = float(np.std(values))
@@ -428,7 +554,6 @@ class AnomalyClassificationEvents(Base):
                         "details": f"stuck_value={values[0]:.4f}",
                     }
                 )
-                current = win_end
                 continue
 
             # Check spikes
@@ -446,7 +571,6 @@ class AnomalyClassificationEvents(Base):
                         "details": f"spike_count={spike_count}, max_z={max_z:.2f}",
                     }
                 )
-                current = win_end
                 continue
 
             # Check level shift (mean of first half vs second half)
@@ -464,7 +588,6 @@ class AnomalyClassificationEvents(Base):
                         "details": f"shift={shift:.4f}, from={first_half_mean:.4f}, to={second_half_mean:.4f}",
                     }
                 )
-                current = win_end
                 continue
 
             # Check drift
@@ -481,7 +604,6 @@ class AnomalyClassificationEvents(Base):
                         "details": f"slope={slope:.6f}, direction={'increasing' if slope > 0 else 'decreasing'}",
                     }
                 )
-                current = win_end
                 continue
 
             # Check oscillation
@@ -500,8 +622,6 @@ class AnomalyClassificationEvents(Base):
                         "details": f"crossings={crossings}, amplitude={amplitude:.4f}",
                     }
                 )
-
-            current = win_end
 
         return finish_events(
             events, cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid

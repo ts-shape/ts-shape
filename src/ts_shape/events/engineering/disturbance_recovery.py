@@ -426,7 +426,8 @@ class DisturbanceRecoveryEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, pre_mean, post_mean, pre_std, post_std, mean_shift,
-            variance_ratio. ``start`` / ``end`` are the disturbance bounds.
+            variance_ratio (``post_std / pre_std``; NaN when ``pre_std`` is 0,
+            never ``inf``). ``start`` / ``end`` are the disturbance bounds.
         """
         cols = [
             "start",
@@ -473,7 +474,7 @@ class DisturbanceRecoveryEvents(Base):
                     "post_std": post_std,
                     "mean_shift": post_mean - pre_mean,
                     "variance_ratio": (
-                        post_std / pre_std if pre_std > 0 else float("inf")
+                        post_std / pre_std if pre_std > 0 else float("nan")
                     ),
                 }
             )

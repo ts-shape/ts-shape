@@ -9,12 +9,17 @@ from ts_shape.events._windows import floor_local, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
+from ts_shape.utils.frames import localize_like
 from ts_shape.utils.intervals import state_intervals
+from ts_shape.utils.time_accounting import floor_periods
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
+
+#: State code of a row whose on/off value is missing (unknown time).
+_UNKNOWN = -1
 
 
 class DutyCycleEvents(Base):
@@ -47,8 +52,11 @@ class DutyCycleEvents(Base):
             dataframe: Long-format input data.
             signal_uuid: UUID of the boolean on/off signal (True = on).
             event_uuid: UUID assigned to generated events.
-            value_column: Column holding the on/off state. Missing values
-                count as off.
+            value_column: Column holding the on/off state. A missing value
+                (``None``, ``NaN``, ``pd.NA``) is unknown, not off: the time
+                from such a row to the next sample is in neither ``on_time``
+                nor ``off_time``, no on/off interval covers it, and it is no
+                transition. Ratios use observed (known-state) time.
             time_column: Timestamp column.
             interval_end: How on/off intervals are closed.
                 ``"next_change"`` (default) closes each interval at the next
@@ -57,7 +65,10 @@ class DutyCycleEvents(Base):
                 its last sample; on a change-encoded signal (one row per
                 transition) every on/off interval then has zero duration.
             data_end: Optional bound for the final, still-open interval when
-                ``interval_end="next_change"``.
+                ``interval_end="next_change"``; :meth:`duty_cycle_by_window`
+                (time-weighted) and :meth:`cycle_count` then also report the
+                windows up to ``data_end``. A naive value or text on tz-aware
+                data is local time of the data's timezone.
         """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
@@ -96,7 +107,7 @@ class DutyCycleEvents(Base):
             return empty_event_df("interval", cols)
 
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["state"] = bool_or_false(s[self.value_column])
+        s["state"] = self._state_codes(s[self.value_column])
         if max_gap is None:
             intervals = state_intervals(
                 s,
@@ -107,6 +118,8 @@ class DutyCycleEvents(Base):
             )
         else:
             intervals = self._intervals_split_at_gaps(s, pd.Timedelta(max_gap))
+        # Time after a missing reading is unknown: no on/off interval.
+        intervals = intervals[(intervals["state"] != _UNKNOWN).to_numpy()]
         if intervals.empty:
             return empty_event_df("interval", cols)
 
@@ -114,7 +127,7 @@ class DutyCycleEvents(Base):
             {
                 "start": intervals["start"].to_numpy(),
                 "end": intervals["end"].to_numpy(),
-                "state": ["on" if bool(st) else "off" for st in intervals["state"]],
+                "state": ["on" if st == 1 else "off" for st in intervals["state"]],
                 "duration": pd.to_timedelta(intervals["duration_seconds"], unit="s"),
             }
         )
@@ -128,6 +141,21 @@ class DutyCycleEvents(Base):
         out.insert(3, "uuid", self.event_uuid)
         out.insert(4, "source_uuid", self.signal_uuid)
         return out
+
+    def _known(self, values: pd.Series) -> pd.Series:
+        """``True`` where the on/off value is present."""
+        return values.notna()
+
+    def _state_codes(self, values: pd.Series) -> pd.Series:
+        """``1`` on, ``0`` off, ``-1`` unknown (missing value), as ``int64``."""
+        codes = bool_or_false(values).astype("int64")
+        return codes.where(self._known(values), _UNKNOWN)
+
+    def _data_end(self) -> pd.Timestamp | None:
+        """``data_end`` in the data's timezone, or None."""
+        if self.data_end is None:
+            return None
+        return localize_like(self.data_end, self.series[self.time_column])
 
     def _intervals_split_at_gaps(
         self, s: pd.DataFrame, max_gap: pd.Timedelta
@@ -186,6 +214,13 @@ class DutyCycleEvents(Base):
                 boolean samples in the window, which equals the time share only
                 under uniform sampling (``On@09:00, Off@09:59`` reads 50 %).
 
+        Samples with a missing value are unknown time: in neither ``on_time``
+        nor ``off_time`` (time-weighted) or not averaged (sample mean), and
+        ``duty_cycle_pct`` is the on share of the known time (NaN for a window
+        without any). With the constructor's ``data_end`` (time-weighted),
+        the last sample's state is held until ``data_end`` and the windows up
+        to it are reported.
+
         Returns:
             DataFrame with columns: start, end (start + window),
             duration_seconds, uuid, source_uuid, on_time, off_time,
@@ -198,10 +233,12 @@ class DutyCycleEvents(Base):
         s = self.series[[self.time_column, self.value_column]].copy()
         s[self.time_column] = pd.to_datetime(s[self.time_column])
         s = s.sort_values(self.time_column)
-        s["state"] = bool_or_false(s[self.value_column]).astype(float)
+        known = self._known(s[self.value_column])
+        s["state"] = bool_or_false(s[self.value_column]).astype(float).where(known)
 
         events: list[dict[str, Any]] = []
         if time_weighted:
+            s = self._hold_to_data_end(s[[self.time_column, "state"]], window)
             s["dur"] = (
                 s[self.time_column].shift(-1) - s[self.time_column]
             ).dt.total_seconds()
@@ -209,12 +246,15 @@ class DutyCycleEvents(Base):
             if s.empty:
                 return self._with_window(pd.DataFrame(columns=cols), window)
             s["win"] = floor_local(s[self.time_column], window)
-            s["on_dur"] = s["state"] * s["dur"]
-            grouped = s.groupby("win").agg(on=("on_dur", "sum"), total=("dur", "sum"))
+            s["on_dur"] = s["state"].fillna(0.0) * s["dur"]
+            s["known_dur"] = s["dur"].where(s["state"].notna(), 0.0)
+            grouped = s.groupby("win").agg(
+                on=("on_dur", "sum"), total=("known_dur", "sum")
+            )
             for ts, row in grouped.iterrows():
                 total = row["total"]
                 on_time = row["on"]
-                pct = (on_time / total) if total > 0 else 0.0
+                pct = (on_time / total) if total > 0 else float("nan")
                 events.append(
                     {
                         "start": ts,
@@ -242,9 +282,42 @@ class DutyCycleEvents(Base):
 
         return self._with_window(pd.DataFrame(events, columns=cols), window)
 
+    def _hold_to_data_end(self, s: pd.DataFrame, window: str) -> pd.DataFrame:
+        """``s`` with the last state held until ``data_end``.
+
+        Adds a row with the last state at every window start after the last
+        sample and before ``data_end``, and a closing row at ``data_end``, so
+        the held time is booked to the windows it falls in.
+        """
+        data_end = self._data_end()
+        if data_end is None or s.empty:
+            return s
+        last_time = s[self.time_column].iloc[-1]
+        if not data_end > last_time:
+            return s
+        grid = floor_periods(last_time, data_end, window)["start"]
+        starts = grid[(grid > last_time) & (grid < data_end)]
+        held = pd.DataFrame(
+            {
+                self.time_column: pd.concat(
+                    [starts, pd.Series([data_end])], ignore_index=True
+                ),
+                "state": s["state"].iloc[-1],
+            }
+        )
+        held[self.time_column] = held[self.time_column].astype(
+            s[self.time_column].dtype
+        )
+        return pd.concat([s, held], ignore_index=True)
+
     @keyword_only(1)
     def cycle_count(self, window: str = "1h") -> pd.DataFrame:
         """Number of on/off transitions per window.
+
+        A transition is a change between two known states; samples with a
+        missing value are skipped. With the constructor's ``data_end`` the
+        windows up to ``data_end`` are reported (with zero transitions after
+        the last sample).
 
         Args:
             window: Resample window.
@@ -259,10 +332,31 @@ class DutyCycleEvents(Base):
             return self._with_window(pd.DataFrame(columns=cols), window)
 
         s = self.series[[self.time_column, self.value_column]].copy()
+        s = s[self._known(s[self.value_column]).to_numpy()]
         s["state"] = bool_or_false(s[self.value_column])
         s["transition"] = s["state"] != s["state"].shift()
         s["to_on"] = s["transition"] & s["state"]
         s["to_off"] = s["transition"] & ~s["state"]
+        data_end = self._data_end()
+        if data_end is not None and (s.empty or data_end > s[self.time_column].max()):
+            # A non-transition row in the window holding the last instant
+            # before data_end extends the windows to it.
+            last_instant = pd.Series([data_end - pd.Timedelta(1, "ns")])
+            tail = pd.DataFrame(
+                {
+                    self.time_column: floor_local(last_instant, window),
+                    "to_on": [False],
+                    "to_off": [False],
+                }
+            )
+            tail[self.time_column] = tail[self.time_column].astype(
+                s[self.time_column].dtype
+            )
+            s = pd.concat(
+                [s[[self.time_column, "to_on", "to_off"]], tail], ignore_index=True
+            )
+        if s.empty:  # no known state
+            return self._with_window(pd.DataFrame(columns=cols), window)
         s = s.set_index(self.time_column)
 
         resampled = s.resample(window).agg(

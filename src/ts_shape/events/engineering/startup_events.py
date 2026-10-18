@@ -157,12 +157,20 @@ class StartupDetectionEvents(Base):
         current sample, divided by the actual elapsed seconds. Samples with
         no sample that far back get no slope. A longer window smooths noise.
 
+        The slope at a sample describes the step from its reference sample
+        (the previous sample, or the one ``slope_window`` back) to it, so an
+        interval starts at the reference sample of its first ramping sample
+        -- the sample before the first fast step with the default
+        ``slope_window`` -- and ends at its last ramping sample. A single
+        fast step from ``t[i-1]`` to ``t[i]`` lasts ``t[i] - t[i-1]``.
+
         Args:
             min_slope: Minimum slope in signal units per second.
             slope_window: Trailing window for the slope as a pandas offset
                 string (default '0s': between consecutive samples).
-            min_duration: Minimum time from the first to the last sample of a
-                contiguous run at or above ``min_slope`` (pandas offset string).
+            min_duration: Minimum duration (pandas offset string) of a
+                contiguous run of samples at or above ``min_slope``, measured
+                from the run's ``start`` to its ``end``.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -194,11 +202,11 @@ class StartupDetectionEvents(Base):
             back = pd.merge_asof(probe, ref, on="_t", direction="backward").sort_values(
                 "_row"
             )
-            s["dt_s"] = (
-                s[self.time_column] - back["_t0"].to_numpy()
-            ).dt.total_seconds()
+            s["_t_ref"] = back["_t0"].array
+            s["dt_s"] = (s[self.time_column] - s["_t_ref"]).dt.total_seconds()
             s["dv"] = s[self.value_column] - back["_v0"].to_numpy()
         else:
+            s["_t_ref"] = s[self.time_column].shift()
             s["dt_s"] = s[self.time_column].diff().dt.total_seconds()
             s["dv"] = s[self.value_column].diff()
         # Duplicate timestamps give dt = 0 and an infinite slope; such steps
@@ -218,8 +226,11 @@ class StartupDetectionEvents(Base):
         # Positional throughout: index labels may repeat (e.g. chunks
         # concatenated without ignore_index).
         runs = true_runs(mask.to_numpy(dtype=bool))
+        # The slope at sample i describes the step from its reference sample
+        # (the previous one, or the one ``slope_window`` back) to i, so a run
+        # starts at the reference sample of its first flagged sample.
         times = s[self.time_column].array
-        start_t, end_t = times[runs.starts], times[runs.last]
+        start_t, end_t = s["_t_ref"].array[runs.starts], times[runs.last]
         keep = ~((end_t - start_t) < pd.to_timedelta(min_duration))
         if not keep.any():
             return self._intervals([], cols)
@@ -527,7 +538,10 @@ class StartupDetectionEvents(Base):
                 - value_change: Total change in value during startup
                 - avg_rate: Average rate of change
                 - max_value: Maximum value reached
-                - stability_score: Measure of how stable the final state is
+                - stability_score: ``1 / (1 + CV)`` of the values in the final
+                  20% of the startup (at least its last two samples); 1.0 is
+                  perfectly flat. NaN when the startup holds fewer than two
+                  samples; 0.0 when the final mean is 0 (CV undefined).
         """
         if startup_events.empty or self.series.empty:
             return pd.DataFrame(
@@ -565,7 +579,7 @@ class StartupDetectionEvents(Base):
                         "value_change": None,
                         "avg_rate": None,
                         "max_value": None,
-                        "stability_score": None,
+                        "stability_score": float("nan"),
                     }
                 )
                 continue
@@ -605,15 +619,19 @@ class StartupDetectionEvents(Base):
             )
             max_value = values.max()
 
-            # Stability score: inverse of coefficient of variation in final 20% of period
-            final_portion_size = max(1, len(period_data) // 5)
+            # Stability score: 1 / (1 + CV) of the final 20% of the period,
+            # at least two samples (a std needs two).
+            final_portion_size = max(2, len(period_data) // 5)
             final_values = values.iloc[-final_portion_size:]
             cv = (
                 final_values.std() / final_values.mean()
                 if final_values.mean() != 0
                 else float("inf")
             )
-            stability_score = 1.0 / (1.0 + cv) if np.isfinite(cv) else 0.0
+            if pd.isna(cv):
+                stability_score = float("nan")
+            else:
+                stability_score = 1.0 / (1.0 + cv) if np.isfinite(cv) else 0.0
 
             quality_results.append(
                 {

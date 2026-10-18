@@ -1,3 +1,19 @@
+# October 18, 2026 (round 13)
+Audit fixes: engineering, quality and maintenance results; robustness.
+fix: control-loop error integrals and output saturation, threshold time
+  above, steady-state statistics, warm-up overshoot, rate-of-change and slope
+  startup intervals, startup stability are time-weighted / bounded correctly.
+fix: tolerance lag, flatline runs, anomaly windows, sub-millisecond sampling,
+  data gaps (> min_gap, median-based default), calendar windows in
+  calibration and environmental checks, asset-health recovery direction,
+  integer powers.
+change: one severity table for severity_level and the event log.
+fix: missing machine states are unknown time; duty cycle honours data_end;
+  naive data_end on tz-aware frames; missing value columns raise; no inf
+  variance ratios; object-dtype numbers in feature tools.
+feat: DataQualityWarning when a signal's values are in another value column.
+  See docs/migration.md.
+
 # October 17, 2026 (round 12)
 Oscillations with a deadband, EnPI baseline without idle windows, windowed
 descriptive features.

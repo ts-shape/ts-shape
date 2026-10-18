@@ -9,11 +9,15 @@ from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.signals.primitives import intervals as spec_intervals
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 from ts_shape.utils.runs import total_seconds
 
 logger = logging.getLogger(__name__)
+
+#: State code of a row whose run/idle value is missing (unknown time).
+_UNKNOWN = -1
 
 
 class MachineStateEvents(Base):
@@ -83,17 +87,29 @@ class MachineStateEvents(Base):
     def _as_state(self, col: pd.Series) -> pd.Series:
         """Convert a value series to a boolean running/idle state.
 
-        Uses value_range when set (inclusive on both ends); otherwise casts to bool.
+        Uses value_range when set (inclusive on both ends); otherwise casts to
+        bool. A missing value (``None``, ``NaN``, ``pd.NA``) is unknown, not
+        idle: it is ``pd.NA`` in the returned nullable ``boolean`` Series.
         """
+        known = col.notna()
         if self.value_range is not None:
             lower, upper = self.value_range
+            values = pd.to_numeric(col, errors="coerce")
             mask = pd.Series(True, index=col.index)
             if lower is not None:
-                mask &= col >= lower
+                mask &= (values >= lower).fillna(False).astype(bool)
             if upper is not None:
-                mask &= col <= upper
-            return mask
-        return col.fillna(False).astype(bool)
+                mask &= (values <= upper).fillna(False).astype(bool)
+            state = mask
+        else:
+            state = bool_or_false(col)
+        return state.astype("boolean").where(known, pd.NA)
+
+    def _state_codes(self, col: pd.Series) -> pd.Series:
+        """``1`` run, ``0`` idle, ``-1`` unknown (missing value), as ``int64``."""
+        state = self._as_state(col)
+        codes = state.astype("Int64").fillna(_UNKNOWN)
+        return codes.astype("int64")
 
     @keyword_only(1)
     def detect_run_idle(
@@ -116,6 +132,9 @@ class MachineStateEvents(Base):
           the spec's ``max_gap`` are "no data"), otherwise ``"next_change"``.
         - data_end: optional bound for the final, still-open interval when
           intervals close at the next change (e.g. the end of the data window).
+        - A missing state value (``None``, ``NaN``, ``pd.NA``) is unknown, not
+          idle: the time from such a row to the next known row is in neither a
+          run nor an idle interval (like ReliabilityEvents' "no data").
         Columns: start, end, uuid, source_uuid, is_delta, state, duration_seconds
         """
         columns = [
@@ -130,16 +149,16 @@ class MachineStateEvents(Base):
         if self.series.empty:
             return pd.DataFrame(columns=columns)
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["state"] = self._as_state(s[self.value_column])
+        s["state"] = self._state_codes(s[self.value_column])
         if interval_end is None and self.spec is not None:
             # Spec-driven: the primitive closes held states at the next change
             # and splits at gaps longer than max_gap.
-            run_spec = self.spec.with_(value_column="value_bool")
+            run_spec = self.spec.with_(value_column="value_integer")
             frame = pd.DataFrame(
                 {
                     "systime": s[self.time_column].to_numpy(),
                     "uuid": run_spec.uuid,
-                    "value_bool": s["state"].to_numpy(),
+                    "value_integer": s["state"].to_numpy(),
                 }
             )
             intervals = spec_intervals(frame, run_spec, data_end=data_end)
@@ -153,7 +172,7 @@ class MachineStateEvents(Base):
             )
         min_td = pd.to_timedelta(min_duration)
         keep = pd.to_timedelta(intervals["duration_seconds"], unit="s") >= min_td
-        intervals = intervals[keep]
+        intervals = intervals[keep & (intervals["state"] != _UNKNOWN).to_numpy()]
         if intervals.empty:
             return pd.DataFrame(columns=columns)
         result = pd.DataFrame(
@@ -163,7 +182,7 @@ class MachineStateEvents(Base):
                 "uuid": self.event_uuid,
                 "source_uuid": self.run_state_uuid,
                 "is_delta": True,
-                "state": ["run" if bool(st) else "idle" for st in intervals["state"]],
+                "state": ["run" if st == 1 else "idle" for st in intervals["state"]],
                 "duration_seconds": intervals["duration_seconds"].to_numpy(),
             }
         )
@@ -171,6 +190,9 @@ class MachineStateEvents(Base):
 
     def transition_events(self) -> pd.DataFrame:
         """Return point events at state transitions.
+
+        Rows with a missing state are skipped: a transition is a change
+        between two known states.
 
         Columns: systime, uuid, source_uuid, is_delta, transition ('idle_to_run'|'run_to_idle'), time_since_last_transition_seconds
         """
@@ -186,7 +208,9 @@ class MachineStateEvents(Base):
                 ]
             )
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["state"] = self._as_state(s[self.value_column])
+        state = self._as_state(s[self.value_column])
+        s = s[state.notna().to_numpy()]
+        s["state"] = state[state.notna()].astype(bool)
         s["prev"] = s["state"].shift()
         changes = s[s["state"] != s["prev"]].dropna(subset=["prev"])  # ignore first row
         if changes.empty:
@@ -228,7 +252,7 @@ class MachineStateEvents(Base):
             self._state_groups = None
             return
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["state"] = self._as_state(s[self.value_column])
+        s["state"] = self._state_codes(s[self.value_column])
         self._state_groups = (s["state"] != s["state"].shift()).cumsum()
 
     @keyword_only(1)
@@ -382,8 +406,12 @@ class MachineStateEvents(Base):
             With ``as_frame=False`` (deprecated), a dictionary with:
 
             - total_transitions: total number of state transitions
-            - avg_run_duration: average duration of run states in seconds
-            - avg_idle_duration: average duration of idle states in seconds
+            - avg_run_duration: average duration of run states in seconds;
+                NaN when there is no run interval
+            - avg_idle_duration: average duration of idle states in seconds;
+                NaN when there is no idle interval
+            Missing state values are unknown time, in neither average nor the
+            ratio.
             - run_idle_ratio: ratio of total run time to total idle time;
                 NaN when there is no idle time (including no intervals at all),
                 since the ratio is undefined
@@ -397,52 +425,25 @@ class MachineStateEvents(Base):
 
         total_transitions = len(transitions)
 
-        if intervals.empty:
-            avg_run_duration = 0.0
-            avg_idle_duration = 0.0
-            run_idle_ratio = float("nan")
-        else:
-            run_intervals = intervals[intervals["state"] == "run"]
-            idle_intervals = intervals[intervals["state"] == "idle"]
-
-            avg_run_duration = (
-                run_intervals["duration_seconds"].mean()
-                if not run_intervals.empty
-                else 0.0
-            )
-            avg_idle_duration = (
-                idle_intervals["duration_seconds"].mean()
-                if not idle_intervals.empty
-                else 0.0
-            )
-
-            total_run_time = (
-                run_intervals["duration_seconds"].sum()
-                if not run_intervals.empty
-                else 0.0
-            )
-            total_idle_time = (
-                idle_intervals["duration_seconds"].sum()
-                if not idle_intervals.empty
-                else 0.0
-            )
-            run_idle_ratio = (
-                total_run_time / total_idle_time
-                if total_idle_time > 0
-                else float("nan")
-            )
+        # Durations are of observed (known-state) time only; a mean over no
+        # intervals is undefined (NaN), not 0.
+        run_seconds = intervals.loc[intervals["state"] == "run", "duration_seconds"]
+        idle_seconds = intervals.loc[intervals["state"] == "idle", "duration_seconds"]
+        avg_run_duration = float(run_seconds.mean()) if len(run_seconds) else np.nan
+        avg_idle_duration = float(idle_seconds.mean()) if len(idle_seconds) else np.nan
+        total_run_time = float(run_seconds.sum())
+        total_idle_time = float(idle_seconds.sum())
+        run_idle_ratio = (
+            total_run_time / total_idle_time if total_idle_time > 0 else float("nan")
+        )
 
         data_gaps_detected = self._detect_data_gaps()
         rapid_transitions_detected = len(self.detect_rapid_transitions())
 
         metrics = {
             "total_transitions": total_transitions,
-            "avg_run_duration": (
-                float(avg_run_duration) if not np.isnan(avg_run_duration) else 0.0
-            ),
-            "avg_idle_duration": (
-                float(avg_idle_duration) if not np.isnan(avg_idle_duration) else 0.0
-            ),
+            "avg_run_duration": avg_run_duration,
+            "avg_idle_duration": avg_idle_duration,
             "run_idle_ratio": float(run_idle_ratio),
             "data_gaps_detected": data_gaps_detected,
             "rapid_transitions_detected": rapid_transitions_detected,
