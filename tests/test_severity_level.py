@@ -43,7 +43,7 @@ def test_categorical_severity_has_a_level_in_the_shared_vocabulary():
 @pytest.mark.parametrize(
     "overrides,label,level",
     [
-        (None, "minor", None),
+        (None, "minor", "info"),  # the shared table (as the event log had it)
         ({"minor": "warn"}, "minor", "warn"),  # ToleranceDeviationEvents
         ({"minor": "info"}, "minor", "info"),  # FlowConstraintEvents
         (None, "high", "critical"),  # SPC rules

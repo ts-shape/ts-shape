@@ -39,3 +39,4 @@ hot = env.detect_env_exceedance(valid_range=(15.0, 25.0), window="1h")
 - `compensated_value = measured − coefficient × (env − env_nominal)`, with `env_nominal` = `env_value` or else the environment mean. Without `coefficient`, one linear regression over all paired data estimates it.
 - `significant` means Pearson `p < 0.05`. Windows with fewer than 5 paired samples are skipped. `unit_change_per_degree` equals `coefficient` (measurement units per environment unit).
 - `severity` scales with how far the worst value lies outside `valid_range`, relative to the range width: `low` up to 5 %, `medium` up to 20 %, `high` up to 50 %, `critical` beyond.
+- `detect_env_exceedance` windows can be a fixed length (`"1h"`) or a calendar frequency (`"1D"` a calendar day, 23 or 25 hours on a DST change; `"W"`; `"MS"`); `window_end` is the true window end, as `end`.

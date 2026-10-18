@@ -33,7 +33,7 @@ stability = cal.calibration_stability(window="8h", lookback=10)
 ## Notes
 
 - The static methods take `{reference_value: [measured, ...]}` and need no DataFrame.
-- The window methods need a reference: `reference_value` (a constant, e.g. a check standard) or `reference_uuid` (that signal's mean in the same window). Without one they return an empty frame. Windows with fewer than 2 samples or no reference data are skipped.
+- The window methods need a reference: `reference_value` (a constant, e.g. a check standard) or `reference_uuid` (that signal's mean in the same window). Without one they return an empty frame. Windows with fewer than 2 samples or no reference data are skipped. `window` is a fixed length (`"8h"`) or a calendar frequency (`"1D"` a calendar day, `"W"`, `"MS"`); the reference is averaged over the window's true bounds.
 - `bias` = window mean − reference. `drift_rate` is the bias change from the previous window (0 for the first).
 - `linearity_error` is each point's residual from a straight line fitted through all points (at least 2 points).
 - `calibration_curve` coefficients come from `numpy.polyfit`, highest power first; the degree is capped at number of points − 1.

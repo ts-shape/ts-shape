@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
-from ts_shape.events._windows import labeled_window_summary
+from ts_shape.events._windows import labeled_window_summary, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
 
@@ -269,12 +269,14 @@ class EnvironmentalCompensationEvents(Base):
 
         Args:
             valid_range: Tuple (min, max) of acceptable env values.
-            window: Resample window size.
+            window: Resample window: a fixed length (``"1h"``) or a calendar
+                frequency (``"1D"`` a calendar day, ``"W"``, ``"MS"``).
 
         Returns:
             Summary DataFrame with columns: start, end, duration_seconds
             (the window bounds), window_start (the resample label; a
-            deprecated twin of ``start``), window_end, env_mean,
+            deprecated twin of ``start``), window_end (the window's end, as
+            ``end``), env_mean,
             env_min, env_max, exceedance_type, severity.
         """
         cols = [
@@ -339,7 +341,8 @@ class EnvironmentalCompensationEvents(Base):
             else:
                 severity = "low"
 
-            window_end = ts + pd.to_timedelta(window)
+            # The window's true end, calendar-correct ("MS", "1D", "W").
+            window_end = window_bounds(pd.Series([ts]), window)[1].iloc[0]
             events.append(
                 {
                     "window_start": ts,

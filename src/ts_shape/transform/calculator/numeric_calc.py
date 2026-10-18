@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 import pandas as pd
 from pandas.api import types as ptypes
 
@@ -203,6 +204,15 @@ class IntegerCalc(Base):
         """
         Raises each value in the integer column to the power of a specified value.
 
+        An integer column stays integer only when the result is exact: a
+        non-negative whole exponent whose results all fit in int64. A
+        negative or fractional exponent, or a result beyond int64 (e.g.
+        ``10 ** 64``), gives float64 values (``numpy.float_power``) instead
+        of wrapped-around integers or an error: ``[2, 3, 10] ** -1`` is
+        ``[0.5, 0.333..., 0.1]``. (A nullable ``Int64`` column becomes
+        ``Float64``, a pyarrow integer column ``double[pyarrow]``.) Other
+        columns use ``values ** power_value``.
+
         Args:
             dataframe (pd.DataFrame): The DataFrame to perform the operation on.
             value_column (str): The column to apply the power operation to.
@@ -213,5 +223,24 @@ class IntegerCalc(Base):
         """
         values = _operand(dataframe, value_column, "power_column")
         dataframe = dataframe.copy()
-        dataframe[value_column] = values**power_value
+        dataframe[value_column] = _power(values, power_value)
         return dataframe
+
+
+def _power(values: pd.Series, power_value: float) -> pd.Series:
+    """``values ** power_value``, in float64 where integers cannot hold it."""
+    if not ptypes.is_integer_dtype(values.dtype) or ptypes.is_bool_dtype(values.dtype):
+        return values**power_value
+    exponent = float(power_value)
+    floats = values.to_numpy(dtype=float, na_value=np.nan)
+    with np.errstate(all="ignore"):
+        result = np.float_power(floats, exponent)
+    fits = not bool((np.abs(result[np.isfinite(floats)]) >= 2.0**63).any())
+    if exponent.is_integer() and exponent >= 0 and fits:
+        return values ** int(exponent)
+    out = pd.Series(result, index=values.index, name=values.name)
+    if isinstance(values.dtype, pd.ArrowDtype):
+        return out.astype("double[pyarrow]")
+    if isinstance(values.dtype, pd.api.extensions.ExtensionDtype):
+        return out.astype("Float64")
+    return out

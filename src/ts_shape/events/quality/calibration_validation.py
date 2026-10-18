@@ -3,9 +3,20 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._windows import labeled_window_summary
+from ts_shape.events._windows import labeled_window_summary, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
+
+
+def _bounds(label: pd.Timestamp, window: str) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """``[start, end)`` of the resample window labeled ``label``.
+
+    Calendar-correct (``"MS"`` is a calendar month, ``"1D"`` a calendar day,
+    a right-labeled ``"W"`` / ``"ME"`` bin ends the day after its label);
+    see :func:`~ts_shape.events._windows.window_bounds`.
+    """
+    start, end = window_bounds(pd.Series([label]), window)
+    return start.iloc[0], end.iloc[0]
 
 
 class CalibrationValidationEvents(Base):
@@ -202,7 +213,8 @@ class CalibrationValidationEvents(Base):
         """Monitor bias and drift to detect recalibration need.
 
         Args:
-            window: Resample window size.
+            window: Resample window: a fixed length (``"8h"``) or a calendar
+                frequency (``"1D"`` a calendar day, ``"W"``, ``"MS"``).
             max_bias: Maximum acceptable absolute bias.
             max_drift_rate: Maximum acceptable bias change per window.
 
@@ -229,8 +241,8 @@ class CalibrationValidationEvents(Base):
             if len(vals) < 2:
                 continue
 
-            window_end = ts + pd.to_timedelta(window)
-            ref = self._get_reference_for_window(ts, window_end)
+            window_start, window_end = _bounds(ts, window)
+            ref = self._get_reference_for_window(window_start, window_end)
             if ref is None:
                 continue
 
@@ -267,7 +279,8 @@ class CalibrationValidationEvents(Base):
         """Track calibration bias stability over rolling windows.
 
         Args:
-            window: Resample window size.
+            window: Resample window: a fixed length (``"8h"``) or a calendar
+                frequency (``"1D"`` a calendar day, ``"W"``, ``"MS"``).
             lookback: Number of previous windows for trend assessment.
 
         Returns:
@@ -299,8 +312,8 @@ class CalibrationValidationEvents(Base):
             vals = group[self.value_column].dropna()
             if len(vals) < 2:
                 continue
-            window_end = ts + pd.to_timedelta(window)
-            ref = self._get_reference_for_window(ts, window_end)
+            window_start, window_end = _bounds(ts, window)
+            ref = self._get_reference_for_window(window_start, window_end)
             if ref is None:
                 continue
             bias = float(vals.mean()) - ref

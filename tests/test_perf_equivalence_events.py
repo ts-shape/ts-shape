@@ -1185,7 +1185,7 @@ def _ref_datagapanalysis_detect_gaps(self, min_gap: str = "5s") -> pd.DataFrame:
     events: list[dict[str, Any]] = []
     for i, d in enumerate(diffs):
         gap = pd.Timedelta(d)
-        if gap >= threshold and gap > pd.Timedelta(0):
+        if gap > threshold and gap > pd.Timedelta(0):  # strictly longer
             events.append(
                 {
                     "start": pd.Timestamp(times[i]),

@@ -24,7 +24,15 @@ import pandas as pd
 from ts_shape.utils.deprecation import caller_stacklevel
 
 from ..errors import ColumnNotFoundError, DataQualityWarning
-from ..events._output import COL_END, COL_START, COL_SYSTIME
+from ..events._output import (
+    COL_END,
+    COL_SEVERITY,
+    COL_SEVERITY_LEVEL,
+    COL_START,
+    COL_SYSTIME,
+    DEFAULT_SEVERITY_LEVEL,
+    SEVERITY_LEVELS,
+)
 from ..utils.coerce import to_numeric_checked
 from ..utils.deprecation import renamed_kwargs
 from . import schema
@@ -627,27 +635,32 @@ def _value_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
     return pd.Series([float("nan")] * len(frame), dtype="float64")
 
 
-_SEVERITY_VOCABULARY = ("info", "warn", "critical")
-# Detector vocabularies mapped onto the canonical three levels.
-_SEVERITY_ALIASES = {
-    "warning": "warn",
-    "low": "info",
-    "minor": "info",
-    "medium": "warn",
-    "major": "warn",
-    "high": "critical",
-    "alarm": "critical",
-    "error": "critical",
-}
+_SEVERITY_VOCABULARY = SEVERITY_LEVELS
+# Detector vocabularies mapped onto the canonical three levels: the shared
+# table of ``severity_level`` (one source of truth for frame and event log).
+_SEVERITY_ALIASES = DEFAULT_SEVERITY_LEVEL
 
 
 def _severity_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
+    """``ts_shape:severity`` of each row (info / warn / critical or <NA>).
+
+    A frame whose ``severity`` column comes with ``severity_level`` (every
+    detector result with categorical severity) uses that level as is, so a
+    detector's own label overrides (e.g. ``ToleranceDeviationEvents``:
+    ``minor`` -> ``warn``) hold in the event log too. Otherwise text labels
+    map through :data:`~ts_shape.events._output.DEFAULT_SEVERITY_LEVEL` and
+    numbers are bucketed (see :func:`_classify_severity`).
+    """
     if rule.severity_field and rule.severity_field in frame.columns:
-        col = frame[rule.severity_field]
+        field = rule.severity_field
     elif "severity" in frame.columns:
-        col = frame["severity"]
+        field = "severity"
     else:
         return pd.Series([pd.NA] * len(frame), dtype="string")
+    col = frame[field]
+    if field == COL_SEVERITY and COL_SEVERITY_LEVEL in frame.columns:
+        level = frame[COL_SEVERITY_LEVEL].astype("string").str.lower()
+        return level.where(level.isin(_SEVERITY_VOCABULARY), pd.NA)
     out = col.map(_classify_severity).astype("string").str.lower()
     out = out.replace(_SEVERITY_ALIASES)
     unknown = out.notna() & ~out.isin(_SEVERITY_VOCABULARY)

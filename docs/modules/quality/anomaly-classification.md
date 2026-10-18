@@ -31,9 +31,10 @@ All arguments are keyword-only.
 
 ## Notes
 
-- A flatline run continues while each step is within `tolerance`. With `interval_end="next_change"` (default) it ends at the next differing sample, so a deadband historian (one row, then nothing until the value moves) still reports a stuck sensor; a single-sample run counts only when the gap after it is longer than the median sampling interval. `"last_sample"` ends the run at its own last sample.
+- A flatline run continues while each sample is within `tolerance` of the run's first value (`|v - anchor| <= tolerance`), so a slow ramp whose steps are each within `tolerance` is not a flatline. With `interval_end="next_change"` (default) it ends at the next differing sample, so a deadband historian (one row, then nothing until the value moves) still reports a stuck sensor; a single-sample run counts only when the gap after it is longer than the median sampling interval. `"last_sample"` ends the run at its own last sample.
 - Samples at the same timestamp add no duration: a duplicated sample does not start a flatline.
 - `max_gap` (e.g. `"15min"`): a gap between two samples longer than this is "no data"; the run before it ends at its last sample and a new run starts after it. `None` (default) lets a run span any gap.
+- `classify_anomalies`, `detect_oscillation` and `detect_drift` evaluate consecutive half-open windows `[t0 + k·window, t0 + (k+1)·window)` from the first sample: a sample on a window edge belongs to the later window only, and the trailing partial window is evaluated too (it needs at least 3 samples; its `end` is the full window end).
 - `slope_per="second"` (default) fits against elapsed time, so slopes are in signal units per second whatever the sampling rate. `slope_per="sample"` fits against the sample index.
 - In `classify_anomalies` a window is a drift when its slope exceeds 0.1 × the signal's overall std per sample (per median sampling interval with `slope_per="second"`). A spike is a window with 1 to max(3, 10 % of samples) z-scores above `n_sigma`; it is critical when the largest z-score exceeds 2 × `n_sigma`.
 - Value column defaults to `value_double`.

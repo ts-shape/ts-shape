@@ -65,8 +65,22 @@ When a rule names a numeric `severity_field`, its value is bucketed:
 | missing or not numeric | `<NA>` |
 
 The thresholds match the z-score style `severity` column of
-`OutlierDetectionEvents`. A text column that already holds `info`, `warn` or
-`critical` is passed through.
+`OutlierDetectionEvents`.
+
+A text `severity` takes its level from the frame's `severity_level` column,
+which every detector result with categorical severity carries; it already
+includes the detector's own label overrides, so `ts_shape:severity` always
+equals `severity_level` (a `ToleranceDeviationEvents` `minor` is `warn`, a
+CUSUM `high` is `warn`, a `FlowConstraintEvents` `severe` is `critical`).
+A frame without `severity_level` maps its labels through the same shared
+table, `ts_shape.events._output.DEFAULT_SEVERITY_LEVEL`:
+
+| Label | `ts_shape:severity` |
+|---|---|
+| `info`, `ok`, `low`, `minor` | `info` |
+| `warn`, `warning`, `medium`, `moderate` | `warn` |
+| `critical`, `high`, `major`, `severe`, `alarm`, `error` | `critical` |
+| any other label | `<NA>` (with a `DataQualityWarning`) |
 
 ## Object types and qualifiers
 

@@ -72,6 +72,23 @@ class DataGapAnalysisEvents(Base):
         )
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
+    def _min_gap(self, min_gap: str | pd.Timedelta | None) -> pd.Timedelta:
+        """``min_gap`` as a Timedelta; ``None`` is 2x the median sampling interval.
+
+        The median is taken over the positive steps between consecutive
+        samples (duplicate timestamps are no sampling interval). Without any
+        positive step the default is 1 s.
+        """
+        if min_gap is not None:
+            return pd.to_timedelta(min_gap)
+        times = self.signal[self.time_column].array
+        if len(times) >= 2:
+            diffs = pd.Series(pd.to_timedelta(times[1:] - times[:-1]))
+            positive = diffs[diffs > pd.Timedelta(0)]
+            if len(positive):
+                return pd.Timedelta(positive.median() * 2)
+        return pd.Timedelta(seconds=1)
+
     # ------------------------------------------------------------------
     # Public methods
     # ------------------------------------------------------------------
@@ -81,19 +98,26 @@ class DataGapAnalysisEvents(Base):
         @deprecated(
             "DataGapAnalysisEvents.find_gaps() is deprecated, use .detect_gaps()"
         )
-        def find_gaps(self, min_gap: str = "5s") -> pd.DataFrame: ...
+        def find_gaps(self, min_gap: str | None = None) -> pd.DataFrame: ...
 
     else:
         find_gaps = deprecated_method("detect_gaps")
 
     @keyword_only(1)
-    def detect_gaps(self, min_gap: str = "5s") -> pd.DataFrame:
+    def detect_gaps(self, min_gap: str | pd.Timedelta | None = None) -> pd.DataFrame:
         """Locate all gaps longer than *min_gap*.
 
+        A gap is a step between two consecutive samples strictly longer than
+        ``min_gap``: regular 10-minute sampling with ``min_gap="10min"`` has
+        no gaps.
+
         Args:
-            min_gap: Minimum gap duration to report (e.g. ``'5s'``,
-                ``'1min'``, ``'1h'``). A zero-length step (duplicate
-                timestamp) is never a gap, even with ``min_gap="0s"``.
+            min_gap: Gap threshold (e.g. ``'5s'``, ``'1min'``, ``'1h'``).
+                ``None`` (default) is twice the median positive sampling
+                interval, the rule of :meth:`coverage_by_period`, so a
+                regularly sampled signal has no gaps. A zero-length step
+                (duplicate timestamp) is never a gap, even with
+                ``min_gap="0s"``.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -113,12 +137,13 @@ class DataGapAnalysisEvents(Base):
                 [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
             )
 
-        threshold = pd.to_timedelta(min_gap)
+        threshold = self._min_gap(min_gap)
         times = self.signal[self.time_column].array
         diffs = times[1:] - times[:-1]
 
-        # A zero step (duplicate timestamp) is never a gap.
-        i = np.flatnonzero((diffs >= threshold) & (diffs > pd.Timedelta(0)))
+        # Strictly longer than min_gap; a zero step (duplicate timestamp) is
+        # never a gap.
+        i = np.flatnonzero((diffs > threshold) & (diffs > pd.Timedelta(0)))
         events = pd.DataFrame(
             {
                 "start": times[i],
@@ -134,16 +159,21 @@ class DataGapAnalysisEvents(Base):
         )
 
     @keyword_only(1)
-    def gap_summary(self, min_gap: str = "5s") -> pd.DataFrame:
+    def gap_summary(self, min_gap: str | pd.Timedelta | None = None) -> pd.DataFrame:
         """Aggregate statistics across all gaps.
 
         Args:
-            min_gap: Minimum gap duration to include (e.g. ``'5s'``).
+            min_gap: Gap threshold, as in :meth:`detect_gaps` (``None``:
+                twice the median sampling interval).
 
         Returns:
             Single-row DataFrame with columns: total_gaps, total_missing_seconds,
             longest_gap_seconds, shortest_gap_seconds, mean_gap_seconds,
-            data_span_seconds, gap_fraction.
+            data_span_seconds, gap_fraction. ``data_span_seconds`` is the
+            time from the first to the last sample, with or without gaps.
+            Without gaps ``total_missing_seconds``, ``longest_gap_seconds``
+            and ``gap_fraction`` are 0 and ``shortest_gap_seconds`` /
+            ``mean_gap_seconds`` are NaN (there is no gap to measure).
         """
         cols = [
             "total_gaps",
@@ -155,21 +185,32 @@ class DataGapAnalysisEvents(Base):
             "gap_fraction",
         ]
         gaps = self.detect_gaps(min_gap=min_gap)
+
+        # Total span from first to last sample (also when there is no gap)
+        span = 0.0
+        if not self.signal.empty and len(self.signal) >= 2:
+            first = self.signal[self.time_column].iloc[0]
+            last = self.signal[self.time_column].iloc[-1]
+            span = float((last - first).total_seconds())
+
         if gaps.empty:
             return pd.DataFrame(
-                [{c: 0 if c != "gap_fraction" else 0.0 for c in cols}],
+                [
+                    {
+                        "total_gaps": 0,
+                        "total_missing_seconds": 0.0,
+                        "longest_gap_seconds": 0.0,
+                        "shortest_gap_seconds": float("nan"),
+                        "mean_gap_seconds": float("nan"),
+                        "data_span_seconds": span,
+                        "gap_fraction": 0.0,
+                    }
+                ],
                 columns=cols,
             )
 
         durations = gaps["gap_duration_seconds"]
         total_missing = float(durations.sum())
-
-        # Total span from first to last sample
-        span = 0.0
-        if not self.signal.empty and len(self.signal) >= 2:
-            first = self.signal[self.time_column].iloc[0]
-            last = self.signal[self.time_column].iloc[-1]
-            span = (last - first).total_seconds()
 
         return pd.DataFrame(
             [
@@ -189,7 +230,7 @@ class DataGapAnalysisEvents(Base):
     @keyword_only(1)
     @renamed_kwargs(freq="window")
     def coverage_by_period(
-        self, window: str = "1h", min_gap: str | None = None
+        self, window: str = "1h", min_gap: str | pd.Timedelta | None = None
     ) -> pd.DataFrame:
         """Data coverage percentage per time window.
 
@@ -199,8 +240,9 @@ class DataGapAnalysisEvents(Base):
 
         Args:
             window: Resample window (e.g. ``'1h'``, ``'1D'``, ``'15min'``).
-            min_gap: Minimum inter-sample interval to count as a gap.
-                Defaults to 2x the median sampling interval (auto-detected).
+            min_gap: Gap threshold, as in :meth:`detect_gaps`: a step
+                strictly longer than it is a gap. Defaults to 2x the median
+                sampling interval (auto-detected).
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -231,15 +273,9 @@ class DataGapAnalysisEvents(Base):
         )
         offset = window_offset(window)
 
-        # Auto-detect a sensible min_gap if not provided. Duplicate timestamps
-        # (zero intervals) are ignored: a zero median made every interval a gap.
-        if min_gap is None:
-            times = self.signal[self.time_column].array
-            diffs = pd.to_timedelta(times[1:] - times[:-1]) if len(times) >= 2 else []
-            positive = pd.Series(diffs)[pd.Series(diffs) > pd.Timedelta(0)]
-            min_gap = str(positive.median() * 2) if len(positive) else "1s"
-
-        # Get gaps for context
+        # Gaps for context; without min_gap, 2x the median positive sampling
+        # interval (duplicate timestamps -- zero intervals -- are ignored: a
+        # zero median made every interval a gap).
         all_gaps = self.detect_gaps(min_gap=min_gap)
 
         counts = sig[self.value_column].resample(window).count()

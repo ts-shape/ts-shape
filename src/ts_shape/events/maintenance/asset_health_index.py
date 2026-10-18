@@ -381,6 +381,14 @@ class AssetHealthIndexEvents(Base):
                 40 for a week reports one critical, not 168. Set ``False`` to
                 emit every window that sits below a threshold.
 
+        ``direction`` says which way the score crossed ``threshold``:
+        ``"below"`` when the band gets worse (``ok`` -> ``warning``,
+        ``warning`` -> ``critical``; also every repeat row of
+        ``only_crossings=False``) and ``"above"`` on a recovery that stays in
+        a band (``critical`` -> ``warning``), with ``threshold`` the
+        ``critical_threshold`` the score rose above. A recovery to ``ok``
+        emits no row.
+
         Returns:
             Point-shape DataFrame: ``systime``, ``uuid``, ``source_uuid``,
             ``asset_id``, ``asset_health_score``, ``severity``, ``threshold``,
@@ -419,6 +427,7 @@ class AssetHealthIndexEvents(Base):
 
         bands = index["asset_health_score"].astype(float).map(_band)
         previous = bands.shift(fill_value="ok")
+        rank = {"ok": 0, "warning": 1, "critical": 2}
 
         rows: list[dict[str, Any]] = []
         for pos, (_, row) in enumerate(index.iterrows()):
@@ -427,6 +436,16 @@ class AssetHealthIndexEvents(Base):
                 continue
             if only_crossings and previous.iloc[pos] == band:
                 continue
+            # A better band than before is a recovery: the score rose above
+            # the critical threshold. Otherwise it fell to (or sits at) the
+            # band's threshold.
+            recovered = rank[previous.iloc[pos]] > rank[band]
+            if recovered:
+                threshold = critical_threshold
+            elif band == "critical":
+                threshold = critical_threshold
+            else:
+                threshold = warning_threshold
             rows.append(
                 {
                     "systime": row["end"],
@@ -435,12 +454,10 @@ class AssetHealthIndexEvents(Base):
                     "asset_id": self.asset_id,
                     "asset_health_score": row["asset_health_score"],
                     "severity": band,
-                    "threshold": (
-                        critical_threshold if band == "critical" else warning_threshold
-                    ),
+                    "threshold": threshold,
                     "dominant_failure_mode": row["dominant_failure_mode"],
                     "confidence_level": row["confidence_level"],
-                    "direction": "below",
+                    "direction": "above" if recovered else "below",
                 }
             )
 

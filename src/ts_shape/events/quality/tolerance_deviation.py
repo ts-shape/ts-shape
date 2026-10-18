@@ -16,7 +16,6 @@ from ts_shape.events.quality.statistical_process_control import (
     _sigma_hat,
 )
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
 from ts_shape.utils.deprecation import (
     REMOVAL,
     caller_stacklevel,
@@ -164,26 +163,37 @@ class ToleranceDeviationEvents(Base):
             self.tolerance_uuid = tolerance_uuid
             self.separate_tolerances = False
 
-    def _apply_tolerance_lag(
-        self, df: pd.DataFrame, tolerance_col: str
-    ) -> pd.DataFrame:
-        """
-        Apply time lag to tolerance values.
+    def _apply_tolerance_lag(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Shift the timestamps of the limit rows by ``tolerance_lag``.
+
+        A limit set at ``t`` takes effect at ``t + tolerance_lag``: until
+        then the previous limit stays in force. Only the limit rows move, so
+        event rows keep the measured times. The frame is re-sorted (stably)
+        by the shifted times, so the forward fill that follows hands each
+        measurement the limit in force at its own time.
 
         Args:
-            df: DataFrame with tolerance values
-            tolerance_col: Name of the tolerance column
+            df: Frame of the actual and limit signals.
 
         Returns:
-            DataFrame with lagged tolerance values
+            The frame with shifted limit times, in time order.
         """
-        if self.tolerance_lag != "0s":
-            lag_timedelta = pd.to_timedelta(self.tolerance_lag)
-            df["systime_shifted"] = df["systime"] + lag_timedelta
-            df = df.sort_values(by="systime_shifted", kind="stable")
-            df["systime"] = df["systime_shifted"]
-            df = df.drop("systime_shifted", axis=1)
-        return df
+        lag = pd.to_timedelta(self.tolerance_lag)
+        if lag == pd.Timedelta(0):
+            return df
+        limits = [
+            u
+            for u in (
+                self.tolerance_uuid,
+                self.upper_tolerance_uuid,
+                self.lower_tolerance_uuid,
+            )
+            if u is not None
+        ]
+        is_limit = df["uuid"].isin(limits)
+        df = df.copy()
+        df["systime"] = df["systime"].where(~is_limit, df["systime"] + lag)
+        return df.sort_values(by="systime", kind="stable")
 
     def _calculate_severity(
         self,
@@ -307,6 +317,20 @@ class ToleranceDeviationEvents(Base):
         ``time_threshold`` form one event, reported as its first and last
         row; an event of a single sample is reported as that one row.
 
+        Every row of a limit signal sets the limit from its time on, whatever
+        its ``is_delta`` flag (a snapshot limit is a valid limit; the column
+        is not needed). With ``tolerance_lag`` a limit set at ``t`` takes
+        effect at ``t + tolerance_lag`` (the previous limit stays in force
+        until then); events keep the measured times.
+
+        ``deviation_abs`` is the distance beyond the violated limit (0
+        inside the band). Severity compares it with the tolerance range
+        ``R`` (``upper - lower``; the magnitude of the single limit when
+        one-sided): ``minor`` when ``deviation_abs <= warning_threshold * R``,
+        ``critical`` when ``deviation_abs > 2 * R``, ``major`` in between.
+        With limits ``[0, 10]`` a value of 11 is ``minor``, 19 is ``major``
+        and 31 is ``critical``.
+
         Returns:
             pd.DataFrame: A DataFrame of processed and grouped event data with enhanced metrics.
             Columns: systime, uuid (the event uuid), source_uuid (the actual
@@ -340,15 +364,15 @@ class ToleranceDeviationEvents(Base):
         # every measurement pick up the next, future tolerance instead).
         df["systime"] = pd.to_datetime(df["systime"])
         df = df.sort_values(by="systime", kind="stable")
+        # A lagged limit takes effect ``tolerance_lag`` after it is set: the
+        # limit rows move before the forward fill; measurements keep their
+        # times, so events are reported at the measured times.
+        df = self._apply_tolerance_lag(df)
 
         if self.separate_tolerances:
             df = self._process_separate_tolerances(df)
         else:
             df = self._process_single_tolerance(df)
-
-        # Apply time lag to tolerance if specified
-        if self.tolerance_lag != "0s":
-            df = self._apply_tolerance_lag(df, "tolerance_value")
 
         # Every event row is about the actual measurement signal.
         df["source_uuid"] = self.actual_uuid
@@ -366,8 +390,10 @@ class ToleranceDeviationEvents(Base):
             Processed DataFrame with events
         """
         # The tolerance setting rows carry the tolerance; every later row
-        # uses the last one set (forward fill).
-        is_setting = df["uuid"].eq(self.tolerance_uuid) & bool_or_false(df["is_delta"])
+        # uses the last one set (forward fill). Every row of the tolerance
+        # signal is a setting, whatever its ``is_delta`` flag: a snapshot
+        # (``is_delta=False``) of a limit is as valid as a change.
+        is_setting = df["uuid"].eq(self.tolerance_uuid)
         df["tolerance_value"] = df[self.tolerance_column].where(is_setting).ffill()
 
         # Store original tolerance for deviation calculations
@@ -463,7 +489,9 @@ class ToleranceDeviationEvents(Base):
             if uuid is None:
                 df[col] = np.nan
                 continue
-            setting = (df["uuid"] == uuid) & df["is_delta"].astype(bool)
+            # Every row of a limit signal sets the limit, whatever its
+            # ``is_delta`` flag (snapshot limits are valid limits).
+            setting = df["uuid"] == uuid
             df[col] = df[self.tolerance_column].where(setting).ffill()
 
         # Remove tolerance setting rows from the dataset
@@ -624,6 +652,11 @@ class ToleranceDeviationEvents(Base):
         are NaN and Cpk/Ppk are the one-sided index (CPU or CPL); the
         missing limit is reported as NaN.
 
+        Without any row of the actual signal the result is the empty frame
+        (with the full schema) and a
+        :class:`~ts_shape.errors.DataQualityWarning`; the deprecated dict
+        form still raises ``ValueError``.
+
         Measurements without spread (constant values, a single measurement or
         only missing values) give NaN indices and a
         :class:`~ts_shape.errors.DataQualityWarning`, as in
@@ -678,6 +711,17 @@ class ToleranceDeviationEvents(Base):
         df = self.dataframe.copy()
         df["systime"] = pd.to_datetime(df["systime"])
         df = df.sort_values(by="systime", kind="stable")
+
+        if as_frame and not df["uuid"].eq(self.actual_uuid).any():
+            # The constructor already warned that the actual signal is absent;
+            # the result is the full-schema empty frame, as for empty input.
+            warnings.warn(
+                "capability_indices: no rows of the actual signal "
+                f"{self.actual_uuid!r}; the result is empty",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
+            return pd.DataFrame(columns=_CAPABILITY_COLUMNS)
 
         # Get tolerance limits: the latest setting is the one currently in force.
         if not self.separate_tolerances:

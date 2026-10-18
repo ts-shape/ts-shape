@@ -20,6 +20,17 @@ _MS_TWINS = {
 _MS_SCALE = dict.fromkeys(_MS_TWINS, 1e-3)
 
 
+def _interval_seconds(times: pd.Index) -> np.ndarray:
+    """Intervals between consecutive ``times`` in float seconds.
+
+    Computed from integer nanoseconds, so sub-millisecond spacing keeps its
+    precision (1.5 ms is 0.0015 s, not 0.001 s; 0.5 ms is not 0).
+    """
+    ns = np.asarray(pd.DatetimeIndex(times).as_unit("ns").asi8, dtype=np.int64)
+    seconds: np.ndarray = np.diff(ns).astype(np.float64) / 1e9
+    return seconds
+
+
 class SamplingResolutionEvents(Base):
     """Quality: Sampling & Resolution Analysis
 
@@ -255,7 +266,7 @@ class SamplingResolutionEvents(Base):
 
             # Estimate sampling rate
             times = group.index
-            dt = np.diff(times.values).astype("timedelta64[ms]").astype(float) / 1000.0
+            dt = _interval_seconds(times)
             dt = dt[dt > 0]
             if len(dt) == 0:
                 continue
@@ -343,7 +354,7 @@ class SamplingResolutionEvents(Base):
                 continue
 
             times = group.index
-            intervals_ms = np.diff(times.values).astype("timedelta64[ms]").astype(float)
+            intervals_ms = _interval_seconds(times) * 1000.0
             intervals_ms = intervals_ms[intervals_ms > 0]
             if len(intervals_ms) < 2:
                 continue
