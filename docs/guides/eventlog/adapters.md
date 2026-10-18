@@ -31,7 +31,7 @@ The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
 | `pack` | required | stored as `ts_shape:pack` and used as prefix of the detector's own columns |
 | `shape` | `"point"` | see above |
 | `produces_objects` | `("asset",)` | object types created automatically from standard columns (`source_uuid` becomes an `asset`); `()` for none |
-| `severity_field` | `None` | numeric column bucketed into `ts_shape:severity` (a boolean column maps `True` to `warn`, `False` to `info`); without it a `severity` column with `info` / `warn` / `critical` is passed through |
+| `severity_field` | `None` | numeric column bucketed into `ts_shape:severity` (a boolean column maps `True` to `warn`, `False` to `info`); without it the detector's `severity_level` column is used (the same `info` / `warn` / `critical` the result frame shows), else a `severity` label mapped through the shared severity table |
 | `value_field` | `None` | column used as `ts_shape:value`; without it the first of `value`, `value_double`, `value_integer` |
 | `drop_fields` | `()` | output columns not copied into the event log |
 | `standard_attrs` | `{}` | mapping to the [standard attribute keys](taxonomy.md#standard-attribute-extension) |
