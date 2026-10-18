@@ -268,7 +268,9 @@ def _ref_degradationdetection_detect_variance_increase(
     )
     window_td = pd.to_timedelta(window)
     first_time = sig[self.time_column].iloc[0]
-    baseline_mask = sig[self.time_column] <= first_time + window_td
+    # Round 14: the baseline is half-open, [first, first + window), and its
+    # samples are not flagged (definition change, not a vectorization).
+    baseline_mask = sig[self.time_column] < first_time + window_td
     baseline_data = sig.loc[baseline_mask, self.value_column]
     if len(baseline_data) < 2:
         return pd.DataFrame(columns=cols)
@@ -280,7 +282,7 @@ def _ref_degradationdetection_detect_variance_increase(
         np.zeros(len(sig)), sig[self.value_column].to_numpy(), lo, hi
     )["var"]
     sig["ratio"] = sig["current_variance"] / baseline_var
-    exceeded = (sig["ratio"] >= threshold_factor).fillna(False)
+    exceeded = (sig["ratio"] >= threshold_factor).fillna(False) & ~baseline_mask
     if not exceeded.any():
         return pd.DataFrame(columns=cols)
     group_id = (exceeded != exceeded.shift()).cumsum()

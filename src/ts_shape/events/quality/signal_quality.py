@@ -319,6 +319,12 @@ class SignalQualityEvents(Base):
     ) -> pd.DataFrame:
         """Percentage of expected samples actually received per window.
 
+        The expected count is the full window's length over
+        ``expected_interval``, so a window the data covers only partly (the
+        first and last one) reads below 100 %: 1 s data from 10:30:00 to
+        11:29:59 reads 50 % in both hourly windows, as
+        ``DataGapAnalysisEvents.coverage_by_period`` does.
+
         Args:
             window: Resample window.
             expected_interval: Expected sampling interval.

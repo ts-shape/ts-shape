@@ -32,4 +32,5 @@ completeness = sq.data_completeness(window="1h", expected_interval="1s")
 ## Notes
 
 - An out-of-range interval ends at the next sample back in range by default, so change-only signals report the real time out of range. `interval_end="last_sample"` ends it at the last flagged sample.
+- `data_completeness` divides the samples received in a window by the samples the full window expects, so a window the data only partly covers (the first and last one) reads below 100 %: 1 s data from 10:30:00 to 11:29:59 reads 50 % in both hourly windows. `DataGapAnalysisEvents.coverage_by_period` reports the same.
 - For historian data that is compressed or batched, raise `tolerance_factor` (e.g. to 3) to avoid false gaps.

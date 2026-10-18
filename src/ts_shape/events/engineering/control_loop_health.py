@@ -250,6 +250,13 @@ class ControlLoopHealthEvents(Base):
     ) -> pd.DataFrame:
         """Detect sustained oscillation in the error signal.
 
+        A zero-crossing is a change of the error's sign; a sample with zero
+        (or NaN) error carries the last non-zero sign, so ``1, 0, -1`` is one
+        crossing and touching zero (``1, 0, 1``) is none. A crossing is
+        timed at the sample where the carried sign changes, and
+        ``estimated_period_seconds`` is twice the mean time between
+        consecutive crossings (0 with fewer than two).
+
         Args:
             window: Analysis window size.
             min_crossings: Minimum zero-crossings to flag oscillation.
@@ -283,14 +290,19 @@ class ControlLoopHealthEvents(Base):
                 continue
 
             error = group["error"].values
-            signs = np.sign(error)
-            crossings = int(np.sum(np.abs(np.diff(signs)) > 0))
+            # A zero (or NaN) error carries the last non-zero sign: 1, 0, -1
+            # is one crossing, 1, 0, 1 none.
+            signs = (
+                pd.Series(np.sign(error)).replace(0.0, np.nan).ffill().bfill()
+            ).to_numpy(dtype=np.float64)
+            # The crossing is the sample where the carried sign changes.
+            cross_idx = np.flatnonzero(np.abs(np.diff(signs)) > 0) + 1
+            crossings = len(cross_idx)
 
             if crossings < min_crossings:
                 continue
 
             # Estimate period from crossing intervals
-            cross_idx = np.where(np.abs(np.diff(signs)) > 0)[0]
             times = group.index
             if len(cross_idx) >= 2:
                 cross_times = times[cross_idx]

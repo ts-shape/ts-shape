@@ -27,6 +27,7 @@ import pandas as pd
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import renamed_kwargs
+from ts_shape.utils.signal_checks import warn_if_values_elsewhere_once
 
 logger = logging.getLogger(__name__)
 
@@ -138,8 +139,14 @@ class AssetHealthIndexEvents(Base):
     # ------------------------------------------------------------------
 
     def _signal_frame(self, uuid: str) -> pd.DataFrame:
-        """Return the sorted ``(time, value)`` frame for one signal."""
+        """Return the sorted ``(time, value)`` frame for one signal.
+
+        Warns (once per signal) when the signal's values are in another
+        ``value_*`` column than ``value_column``, also when other signals
+        still give a result.
+        """
         sel = self.dataframe[self.dataframe[self.uuid_column] == uuid]
+        warn_if_values_elsewhere_once(self, sel, uuid, self.value_column)
         if sel.empty:
             return pd.DataFrame(columns=[self.time_column, self.value_column])
         out = sel[[self.time_column, self.value_column]].copy()

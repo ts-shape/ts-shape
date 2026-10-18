@@ -167,6 +167,12 @@ class DegradationDetectionEvents(Base):
         Compare rolling variance against a baseline (first window) and flag
         intervals where the ratio exceeds threshold_factor.
 
+        The baseline is ``[first sample, first sample + window)``, the same
+        number of samples as each rolling ``(t - window, t]`` window of a
+        regular signal, so a stationary signal has ratio 1. Samples inside
+        the baseline window are not flagged (their rolling windows are the
+        partial warm-up of the baseline).
+
         Args:
             window: Rolling window size.
             threshold_factor: Minimum variance ratio to flag.
@@ -204,7 +210,7 @@ class DegradationDetectionEvents(Base):
 
         # Compute baseline variance from first window
         first_time = sig[self.time_column].iloc[0]
-        baseline_mask = sig[self.time_column] <= first_time + window_td
+        baseline_mask = sig[self.time_column] < first_time + window_td
         baseline_data = sig.loc[baseline_mask, self.value_column]
         if len(baseline_data) < 2:
             return pd.DataFrame(columns=cols)
@@ -220,7 +226,10 @@ class DegradationDetectionEvents(Base):
         )["var"]
         sig["ratio"] = sig["current_variance"] / baseline_var
 
-        exceeded = (sig["ratio"] >= threshold_factor).fillna(False)
+        # Samples inside the baseline window are the baseline: their rolling
+        # windows are partial (a 2-sample warm-up window is no variance
+        # increase), so they are not flagged.
+        exceeded = (sig["ratio"] >= threshold_factor).fillna(False) & ~baseline_mask
         if not exceeded.any():
             return pd.DataFrame(columns=cols)
 
@@ -356,7 +365,9 @@ class DegradationDetectionEvents(Base):
 
         Args:
             window: Rolling window for current metrics.
-            baseline_window: Initial period used to establish baseline behavior.
+            baseline_window: Initial period used to establish baseline
+                behavior: ``[first sample, first sample + baseline_window)``,
+                half-open like the rolling windows.
 
         Returns:
             DataFrame with columns: systime, uuid, source_uuid, is_delta,
@@ -396,7 +407,7 @@ class DegradationDetectionEvents(Base):
 
         # Compute baseline statistics
         first_time = sig[self.time_column].iloc[0]
-        baseline_mask = sig[self.time_column] <= first_time + baseline_td
+        baseline_mask = sig[self.time_column] < first_time + baseline_td
         baseline_data = sig.loc[baseline_mask, self.value_column]
 
         if len(baseline_data) < 2:

@@ -397,10 +397,29 @@ def windows(
     *,
     tz: str | None = None,
 ) -> pd.DataFrame:
-    """Calendar-correct analysis windows covering ``[start, end)``.
+    """Analysis windows covering ``[start, end)``, laid out like ``resample``.
 
-    Window bounds follow the calendar in ``tz``: a ``"1D"`` window on a DST
-    day is 23 h or 25 h long, not 24 h.
+    Daily and longer frequencies (``"1D"``, ``"1W"``, ``"MS"`` ...) follow
+    the calendar in ``tz``: a ``"1D"`` window on a DST day is 23 h or 25 h
+    long, not 24 h, and every window starts at local midnight. Sub-daily
+    frequencies (``"12h"``, ``"8h"``, ``"15min"``) are fixed lengths counted
+    from midnight of the first day, as ``resample`` counts them: after a DST
+    change their wall-clock starts shift by the DST offset (``"12h"`` starts
+    at 13:00+02:00 after the spring change, not at 12:00). For wall-clock
+    windows such as shifts use :func:`shift_windows`.
+
+    Example:
+        >>> from ts_shape.signals.primitives import windows
+        >>> w = windows("2024-03-30", "2024-04-01", "12h", tz="Europe/Berlin")
+        >>> for row in w.itertuples():
+        ...     print(row.start, row.end, row.duration_seconds)
+        2024-03-30 00:00:00+01:00 2024-03-30 12:00:00+01:00 43200.0
+        2024-03-30 12:00:00+01:00 2024-03-31 00:00:00+01:00 43200.0
+        2024-03-31 00:00:00+01:00 2024-03-31 13:00:00+02:00 43200.0
+        2024-03-31 13:00:00+02:00 2024-04-01 01:00:00+02:00 43200.0
+        >>> list(windows("2024-03-30", "2024-04-01", "1D", tz="Europe/Berlin")
+        ...      ["duration_seconds"])
+        [86400.0, 82800.0]
 
     Args:
         start: The first window covers this time.

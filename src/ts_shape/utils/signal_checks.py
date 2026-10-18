@@ -62,6 +62,11 @@ def _mark_checked(wrapper: Callable[..., Any]) -> None:
 
 
 def _signal_values(name: str, value: Any) -> list[str]:
+    """Signal uuids an argument names (``*_uuid(s)``; ``signals=`` mapping keys)."""
+    if name == "signals" and isinstance(value, Mapping):
+        # ``signals={uuid: spec}`` (AssetHealthIndexEvents,
+        # StartupDetectionEvents.detect_startup_multi_signal).
+        return [str(k) for k in value]
     if name in _NOT_SIGNALS or not (name.endswith("_uuid") or name.endswith("_uuids")):
         return []
     if isinstance(value, str):
@@ -269,6 +274,25 @@ def _value_state(obj: Any) -> tuple[set[tuple[str, str]], list[tuple[str, str]]]
         except (AttributeError, TypeError):
             pass
     return state
+
+
+def warn_if_values_elsewhere_once(
+    obj: Any, rows: pd.DataFrame, signal_uuid: str, value_column: str
+) -> bool:
+    """:func:`warn_if_values_elsewhere` at most once per ``(uuid, column)`` on ``obj``.
+
+    For a detector that selects a signal's rows itself (several signals per
+    instance): it warns about a misconfigured signal even when the result is
+    not empty, and the pair counts as checked, so the call wrapper does not
+    warn about it again.
+    """
+    done, _ = _value_state(obj)
+    if (signal_uuid, value_column) in done:
+        return False
+    done.add((signal_uuid, value_column))
+    return warn_if_values_elsewhere(
+        rows, signal_uuid, value_column, where=type(obj).__name__
+    )
 
 
 def _selected_rows(obj: Any, frame: pd.DataFrame, column: str, uuid: str) -> Any:
