@@ -49,8 +49,8 @@ def test_state_quality_metrics_follows_spec_like_detect_run_idle():
     ev = MachineStateEvents(df, "run", specs=specs)
     metrics = ev.state_quality_metrics().iloc[0]
     # Same spec-derived intervals as detect_run_idle(): run 600 s, idle 3000 s.
-    assert metrics["avg_idle_duration"] == 1500.0
-    assert metrics["run_idle_ratio"] == 600.0 / 3000.0
+    assert metrics["avg_idle_duration_seconds"] == 1500.0
+    assert metrics["run_idle_factor"] == 600.0 / 3000.0
 
 
 def test_state_quality_metrics_run_idle_ratio_nan_without_idle_time():
@@ -59,9 +59,9 @@ def test_state_quality_metrics_run_idle_ratio_nan_without_idle_time():
     t = pd.date_range("2024-01-01", periods=4, freq="1min")
     df = pd.DataFrame({"systime": t, "uuid": "run", "value_bool": [True] * 4})
     metrics = MachineStateEvents(df, "run").state_quality_metrics().iloc[0]
-    assert math.isnan(metrics["run_idle_ratio"])
+    assert math.isnan(metrics["run_idle_factor"])
     empty = MachineStateEvents(df.iloc[:0], "run").state_quality_metrics().iloc[0]
-    assert math.isnan(empty["run_idle_ratio"])
+    assert math.isnan(empty["run_idle_factor"])
 
 
 def test_downtime_by_shift_takes_max_gap_from_spec():

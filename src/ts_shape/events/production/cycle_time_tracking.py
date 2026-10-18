@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
@@ -35,10 +36,10 @@ class CycleTimeEvents(Base):
         >>> df = pd.concat([ts_shape.make_id_signal("part", ["A", "B"], hold=30),
         ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
         >>> stats = ts_shape.CycleTimeEvents(df).cycle_time_statistics("part", "cycle")
-        >>> stats[["part_number", "count", "avg_seconds"]].round(1)
-          part_number  count  avg_seconds
-        0           A      7        111.4
-        1           B      5        198.0
+        >>> stats[["part_number", "cycle_count", "avg_seconds"]].round(1)
+          part_number  cycle_count  avg_seconds
+        0           A            7        111.4
+        1           B            5        198.0
     """
 
     def __init__(
@@ -214,6 +215,7 @@ class CycleTimeEvents(Base):
         result_df.insert(2, "source_uuid", cycle_trigger_uuid)
         return result_df
 
+    @twin_columns({"count": "cycle_count"})
     def cycle_time_statistics(
         self,
         part_id_uuid: str,
@@ -238,22 +240,27 @@ class CycleTimeEvents(Base):
         Returns:
             DataFrame with statistics per part:
             - part_number: Part number/ID
-            - count: Number of cycles
+            - count: Number of cycles (deprecated twin of ``cycle_count``)
+            - cycle_count: Number of cycles
             - min_seconds: Minimum cycle time
             - avg_seconds: Average cycle time
             - max_seconds: Maximum cycle time
             - std_seconds: Standard deviation
             - median_seconds: Median cycle time (robust target)
 
+            Canonical twin columns: ``cycle_count`` (after ``count``); it
+            holds the same values as the deprecated column right before it,
+            which is removed in the next major release.
+
         Example:
             >>> import pandas as pd, ts_shape
             >>> df = pd.concat([ts_shape.make_id_signal("part", ["A", "B"], hold=30),
             ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
             >>> stats = ts_shape.CycleTimeEvents(df).cycle_time_statistics("part", "cycle")
-            >>> stats[["part_number", "count", "median_seconds", "max_seconds"]]
-              part_number  count  median_seconds  max_seconds
-            0           A      7           120.0        180.0
-            1           B      5           150.0        420.0
+            >>> stats[["part_number", "cycle_count", "median_seconds", "max_seconds"]]
+              part_number  cycle_count  median_seconds  max_seconds
+            0           A            7           120.0        180.0
+            1           B            5           150.0        420.0
         """
         cycle_data = self.cycle_time_by_part(
             part_id_uuid,
@@ -375,6 +382,7 @@ class CycleTimeEvents(Base):
         # Return only slow cycles
         return cycle_data[cycle_data["is_slow"]].reset_index(drop=True)
 
+    @twin_columns({"moving_avg": "moving_avg_seconds"})
     def cycle_time_trend(
         self,
         part_id_uuid: str,
@@ -404,7 +412,8 @@ class CycleTimeEvents(Base):
             DataFrame with trend data:
             - systime: Cycle completion time
             - cycle_time_seconds: Actual cycle time
-            - moving_avg: Moving average cycle time
+            - moving_avg: Moving average cycle time (deprecated twin)
+            - moving_avg_seconds: Moving average cycle time in seconds
             - trend: 'improving', 'stable', or 'degrading'
 
         Example:
@@ -413,11 +422,11 @@ class CycleTimeEvents(Base):
             ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
             >>> trend = ts_shape.CycleTimeEvents(df).cycle_time_trend(
             ...     "part", "cycle", "A", window_size=3)
-            >>> trend[["cycle_time_seconds", "moving_avg", "trend"]].tail(3)
-               cycle_time_seconds  moving_avg      trend
-            4                60.0       120.0  improving
-            5               120.0       120.0     stable
-            6               120.0       100.0  improving
+            >>> trend[["cycle_time_seconds", "moving_avg_seconds", "trend"]].tail(3)
+               cycle_time_seconds  moving_avg_seconds      trend
+            4                60.0               120.0  improving
+            5               120.0               120.0     stable
+            6               120.0               100.0  improving
         """
         cycle_data = self.cycle_time_by_part(
             part_id_uuid,
@@ -459,6 +468,13 @@ class CycleTimeEvents(Base):
 
         return part_cycles[["systime", "cycle_time_seconds", "moving_avg", "trend"]]
 
+    @twin_columns(
+        {
+            "avg_cycle_time": "avg_cycle_time_seconds",
+            "min_cycle_time": "min_cycle_time_seconds",
+            "max_cycle_time": "max_cycle_time_seconds",
+        }
+    )
     def hourly_cycle_time_summary(
         self,
         part_id_uuid: str,
@@ -485,19 +501,25 @@ class CycleTimeEvents(Base):
             - hour: Hour timestamp
             - part_number: Part number/ID
             - cycles_completed: Number of cycles
-            - avg_cycle_time: Average cycle time
-            - min_cycle_time: Fastest cycle
-            - max_cycle_time: Slowest cycle
+            - avg_cycle_time / avg_cycle_time_seconds: Average cycle time
+            - min_cycle_time / min_cycle_time_seconds: Fastest cycle
+            - max_cycle_time / max_cycle_time_seconds: Slowest cycle
+
+            All cycle times are in seconds. Canonical twin columns:
+            ``avg_cycle_time_seconds``, ``min_cycle_time_seconds``,
+            ``max_cycle_time_seconds``, each right after its deprecated
+            unitless column (same values), which is removed in the next major
+            release.
 
         Example:
             >>> import pandas as pd, ts_shape
             >>> df = pd.concat([ts_shape.make_id_signal("part", ["A", "B"], hold=30),
             ...     ts_shape.make_timeseries(["cycle"], n_points=60, value_column="value_bool")])
             >>> hourly = ts_shape.CycleTimeEvents(df).hourly_cycle_time_summary("part", "cycle")
-            >>> hourly[["part_number", "cycles_completed", "avg_cycle_time"]]
-              part_number  cycles_completed  avg_cycle_time
-            0           A                 7      111.428571
-            1           B                 5      198.000000
+            >>> hourly[["part_number", "cycles_completed", "avg_cycle_time_seconds"]]
+              part_number  cycles_completed  avg_cycle_time_seconds
+            0           A                 7              111.428571
+            1           B                 5              198.000000
         """
         cycle_data = self.cycle_time_by_part(
             part_id_uuid,

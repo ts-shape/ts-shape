@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._output import empty_event_df
+from ts_shape.events._output import empty_event_df, twin_columns
 from ts_shape.events._windows import floor_local, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import bool_or_false
@@ -199,6 +199,7 @@ class DutyCycleEvents(Base):
         duty_cycle_per_window = deprecated_method("duty_cycle_by_window")
 
     @keyword_only(1)
+    @twin_columns({"on_time": "on_time_seconds", "off_time": "off_time_seconds"})
     def duty_cycle_by_window(
         self, window: str = "1h", *, time_weighted: bool = True
     ) -> pd.DataFrame:
@@ -223,8 +224,14 @@ class DutyCycleEvents(Base):
 
         Returns:
             DataFrame with columns: start, end (start + window),
-            duration_seconds, uuid, source_uuid, on_time, off_time,
-            duty_cycle_pct.
+            duration_seconds, uuid, source_uuid, on_time, on_time_seconds,
+            off_time, off_time_seconds, duty_cycle_pct. On and off time are in
+            seconds.
+
+            Canonical twin columns: ``on_time_seconds`` (after ``on_time``),
+            ``off_time_seconds`` (after ``off_time``); each holds the same
+            values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         cols = ["start", "on_time", "off_time", "duty_cycle_pct"]
         if self.series.empty:
@@ -373,6 +380,12 @@ class DutyCycleEvents(Base):
         return self._with_window(result[cols], window)
 
     @keyword_only(1)
+    @twin_columns(
+        {
+            "avg_on_duration": "avg_on_duration_seconds",
+            "avg_off_duration": "avg_off_duration_seconds",
+        }
+    )
     def excessive_cycling(
         self, max_transitions: int = 20, window: str = "1h"
     ) -> pd.DataFrame:
@@ -387,7 +400,14 @@ class DutyCycleEvents(Base):
         Returns:
             DataFrame with columns: start, end (start + window),
             duration_seconds, uuid, source_uuid, transition_count,
-            avg_on_duration, avg_off_duration.
+            avg_on_duration, avg_on_duration_seconds, avg_off_duration,
+            avg_off_duration_seconds. The averages are in seconds.
+
+            Canonical twin columns: ``avg_on_duration_seconds`` (after
+            ``avg_on_duration``), ``avg_off_duration_seconds`` (after
+            ``avg_off_duration``); each holds the same values as the
+            deprecated column right before it, which is removed in the next
+            major release.
         """
         cols = [
             "start",

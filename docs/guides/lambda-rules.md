@@ -96,12 +96,18 @@ from ts_shape.eventlog import concat, run_backtest
 frame = high_torque.evaluate(df)     # the detector output, before conversion
 log = concat(high_torque.to_event_log(df), bearing_hot.to_event_log(df))
 
-result = run_backtest(high_torque, df)
+result = run_backtest(high_torque, df)   # a BacktestResult
 result.hit_count      # 4
 result.by_severity    # {'warn': 2, 'critical': 2}
 result.by_asset       # {'asset-A': 3, 'asset-B': 1}
 result.event_log      # the full EventLog
 ```
+
+`run_backtest` returns a `BacktestResult` (`ts_shape.eventlog`): the
+`detector` name, `hit_count`, `by_severity` (hits per `ts_shape:severity`,
+`"unset"` for none), `by_asset` (hits per `asset` object) and the full
+`event_log`. It counts hits only; there is no label matching or
+precision/recall.
 
 Rules live in the current process only.
 `unregister_lambda_rule("LambdaToolWear", "high_torque")` removes one again,

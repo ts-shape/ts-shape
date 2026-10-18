@@ -5,6 +5,7 @@ import pandas as pd
 
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ class PatternRecognition(Base):
     and Dynamic Time Warping approaches.
 
     Every method reads one signal: rows are put in time order (when the frame
-    has ``time_column``), and a frame with several uuids needs ``uuid=`` to
+    has ``time_column``), and a frame with several uuids needs ``signal_uuid=`` to
     pick one. Positions in the results (``index_a``, ``start_index``, ...)
     count samples of that time-ordered signal. A window that contains a
     missing value is skipped.
@@ -40,29 +41,29 @@ class PatternRecognition(Base):
         dataframe: pd.DataFrame,
         value_column: str,
         time_column: str,
-        uuid: str | None,
+        signal_uuid: str | None,
         where: str,
     ) -> tuple[np.ndarray, pd.Series | None]:
         """Values (float64) and times of the selected signal, in time order.
 
         Raises:
             ColumnNotFoundError: If ``value_column`` is missing.
-            ValueError: If the frame holds several uuids and ``uuid`` is not
-                given, or ``uuid`` is not in the frame.
+            ValueError: If the frame holds several uuids and ``signal_uuid`` is not
+                given, or ``signal_uuid`` is not in the frame.
         """
         where = f"PatternRecognition.{where}"
         require_columns(dataframe, [value_column], where=where)
         df = dataframe
         if "uuid" in df.columns and not df.empty:
-            if uuid is not None:
-                cls._validate_uuid(df, uuid)
-                df = df[df["uuid"] == uuid]
+            if signal_uuid is not None:
+                cls._validate_uuid(df, signal_uuid)
+                df = df[df["uuid"] == signal_uuid]
             else:
                 present = sorted(str(u) for u in df["uuid"].dropna().unique())
                 if len(present) > 1:
                     raise ValueError(
                         f"{where}: the frame holds {len(present)} signals; pass "
-                        f"uuid=... to pick one. Available UUIDs: {present}"
+                        f"signal_uuid=... to pick one. Available UUIDs: {present}"
                     )
         times: pd.Series | None = None
         if time_column in df.columns:
@@ -298,6 +299,7 @@ class PatternRecognition(Base):
     # ------------------------------------------------------------------
 
     @classmethod
+    @renamed_kwargs(uuid="signal_uuid")
     def discover_motifs(
         cls,
         dataframe: pd.DataFrame,
@@ -307,7 +309,7 @@ class PatternRecognition(Base):
         exclusion_zone: int | None = None,
         time_column: str = "systime",
         *,
-        uuid: str | None = None,
+        signal_uuid: str | None = None,
     ) -> pd.DataFrame:
         """Find the top-k recurring subsequence patterns (motifs).
 
@@ -322,7 +324,8 @@ class PatternRecognition(Base):
                 a better-ranked pair, so later motifs are not the first one
                 shifted by a sample or two.
             time_column: Column containing timestamps.
-            uuid: Signal to analyze when the frame holds several uuids.
+            signal_uuid: Signal to analyze when the frame holds several uuids
+                (formerly ``uuid``).
 
         Returns:
             DataFrame with motif_rank, index_a, index_b, distance, time_a, time_b
@@ -332,11 +335,11 @@ class PatternRecognition(Base):
 
         Raises:
             ColumnNotFoundError: If ``value_column`` is missing.
-            ValueError: If the frame holds several uuids and ``uuid`` is not
+            ValueError: If the frame holds several uuids and ``signal_uuid`` is not
                 given.
         """
         series, times = cls._signal(
-            dataframe, value_column, time_column, uuid, "discover_motifs"
+            dataframe, value_column, time_column, signal_uuid, "discover_motifs"
         )
         if exclusion_zone is None:
             exclusion_zone = window_size // 2
@@ -389,6 +392,7 @@ class PatternRecognition(Base):
         )
 
     @classmethod
+    @renamed_kwargs(uuid="signal_uuid")
     def discover_discords(
         cls,
         dataframe: pd.DataFrame,
@@ -398,7 +402,7 @@ class PatternRecognition(Base):
         exclusion_zone: int | None = None,
         time_column: str = "systime",
         *,
-        uuid: str | None = None,
+        signal_uuid: str | None = None,
     ) -> pd.DataFrame:
         """Find the top-k anomalous subsequences (discords).
 
@@ -409,7 +413,8 @@ class PatternRecognition(Base):
             top_k: Number of discords to return.
             exclusion_zone: Indices to exclude around matches. Defaults to window_size // 2.
             time_column: Column containing timestamps.
-            uuid: Signal to analyze when the frame holds several uuids.
+            signal_uuid: Signal to analyze when the frame holds several uuids
+                (formerly ``uuid``).
 
         Returns:
             DataFrame with discord_rank, start_index, distance, start_time (the
@@ -419,11 +424,11 @@ class PatternRecognition(Base):
 
         Raises:
             ColumnNotFoundError: If ``value_column`` is missing.
-            ValueError: If the frame holds several uuids and ``uuid`` is not
+            ValueError: If the frame holds several uuids and ``signal_uuid`` is not
                 given.
         """
         series, times = cls._signal(
-            dataframe, value_column, time_column, uuid, "discover_discords"
+            dataframe, value_column, time_column, signal_uuid, "discover_discords"
         )
         if exclusion_zone is None:
             exclusion_zone = window_size // 2
@@ -627,6 +632,7 @@ class PatternRecognition(Base):
         return idx[rank], dist[rank]
 
     @classmethod
+    @renamed_kwargs(uuid="signal_uuid")
     def similarity_search(
         cls,
         dataframe: pd.DataFrame,
@@ -636,7 +642,7 @@ class PatternRecognition(Base):
         normalize: bool = True,
         time_column: str = "systime",
         *,
-        uuid: str | None = None,
+        signal_uuid: str | None = None,
     ) -> pd.DataFrame:
         """Find the top-k most similar subsequences to a query using DTW.
 
@@ -647,7 +653,8 @@ class PatternRecognition(Base):
             top_k: Number of matches to return.
             normalize: Whether to z-normalize before comparison.
             time_column: Column containing timestamps.
-            uuid: Signal to analyze when the frame holds several uuids.
+            signal_uuid: Signal to analyze when the frame holds several uuids
+                (formerly ``uuid``).
 
         Returns:
             DataFrame with rank, start_index, dtw_distance, start_time (the
@@ -656,11 +663,11 @@ class PatternRecognition(Base):
 
         Raises:
             ColumnNotFoundError: If ``value_column`` is missing.
-            ValueError: If the frame holds several uuids and ``uuid`` is not
+            ValueError: If the frame holds several uuids and ``signal_uuid`` is not
                 given, or ``query`` is empty or contains NaN.
         """
         series, times = cls._signal(
-            dataframe, value_column, time_column, uuid, "similarity_search"
+            dataframe, value_column, time_column, signal_uuid, "similarity_search"
         )
         q = cls._query(query, "query")
         ranked, distances = cls._dtw_top_k(series, q, normalize, top_k)
@@ -684,6 +691,7 @@ class PatternRecognition(Base):
         )
 
     @classmethod
+    @renamed_kwargs(uuid="signal_uuid")
     def template_match(
         cls,
         dataframe: pd.DataFrame,
@@ -693,7 +701,7 @@ class PatternRecognition(Base):
         normalize: bool = True,
         time_column: str = "systime",
         *,
-        uuid: str | None = None,
+        signal_uuid: str | None = None,
     ) -> pd.DataFrame:
         """Find all occurrences of a template pattern in the time series.
 
@@ -707,7 +715,8 @@ class PatternRecognition(Base):
                 ``False`` the distance is the plain Euclidean distance, so the
                 level and scale of the template matter.
             time_column: Column containing timestamps.
-            uuid: Signal to analyze when the frame holds several uuids.
+            signal_uuid: Signal to analyze when the frame holds several uuids
+                (formerly ``uuid``).
 
         Returns:
             DataFrame with start_index, distance, start_time, end_time (the
@@ -716,11 +725,11 @@ class PatternRecognition(Base):
 
         Raises:
             ColumnNotFoundError: If ``value_column`` is missing.
-            ValueError: If the frame holds several uuids and ``uuid`` is not
+            ValueError: If the frame holds several uuids and ``signal_uuid`` is not
                 given, or ``template`` is empty or contains NaN.
         """
         series, times = cls._signal(
-            dataframe, value_column, time_column, uuid, "template_match"
+            dataframe, value_column, time_column, signal_uuid, "template_match"
         )
         t = cls._query(template, "template")
         m = len(t)
@@ -756,6 +765,7 @@ class PatternRecognition(Base):
         )
 
     @classmethod
+    @renamed_kwargs(uuid="signal_uuid")
     def compute_distance_profile(
         cls,
         dataframe: pd.DataFrame,
@@ -765,7 +775,7 @@ class PatternRecognition(Base):
         normalize: bool = True,
         *,
         time_column: str = "systime",
-        uuid: str | None = None,
+        signal_uuid: str | None = None,
     ) -> np.ndarray:
         """Compute distance from query to every subsequence of same length.
 
@@ -778,7 +788,8 @@ class PatternRecognition(Base):
                 distance is the plain distance of the raw values.
             time_column: Rows are put in the order of this column (when the
                 frame has it).
-            uuid: Signal to analyze when the frame holds several uuids.
+            signal_uuid: Signal to analyze when the frame holds several uuids
+                (formerly ``uuid``).
 
         Returns:
             1D numpy array of distances, one per window start; NaN for a
@@ -788,12 +799,16 @@ class PatternRecognition(Base):
         Raises:
             ColumnNotFoundError: If ``value_column`` is missing.
             ValueError: For an unknown ``metric``, several uuids without
-                ``uuid``, or a query that is empty or contains NaN.
+                ``signal_uuid``, or a query that is empty or contains NaN.
         """
         if metric not in ("euclidean", "dtw"):
             raise ValueError(f"Unknown metric: {metric}. Use 'euclidean' or 'dtw'.")
         series, _ = cls._signal(
-            dataframe, value_column, time_column, uuid, "compute_distance_profile"
+            dataframe,
+            value_column,
+            time_column,
+            signal_uuid,
+            "compute_distance_profile",
         )
         q = cls._query(query, "query")
 

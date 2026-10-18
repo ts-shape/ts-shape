@@ -421,7 +421,7 @@ def demo_lead_time_analysis() -> None:
         print(f"  min   = {stats['min_hours'].iloc[0]:.2f} h")
         print(f"  max   = {stats['max_hours'].iloc[0]:.2f} h")
         print(f"  p95   = {stats['p95_hours'].iloc[0]:.2f} h")
-        print(f"  count = {stats['count'].iloc[0]}")
+        print(f"  count = {stats['order_count'].iloc[0]}")
 
     # 2c. Detect anomalies with default threshold (2.0)
     subsection("detect_lead_time_anomalies(threshold_factor=2.0)")

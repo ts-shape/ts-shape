@@ -1,10 +1,12 @@
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, renamed_kwargs
 from ts_shape.utils.runs import true_runs
 
 logger = logging.getLogger(__name__)
@@ -29,27 +31,37 @@ class ChangeoverEvents(Base):
         event_uuid: str = "prod:changeover",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the changeover detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column
 
+    @renamed_kwargs(min_hold="min_duration")
     def detect_changeover(
         self,
         product_uuid: str,
         *,
         value_column: str = "value_string",
-        min_hold: str = "0s",
+        min_duration: str = "0s",
         include_initial: bool = True,
     ) -> pd.DataFrame:
         """Emit point events when the product/recipe changes value.
 
-        Uses a hold check: the new product must persist for at least min_hold
-        until the next change.
+        Uses a hold check: the new product must persist for at least
+        ``min_duration`` until the next change.
 
         Args:
             product_uuid: UUID of the product/recipe signal.
             value_column: Column containing the product value.
-            min_hold: Minimum time the new product must persist to count.
+            min_duration: Minimum time the new product must persist to count
+                (formerly ``min_hold``).
             include_initial: When True (default) the first reading is emitted
                 as a changeover event, marking the product active at the start
                 of the data. A changeover strictly requires a *prior, different*
@@ -74,7 +86,7 @@ class ChangeoverEvents(Base):
             # not a changeover.
             changed.iloc[0] = False
         change_times = p.loc[changed, self.time_column]
-        min_td = pd.to_timedelta(min_hold)
+        min_td = pd.to_timedelta(min_duration)
         next_change = change_times.shift(-1)
         ok = (next_change - change_times >= min_td) | next_change.isna()
         change_times = change_times[ok]
@@ -114,9 +126,10 @@ class ChangeoverEvents(Base):
 
                 Any other value, or a stable band that is never reached, uses
                 ``fallback``.
-            config: Method settings. Keys: ``'min_hold'`` (minimum hold of a
-                new product, passed to :meth:`detect_changeover`, default
-                ``'0s'``), ``'duration'`` (for ``fixed_window``), and for
+            config: Method settings. Keys: ``'min_duration'`` (minimum hold
+                of a new product, passed to :meth:`detect_changeover`, default
+                ``'0s'``; the former key ``'min_hold'`` still works and warns),
+                ``'duration'`` (for ``fixed_window``), and for
                 ``stable_band``::
 
                     {
@@ -145,10 +158,24 @@ class ChangeoverEvents(Base):
         config = config or {}
         fallback = fallback or {"default_duration": "10min", "completed": False}
 
+        min_duration = config.get("min_duration")
+        if "min_hold" in config:
+            if min_duration is not None:
+                raise TypeError(
+                    "changeover_window(): config has both 'min_hold' (deprecated) "
+                    "and 'min_duration'"
+                )
+            warnings.warn(
+                "changeover_window(): config key 'min_hold' is deprecated, use "
+                f"'min_duration'; the old name will be removed in {REMOVAL}",
+                DeprecationWarning,
+                stacklevel=caller_stacklevel(),
+            )
+            min_duration = config["min_hold"]
         changes = self.detect_changeover(
             product_uuid,
             value_column=value_column,
-            min_hold=config.get("min_hold", "0s"),
+            min_duration="0s" if min_duration is None else min_duration,
         )
         if start_time is not None:
             changes = changes[changes["systime"] >= pd.to_datetime(start_time)]

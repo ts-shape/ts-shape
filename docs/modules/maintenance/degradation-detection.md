@@ -26,7 +26,7 @@ print(health[["systime", "health_score"]].tail())
 | `detect_trend_degradation(window='1h', min_slope=0.0, direction='decreasing')` | intervals where the rolling regression slope exceeds `min_slope`: `avg_slope`, `total_change`, `duration_seconds` |
 | `detect_variance_increase(window='1h', threshold_factor=2.0)` | intervals where rolling variance / baseline variance exceeds `threshold_factor`: `baseline_variance`, `current_variance`, `ratio` |
 | `detect_level_shift(min_shift, hold='5min')` | point events: `systime`, `shift_magnitude`, `prev_mean`, `new_mean` |
-| `health_score(window='1h', baseline_window='24h')` | per sample: `health_score`, `mean_drift_pct`, `variance_ratio`, `trend_slope` |
+| `health_score(window='1h', baseline_window='24h')` | per sample: `health_score`, `mean_drift_pct`, `variance_factor`, `trend_slope` |
 
 ## Notes
 

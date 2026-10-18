@@ -28,7 +28,7 @@ matrix = bt.batch_transition_matrix(layout="wide")
 | Method | Returns |
 |---|---|
 | `detect_batches()` | one row per batch: `batch_id`, `start` (first sample), `end` (last sample), `duration_seconds`, `sample_count` |
-| `batch_duration_statistics()` | per batch ID: `count`, `min_`/`avg_`/`max_`/`total_duration_seconds` |
+| `batch_duration_statistics()` | per batch ID: `batch_count`, `min_`/`avg_`/`max_`/`total_duration_seconds` |
 | `batch_yield(counter_uuid, handle_resets=True)` | per batch: `batch_id`, `start`, `end`, `duration_seconds`, `quantity` (+ `resets`) |
 | `batch_transition_matrix(layout='long')` | `from_state`, `to_state`, `transition_count`; `layout='wide'` gives the from/to pivot table with a `total` column |
 

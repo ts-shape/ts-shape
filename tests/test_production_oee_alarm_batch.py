@@ -449,10 +449,10 @@ class TestBatchTrackingEvents:
 
         assert not result.empty
         assert "batch_id" in result.columns
-        assert "count" in result.columns
+        assert "batch_count" in result.columns
         # BATCH_A appears twice
         batch_a = result[result["batch_id"] == "BATCH_A"]
-        assert batch_a["count"].iloc[0] == 2
+        assert batch_a["batch_count"].iloc[0] == 2
 
     def test_batch_yield(self, batch_data):
         tracker = BatchTrackingEvents(batch_data, batch_uuid="batch_signal")

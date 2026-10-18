@@ -24,7 +24,7 @@ torque = ts_shape.make_timeseries(["press-01:torque"], n_points=600, freq="1min"
 torque["batch_id"] = ["B-1"] * 300 + ["B-2"] * 300
 
 states = ts_shape.MachineStateEvents(running, run_state_uuid="press-01:running").detect_run_idle(min_duration="5min")
-outliers = ts_shape.OutlierDetectionEvents(torque, value_column="value_double").detect_outliers_zscore(threshold=4.0)
+outliers = ts_shape.OutlierDetectionEvents(torque, value_column="value_double").detect_outliers_zscore(n_sigma=4.0)
 
 state_log = to_event_log(states, detector="MachineStateEvents.detect_run_idle")
 outlier_log = to_event_log(

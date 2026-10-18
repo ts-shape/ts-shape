@@ -41,10 +41,11 @@ def test_count_parts_naive_under_reports(reset_counter_data):
         "source_uuid",
         "is_delta",
         "count",
+        "part_count",
     ]
     assert "resets" not in result.columns
     # window-over-window diff loses the first window and the reset drop
-    assert result["count"].sum() == 200
+    assert result["part_count"].sum() == 200
 
 
 def test_count_parts_handles_resets(reset_counter_data):
@@ -52,8 +53,8 @@ def test_count_parts_handles_resets(reset_counter_data):
     result = lt.count_parts("line_counter", window="5min", handle_resets=True)
     assert "resets" in result.columns
     # per-reading increments recover the true production in both windows
-    assert result["count"].sum() == 800
-    assert result["count"].tolist() == [400, 400]
+    assert result["part_count"].sum() == 800
+    assert result["part_count"].tolist() == [400, 400]
     assert result["resets"].sum() == 1
 
 

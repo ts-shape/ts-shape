@@ -4,7 +4,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._output import empty_event_df, finalize_interval_df
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_interval_df,
+    twin_columns,
+)
 from ts_shape.events._windows import window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
@@ -34,6 +38,16 @@ class ProcessWindowEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the process window analyzer.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the signal to analyze.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
@@ -48,6 +62,7 @@ class ProcessWindowEvents(Base):
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
     @keyword_only(1)
+    @twin_columns({"count": "sample_count"})
     def windowed_statistics(self, window: str = "1h") -> pd.DataFrame:
         """Per-window descriptive statistics.
 
@@ -56,10 +71,14 @@ class ProcessWindowEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
-            source_uuid, count, mean, std, min, max, median, p25, p75, range.
-            ``end`` is ``start`` + ``window``. ``std`` is the sample standard
-            deviation (``ddof=1``), so it is NaN for a window with a single
-            value.
+            source_uuid, count, sample_count, mean, std, min, max, median,
+            p25, p75, range. ``end`` is ``start`` + ``window``. ``std`` is the
+            sample standard deviation (``ddof=1``), so it is NaN for a window
+            with a single value.
+
+            Canonical twin columns: ``sample_count`` (after ``count``); it holds the same
+            values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         cols = [
             "start",
@@ -178,6 +197,7 @@ class ProcessWindowEvents(Base):
         return self._intervals(events, cols)
 
     @keyword_only(1)
+    @twin_columns({"variance_ratio": "variance_factor"})
     def detect_variance_change(
         self,
         window: str = "1h",
@@ -188,7 +208,7 @@ class ProcessWindowEvents(Base):
         A change is detected when (current_std / prev_std) > ratio_threshold
         or < (1 / ratio_threshold). Window pairs where either std is NaN (a
         single-value window) are skipped. A change from a constant window
-        (``prev_std == 0``) to a varying one is flagged with ``variance_ratio``
+        (``prev_std == 0``) to a varying one is flagged with ``variance_factor``
         NaN: the ratio is undefined, never ``inf``.
 
         Args:
@@ -199,9 +219,14 @@ class ProcessWindowEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
-            source_uuid, is_delta, prev_std, current_std, variance_ratio.
-            ``start`` is the previous window's start, ``end`` the current
-            window's start.
+            source_uuid, is_delta, prev_std, current_std, variance_ratio,
+            variance_factor (``current_std / prev_std``). ``start`` is the
+            previous window's start, ``end`` the current window's start.
+
+            Canonical twin columns: ``variance_factor`` (after
+            ``variance_ratio``, which is not a 0-1 fraction); it holds the
+            same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         cols = [
             "start",

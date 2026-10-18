@@ -48,6 +48,16 @@ class MultiSensorValidationEvents(Base):
         event_uuid: str = "quality:multi_sensor",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the multi-sensor validator.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuids: UUIDs of the redundant sensors (at least two).
+            value_column: Column holding the signal values.
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         if len(signal_uuids) < 2:
             raise ValueError("At least 2 sensor UUIDs are required")

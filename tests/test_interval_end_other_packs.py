@@ -55,9 +55,9 @@ def test_time_above_threshold_uses_real_time():
     ev = ThresholdMonitoringEvents(_sig(ALARM), "sig")
     # Default: real time above the threshold (each value held to the next).
     out = ev.time_above_threshold(90, window="1h")
-    assert out["time_above"].iloc[0] == pytest.approx(3000.0)
+    assert out["time_above_seconds"].iloc[0] == pytest.approx(3000.0)
     by_sample = ev.time_above_threshold(90, window="1h", interval_end="last_sample")
-    assert by_sample["time_above"].iloc[0] == pytest.approx(1200.0)
+    assert by_sample["time_above_seconds"].iloc[0] == pytest.approx(1200.0)
 
 
 def test_detect_out_of_range():

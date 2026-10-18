@@ -545,7 +545,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "engineering.operating_range.distribution",
         _E,
         ST,
-        standard_attrs={"ts_shape:sample_count": "count"},
+        standard_attrs={"ts_shape:sample_count": "sample_count"},
     ),
     ("ProcessStabilityIndexEvents", "score_trend"): _r(
         "engineering.stability.score_trend",
@@ -611,7 +611,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "engineering.process_window.statistics",
         _E,
         S,
-        standard_attrs={"ts_shape:sample_count": "count"},
+        standard_attrs={"ts_shape:sample_count": "sample_count"},
     ),
     ("RateOfChangeEvents", "detect_rapid_change"): _r(
         "engineering.rate_of_change.rapid",
@@ -1017,7 +1017,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         ST,
         objs=("asset", "batch"),
-        standard_attrs={"ts_shape:sample_count": "count"},
+        standard_attrs={"ts_shape:sample_count": "batch_count"},
     ),
     ("BatchTrackingEvents", "batch_transition_matrix"): _r(
         "production.batch.transition_matrix",
@@ -1118,7 +1118,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "production.cycle_time.statistics",
         _PR,
         ST,
-        standard_attrs={"ts_shape:sample_count": "count"},
+        standard_attrs={"ts_shape:sample_count": "cycle_count"},
     ),
     ("CycleTimeEvents", "cycle_time_trend"): _r(
         "production.cycle_time.trend",
@@ -1240,7 +1240,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         S,
         objs=("asset", "station"),
-        standard_attrs={"ts_shape:sample_count": "n_stations"},
+        standard_attrs={"ts_shape:sample_count": "station_count"},
     ),
     ("LineBalancingEvents", "station_cycle_times"): _r(
         "production.line_balance.station_cycle_times",
@@ -1260,7 +1260,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         "production.throughput.count_parts",
         _PR,
         S,
-        standard_attrs={"ts_shape:sample_count": "count"},
+        standard_attrs={"ts_shape:sample_count": "part_count"},
     ),
     ("LineThroughputEvents", "cycle_quality_check"): _r(
         "production.throughput.cycle_quality_check",
@@ -2612,7 +2612,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _SC,
         ST,
         objs=("work_order",),
-        standard_attrs={"ts_shape:sample_count": "count"},
+        standard_attrs={"ts_shape:sample_count": "order_count"},
     ),
 }
 

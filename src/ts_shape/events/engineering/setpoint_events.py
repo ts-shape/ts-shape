@@ -14,7 +14,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +168,17 @@ class SetpointChangeEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the setpoint change detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            setpoint_uuid: UUID of the setpoint signal. The actual signal is passed to
+                the KPI methods.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Numeric column holding setpoint and actual values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.setpoint_uuid = setpoint_uuid
         self.event_uuid = event_uuid
@@ -239,20 +250,22 @@ class SetpointChangeEvents(Base):
 
     # ---- Change detection ----
     @keyword_only(2)
+    @renamed_kwargs(min_hold="min_duration")
     def detect_setpoint_steps(
         self,
         min_delta: float,
-        min_hold: str = "0s",
+        min_duration: str = "0s",
         filter_noise: bool = False,
         noise_threshold: float = 0.01,
     ) -> pd.DataFrame:
         """
         Point events at times where the setpoint changes by >= min_delta and the
-        new level holds for at least `min_hold` (no subsequent change within that time).
+        new level holds for at least `min_duration` (no subsequent change within that time).
 
         Args:
             min_delta: Minimum magnitude of change to detect
-            min_hold: Minimum duration the new level must hold
+            min_duration: Minimum duration the new level must hold (formerly
+                ``min_hold``)
             filter_noise: If True, filter out changes smaller than noise_threshold
             noise_threshold: Threshold for noise filtering (absolute value)
 
@@ -294,9 +307,9 @@ class SetpointChangeEvents(Base):
         sp["delta"] = sp[self.value_column] - sp["prev"]
         change_mask = sp["delta"].abs() >= float(min_delta)
 
-        # hold condition: next change must be after min_hold
+        # hold condition: next change must be after min_duration
         change_times = sp.loc[change_mask, self.time_column]
-        min_hold_td = pd.to_timedelta(min_hold)
+        min_hold_td = pd.to_timedelta(min_duration)
         next_change_times = change_times.shift(-1)
         hold_ok = (
             next_change_times - change_times >= min_hold_td
@@ -400,12 +413,13 @@ class SetpointChangeEvents(Base):
 
         return self._change_intervals(events, cols)
 
+    @renamed_kwargs(min_hold="min_step_duration")
     def detect_setpoint_changes(
         self,
         *,
         min_delta: float = 0.0,
         min_rate: float | None = None,
-        min_hold: str = "0s",
+        min_step_duration: str = "0s",
         min_duration: str = "0s",
     ) -> pd.DataFrame:
         """
@@ -416,8 +430,9 @@ class SetpointChangeEvents(Base):
                 :meth:`detect_setpoint_steps`.
             min_rate: Minimum ramp rate in setpoint units per second, passed to
                 :meth:`detect_setpoint_ramps`. None skips ramp detection.
-            min_hold: Minimum time a new step level must hold, passed to
-                :meth:`detect_setpoint_steps`.
+            min_step_duration: Minimum time a new step level must hold,
+                passed to :meth:`detect_setpoint_steps` as its
+                ``min_duration`` (formerly ``min_hold``).
             min_duration: Minimum ramp duration, passed to
                 :meth:`detect_setpoint_ramps`.
 
@@ -440,7 +455,9 @@ class SetpointChangeEvents(Base):
             "avg_rate",
             "delta",
         ]
-        steps = self.detect_setpoint_steps(min_delta=min_delta, min_hold=min_hold)
+        steps = self.detect_setpoint_steps(
+            min_delta=min_delta, min_duration=min_step_duration
+        )
         ramps = (
             self.detect_setpoint_ramps(min_rate=min_rate, min_duration=min_duration)
             if min_rate is not None

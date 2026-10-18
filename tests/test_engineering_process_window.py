@@ -33,7 +33,7 @@ def test_windowed_statistics():
     assert "std" in result.columns
     assert "p25" in result.columns
     assert "p75" in result.columns
-    assert all(result["count"] > 0)
+    assert all(result["sample_count"] > 0)
 
 
 def test_detect_mean_shift():

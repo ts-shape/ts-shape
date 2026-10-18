@@ -42,8 +42,8 @@ metadata = pd.DataFrame({
 })
 tolerances = pd.DataFrame({
     "uuid": ["temp:zone_a", "press:zone_a"],
-    "low_limit": [80.0, 1.8],
-    "high_limit": [90.0, 2.4],
+    "lower_limit": [80.0, 1.8],
+    "upper_limit": [90.0, 2.4],
 })
 codes = pd.DataFrame({
     "uuid": ["state:machine1"] * 3,
@@ -58,9 +58,9 @@ enricher.enrich_with_mapping(codes, value_column="value_string")
 enriched = enricher.get_enriched_dataframe()
 
 process = enriched[enriched["uuid"] != "state:machine1"]
-outside = process[(process["value_double"] < process["low_limit"])
-                  | (process["value_double"] > process["high_limit"])]
-print(outside[["systime", "description", "value_double", "low_limit", "high_limit"]].head())
+outside = process[(process["value_double"] < process["lower_limit"])
+                  | (process["value_double"] > process["upper_limit"])]
+print(outside[["description", "value_double", "lower_limit", "upper_limit"]].head())
 
 states = enriched[enriched["uuid"] == "state:machine1"]
 print(states[["systime", "value_string", "mapped_value"]].head(3))
@@ -68,10 +68,14 @@ print(states[["systime", "value_string", "mapped_value"]].head(3))
 
 - `enrich_with_metadata` adds the named `columns` (default: all columns but
   the uuid). Signals without a metadata row get missing values.
-- `enrich_with_tolerances` adds `low_limit` and `high_limit` (rename with
-  `low_col=` and `high_col=`).
+- `enrich_with_tolerances` adds `lower_limit` and `upper_limit`. Name the
+  table's columns with `lower_limit_column=` and `upper_limit_column=` (they
+  default to `lower_limit` / `upper_limit`, or the former `low_limit` /
+  `high_limit`); a column with another name is kept as well, right before
+  its canonical column. `low_limit` / `high_limit` are deprecated twins.
 - `enrich_with_mapping` adds `mapped_value` for the rows whose
-  `value_column` matches a `raw_value` of their uuid.
+  `value_column` matches a `raw_value` of their uuid (the mapping table's
+  columns are named with `value_column_raw=` and `value_column_mapped=`).
 - Keys are compared as text, so a numeric uuid or code matches a string in
   the lookup table.
 - A lookup table with duplicate keys, or a column that already exists in the
@@ -90,16 +94,20 @@ every other column. Use it for code tables maintained outside the code, for
 example an alarm-code list exported from the MES:
 
 ```python
+import tempfile
+from pathlib import Path
+
 from ts_shape.context.value_mapping import ValueMapper
 
+table = Path(tempfile.mkdtemp()) / "machine_states.csv"   # your exported file
 pd.DataFrame({"code": [0, 1, 2], "state": ["idle", "running", "error"]}).to_csv(
-    "machine_states.csv", index=False
+    table, index=False
 )
 
 codes = df[df["uuid"] == "state:machine1"]
 mapped = ValueMapper(
     codes,
-    mapping_file="machine_states.csv",
+    mapping_file=str(table),
     map_column="value_string",
     mapping_key_column="code",
     mapping_value_column="state",

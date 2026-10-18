@@ -276,6 +276,17 @@ class ChangePointEvents(Base):
         event_uuid: str = "quality:change_point",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the change-point detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the signal to analyze.
+            value_column: Numeric column holding the signal values; rows with a missing
+                value are dropped.
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.value_column = value_column

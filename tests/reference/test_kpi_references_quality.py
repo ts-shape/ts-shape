@@ -379,8 +379,8 @@ def test_weibull_mle_matches_scipy_on_fixed_sample():
     )
     fit = ReliabilityEvents(df, "fault").weibull_fit().iloc[0]
     beta, _, eta = stats.weibull_min.fit(tbf, floc=0)
-    assert fit["n_failures"] == len(tbf)
-    assert fit["n_censored"] == 0
+    assert fit["failure_count"] == len(tbf)
+    assert fit["censored_count"] == 0
     assert fit["beta"] == pytest.approx(beta, rel=1e-4)
     assert fit["eta_hours"] == pytest.approx(eta, rel=1e-4)
     assert fit["mttf_hours"] == pytest.approx(eta * math.gamma(1 + 1 / beta), rel=1e-4)

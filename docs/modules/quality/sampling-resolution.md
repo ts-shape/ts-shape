@@ -15,7 +15,7 @@ df["value_double"] = df["value_double"].round(1)  # coarse 0.1 bar ADC steps
 
 sr = SamplingResolutionEvents(df, "pump3:discharge_pressure")
 result = sr.detect_quantization(window="1h", threshold_ratio=0.3)
-print(result[["start", "n_unique_values", "quantization_step", "quantized"]])
+print(result[["start", "unique_value_count", "quantization_step", "quantized"]])
 resolution = sr.effective_resolution(window="1h")
 aliasing = sr.detect_aliasing(window="1h", expected_frequency_hz=24.2)  # 1450 rpm pump
 jitter = sr.sampling_jitter(window="1h")
@@ -27,8 +27,8 @@ All arguments are keyword-only.
 
 | Method | Returns (per window) |
 |---|---|
-| `detect_quantization(window='1h', threshold_ratio=0.3)` | `start`, `end`, `duration_seconds`, `n_unique_values`, `expected_unique`, `quantization_step`, `quantization_ratio`, `quantized` |
-| `effective_resolution(window='1h')` | `start`, `end`, `duration_seconds`, `theoretical_resolution`, `effective_resolution`, `resolution_ratio`, `assessment` |
+| `detect_quantization(window='1h', threshold_ratio=0.3)` | `start`, `end`, `duration_seconds`, `unique_value_count`, `expected_unique`, `quantization_step`, `quantization_ratio`, `quantized` |
+| `effective_resolution(window='1h')` | `start`, `end`, `duration_seconds`, `theoretical_resolution`, `effective_resolution`, `resolution_factor`, `assessment` |
 | `detect_aliasing(window='1h', expected_frequency_hz=None)` | `start`, `end`, `duration_seconds`, `sampling_rate_hz`, `nyquist_hz`, `dominant_frequency`, `aliasing_risk` |
 | `sampling_jitter(window='1h')` | `start`, `end`, `duration_seconds`, `mean_interval_seconds`, `std_interval_seconds`, `jitter_pct`, `max_gap_seconds`, `regularity_score` |
 

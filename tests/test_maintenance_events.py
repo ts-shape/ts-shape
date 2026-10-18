@@ -126,7 +126,7 @@ class TestDegradationDetectionEvents:
         assert (result["health_score"] >= 0).all()
         assert (result["health_score"] <= 100).all()
         assert "mean_drift_pct" in result.columns
-        assert "variance_ratio" in result.columns
+        assert "variance_factor" in result.columns
         assert "trend_slope" in result.columns
 
     def test_empty_dataframe_degradation(self):

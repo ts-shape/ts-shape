@@ -1899,7 +1899,15 @@ CASES = [
             f"regularity_{w}",
             lambda df: SignalQualityEvents(df, "sig"),
             lambda o, w=w: o.sampling_regularity(window=w),
-            lambda o, w=w: _ref_signalquality_sampling_regularity(o, w),
+            lambda o, w=w: add_twin_columns(
+                _ref_signalquality_sampling_regularity(o, w),
+                {
+                    "mean_interval": "mean_interval_seconds",
+                    "std_interval": "std_interval_seconds",
+                    "min_interval": "min_interval_seconds",
+                    "max_interval": "max_interval_seconds",
+                },
+            ),
         )
         for w in ("1min", "1h")
     ],
@@ -2066,7 +2074,7 @@ CASES = [
             ),
             lambda o, t=t, w=w, ie=ie: add_twin_columns(
                 _ref_thresholdmonitoring_time_above_threshold(o, t, w, interval_end=ie),
-                {"pct_above": "time_above_pct"},
+                {"time_above": "time_above_seconds", "pct_above": "time_above_pct"},
             ),
         )
         for t, w, ie in (

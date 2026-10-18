@@ -20,6 +20,7 @@ from ts_shape.events._output import (
     empty_event_df,
     finalize_point_df,
     finalize_summary_df,
+    twin_columns,
 )
 from ts_shape.events._windows import floor_local
 from ts_shape.events.production._flow import (
@@ -208,6 +209,7 @@ class FlowMetricsEvents(Base):
         )
         return finalize_point_df(out, uuid=self.event_uuid, source_uuid=self.exit_uuid)
 
+    @twin_columns({"consistency_ratio": "consistency_factor"})
     def flow_summary(
         self,
         *,
@@ -216,7 +218,7 @@ class FlowMetricsEvents(Base):
     ) -> pd.DataFrame:
         """Combined flow metrics with a Little's Law consistency check.
 
-        Little's Law lead time = WIP / throughput. ``consistency_ratio`` is the
+        Little's Law lead time = WIP / throughput. ``consistency_factor`` is the
         measured FIFO lead time divided by that prediction (≈ 1 for a stable,
         FIFO process). Process Cycle Efficiency = value-add time / lead time.
 
@@ -228,8 +230,14 @@ class FlowMetricsEvents(Base):
         Returns:
             Summary-shape DataFrame with columns: start, end, duration_seconds,
             wip_mean, throughput_per_hour, lead_time_mean_seconds,
-            littles_law_lead_time_seconds, consistency_ratio, and
-            process_cycle_efficiency_pct when ``value_add_seconds`` is given.
+            littles_law_lead_time_seconds, consistency_ratio,
+            consistency_factor, and process_cycle_efficiency_pct when
+            ``value_add_seconds`` is given.
+
+            Canonical twin columns: ``consistency_factor`` (after
+            ``consistency_ratio``, which is not a 0-1 fraction); it holds the
+            same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         extra = [
             "wip_mean",

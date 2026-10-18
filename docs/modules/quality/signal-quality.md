@@ -24,8 +24,8 @@ completeness = sq.data_completeness(window="1h", expected_interval="1s")
 
 | Method | Returns |
 |---|---|
-| `detect_missing_data(expected_interval='1s', tolerance_factor=2.0)` | gaps longer than `tolerance_factor × expected_interval`: `start`, `end`, `gap_duration`, `expected_samples_missing` |
-| `sampling_regularity(window='1h')` | per window: `mean_interval`, `std_interval`, `min_interval`, `max_interval`, `regularity_score` |
+| `detect_missing_data(expected_interval='1s', tolerance_factor=2.0)` | gaps longer than `tolerance_factor × expected_interval`: `start`, `end`, `gap_duration` (Timedelta), `gap_duration_seconds`, `expected_samples_missing` |
+| `sampling_regularity(window='1h')` | per window: `mean_interval_seconds`, `std_interval_seconds`, `min_interval_seconds`, `max_interval_seconds`, `regularity_score` |
 | `detect_out_of_range(min_value, max_value, interval_end='next_change')` | intervals outside the range: `start`, `end`, `duration`, `min_observed`, `max_observed`, `direction` |
 | `data_completeness(window='1h', expected_interval='1s')` | per window: `expected_count`, `actual_count`, `completeness_pct` |
 

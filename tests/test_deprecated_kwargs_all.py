@@ -573,3 +573,288 @@ def test_round11_renamed_attributes_still_read():
     for obj, old, new in _renamed_attributes():
         with pytest.warns(DeprecationWarning, match=f"{old} is deprecated"):
             assert getattr(obj, old) == getattr(obj, new)
+
+
+# ---------------------------------------------------------------------------
+# Round 13 (naming consistency): every renamed keyword is shimmed
+# ---------------------------------------------------------------------------
+
+_SP = "ts_shape.events.engineering.setpoint_events:SetpointChangeEvents"
+_OD = "ts_shape.events.quality.outlier_detection:OutlierDetectionEvents"
+_CE = "ts_shape.loader.context.context_enricher:ContextEnricher"
+_PR = "ts_shape.features.pattern_recognition:PatternRecognition"
+
+#: ``(callable, old, new)`` of every keyword renamed in round 13.
+ROUND13 = [
+    (
+        "ts_shape.events.production.changeover:ChangeoverEvents.detect_changeover",
+        "min_hold",
+        "min_duration",
+    ),
+    (f"{_SP}.detect_setpoint_steps", "min_hold", "min_duration"),
+    (f"{_SP}.detect_setpoint_changes", "min_hold", "min_step_duration"),
+    (f"{_OD}.detect_outliers_zscore", "threshold", "n_sigma"),
+    (f"{_OD}.detect_outliers_mad", "threshold", "n_sigma"),
+    *[
+        (
+            "ts_shape.events.quality.tolerance_deviation"
+            ":ToleranceDeviationEvents.__init__",
+            old,
+            new,
+        )
+        for old, new in (
+            ("tolerance_column", "value_column_tolerance"),
+            ("actual_column", "value_column_actual"),
+        )
+    ],
+    (f"{_CE}.enrich_with_tolerances", "low_col", "lower_limit_column"),
+    (f"{_CE}.enrich_with_tolerances", "high_col", "upper_limit_column"),
+    (f"{_CE}.enrich_with_mapping", "raw_value_col", "value_column_raw"),
+    (f"{_CE}.enrich_with_mapping", "mapped_value_col", "value_column_mapped"),
+    (
+        "ts_shape.events.development.golden_batch"
+        ":GoldenBatchDeviationEvents.__init__",
+        "reference_df",
+        "dataframe",
+    ),
+    (f"{_CP}.__init__", "cycles_df", "dataframe_cycles"),
+    (f"{_CP}.__init__", "values_df", "dataframe_values"),
+    *[
+        (f"{_PR}.{m}", "uuid", "signal_uuid")
+        for m in (
+            "discover_motifs",
+            "discover_discords",
+            "similarity_search",
+            "template_match",
+            "compute_distance_profile",
+        )
+    ],
+]
+
+
+@pytest.mark.parametrize(
+    "key,old,new", ROUND13, ids=[f"{k.rsplit(':', 1)[1]}:{o}" for k, o, _ in ROUND13]
+)
+def test_round13_rename_is_shimmed(key, old, new):
+    # The shim exists, so test_renamed_kwarg checks it like every other one.
+    assert (key, old, new) in CASES
+
+
+def _setpoint_frame():
+    t = pd.date_range("2024-01-01", periods=120, freq="10s", tz="UTC")
+    i = np.arange(120)
+    level = np.where(i < 40, 10.0, np.where(i < 43, 12.0, 15.0))
+    return pd.DataFrame({"systime": t, "uuid": "sp", "value_double": level})
+
+
+def _changeover(**kw):
+    from ts_shape.events.production.changeover import ChangeoverEvents
+
+    df = _frame().assign(uuid="prod")
+    return ChangeoverEvents(df).detect_changeover("prod", **kw)
+
+
+def _setpoint_steps(**kw):
+    from ts_shape.events.engineering.setpoint_events import SetpointChangeEvents
+
+    return SetpointChangeEvents(_setpoint_frame(), "sp").detect_setpoint_steps(
+        min_delta=1.0, **kw
+    )
+
+
+def _setpoint_changes(**kw):
+    from ts_shape.events.engineering.setpoint_events import SetpointChangeEvents
+
+    return SetpointChangeEvents(_setpoint_frame(), "sp").detect_setpoint_changes(
+        min_delta=1.0, **kw
+    )
+
+
+def _zscore(**kw):
+    from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
+
+    return OutlierDetectionEvents(_frame(), "value_double").detect_outliers_zscore(**kw)
+
+
+def _mad(**kw):
+    from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
+
+    return OutlierDetectionEvents(_frame(), "value_double").detect_outliers_mad(**kw)
+
+
+def _limits_and_actual():
+    frame = _frame()
+    limit = frame.iloc[:1].assign(uuid="usl", value_double=55.0)
+    return pd.concat([limit, frame], ignore_index=True)
+
+
+def _tolerance(**kw):
+    from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
+
+    return ToleranceDeviationEvents(
+        _limits_and_actual(), actual_uuid="sig:1", upper_tolerance_uuid="usl", **kw
+    ).detect_deviations()
+
+
+def _tolerances(**kw):
+    from ts_shape.loader.context.context_enricher import ContextEnricher
+
+    table = pd.DataFrame({"uuid": ["sig:1"], "lo": [45.0], "hi": [55.0]})
+    return ContextEnricher(_frame()).enrich_with_tolerances(table, **kw)
+
+
+def _mapping(**kw):
+    from ts_shape.loader.context.context_enricher import ContextEnricher
+
+    table = pd.DataFrame(
+        {"uuid": ["sig:1"] * 2, "code": ["A", "B"], "text": ["a", "b"]}
+    )
+    return ContextEnricher(_frame()).enrich_with_mapping(table, **kw)
+
+
+def _golden_batch(**kw):
+    from ts_shape.events.development.golden_batch import GoldenBatchDeviationEvents
+
+    frames = {k: _frame() for k in kw}
+    return GoldenBatchDeviationEvents(signal_uuid="sig:1", **frames).compare(_frame())
+
+
+def _cycle_table():
+    t0 = _frame()["systime"].iloc[0]
+    return pd.DataFrame(
+        {
+            "cycle_start": [t0, t0 + pd.Timedelta("4h")],
+            "cycle_end": [t0 + pd.Timedelta("4h"), t0 + pd.Timedelta("8h")],
+            "cycle_uuid": ["c1", "c2"],
+        }
+    )
+
+
+def _cycles(**kw):
+    from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
+
+    frames = {k: _cycle_table() if "cycles" in k else _frame() for k in kw}
+    return CycleDataProcessor(**frames).merge_dataframes_by_cycle()
+
+
+def _motifs(**kw):
+    from ts_shape.features.pattern_recognition import PatternRecognition
+
+    return PatternRecognition.discover_motifs(_two_signals(), window_size=6, **kw)
+
+
+ROUND13_CALLS = [
+    ("changeover", _changeover, {"min_hold": "30min"}, {"min_duration": "30min"}),
+    ("setpoint_steps", _setpoint_steps, {"min_hold": "1min"}, {"min_duration": "1min"}),
+    (
+        "setpoint_changes",
+        _setpoint_changes,
+        {"min_hold": "1min"},
+        {"min_step_duration": "1min"},
+    ),
+    ("zscore", _zscore, {"threshold": 1.5}, {"n_sigma": 1.5}),
+    ("mad", _mad, {"threshold": 1.5}, {"n_sigma": 1.5}),
+    (
+        "tolerance",
+        _tolerance,
+        {"tolerance_column": "value_double", "actual_column": "value_double"},
+        {
+            "value_column_tolerance": "value_double",
+            "value_column_actual": "value_double",
+        },
+    ),
+    (
+        "tolerances",
+        _tolerances,
+        {"low_col": "lo", "high_col": "hi"},
+        {"lower_limit_column": "lo", "upper_limit_column": "hi"},
+    ),
+    (
+        "mapping",
+        _mapping,
+        {"raw_value_col": "code", "mapped_value_col": "text"},
+        {"value_column_raw": "code", "value_column_mapped": "text"},
+    ),
+    ("golden_batch", _golden_batch, {"reference_df": None}, {"dataframe": None}),
+    (
+        "cycles",
+        _cycles,
+        {"cycles_df": None, "values_df": None},
+        {"dataframe_cycles": None, "dataframe_values": None},
+    ),
+    ("motifs", _motifs, {"uuid": "sig:2"}, {"signal_uuid": "sig:2"}),
+]
+
+
+@pytest.mark.parametrize(
+    "call,old_kw,new_kw",
+    [c[1:] for c in ROUND13_CALLS],
+    ids=[c[0] for c in ROUND13_CALLS],
+)
+def test_round13_old_name_gives_same_result(call, old_kw, new_kw):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        expected = call(**new_kw)
+    with pytest.warns(DeprecationWarning, match="is deprecated, use"):
+        got = call(**old_kw)
+    _assert_same(got, expected)
+
+
+def test_round13_renamed_attributes_still_read():
+    from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
+    from ts_shape.features.cycles.cycle_processor import CycleDataProcessor
+
+    tde = ToleranceDeviationEvents(
+        _limits_and_actual(),
+        "value_double",
+        "value_integer",
+        actual_uuid="sig:1",
+        upper_tolerance_uuid="usl",
+    )
+    proc = CycleDataProcessor(_cycle_table(), _frame())
+    for obj, old, new in [
+        (tde, "tolerance_column", "value_column_tolerance"),
+        (tde, "actual_column", "value_column_actual"),
+        (proc, "cycles_df", "dataframe_cycles"),
+        (proc, "values_df", "dataframe_values"),
+    ]:
+        with pytest.warns(DeprecationWarning, match=f"{old} is deprecated"):
+            value = getattr(obj, old)
+        _assert_same(value, getattr(obj, new))
+
+
+def test_round13_changeover_config_min_hold_still_works():
+    from ts_shape.events.production.changeover import ChangeoverEvents
+
+    co = ChangeoverEvents(_frame().assign(uuid="prod"))
+    new = co.changeover_window("prod", config={"min_duration": "30min"})
+    with pytest.warns(DeprecationWarning, match="'min_hold' is deprecated"):
+        old = co.changeover_window("prod", config={"min_hold": "30min"})
+    pd.testing.assert_frame_equal(old, new)
+    with pytest.raises(TypeError, match="both"):
+        co.changeover_window(
+            "prod", config={"min_hold": "30min", "min_duration": "30min"}
+        )
+
+
+def test_pipeline_accepts_deprecated_keyword_names():
+    from ts_shape import OutlierDetectionEvents, Pipeline
+
+    def run(**kw):
+        return (
+            Pipeline()
+            .detect(
+                OutlierDetectionEvents,
+                "detect_outliers_zscore",
+                name="o",
+                value_column="value_double",
+                **kw,
+            )
+            .run(_frame())
+            .events["o"]
+        )
+
+    expected = run(n_sigma=1.5)
+    with pytest.warns(DeprecationWarning, match="'threshold' is deprecated"):
+        got = run(threshold=1.5)
+    pd.testing.assert_frame_equal(got, expected)

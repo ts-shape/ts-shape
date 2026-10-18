@@ -4,7 +4,7 @@ Detectors for engineering-related patterns over shaped timeseries.
 
 Classes:
 - SetpointChangeEvents: Detect setpoint changes and compute response KPIs.
-  - detect_setpoint_steps: Point events where |Δsetpoint| ≥ min_delta and holds for min_hold.
+  - detect_setpoint_steps: Point events where |Δsetpoint| ≥ min_delta and holds for min_duration.
   - detect_setpoint_ramps: Intervals where |dS/dt| ≥ min_rate for at least min_duration.
   - detect_setpoint_changes: Unified table of steps and ramps with standardized columns.
   - time_to_settle: Time until |actual − setpoint| ≤ tol for a hold duration within a window.

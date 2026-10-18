@@ -71,6 +71,15 @@ class SignalCorrelationEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the signal correlator.
+
+        Args:
+            dataframe: Long-format timeseries frame holding the signals to correlate
+                (``uuid`` identifies the signal).
+            event_uuid: UUID stamped on emitted events.
+            value_column: Numeric column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.value_column = value_column

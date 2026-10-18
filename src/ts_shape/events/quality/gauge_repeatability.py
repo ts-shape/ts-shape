@@ -74,6 +74,19 @@ class GaugeRepeatabilityEvents(Base):
         event_uuid: str = "quality:gauge_rr",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the gauge R&R analysis.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the measurement signal.
+            part_column: Column holding the part (or check standard) id.
+            value_column: Column holding the measured values.
+            operator_column: Column holding the operator/station id, used for
+                reproducibility. ``None`` (default) when there is none.
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.part_column = part_column

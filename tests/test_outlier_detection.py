@@ -14,7 +14,7 @@ def test_outlier_detection_zscore_and_iqr():
     det = OutlierDetectionEvents(
         df, value_column="value", event_uuid="outlier_evt", time_threshold="2min"
     )
-    z = det.detect_outliers_zscore(threshold=2.0)
+    z = det.detect_outliers_zscore(n_sigma=2.0)
     # Should create events around the outlier timestamp
     assert "uuid" in z.columns
 
@@ -33,7 +33,7 @@ def test_outlier_output_is_canonical_point_shape():
     det = OutlierDetectionEvents(
         df, value_column="value_double", event_uuid="outlier_evt"
     )
-    z = det.detect_outliers_zscore(threshold=2.0)
+    z = det.detect_outliers_zscore(n_sigma=2.0)
     # Canonical point schema: systime / uuid / source_uuid.
     for col in ("systime", "uuid", "source_uuid"):
         assert col in z.columns

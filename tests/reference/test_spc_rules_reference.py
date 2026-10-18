@@ -190,7 +190,7 @@ def test_detect_violations_reports_the_same_points(rule):
     out = _spc(values).detect_violations(selected_rules=[rule])
     assert list(out["systime"]) == list(T0 + pd.to_timedelta(expected, unit="min"))
     assert list(out["value_double"]) == [float(values[i]) for i in expected]
-    assert set(out["triggered_rule"]) == {rule}
+    assert set(out["rule"]) == {rule}
 
 
 def test_all_rules_on_one_chart_match_reference():

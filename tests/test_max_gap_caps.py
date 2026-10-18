@@ -96,7 +96,7 @@ def test_cycle_time_max_cycle_gap_forwarded_by_derived_methods():
     capped = ct.cycle_time_statistics("part", "trig", max_cycle_gap="5min")
     assert stats["max_seconds"].iloc[0] > 3600
     assert capped["max_seconds"].iloc[0] < 300
-    assert capped["count"].iloc[0] == stats["count"].iloc[0] - 1
+    assert capped["cycle_count"].iloc[0] == stats["cycle_count"].iloc[0] - 1
 
     assert len(ct.detect_slow_cycles("part", "trig")) == 1
     assert ct.detect_slow_cycles("part", "trig", max_cycle_gap="5min").empty
@@ -110,5 +110,5 @@ def test_cycle_time_max_cycle_gap_forwarded_by_derived_methods():
 
     hourly = ct.hourly_cycle_time_summary("part", "trig")
     hourly_capped = ct.hourly_cycle_time_summary("part", "trig", max_cycle_gap="5min")
-    assert hourly["max_cycle_time"].max() > 3600
-    assert hourly_capped["max_cycle_time"].max() < 300
+    assert hourly["max_cycle_time_seconds"].max() > 3600
+    assert hourly_capped["max_cycle_time_seconds"].max() < 300

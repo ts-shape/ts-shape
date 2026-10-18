@@ -5,7 +5,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._output import empty_event_df, finalize_summary_df
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_summary_df,
+    twin_columns,
+)
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.runs import total_seconds, true_runs
@@ -48,6 +52,16 @@ class WarmUpCoolDownEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the warm-up / cool-down analyzer.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the signal to analyze.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
@@ -254,6 +268,9 @@ class WarmUpCoolDownEvents(Base):
         )
 
     @keyword_only(2)
+    @twin_columns(
+        {"deviation_from_median_duration": "deviation_from_median_duration_seconds"}
+    )
     def warmup_consistency(
         self,
         min_rise: float,
@@ -270,8 +287,15 @@ class WarmUpCoolDownEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, warmup_index, avg_rate,
-            deviation_from_median_duration. ``start`` / ``end`` are the
-            warm-up's bounds.
+            deviation_from_median_duration,
+            deviation_from_median_duration_seconds. ``start`` / ``end`` are
+            the warm-up's bounds; the deviation from the median warm-up
+            duration is in seconds.
+
+            Canonical twin columns: ``deviation_from_median_duration_seconds``
+            (after ``deviation_from_median_duration``); it holds the same
+            values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         extra = [
             "uuid",

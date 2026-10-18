@@ -12,7 +12,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.loader._utils import missing_optional
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -224,8 +224,9 @@ class OutlierDetectionEvents(Base):
         return pd.concat(parts, ignore_index=True).sort_values("systime")
 
     @keyword_only(1)
+    @renamed_kwargs(threshold="n_sigma")
     def detect_outliers_zscore(
-        self, threshold: float = 3.0, include_singles: bool = True
+        self, n_sigma: float = 3.0, include_singles: bool = True
     ) -> pd.DataFrame:
         """
         Detects outliers using the Z-score method.
@@ -234,7 +235,9 @@ class OutlierDetectionEvents(Base):
         (one NaN used to turn every z-score into NaN, so nothing was found).
 
         Args:
-            threshold (float): The Z-score threshold for detecting outliers.
+            n_sigma (float): The Z-score threshold for detecting outliers: a
+                value more than ``n_sigma`` standard deviations from the mean
+                is an outlier (formerly ``threshold``).
             include_singles (bool): Whether to include single outliers in the output. Default is True.
 
         Returns:
@@ -243,7 +246,7 @@ class OutlierDetectionEvents(Base):
 
         def scorer(values: pd.Series) -> tuple[pd.Series, pd.Series]:
             z = pd.Series(_abs_zscore(values), index=values.index)
-            return z > threshold, z
+            return z > n_sigma, z
 
         return self._detect(scorer, include_singles)
 
@@ -281,8 +284,9 @@ class OutlierDetectionEvents(Base):
         return self._detect(scorer, include_singles)
 
     @keyword_only(1)
+    @renamed_kwargs(threshold="n_sigma")
     def detect_outliers_mad(
-        self, threshold: float = 3.5, include_singles: bool = True
+        self, n_sigma: float = 3.5, include_singles: bool = True
     ) -> pd.DataFrame:
         """
         Detects outliers using the Median Absolute Deviation (MAD) method.
@@ -295,7 +299,8 @@ class OutlierDetectionEvents(Base):
         flagged every value that differed from the median at all.)
 
         Args:
-            threshold (float): The MAD threshold for detecting outliers. Default is 3.5.
+            n_sigma (float): The modified z-score threshold for detecting
+                outliers (formerly ``threshold``). Default is 3.5.
             include_singles (bool): Whether to include single outliers in the output. Default is True.
 
         Returns:
@@ -316,7 +321,7 @@ class OutlierDetectionEvents(Base):
                     return none, pd.Series(0.0, index=values.index)
                 modified_z = deviation / (1.253314 * mean_ad)
             severity = modified_z.abs()
-            return severity > threshold, severity
+            return severity > n_sigma, severity
 
         return self._detect(scorer, include_singles)
 

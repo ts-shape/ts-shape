@@ -447,6 +447,13 @@ class PeriodSummaryEvents(Base):
         *,
         time_column: str = "systime",
     ) -> None:
+        """Initialize the period summary.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
 

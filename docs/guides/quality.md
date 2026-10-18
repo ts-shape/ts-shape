@@ -31,8 +31,8 @@ df = pd.concat([reference, measured, spec_limits], ignore_index=True)
 from ts_shape.events.quality.outlier_detection import OutlierDetectionEvents
 
 detector = OutlierDetectionEvents(df, value_column="value_double", signal_uuids=["shaft:diameter"])
-zscore = detector.detect_outliers_zscore(threshold=3.0)
-mad = detector.detect_outliers_mad(threshold=3.5)
+zscore = detector.detect_outliers_zscore(n_sigma=3.0)
+mad = detector.detect_outliers_mad(n_sigma=3.5)
 iqr = detector.detect_outliers_iqr(threshold=(1.5, 1.5))
 ```
 
@@ -63,7 +63,7 @@ spc = StatisticalProcessControlEvents(
     df, "value_double", tolerance_uuid="shaft:diameter_ref", actual_uuid="shaft:diameter", event_uuid="quality:spc"
 )
 limits = spc.control_limits()                   # mean and 1, 2, 3 sigma bands
-violations = spc.detect_violations()            # one row per violating sample, with triggered_rule and severity
+violations = spc.detect_violations()            # one row per violating sample, with rule and severity
 rules_1_2 = spc.detect_rule_violations(selected_rules=["rule_1", "rule_2"])
 explained = spc.interpret_violations(rules_1_2) # adds interpretation, meaning, recommendation
 shifts = spc.detect_cusum_shifts(k=0.5, h=5.0)  # small sustained shifts of the mean
@@ -82,8 +82,8 @@ from ts_shape.events.quality.tolerance_deviation import ToleranceDeviationEvents
 
 tolerance = ToleranceDeviationEvents(
     df,
-    tolerance_column="value_double",
-    actual_column="value_double",
+    value_column_tolerance="value_double",
+    value_column_actual="value_double",
     actual_uuid="shaft:diameter",
     upper_tolerance_uuid="shaft:usl",
     lower_tolerance_uuid="shaft:lsl",

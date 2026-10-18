@@ -21,7 +21,7 @@ df = pd.concat([pd.DataFrame({"systime": t, "uuid": u, "value_double": v}) for u
 doe = DesignOfExperimentsEvents(df, ["pilot1:barrel_temp_sp", "pilot1:screw_speed_sp"])
 runs = doe.detect_runs(min_duration="10min", stability_tol=0.02)
 result = doe.effects("pilot1:melt_viscosity", statistic="settled", min_duration="10min")
-print(result[["factor", "level", "n_runs", "response_mean", "main_effect"]])
+print(result[["factor", "level", "run_count", "response_mean", "main_effect"]])
 ```
 
 ## Methods
@@ -29,7 +29,7 @@ print(result[["factor", "level", "n_runs", "response_mean", "main_effect"]])
 | Method | Returns |
 |---|---|
 | `detect_runs(min_duration='5min', stability_tol=0.02, n_levels=None)` | one interval per run: `start`, `end`, `run_id`, one `factor__<uuid>_level` column per factor |
-| `effects(response_uuid, statistic='mean', min_duration='5min', stability_tol=0.02, n_levels=None)` | per factor and level: `factor`, `level`, `n_runs`, `response_mean`, `response_std`, `main_effect` |
+| `effects(response_uuid, statistic='mean', min_duration='5min', stability_tol=0.02, n_levels=None)` | per factor and level: `factor`, `level`, `run_count`, `response_mean`, `response_std`, `main_effect` |
 
 ## Notes
 

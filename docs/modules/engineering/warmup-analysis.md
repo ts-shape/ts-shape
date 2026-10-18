@@ -28,7 +28,7 @@ time_to_temp = wu.time_to_target(180.0, direction="rising")
 |---|---|
 | `detect_warmup(min_rise, min_duration='1min', max_pause=0)` | `start`, `end`, `start_value`, `end_value`, `rise`, `duration_seconds`, `avg_rate` |
 | `detect_cooldown(min_fall, min_duration='1min', max_pause=0)` | same with `fall` |
-| `warmup_consistency(min_rise, min_duration='1min')` | per warm-up: `warmup_index`, `avg_rate`, `deviation_from_median_duration` |
+| `warmup_consistency(min_rise, min_duration='1min')` | per warm-up: `warmup_index`, `avg_rate`, `deviation_from_median_duration_seconds` |
 | `time_to_target(target_value, direction='rising')` | per ramp: `target_reached_at`, `time_to_target_seconds`, `overshoot` |
 
 ## Notes

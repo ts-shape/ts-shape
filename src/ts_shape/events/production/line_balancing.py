@@ -19,7 +19,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._output import empty_event_df, finalize_summary_df
+from ts_shape.events._output import (
+    empty_event_df,
+    finalize_summary_df,
+    twin_columns,
+)
 from ts_shape.events._windows import floor_local
 from ts_shape.events.production._flow import (
     Number,
@@ -142,6 +146,13 @@ class LineBalancingEvents(Base):
     # ------------------------------------------------------------------
 
     @keyword_only(1)
+    @twin_columns(
+        {
+            "cycle_time_mean": "cycle_time_mean_seconds",
+            "cycle_time_median": "cycle_time_median_seconds",
+            "cycle_time_std": "cycle_time_std_seconds",
+        }
+    )
     def station_cycle_times(self, window: str = "1h") -> pd.DataFrame:
         """Per-station cycle-time statistics per time window.
 
@@ -150,8 +161,14 @@ class LineBalancingEvents(Base):
 
         Returns:
             Summary-shape DataFrame with columns: start, end, duration_seconds,
-            uuid, station_name, cycle_time_mean, cycle_time_median,
-            cycle_time_std, cycle_count.
+            uuid, station_name, cycle_time_mean, cycle_time_mean_seconds,
+            cycle_time_median, cycle_time_median_seconds, cycle_time_std,
+            cycle_time_std_seconds, cycle_count. Cycle times are in seconds.
+
+            Canonical twin columns: ``cycle_time_mean_seconds``,
+            ``cycle_time_median_seconds``, ``cycle_time_std_seconds``, each
+            right after its deprecated unitless column (same values), which
+            is removed in the next major release.
         """
         extra = [
             "uuid",
@@ -177,6 +194,12 @@ class LineBalancingEvents(Base):
         out["end"] = self._window_bounds(window, out["start"])
         return finalize_summary_df(out)
 
+    @twin_columns(
+        {
+            "n_stations": "station_count",
+            "bottleneck_cycle_time": "bottleneck_cycle_time_seconds",
+        }
+    )
     def balance_metrics(
         self,
         *,
@@ -188,7 +211,7 @@ class LineBalancingEvents(Base):
     ) -> pd.DataFrame:
         """Line-level balance metrics per time window.
 
-        Balance efficiency = sum(station times) / (n_stations * bottleneck).
+        Balance efficiency = sum(station times) / (station_count * bottleneck).
         Takt is resolved from ``takt_time`` or from ``demand`` plus
         ``available_time``; when neither is given, ``theoretical_min_stations``
         is ``NaN``.
@@ -198,7 +221,7 @@ class LineBalancingEvents(Base):
             demand: Units required over ``available_time``.
             available_time: Available production time (seconds or offset string).
             window: Resample window.
-            require_all_stations: When False (default), ``n_stations`` counts
+            require_all_stations: When False (default), ``station_count`` counts
                 only stations that completed at least one cycle in the window.
                 A completely stopped or starved station -- the worst imbalance --
                 then drops out of the denominator and the line reads as well
@@ -209,10 +232,17 @@ class LineBalancingEvents(Base):
 
         Returns:
             Summary-shape DataFrame with columns: start, end, duration_seconds,
-            n_stations, bottleneck_uuid, bottleneck_cycle_time, takt_seconds,
+            n_stations, station_count, bottleneck_uuid, bottleneck_cycle_time,
+            bottleneck_cycle_time_seconds, takt_seconds,
             balance_efficiency_pct, balance_delay_pct, smoothness_index,
             theoretical_min_stations (plus ``stations_missing`` when
             ``require_all_stations=True``).
+
+            Canonical twin columns: ``station_count`` (after ``n_stations``),
+            ``bottleneck_cycle_time_seconds`` (after
+            ``bottleneck_cycle_time``); each holds the same values as the
+            deprecated column right before it, which is removed in the next
+            major release.
         """
         extra = [
             "n_stations",
@@ -268,6 +298,7 @@ class LineBalancingEvents(Base):
 
         return finalize_summary_df(pd.DataFrame(rows))
 
+    @twin_columns({"cycle_time_mean": "cycle_time_mean_seconds"})
     def yamazumi(
         self,
         *,
@@ -284,8 +315,14 @@ class LineBalancingEvents(Base):
 
         Returns:
             DataFrame with columns: uuid, station_name, cycle_time_mean,
-            takt_seconds, loading_pct, idle_to_takt_seconds, is_bottleneck.
-            Stations are returned in the order given to the constructor.
+            cycle_time_mean_seconds, takt_seconds, loading_pct,
+            idle_to_takt_seconds, is_bottleneck. Stations are returned in the
+            order given to the constructor.
+
+            Canonical twin columns: ``cycle_time_mean_seconds`` (after
+            ``cycle_time_mean``); it holds the same values as the deprecated
+            column right before it, which is removed in the next major
+            release.
         """
         columns = [
             "uuid",

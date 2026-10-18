@@ -16,7 +16,7 @@ df.loc[720:, "value_double"] += 12.0  # new material lot
 vd = ValueDistributionEvents(df, "extruder1:melt_pressure")
 modes = vd.detect_mode_changes(window="1h", n_modes=2, min_separation=1.0)
 result = modes[modes["mode_changed"]]
-print(result[["start", "dominant_mode", "n_modes_detected", "mode_changed"]])
+print(result[["start", "dominant_mode", "mode_count", "mode_changed"]])
 bimodal = vd.detect_bimodal(min_samples=30)
 bands = vd.percentile_tracking(percentiles=(5, 50, 95), window="1h")
 ```
@@ -27,7 +27,7 @@ All arguments are keyword-only.
 
 | Method | Returns |
 |---|---|
-| `detect_mode_changes(window='1h', n_modes=2, min_separation=1.0)` | per window: `dominant_mode`, `n_modes_detected`, `mode_values` (list), `mode_changed` |
+| `detect_mode_changes(window='1h', n_modes=2, min_separation=1.0)` | per window: `dominant_mode`, `mode_count`, `mode_values` (list), `mode_changed` |
 | `detect_bimodal(min_samples=30)` | one row over all data: `is_bimodal`, `dip_score`, `sample_count`, `mode_1`, `mode_2`, `valley` |
 | `normality_windows(window='1h', alpha=0.05, min_samples=20)` | per window: `sample_count`, `is_normal`, `p_value`, `skewness`, `kurtosis` |
 | `percentile_tracking(percentiles=(5, 25, 50, 75, 95), window='1h')` | per window: `sample_count` and one column per percentile (`p5`, `p50`, …) |

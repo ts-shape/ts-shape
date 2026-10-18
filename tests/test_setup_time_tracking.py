@@ -51,7 +51,7 @@ class TestSetupTimeTracking:
         assert "from_product" in result.columns
         assert "to_product" in result.columns
         assert "avg_minutes" in result.columns
-        assert "count" in result.columns
+        assert "setup_count" in result.columns
 
     def test_setup_statistics(self):
         df = _make_setup_df()

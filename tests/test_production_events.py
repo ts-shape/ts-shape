@@ -135,7 +135,7 @@ def test_line_throughput_count_and_takt():
     lte = LineThroughputEvents(df)
     counts = lte.count_parts(counter_uuid="cnt", window="2min")
     assert not counts.empty
-    assert "count" in counts.columns
+    assert "part_count" in counts.columns
 
     # Use boolean trigger to define cycle boundaries, takt=90s
     tb = pd.DataFrame(
@@ -187,7 +187,7 @@ def test_changeover_detect_and_window_stable_band():
 
     co = ChangeoverEvents(df)
     changes = co.detect_changeover(
-        product_uuid="prod", value_column="value_string", min_hold="0s"
+        product_uuid="prod", value_column="value_string", min_duration="0s"
     )
     assert not changes.empty
     win = co.changeover_window(

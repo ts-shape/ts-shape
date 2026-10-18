@@ -71,8 +71,8 @@ def mle_reference(failures, censored=()):
 
 def test_ball_bearings_published_mle():
     fit = ReliabilityEvents(_fault_frame(BEARINGS), "fault").weibull_fit().iloc[0]
-    assert fit["n_failures"] == 23
-    assert fit["n_censored"] == 0
+    assert fit["failure_count"] == 23
+    assert fit["censored_count"] == 0
     # Published (Lawless Example 5.2.2).
     assert fit["beta"] == pytest.approx(2.102, abs=5e-4)
     assert fit["eta_hours"] == pytest.approx(81.88, abs=5e-3)
@@ -94,8 +94,8 @@ def test_right_censored_running_period_matches_likelihood_equation():
         .weibull_fit()
         .iloc[0]
     )
-    assert fit["n_failures"] == 23
-    assert fit["n_censored"] == 1
+    assert fit["failure_count"] == 23
+    assert fit["censored_count"] == 1
     beta, eta = mle_reference(BEARINGS, censored=[150.0])
     assert fit["beta"] == pytest.approx(beta, rel=1e-4)
     assert fit["eta_hours"] == pytest.approx(eta, rel=1e-4)

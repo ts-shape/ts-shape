@@ -112,6 +112,16 @@ class ThresholdMonitoringEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the threshold monitor.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the signal to analyze.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
@@ -306,7 +316,7 @@ class ThresholdMonitoringEvents(Base):
         )
 
     @keyword_only(2)
-    @twin_columns({"pct_above": "time_above_pct"})
+    @twin_columns({"time_above": "time_above_seconds", "pct_above": "time_above_pct"})
     def time_above_threshold(
         self,
         threshold: float,
@@ -337,7 +347,10 @@ class ThresholdMonitoringEvents(Base):
             a signal that is already above at its first sample starts one
             there.
 
-            Canonical twin columns: ``time_above_pct`` (after ``pct_above``); each holds the
+            ``time_above`` is in seconds.
+
+            Canonical twin columns: ``time_above_seconds`` (after
+            ``time_above``), ``time_above_pct`` (after ``pct_above``); each holds the
             same values as the deprecated column right before it, which is removed in
             the next major release.
         """
@@ -444,8 +457,15 @@ class ThresholdMonitoringEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, duration_seconds,
-            exceedance_count, total_duration, trend_direction. ``end`` is
-            ``start`` + ``window``.
+            exceedance_count, total_duration, total_duration_seconds,
+            trend_direction. ``end`` is ``start`` + ``window``;
+            ``total_duration_seconds`` is the time above ``threshold`` in the
+            window, in seconds.
+
+            Canonical twin columns: ``total_duration_seconds`` (after
+            ``total_duration``); it holds the same values as the deprecated
+            column right before it, which is removed in the next major
+            release.
         """
         cols = [
             "start",
@@ -453,6 +473,7 @@ class ThresholdMonitoringEvents(Base):
             "duration_seconds",
             "exceedance_count",
             "total_duration",
+            "total_duration_seconds",
             "trend_direction",
         ]
         time_above = self.time_above_threshold(threshold, window=window)
@@ -473,9 +494,10 @@ class ThresholdMonitoringEvents(Base):
             trend = "stable"
 
         result = time_above[
-            ["start", "end", "duration_seconds", "exceedance_count", "time_above"]
+            ["start", "end", "duration_seconds", "exceedance_count"]
         ].copy()
-        result = result.rename(columns={"time_above": "total_duration"})
+        result["total_duration"] = time_above["time_above_seconds"]
+        result["total_duration_seconds"] = time_above["time_above_seconds"]
         result["trend_direction"] = trend
 
         return result[cols]

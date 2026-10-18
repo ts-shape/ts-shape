@@ -61,6 +61,18 @@ class SensorDriftEvents(Base):
         event_uuid: str = "quality:sensor_drift",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the sensor drift detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the sensor signal.
+            reference_uuid: UUID of a time-aligned reference signal. Optional.
+            reference_value: Fixed reference value. Optional.
+            value_column: Column holding the signal values.
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.reference_uuid = reference_uuid

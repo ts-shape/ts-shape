@@ -103,6 +103,6 @@ def test_live_detector_output_matches_its_registered_shape():
     shape = REGISTRY[("OutlierDetectionEvents", "detect_outliers_zscore")].shape
     df = ts_shape.make_timeseries(["sensor:temp"], n_points=500, n_outliers=6)
     detector = ts_shape.OutlierDetectionEvents(df, value_column="value_double")
-    out = detector.detect_outliers_zscore(threshold=3.0)
+    out = detector.detect_outliers_zscore(n_sigma=3.0)
     # Raises if the declared shape's required columns are absent.
     validate_event_output(out, shape)

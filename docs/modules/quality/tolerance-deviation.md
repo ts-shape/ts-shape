@@ -17,7 +17,7 @@ df = pd.concat([
     ts_shape.make_timeseries(["shaft_diameter:lsl"], n_points=1, baseline=49.0, noise=0),
 ], ignore_index=True)
 
-tdev = ToleranceDeviationEvents(df, tolerance_column="value_double", actual_column="value_double",
+tdev = ToleranceDeviationEvents(df, value_column_tolerance="value_double", value_column_actual="value_double",
                                 actual_uuid="shaft_diameter", upper_tolerance_uuid="shaft_diameter:usl",
                                 lower_tolerance_uuid="shaft_diameter:lsl", event_uuid="quality:tolerance")
 print(tdev.detect_deviations()[["systime", "value_double", "deviation_abs", "severity"]])
@@ -29,7 +29,7 @@ capability = tdev.capability_indices(target_value=50.0)
 | Method | Returns |
 |---|---|
 | `detect_deviations()` | out-of-tolerance events: `systime`, the measured value, `deviation_abs`, `deviation_pct`, `severity` (`minor`/`major`/`critical`) |
-| `capability_indices(target_value=None, sigma_method='moving_range')` | one row: `Cp`, `Cpk`, `Pp`, `Ppk`, `Cpm`, `mean`, `std`, `std_within`, `usl`, `lsl`, `target`, `sample_count` |
+| `capability_indices(target_value=None, sigma_method='moving_range')` | one row: `cp`, `cpk`, `pp`, `ppk`, `cpm` (each after its deprecated upper-case twin), `mean`, `std`, `std_within`, `usl`, `lsl`, `target`, `sample_count` |
 
 ## Notes
 

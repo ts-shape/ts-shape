@@ -52,8 +52,8 @@ def create_sample_data():
     tolerances = pd.DataFrame(
         {
             "uuid": ["temp:zone_a", "press:zone_a"],
-            "low_limit": [75.0, 1.5],
-            "high_limit": [95.0, 3.0],
+            "lower_limit": [75.0, 1.5],
+            "upper_limit": [95.0, 3.0],
         }
     )
 
@@ -108,15 +108,15 @@ if __name__ == "__main__":
     with_tol = enricher2.enrich_with_tolerances(tol)
     print(f"\nColumns after tolerance enrichment: {list(with_tol.columns)}")
     temp_with_tol = with_tol[with_tol["uuid"] == "temp:zone_a"][
-        ["systime", "uuid", "value_double", "low_limit", "high_limit"]
+        ["systime", "uuid", "value_double", "lower_limit", "upper_limit"]
     ]
     print("\nTemperature with tolerance limits:")
     print(temp_with_tol.head())
 
     # Check which values are outside tolerance
     out_of_tol = temp_with_tol[
-        (temp_with_tol["value_double"] < temp_with_tol["low_limit"])
-        | (temp_with_tol["value_double"] > temp_with_tol["high_limit"])
+        (temp_with_tol["value_double"] < temp_with_tol["lower_limit"])
+        | (temp_with_tol["value_double"] > temp_with_tol["upper_limit"])
     ]
     print(f"\nOut-of-tolerance readings: {len(out_of_tol)} of {len(temp_with_tol)}")
 

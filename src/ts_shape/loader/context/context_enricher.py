@@ -57,8 +57,8 @@ class ContextEnricher:
         enricher.enrich_with_tolerances(
             tolerance_df,
             tolerance_uuid_column="uuid",
-            low_col="low_limit",
-            high_col="high_limit",
+            lower_limit_column="lower_limit",
+            upper_limit_column="upper_limit",
         )
         enriched = enricher.get_enriched_dataframe()
     """
@@ -154,23 +154,40 @@ class ContextEnricher:
             frame_keys=[self.uuid_column],
         )
 
-    @renamed_kwargs(tolerance_uuid_col="tolerance_uuid_column")
+    @renamed_kwargs(
+        tolerance_uuid_col="tolerance_uuid_column",
+        low_col="lower_limit_column",
+        high_col="upper_limit_column",
+    )
     def enrich_with_tolerances(
         self,
         tolerances: pd.DataFrame,
         *,
         tolerance_uuid_column: str = "uuid",
-        low_col: str = "low_limit",
-        high_col: str = "high_limit",
+        lower_limit_column: str | None = None,
+        upper_limit_column: str | None = None,
     ) -> pd.DataFrame:
         """Attach tolerance limits from a tolerance DataFrame.
 
+        The limits are added as ``lower_limit`` and ``upper_limit``. A limit
+        column of the table with another name is added too, under its own
+        name, right before its canonical column: with the former default
+        layout (``low_limit`` / ``high_limit``) the frame reads ``low_limit``,
+        ``lower_limit``, ``high_limit``, ``upper_limit``. ``low_limit`` and
+        ``high_limit`` are deprecated twins, removed in the next major
+        release.
+
         Args:
-            tolerances: DataFrame with UUID, low_limit, high_limit columns.
+            tolerances: DataFrame with uuid, lower_limit and upper_limit
+                columns (or the former low_limit and high_limit).
             tolerance_uuid_column: UUID column in tolerances (formerly
                 ``tolerance_uuid_col``).
-            low_col: Column with lower tolerance limit.
-            high_col: Column with upper tolerance limit.
+            lower_limit_column: Column with the lower tolerance limit
+                (formerly ``low_col``). Default: ``"lower_limit"``, or
+                ``"low_limit"`` when the table has only that one.
+            upper_limit_column: Column with the upper tolerance limit
+                (formerly ``high_col``). Default: ``"upper_limit"``, or
+                ``"high_limit"`` when the table has only that one.
 
         Returns:
             The enriched DataFrame (also kept for the next ``enrich_*`` call).
@@ -180,22 +197,51 @@ class ContextEnricher:
             ValueError: For duplicate uuids in ``tolerances`` or a limit column
                 that already exists in the data.
         """
-        return self._lookup(
+        columns = []
+        for given, canonical, legacy in (
+            (lower_limit_column, "lower_limit", "low_limit"),
+            (upper_limit_column, "upper_limit", "high_limit"),
+        ):
+            if given is None:
+                use_legacy = (
+                    canonical not in tolerances.columns and legacy in tolerances.columns
+                )
+                given = legacy if use_legacy else canonical
+            columns.append((given, canonical))
+        require_columns(
             tolerances,
+            [tolerance_uuid_column] + [src for src, _ in columns],
+            where="ContextEnricher tolerances",
+        )
+        table = tolerances[
+            list(dict.fromkeys([tolerance_uuid_column] + [c for c, _ in columns]))
+        ].copy()
+        names: list[str] = []
+        for src, canonical in columns:
+            if src != canonical:
+                names.append(src)
+                table[canonical] = tolerances[src]
+            names.append(canonical)
+        return self._lookup(
+            table,
             [tolerance_uuid_column],
-            [low_col, high_col],
+            names,
             what="tolerances",
             frame_keys=[self.uuid_column],
         )
 
-    @renamed_kwargs(mapping_uuid_col="mapping_uuid_column")
+    @renamed_kwargs(
+        mapping_uuid_col="mapping_uuid_column",
+        raw_value_col="value_column_raw",
+        mapped_value_col="value_column_mapped",
+    )
     def enrich_with_mapping(
         self,
         mapping: pd.DataFrame,
         *,
         mapping_uuid_column: str = "uuid",
-        raw_value_col: str = "raw_value",
-        mapped_value_col: str = "mapped_value",
+        value_column_raw: str = "raw_value",
+        value_column_mapped: str = "mapped_value",
         value_column: str = "value_string",
     ) -> pd.DataFrame:
         """Apply value mappings from a mapping DataFrame.
@@ -208,8 +254,10 @@ class ContextEnricher:
             mapping: DataFrame with uuid, raw_value, mapped_value columns.
             mapping_uuid_column: UUID column in mapping (formerly
                 ``mapping_uuid_col``).
-            raw_value_col: Column with raw values to match.
-            mapped_value_col: Column with mapped/descriptive values.
+            value_column_raw: Column of ``mapping`` with the raw values to
+                match (formerly ``raw_value_col``).
+            value_column_mapped: Column of ``mapping`` with the
+                mapped/descriptive values (formerly ``mapped_value_col``).
             value_column: Column in timeseries to match against raw values.
 
         Returns:
@@ -223,15 +271,15 @@ class ContextEnricher:
         """
         require_columns(
             mapping,
-            [mapping_uuid_column, raw_value_col, mapped_value_col],
+            [mapping_uuid_column, value_column_raw, value_column_mapped],
             where="ContextEnricher mapping",
         )
-        table = mapping[[mapping_uuid_column, raw_value_col, mapped_value_col]]
+        table = mapping[[mapping_uuid_column, value_column_raw, value_column_mapped]]
         table = table.rename(
             columns={
                 mapping_uuid_column: f"{_RAW}uuid",
-                raw_value_col: f"{_RAW}value",
-                mapped_value_col: "mapped_value",
+                value_column_raw: f"{_RAW}value",
+                value_column_mapped: "mapped_value",
             }
         )
         return self._lookup(

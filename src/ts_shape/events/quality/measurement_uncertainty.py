@@ -46,6 +46,17 @@ class MeasurementUncertaintyEvents(Base):
         event_uuid: str = "quality:uncertainty",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the uncertainty estimator.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the measurement signal.
+            value_column: Column holding the signal values.
+            part_uuid: Deprecated; has no effect and warns when given.
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.value_column = value_column

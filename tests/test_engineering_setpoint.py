@@ -23,14 +23,16 @@ def test_setpoint_step_detection_and_unified_changes():
         pd.concat([df_sp], ignore_index=True), setpoint_uuid="sp"
     )
 
-    steps = spe.detect_setpoint_steps(min_delta=0.5, min_hold="30s")
+    steps = spe.detect_setpoint_steps(min_delta=0.5, min_duration="30s")
     assert not steps.empty
     # Expect two step change points
     assert steps["change_type"].unique().tolist() == ["step"]
     assert len(steps) == 2
     assert steps["magnitude"].abs().tolist() == [1.0, 1.0]
 
-    unified = spe.detect_setpoint_changes(min_delta=0.5, min_rate=None, min_hold="30s")
+    unified = spe.detect_setpoint_changes(
+        min_delta=0.5, min_rate=None, min_step_duration="30s"
+    )
     # Should include the same step events and standard columns
     assert {"start", "end", "uuid", "is_delta", "change_type"}.issubset(unified.columns)
     assert (unified["change_type"] == "step").all()

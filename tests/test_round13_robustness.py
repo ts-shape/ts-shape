@@ -121,11 +121,11 @@ def test_duty_cycle_off_time_excludes_missing_state() -> None:
     dc = DutyCycleEvents(_with_na(), "m")
     out = dc.duty_cycle_by_window(window="1h")
     first = out.iloc[0]
-    assert first["on_time"] == 1800.0
-    assert first["off_time"] == 0.0  # the 30 min of pd.NA are not off
+    assert first["on_time_seconds"] == 1800.0
+    assert first["off_time_seconds"] == 0.0  # the 30 min of pd.NA are not off
     assert first["duty_cycle_pct"] == 100.0
     second = out.iloc[1]
-    assert (second["on_time"], second["off_time"]) == (1800.0, 1800.0)
+    assert (second["on_time_seconds"], second["off_time_seconds"]) == (1800.0, 1800.0)
 
 
 def test_duty_cycle_intervals_and_counts_skip_missing_state() -> None:
@@ -142,7 +142,9 @@ def test_duty_cycle_window_without_known_state_is_nan() -> None:
     df = _long("m", t, value_bool=pd.array([pd.NA, pd.NA, True, False], "boolean"))
     out = DutyCycleEvents(df, "m").duty_cycle_by_window(window="1h")
     assert np.isnan(out.iloc[0]["duty_cycle_pct"])
-    assert out.iloc[0]["on_time"] == 0.0 and out.iloc[0]["off_time"] == 0.0
+    assert (
+        out.iloc[0]["on_time_seconds"] == 0.0 and out.iloc[0]["off_time_seconds"] == 0.0
+    )
 
 
 def test_duty_cycle_cycle_count_all_missing_is_empty() -> None:
@@ -164,8 +166,8 @@ def test_machine_state_missing_state_is_neither_run_nor_idle() -> None:
     transitions = ms.transition_events()
     assert list(transitions["transition"]) == ["run_to_idle", "idle_to_run"]
     metrics = ms.state_quality_metrics().iloc[0]
-    assert metrics["avg_idle_duration"] == 1800.0
-    assert metrics["run_idle_ratio"] == pytest.approx(1800.0 / 1800.0 * 2)
+    assert metrics["avg_idle_duration_seconds"] == 1800.0
+    assert metrics["run_idle_factor"] == pytest.approx(1800.0 / 1800.0 * 2)
 
 
 def test_machine_state_nan_state_float_column() -> None:
@@ -186,9 +188,9 @@ def test_machine_state_value_range_missing_is_unknown() -> None:
 def test_state_quality_metrics_on_empty_input_averages_are_nan() -> None:
     empty = _long("m", pd.DatetimeIndex([]))
     metrics = MachineStateEvents(empty, "m").state_quality_metrics().iloc[0]
-    assert np.isnan(metrics["avg_run_duration"])
-    assert np.isnan(metrics["avg_idle_duration"])
-    assert np.isnan(metrics["run_idle_ratio"])
+    assert np.isnan(metrics["avg_run_duration_seconds"])
+    assert np.isnan(metrics["avg_idle_duration_seconds"])
+    assert np.isnan(metrics["run_idle_factor"])
 
 
 # ---------------------------------------------------------------------------
@@ -326,10 +328,10 @@ def test_process_window_variance_ratio_never_inf() -> None:
     values = np.r_[values, np.full(60, 5.0)]
     pw = ProcessWindowEvents(_long("s", t, value_double=values), "s")
     out = pw.detect_variance_change(window="1h")
-    assert not np.isinf(out["variance_ratio"]).any()
+    assert not np.isinf(out["variance_factor"]).any()
     # constant -> varying: flagged with an undefined ratio.
     first = out[out["start"] == pd.Timestamp("2024-01-01 00:00")]
-    assert len(first) == 1 and np.isnan(first["variance_ratio"].iloc[0])
+    assert len(first) == 1 and np.isnan(first["variance_factor"].iloc[0])
     shifts = pw.detect_mean_shift(window="1h")
     assert not np.isinf(shifts["shift_sigma"].astype(float)).any()
 
@@ -355,8 +357,8 @@ def test_disturbance_recovery_variance_ratio_never_inf() -> None:
         baseline_window="30min", n_sigma=3.0, comparison_window="20min"
     )
     assert not out.empty
-    assert not np.isinf(out["variance_ratio"]).any()
-    assert out["variance_ratio"].isna().any()
+    assert not np.isinf(out["variance_factor"]).any()
+    assert out["variance_factor"].isna().any()
 
 
 def test_change_point_shift_sigma_nan_for_constant_segments() -> None:
@@ -380,7 +382,7 @@ def test_duty_cycle_windows_extend_to_data_end() -> None:
     assert duty["start"].tolist() == list(
         pd.date_range("2024-01-01 06:00", periods=3, freq="1h")
     )
-    assert duty["on_time"].tolist() == [1800.0, 3600.0, 3600.0]
+    assert duty["on_time_seconds"].tolist() == [1800.0, 3600.0, 3600.0]
     assert duty["duty_cycle_pct"].tolist() == [50.0, 100.0, 100.0]
     counts = dc.cycle_count(window="1h")
     assert counts["start"].tolist() == duty["start"].tolist()
@@ -398,7 +400,7 @@ def test_duty_cycle_data_end_on_tz_aware_frame() -> None:
     duty = dc.duty_cycle_by_window(window="1h")
     # 01:00, 03:00 (02:00 does not exist), 04:00.
     assert len(duty) == 3
-    assert duty["on_time"].sum() + duty["off_time"].sum() == 3 * 3600.0
+    assert duty["on_time_seconds"].sum() + duty["off_time_seconds"].sum() == 3 * 3600.0
     assert dc.cycle_count(window="1h")["end"].max() == pd.Timestamp(
         "2024-03-31 05:00", tz=BERLIN
     )

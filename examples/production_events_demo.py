@@ -381,8 +381,8 @@ def demo_line_throughput(df: pd.DataFrame) -> None:
     )
     print(f"  Windows: {len(parts)}")
     if not parts.empty:
-        print(f"  Avg parts/window: {parts['count'].mean():.1f}")
-        print(parts[["start", "count"]].head())
+        print(f"  Avg parts/window: {parts['part_count'].mean():.1f}")
+        print(parts[["start", "part_count"]].head())
 
     # takt_adherence
     _subheader("takt_adherence(takt_time='50s')")
@@ -419,18 +419,17 @@ def demo_line_throughput(df: pd.DataFrame) -> None:
             trends[
                 [
                     "start",
-                    "count",
+                    "part_count",
                     "moving_avg",
                     "trend_direction",
-                    "degradation_detected",
                 ]
             ].head()
         )
 
     # cycle_quality_check
-    _subheader("cycle_quality_check(tolerance_pct=0.15)")
+    _subheader("cycle_quality_check(tolerance_pct=15.0)")
     cqc = lt.cycle_quality_check(
-        UUID_CYCLE_TRIGGER, value_column="value_bool", tolerance_pct=0.15
+        UUID_CYCLE_TRIGGER, value_column="value_bool", tolerance_pct=15.0
     )
     if not cqc.empty:
         print(f"  Cycles checked: {len(cqc)}")
@@ -578,7 +577,7 @@ def demo_cycle_time_tracking(df: pd.DataFrame) -> None:
             stats[
                 [
                     "part_number",
-                    "count",
+                    "cycle_count",
                     "min_seconds",
                     "avg_seconds",
                     "max_seconds",
@@ -945,7 +944,14 @@ def demo_batch_tracking(df: pd.DataFrame) -> None:
     stats = bt.batch_duration_statistics()
     if not stats.empty:
         print(
-            stats[["batch_id", "count", "min_duration_seconds", "avg_duration_seconds"]]
+            stats[
+                [
+                    "batch_id",
+                    "batch_count",
+                    "min_duration_seconds",
+                    "avg_duration_seconds",
+                ]
+            ]
         )
 
     # batch_yield (using part counter)

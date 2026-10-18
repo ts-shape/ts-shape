@@ -42,6 +42,7 @@ from ts_shape.events._output import (
     empty_event_df,
     finalize_interval_df,
     finalize_summary_df,
+    twin_columns,
 )
 from ts_shape.signals.primitives import intervals, windows
 from ts_shape.signals.spec import SignalSpec
@@ -324,6 +325,7 @@ class ReliabilityEvents(Base):
 
     @keyword_only(1)
     @renamed_kwargs(include_first="include_initial")
+    @twin_columns({"n_failures": "failure_count", "n_censored": "censored_count"})
     def weibull_fit(self, include_initial: bool = False) -> pd.DataFrame:
         """Two-parameter Weibull model of the times between failures.
 
@@ -340,14 +342,21 @@ class ReliabilityEvents(Base):
         Returns:
             One row: ``beta`` (shape), ``eta_hours`` (scale: 63.2 % have
             failed by then), ``mttf_hours`` (``eta * Gamma(1 + 1/beta)``),
-            ``b10_hours`` (10 % have failed by then), ``n_failures``,
-            ``n_censored`` and ``failure_pattern`` (``infant_mortality``
-            for beta < 0.9, ``random`` up to 1.1, else ``wear_out``).
+            ``b10_hours`` (10 % have failed by then), ``n_failures`` /
+            ``failure_count`` (failure intervals fitted), ``n_censored`` /
+            ``censored_count`` (right-censored intervals) and
+            ``failure_pattern`` (``infant_mortality`` for beta < 0.9,
+            ``random`` up to 1.1, else ``wear_out``).
             Empty when fewer than two failure intervals are available.
             When the times between failures (almost) all have the same
             length, the model has no finite fit: the parameters are NaN,
             ``failure_pattern`` is ``"unknown"`` and a
             :class:`~ts_shape.errors.DataQualityWarning` is emitted.
+
+            Canonical twin columns: ``failure_count`` (after ``n_failures``),
+            ``censored_count`` (after ``n_censored``); each holds the same
+            values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         from scipy import stats
 

@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
+from ts_shape.utils.deprecation import renamed_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,10 @@ logger = logging.getLogger(__name__)
 class GoldenBatchDeviationEvents(Base):
     """Quantify deviation of a new batch from a golden reference batch."""
 
+    @renamed_kwargs(reference_df="dataframe")
     def __init__(
         self,
-        reference_df: pd.DataFrame,
+        dataframe: pd.DataFrame,
         signal_uuid: str,
         *,
         event_uuid: str = "dev:golden_batch_deviation",
@@ -43,7 +45,23 @@ class GoldenBatchDeviationEvents(Base):
         time_column: str = "systime",
         n_resample: int = 256,
     ) -> None:
-        super().__init__(reference_df, time_column=time_column)
+        """Initialize with the golden reference batch.
+
+        Args:
+            dataframe: Long-format frame of the golden reference batch
+                (formerly ``reference_df``).
+            signal_uuid: The signal compared between batches.
+            event_uuid: UUID assigned to generated events.
+            value_column: Column holding the signal value.
+            time_column: Timestamp column.
+            n_resample: Points of the normalized batch-time grid both traces
+                are resampled to (at least 4).
+
+        Raises:
+            ValueError: If ``n_resample`` is below 4 or the reference has no
+                samples of ``signal_uuid``.
+        """
+        super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
@@ -69,7 +87,7 @@ class GoldenBatchDeviationEvents(Base):
             ref[self.time_column], ref[self.value_column].to_numpy(dtype=float)
         )
         # Raw golden trace on normalized batch time, for slicing by phase.
-        ref_t = pd.to_datetime(ref[self.time_column]).to_numpy()
+        ref_t = pd.to_datetime(ref[self.time_column]).to_numpy(dtype="datetime64[ns]")
         ref_sec = (ref_t - ref_t[0]) / np.timedelta64(1, "s")
         ref_total = float(ref_sec[-1]) if len(ref_sec) else 0.0
         self._ref_norm_time = ref_sec / ref_total if ref_total > 0 else ref_sec * 0.0
@@ -86,7 +104,7 @@ class GoldenBatchDeviationEvents(Base):
         interpolated onto an evenly spaced grid so two batches of
         different wall-clock durations are directly comparable.
         """
-        t = pd.to_datetime(times).to_numpy()
+        t = pd.to_datetime(times).to_numpy(dtype="datetime64[ns]")
         if len(t) < 2:
             return np.full(self.n_resample, float(values[0]) if len(values) else np.nan)
         t_sec = (t - t[0]) / np.timedelta64(1, "s")

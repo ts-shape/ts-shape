@@ -524,8 +524,8 @@ def demo_cycle_processor(df: pd.DataFrame):
     print(f"Temperature readings: {len(temp_df)}")
 
     processor = CycleDataProcessor(
-        cycles_df=complete_cycles,
-        values_df=temp_df,
+        dataframe_cycles=complete_cycles,
+        dataframe_values=temp_df,
         cycle_uuid_column="cycle_uuid",
         time_column="systime",
     )

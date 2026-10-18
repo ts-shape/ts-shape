@@ -4,13 +4,25 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
+from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
+
+#: Duration statistics of ``state_duration_statistics`` (seconds) and their
+#: canonical ``*_duration_seconds`` twins.
+_DURATION_TWINS = {
+    "mean_duration": "mean_duration_seconds",
+    "std_duration": "std_duration_seconds",
+    "min_duration": "min_duration_seconds",
+    "max_duration": "max_duration_seconds",
+    "total_duration": "total_duration_seconds",
+}
 
 
 class OperatingStateEvents(Base):
@@ -40,6 +52,17 @@ class OperatingStateEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the operating state inference.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the continuous signal (vibration, current, power, ...)
+                the states are inferred from.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
@@ -62,6 +85,7 @@ class OperatingStateEvents(Base):
         self,
         n_states: int = 2,
         min_duration: str = "0s",
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Cluster the signal into N operating states.
 
@@ -72,12 +96,23 @@ class OperatingStateEvents(Base):
             n_states: Number of states to infer (2 = low/high,
                 3 = low/mid/high, etc.).
             min_duration: Discard intervals shorter than this.
+            interval_end: ``"next_change"`` (default) ends an interval at the
+                first sample of the next state, so the intervals tile the
+                signal and no time between two states is lost; the last
+                interval ends at the last sample. ``"last_sample"`` ends each
+                interval at its own last sample (the behavior before
+                October 2026), which leaves one sampling period per interval
+                in no state.
 
         Returns:
             DataFrame with columns: start, end, state, state_label,
             mean_value, duration_seconds, uuid (event uuid), source_uuid
             (signal uuid). Samples without a value are ignored; with fewer
             valued samples than ``n_states`` the result is empty.
+
+        Raises:
+            ValueError: If ``interval_end`` is not ``"next_change"`` or
+                ``"last_sample"``.
         """
         cols = [
             "start",
@@ -89,6 +124,11 @@ class OperatingStateEvents(Base):
             "uuid",
             "source_uuid",
         ]
+        if interval_end not in INTERVAL_END_MODES:
+            raise ValueError(
+                f"interval_end must be one of {INTERVAL_END_MODES}, "
+                f"got {interval_end!r}"
+            )
         # Samples without a value carry no state; an all-NaN signal has none.
         sig = (
             self.signal[[self.time_column, self.value_column]]
@@ -118,7 +158,11 @@ class OperatingStateEvents(Base):
         last_pos = np.r_[first_pos[1:] - 1, len(sig) - 1]
         times = sig[self.time_column]
         start = times.iloc[first_pos].reset_index(drop=True)
-        end = times.iloc[last_pos].reset_index(drop=True)
+        end = (
+            interval_end_times(times, interval_end)
+            .iloc[last_pos]
+            .reset_index(drop=True)
+        )
         duration = end - start
         keep = ~(duration < min_td).to_numpy()
         if not keep.any():
@@ -146,22 +190,34 @@ class OperatingStateEvents(Base):
         @deprecated(
             "OperatingStateEvents.state_duration_stats() is deprecated, use .state_duration_statistics()"
         )
-        def state_duration_stats(self, n_states: int = 2) -> pd.DataFrame: ...
+        def state_duration_stats(
+            self, n_states: int = 2, *, interval_end: str = "next_change"
+        ) -> pd.DataFrame: ...
 
     else:
         state_duration_stats = deprecated_method("state_duration_statistics")
 
     @keyword_only(1)
-    def state_duration_statistics(self, n_states: int = 2) -> pd.DataFrame:
+    @twin_columns(_DURATION_TWINS)
+    def state_duration_statistics(
+        self, n_states: int = 2, interval_end: str = "next_change"
+    ) -> pd.DataFrame:
         """How long does each inferred state typically last?
 
         Args:
             n_states: Number of states to infer.
+            interval_end: How intervals end, see :meth:`infer_states`.
 
         Returns:
             DataFrame with columns: state, state_label, count,
             mean_duration, std_duration, min_duration, max_duration,
-            total_duration.
+            total_duration (float seconds).
+
+            Canonical twin columns: ``mean_duration_seconds``,
+            ``std_duration_seconds``, ``min_duration_seconds``,
+            ``max_duration_seconds`` and ``total_duration_seconds``, each
+            right after the deprecated column of the same values, which is
+            removed in the next major release.
         """
         cols = [
             "state",
@@ -173,7 +229,7 @@ class OperatingStateEvents(Base):
             "max_duration",
             "total_duration",
         ]
-        intervals = self.infer_states(n_states=n_states)
+        intervals = self.infer_states(n_states=n_states, interval_end=interval_end)
         if intervals.empty:
             return pd.DataFrame(columns=cols)
 
@@ -199,7 +255,10 @@ class OperatingStateEvents(Base):
 
     @keyword_only(1)
     def unusual_state_sequence(
-        self, n_states: int = 2, expected_order: list[int] | None = None
+        self,
+        n_states: int = 2,
+        expected_order: list[int] | None = None,
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Detect state transitions that violate an expected order.
 
@@ -213,6 +272,8 @@ class OperatingStateEvents(Base):
             expected_order: List of state IDs defining the expected
                 cycle.  If None, the most frequent bigram transitions
                 are treated as "normal".
+            interval_end: How intervals end, see :meth:`infer_states`
+                (transition times do not depend on it).
 
         Returns:
             DataFrame with columns: transition_time, from_state,
@@ -226,7 +287,7 @@ class OperatingStateEvents(Base):
             "to_label",
             "is_unusual",
         ]
-        intervals = self.infer_states(n_states=n_states)
+        intervals = self.infer_states(n_states=n_states, interval_end=interval_end)
         if len(intervals) < 2:
             return pd.DataFrame(columns=cols)
 
@@ -280,6 +341,7 @@ class OperatingStateEvents(Base):
         state: int,
         max_duration: str,
         n_states: int = 2,
+        interval_end: str = "next_change",
     ) -> pd.DataFrame:
         """Find intervals where the machine stayed in a state too long.
 
@@ -287,6 +349,7 @@ class OperatingStateEvents(Base):
             state: State ID to check (0-based).
             max_duration: Maximum allowed duration (e.g. ``'5min'``).
             n_states: Number of states to infer.
+            interval_end: How intervals end, see :meth:`infer_states`.
 
         Returns:
             DataFrame with columns: start, end, state_label,
@@ -302,7 +365,7 @@ class OperatingStateEvents(Base):
             "uuid",
             "source_uuid",
         ]
-        intervals = self.infer_states(n_states=n_states)
+        intervals = self.infer_states(n_states=n_states, interval_end=interval_end)
         if intervals.empty:
             return pd.DataFrame(columns=cols)
 

@@ -34,7 +34,7 @@ trend = dt.availability_trend(run_state_uuid="line1:state", window="1h", max_gap
 | `top_downtime_reasons(run_state_uuid, reason_uuid, top_n=5)` | Pareto: `reason`, `total_seconds`, `share_of_total_pct`, `cumulative_pct` |
 | `availability_trend(run_state_uuid, window='1D', max_gap=None)` | per period: `availability_pct`, `uptime_seconds`, `downtime_seconds`, `excluded_seconds` |
 
-Every `*_seconds` column has a `*_minutes` twin.
+The total, downtime, uptime and average `*_seconds` columns each have a `*_minutes` twin (`*_seconds` / 60); `excluded_seconds` and the row interval's `duration_seconds` do not.
 
 ## Notes
 

@@ -155,18 +155,18 @@ PO-4, the order with the pressure surge, is far from all the others.
 
 ## Patterns in one signal
 
-`PatternRecognition` works on the samples of one signal (pass `uuid=` when the
+`PatternRecognition` works on the samples of one signal (pass `signal_uuid=` when the
 frame holds several). Window sizes and positions count samples:
 
 ```python
 from ts_shape.features.pattern_recognition import PatternRecognition
 
-discords = PatternRecognition.discover_discords(df, window_size=30, top_k=1, uuid="press:pressure")
+discords = PatternRecognition.discover_discords(df, window_size=30, top_k=1, signal_uuid="press:pressure")
 print(discords)
-motif = PatternRecognition.discover_motifs(df, window_size=30, top_k=1, uuid="press:temp")
+motif = PatternRecognition.discover_motifs(df, window_size=30, top_k=1, signal_uuid="press:temp")
 
 template = temp[:94]   # one temperature cycle (2 * pi * 15 minutes)
-hits = PatternRecognition.template_match(df, template, uuid="press:temp", threshold=3.0)
+hits = PatternRecognition.template_match(df, template, signal_uuid="press:temp", threshold=3.0)
 occurrence = (hits["start_index"].diff() > 1).cumsum()   # neighboring starts are one match
 best = hits.loc[hits.groupby(occurrence)["distance"].idxmin()]
 print(best[["start_index", "distance", "start_time"]])

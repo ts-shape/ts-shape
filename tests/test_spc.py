@@ -42,7 +42,7 @@ def test_spc_rule_1_violation_and_process():
     assert list(processed["value_double"]) == [20.0]
     assert list(processed["systime"]) == [pd.Timestamp("2024-01-01 00:32")]
     assert list(processed["uuid"]) == [event_uuid]
-    assert list(processed["triggered_rule"]) == ["rule_1"]
+    assert list(processed["rule"]) == ["rule_1"]
     assert list(processed["severity"]) == ["critical"]
 
 
@@ -119,4 +119,4 @@ def test_spc_rule_4_process_does_not_crash():
     processed = spc.detect_violations(selected_rules=["rule_4"])
     expected = list(pd.date_range(T0, periods=24, freq="min")[13:])
     assert list(processed["systime"]) == expected
-    assert set(processed["triggered_rule"]) == {"rule_4"}
+    assert set(processed["rule"]) == {"rule_4"}

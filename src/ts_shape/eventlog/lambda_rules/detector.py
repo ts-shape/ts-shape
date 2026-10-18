@@ -31,6 +31,11 @@ class LambdaDetector:
     """Runnable form of a :class:`RuleSpec`."""
 
     def __init__(self, spec: RuleSpec) -> None:
+        """Initialize the detector from a rule spec.
+
+        Args:
+            spec: Rule spec whose trigger expression the detector evaluates.
+        """
         self.spec = spec
         self.detector_name = f"{spec.class_name}.{spec.method_name}"
 

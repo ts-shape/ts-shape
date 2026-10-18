@@ -101,9 +101,9 @@ def demo_line_balancing():
     bm = lb.balance_metrics(demand=220, available_time=takt, window="1h")
     cols = [
         "start",
-        "n_stations",
+        "station_count",
         "bottleneck_uuid",
-        "bottleneck_cycle_time",
+        "bottleneck_cycle_time_seconds",
         "balance_efficiency_pct",
         "balance_delay_pct",
         "smoothness_index",
@@ -143,7 +143,7 @@ def demo_flow_metrics():
         "throughput_per_hour",
         "lead_time_mean_seconds",
         "littles_law_lead_time_seconds",
-        "consistency_ratio",
+        "consistency_factor",
         "process_cycle_efficiency_pct",
     ]
     print(fs[cols].to_string(index=False))

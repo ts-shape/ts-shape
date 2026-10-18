@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._output import add_twin_columns
+from ts_shape.events._output import add_twin_columns, twin_columns
 from ts_shape.events._windows import labeled_window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import (
@@ -54,6 +54,16 @@ class SamplingResolutionEvents(Base):
         event_uuid: str = "quality:sampling_resolution",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the sampling/resolution analyzer.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the signal to analyze.
+            value_column: Column holding the signal values.
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.value_column = value_column
@@ -68,6 +78,7 @@ class SamplingResolutionEvents(Base):
         self.signal[self.time_column] = pd.to_datetime(self.signal[self.time_column])
 
     @keyword_only(1)
+    @twin_columns({"n_unique_values": "unique_value_count"})
     def detect_quantization(
         self, window: str = "1h", threshold_ratio: float = 0.3
     ) -> pd.DataFrame:
@@ -85,8 +96,13 @@ class SamplingResolutionEvents(Base):
             Summary DataFrame with columns: start, end, duration_seconds
             (the window bounds), window_start (the resample label; a
             deprecated twin of ``start``), n_unique_values,
-            expected_unique, quantization_step, quantization_ratio,
-            quantized.
+            unique_value_count, expected_unique, quantization_step,
+            quantization_ratio, quantized.
+
+            Canonical twin columns: ``unique_value_count`` (after
+            ``n_unique_values``); it holds the same values as the deprecated
+            column right before it, which is removed in the next major
+            release.
         """
         cols = [
             "window_start",
@@ -153,6 +169,7 @@ class SamplingResolutionEvents(Base):
         return labeled_window_summary(events, cols, window)
 
     @keyword_only(1)
+    @twin_columns({"resolution_ratio": "resolution_factor"})
     def effective_resolution(self, window: str = "1h") -> pd.DataFrame:
         """Estimate effective measurement resolution from data.
 
@@ -163,7 +180,14 @@ class SamplingResolutionEvents(Base):
             Summary DataFrame with columns: start, end, duration_seconds
             (the window bounds), window_start (the resample label; a
             deprecated twin of ``start``), theoretical_resolution,
-            effective_resolution, resolution_ratio, assessment.
+            effective_resolution, resolution_ratio, resolution_factor
+            (effective / theoretical resolution; 1 or more, not a 0-1
+            fraction), assessment.
+
+            Canonical twin columns: ``resolution_factor`` (after
+            ``resolution_ratio``); it holds the same values as the deprecated
+            column right before it, which is removed in the next major
+            release.
         """
         cols = [
             "window_start",

@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import finish_events
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import (
@@ -66,6 +67,16 @@ class SignalQualityEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the signal quality monitor.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the signal to analyze.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
@@ -92,11 +103,18 @@ class SignalQualityEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
-            source_uuid, gap_duration, expected_samples_missing.
-            ``gap_duration`` is a Timedelta; ``duration_seconds`` is the
-            same span in float seconds.
+            source_uuid, gap_duration, gap_duration_seconds,
+            expected_samples_missing. ``gap_duration`` is a Timedelta;
+            ``gap_duration_seconds`` (and ``duration_seconds``) is the same
+            span in float seconds.
         """
-        cols = ["start", "end", "gap_duration", "expected_samples_missing"]
+        cols = [
+            "start",
+            "end",
+            "gap_duration",
+            "gap_duration_seconds",
+            "expected_samples_missing",
+        ]
         if self.signal.empty or len(self.signal) < 2:
             return finish_events(
                 [], cols, "interval", uuid=self.event_uuid, source_uuid=self.signal_uuid
@@ -117,6 +135,7 @@ class SignalQualityEvents(Base):
                         "start": pd.Timestamp(times[i]),
                         "end": pd.Timestamp(times[i + 1]),
                         "gap_duration": gap,
+                        "gap_duration_seconds": gap.total_seconds(),
                         "expected_samples_missing": max(expected_missing, 1),
                     }
                 )
@@ -126,6 +145,14 @@ class SignalQualityEvents(Base):
         )
 
     @keyword_only(1)
+    @twin_columns(
+        {
+            "mean_interval": "mean_interval_seconds",
+            "std_interval": "std_interval_seconds",
+            "min_interval": "min_interval_seconds",
+            "max_interval": "max_interval_seconds",
+        }
+    )
     def sampling_regularity(self, window: str = "1h") -> pd.DataFrame:
         """Inter-sample interval statistics per window.
 
@@ -134,8 +161,16 @@ class SignalQualityEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
-            source_uuid, mean_interval, std_interval, min_interval,
-            max_interval, regularity_score. ``end`` is ``start`` plus one ``window``.
+            source_uuid, mean_interval, mean_interval_seconds, std_interval,
+            std_interval_seconds, min_interval, min_interval_seconds,
+            max_interval, max_interval_seconds, regularity_score. ``end`` is
+            ``start`` plus one ``window``. Intervals are in seconds.
+
+            Canonical twin columns: ``mean_interval_seconds``,
+            ``std_interval_seconds``, ``min_interval_seconds``,
+            ``max_interval_seconds``, each right after its deprecated
+            unitless column (same values), which is removed in the next major
+            release.
         """
         cols = [
             "start",

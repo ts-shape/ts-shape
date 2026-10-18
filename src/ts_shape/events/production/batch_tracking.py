@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
 
+from ts_shape.events._output import twin_columns
 from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_quantity
@@ -141,17 +142,23 @@ class BatchTrackingEvents(Base):
     else:
         batch_duration_stats = deprecated_method("batch_duration_statistics")
 
+    @twin_columns({"count": "batch_count"})
     def batch_duration_statistics(self) -> pd.DataFrame:
         """Compute duration statistics grouped by batch type (batch_id).
 
         Returns:
             DataFrame with columns:
             - batch_id
-            - count: Number of occurrences of this batch type.
+            - count: deprecated twin of ``batch_count``.
+            - batch_count: Number of occurrences of this batch type.
             - min_duration_seconds
             - avg_duration_seconds
             - max_duration_seconds
             - total_duration_seconds
+
+            Canonical twin columns: ``batch_count`` (after ``count``); it holds the same
+            values as the deprecated column right before it, which is removed
+            in the next major release.
         """
         batches = self.detect_batches()
 

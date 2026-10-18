@@ -55,7 +55,7 @@ Example::
         .transform(IntegerCalc, "scale_column",
                    value_column="value_double", factor=0.1)
         .detect(OutlierDetectionEvents, "detect_outliers_zscore",
-                name="outliers", value_column="value_double", threshold=3.0)
+                name="outliers", value_column="value_double", n_sigma=3.0)
     )
     result = pipe.run(dataframe)
     result.data                 # final transformed DataFrame
@@ -107,6 +107,14 @@ def _param_names(func: Any) -> set[str]:
         ):
             continue
         names.add(param.name)
+    # Deprecated keyword names (``renamed_kwargs``) are accepted too; the
+    # call forwards them with a DeprecationWarning.
+    obj = getattr(func, "__init__") if isinstance(func, type) else func
+    seen: set[int] = set()
+    while obj is not None and id(obj) not in seen:
+        seen.add(id(obj))
+        names.update(getattr(obj, "__deprecated_kwargs__", {}))
+        obj = getattr(obj, "__wrapped__", None)
     return names
 
 

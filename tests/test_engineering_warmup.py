@@ -74,7 +74,7 @@ def test_warmup_consistency_multiple_ramps():
     det = WarmUpCoolDownEvents(df, "oven")
     consistency = det.warmup_consistency(min_rise=30.0, min_duration="1m")
     assert not consistency.empty
-    assert "deviation_from_median_duration" in consistency.columns
+    assert "deviation_from_median_duration_seconds" in consistency.columns
 
 
 def test_time_to_target():

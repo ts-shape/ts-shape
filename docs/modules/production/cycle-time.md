@@ -19,7 +19,7 @@ df = pd.concat([
 ct = CycleTimeEvents(df)
 ids = dict(part_id_uuid="line1:part_number", cycle_trigger_uuid="line1:cycle_done")
 result = ct.cycle_time_statistics(**ids, max_cycle_gap="5min")
-print(result[["part_number", "count", "min_seconds", "avg_seconds", "max_seconds"]])
+print(result[["part_number", "cycle_count", "min_seconds", "avg_seconds", "max_seconds"]])
 slow = ct.detect_slow_cycles(**ids, threshold_factor=1.5)
 trend = ct.cycle_time_trend(**ids, part_number="PN-100", window_size=20)
 ```
@@ -29,10 +29,10 @@ trend = ct.cycle_time_trend(**ids, part_number="PN-100", window_size=20)
 | Method | Returns |
 |---|---|
 | `cycle_time_by_part(...)` | one row per cycle: `systime` (completion), `part_number`, `cycle_time_seconds` |
-| `cycle_time_statistics(...)` | per part: `count`, `min_seconds`, `avg_seconds`, `max_seconds`, `std_seconds`, `median_seconds` |
+| `cycle_time_statistics(...)` | per part: `cycle_count`, `min_seconds`, `avg_seconds`, `max_seconds`, `std_seconds`, `median_seconds` |
 | `detect_slow_cycles(..., threshold_factor=1.5)` | cycles slower than `threshold_factor` × the part's median: adds `median_seconds`, `deviation_factor`, `is_slow` |
 | `cycle_time_trend(..., part_number, window_size=20)` | one part: `cycle_time_seconds`, `moving_avg`, `trend` (`improving`/`stable`/`degrading`) |
-| `hourly_cycle_time_summary(...)` | per hour and part: `cycles_completed`, `avg_`/`min_`/`max_cycle_time` |
+| `hourly_cycle_time_summary(...)` | per hour and part: `cycles_completed`, `avg_`/`min_`/`max_cycle_time_seconds` |
 
 All methods take `part_id_uuid` and `cycle_trigger_uuid`.
 

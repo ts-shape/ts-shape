@@ -30,10 +30,10 @@ All arguments are keyword-only; each method also takes `baseline_window` and `n_
 | `detect_disturbances(baseline_window='10min', n_sigma=3.0, min_duration='30s')` | one interval per upset: `peak_deviation`, `mean_deviation`, `direction`, `disturbance_type` |
 | `recovery_time(recovery_pct=0.95, max_recovery='1h')` | per upset: `recovery_time_seconds`, `recovered`, `pre_disturbance_mean`, `post_recovery_mean`, `residual_offset` |
 | `disturbance_frequency(window='8h')` | per window: `disturbance_count`, `total_disturbance_seconds`, `time_disturbed_pct`, `avg_recovery_seconds` |
-| `before_after_comparison(comparison_window='5min')` | per upset: `pre_mean`, `post_mean`, `pre_std`, `post_std`, `mean_shift`, `variance_ratio` |
+| `before_after_comparison(comparison_window='5min')` | per upset: `pre_mean`, `post_mean`, `pre_std`, `post_std`, `mean_shift`, `variance_factor` |
 
 ## Notes
 
 - A disturbance is where the signal deviates from the rolling mean over `baseline_window` by more than `n_sigma` rolling standard deviations, for at least `min_duration`. With `setpoint_uuid=` in the constructor, the setpoint replaces the rolling baseline.
 - Recovered means the deviation has fallen to within `1 − recovery_pct` of the peak deviation, searched up to `max_recovery` after the upset.
-- `before_after_comparison` compares `comparison_window` just before the start and just after the end; upsets with fewer than two samples on either side are skipped. `variance_ratio` is `post_std / pre_std`, NaN (never `inf`) when `pre_std` is 0.
+- `before_after_comparison` compares `comparison_window` just before the start and just after the end; upsets with fewer than two samples on either side are skipped. `variance_factor` is `post_std / pre_std`, NaN (never `inf`) when `pre_std` is 0.

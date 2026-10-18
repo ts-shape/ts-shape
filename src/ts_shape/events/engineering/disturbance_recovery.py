@@ -40,6 +40,18 @@ class DisturbanceRecoveryEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the disturbance detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the process signal to monitor.
+            setpoint_uuid: UUID of a setpoint signal used as the baseline. ``None``
+                (default) uses a rolling baseline.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.setpoint_uuid = setpoint_uuid
@@ -407,6 +419,7 @@ class DisturbanceRecoveryEvents(Base):
 
     @keyword_only(1)
     @renamed_kwargs(threshold_sigma="n_sigma")
+    @twin_columns({"variance_ratio": "variance_factor"})
     def before_after_comparison(
         self,
         baseline_window: str = "10min",
@@ -426,8 +439,14 @@ class DisturbanceRecoveryEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, pre_mean, post_mean, pre_std, post_std, mean_shift,
-            variance_ratio (``post_std / pre_std``; NaN when ``pre_std`` is 0,
-            never ``inf``). ``start`` / ``end`` are the disturbance bounds.
+            variance_ratio, variance_factor (``post_std / pre_std``; NaN when
+            ``pre_std`` is 0, never ``inf``). ``start`` / ``end`` are the
+            disturbance bounds.
+
+            Canonical twin columns: ``variance_factor`` (after
+            ``variance_ratio``, which is not a 0-1 fraction); it holds the
+            same values as the deprecated column right before it, which is
+            removed in the next major release.
         """
         cols = [
             "start",

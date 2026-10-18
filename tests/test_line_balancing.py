@@ -46,7 +46,7 @@ def test_unbalanced_line_identifies_bottleneck():
     lb = LineBalancingEvents(df, station_uuids={"a": "A", "b": "B", "c": "C"})
     bm = lb.balance_metrics(takt_time="75s", window="1h")
     assert (bm["bottleneck_uuid"] == "b").all()
-    assert (bm["bottleneck_cycle_time"].round() == 70).all()
+    assert (bm["bottleneck_cycle_time_seconds"].round() == 70).all()
     assert (bm["balance_efficiency_pct"] < 100.0).all()
     # theoretical min = ceil((40 + 70 + 50) / 75) = ceil(2.13) = 3
     assert (bm["theoretical_min_stations"] == 3).all()

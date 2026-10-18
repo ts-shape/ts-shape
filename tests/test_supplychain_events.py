@@ -210,7 +210,7 @@ class TestLeadTimeAnalysisEvents:
         assert "p95_hours" in stats.columns
         # Mean of [3,4,5,3,7] days = 4.4 days = 105.6 hours
         assert abs(stats["mean_hours"].iloc[0] - 105.6) < 0.1
-        assert stats["count"].iloc[0] == 5
+        assert stats["order_count"].iloc[0] == 5
 
     def test_detect_lead_time_anomalies(self, order_delivery_df):
         analyzer = LeadTimeAnalysisEvents(order_delivery_df)
