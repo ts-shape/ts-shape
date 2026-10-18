@@ -192,7 +192,7 @@ class AssetHealthIndexEvents(Base):
 
         first_time = sig[self.time_column].iloc[0]
         baseline = sig.loc[
-            sig[self.time_column] <= first_time + pd.to_timedelta(baseline_window),
+            sig[self.time_column] < first_time + pd.to_timedelta(baseline_window),
             self.value_column,
         ]
         if len(baseline) < 2:
