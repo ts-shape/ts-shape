@@ -1,5 +1,7 @@
 """Public functions and methods that no other test called by name."""
 
+import datetime
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -73,6 +75,20 @@ def test_window_offset_daily_is_a_calendar_day():
     assert window_offset("1h") == pd.tseries.frequencies.to_offset("1h")
     berlin = pd.Timestamp("2024-03-31", tz="Europe/Berlin")
     assert (berlin + window_offset("1D")) - berlin == pd.Timedelta("23h")
+
+
+@pytest.mark.parametrize(
+    "window",
+    [pd.Timedelta("2D"), datetime.timedelta(days=2), np.timedelta64(2, "D")],
+)
+def test_window_offset_timedelta_is_fixed_on_every_pandas(window):
+    # A duration stays a duration: 48 h across the spring-forward night,
+    # where the calendar-day string "2D" gives 47 h.
+    got = window_offset(window)
+    assert got == pd.offsets.Hour(48)
+    berlin = pd.Timestamp("2024-03-31", tz="Europe/Berlin")
+    assert (berlin + got) - berlin == pd.Timedelta("48h")
+    assert (berlin + window_offset("2D")) - berlin == pd.Timedelta("47h")
 
 
 def test_window_offset_return_type_per_pandas_version():

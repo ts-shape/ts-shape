@@ -7,6 +7,10 @@ pandas window and re-derived the change table in every KPI method. Floats
 are stored with 17 significant digits, so they round-trip exactly:
 the comparison is exact.
 
+The ``control_quality_metrics`` calls pin ``deadband=0``: the former code
+counted every sign change of the error, and the settle-band default that
+replaced it is covered by ``tests/reference/test_kpi_references_misc.py``.
+
 Regenerate (only when a KPI definition changes on purpose) with
 ``python tests/test_setpoint_shared_gather.py``.
 """
@@ -57,10 +61,15 @@ def _outputs() -> pd.DataFrame:
         df = _frame(tz)
         calls = {
             "cqm_pct": lambda e: e.control_quality_metrics(
-                "act", settle_pct=0.05, hold="10s", lookahead="5min"
+                "act", settle_pct=0.05, hold="10s", lookahead="5min", deadband=0
             ),
             "cqm_tol": lambda e: e.control_quality_metrics(
-                "act", tol=0.5, hold="20s", lookahead="12min", rate_threshold=0.05
+                "act",
+                tol=0.5,
+                hold="20s",
+                lookahead="12min",
+                rate_threshold=0.05,
+                deadband=0,
             ),
             "settle": lambda e: e.time_to_settle("act", tol=1.0, lookahead="2min"),
             "overshoot": lambda e: e.overshoot_metrics("act", window="3min"),
