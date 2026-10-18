@@ -12,6 +12,14 @@ fix: missing machine states are unknown time; duty cycle honours data_end;
   naive data_end on tz-aware frames; missing value columns raise; no inf
   variance ratios; object-dtype numbers in feature tools.
 feat: DataQualityWarning when a signal's values are in another value column.
+change: operating-state intervals end at the next change; micro-stop
+  patterns use shift_1..3 and keep a night shift together;
+  cycle_quality_check tolerance and deviation in percent.
+change: names follow docs/naming.md: min_duration, n_sigma,
+  value_column_<role>, dataframe_<role>, signal_uuid; *_seconds, <thing>_count,
+  *_factor and lower-case capability columns (old names kept, deprecated).
+docs: constructor Args for 54 classes; roadmap, loaders, settling time,
+  event-log attributes corrected.
   See docs/migration.md.
 
 # October 17, 2026 (round 12)

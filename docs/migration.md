@@ -94,6 +94,75 @@ one is pinned by a hand-computed test in `tests/reference/test_round13_*.py`.
 - `CrossSignalAnalytics` and `FeatureMatrixExporter` accept numbers stored as
   object dtype.
 
+### Results that change (names and intervals)
+
+- `OperatingStateEvents` intervals end at the next state's first sample
+  (`interval_end="next_change"`, the library default), so consecutive states
+  cover the signal without gaps. At 30 s sampling a 15-minute phase is 900 s
+  (was 870 s). `interval_end="last_sample"` restores the former intervals.
+- `MicroStopEvents.micro_stop_patterns(hour_grouping=False)` names shifts
+  `shift_1` / `shift_2` / `shift_3` (was `morning` / `afternoon` / `night`;
+  pass `shift_definitions=` for your own) and groups a shift that crosses
+  midnight by its start date: two stops at 23:00 and 02:00 in a 22–06 shift
+  are one group (`avg_count` 2.0, was two groups of 1.0).
+- `LineThroughputEvents.cycle_quality_check`: `tolerance_pct` is a percent
+  (default `10.0`) like every other `*_pct`; a value below 1 is still read as
+  the former fraction, with a `DeprecationWarning`. `deviation_pct` is 0–100
+  (was 0–1); the fraction is in the new `deviation_ratio`. `quality_flag`
+  bins follow the tolerance (good ≤ tol, warning ≤ 2.5 × tol); at the
+  default they are the former fixed bins.
+- `GoldenBatchDeviationEvents` works with tz-aware timestamps (it raised).
+- `Pipeline` steps accept deprecated keyword names (with the warning) instead
+  of rejecting them as unknown.
+
+### Renamed parameters
+
+| Where | Old | New |
+|---|---|---|
+| `ChangeoverEvents.detect_changeover`, `SetpointChangeEvents.detect_setpoint_steps` | `min_hold` | `min_duration` |
+| `ChangeoverEvents.changeover_window` config key | `min_hold` | `min_duration` |
+| `SetpointChangeEvents.detect_setpoint_changes` | `min_hold` | `min_step_duration` (its `min_duration` is the ramp duration) |
+| `OutlierDetectionEvents.detect_outliers_zscore`, `detect_outliers_mad` | `threshold` | `n_sigma` |
+| `ToleranceDeviationEvents` (argument and attribute) | `tolerance_column`, `actual_column` | `value_column_tolerance`, `value_column_actual` |
+| `ContextEnricher.enrich_with_tolerances` | `low_col`, `high_col` | `lower_limit_column`, `upper_limit_column` |
+| `ContextEnricher.enrich_with_mapping` | `raw_value_col`, `mapped_value_col` | `value_column_raw`, `value_column_mapped` |
+| `GoldenBatchDeviationEvents` | `reference_df` | `dataframe` |
+| `CycleDataProcessor` (argument and attribute) | `cycles_df`, `values_df` | `dataframe_cycles`, `dataframe_values` |
+| `PatternRecognition` methods | `uuid` | `signal_uuid` |
+| `LineThroughputEvents.cycle_quality_check` | `tolerance_pct` as a fraction | `tolerance_pct` in percent, or `tolerance_ratio` |
+
+### Renamed output columns (old column kept as a twin)
+
+Reading the old column does not warn; it is removed in the next major release.
+
+| Where | Old | New |
+|---|---|---|
+| `ToleranceDeviationEvents.capability_indices` | `Cp`, `Cpk`, `Pp`, `Ppk`, `Cpm` | `cp`, `cpk`, `pp`, `ppk`, `cpm` |
+| `ContextEnricher.enrich_with_tolerances` | `low_limit`, `high_limit` | `lower_limit`, `upper_limit` |
+| `DutyCycleEvents` | `on_time`, `off_time`, `avg_on_duration`, `avg_off_duration` | `*_seconds` |
+| `MachineStateEvents.state_quality_metrics` | `avg_run_duration`, `avg_idle_duration`, `run_idle_ratio` | `*_seconds`, `run_idle_factor` |
+| `MicroStopEvents` | `total_run_time`, `total_micro_stop_time`, `total_lost_time`, `avg_lost_time` | `*_seconds` |
+| `OperatingStateEvents.state_duration_statistics` | `mean/std/min/max/total_duration` | `*_duration_seconds` |
+| `ThresholdMonitoringEvents` | `time_above`, `total_duration` | `time_above_seconds`, `total_duration_seconds` |
+| `SignalQualityEvents.sampling_regularity` | `mean/std/min/max_interval` | `*_interval_seconds` (and `gap_duration_seconds` beside `gap_duration`) |
+| `CycleTimeEvents` | `count`, `moving_avg`, `avg/min/max_cycle_time` | `cycle_count`, `moving_avg_seconds`, `*_cycle_time_seconds` |
+| `LineBalancingEvents` | `cycle_time_mean/median/std`, `bottleneck_cycle_time`, `n_stations` | `*_seconds`, `station_count` |
+| `LineThroughputEvents` | `count`, `expected_time` | `part_count`, `expected_time_seconds` |
+| `WarmUpCoolDownEvents.warmup_consistency` | `deviation_from_median_duration` | `deviation_from_median_duration_seconds` |
+| `LeadTimeAnalysisEvents`, `SetupTimeEvents`, `BatchTrackingEvents` | `count` | `order_count`, `setup_count`, `batch_count` |
+| `ProcessWindowEvents.windowed_statistics`, `OperatingRangeEvents.value_distribution` | `count` | `sample_count` |
+| `ReliabilityEvents.weibull_fit` | `n_failures`, `n_censored` | `failure_count`, `censored_count` |
+| `SamplingResolutionEvents` | `n_unique_values`, `resolution_ratio` | `unique_value_count`, `resolution_factor` |
+| `ValueDistributionEvents.detect_mode_changes` | `n_modes_detected` | `mode_count` |
+| `DesignOfExperimentsEvents.effects` | `n_runs` | `run_count` |
+| `DegradationDetectionEvents`, `DisturbanceRecoveryEvents`, `ProcessWindowEvents` | `variance_ratio` | `variance_factor` |
+| `FlowMetricsEvents.flow_summary` | `consistency_ratio` | `consistency_factor` |
+| `StatisticalProcessControlEvents.detect_violations` | `triggered_rule`, `value_double` | `rule`, `value` (as `detect_rule_violations`) |
+
+`docs/naming.md` now spells out the rules behind these: durations carry a
+unit suffix, counts are `<thing>_count`, and an unbounded quotient is
+`*_factor` (a `*_ratio` stays within 0–1).
+
 ## October 2026, round 12: oscillations, EnPI baseline, windowed features
 
 ### Results that change
