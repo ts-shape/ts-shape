@@ -205,6 +205,12 @@ class SignalSpecs(Mapping[str, SignalSpec]):
     """
 
     def __init__(self, specs: Mapping[str, SignalSpec] | None = None) -> None:
+        """Initialize the collection.
+
+        Args:
+            specs: Mapping of uuid to :class:`SignalSpec`. Each key must equal its
+                spec's ``uuid``. ``None`` (default) builds an empty collection.
+        """
         self._specs: dict[str, SignalSpec] = dict(specs or {})
         for key, spec in self._specs.items():
             if key != spec.uuid:

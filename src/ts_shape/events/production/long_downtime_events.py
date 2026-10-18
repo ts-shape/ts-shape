@@ -42,6 +42,20 @@ class LongDowntimeEvents(Base):
         time_column: str = "systime",
         value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
+        """Initialize the long downtime detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            run_state_uuid: UUID of the run-state signal; must be present in a non-empty
+                ``dataframe``.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the run state.
+            time_column: Timestamp column.
+            value_range: ``(lower, upper)`` inclusive bounds; a value inside counts as
+                running (either bound may be ``None``). ``None`` (default) casts the
+                value to bool.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.run_state_uuid = run_state_uuid
         self.event_uuid = event_uuid

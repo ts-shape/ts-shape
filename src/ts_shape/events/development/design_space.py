@@ -46,6 +46,16 @@ class DesignSpaceEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the design space from qualification data.
+
+        Args:
+            dataframe: Qualification frame the operating window is fitted on.
+            cpp_uuids: UUIDs of the critical process parameters (at least two; use
+                :class:`ProcessWindowEvents` for one).
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         if len(cpp_uuids) < 2:
             raise ValueError(

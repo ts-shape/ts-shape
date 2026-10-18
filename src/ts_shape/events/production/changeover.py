@@ -29,6 +29,14 @@ class ChangeoverEvents(Base):
         event_uuid: str = "prod:changeover",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the changeover detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column

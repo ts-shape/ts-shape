@@ -55,6 +55,23 @@ class MachineStateEvents(Base):
         value_range: tuple[float | None, float | None] | None = None,
         specs: Mapping[str, SignalSpec] | None = None,
     ) -> None:
+        """Initialize the machine state detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            run_state_uuid: UUID of the run-state signal; must be present in a non-empty
+                ``dataframe``.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the run state.
+            time_column: Timestamp column.
+            value_range: ``(lower, upper)`` inclusive bounds; a value inside counts as
+                running (either bound may be ``None``). ``None`` (default) casts the
+                value to bool.
+            specs: Optional signal semantics (see :mod:`ts_shape.signals`). When the
+                run-state signal has a spec, interval closing and gap handling follow
+                it.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.run_state_uuid = run_state_uuid
         # Optional signal semantics (see ts_shape.signals). When the run-state

@@ -61,8 +61,12 @@ For `MachineStateEvents.detect_run_idle` (template
 `production.machine_state.{state}`, shape `interval`) an output row with
 `state="run"`, `source_uuid="asset-A"`, `start` and `end` becomes an event
 with activity `production.machine_state.run`, timestamp `end`, start
-timestamp `start`, an `asset` object `asset-A`, and the attributes
-`production:uuid`, `production:is_delta` and `production:duration_seconds`.
+timestamp `start` and `ts_shape:duration_s` `end - start`, an `asset`
+object `asset-A`, the standard attribute `ts_shape:lifecycle_state="run"`
+(the rule maps `state` to it), and the copied columns `production:uuid`,
+`production:source_uuid`, `production:is_delta` and
+`production:duration_seconds`. `ts_shape:severity` and `ts_shape:value` are
+empty: the output has no severity or value column.
 
 ## Custom adapters
 

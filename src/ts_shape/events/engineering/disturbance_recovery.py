@@ -40,6 +40,18 @@ class DisturbanceRecoveryEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the disturbance detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the process signal to monitor.
+            setpoint_uuid: UUID of a setpoint signal used as the baseline. ``None``
+                (default) uses a rolling baseline.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.setpoint_uuid = setpoint_uuid

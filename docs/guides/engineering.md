@@ -42,9 +42,13 @@ quality = setpoint.control_quality_metrics("oven:temp", tol=1.0, hold="30s", loo
 quality[["start", "t_settle_seconds", "rise_time_seconds", "overshoot_pct", "steady_state_error"]]
 ```
 
-- `time_to_settle`: the time until the actual value stays within `tol` of the
-  new setpoint for at least `hold`. `settle_pct` gives the band as a fraction
-  of the step instead.
+- `time_to_settle`: `t_settle_seconds` is the time of the last entry into the
+  ±`tol` band around the new setpoint, after which the actual value stays
+  inside until the end of the evaluation window (`lookahead` or the next
+  setpoint change, whichever is first). It is NaN when the value is outside
+  the band at the window's end. `hold` only affects `settled`, which also
+  requires that final in-band stretch to last at least `hold`. `settle_pct`
+  gives the band as a fraction of the step instead.
 - `control_quality_metrics` returns, per setpoint change, settling time, rise
   time (10 % to 90 %), overshoot and undershoot, oscillation count and
   frequency, decay rate and steady-state error. Each is also available as its

@@ -80,7 +80,7 @@ Every detector returns a `pandas.DataFrame` in one of four shapes (`ts_shape.eve
 | The uuid column is missing (non-empty frame) | `ColumnNotFoundError` |
 | A value column argument names a column the frame does not have | `ColumnNotFoundError` naming the column |
 | A signal uuid argument (`*_uuid`, `*_uuids`) is not in a non-empty frame | `DataQualityWarning` listing the available uuids; the result is empty. A few detectors (alarm, batch, degradation, line balancing, ...) also raise `ValueError` |
-| Too little data for a statistic | empty result or NaN, never `inf` and never a placeholder such as `0.0` or `0 %`; a mode of no data is `None` |
+| Too little data for a statistic | empty result or NaN, never a placeholder such as `0.0` or `0 %`; a mode of no data is `None`. Results are never `inf`, with one exception: `MaterialBalanceEvents` reports `imbalance_pct` (and the averages and maxima built from it) as `inf` for a window with zero input and non-zero output (0 when nothing flowed in or out) |
 | A code that a mapping table does not know | kept unchanged, with a `DataQualityWarning` counting them |
 | Input rows are skipped (non-numeric values, unreadable files, malformed spec entries) | `DataQualityWarning` saying what was skipped; never silent |
 | A deprecated name is used | `DeprecationWarning` naming the replacement |

@@ -34,6 +34,17 @@ class SignalComparisonEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the signal comparison.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            reference_uuid: UUID of the reference signal (e.g. the setpoint). The
+                compared signal is passed to each method as ``actual_uuid``.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Numeric column holding both signals' values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.reference_uuid = reference_uuid
         self.event_uuid = event_uuid

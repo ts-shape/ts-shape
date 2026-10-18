@@ -168,6 +168,17 @@ class SetpointChangeEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the setpoint change detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            setpoint_uuid: UUID of the setpoint signal. The actual signal is passed to
+                the KPI methods.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Numeric column holding setpoint and actual values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.setpoint_uuid = setpoint_uuid
         self.event_uuid = event_uuid

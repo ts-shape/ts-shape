@@ -76,6 +76,24 @@ class CapabilityTrendingEvents(Base):
         time_column: str = "systime",
         sigma_method: SigmaMethod = "moving_range",
     ) -> None:
+        """Initialize the capability trend tracker.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the signal to analyze.
+            upper_spec: Fixed upper specification limit. Give this or
+                ``upper_spec_uuid``.
+            lower_spec: Fixed lower specification limit. Give this or
+                ``lower_spec_uuid``.
+            upper_spec_uuid: UUID of a signal holding the upper limit.
+            lower_spec_uuid: UUID of a signal holding the lower limit.
+            value_column: Column holding the signal values.
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+            sigma_method: ``"moving_range"`` (default) or ``"std"``: the within sigma
+                used for Cp/Cpk (see the class docstring).
+        """
         _check_sigma_method(sigma_method)
         super().__init__(dataframe, time_column=time_column)
         self.sigma_method = sigma_method

@@ -12,8 +12,13 @@ page: nothing else in ts-shape requires a loader.
 | S3-compatible storage | `S3ProxyDataAccess` | `loader.timeseries.s3proxy_parquet_loader` | `s3` |
 | Databricks Unity Catalog Volume | `DatabricksUnityParquetLoader` | `loader.timeseries.databricks_unity_parquet_loader` | |
 | Databricks via Spark | `DatabricksSparkParquetLoader` | `loader.timeseries.databricks_spark_parquet_loader` | pyspark on the cluster |
-| TimescaleDB | `TimescaleDBDataAccess` | `loader.timeseries.timescale_loader` | `sql` |
+| TimescaleDB | `TimescaleDBDataAccess` | `loader.timeseries.timescale_loader` | `postgres` |
+| Energy CSV on Azure Blob Storage | `AzureBlobEnergyLoader` | `loader.timeseries.azure_blob_energy_loader` | `azure` |
+| Energy CSV on a Databricks Unity Catalog Volume | `DatabricksUnityEnergyLoader` | `loader.timeseries.databricks_unity_energy_loader` | |
+| Energy REST API (JSON) | `EnergyAPILoader` | `loader.timeseries.energy_api_loader` | `api` |
 | Signal metadata (JSON) | `MetadataJsonLoader` | `loader.metadata.metadata_json_loader` | |
+| Signal metadata (Datadash REST API) | `DatapointAPI` | `loader.metadata.metadata_api_loader` | `api` |
+| Signal metadata (PostgreSQL config repository) | `DatapointDB` | `loader.metadata.metadata_db_loader` | `postgres` |
 
 ## The hourly folder layout
 
@@ -176,6 +181,70 @@ loader = TimescaleDBDataAccess(
     db_config={"db_user": "...", "db_pass": "...", "db_host": "...", "db_name": "..."},
 )
 df = loader.fetch_data_as_dataframe()
+```
+
+## Energy data
+
+Three loaders read energy readings and return `systime`, `uuid`,
+`value_double`, `is_delta`, with `systime` in UTC.
+
+`AzureBlobEnergyLoader` (Azure Blob Storage, same authentication as
+`AzureBlobParquetLoader`) and `DatabricksUnityEnergyLoader` (a mounted Unity
+Catalog Volume, read with pandas on the driver) read one CSV file per series
+and day, `csv/YYYY/MM/DD/<series_id>.csv`, plus series metadata in
+`.meta/series.csv`. The `uuid` is the series id (the file name without
+`.csv`).
+
+<!-- no-run -->
+
+```python
+from ts_shape.loader.timeseries.databricks_unity_energy_loader import (
+    DatabricksUnityEnergyLoader,
+)
+
+loader = DatabricksUnityEnergyLoader(catalog="main", schema="plant", volume="energy")
+meta = loader.load_series_metadata()      # id, label_lvl1..4, description, unit, hierarchy_lvl1..6
+df = loader.load_by_time_range("2026-06-19", "2026-06-20", series_ids=["M-001"])
+```
+
+Both also offer `load_by_series_ids`, `stream_by_time_range` (one CSV file
+at a time, as `(series_id, frame)` pairs) and `list_series`; a file that cannot be read is skipped with a
+`DataQualityWarning` (`errors="raise"` raises `LoaderError`).
+
+`EnergyAPILoader` fetches JSON records from a REST endpoint and assigns one
+`uuid` to every row:
+
+<!-- no-run -->
+
+```python
+from ts_shape.loader.timeseries.energy_api_loader import EnergyAPILoader
+
+loader = EnergyAPILoader("https://api.energy-provider.example/v1",
+                         headers={"Authorization": "Bearer <token>"})
+df = loader.fetch_data_as_dataframe(
+    "/meters/readings",
+    params={"meter_id": "M-001", "start": "2024-01-01", "end": "2024-01-02"},
+    time_key="timestamp", value_key="value", uuid_value="meter:M-001",
+)
+```
+
+## Signal metadata from Datadash and the config repository
+
+`DatapointAPI` (Datadash REST API, bearer token) and `DatapointDB` (the
+PostgreSQL config repository) collect the datapoints (`uuid`, `label`,
+`config`) of the devices you name. Both fetch on construction, write one
+`<device>_data_points.json` per device to `output_path` (default `"data"`),
+and return the uuids per device with `get_all_uuids()`, for example as the
+uuid list of `AzureBlobParquetLoader`. `filter_enabled=True` (the default)
+keeps enabled datapoints only (`DatapointDB` also drops archived ones).
+
+<!-- no-run -->
+
+```python
+from ts_shape.loader.metadata.metadata_db_loader import DatapointDB
+
+db = DatapointDB(["Press 1"], db_user="...", db_pass="...", db_host="...")
+uuids = db.get_all_uuids()["Press 1"]
 ```
 
 ## Combining timeseries with metadata

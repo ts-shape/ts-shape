@@ -62,6 +62,19 @@ class RecipePhaseAdherenceEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the recipe phase checker.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            phase_uuid: UUID of the signal holding the active phase name.
+            value_uuid: UUID of the process value evaluated per phase.
+            spec: Mapping of phase name to criteria dict (see the class docstring for
+                the recognized keys).
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.phase_uuid = phase_uuid
         self.value_uuid = value_uuid

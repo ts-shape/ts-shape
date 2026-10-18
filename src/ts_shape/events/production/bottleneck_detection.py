@@ -34,6 +34,15 @@ class BottleneckDetectionEvents(Base):
         event_uuid: str = "prod:bottleneck",
         value_column: str = "value_bool",
     ) -> None:
+        """Initialize the bottleneck detector.
+
+        Args:
+            dataframe: Long-format frame holding one boolean run-state signal per
+                station (``uuid`` identifies the station).
+            time_column: Timestamp column.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the run state (truthy = running).
+        """
         super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid

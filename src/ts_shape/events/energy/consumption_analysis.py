@@ -64,6 +64,16 @@ class EnergyConsumptionEvents(Base):
         time_column: str = "systime",
         uuid_column: str = "uuid",
     ) -> None:
+        """Initialize the consumption analyzer.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+            uuid_column: Column identifying the signal (e.g. ``"id"`` for a raw CSV
+                frame).
+        """
         super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column

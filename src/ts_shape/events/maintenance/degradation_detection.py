@@ -36,6 +36,17 @@ class DegradationDetectionEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the degradation detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the signal to analyze; must be present in
+                ``dataframe``.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid

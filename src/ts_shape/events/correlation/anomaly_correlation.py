@@ -30,6 +30,16 @@ class AnomalyCorrelationEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the anomaly correlator.
+
+        Args:
+            dataframe: Long-format timeseries frame holding every signal to correlate
+                (``uuid`` identifies the signal).
+            event_uuid: UUID stamped on emitted events.
+            value_column: Numeric column the per-signal anomalies (z-scores) are
+                computed from.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.value_column = value_column

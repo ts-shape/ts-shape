@@ -40,6 +40,20 @@ class EnvironmentalCompensationEvents(Base):
         event_uuid: str = "quality:env_compensation",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the environmental compensation.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the measurement signal.
+            env_uuid: UUID of the environment signal (temperature, humidity, ...).
+                Required: ``None`` raises ``ValueError``.
+            env_value: Nominal environment value used by :meth:`compensated_signal`.
+                Optional.
+            value_column: Column holding the signal values.
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.env_uuid = env_uuid

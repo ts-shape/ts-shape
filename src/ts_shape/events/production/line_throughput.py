@@ -30,6 +30,14 @@ class LineThroughputEvents(Base):
         event_uuid: str = "prod:throughput",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the throughput analyzer.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.event_uuid = event_uuid
         self.time_column = time_column

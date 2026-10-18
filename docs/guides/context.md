@@ -90,16 +90,20 @@ every other column. Use it for code tables maintained outside the code, for
 example an alarm-code list exported from the MES:
 
 ```python
+import tempfile
+from pathlib import Path
+
 from ts_shape.context.value_mapping import ValueMapper
 
+table = Path(tempfile.mkdtemp()) / "machine_states.csv"   # your exported file
 pd.DataFrame({"code": [0, 1, 2], "state": ["idle", "running", "error"]}).to_csv(
-    "machine_states.csv", index=False
+    table, index=False
 )
 
 codes = df[df["uuid"] == "state:machine1"]
 mapped = ValueMapper(
     codes,
-    mapping_file="machine_states.csv",
+    mapping_file=str(table),
     map_column="value_string",
     mapping_key_column="code",
     mapping_value_column="state",

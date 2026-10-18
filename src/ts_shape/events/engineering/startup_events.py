@@ -48,6 +48,17 @@ class StartupDetectionEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the startup detector.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            target_uuid: UUID of the metric (speed, temperature, ...) startups are
+                detected on; must be present in ``dataframe``.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.target_uuid = target_uuid
         self.event_uuid = event_uuid

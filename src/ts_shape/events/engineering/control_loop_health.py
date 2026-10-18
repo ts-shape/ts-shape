@@ -92,6 +92,19 @@ class ControlLoopHealthEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the control loop health monitor.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            setpoint_uuid: UUID of the setpoint signal.
+            actual_uuid: UUID of the actual (process value) signal.
+            output_uuid: UUID of the controller output signal, used by
+                :meth:`output_saturation`. ``None`` (default) when there is none.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Numeric column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.setpoint_uuid = setpoint_uuid
         self.actual_uuid = actual_uuid

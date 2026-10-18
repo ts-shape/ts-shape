@@ -49,6 +49,17 @@ class DesignOfExperimentsEvents(Base):
         value_column: str = "value_double",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the DOE run segmenter.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            factor_uuids: UUIDs of the factor signals (at least one). Each must be
+                present in ``dataframe``.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         if not factor_uuids:
             raise ValueError("factor_uuids must contain at least one signal UUID")

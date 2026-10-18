@@ -61,7 +61,9 @@ removed.
 - A registry-wide invariant harness (`tests/invariants`) runs every detector
   method on empty input, on tz-aware input, with an unrelated extra signal,
   and with nullable, pyarrow and text-number dtypes (same result required).
-  It is pinned to a baseline: 278 methods, 0 failures.
+  It is pinned to a baseline: 330 methods, 0 failures (278 run every
+  check; 52 are not applicable, e.g. a required parameter the harness has
+  no input for).
 - Property-based tests (hypothesis) cover the primitives, counters, intervals
   and window bounds.
 - Reference tests, done: AIAG MSA Gauge R&R (average-and-range method,
@@ -78,11 +80,16 @@ removed.
 - Done: the core install needs only pandas, numpy and scipy; cloud and SQL
   loaders are extras.
 - Done: slow row loops vectorized (shift assignment, maintenance trend fits,
-  routing, warm-up, stockout; 10 to 300 times faster on 200k rows). PELT
-  change points are still quadratic on data without change points (about 6 s
-  on 200k rows). A scale test guards the fixed methods.
+  routing, warm-up, stockout; 10 to 300 times faster on 200k rows).
+- Done: 10 and 100 million rows. Detector construction copies, sorts and
+  converts only what it must, per-run loops in 19 modules are numpy, and
+  100M-row frames no longer run out of memory. `ChangePointEvents` defaults
+  to `method="auto"`: exact PELT up to 20,000 samples, binary segmentation
+  above, so change points are no longer quadratic on long signals.
+- Done: `benchmarks/run.py` measures time and peak memory per detector and
+  row count, and CI runs a scaling check (`pytest -m scale`).
 - After 1.0: backend-agnostic primitives (Polars, DuckDB), TimescaleDB
-  push-down, published benchmarks.
+  push-down.
 
 ## W5: understanding
 

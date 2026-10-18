@@ -54,6 +54,16 @@ class SamplingResolutionEvents(Base):
         event_uuid: str = "quality:sampling_resolution",
         time_column: str = "systime",
     ) -> None:
+        """Initialize the sampling/resolution analyzer.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            signal_uuid: UUID of the signal to analyze.
+            value_column: Column holding the signal values.
+            event_uuid: UUID stamped on emitted events.
+            time_column: Timestamp column.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.value_column = value_column

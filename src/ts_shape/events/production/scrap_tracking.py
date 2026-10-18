@@ -72,6 +72,16 @@ class ScrapEvents(Base):
         time_column: str = "systime",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
     ) -> None:
+        """Initialize the scrap tracker.
+
+        Args:
+            dataframe: Long-format timeseries frame (one row per sample, ``uuid``
+                identifies the signal).
+            time_column: Timestamp column.
+            shift_definitions: Mapping of shift name to ``(start, end)`` ``"HH:MM"``
+                times. ``None`` (default) uses three shifts: 06:00-14:00, 14:00-22:00,
+                22:00-06:00.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.shift_definitions = shift_definitions or {

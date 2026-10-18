@@ -48,6 +48,14 @@ class FlowConstraintEvents(Base):
         time_column: str = "systime",
         event_uuid: str = "prod:flow",
     ) -> None:
+        """Initialize the flow constraint detector.
+
+        Args:
+            dataframe: Long-format frame holding the boolean run signals (``uuid``
+                identifies the station).
+            time_column: Timestamp column.
+            event_uuid: UUID stamped on emitted events.
+        """
         super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid

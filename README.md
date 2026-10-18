@@ -71,7 +71,9 @@ log = concat(
 print(log.events[["ocel:activity", "ocel:timestamp"]].head())
 ```
 
-`ts_shape.list_detectors()` lists the detector classes. The
+`ts_shape.list_detectors()` lists the public classes (name, category,
+module): the detectors, and also the transform, feature, loader, event-log
+and pipeline classes. The
 [`examples/`](https://github.com/ts-shape/ts-shape/tree/main/examples) folder
 has one self-contained script per area of the library.
 

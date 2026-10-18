@@ -43,6 +43,17 @@ class GoldenBatchDeviationEvents(Base):
         time_column: str = "systime",
         n_resample: int = 256,
     ) -> None:
+        """Initialize from the golden reference batch.
+
+        Args:
+            reference_df: Frame holding the golden (reference) batch.
+            signal_uuid: UUID of the signal compared between batches.
+            event_uuid: UUID stamped on emitted events.
+            value_column: Column holding the signal values.
+            time_column: Timestamp column.
+            n_resample: Number of points both batches are resampled to on normalized
+                batch time (at least 4).
+        """
         super().__init__(reference_df, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid

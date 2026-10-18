@@ -34,11 +34,15 @@ df = pd.concat([
 ## Profile first
 
 ```python
-report = ts_shape.profile(df)
+report = ts_shape.profile(df)   # a ProfileReport
 print(report.summary())   # here: one info issue, two counter resets on line1:parts
 report.issues()           # error / warning / info, most severe first
 report.to_frame()         # one row per signal: kind, encoding, period, gaps, resets, ...
 ```
+
+`profile` returns a `ProfileReport` (`ts_shape.profiling`), a frozen
+dataclass with `specs` (the inferred `SignalSpecs`), `table` (returned by
+`to_frame()`) and `issue_table` (returned by `issues()`).
 
 The profile flags unparseable or duplicate timestamps, rows out of time order,
 missing values, a uuid spread over several `value_*` columns, logging gaps,
