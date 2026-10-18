@@ -72,5 +72,7 @@ def test_startup_by_slope_window_smooths_noise():
         min_slope=0.05, min_duration="30s", slope_window="20s"
     )
     assert len(ev) == 1
-    assert ev["start"].iloc[0] == t[2] and ev["end"].iloc[0] == t[-1]
+    # The first defined slope (at t[2]) describes t[0] -> t[2]: the run starts
+    # at its reference sample t[0].
+    assert ev["start"].iloc[0] == t[0] and ev["end"].iloc[0] == t[-1]
     assert abs(ev["avg_slope"].iloc[0] - 0.1) < 1e-9

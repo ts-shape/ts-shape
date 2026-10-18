@@ -37,7 +37,8 @@ failed = sd.detect_failed_startups(threshold=5.0, completion_threshold=10.0, max
 ## Notes
 
 - Threshold: a startup begins where the signal rises to or above `threshold` (or the `enter` level of `hysteresis=(enter, exit)`) and counts only if it stays at or above the exit level for `min_above`.
-- Slope is in signal units per second, between consecutive samples by default; a positive `slope_window` takes it over that trailing window, which smooths noise.
+- Slope is in signal units per second, between consecutive samples by default; a positive `slope_window` takes it over that trailing window, which smooths noise. A slope run starts at the reference sample of its first ramping sample (the sample before the first fast step by default), so a single fast step lasts one sample interval.
+- `stability_score` in `assess_startup_quality` is 1 / (1 + CV) of the last 20 % of the startup's samples (at least two); NaN when the startup holds fewer than two samples.
 - Adaptive: threshold = baseline mean + `sensitivity` × baseline std, from the samples before each point (the last `lookback_periods` samples, or the span `baseline_window`), so a rising value does not raise its own threshold.
 - `detect_startup_multi_signal` takes `{uuid: {"method": "threshold" | "slope", ...}}`; `logic="all"` requires all signals within `time_tolerance`, `"any"` one of them.
 - A failed startup crosses `threshold` for at least `min_rise_duration` but does not reach `completion_threshold` (default 2 × `threshold`) within `max_completion_time`, or drops back before holding it for `required_stability`.

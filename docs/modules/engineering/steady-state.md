@@ -38,4 +38,6 @@ All arguments are keyword-only.
 
 - `std_threshold` is in signal units; set it above the sensor noise.
 - Intervals end at the next sample after the condition stops holding by default (`interval_end="next_change"`), so change-only signals keep their duration; `"last_sample"` ends them at the last flagged sample.
+- `mean_value` / `std_value` (and the value bands) are taken over the steady samples only, not over the sample that ends the interval.
+- `steady_state_statistics` gives NaN `steady_pct` when the signal has no time span (no data or one sample) and NaN `avg_steady_duration_seconds` when there is no steady period.
 - `steady_state_statistics(..., as_frame=False)` returns the deprecated dict.

@@ -96,7 +96,9 @@ def _ref_rateofchange_detect_rapid_change(
         seg_rapid = rapid.loc[seg.index]
         if not seg_rapid.iloc[0]:
             continue
-        start = seg[self.time_column].iloc[0]
+        # The rate at row i describes the step from row i-1 (rate_df keeps
+        # the positional labels of the signal it was computed from).
+        start = self.signal[self.time_column].iloc[seg.index[0] - 1]
         end = seg[self.time_column].iloc[-1]
         max_rate_idx = seg["rate"].abs().idxmax()
         max_rate = float(seg.loc[max_rate_idx, "rate"])
@@ -1122,9 +1124,11 @@ def _ref_startupdetection_detect_startup_by_slope(
         back = pd.merge_asof(probe, ref, on="_t", direction="backward").sort_values(
             "_row"
         )
-        s["dt_s"] = (s[self.time_column] - back["_t0"].to_numpy()).dt.total_seconds()
+        s["_t_ref"] = back["_t0"].array
+        s["dt_s"] = (s[self.time_column] - s["_t_ref"]).dt.total_seconds()
         s["dv"] = s[self.value_column] - back["_v0"].to_numpy()
     else:
+        s["_t_ref"] = s[self.time_column].shift()
         s["dt_s"] = s[self.time_column].diff().dt.total_seconds()
         s["dv"] = s[self.value_column].diff()
     dup = s["dt_s"] <= 0
@@ -1143,7 +1147,8 @@ def _ref_startupdetection_detect_startup_by_slope(
         seg_mask = mask.loc[seg.index]
         if not seg_mask.any():
             continue
-        start_t = seg.loc[seg_mask, self.time_column].iloc[0]
+        # A run starts at the reference sample of its first ramping sample.
+        start_t = seg.loc[seg_mask, "_t_ref"].iloc[0]
         end_t = seg.loc[seg_mask, self.time_column].iloc[-1]
         if end_t - start_t < min_d:
             continue
@@ -1255,7 +1260,7 @@ def _ref_thresholdmonitoring_time_above_threshold(
     sig = self.signal[[self.time_column, self.value_column]].copy()
     sig = sig.set_index(self.time_column)
     sig["above"] = (sig[self.value_column] >= threshold).astype(float)
-    sig["enter_above"] = (sig["above"].diff() == 1).astype(int)
+    sig["enter_above"] = (sig["above"].diff().fillna(sig["above"]) == 1).astype(int)
     window_td = pd.to_timedelta(window)
     resampled = sig.resample(window).agg(
         above_frac=("above", "mean"),
@@ -1272,7 +1277,7 @@ def _ref_thresholdmonitoring_time_above_threshold(
         )
     events: list[dict[str, Any]] = []
     for ts, row in resampled.iterrows():
-        if row["sample_count"] == 0:
+        if row["sample_count"] == 0 and interval_end != "next_change":
             continue
         pct = float(row["above_frac"] * 100)
         time_above_seconds = row["above_frac"] * window_td.total_seconds()

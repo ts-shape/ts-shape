@@ -7,6 +7,7 @@ from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
+from ts_shape.utils.runs import true_runs
 
 logger = logging.getLogger(__name__)
 
@@ -63,25 +64,31 @@ class SteadyStateDetectionEvents(Base):
         min_duration: str = "0s",
         interval_end: str = "next_change",
     ) -> list[dict[str, Any]]:
-        """Convert a boolean mask (indexed by timestamp) into intervals."""
+        """Convert a boolean mask (indexed by timestamp) into intervals.
+
+        Each interval also carries ``first`` / ``stop``: the positions of its
+        flagged samples (``mask.iloc[first:stop]``), which exclude the
+        closing sample a ``"next_change"`` end points at.
+        """
         if mask.empty or not mask.any():
             return []
 
         min_td = pd.Timedelta(min_duration)
-        positional = mask.reset_index(drop=True)
         ends = interval_end_times(pd.Series(mask.index), interval_end)
-        groups = (positional != positional.shift()).cumsum()
-        intervals: list[dict[str, Any]] = []
-
-        for _, seg in positional.groupby(groups):
-            if not seg.iloc[0]:
-                continue
-            start = mask.index[seg.index[0]]
-            end = ends.iloc[seg.index[-1]]
-            dur = end - start
-            if dur >= min_td:
-                intervals.append({"start": start, "end": end})
-        return intervals
+        runs = true_runs(mask.to_numpy(dtype=bool))
+        starts = pd.Series(mask.index[runs.starts])
+        stops = pd.Series(ends.array[runs.last])
+        keep = ((stops - starts) >= min_td).to_numpy()
+        return [
+            {"start": a, "end": b, "first": int(f), "stop": int(e)}
+            for a, b, f, e in zip(
+                starts[keep],
+                stops[keep],
+                runs.starts[keep],
+                runs.ends[keep],
+                strict=True,
+            )
+        ]
 
     @keyword_only(1)
     def detect_steady_state(
@@ -106,7 +113,11 @@ class SteadyStateDetectionEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
-            mean_value, std_value, duration_seconds.
+            mean_value, std_value, duration_seconds. ``mean_value`` and
+            ``std_value`` (sample std; 0.0 for a single sample) are taken over
+            the steady samples only -- the samples whose rolling std is below
+            ``std_threshold`` -- not over the sample that ends the interval
+            with ``interval_end="next_change"``.
         """
         cols = [
             "start",
@@ -130,10 +141,12 @@ class SteadyStateDetectionEvents(Base):
         if not intervals:
             return pd.DataFrame(columns=cols)
 
-        sig = self.signal.set_index(self.time_column)[self.value_column]
+        values = self.signal[self.value_column].reset_index(drop=True)
         events: list[dict[str, Any]] = []
         for iv in intervals:
-            segment = sig.loc[iv["start"] : iv["end"]]
+            # Only the steady samples: the closing (transition) sample that a
+            # "next_change" end points at is not part of the steady state.
+            segment = values.iloc[iv["first"] : iv["stop"]]
             events.append(
                 {
                     "start": iv["start"],
@@ -255,7 +268,10 @@ class SteadyStateDetectionEvents(Base):
             columns: start, end, duration_seconds (the span of the signal;
             NaT / 0 without data), uuid (event uuid), source_uuid (signal
             uuid), total_steady_seconds, total_transient_seconds, steady_pct,
-            num_steady_periods, avg_steady_duration_seconds.
+            num_steady_periods, avg_steady_duration_seconds. ``steady_pct``
+            is NaN when the signal has no time span (no data, one sample, or
+            all samples at one instant) and ``avg_steady_duration_seconds``
+            is NaN when there is no steady period to average.
 
             With ``as_frame=False`` (deprecated), a dict with the same keys
             from total_steady_seconds on.
@@ -283,12 +299,13 @@ class SteadyStateDetectionEvents(Base):
         self, window: str, std_threshold: float, min_duration: str
     ) -> dict[str, Any]:
         if self.signal.empty or len(self.signal) < 2:
+            # No span to take a share of: the ratios are undefined.
             return {
                 "total_steady_seconds": 0.0,
                 "total_transient_seconds": 0.0,
-                "steady_pct": 0.0,
+                "steady_pct": float("nan"),
                 "num_steady_periods": 0,
-                "avg_steady_duration_seconds": 0.0,
+                "avg_steady_duration_seconds": float("nan"),
             }
 
         steady = self.detect_steady_state(
@@ -307,9 +324,13 @@ class SteadyStateDetectionEvents(Base):
         return {
             "total_steady_seconds": total_steady,
             "total_transient_seconds": total_transient,
-            "steady_pct": (total_steady / total_span * 100) if total_span > 0 else 0.0,
+            "steady_pct": (
+                (total_steady / total_span * 100) if total_span > 0 else float("nan")
+            ),
             "num_steady_periods": n,
-            "avg_steady_duration_seconds": (total_steady / n) if n > 0 else 0.0,
+            "avg_steady_duration_seconds": (
+                (total_steady / n) if n > 0 else float("nan")
+            ),
         }
 
     @keyword_only(1)

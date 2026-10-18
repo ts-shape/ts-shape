@@ -34,4 +34,5 @@ time_to_temp = wu.time_to_target(180.0, direction="rising")
 ## Notes
 
 - A ramp is a run of rising (or falling) steps with a total change of at least `min_rise` / `min_fall` lasting `min_duration`. `max_pause` is the number of consecutive flat or reversed steps tolerated inside a ramp; with the default 0 any pause ends it, so noisy signals need a pause allowance or smoothing.
+- `overshoot` in `time_to_target` is the peak beyond the target from the time it is reached until the next ramp starts (or the data ends), so a later ramp's peak is not booked to an earlier one.
 - A time-to-target that grows over weeks points to degrading heaters, fouling or insulation.

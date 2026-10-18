@@ -13,8 +13,58 @@ from ts_shape.events._output import (
 from ts_shape.events._windows import add_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
+from ts_shape.utils.frames import to_ns
+from ts_shape.utils.runs import true_runs
+from ts_shape.utils.time_accounting import grouper_periods, split_intervals
 
 logger = logging.getLogger(__name__)
+
+
+def _split_steps(
+    times: pd.Series,
+    s_ns: np.ndarray,
+    e_ns: np.ndarray,
+    window: str,
+) -> tuple[pd.DataFrame, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+    """Cut the steps ``[s_ns[k], e_ns[k])`` at the ``resample(window)`` bounds.
+
+    Returns ``(periods, p_idx, i_idx, a_rel, seconds)``: the windows covering
+    ``times`` (``period`` label, true ``start`` / ``end``) and, per piece with
+    positive length, its window position, its step position, its start in
+    seconds after the window start and its length in seconds. ``None`` when
+    no piece has positive length.
+    """
+    if s_ns.size == 0 or times.empty:
+        return None
+    periods = grouper_periods(times.iloc[0], times.iloc[-1], window)
+    if periods.empty:
+        return None
+    periods = periods.reset_index(drop=True)
+    ps_all = to_ns(periods["start"])
+    # Only instants matter for the split: work on UTC nanoseconds.
+    steps = pd.DataFrame(
+        {
+            "start": s_ns.view("datetime64[ns]"),
+            "end": e_ns.view("datetime64[ns]"),
+            "_i": np.arange(s_ns.size, dtype=np.int64),
+        }
+    )
+    grid = pd.DataFrame(
+        {
+            "start": ps_all.view("datetime64[ns]"),
+            "end": to_ns(periods["end"]).view("datetime64[ns]"),
+            "_p": np.arange(len(periods), dtype=np.int64),
+        }
+    )
+    pieces = split_intervals(steps, grid, keys=["_p"])
+    if pieces.empty:
+        return None
+    p_idx = pieces["_p"].to_numpy(dtype=np.int64)
+    i_idx = pieces["_i"].to_numpy(dtype=np.int64)
+    ps = ps_all[p_idx]
+    a_rel = (np.maximum(s_ns[i_idx], ps) - ps).astype(np.float64) / 1e9
+    seconds = pieces["seconds"].to_numpy(dtype=np.float64)
+    return periods, p_idx, i_idx, a_rel, seconds
 
 
 class ControlLoopHealthEvents(Base):
@@ -96,59 +146,88 @@ class ControlLoopHealthEvents(Base):
     ) -> pd.DataFrame:
         """Per-window error integrals for control loop performance.
 
+        The error ``e = PV - SP`` is piecewise constant between samples and
+        integrated over time; a step that crosses a window boundary is split
+        at the boundary, so every second between the first and the last
+        sample is booked to the window it falls in (none is lost at window
+        edges, and a window with no sample of its own still receives the
+        time a held error covers in it).
+
+        - ``IAE = integral |e| dt``, ``ISE = integral e**2 dt``.
+        - ``ITAE = integral (t - window_start) * |e| dt``: time is measured
+          from the start of the window, and the integral is exact for the
+          piecewise-constant error.
+
         Args:
             window: Resample window (e.g. '1h', '8h').
-            max_gap: Default ``None`` weights each error by the time since
-                the previous sample, with no gap cap. When set, each error is
-                held until the next sample (zero-order hold, i.e. weighted by
-                the time *after* it) and any interval longer than ``max_gap``
-                contributes nothing, so a communication gap is not integrated
-                as one huge error.
+            max_gap: Default ``None`` gives each error the time since the
+                previous sample (the step ``(t[i-1], t[i]]`` carries
+                ``e[i]``), with no gap cap. When set, each error is held
+                until the next sample (zero-order hold, the step
+                ``[t[i], t[i+1])`` carries ``e[i]``) and any step longer than
+                ``max_gap`` contributes nothing, so a communication gap is
+                not integrated as one huge error. In both modes no time is
+                integrated before the first or after the last sample.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, iae, ise,
             itae, bias, sample_count. ``end`` is ``start`` + ``window``.
+            ``bias`` is the mean error of the samples in the window (NaN for
+            a window without samples) and ``sample_count`` their number.
+            Windows that receive no integrated time are omitted.
         """
         cols = ["start", "iae", "ise", "itae", "bias", "sample_count"]
         if self._aligned.empty:
             return empty_event_df("summary", cols[1:])
 
-        df = self._aligned.set_index(self.time_column)
-        groups = df.resample(window)
-
-        events: list[dict[str, Any]] = []
-        for start, group in groups:
-            if len(group) < 2:
-                continue
-            error = group["error"]
-            if max_gap is None:
-                dt = group.index.to_series().diff().dt.total_seconds().fillna(0)
-            else:
-                dt = (-group.index.to_series().diff(-1).dt.total_seconds()).fillna(0)
-                dt = dt.where(dt <= pd.Timedelta(max_gap).total_seconds(), 0.0)
-            t_rel = (group.index - group.index[0]).total_seconds()
-
-            iae = float((error.abs() * dt).sum())
-            ise = float((error**2 * dt).sum())
-            itae = float((t_rel * error.abs() * dt).sum())
-            bias = float(error.mean())
-
-            events.append(
-                {
-                    "start": start,
-                    "iae": iae,
-                    "ise": ise,
-                    "itae": itae,
-                    "bias": bias,
-                    "sample_count": len(group),
-                }
-            )
-
-        if not events:
+        times = self._aligned[self.time_column].reset_index(drop=True)
+        error = self._aligned["error"].to_numpy(dtype=np.float64)
+        tn = to_ns(times)
+        if max_gap is None:
+            # Step (t[i-1], t[i]] carries e[i].
+            s_ns, e_ns, err = tn[:-1], tn[1:], error[1:]
+        else:
+            s_ns, e_ns, err = tn[:-1], tn[1:], error[:-1]
+            ok = (e_ns - s_ns) <= pd.Timedelta(max_gap).value
+            s_ns, e_ns, err = s_ns[ok], e_ns[ok], err[ok]
+        pieces = _split_steps(times, s_ns, e_ns, window)
+        if pieces is None:
             return empty_event_df("summary", cols[1:])
-        return finalize_summary_df(
-            add_window_bounds(pd.DataFrame(events, columns=cols), window)
+        periods, p_idx, i_idx, a_rel, seconds = pieces
+        e_abs = np.abs(err[i_idx])
+        b_rel = a_rel + seconds
+        n_per = len(periods)
+        iae = np.bincount(p_idx, weights=e_abs * seconds, minlength=n_per)
+        ise = np.bincount(p_idx, weights=err[i_idx] ** 2 * seconds, minlength=n_per)
+        itae = np.bincount(
+            p_idx, weights=e_abs * (b_rel**2 - a_rel**2) / 2.0, minlength=n_per
         )
+        covered = np.bincount(p_idx, weights=seconds, minlength=n_per)
+        labels = pd.DatetimeIndex(periods["period"])
+
+        per_sample = (
+            pd.Series(error, index=pd.DatetimeIndex(times))
+            .resample(window)
+            .agg(["mean", "count"])
+            .reindex(labels)
+        )
+        keep = covered > 0
+        events = pd.DataFrame(
+            {
+                "start": labels[keep],
+                "iae": iae[keep],
+                "ise": ise[keep],
+                "itae": itae[keep],
+                "bias": per_sample["mean"].to_numpy(dtype=np.float64)[keep],
+                "sample_count": per_sample["count"]
+                .fillna(0)
+                .to_numpy(dtype=np.int64)[keep],
+            },
+            columns=cols,
+        )
+        if events.empty:
+            return empty_event_df("summary", cols[1:])
+        return finalize_summary_df(add_window_bounds(events, window))
 
     @keyword_only(1)
     def detect_oscillation(
@@ -202,9 +281,7 @@ class ControlLoopHealthEvents(Base):
             times = group.index
             if len(cross_idx) >= 2:
                 cross_times = times[cross_idx]
-                intervals = (
-                    np.diff(cross_times).astype("timedelta64[ms]").astype(float) / 1000
-                )
+                intervals = np.diff(to_ns(cross_times)).astype(np.float64) / 1e9
                 # Full period = 2 × half-period (crossing to crossing)
                 est_period = float(np.mean(intervals)) * 2
             else:
@@ -290,11 +367,22 @@ class ControlLoopHealthEvents(Base):
                 within 1% of the range of it count as saturated low. Default 0.0.
             window: Resample window as a pandas offset string (e.g. '1h').
 
+        Shares and run lengths are measured in time, not samples: each
+        output sample is held until the next one (zero-order hold, the
+        module's ``interval_end="next_change"`` convention), steps are split
+        at the window boundaries, and the time after the last sample is not
+        observed (the last sample opens no step). A single saturated sample
+        therefore counts for the time until the next sample.
+
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid (the output uuid), pct_time_at_high, pct_time_at_low,
             pct_time_saturated, longest_saturation_seconds. One row per
-            window; ``end`` is ``start`` + ``window``.
+            window that holds observed time; ``end`` is ``start`` +
+            ``window``. The percentages are shares of the observed (held)
+            time in the window; ``longest_saturation_seconds`` is the
+            longest stretch of consecutive saturated time inside the window
+            (a run that crosses a window boundary is cut there).
 
             Canonical twin columns: ``time_at_high_pct`` (after ``pct_time_at_high``),
             ``time_at_low_pct`` (after ``pct_time_at_low``), ``time_saturated_pct``
@@ -311,45 +399,51 @@ class ControlLoopHealthEvents(Base):
         if self._out.empty:
             return empty_event_df("interval", cols)
 
-        out = self._out.set_index(self.time_column)[self.value_column]
-        groups = out.resample(window)
+        times = self._out[self.time_column].reset_index(drop=True)
+        values = self._out[self.value_column].to_numpy(dtype=np.float64)
         tol = (upper_limit - lower_limit) * 0.01  # 1% of range
+        tn = to_ns(times)
+        with np.errstate(invalid="ignore"):
+            high = (values >= upper_limit - tol)[:-1]
+            low = (values <= lower_limit + tol)[:-1]
+        pieces = _split_steps(times, tn[:-1], tn[1:], window)
+        if pieces is None:
+            return empty_event_df("interval", cols)
+        periods, p_idx, i_idx, _, seconds = pieces
+        n_per = len(periods)
+        covered = np.bincount(p_idx, weights=seconds, minlength=n_per)
+        t_high = np.bincount(p_idx, weights=seconds * high[i_idx], minlength=n_per)
+        t_low = np.bincount(p_idx, weights=seconds * low[i_idx], minlength=n_per)
 
-        events: list[dict[str, Any]] = []
-        for start, group in groups:
-            if group.empty:
-                continue
-            n = len(group)
-            at_high = (group >= upper_limit - tol).sum()
-            at_low = (group <= lower_limit + tol).sum()
-
-            # Longest saturation run
-            saturated = (group >= upper_limit - tol) | (group <= lower_limit + tol)
-            if saturated.any():
-                runs = (saturated != saturated.shift()).cumsum()
-                sat_runs = saturated.groupby(runs).apply(
-                    lambda g: (
-                        (g.index[-1] - g.index[0]).total_seconds() if g.iloc[0] else 0
-                    )
-                )
-                longest = float(sat_runs.max())
-            else:
-                longest = 0.0
-
-            events.append(
-                {
-                    "start": start,
-                    "pct_time_at_high": float(at_high / n * 100),
-                    "pct_time_at_low": float(at_low / n * 100),
-                    "pct_time_saturated": float((at_high + at_low) / n * 100),
-                    "longest_saturation_seconds": longest,
-                }
+        # Runs of consecutive saturated steps, as time spans, cut per window.
+        longest = np.zeros(n_per, dtype=np.float64)
+        runs = true_runs(high | low)
+        if runs.n_runs:
+            run_pieces = _split_steps(
+                times, tn[:-1][runs.starts], tn[1:][runs.last], window
             )
+            if run_pieces is not None:
+                _, rp, _, _, rsec = run_pieces
+                np.maximum.at(longest, rp, rsec)
 
-        if not events:
+        keep = covered > 0
+        with np.errstate(invalid="ignore", divide="ignore"):
+            pct_high = np.where(keep, t_high / covered * 100, np.nan)
+            pct_low = np.where(keep, t_low / covered * 100, np.nan)
+        events = pd.DataFrame(
+            {
+                "start": pd.DatetimeIndex(periods["period"])[keep],
+                "pct_time_at_high": pct_high[keep],
+                "pct_time_at_low": pct_low[keep],
+                "pct_time_saturated": (pct_high + pct_low)[keep],
+                "longest_saturation_seconds": longest[keep],
+            },
+            columns=cols,
+        )
+        if events.empty:
             return empty_event_df("interval", cols)
         return finalize_interval_df(
-            add_window_bounds(pd.DataFrame(events, columns=cols), window),
+            add_window_bounds(events, window),
             uuid=self.event_uuid,
             source_uuid=self.output_uuid,
         )

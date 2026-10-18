@@ -30,5 +30,5 @@ print(result[["systime", "value_before", "value_after", "delta"]])
 
 ## Notes
 
-- Rates are in signal units per second, computed between consecutive samples. Each run of consecutive samples at or above `threshold` is one interval; filter on `duration_seconds` to drop short ones.
+- Rates are in signal units per second, computed between consecutive samples. Each run of consecutive samples at or above `threshold` is one interval. The rate at a sample describes the step from the previous sample, so an interval starts at the sample before the first fast step (a single fast step lasts one sample interval, not zero); filter on `duration_seconds` to drop short ones.
 - `detect_rapid_change(window=...)` is deprecated and ignored.
