@@ -50,7 +50,7 @@ The bearing (vibration) signal drives the loss of health, although temperature c
 
 ## Notes
 
-- `signals` maps each signal uuid to a failure mode, or to `{"failure_mode": ..., "weight": ...}`; a bare string has weight 1. Weights must be positive.
+- `signals` maps each signal uuid to a failure mode, or to `{"failure_mode": ..., "weight": ...}`; a bare string has weight 1. Weights must be positive. A uuid not in the data gets a `DataQualityWarning`, and so does a signal whose values are in another `value_*` column than `value_column` (once per signal, also when the other signals still give a result).
 - Each signal is scored per window against the opening `baseline_window` of its own data: up to a third of the score for mean drift, for growing variance and for the trend slope. Start the data at a known-good period.
 - The asset score is the weighted mean of the signals present in the window. A signal without data in a window is left out rather than scored 0; `confidence_level` is the share of the configured weight that was present. `dominant_failure_mode` is the failure mode of the signal with the largest weighted health deficit.
 - `health_events` reports only the window that enters a band by default; `only_crossings=False` reports every window below a threshold. `direction` is `below` when the band gets worse (and for repeat rows) and `above` for a recovery from `critical` to `warning` (then `threshold` is the `critical_threshold` the score rose above); a recovery to `ok` emits no row. `critical_threshold` must not exceed `warning_threshold`.

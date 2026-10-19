@@ -5,6 +5,7 @@ and summarizes seasonal demand patterns.
 """
 
 import logging
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,18 @@ from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 from ts_shape.utils.frames import window_offset
 
 logger = logging.getLogger(__name__)
+
+#: How :meth:`DemandPatternEvents.demand_by_period` treats a period without
+#: orders: ``"zero"`` keeps it with zero demand, ``"drop"`` leaves it out.
+EMPTY_PERIOD_MODES: tuple[str, ...] = ("zero", "drop")
+
+
+def _check_empty_periods(empty_periods: str) -> None:
+    if empty_periods not in EMPTY_PERIOD_MODES:
+        raise ValueError(
+            f"empty_periods must be one of {EMPTY_PERIOD_MODES}, "
+            f"got {empty_periods!r}"
+        )
 
 
 class DemandPatternEvents(Base):
@@ -71,16 +84,35 @@ class DemandPatternEvents(Base):
     def demand_by_period(
         self,
         window: str = "1D",
+        empty_periods: Literal["zero", "drop"] = "zero",
     ) -> pd.DataFrame:
         """Aggregate demand per time period.
 
+        Each row of the demand signal is one order (or demand event), so a
+        period without rows is a period without demand. With
+        ``empty_periods="zero"`` (the default) every period between the
+        first and the last period with data appears, the empty ones with
+        ``total_demand = 0``, ``peak_demand = 0``, ``order_count = 0`` and
+        ``avg_demand`` missing (it is the mean order size, undefined
+        without orders). A cumulative counter is not event-encoded demand:
+        difference it into per-event quantities first.
+
         Args:
             window: Pandas offset alias for grouping (e.g. ``'1D'``, ``'1h'``).
+            empty_periods: ``"zero"`` keeps periods without orders as zero
+                demand; ``"drop"`` leaves them out (only periods with at
+                least one order).
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
-            source_uuid, is_delta, total_demand, avg_demand, peak_demand.
+            source_uuid, is_delta, total_demand, avg_demand, peak_demand,
+            order_count. ``order_count`` is the number of orders (non-missing
+            values) in the period.
+
+        Raises:
+            ValueError: If ``empty_periods`` is not ``"zero"`` or ``"drop"``.
         """
+        _check_empty_periods(empty_periods)
         empty_cols = [
             "start",
             "uuid",
@@ -89,6 +121,7 @@ class DemandPatternEvents(Base):
             "total_demand",
             "avg_demand",
             "peak_demand",
+            "order_count",
         ]
         if self.demand.empty:
             return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
@@ -97,8 +130,7 @@ class DemandPatternEvents(Base):
         dm = dm.set_index(self.time_column)
 
         grouped = dm[self.value_column].resample(window)
-        # min_count=1: an empty window is "no data" (NaN, dropped below), not
-        # zero demand -- zeros skewed the spike and seasonality statistics.
+        count = grouped.count()
         total = grouped.sum(min_count=1)
         avg = grouped.mean()
         peak = grouped.max()
@@ -109,11 +141,23 @@ class DemandPatternEvents(Base):
                 "total_demand": total.values,
                 "avg_demand": avg.values,
                 "peak_demand": peak.values,
+                "order_count": count.values.astype("int64"),
             }
         )
 
-        # Drop periods with NaN (no data)
-        result = result.dropna(subset=["total_demand"]).copy()
+        if empty_periods == "drop":
+            result = result[result["order_count"] > 0].copy()
+        else:
+            # The resample spans the first to the last period with data;
+            # trim leading/trailing periods whose rows held no value.
+            has = np.flatnonzero(result["order_count"].to_numpy() > 0)
+            if has.size:
+                result = result.iloc[has[0] : has[-1] + 1].copy()
+            else:
+                result = result.iloc[0:0].copy()
+            empty = result["order_count"] == 0
+            result.loc[empty, "total_demand"] = 0.0
+            result.loc[empty, "peak_demand"] = 0.0
 
         if result.empty:
             return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
@@ -129,13 +173,21 @@ class DemandPatternEvents(Base):
         self,
         threshold_factor: float = 2.0,
         window: str = "1D",
+        empty_periods: Literal["zero", "drop"] = "zero",
     ) -> pd.DataFrame:
         """Flag periods where demand exceeds mean + threshold_factor * std.
+
+        The mean and std are taken over the period totals of
+        :meth:`demand_by_period`, by default including the periods without
+        orders as zero demand: a spike is measured against the demand over
+        the whole span, not only against the periods that had orders.
 
         Args:
             threshold_factor: Number of standard deviations above the mean
                 to flag as a spike.
             window: Pandas offset alias for aggregation period.
+            empty_periods: Passed to :meth:`demand_by_period`; ``"drop"``
+                gives the baseline over periods with orders only.
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
@@ -151,10 +203,11 @@ class DemandPatternEvents(Base):
             "baseline_mean",
             "spike_magnitude",
         ]
+        _check_empty_periods(empty_periods)
         if self.demand.empty:
             return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
-        period_data = self.demand_by_period(window=window)
+        period_data = self.demand_by_period(window=window, empty_periods=empty_periods)
 
         if period_data.empty or len(period_data) < 2:
             return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
@@ -190,15 +243,21 @@ class DemandPatternEvents(Base):
     def seasonality_summary(
         self,
         window: str = "1D",
+        empty_periods: Literal["zero", "drop"] = "zero",
     ) -> pd.DataFrame:
         """Compute demand patterns by day-of-week (for daily) or hour-of-day (for hourly).
 
         When ``window='1D'``, groups by day of week (Monday=0 .. Sunday=6).
         When ``window`` is sub-daily (e.g. ``'1h'``), groups by hour of day (0..23).
+        The statistics are over the period totals of :meth:`demand_by_period`,
+        by default including periods without orders as zero demand (a
+        weekday that usually has no orders shows a low average).
 
         Args:
             window: Pandas offset alias. ``'1D'`` for day-of-week analysis,
                 any sub-daily frequency for hour-of-day analysis.
+            empty_periods: Passed to :meth:`demand_by_period`; ``"drop"``
+                uses periods with orders only.
 
         Returns:
             DataFrame with columns: period_label, avg_demand, std_demand,
@@ -211,10 +270,11 @@ class DemandPatternEvents(Base):
             "min_demand",
             "max_demand",
         ]
+        _check_empty_periods(empty_periods)
         if self.demand.empty:
             return pd.DataFrame(columns=empty_cols)
 
-        period_data = self.demand_by_period(window=window)
+        period_data = self.demand_by_period(window=window, empty_periods=empty_periods)
 
         if period_data.empty:
             return pd.DataFrame(columns=empty_cols)

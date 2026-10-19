@@ -482,6 +482,7 @@ METHOD_TWINS = {
     },
     # Seconds without a unit in the name, twinned by ``*_seconds``.
     ("MicroStopEvents", "micro_stop_frequency"): {
+        "count": "micro_stop_count",
         "total_lost_time": "total_lost_time_seconds",
     },
     ("MicroStopEvents", "micro_stop_impact"): {
@@ -492,6 +493,7 @@ METHOD_TWINS = {
         "avg_lost_time": "avg_lost_time_seconds",
     },
     ("OperatingStateEvents", "state_duration_statistics"): {
+        "count": "interval_count",
         "mean_duration": "mean_duration_seconds",
         "std_duration": "std_duration_seconds",
         "min_duration": "min_duration_seconds",
@@ -525,12 +527,6 @@ METHOD_TWINS = {
 #: Each column must still be produced (see
 #: :func:`test_pending_output_renames_are_current`).
 PENDING_OUTPUT_RENAMES: dict[tuple[str, str], dict[str, str]] = {
-    ("OperatingStateEvents", "state_duration_statistics"): {
-        "count": "deferred: bare count, renamed in a later round"
-    },
-    ("MicroStopEvents", "micro_stop_frequency"): {
-        "count": "deferred: bare count, renamed in a later round"
-    },
     **{
         ("SetpointChangeEvents", method): {
             "undershoot_ratio": "a fraction of the step that can exceed 1 by definition"

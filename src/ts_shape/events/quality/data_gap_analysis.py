@@ -245,8 +245,15 @@ class DataGapAnalysisEvents(Base):
         """Data coverage percentage per time window.
 
         For each window, reports how much of the window actually contains
-        data (based on first and last sample timestamps minus any internal
-        gaps).
+        data: the time the data covers minus any internal gaps. The data
+        covers ``[first sample, last sample + one sampling step)``, the
+        sampling step being the median positive interval between
+        consecutive samples (the last sample holds for one step, as every
+        other sample holds until the next one; a signal without a positive
+        step covers no time after its last sample). Time of an edge window
+        before the first sample or after that end counts as missing, so
+        data 10:30:00-11:29:59 at 1 s reads 50 % in both hourly windows --
+        the same as ``SignalQualityEvents.data_completeness``.
 
         Args:
             window: Resample window (e.g. ``'1h'``, ``'1D'``, ``'15min'``).
@@ -258,6 +265,9 @@ class DataGapAnalysisEvents(Base):
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, sample_count, coverage_pct, gap_count,
             gap_seconds. ``end`` is the next period start.
+            ``gap_seconds`` includes the missing edge time of the first and
+            last window; ``gap_count`` counts only the internal gaps (those
+            of :meth:`detect_gaps`) overlapping the window.
         """
         cols = [
             "start",
@@ -290,6 +300,15 @@ class DataGapAnalysisEvents(Base):
 
         counts = sig[self.value_column].resample(window).count()
 
+        # The time the data covers: from the first sample to one median
+        # sampling step after the last one (0 without a positive step).
+        times = self.signal[self.time_column]
+        steps = times.diff()
+        steps = steps[steps > pd.Timedelta(0)]
+        last_step = pd.Timedelta(steps.median()) if len(steps) else pd.Timedelta(0)
+        data_start = times.iloc[0]
+        data_end = times.iloc[-1] + last_step
+
         events: list[dict[str, Any]] = []
         for ts, count in counts.items():
             # The window's real length (23 h / 25 h on DST days for '1D').
@@ -308,6 +327,11 @@ class DataGapAnalysisEvents(Base):
                     clip_start = max(g["start"], ts)
                     clip_end = min(g["end"], end)
                     gap_secs += (clip_end - clip_start).total_seconds()
+            # Edge time before the first sample / after the last one's step.
+            if ts < data_start:
+                gap_secs += (min(end, data_start) - ts).total_seconds()
+            if end > data_end:
+                gap_secs += (end - max(ts, data_end)).total_seconds()
 
             coverage = max(0.0, min(100.0, (1.0 - gap_secs / window_secs) * 100))
             events.append(

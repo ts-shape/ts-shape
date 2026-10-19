@@ -1,3 +1,15 @@
+# October 18, 2026 (round 14)
+Audit leftovers.
+change: demand_by_period counts periods without orders as zero demand
+  (empty_periods="drop" for the former view); spikes and seasonality follow.
+fix: lead times pair orders and deliveries one-to-one per identifier; edge
+  windows in coverage_by_period; aliasing ignores timestamps of missing
+  values; half-open degradation and health baselines; a zero is not an extra
+  oscillation crossing; signals= mappings get the signal warnings.
+feat: abs-rate twins in rate_statistics; power column in calibration_curve;
+  interval_count and micro_stop_count twins.
+  See docs/migration.md.
+
 # October 18, 2026 (round 13)
 Audit fixes: engineering, quality and maintenance results; robustness.
 fix: control-loop error integrals and output saturation, threshold time

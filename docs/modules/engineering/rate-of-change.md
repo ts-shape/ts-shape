@@ -25,10 +25,11 @@ print(result[["systime", "value_before", "value_after", "delta"]])
 | Method | Returns |
 |---|---|
 | `detect_rapid_change(threshold)` | intervals with \|rate\| ≥ `threshold`: `start`, `end`, `max_rate`, `direction` |
-| `rate_statistics(window='1h')` | per window: `mean_rate`, `std_rate`, `max_rate`, `min_rate` |
+| `rate_statistics(window='1h')` | per window, of the absolute rate: `mean_abs_rate`, `std_abs_rate`, `max_abs_rate`, `min_abs_rate` |
 | `detect_step_changes(min_delta, max_duration='5s')` | jumps of at least `min_delta` within `max_duration`: `time` (after the jump), `value_before`, `value_after`, `delta`, `duration` |
 
 ## Notes
 
 - Rates are in signal units per second, computed between consecutive samples. Each run of consecutive samples at or above `threshold` is one interval. The rate at a sample describes the step from the previous sample, so an interval starts at the sample before the first fast step (a single fast step lasts one sample interval, not zero); filter on `duration_seconds` to drop short ones.
+- `rate_statistics` describes \|rate\|. Its `mean_rate`, `std_rate`, `max_rate` and `min_rate` columns hold the same absolute values as the `*_abs_rate` twins today and become statistics of the signed rate in the next major release; read `*_abs_rate` for the absolute rate.
 - `detect_rapid_change(window=...)` is deprecated and ignored.

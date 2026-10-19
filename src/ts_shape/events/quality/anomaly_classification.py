@@ -34,6 +34,24 @@ def _first_out_of_band(v: np.ndarray, s: int, e: int, tolerance: float) -> int:
     return e
 
 
+def _carried_signs(x: np.ndarray, groups: np.ndarray | None = None) -> np.ndarray:
+    """Sign of ``x`` with zeros (and NaN) carrying the last non-zero sign.
+
+    Leading zeros take the first non-zero sign, so a touch of zero is no
+    sign change and ``1, 0, -1`` is one change. With ``groups`` the carry
+    stays within each group (consecutive equal labels); an all-zero group is
+    NaN (no change).
+    """
+    s = pd.Series(np.sign(x)).replace(0.0, np.nan)
+    if groups is None:
+        s = s.ffill().bfill()
+    else:
+        s = s.groupby(groups).ffill()
+        s = s.groupby(groups).bfill()
+    out: np.ndarray = s.to_numpy(dtype=np.float64)
+    return out
+
+
 class AnomalyClassificationEvents(Base):
     """Quality: Anomaly Classification
 
@@ -297,6 +315,12 @@ class AnomalyClassificationEvents(Base):
         edge belongs to the later window, and the trailing partial window is
         evaluated too (with at least 3 samples).
 
+        A zero-crossing is a sign change of the value minus the line joining
+        the window's first and last value. A value exactly on the line
+        carries the last non-zero sign (the window's first and last value
+        always lie on it), so ``1, 0, -1`` is one crossing and touching the
+        line (``1, 0, 1``) is none.
+
         Args:
             window: Window size for analysis.
             min_crossings: Minimum zero-crossings to flag oscillation.
@@ -345,8 +369,9 @@ class AnomalyClassificationEvents(Base):
                 line = pos * np.repeat(step, lens_k) + np.repeat(first_v, lens_k)
                 is_last = pos == np.repeat(lens_k - 1, lens_k)
                 line[is_last] = np.repeat(last_v, lens_k)[is_last]
-                signs = np.sign(vals - line)
-                signs[signs == 0] = 1
+                signs = _carried_signs(
+                    vals - line, np.repeat(np.arange(len(ok)), lens_k)
+                )
                 change = np.abs(np.diff(signs)) > 0
                 # Only steps inside a window count (not across two windows).
                 change &= ~is_last[:-1]
@@ -504,6 +529,10 @@ class AnomalyClassificationEvents(Base):
         so the test depends on the sampling rate; on regularly sampled data
         both settings flag the same windows.
 
+        A window is an oscillation when its detrended values change sign
+        more than ``0.4 × samples`` times, counted as in
+        :meth:`detect_oscillation` (zeros carry the last non-zero sign).
+
         Args:
             window: Window size for analysis.
             n_sigma: Z-score threshold for spike detection.
@@ -618,8 +647,7 @@ class AnomalyClassificationEvents(Base):
 
             # Check oscillation
             detrended = values - np.linspace(values[0], values[-1], len(values))
-            signs = np.sign(detrended)
-            signs[signs == 0] = 1
+            signs = _carried_signs(detrended)
             crossings = int(np.sum(np.abs(np.diff(signs)) > 0))
             if crossings > len(values) * 0.4:
                 amplitude = float(np.max(values) - np.min(values))

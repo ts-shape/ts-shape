@@ -6,6 +6,69 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 14: audit leftovers
+
+Each change is pinned by a hand-computed test in
+`tests/reference/test_round14_*.py`.
+
+### Results that change
+
+- `DemandPatternEvents.demand_by_period` keeps periods without orders as zero
+  demand (`empty_periods="zero"`, the new default): every period from the
+  first to the last one with data is returned, empty ones with
+  `total_demand = 0`, `peak_demand = 0`, `order_count = 0` and `avg_demand`
+  NaN. New `order_count` column. `detect_demand_spikes` and
+  `seasonality_summary` use the zero-filled totals, which lowers the spike
+  baseline and the weekday averages (orders of 10 every other day: Monday
+  average 10 → 5). `empty_periods="drop"` restores the former output.
+  Cumulative counters must be differenced into per-order quantities first.
+- `LeadTimeAnalysisEvents.lead_times` with order identifiers pairs orders and
+  deliveries one-to-one, first in first out, within each identifier. One
+  delivery could close several orders with the same identifier and later
+  deliveries were ignored (two orders, deliveries on Jan 5 and Jan 6: 96 h and
+  72 h → 96 h and 96 h). Unpaired orders and deliveries raise a
+  `DataQualityWarning` on this path too. Multi-line orders need line-level
+  identifiers. `lead_time_statistics` and `detect_lead_time_anomalies`
+  follow.
+- `DataGapAnalysisEvents.coverage_by_period`: the data covers
+  `[first sample, last sample + median sampling step)`; time of the first and
+  last window outside that span is missing (in `gap_seconds`; `gap_count`
+  still counts internal gaps). 1 s data from 10:30 to 11:29:59 in hourly
+  windows reads 50 % / 50 % (was 100 % / 100 %), as `data_completeness`.
+- `SamplingResolutionEvents.detect_aliasing` takes the sampling rate from the
+  timestamps of non-missing values (every other value NaN on a 1 s grid:
+  1.0 Hz → 0.5 Hz; dominant frequency and `aliasing_risk` follow).
+- `DegradationDetectionEvents` and `AssetHealthIndexEvents`: the baseline is
+  the half-open `[first, first + window)`, as long as the rolling windows, so
+  a stationary signal has a variance ratio of 1. `detect_variance_increase`
+  does not flag samples inside the baseline window.
+- `ControlLoopHealthEvents.detect_oscillation` and
+  `AnomalyClassificationEvents.detect_oscillation` / `classify_anomalies`: a
+  zero carries the last non-zero sign, so `1, 0, -1` is one crossing (was two)
+  and touching zero is none. The control-loop period doubles where zeros sat
+  between the signs.
+
+### New and clarified
+
+- `RateOfChangeEvents.rate_statistics`: `mean_abs_rate`, `std_abs_rate`,
+  `max_abs_rate`, `min_abs_rate`. The `*_rate` columns are statistics of the
+  absolute rate today and become statistics of the signed rate in the next
+  major release; read `*_abs_rate` for the absolute rate.
+- `CalibrationValidationEvents.calibration_curve`: a `power` column after
+  `coefficient_index`. Coefficients are highest power first and describe
+  measured = f(reference).
+- Canonical twins: `OperatingStateEvents.state_duration_statistics`
+  `count` → `interval_count`; `MicroStopEvents.micro_stop_frequency`
+  `count` → `micro_stop_count`.
+- `signals={uuid: ...}` arguments (`AssetHealthIndexEvents`,
+  `StartupDetectionEvents.detect_startup_multi_signal`) get the
+  uuid-not-found warning; `AssetHealthIndexEvents` warns once per signal whose
+  values are in another `value_*` column, also when the index is computed
+  from the others.
+- `signals.primitives.windows` (docs): sub-daily windows are fixed lengths
+  laid out like `resample`, so their wall-clock start moves after a DST
+  change; use `shift_windows` for wall-clock shifts.
+
 ## October 2026, round 13: audit fixes
 
 Fixes from an audit of the engineering, quality and maintenance packs. Each

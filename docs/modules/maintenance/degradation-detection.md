@@ -31,6 +31,6 @@ print(health[["systime", "health_score"]].tail())
 ## Notes
 
 - Slopes are in signal units per second; `direction` is `"increasing"` or `"decreasing"` (default).
-- The baseline is the start of the data: the first `window` for `detect_variance_increase`, the first `baseline_window` for `health_score`. Start the input at a known-good period, or the baseline produces false alarms.
+- The baseline is the start of the data: the first `window` for `detect_variance_increase`, the first `baseline_window` for `health_score`, half-open (`[first sample, first sample + window)`) like the rolling `(t − window, t]` windows, so a stationary regular signal has a variance ratio of 1. `detect_variance_increase` does not flag samples inside the baseline window (their rolling windows are the partial warm-up). Start the input at a known-good period, or the baseline produces false alarms.
 - A level shift must hold at least `hold` and be at least `min_shift` in size.
 - Interval methods end an interval at the next sample after the condition stops holding (`interval_end="next_change"`, default) or at the last flagged sample (`"last_sample"`).

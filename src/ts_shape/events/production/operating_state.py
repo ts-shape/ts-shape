@@ -198,7 +198,7 @@ class OperatingStateEvents(Base):
         state_duration_stats = deprecated_method("state_duration_statistics")
 
     @keyword_only(1)
-    @twin_columns(_DURATION_TWINS)
+    @twin_columns({"count": "interval_count", **_DURATION_TWINS})
     def state_duration_statistics(
         self, n_states: int = 2, interval_end: str = "next_change"
     ) -> pd.DataFrame:
@@ -211,9 +211,11 @@ class OperatingStateEvents(Base):
         Returns:
             DataFrame with columns: state, state_label, count,
             mean_duration, std_duration, min_duration, max_duration,
-            total_duration (float seconds).
+            total_duration (float seconds). ``count`` is the number of
+            intervals in the state.
 
-            Canonical twin columns: ``mean_duration_seconds``,
+            Canonical twin columns: ``interval_count`` (after ``count``),
+            ``mean_duration_seconds``,
             ``std_duration_seconds``, ``min_duration_seconds``,
             ``max_duration_seconds`` and ``total_duration_seconds``, each
             right after the deprecated column of the same values, which is

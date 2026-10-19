@@ -28,7 +28,7 @@ patterns = ms.micro_stop_patterns(hour_grouping=True)
 | Method | Returns |
 |---|---|
 | `detect_micro_stops(max_duration='30s', min_duration='0s')` | `start`, `end`, `duration_seconds`, `duration`, `preceding_run_duration` |
-| `micro_stop_frequency(window='1h', max_duration='30s')` | per window: `count`, `total_lost_time_seconds`, `share_of_window_pct` |
+| `micro_stop_frequency(window='1h', max_duration='30s')` | per window: `micro_stop_count`, `total_lost_time_seconds`, `share_of_window_pct` (each right after its deprecated twin `count`, `total_lost_time`, `pct_of_window`) |
 | `micro_stop_impact(window='1h', max_duration='30s')` | per window: `total_run_time_seconds`, `total_micro_stop_time_seconds`, `performance_loss_pct` (= `availability_loss_pct`) |
 | `micro_stop_patterns(hour_grouping=True, max_duration='30s', shift_definitions=None)` | per `hour` of day (or per `shift` with `hour_grouping=False`): `avg_count`, `avg_lost_time_seconds` |
 

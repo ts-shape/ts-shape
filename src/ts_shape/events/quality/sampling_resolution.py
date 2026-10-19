@@ -262,6 +262,10 @@ class SamplingResolutionEvents(Base):
             expected_frequency_hz: Known process frequency in Hz. If None,
                 dominant frequency is estimated from FFT.
 
+        NaN values are dropped before the FFT, and the sampling rate is
+        estimated from the timestamps of the remaining values: a 1 s grid
+        with every other value NaN samples at 0.5 Hz.
+
         Returns:
             Summary DataFrame with columns: start, end, duration_seconds
             (the window bounds), window_start (the resample label; a
@@ -288,8 +292,9 @@ class SamplingResolutionEvents(Base):
             if n < 16:  # Need enough for meaningful FFT
                 continue
 
-            # Estimate sampling rate
-            times = group.index
+            # Estimate sampling rate from the samples that carry a value
+            # (NaN rows are not samples the FFT sees).
+            times = vals.index
             dt = _interval_seconds(times)
             dt = dt[dt > 0]
             if len(dt) == 0:

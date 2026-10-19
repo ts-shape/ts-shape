@@ -36,7 +36,7 @@ The cut that ran on is the one `high` interval longer than 25 minutes; it is rep
 | Method | Returns |
 |---|---|
 | `infer_states(n_states=2, min_duration='0s', interval_end='next_change')` | intervals: `start`, `end`, `state` (0 = lowest), `state_label`, `mean_value`, `duration_seconds` |
-| `state_duration_statistics(n_states=2, interval_end='next_change')` | one row per state: `count`, `mean_duration_seconds`, `std_duration_seconds`, `min_duration_seconds`, `max_duration_seconds`, `total_duration_seconds` (each right after its deprecated twin without `_seconds`) |
+| `state_duration_statistics(n_states=2, interval_end='next_change')` | one row per state: `interval_count`, `mean_duration_seconds`, `std_duration_seconds`, `min_duration_seconds`, `max_duration_seconds`, `total_duration_seconds` (each right after its deprecated twin: `count`, or the name without `_seconds`) |
 | `unusual_state_sequence(n_states=2, expected_order=None, interval_end='next_change')` | one row per transition: `transition_time`, `from_state`, `to_state`, `from_label`, `to_label`, `is_unusual` |
 | `dwell_time_violation(state, max_duration, n_states=2, interval_end='next_change')` | intervals of `state` longer than `max_duration`: `duration_seconds`, `excess_seconds` |
 

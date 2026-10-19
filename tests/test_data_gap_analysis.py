@@ -111,10 +111,13 @@ class TestCoverageByPeriod:
 
     def test_full_coverage(self, continuous_df):
         det = DataGapAnalysisEvents(continuous_df, "sensor_1")
+        # 200 s of 1 Hz data fill two 100 s windows: 100 % each.
+        cov = det.coverage_by_period(window="100s")
+        assert list(cov["coverage_pct"]) == [100.0, 100.0]
+        # A 5 min window holds the data's 200 s (the last sample holds
+        # for one 1 s step); the other 100 s are missing.
         cov = det.coverage_by_period(window="5min")
-        assert len(cov) > 0
-        # Continuous 1 Hz signal should have ~100% coverage
-        assert all(cov["coverage_pct"] > 99.0)
+        assert cov["coverage_pct"].iloc[0] == pytest.approx(200 / 300 * 100)
 
 
 class TestInterpolationCandidates:
