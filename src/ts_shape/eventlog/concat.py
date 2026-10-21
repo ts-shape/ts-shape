@@ -13,9 +13,11 @@ def concat(*logs: EventLog) -> EventLog:
 
     Each table is concatenated, then deduplicated: objects by
     ``(oid, type)``, events by event id (after sorting by timestamp),
-    relations by ``(eid, oid, type)``, object-to-object links by
-    ``(oid, oid2, qualifier)``, and object changes by
-    ``(oid, field, timestamp)``.
+    relations by ``(eid, oid, type, qualifier)``, object-to-object links by
+    ``(oid, oid_2, qualifier)``, and object changes by
+    ``(oid, type, field, timestamp)``. An object id used by two types is two
+    objects, so their changes are kept apart; one event linked to one object
+    in two roles keeps both relations.
 
     Args:
         *logs: Event logs to combine.
@@ -42,9 +44,10 @@ def concat(*logs: EventLog) -> EventLog:
         events = events.drop_duplicates(subset=[schema.OCEL_EID]).reset_index(drop=True)
 
     if not relations.empty:
-        relations = relations.drop_duplicates(
-            subset=[schema.OCEL_EID, schema.OCEL_OID, schema.OCEL_TYPE]
-        ).reset_index(drop=True)
+        subset = [schema.OCEL_EID, schema.OCEL_OID, schema.OCEL_TYPE]
+        if schema.OCEL_QUALIFIER in relations.columns:
+            subset.append(schema.OCEL_QUALIFIER)
+        relations = relations.drop_duplicates(subset=subset).reset_index(drop=True)
 
     if not o2o.empty:
         o2o = o2o.drop_duplicates(
@@ -52,9 +55,12 @@ def concat(*logs: EventLog) -> EventLog:
         ).reset_index(drop=True)
 
     if not object_changes.empty:
-        object_changes = object_changes.drop_duplicates(
-            subset=[schema.OCEL_OID, schema.OCEL_FIELD, schema.OCEL_TIMESTAMP]
-        ).reset_index(drop=True)
+        subset = [schema.OCEL_OID, schema.OCEL_FIELD, schema.OCEL_TIMESTAMP]
+        if schema.OCEL_TYPE in object_changes.columns:
+            subset.insert(1, schema.OCEL_TYPE)
+        object_changes = object_changes.drop_duplicates(subset=subset).reset_index(
+            drop=True
+        )
 
     return EventLog(
         events=events,

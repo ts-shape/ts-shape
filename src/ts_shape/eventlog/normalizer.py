@@ -84,9 +84,14 @@ def to_event_log(
     :class:`~ts_shape.errors.DataQualityWarning`.
 
     Event ids (``ocel:eid``) are content-based: a hash of the detector, the
-    row's ``source_uuid``, its timestamps, the activity and every other
-    column of the row. They are reproducible across runs, independent of
-    row order, and the same detector on two machines does not collide.
+    row's ``source_uuid``, its timestamps, the activity, every other
+    column of the row and the objects bound with ``objects=`` (so one row
+    bound to asset ``M1`` and to ``M2`` gives two events). They are
+    reproducible across runs, independent of row order, and the same
+    detector on two machines does not collide. Rows without an
+    ``ocel:timestamp`` (a missing ``systime``, or ``end`` for interval and
+    summary detectors) are dropped with a
+    :class:`~ts_shape.errors.DataQualityWarning`.
 
     Args:
         dataframe: The detector frame.
@@ -107,7 +112,7 @@ def to_event_log(
             when not bound explicitly.
         qualifiers: Relation qualifier per object type.
         o2o: OCEL 2.0 object-to-object relations, a DataFrame or iterable of
-            dict rows with ``ocel:oid`` / ``ocel:oid2`` (``ocel:qualifier``
+            dict rows with ``ocel:oid`` / ``ocel:oid_2`` (``ocel:qualifier``
             optional); see :func:`~ts_shape.eventlog.schema.empty_o2o`.
         object_changes: Time-varying object attributes with ``ocel:oid``,
             ``ocel:type``, ``ocel:field``, ``ocel:timestamp`` (``ocel:value``

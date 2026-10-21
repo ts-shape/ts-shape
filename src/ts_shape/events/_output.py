@@ -74,9 +74,10 @@ def add_severity_level(
 
     Each detector keeps its own ``severity`` labels; ``severity_level`` maps
     them onto one vocabulary so results of different detectors can be
-    filtered and ranked together. Labels without a mapping (e.g. ``"none"``)
-    give a missing value. Frames without a ``severity`` column are returned
-    unchanged.
+    filtered and ranked together. Labels are matched without case and
+    surrounding blanks (``"High"`` and ``" high "`` are ``"high"``); labels
+    without a mapping (e.g. ``"none"``) give a missing value. Frames without
+    a ``severity`` column are returned unchanged.
 
     Args:
         df: A detector result.
@@ -88,9 +89,12 @@ def add_severity_level(
     """
     if COL_SEVERITY not in df.columns:
         return df
-    mapping = {**DEFAULT_SEVERITY_LEVEL, **(overrides or {})}
+    mapping = {
+        str(k).strip().lower(): v
+        for k, v in {**DEFAULT_SEVERITY_LEVEL, **(overrides or {})}.items()
+    }
     levels = df[COL_SEVERITY].map(
-        lambda v: mapping.get(v) if isinstance(v, str) else None
+        lambda v: mapping.get(v.strip().lower()) if isinstance(v, str) else None
     )
     out = df.drop(columns=[COL_SEVERITY_LEVEL], errors="ignore")
     out.insert(

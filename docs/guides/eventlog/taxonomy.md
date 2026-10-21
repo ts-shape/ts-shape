@@ -55,17 +55,30 @@ output a `state` column produce `production:state` and `quality:state`.
 
 ## Severity
 
-When a rule names a numeric `severity_field`, its value is bucketed:
+When a rule names a numeric `severity_field`, its value is bucketed by the
+rule's `severity_thresholds` `(warn, critical)`, by default `(3.0, 4.5)`:
 
 | Value | `ts_shape:severity` |
 |---|---|
-| `< 3.0` | `info` |
-| `3.0` to `< 4.5` | `warn` |
-| `>= 4.5` | `critical` |
+| `< warn` (default `3.0`) | `info` |
+| `warn` to `< critical` | `warn` |
+| `>= critical` (default `4.5`) | `critical` |
 | missing or not numeric | `<NA>` |
 
-The thresholds match the z-score style `severity` column of
-`OutlierDetectionEvents`.
+The default thresholds match the z-score style `severity` of
+`OutlierDetectionEvents.detect_outliers_zscore` and `detect_outliers_mad`
+(`|z|` and the modified z-score). Two methods score on other scales and
+have their own thresholds:
+
+| Method | `severity` is | warn | critical |
+|---|---|---|---|
+| `detect_outliers_iqr` | distance beyond the fence, in IQR units | `1.5` | `3.0` |
+| `detect_outliers_isolation_forest` | `-score_samples`, the anomaly score in `(0, 1]` | `0.6` | `0.7` |
+
+For IQR, 1.5 IQR beyond the default 1.5-IQR fence is Tukey's outer fence
+(3 IQR past the quartile, a "far out" value). For the isolation forest, a
+score near 0.5 means "not distinctly anomalous" and scores towards 1 are
+clear anomalies (Liu, Ting and Zhou, 2008).
 
 A text `severity` takes its level from the frame's `severity_level` column,
 which every detector result with categorical severity carries; it already

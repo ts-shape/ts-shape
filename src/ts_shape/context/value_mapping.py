@@ -83,6 +83,11 @@ class ValueMapper(Base):
         """
         Loads the mapping table from a CSV or JSON file.
 
+        The key column is read as text, so a code ``"007"`` keeps its
+        leading zeros (and is not the same key as ``"7"``). A JSON file's
+        values are not type-inferred; JSON numbers used as keys are turned
+        into text (``7`` -> ``"7"``, ``1.0`` -> ``"1"``).
+
         Args:
             mapping_file (str): The file path of the mapping table.
             file_type (str): The type of the file ('csv' or 'json').
@@ -91,9 +96,19 @@ class ValueMapper(Base):
             pd.DataFrame: The loaded mapping table as a DataFrame.
         """
         if file_type == "csv":
-            return pd.read_csv(mapping_file, sep=self.sep, encoding=self.encoding)
+            return pd.read_csv(
+                mapping_file,
+                sep=self.sep,
+                encoding=self.encoding,
+                dtype={self.mapping_key_column: str},
+            )
         elif file_type == "json":
-            return pd.read_json(mapping_file, encoding=self.encoding)
+            table = pd.read_json(mapping_file, encoding=self.encoding, dtype=False)
+            if self.mapping_key_column in table.columns:
+                table[self.mapping_key_column] = [
+                    _key_text(v) for v in table[self.mapping_key_column]
+                ]
+            return table
         else:
             raise ValueError("Unsupported file type. Please use 'csv' or 'json'.")
 
@@ -101,8 +116,12 @@ class ValueMapper(Base):
         """
         Maps values in the specified DataFrame column based on the mapping table.
 
-        Keys are compared as text, so a mapping file with string keys maps an
-        integer code column (``1``, ``1.0`` and ``"1"`` all match). Codes the
+        Keys are compared as text. The mapping file's keys are read as text
+        verbatim (``"007"`` matches only ``"007"``, never ``7``; a key
+        ``"1.0"`` matches only the text ``"1.0"``). Values of ``map_column``
+        are turned into text, with integral floats written without the
+        fraction, so the key ``"1"`` matches the codes ``1``, ``1.0`` and
+        ``"1"``, and the key ``"7"`` matches ``7`` but not ``"007"``. Codes the
         table does not contain keep their original value, with a
         :class:`~ts_shape.errors.DataQualityWarning` counting them. The other
         columns of the DataFrame are unchanged, whatever the mapping table's
