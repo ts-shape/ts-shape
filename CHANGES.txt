@@ -1,3 +1,18 @@
+# October 21, 2026 (round 17, part I)
+Second audit: event log, pipeline, context, signals.
+fix: event ids include caller-bound objects (logs with objects= get new
+  ids); XES start before complete; concat keeps type/qualifier variants;
+  per-detector severity thresholds (isolation forest, IQR); severity text
+  ignores case; NaT-timestamp rows dropped with a warning; empty XES frame.
+fix: ValueMapper reads mapping keys as text ("007" != "7").
+fix: pipeline class/static steps keep their detector id and check kwargs;
+  steps get private copies; run_stream matches run step by step.
+feat: init__/method__ kwarg prefixes in Pipeline.detect.
+fix: signal inference: one gap no longer hides gaps, slow counters are
+  counters; windows("W"/"ME") start at start; intervals() stop at the last
+  sample past max_gap; uuid_column= on the primitives.
+  See docs/migration.md.
+
 # October 21, 2026 (round 16)
 DST-day windows; more chunkable methods.
 fix: on tz-aware data, daily windows on a DST change are measured over their

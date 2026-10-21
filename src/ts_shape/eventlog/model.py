@@ -84,7 +84,20 @@ class EventLog:
             isin(self.o2o[schema.OCEL_OID], oids)
             & isin(self.o2o[schema.OCEL_OID2], oids)
         ]
-        changes = self.object_changes[isin(self.object_changes[schema.OCEL_OID], oids)]
+        changes = self.object_changes
+        if schema.OCEL_TYPE in changes.columns:
+            # Changes belong to an (oid, type) object: an oid kept under one
+            # type does not keep the changes of the same oid of another type.
+            kept = set(zip(objects[schema.OCEL_OID], objects[schema.OCEL_TYPE]))
+            index = pd.MultiIndex.from_arrays(
+                [
+                    changes[schema.OCEL_OID].astype(object),
+                    changes[schema.OCEL_TYPE].astype(object),
+                ]
+            )
+            changes = changes[index.isin(list(kept))] if kept else changes.iloc[:0]
+        else:
+            changes = changes[isin(changes[schema.OCEL_OID], oids)]
         return EventLog(
             events.reset_index(drop=True),
             objects.reset_index(drop=True),

@@ -26,7 +26,10 @@ A step's target may be:
 * a ``(class, "method")`` pair -- a ``classmethod`` / ``staticmethod`` is
   called on the class, an instance method instantiates the class first.
   Keyword arguments are routed between the constructor and the method by
-  parameter name automatically.
+  parameter name automatically; a name both accept goes to **both**. Write
+  ``init__<name>=`` to send it to the constructor only and
+  ``method__<name>=`` to send it to the method only (see
+  :meth:`Pipeline.detect`).
 
 Keyword-argument values may use two **sentinels**, resolved at run time:
 
@@ -39,8 +42,10 @@ DataFrame parameter, that value is used instead of the auto-injected one.
 Only string values are compared with the sentinels; write ``"$$..."`` for a
 literal string starting with ``$`` (``"$$input"`` passes ``"$input"``).
 
-Each transform works on a copy of the working DataFrame, so a transform that
-changes its input in place never changes the caller's DataFrame. Step names
+Each transform and detect step works on its own copy of the working
+DataFrame, and every ``$input`` use is a fresh copy, so a step that changes
+its input in place never changes the caller's DataFrame or a later step's
+input. Step names
 are unique: they key :meth:`Pipeline.run_steps` and the detector results,
 and ``"input"`` is reserved for the input frame.
 
@@ -81,6 +86,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pandas as pd
+
+from ts_shape.utils.base import _copy_on_write
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +138,16 @@ def _first_param_name(func: Any) -> str | None:
     return None
 
 
+def _private_copy(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """A copy that a step may change in place without affecting ``dataframe``.
+
+    Under copy-on-write (always on in pandas 3) a shallow copy suffices: the
+    first write to a column copies that column. Without it (pandas 2
+    default) the frame is copied deeply.
+    """
+    return dataframe.copy(deep=not _copy_on_write())
+
+
 def _subst(value: Any, working_df: pd.DataFrame, input_df: pd.DataFrame) -> Any:
     """Resolve a ``$input`` / ``$prev`` sentinel to its DataFrame.
 
@@ -140,7 +157,9 @@ def _subst(value: Any, working_df: pd.DataFrame, input_df: pd.DataFrame) -> Any:
     if not isinstance(value, str):
         return value
     if value == "$input":
-        return input_df
+        # A fresh copy per use: a step that changes its ``$input`` argument
+        # in place cannot reach later steps.
+        return _private_copy(input_df)
     if value == "$prev":
         return working_df
     if value.startswith("$$"):
@@ -164,35 +183,135 @@ def _validate_sentinels(kwargs: dict[str, Any]) -> None:
             )
 
 
+_INIT_PREFIX = "init__"
+_METHOD_PREFIX = "method__"
+
+
+def _accepts_var_keyword(func: Any) -> bool:
+    """Whether ``func`` takes ``**kwargs``."""
+    try:
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+
+
+def _plain_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """``kwargs`` with the ``init__`` / ``method__`` prefixes removed.
+
+    A prefixed name wins over the same unprefixed name. Used where only the
+    effective parameter values matter (e.g. :mod:`ts_shape.stream`'s plan).
+    """
+    out: dict[str, Any] = {}
+    prefixed: dict[str, Any] = {}
+    for key, value in kwargs.items():
+        for prefix in (_INIT_PREFIX, _METHOD_PREFIX):
+            if key.startswith(prefix):
+                prefixed[key[len(prefix) :]] = value
+                break
+        else:
+            out[key] = value
+    out.update(prefixed)
+    return out
+
+
 def _split_kwargs(
     target: type, method: str, kwargs: dict[str, Any]
-) -> tuple[set[str], set[str]]:
-    """Route kwarg names between ``target.__init__`` and ``target.method``.
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Route kwargs between ``target.__init__`` and ``target.method``.
 
-    Returns ``(init_keys, method_keys)``. A kwarg may match both. Raises
-    ``ValueError`` if a kwarg matches neither.
+    Returns ``(init_map, method_map)``, each mapping a parameter name to the
+    kwarg key whose value it receives. An unprefixed kwarg goes to **both**
+    when both accept the name. ``init__<name>=`` goes to the constructor
+    only and ``method__<name>=`` to the method only; a prefixed kwarg takes
+    precedence over the unprefixed one on its side. Raises ``ValueError`` if
+    a kwarg matches neither side (or a prefixed one does not match its side).
     """
     init_params = _param_names(target)
-    method_params = _param_names(getattr(target, method))
-    init_keys: set[str] = set()
-    method_keys: set[str] = set()
+    method_func = getattr(target, method)
+    method_params = _param_names(method_func)
+    init_map: dict[str, str] = {}
+    method_map: dict[str, str] = {}
     unknown: list[str] = []
+    plain: list[str] = []
     for key in kwargs:
+        if key.startswith(_INIT_PREFIX):
+            name = key[len(_INIT_PREFIX) :]
+            if name not in init_params:
+                raise ValueError(
+                    f"{key!r}: {target.__name__}() has no parameter {name!r} -- "
+                    f"constructor accepts {sorted(init_params)}"
+                )
+            init_map[name] = key
+        elif key.startswith(_METHOD_PREFIX):
+            name = key[len(_METHOD_PREFIX) :]
+            if name not in method_params:
+                raise ValueError(
+                    f"{key!r}: {target.__name__}.{method} has no parameter "
+                    f"{name!r} -- method accepts {sorted(method_params)}"
+                )
+            method_map[name] = key
+        else:
+            plain.append(key)
+    for key in plain:
         in_init = key in init_params
         in_method = key in method_params
-        if in_init:
-            init_keys.add(key)
-        if in_method:
-            method_keys.add(key)
         if not in_init and not in_method:
             unknown.append(key)
+            continue
+        routed = False
+        if in_init and key not in init_map:
+            init_map[key] = key
+            routed = True
+        if in_method and key not in method_map:
+            method_map[key] = key
+            routed = True
+        if not routed:
+            raise ValueError(
+                f"argument {key!r} for {target.__name__}.{method} is overridden "
+                f"on every side it applies to by init__{key} / method__{key}; "
+                f"drop it or pass only the prefixed forms"
+            )
     if unknown:
         raise ValueError(
             f"unknown argument(s) {unknown} for {target.__name__}.{method} -- "
             f"accepted: constructor {sorted(init_params)}, "
             f"method {sorted(method_params)}"
         )
-    return init_keys, method_keys
+    return init_map, method_map
+
+
+def _check_static_kwargs(
+    target: type, method: str, func: Any, kwargs: dict[str, Any]
+) -> dict[str, str]:
+    """Map parameter names of a class/static method to kwarg keys.
+
+    ``method__<name>=`` is accepted (there is no constructor, so
+    ``init__<name>=`` is not). Raises ``ValueError`` for a name the bound
+    signature does not accept.
+    """
+    params = _param_names(func)
+    accepts_any = _accepts_var_keyword(func)
+    mapping: dict[str, str] = {}
+    unknown: list[str] = []
+    for key in kwargs:
+        if key.startswith(_INIT_PREFIX):
+            raise ValueError(
+                f"{key!r}: {target.__name__}.{method} is a class/static method "
+                f"and has no constructor arguments"
+            )
+        name = key[len(_METHOD_PREFIX) :] if key.startswith(_METHOD_PREFIX) else key
+        if not (name in params or accepts_any):
+            unknown.append(key)
+            continue
+        if key.startswith(_METHOD_PREFIX) or name not in mapping:
+            mapping[name] = key
+    if unknown:
+        raise ValueError(
+            f"unknown argument(s) {unknown} for {target.__name__}.{method} -- "
+            f"accepted: {sorted(params)}"
+        )
+    return mapping
 
 
 def _resolve(
@@ -215,8 +334,12 @@ def _resolve(
                 f"got {type(target).__name__}"
             )
 
+        call_df_param = _first_param_name(target)
+
         def _call(working_df: pd.DataFrame, input_df: pd.DataFrame) -> pd.DataFrame:
             resolved = {k: _subst(v, working_df, input_df) for k, v in kwargs.items()}
+            if call_df_param is not None and call_df_param in resolved:
+                return target(**resolved)
             return target(working_df, **resolved)
 
         return _call, None
@@ -235,27 +358,38 @@ def _resolve(
     if isinstance(static_attr, (classmethod, staticmethod)):
         bound = getattr(target, method)
         df_param = _first_param_name(bound)
+        static_map = _check_static_kwargs(target, method, bound, kwargs)
 
         def _call_static(
             working_df: pd.DataFrame, input_df: pd.DataFrame
         ) -> pd.DataFrame:
-            resolved = {k: _subst(v, working_df, input_df) for k, v in kwargs.items()}
+            resolved = {
+                name: _subst(kwargs[key], working_df, input_df)
+                for name, key in static_map.items()
+            }
             if df_param is not None and df_param in resolved:
                 return bound(**resolved)
             return bound(working_df, **resolved)
 
-        return _call_static, None
+        return _call_static, f"{target.__name__}.{method}"
 
     # -- instance method: instantiate, then call ---------------------------
     df_param = _first_param_name(target)
-    init_keys, method_keys = _split_kwargs(target, method, kwargs)
+    init_map, method_map = _split_kwargs(target, method, kwargs)
 
     def _call_instance(
         working_df: pd.DataFrame, input_df: pd.DataFrame
     ) -> pd.DataFrame:
-        resolved = {k: _subst(v, working_df, input_df) for k, v in kwargs.items()}
-        init_kwargs = {k: resolved[k] for k in init_keys}
-        method_kwargs = {k: resolved[k] for k in method_keys}
+        # Each side resolves its own sentinels, so a kwarg shared by the
+        # constructor and the method gets two separate ``$input`` copies.
+        init_kwargs = {
+            name: _subst(kwargs[key], working_df, input_df)
+            for name, key in init_map.items()
+        }
+        method_kwargs = {
+            name: _subst(kwargs[key], working_df, input_df)
+            for name, key in method_map.items()
+        }
         if df_param is not None and df_param in init_kwargs:
             instance = target(**init_kwargs)
         else:
@@ -315,12 +449,12 @@ def _resolve_source(
         return _load_static
 
     # -- instance method: instantiate from config, then call ---------------
-    init_keys, method_keys = _split_kwargs(target, method, kwargs)
+    init_map, method_map = _split_kwargs(target, method, kwargs)
 
     def _load_instance() -> pd.DataFrame:
         resolved = _literal(kwargs)
-        init_kwargs = {k: resolved[k] for k in init_keys}
-        method_kwargs = {k: resolved[k] for k in method_keys}
+        init_kwargs = {name: resolved[key] for name, key in init_map.items()}
+        method_kwargs = {name: resolved[key] for name, key in method_map.items()}
         instance = target(**init_kwargs)
         return getattr(instance, method)(**method_kwargs)
 
@@ -582,14 +716,41 @@ class Pipeline:
                 form).
             name: Optional result key (defaults to the method/callable name).
             **kwargs: Forwarded to the detector (routed between constructor and
-                method). Values may be the ``$input`` / ``$prev`` sentinels.
+                method by parameter name). Values may be the ``$input`` /
+                ``$prev`` sentinels. A name that **both** the constructor
+                and the method accept is passed to both. That is a trap
+                when the two mean different things: in
+                ``LongDowntimeEvents.count_events_between_gaps`` the
+                constructor's ``value_column`` is the run-state column and
+                the method's ``value_column`` is the production counter's,
+                and in ``ContinuousProcessAlignmentEvents.align_to_reference``
+                the constructor's ``value_column`` is the line-speed column
+                while the method's is the station value carried through.
+                Prefix the name to
+                pick one side: ``init__<name>=`` goes to the constructor
+                only, ``method__<name>=`` to the method only (a prefixed
+                kwarg wins over the unprefixed one on its side). A
+                class/static method takes ``method__<name>=`` too.
 
         Returns:
             ``self``, for chaining.
 
         Raises:
             ValueError: If the resolved step name collides with an existing
-                step or is ``"input"``.
+                step or is ``"input"``, or a kwarg (prefixed or not) matches
+                no parameter of the constructor / method it is routed to.
+
+        Example:
+            Count production between long stops: the run state is a bool
+            column, the counter an integer one::
+
+                Pipeline("between-stops").detect(
+                    LongDowntimeEvents, "count_events_between_gaps",
+                    name="windows", run_state_uuid="m:run",
+                    production_df="$input", production_uuid="m:count",
+                    aggregation="sum",
+                    method__value_column="value_integer",
+                )
         """
         executor, detector_id = _resolve(target, method, kwargs)
         step_name = self._step_name(name, target, method, kind="detect")
@@ -663,15 +824,16 @@ class Pipeline:
             if capture:
                 intermediates["input"] = dataframe
 
-        # The caller's frame is never handed to a step: ``$input`` is a copy
-        # and every transform gets its own copy of the working frame.
+        # The caller's frame is never handed to a step: every step gets its
+        # own copy of the working frame and every ``$input`` use is a fresh
+        # copy, so a step that changes its input in place cannot reach the
+        # caller or any later step.
         input_df = dataframe.copy()
         working = input_df
 
         for index, step in enumerate(remaining, start=1 if has_source else 0):
             try:
-                arg = working.copy() if step.kind == "transform" else working
-                result = step.executor(arg, input_df)
+                result = step.executor(_private_copy(working), input_df)
             except Exception as exc:
                 raise RuntimeError(
                     f"pipeline {self.name!r}: step {index} "
@@ -752,12 +914,14 @@ class Pipeline:
     ) -> PipelineResult:
         """Execute the pipeline slice by slice on data larger than memory.
 
-        Every detect step runs through :func:`ts_shape.run_chunked`'s engine,
-        so each step's events equal those of :meth:`run` on the concatenated
-        data. Transforms run on each slice separately: they must be
-        **row-local** (each output row depends only on its input row, as unit
-        conversions, scaling and value mappings do). The ``$input`` /
-        ``$prev`` sentinels refer to the current slice.
+        Every detect step runs through :func:`ts_shape.run_chunked`'s engine
+        on each slice as transformed by the transform steps **before it** in
+        the pipeline (as :meth:`run` does), so each step's events equal those
+        of :meth:`run` on the concatenated data. Transforms run on each slice
+        separately: they must be **row-local** (each output row depends only
+        on its input row, as unit conversions, scaling and value mappings
+        do). The ``$input`` / ``$prev`` sentinels refer to the current
+        slice.
 
         Args:
             source: Frames or ``(name, frame)`` pairs in time order, or a

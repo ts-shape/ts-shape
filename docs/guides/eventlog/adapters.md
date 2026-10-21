@@ -19,8 +19,10 @@ The rule's `shape` decides where the event time comes from:
 | `static` | none | `to_event_log(..., timestamp=...)`, the same for all rows; default the Unix epoch (`1970-01-01T00:00Z`) | `NaT`, `NaN` |
 
 A frame without the required columns raises an error naming the detector.
-Naive timestamps are read as UTC. Interval and summary rows whose `end` is
-before their `start` are dropped with a `DataQualityWarning`.
+Naive timestamps are read as UTC. Rows without an `ocel:timestamp` (a
+missing `systime` for point rows, a missing `end` for interval and summary
+rows) and interval and summary rows whose `end` is before their `start` are
+dropped with a `DataQualityWarning`.
 The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
 
 ## LabelRule fields
@@ -32,6 +34,7 @@ The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
 | `shape` | `"point"` | see above |
 | `produces_objects` | `("asset",)` | object types created automatically from standard columns (`source_uuid` becomes an `asset`); `()` for none |
 | `severity_field` | `None` | numeric column bucketed into `ts_shape:severity` (a boolean column maps `True` to `warn`, `False` to `info`); without it the detector's `severity_level` column is used (the same `info` / `warn` / `critical` the result frame shows), else a `severity` label mapped through the shared severity table |
+| `severity_thresholds` | `None` | `(warn, critical)` lower bounds for a numeric severity; `None` is `(3.0, 4.5)`, see [Severity](taxonomy.md#severity) |
 | `value_field` | `None` | column used as `ts_shape:value`; without it the first of `value`, `value_double`, `value_integer` |
 | `drop_fields` | `()` | output columns not copied into the event log |
 | `standard_attrs` | `{}` | mapping to the [standard attribute keys](taxonomy.md#standard-attribute-extension) |
@@ -47,15 +50,19 @@ The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
     - renders the activity from the template (a missing value renders as
       `unknown`, with a `DataQualityWarning`);
     - builds a content-based `ocel:eid`: a UUIDv5 of the detector, the row's
-      `source_uuid`, its timestamps, the activity and every other column of
-      the row. The same input always gives the same ids, independent of row
-      order, and the same detector on two machines does not collide;
+      `source_uuid`, its timestamps, the activity, every other column of
+      the row and the objects bound with `objects=` (one row bound to asset
+      `M1` and to `M2` gives two events). The same input always gives the
+      same ids, independent of row order, and the same detector on two
+      machines does not collide;
     - fills `ts_shape:severity`, `ts_shape:value` and the standard attributes;
     - copies every other output column as `<pack>:<column>` and drops such
       columns when they are completely empty;
     - creates the automatic objects and those passed with `objects=`.
-4. Validates the result: required columns and dtypes, unique `ocel:eid`, and
-   every relation pointing to an existing event and object.
+4. Validates the result: required columns present, unique `ocel:eid`,
+   every relation pointing to an existing event and `(oid, type)` object,
+   and every object-to-object link and object change naming a known object
+   id. Column dtypes are not checked.
 
 For `MachineStateEvents.detect_run_idle` (template
 `production.machine_state.{state}`, shape `interval`) an output row with

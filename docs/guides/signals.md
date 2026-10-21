@@ -78,6 +78,23 @@ Inference cannot know everything. A change-encoded signal never gets an
 inferred `max_gap`, because a value may legitimately hold for hours; set it to
 your logging-outage threshold.
 
+The inference rules, each recorded in `spec.notes`:
+
+- **Sampled or change-encoded.** A signal is regularly sampled when at least
+  80 % of its sampling intervals lie within ±10 % of the median interval
+  (`REGULAR_SHARE`, `REGULAR_TOLERANCE` in `ts_shape.signals.infer`). A few
+  long logging gaps therefore do not make a regular signal look
+  change-encoded; they are reported as gaps instead. A state or counter is
+  change-encoded only when, in addition, under 5 % of its values repeat.
+- **`max_gap`** of a sampled signal is 5 x the median interval.
+- **Counter.** The values never decrease except at resets (a fall to under
+  half the level, at most 1 % of the readings) and increase at least 3
+  times, however rarely: one part every ten readings is still a counter. A
+  constant signal and a signal with only two values (on/off) are never
+  counters. A slow rise (increasing at under 20 % of the readings) over at
+  most 16 integer levels is ambiguous with a step state and is read as a
+  state; override `kind` if it is a counter.
+
 Specs can also be kept as YAML next to the data (needs `ts-shape[yaml]`) and
 loaded with `SignalSpecs.from_yaml("signals.yaml")`:
 
@@ -104,8 +121,22 @@ increments(df, specs["line1:parts"])           # reset-aware production per read
 per_window(df, specs["line1:parts"], "1h")     # parts per hour, nothing lost at resets or boundaries
 per_window(df, specs["oven:temp"], "15min")    # time-weighted mean, never across a gap
 windows("2024-03-30", "2024-04-02", "1D", tz="Europe/Berlin")   # days of 24 h, 23 h, 24 h
+windows("2024-01-01", "2024-03-01", "ME")      # calendar months from the 1st
 shift_windows("2024-03-30", "2024-03-31", tz="Europe/Berlin")   # the DST night shift is 7 h
 ```
+
+Every window from `windows` is `[start, end)` and the first one contains
+`start`, also for frequencies that `resample` labels by their last day
+(`"W"` gives Monday-to-Monday weeks, `"ME"` calendar months).
+
+`intervals` holds the last value until `data_end` only while that is within
+`spec.max_gap` of the last sample (as `per_window` does); after a longer
+silence the final interval ends at its last sample.
+
+The primitives take `uuid_column=` (default `"uuid"`) and keep only the rows
+of the spec's signal. A frame without that column is read as one signal; if
+its timestamps repeat (at least 10 % of the rows) it clearly holds several
+signals and a `ValueError` asks for `uuid_column=`.
 
 `per_window` returns a float Series indexed by window start and named after
 the signal's uuid. For a boolean state it is the share of the *known* time

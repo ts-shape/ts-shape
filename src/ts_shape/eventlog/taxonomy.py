@@ -9,11 +9,13 @@ A :class:`LabelRule` describes:
 * ``template`` — the ``ocel:activity`` value. May contain ``{field}``
   placeholders that get substituted from legacy DataFrame columns.
 * ``pack`` — one of ``quality``, ``production``, ``engineering``,
-  ``maintenance``, ``supplychain``, ``energy``, ``correlation``.
+  ``maintenance``, ``supplychain``, ``energy``, ``correlation``,
+  ``development``.
 * ``shape`` — how to interpret each legacy row:
-  ``"point"``      → single-timestamp event (`systime` or first datetime),
-  ``"interval"``   → has ``start``/``end`` columns,
-  ``"summary"``    → a windowed/aggregate row (uses end column or any datetime),
+  ``"point"``      → single-timestamp event; requires ``systime``,
+  ``"interval"``   → requires ``start`` and ``end`` columns,
+  ``"summary"``    → a windowed/aggregate row; requires ``start`` and
+  ``end`` (the event is stamped at ``end``),
   ``"static"``     → no time semantics; stamped with the ``timestamp``
   passed to :func:`~ts_shape.eventlog.to_event_log` (default: the Unix epoch).
 * ``produces_objects`` — object types the adapter *auto-extracts* from
@@ -44,7 +46,10 @@ class LabelRule:
     ``value_field`` name legacy columns read into the severity and value
     attributes, ``drop_fields`` lists legacy columns to discard, and
     ``standard_attrs`` maps standard attribute keys to a legacy column name
-    or a literal value.
+    or a literal value. ``severity_thresholds`` is the ``(warn, critical)``
+    pair of lower bounds that buckets a *numeric* severity score into
+    ``warn`` / ``critical`` (below ``warn`` is ``info``); ``None`` uses the
+    z-score bounds ``(3.0, 4.5)``.
     """
 
     template: str
@@ -59,6 +64,7 @@ class LabelRule:
     # name to rename, or a literal scalar to broadcast. Keys outside that
     # tuple raise in the coverage test.
     standard_attrs: Mapping[str, object] = field(default_factory=dict)
+    severity_thresholds: tuple[float, float] | None = None
 
 
 # Aliases used while building the registry below to keep entries terse.
@@ -77,6 +83,11 @@ S = "summary"
 ST = "static"
 
 ASSET = ("asset",)
+
+#: ``(warn, critical)`` bounds of OutlierDetectionEvents scores that are not
+#: z-like (see the rules of detect_outliers_iqr / _isolation_forest).
+_IQR_SEVERITY_THRESHOLDS = (1.5, 3.0)
+_IFOREST_SEVERITY_THRESHOLDS = (0.6, 0.7)
 NONE: tuple[str, ...] = ()
 
 
@@ -2240,6 +2251,10 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _Q,
         P,
         severity_field="severity",
+        # ``severity`` is the distance beyond the fence in IQR units. 1.5 IQR
+        # beyond the default 1.5-IQR fence is Tukey's outer fence (3 IQR past
+        # the quartile, a "far out" value): warn; 3 IQR beyond it: critical.
+        severity_thresholds=_IQR_SEVERITY_THRESHOLDS,
         standard_attrs={
             "ts_shape:method": "iqr",
             "ts_shape:direction": "outside",
@@ -2250,6 +2265,10 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _Q,
         P,
         severity_field="severity",
+        # ``severity`` is ``-score_samples``, the anomaly score s in (0, 1]
+        # of Liu et al. (2008): s ~ 0.5 is not distinctly anomalous, s -> 1
+        # is clearly anomalous. 0.6 warns, 0.7 is critical.
+        severity_thresholds=_IFOREST_SEVERITY_THRESHOLDS,
         standard_attrs={
             "ts_shape:method": "isolation_forest",
             "ts_shape:direction": "outside",

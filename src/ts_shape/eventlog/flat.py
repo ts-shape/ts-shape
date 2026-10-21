@@ -46,18 +46,23 @@ def to_event_log_xes(
         ``time:timestamp``, ``lifecycle:transition`` (and ``org:resource``
         when the log links operators), sorted by case and time.
 
+        An event log without events gives an empty frame with these
+        columns (and ``concept:instance`` for ``"two_row"``).
+
     Raises:
-        ValueError: When the log has no objects, no object of
+        ValueError: When a log with events has no objects or no object of
             ``case_object_type``, or ``lifecycle`` is unknown.
     """
+    if lifecycle not in ("single", "two_row"):
+        raise ValueError(f"invalid lifecycle {lifecycle!r}")
+    if eventlog.events.empty:
+        return _empty_xes(lifecycle)
     if not eventlog.has_objects:
         raise ValueError(
             "to_event_log_xes requires objects: this event log was produced by "
             "a detector with no object association. Use to_event_log_ocel() or "
             "supply objects to the adapter."
         )
-    if lifecycle not in ("single", "two_row"):
-        raise ValueError(f"invalid lifecycle {lifecycle!r}")
 
     rels = eventlog.relations
     rels = rels[rels[schema.OCEL_TYPE] == case_object_type]
@@ -99,10 +104,38 @@ def to_event_log_xes(
     completes[schema.XES_LIFECYCLE] = "complete"
     expanded = pd.concat([starts, completes], ignore_index=True)
     expanded[schema.XES_INSTANCE] = expanded[schema.OCEL_EID]
-    expanded = expanded.sort_values(
-        [schema.XES_CASE, schema.XES_TIMESTAMP, schema.XES_LIFECYCLE]
-    ).reset_index(drop=True)
+    # ``start`` before ``complete`` at equal times (a zero-length interval):
+    # sort on a rank, not on the label (``complete`` < ``start``).
+    expanded["_lifecycle_rank"] = (
+        expanded[schema.XES_LIFECYCLE].map(_LIFECYCLE_RANK).astype("int64")
+    )
+    expanded = (
+        expanded.sort_values(
+            [schema.XES_CASE, schema.XES_TIMESTAMP, "_lifecycle_rank"],
+            kind="stable",
+        )
+        .drop(columns="_lifecycle_rank")
+        .reset_index(drop=True)
+    )
     return _arrange_columns(expanded)
+
+
+#: Order of the two-row lifecycle transitions at the same timestamp.
+_LIFECYCLE_RANK = {"start": 0, "complete": 1}
+
+
+def _empty_xes(lifecycle: str) -> pd.DataFrame:
+    """The XES frame of an event log without events."""
+    columns = {
+        schema.XES_CASE: pd.Series(dtype="string"),
+        schema.XES_ACTIVITY: pd.Series(dtype="string"),
+        schema.XES_TIMESTAMP: pd.Series(dtype="datetime64[ns, UTC]"),
+        schema.XES_LIFECYCLE: pd.Series(dtype="object"),
+        "start_timestamp": pd.Series(dtype="datetime64[ns, UTC]"),
+    }
+    if lifecycle == "two_row":
+        columns[schema.XES_INSTANCE] = pd.Series(dtype="string")
+    return pd.DataFrame(columns)
 
 
 def _resource_map(eventlog: EventLog) -> pd.Series | None:

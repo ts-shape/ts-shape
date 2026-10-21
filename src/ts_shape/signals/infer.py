@@ -29,6 +29,12 @@ _VALUE_COLUMNS = ("value_double", "value_integer", "value_bool", "value_string")
 MAX_GAP_PERIODS = 5
 #: Integer signals with at most this many distinct values may be states.
 STATE_MAX_CARDINALITY = 16
+#: An interval within this fraction of the median interval is "regular".
+REGULAR_TOLERANCE = 0.10
+#: A signal is sampled when at least this share of its intervals is regular.
+REGULAR_SHARE = 0.8
+#: A counter must increase at least this many times.
+COUNTER_MIN_INCREASES = 3
 
 
 def most_populated_value_column(group: pd.DataFrame) -> str | None:
@@ -45,32 +51,60 @@ def most_populated_value_column(group: pd.DataFrame) -> str | None:
     return best if best is not None and counts[best] > 0 else None
 
 
-def _interval_stats(times: pd.Series) -> tuple[pd.Timedelta | None, float]:
-    """Median positive interval and its coefficient of variation."""
+def _interval_stats(times: pd.Series) -> tuple[pd.Timedelta | None, float, float]:
+    """Median positive interval, its coefficient of variation, regular share.
+
+    The regular share is the fraction of intervals within
+    :data:`REGULAR_TOLERANCE` of the median. Unlike the CV it is robust: a
+    few long logging gaps in a regularly sampled signal barely change it.
+    """
     diffs = times.diff().dropna()
     diffs = diffs[diffs > pd.Timedelta(0)]
     if diffs.empty:
-        return None, 0.0
+        return None, 0.0, 1.0
     seconds = diffs.dt.total_seconds()
     mean = float(seconds.mean())
     cv = float(seconds.std(ddof=0) / mean) if mean > 0 else 0.0
-    return pd.Timedelta(seconds=float(seconds.median())), cv
+    median = float(seconds.median())
+    regular = float(((seconds - median).abs() <= REGULAR_TOLERANCE * median).mean())
+    return pd.Timedelta(seconds=median), cv, regular
 
 
 def _is_counter(values: pd.Series) -> tuple[bool, str]:
+    """Whether ``values`` look like a cumulative counter, and why.
+
+    A counter never decreases except at a reset (a fall to under half the
+    level, at most 1 % of the steps) and increases at least
+    :data:`COUNTER_MIN_INCREASES` times -- however rarely, so a slow counter
+    (one part every ten readings) is a counter too. A signal with only two
+    distinct values (an on/off state) is never a counter. A slow series
+    (increasing at under 20 % of the readings) of at most
+    :data:`STATE_MAX_CARDINALITY` integer levels is ambiguous with a step
+    state and is left to the state rule.
+    """
     diffs = values.diff().dropna()
     if len(diffs) < 3:
         return False, "too few samples to recognise a counter"
-    rising = float((diffs > 0).mean())
+    increases = int((diffs > 0).sum())
+    rising = increases / len(diffs)
     drops = diffs[diffs < 0]
-    if rising < 0.2:
-        return False, "values do not increase often enough for a counter"
+    if increases < COUNTER_MIN_INCREASES:
+        return False, f"{increases} increase(s): too few for a counter"
+    if values.nunique() <= 2:
+        return False, "two distinct values: a two-level state, not a counter"
     if len(drops) > max(1, 0.01 * len(diffs)):
         return False, f"{len(drops)} decreases: not monotonic"
     # Every decrease must look like a reset (falls to under half the level).
     before = values.shift(1)[drops.index]
     if (values[drops.index] > 0.5 * before).any():
         return False, "a decrease is too small to be a counter reset"
+    if rising < 0.2:
+        integral = bool(np.all(np.isclose(values, np.round(values))))
+        if integral and values.nunique() <= STATE_MAX_CARDINALITY:
+            return False, (
+                f"slow rise over {values.nunique()} integer levels: ambiguous "
+                f"with a step state"
+            )
     reason = "monotonic non-decreasing"
     if len(drops):
         reason += f" with {len(drops)} reset(s)"
@@ -222,7 +256,7 @@ def infer_spec(
     g = group.sort_values(time_column)
     times = parse_times(g[time_column]).dropna()
     tz = str(times.dt.tz) if getattr(times.dt, "tz", None) is not None else None
-    period, cv = _interval_stats(times)
+    period, cv, regular = _interval_stats(times)
 
     value_column = most_populated_value_column(g) or "value_double"
     values = g[value_column].dropna() if value_column in g.columns else pd.Series()
@@ -250,12 +284,20 @@ def infer_spec(
     repeats = (
         float((values.shift() == values).iloc[1:].mean()) if len(values) > 1 else 0.0
     )
+    # Regular sampling: at least REGULAR_SHARE of the intervals lie within
+    # REGULAR_TOLERANCE of the median. A few long logging gaps do not make a
+    # regularly sampled signal irregular (the mean/std CV would).
+    irregular = regular < REGULAR_SHARE
+    timing = (
+        f"{regular:.0%} of intervals within {REGULAR_TOLERANCE:.0%} of the "
+        f"median (irregular if < {REGULAR_SHARE:.0%}), interval CV {cv:.2f}"
+    )
     if kind in ("state", "counter"):
-        change_encoded = len(values) >= 3 and repeats < 0.05 and cv > 0.5
-        notes["encoding"] = f"{repeats:.0%} repeated values, interval CV {cv:.2f}"
+        change_encoded = len(values) >= 3 and repeats < 0.05 and irregular
+        notes["encoding"] = f"{repeats:.0%} repeated values, {timing}"
     else:
-        change_encoded = cv > 1.0
-        notes["encoding"] = f"interval CV {cv:.2f} (deadband/irregular if > 1)"
+        change_encoded = irregular
+        notes["encoding"] = f"{timing}; irregular means deadband/change-encoded"
     encoding: Encoding = "change_encoded" if change_encoded else "sampled"
 
     if encoding == "sampled" and period is not None:

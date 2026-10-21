@@ -289,20 +289,27 @@ def _content_eids(
     ts_end: pd.Series,
     activities: pd.Series,
     time_cols: set[str],
+    bindings: Mapping[str, pd.Series] | None = None,
 ) -> pd.Series:
     """Deterministic, content-based event ids.
 
     The id hashes the detector, the row's ``source_uuid``, its start / end
-    timestamps, the activity and every other column of the row (values and
-    payload). It does not depend on the row's position, so the same
-    detector on two machines never collides, re-running gives the same ids,
-    and concatenating identical logs in any row order deduplicates. Rows that
-    are identical in every column get an occurrence suffix.
+    timestamps, the activity, every other column of the row (values and
+    payload) and the objects the caller bound to the row. It does not depend
+    on the row's position, so the same detector on two machines never
+    collides, re-running gives the same ids, and concatenating identical logs
+    in any row order deduplicates. Rows that are identical in every column
+    and binding get an occurrence suffix.
 
     Every cell is rendered with :func:`_stable` (one column at a time, see
     :func:`_stable_column`); the hash input of a row is
     ``detector|source|start|end|activity|<col>=<value>|...`` with the payload
-    columns in sorted order, and the id is ``"e-" + uuid5(namespace, key)``.
+    columns in sorted order, then ``|obj:<type>=<oid>`` for each bound object
+    of the row (types in sorted order; a row without a bound oid adds
+    nothing), and the id is ``"e-" + uuid5(namespace, key)``. ``bindings``
+    holds the caller-bound objects (``objects=``) aligned with ``frame``;
+    with none, the key and so the id are the same as before bindings were
+    hashed.
     """
     n = len(frame)
     payload_cols = sorted(str(c) for c in frame.columns if c not in time_cols)
@@ -331,6 +338,9 @@ def _content_eids(
             head + "|".join(parts)
             for parts in zip(source, starts, ends, acts, *rendered, strict=True)
         ]
+        if bindings:
+            suffixes = _binding_suffixes(bindings, a, b)
+            keys = [k + sfx for k, sfx in zip(keys, suffixes, strict=True)]
         for key in keys:
             digest = sha1(prefix + key.encode("utf-8")).digest()
             k = seen.get(digest, 0)
@@ -340,6 +350,24 @@ def _content_eids(
                 digest = sha1(prefix + f"{key}|#{k}".encode()).digest()
             eids.append("e-" + _uuid5_text(digest.hex()))
     return pd.Series(eids, dtype="string")
+
+
+def _binding_suffixes(bindings: Mapping[str, pd.Series], a: int, b: int) -> list[str]:
+    """``|obj:<type>=<oid>`` per bound object of rows ``a:b`` (sorted types).
+
+    Missing and empty oids (which give no relation) add nothing.
+    """
+    out = [""] * (b - a)
+    for otype in sorted(bindings):
+        values = bindings[otype].iloc[a:b].tolist()
+        for i, v in enumerate(values):
+            if v is None or _is_missing(v):
+                continue
+            text = str(v)
+            if text in ("", "<NA>"):
+                continue
+            out[i] += f"|obj:{otype}={text}"
+    return out
 
 
 class MissingCanonicalColumn(ColumnNotFoundError, KeyError):
@@ -386,11 +414,15 @@ def _to_utc_column(values: pd.Series) -> pd.Series:
     """``values.apply(_to_utc_ts)``, vectorized for datetime64 columns.
 
     Naive times are localized to UTC, aware ones converted (same dtype and
-    unit as the element-wise path). Other columns (text, objects) and an
-    all-NaT column go through :func:`_to_utc_ts` element by element.
+    unit as the element-wise path). An all-missing column gives an all-NaT
+    ``datetime64[ns, UTC]`` column; other columns (text, objects) go
+    through :func:`_to_utc_ts` element by element.
     """
     dtype = values.dtype
-    if _is_datetime64(dtype) and values.notna().any():
+    if values.isna().all():
+        # All missing: an all-NaT UTC column, comparable with any other.
+        return pd.Series(pd.NaT, index=values.index, dtype="datetime64[ns, UTC]")
+    if _is_datetime64(dtype):
         if isinstance(dtype, pd.DatetimeTZDtype):
             return values.dt.tz_convert("UTC")
         return values.dt.tz_localize("UTC")
@@ -462,7 +494,18 @@ def _render_activities(rule: LabelRule, frame: pd.DataFrame) -> pd.Series:
     return pd.Series(out, index=frame.index, dtype="string")
 
 
-def _classify_severity(value: object) -> str | None:
+#: ``(warn, critical)`` lower bounds of a numeric severity score: the
+#: z-score convention (|z| >= 3 warns, |z| >= 4.5 is critical). A rule's
+#: ``severity_thresholds`` replaces them for scores on another scale.
+DEFAULT_SEVERITY_THRESHOLDS: tuple[float, float] = (3.0, 4.5)
+
+
+def _classify_severity(
+    value: object,
+    thresholds: tuple[float, float] = DEFAULT_SEVERITY_THRESHOLDS,
+) -> str | None:
+    """The level of one severity value: text as is, booleans as warn / info,
+    numbers bucketed by ``(warn, critical)`` ``thresholds``."""
     if value is None or value is pd.NA or (isinstance(value, float) and pd.isna(value)):
         return None
     if isinstance(value, str):
@@ -476,9 +519,10 @@ def _classify_severity(value: object) -> str | None:
         v = float(value)
     except (TypeError, ValueError):
         return None
-    if v >= 4.5:
+    warn, critical = thresholds
+    if v >= critical:
         return "critical"
-    if v >= 3.0:
+    if v >= warn:
         return "warn"
     return "info"
 
@@ -649,7 +693,8 @@ def _severity_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
     detector's own label overrides (e.g. ``ToleranceDeviationEvents``:
     ``minor`` -> ``warn``) hold in the event log too. Otherwise text labels
     map through :data:`~ts_shape.events._output.DEFAULT_SEVERITY_LEVEL` and
-    numbers are bucketed (see :func:`_classify_severity`).
+    numbers are bucketed by the rule's ``severity_thresholds`` (default
+    :data:`DEFAULT_SEVERITY_THRESHOLDS`, see :func:`_classify_severity`).
     """
     if rule.severity_field and rule.severity_field in frame.columns:
         field = rule.severity_field
@@ -661,7 +706,13 @@ def _severity_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
     if field == COL_SEVERITY and COL_SEVERITY_LEVEL in frame.columns:
         level = frame[COL_SEVERITY_LEVEL].astype("string").str.lower()
         return level.where(level.isin(_SEVERITY_VOCABULARY), pd.NA)
-    out = col.map(_classify_severity).astype("string").str.lower()
+    thresholds = rule.severity_thresholds or DEFAULT_SEVERITY_THRESHOLDS
+    out = (
+        col.map(lambda v: _classify_severity(v, thresholds))
+        .astype("string")
+        .str.strip()
+        .str.lower()
+    )
     out = out.replace(_SEVERITY_ALIASES)
     unknown = out.notna() & ~out.isin(_SEVERITY_VOCABULARY)
     if unknown.any():
@@ -771,15 +822,22 @@ def adapt(
         ts_end = _to_utc_column(frame[COL_END])
         ts_start = _to_utc_column(frame[COL_START])
         time_cols_used = {COL_START, COL_END}
-        backwards = (ts_end < ts_start).fillna(False).astype(bool)
-        if backwards.any():
-            warnings.warn(
-                f"{detector}: {int(backwards.sum())} row(s) end before they "
-                "start; they are dropped from the event log",
-                DataQualityWarning,
-                stacklevel=caller_stacklevel(),
-            )
-            keep = ~backwards.to_numpy()
+        no_end = ts_end.isna().to_numpy()
+        backwards = (ts_end < ts_start).fillna(False).astype(bool).to_numpy()
+        for bad, why in (
+            (no_end, f"have no {COL_END!r} (ocel:timestamp)"),
+            (backwards, "end before they start"),
+        ):
+            if bad.any():
+                warnings.warn(
+                    f"{detector}: {int(bad.sum())} row(s) {why}; they are "
+                    "dropped from the event log",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
+                )
+        drop_rows = no_end | backwards
+        if drop_rows.any():
+            keep = ~drop_rows
             frame = frame.loc[keep].reset_index(drop=True)
             ts_end = ts_end.loc[keep].reset_index(drop=True)
             ts_start = ts_start.loc[keep].reset_index(drop=True)
@@ -796,6 +854,25 @@ def adapt(
     elif rule.shape == "point":
         _require_columns(frame, (COL_SYSTIME,), rule.shape, detector)
         ts_end = _to_utc_column(frame[COL_SYSTIME])
+        no_time = ts_end.isna().to_numpy()
+        if no_time.any():
+            warnings.warn(
+                f"{detector}: {int(no_time.sum())} row(s) have no "
+                f"{COL_SYSTIME!r} (ocel:timestamp); they are dropped from the "
+                "event log",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
+            keep = ~no_time
+            frame = frame.loc[keep].reset_index(drop=True)
+            ts_end = ts_end.loc[keep].reset_index(drop=True)
+            object_bindings = {
+                k: v.loc[keep].reset_index(drop=True)
+                for k, v in object_bindings.items()
+            }
+            n = len(frame)
+            if n == 0:
+                return EventLog()
         ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
         duration = pd.Series([float("nan")] * n, dtype="float64")
         time_cols_used = {COL_SYSTIME}
@@ -827,7 +904,21 @@ def adapt(
 
     # Content-based event ids: same row content -> same id, independent of
     # row position.
-    eids = _content_eids(detector, frame, ts_start, ts_end, activities, time_cols_used)
+    # Caller-bound objects are part of the id: the same row bound to M1 and
+    # to M2 is two events. Auto-extracted objects (source_uuid -> asset) are
+    # already in the hash through their source column.
+    caller_bound = {
+        k: v for k, v in object_bindings.items() if objects and k in objects
+    }
+    eids = _content_eids(
+        detector,
+        frame,
+        ts_start,
+        ts_end,
+        activities,
+        time_cols_used,
+        bindings=caller_bound,
+    )
 
     severity = _severity_series(frame, rule)
     value = _value_series(frame, rule)

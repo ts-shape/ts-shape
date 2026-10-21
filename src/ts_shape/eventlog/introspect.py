@@ -27,8 +27,8 @@ def describe(detector: str) -> dict[str, Any]:
         A dict with ``class_name``, ``method_name``, the registered
         :class:`~ts_shape.eventlog.taxonomy.LabelRule` fields (``pack``,
         ``shape``, ``activity_template``, ``produces_objects``,
-        ``severity_field``, ``value_field``, ``drop_fields``,
-        ``standard_attrs``), the conceptual ``archetype`` and
+        ``severity_field``, ``severity_thresholds``, ``value_field``,
+        ``drop_fields``, ``standard_attrs``), the conceptual ``archetype`` and
         ``has_override``.
 
     Raises:
@@ -54,6 +54,7 @@ def describe(detector: str) -> dict[str, Any]:
         "activity_template": rule.template,
         "produces_objects": rule.produces_objects,
         "severity_field": rule.severity_field,
+        "severity_thresholds": rule.severity_thresholds,
         "value_field": rule.value_field,
         "drop_fields": rule.drop_fields,
         "standard_attrs": dict(rule.standard_attrs),

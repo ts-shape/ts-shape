@@ -225,7 +225,9 @@ classified by its full length, in the windows of both days.
 
 `Pipeline.run_stream(source, chunk="1D")` runs a [pipeline](pipeline-builder.md)
 the same way: every detect step goes through the chunked engine and returns
-the events `run()` would return. Transforms run on each slice separately, so
+the events `run()` would return. As in `run()`, each detect step sees the
+slice transformed only by the transform steps before it. Transforms run on
+each slice separately, so
 they must be **row-local** -- each output row depends only on its own input
 row, as unit conversions, scaling and value mappings do. `result.data` is
 empty by default (the point is not to hold all rows); pass `keep_data=True` to

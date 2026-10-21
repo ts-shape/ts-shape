@@ -143,8 +143,9 @@ def test_to_event_log_xes_unknown_object_type_raises(small_log):
         to_event_log_xes(small_log, case_object_type="batch")
 
 
-def test_to_event_log_xes_no_objects_raises():
-    log = EventLog()  # empty, no objects
+def test_to_event_log_xes_no_objects_raises(small_log):
+    # Events but no objects (an empty log gives an empty XES frame instead).
+    log = EventLog(events=small_log.events)
     with pytest.raises(ValueError, match="requires objects"):
         to_event_log_xes(log)
 
