@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests.invariants import harness
+from . import harness
 
 BASELINE = Path(__file__).with_name("signal_rows_baseline.json")
 PANDAS = ".".join(pd.__version__.split(".")[:2])
