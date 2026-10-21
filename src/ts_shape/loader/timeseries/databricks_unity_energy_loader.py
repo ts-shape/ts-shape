@@ -11,8 +11,12 @@ from ts_shape.loader._utils import (
     ErrorsMode,
     check_errors_mode,
     describe_failures,
+    parse_utc_times,
     read_errors,
     report_failures,
+    trim_to_day_range,
+    utc_folder_hours,
+    utc_naive,
 )
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import caller_stacklevel
@@ -201,6 +205,10 @@ class DatabricksUnityEnergyLoader:
         """
         Load all CSV files in ``csv/YYYY/MM/DD/`` for each date in [start, end].
 
+        Day folders are UTC days and are read in full; rows whose ``systime``
+        falls outside ``[start, end]`` are then dropped. A date-only ``end``
+        (``"2026-01-13"``) keeps that whole day; naive bounds are UTC.
+
         Args:
             start: Start date/datetime (inclusive).
             end: End date/datetime (inclusive).
@@ -217,7 +225,8 @@ class DatabricksUnityEnergyLoader:
         check_errors_mode(errors)
         ids_set = set(series_ids) if series_ids else None
         paths = self._list_csv_by_date_range(start, end, ids_set)
-        return self._read_and_concat(paths, errors=errors)
+        out = self._read_and_concat(paths, errors=errors)
+        return trim_to_day_range(out, start, end)
 
     def load_by_series_ids(
         self,
@@ -230,8 +239,9 @@ class DatabricksUnityEnergyLoader:
         """
         Load specific series by ID.
 
-        With start/end: visits only the day folders in range and keeps files
-        whose stem matches a requested series_id. Without dates: walks ``csv/``
+        With start/end: visits only the day folders in range, keeps files
+        whose stem matches a requested series_id and drops rows outside
+        ``[start, end]`` (as :meth:`load_by_time_range`). Without dates: walks ``csv/``
         and filters by stem. With only one bound the range is open on the
         other side (day folders on or after ``start``, or on or before ``end``).
 
@@ -252,8 +262,9 @@ class DatabricksUnityEnergyLoader:
         ids_set = set(series_ids)
         if start is not None and end is not None:
             paths = self._list_csv_by_date_range(start, end, ids_set)
-        else:
-            paths = self._list_csv_open_range(start, end, ids_set)
+            out = self._read_and_concat(paths, errors=errors)
+            return trim_to_day_range(out, start, end)
+        paths = self._list_csv_open_range(start, end, ids_set)
         return self._read_and_concat(paths, errors=errors)
 
     def stream_by_time_range(
@@ -269,6 +280,7 @@ class DatabricksUnityEnergyLoader:
 
         Memory-efficient alternative to :meth:`load_by_time_range` for large
         date ranges -- the recommended low-memory entry point in pipelines.
+        Rows outside ``[start, end]`` are dropped the same way.
 
         Args:
             start: Start date/datetime (inclusive).
@@ -296,6 +308,7 @@ class DatabricksUnityEnergyLoader:
                     ) from exc
                 failures.append((str(path), exc))
                 continue
+            df = trim_to_day_range(df, start, end)
             if not df.empty:
                 yield self._series_id_from_path(path), df
         report_failures(failures, what="CSV file(s)", errors=errors)
@@ -361,12 +374,13 @@ class DatabricksUnityEnergyLoader:
         start: str | pd.Timestamp,
         end: str | pd.Timestamp,
     ) -> list[Path]:
-        """Return the day-level directories: <base>/csv/YYYY/MM/DD."""
-        dates = pd.date_range(
-            start=pd.to_datetime(start).normalize(),
-            end=pd.to_datetime(end).normalize(),
-            freq="D",
-        )
+        """Return the day-level directories: <base>/csv/YYYY/MM/DD.
+
+        Day folders are UTC days: tz-aware bounds are converted to UTC, naive
+        bounds are taken as UTC (a naive bound next to an aware one is read in
+        the aware one's timezone).
+        """
+        dates = utc_folder_hours(start, end, "D")
         csv_root = self.base_path / _CSV_PREFIX
         return [
             csv_root / str(ts.year) / str(ts.month).zfill(2) / str(ts.day).zfill(2)
@@ -424,10 +438,8 @@ class DatabricksUnityEnergyLoader:
         ids_set: set | None,
     ) -> list[Path]:
         """List CSV files in day folders within an optionally open date range."""
-        lo = None if start is None else pd.to_datetime(start).tz_localize(None)
-        hi = None if end is None else pd.to_datetime(end).tz_localize(None)
-        lo = None if lo is None else lo.normalize()
-        hi = None if hi is None else hi.normalize()
+        lo = None if start is None else utc_naive(start).normalize()
+        hi = None if end is None else utc_naive(end).normalize()
         csv_root = self.base_path / _CSV_PREFIX
         paths: list[Path] = []
         for path in self._walk_csv(csv_root):
@@ -495,11 +507,11 @@ class DatabricksUnityEnergyLoader:
             )
 
         out = pd.DataFrame()
-        out["systime"] = pd.to_datetime(raw["time"], utc=True)
+        out["systime"] = parse_utc_times(raw["time"])
         out["uuid"] = series_id
         out["value_double"] = to_numeric_checked(
             raw["value"], what=f"series {series_id!r}"
-        )
+        ).astype("float64")
         out["is_delta"] = True
         return out.sort_values("systime").reset_index(drop=True)
 

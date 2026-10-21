@@ -116,9 +116,9 @@ class TimescaleDBDataAccess:
 
             for chunk in self._fetch_data(uuid):
                 if not chunk.empty:
-                    # Group the data by hour to accumulate rows for each hour
-                    chunk["hour"] = chunk["systime"].dt.floor("h")
-                    grouped = chunk.groupby("hour")
+                    # Group the data by hour to accumulate rows for each hour;
+                    # grouping by a Series keeps the helper key out of the files.
+                    grouped = chunk.groupby(chunk["systime"].dt.floor("h"))
 
                     for hour, group in grouped:
                         if hour not in hourly_data:

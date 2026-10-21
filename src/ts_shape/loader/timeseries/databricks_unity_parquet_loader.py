@@ -143,6 +143,14 @@ class DatabricksUnityParquetLoader:
         )
         return self.base_path / sub.strip("/")
 
+    def _hour_dirs(self, slots: Iterable[pd.Timestamp]) -> list[Path]:
+        """Distinct hour directories of ``slots``, in order.
+
+        A ``hour_pattern`` without ``{H}`` maps every hour of a day to the
+        same directory; listing it once per hour would load its files 24 times.
+        """
+        return list(dict.fromkeys(self._hour_dir(ts) for ts in slots))
+
     # ---- Filesystem listing (cheap; no file contents read) ----
     def _list_parquet_in(self, directory: Path) -> list[Path]:
         """List ``*.parquet`` files in a single hour directory (no recursion)."""
@@ -356,8 +364,8 @@ class DatabricksUnityParquetLoader:
         check_errors_mode(errors)
         slots = list(utc_folder_hours(start, end))
         paths: list[Path] = []
-        for ts in slots:
-            paths.extend(self._list_parquet_in(self._hour_dir(ts)))
+        for directory in self._hour_dirs(slots):
+            paths.extend(self._list_parquet_in(directory))
 
         search = self._time_search_detail(slots)
         if not paths:
@@ -425,7 +433,9 @@ class DatabricksUnityParquetLoader:
         check_errors_mode(errors)
         slots = list(utc_folder_hours(start, end))
         paths = (
-            path for ts in slots for path in self._list_parquet_in(self._hour_dir(ts))
+            path
+            for directory in self._hour_dirs(slots)
+            for path in self._list_parquet_in(directory)
         )
         failures: list[tuple[str, Exception]] = []
         yielded = 0
@@ -494,8 +504,8 @@ class DatabricksUnityParquetLoader:
         variants = self._uuid_basenames(uuid_list)
         slots = list(utc_folder_hours(start, end))
         paths: list[Path] = []
-        for ts in slots:
-            for path in self._list_parquet_in(self._hour_dir(ts)):
+        for directory in self._hour_dirs(slots):
+            for path in self._list_parquet_in(directory):
                 if path.name.lower() in variants:
                     paths.append(path)
 
@@ -571,8 +581,8 @@ class DatabricksUnityParquetLoader:
         slots = list(utc_folder_hours(start, end))
         paths = (
             path
-            for ts in slots
-            for path in self._list_parquet_in(self._hour_dir(ts))
+            for directory in self._hour_dirs(slots)
+            for path in self._list_parquet_in(directory)
             if path.name.lower() in variants
         )
         failures: list[tuple[str, Exception]] = []

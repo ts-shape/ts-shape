@@ -33,12 +33,16 @@ class MetadataJsonLoader:
                 a dict of columns with lists (``{"uuid": [...], ...}``), or a
                 list of records (``[{"uuid": ..., "label": ..., "config": {...}}]``).
             strict: If True, enforce presence of required keys, a label on
-                every record and unique UUIDs, and reject empty input.
+                every record and unique UUIDs, and reject empty input. For
+                columnar input the columns must also line up: lists of equal
+                length, index maps with the same keys. With False, a record
+                missing from ``label`` or ``config`` gets an empty label /
+                config, and one missing from ``uuid`` is dropped.
 
         Raises:
             ValueError: For columnar input without ``config``, missing or
-                duplicate UUIDs, a record without label (strict), or empty
-                input (strict).
+                duplicate UUIDs, a record without label (strict), columns
+                that do not line up (strict), or empty input (strict).
             TypeError: For an unsupported structure (strict).
         """
         self.json_data = json_data
@@ -215,14 +219,26 @@ class MetadataJsonLoader:
                 "label",
                 "config",
             }.issubset(data.keys()):
-                keys = (
-                    set(data["uuid"])
-                    .intersection(data["label"])
-                    .intersection(data["config"])
-                )
-                # numeric-sort if possible
+                index_sets = {
+                    col: set(data[col]) for col in ("uuid", "label", "config")
+                }
+                keys = set().union(*index_sets.values())
+                if self.strict:
+                    gaps = {
+                        col: sorted(map(str, keys - idx))[:5]
+                        for col, idx in index_sets.items()
+                        if keys - idx
+                    }
+                    if gaps:
+                        raise ValueError(
+                            "columnar metadata index keys differ between uuid, "
+                            f"label and config; missing keys per column: {gaps} "
+                            "(pass strict=False to fill them with empty values)"
+                        )
+                # Digit keys in numeric order first, then the others as text.
                 ordered_keys = sorted(
-                    keys, key=lambda k: int(k) if str(k).isdigit() else str(k)
+                    keys,
+                    key=lambda k: (0, int(k)) if str(k).isdigit() else (1, str(k)),
                 )
                 return [
                     self._normalize_record(

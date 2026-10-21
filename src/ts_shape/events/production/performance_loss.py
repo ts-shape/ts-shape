@@ -16,12 +16,15 @@ from ts_shape.events._windows import (
     add_period_window,
     add_shift_window,
     data_tz,
-    window_bounds,
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
-from ts_shape.utils.shifts import assign_shift, production_dates
+from ts_shape.utils.time_accounting import (
+    grouper_periods,
+    shift_periods,
+    split_intervals,
+)
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
@@ -68,17 +71,17 @@ _TREND_COLS = [
 
 
 def _loss_row(
-    grp: pd.DataFrame, target_cycle_time: float
+    actual_parts: float, elapsed: float, target_cycle_time: float
 ) -> tuple[int | float, float, float, float, float]:
-    """``(parts, avg cycle s, performance %, loss s, run s)`` of a group.
+    """``(parts, avg cycle s, performance %, loss s, run s)`` of a period.
 
     ISO 22400-2: performance = ideal cycle time x produced quantity / run
     time, and the actual (average) cycle time is run time / produced
-    quantity. ``parts`` is the produced quantity (counter increments, not the
-    number of readings) and the run time is the summed interval time.
+    quantity. ``actual_parts`` is the produced quantity (counter increments,
+    not the number of readings) and ``elapsed`` the run time in the period.
     """
-    actual_parts = float(grp["parts"].sum())
-    elapsed = float(grp["interval_s"].sum())
+    actual_parts = round(float(actual_parts), 9)
+    elapsed = float(elapsed)
     avg_ct = elapsed / actual_parts if actual_parts > 0 else float("nan")
     if elapsed > 0 and target_cycle_time > 0:
         performance = (actual_parts * target_cycle_time / elapsed) * 100.0
@@ -87,6 +90,38 @@ def _loss_row(
     loss_seconds = max(0.0, elapsed - actual_parts * target_cycle_time)
     parts_out = int(actual_parts) if actual_parts.is_integer() else actual_parts
     return parts_out, avg_ct, performance, loss_seconds, elapsed
+
+
+def _by_period(
+    data: pd.DataFrame, time_column: str, periods: pd.DataFrame, keys: list[str]
+) -> pd.DataFrame:
+    """Run seconds and parts per period, each cycle split at the boundaries.
+
+    A cycle completed by the reading at ``t`` ran during ``(t - interval_s,
+    t]``; its time is cut at the period boundaries and its parts are shared
+    in proportion to the time in each period (constant rate within a cycle).
+    Returns the period rows (``keys``, ``start``, ``end``) that received run
+    time, in time order, with ``run_seconds`` and ``parts``.
+    """
+    end = data[time_column].reset_index(drop=True)
+    intervals = pd.DataFrame(
+        {
+            "start": end - pd.to_timedelta(data["interval_s"].to_numpy(), unit="s"),
+            "end": end,
+            "parts": data["parts"].to_numpy(dtype="float64"),
+        }
+    )
+    per = periods.sort_values("start", kind="stable").reset_index(drop=True)
+    per["_p"] = range(len(per))
+    pieces = split_intervals(intervals, per, keys=["_p"])
+    pieces["_parts"] = pieces["parts"] * pieces["fraction"]
+    sums = pieces.groupby("_p")[["seconds", "_parts"]].sum()
+    sums = sums[sums["seconds"] > 0]
+    out = per.loc[sums.index.astype(int), [*keys, "start", "end"]]
+    out = out.reset_index(drop=True)
+    out["run_seconds"] = sums["seconds"].to_numpy(dtype="float64")
+    out["parts"] = sums["_parts"].to_numpy(dtype="float64")
+    return out
 
 
 class PerformanceLossEvents(Base):
@@ -113,6 +148,12 @@ class PerformanceLossEvents(Base):
     ``loss_minutes`` and the ``*_s`` cycle time columns are kept as a
     convenience. For a line that runs several part numbers, filter the data
     to one part (or one product run) per call.
+
+    Each cycle ``(t_prev, t]`` is booked to the windows / shifts it ran in:
+    its time is cut at the boundaries and its parts are shared in
+    proportion to the time in each (constant rate within a cycle), so
+    ``run_seconds`` never exceeds the window and ``actual_parts`` can be
+    fractional for a window that holds part of a cycle.
 
     Merge keys: [date, shift] for shift-level, [period] for trend data.
 
@@ -286,19 +327,22 @@ class PerformanceLossEvents(Base):
                 pd.DataFrame(columns=_SHIFT_COLS), self.shift_definitions, None
             )
 
-        data["shift"] = assign_shift(data[self.time_column], self.shift_definitions)
-        data["date"] = (
-            production_dates(
-                data[self.time_column], data["shift"], self.shift_definitions
-            )
-            if production_day
-            else data[self.time_column].dt.date
+        times = data[self.time_column]
+        starts = times - pd.to_timedelta(data["interval_s"].to_numpy(), unit="s")
+        periods = shift_periods(
+            starts.min(),
+            times.max(),
+            self.shift_definitions,
+            production_day=production_day,
         )
+        booked = _by_period(data, self.time_column, periods, ["date", "shift"])
 
         results = []
-        for (date, shift), grp in data.groupby(["date", "shift"]):
+        for date, shift, run, parts_in in booked[
+            ["date", "shift", "run_seconds", "parts"]
+        ].itertuples(index=False, name=None):
             parts, avg_ct, performance, loss_seconds, run_seconds = _loss_row(
-                grp, target_cycle_time
+                parts_in, run, target_cycle_time
             )
             results.append(
                 {
@@ -359,22 +403,20 @@ class PerformanceLossEvents(Base):
         if data.empty:
             return pd.DataFrame(columns=_SLOW_COLS)
 
-        data = data.set_index(self.time_column)
+        booked = self._window_losses(data, window)
         results = []
-
-        for start, grp in data.groupby(pd.Grouper(freq=window)):
-            if grp.empty or len(grp) < 2:
-                continue
-
+        for start, end, run, parts_in in booked[
+            ["start", "end", "run_seconds", "parts"]
+        ].itertuples(index=False, name=None):
             parts, avg_ct, performance, loss_seconds, run_seconds = _loss_row(
-                grp, target_cycle_time
+                parts_in, run, target_cycle_time
             )
             if performance < threshold_pct:
                 results.append(
                     {
                         "start": start,
-                        "end": pd.NaT,
-                        "duration_seconds": float("nan"),
+                        "end": end,
+                        "duration_seconds": (end - start).total_seconds(),
                         "uuid": self.event_uuid,
                         "source_uuid": cycle_uuid,
                         "actual_parts": parts,
@@ -387,13 +429,14 @@ class PerformanceLossEvents(Base):
                     }
                 )
 
-        out = pd.DataFrame(results, columns=_SLOW_COLS)
-        if not out.empty:
-            # The real [start, end) of each window (a DST day: 23 h / 25 h).
-            w_start, w_end = window_bounds(out["start"], window)
-            out["start"], out["end"] = w_start, w_end
-            out["duration_seconds"] = (w_end - w_start).dt.total_seconds()
-        return out
+        return pd.DataFrame(results, columns=_SLOW_COLS)
+
+    def _window_losses(self, data: pd.DataFrame, window: str) -> pd.DataFrame:
+        """:func:`_by_period` over the ``pd.Grouper(freq=window)`` bins."""
+        times = data[self.time_column]
+        starts = times - pd.to_timedelta(data["interval_s"].to_numpy(), unit="s")
+        periods = grouper_periods(starts.min(), times.max(), window)
+        return _by_period(data, self.time_column, periods, ["period"])
 
     def performance_trend(
         self,
@@ -429,15 +472,13 @@ class PerformanceLossEvents(Base):
         if data.empty:
             return add_period_window(pd.DataFrame(columns=_TREND_COLS), window)
 
-        data = data.set_index(self.time_column)
+        booked = self._window_losses(data, window)
         results = []
-
-        for period, grp in data.groupby(pd.Grouper(freq=window)):
-            if grp.empty:
-                continue
-
+        for period, run, parts_in in booked[
+            ["period", "run_seconds", "parts"]
+        ].itertuples(index=False, name=None):
             parts, avg_ct, performance, loss_seconds, run_seconds = _loss_row(
-                grp, target_cycle_time
+                parts_in, run, target_cycle_time
             )
             results.append(
                 {

@@ -101,15 +101,7 @@ NOT_A_SHARE: dict[str, str] = {
 }
 
 #: Like :data:`NOT_A_SHARE`, for one method only: ``"Class.method:column"``.
-NOT_A_SHARE_IN: dict[str, str] = {
-    "PerformanceLossEvents.slow_periods:run_seconds": (
-        "whole cycle times booked to the window of the completing count; a "
-        "cycle that started in the previous window is not split"
-    ),
-    "PerformanceLossEvents.slow_periods:loss_seconds": (
-        "derived from run_seconds (same booking)"
-    ),
-}
+NOT_A_SHARE_IN: dict[str, str] = {}
 
 
 def _is_pct(col: str) -> bool:
@@ -235,6 +227,20 @@ VARIANTS: list[tuple[str, str, str, dict[str, Any], dict[str, Any]]] = [
         "PerformanceLossEvents.slow_periods[counter]",
         "PerformanceLossEvents",
         "slow_periods",
+        {},
+        {"cycle_uuid": harness.COUNTER, "target_cycle_time": 1.0},
+    ),
+    (
+        "PerformanceLossEvents.performance_trend[counter]",
+        "PerformanceLossEvents",
+        "performance_trend",
+        {},
+        {"cycle_uuid": harness.COUNTER, "target_cycle_time": 1.0},
+    ),
+    (
+        "PerformanceLossEvents.performance_by_shift[counter]",
+        "PerformanceLossEvents",
+        "performance_by_shift",
         {},
         {"cycle_uuid": harness.COUNTER, "target_cycle_time": 1.0},
     ),

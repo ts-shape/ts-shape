@@ -131,8 +131,8 @@ class DatabricksSparkParquetLoader:
             raise LoaderError("At least one uuid is required.")
         slots = utc_folder_hours(start, end, freq)
         paths: list[str] = []
-        for ts in slots:
-            hour_dir = ts.strftime(self.hour_pattern)
+        # dict.fromkeys: a pattern without %H names one folder per day, not 24.
+        for hour_dir in dict.fromkeys(ts.strftime(self.hour_pattern) for ts in slots):
             for uuid in uuid_list:
                 fname = self.file_template.format(uuid=uuid)
                 paths.append(f"{self.base_path}/{hour_dir}/{fname}")

@@ -222,7 +222,10 @@ The temperature leads the pressure by three samples (three minutes).
   signal.
 - `lead_lag` uses cross-correlation; `granger_causality` an F-test of
   whether past values of one signal improve the prediction of the other.
-  `transfer_entropy` measures directed information flow in bits, also for
+  It tests every lag up to `max_lag` and reports the smallest `p_value`;
+  `is_causal` uses the Bonferroni-adjusted `p_value_adjusted`
+  (`min(1, p_value * lags tested)`), so testing many lags does not inflate
+  false positives. `transfer_entropy` measures directed information flow in bits, also for
   non-linear relations. `synchronization_index` gives phase locking
   (`method="phase"`) or envelope correlation (`"amplitude"`) from 0 to 1.
 - Only rows where both signals have a value are used.

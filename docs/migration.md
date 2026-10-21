@@ -6,6 +6,91 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 17 (part J): loaders, transforms, features
+
+Each change is pinned by a hand-computed test in
+`tests/reference/test_round17_production_power.py`,
+`tests/reference/test_round17_features_filters.py` and
+`tests/reference/test_round17_loaders.py`.
+
+### Performance loss and energy
+
+- `PerformanceLossEvents.slow_periods`, `performance_trend` and
+  `performance_by_shift` book each cycle, from the previous count to this
+  one, to the windows or shifts it ran in. Its time is cut at the boundaries
+  and its parts are shared in proportion to that time.
+  - `run_seconds` never exceeds the window.
+  - `actual_parts` can be fractional.
+  - The false slow period after a long cycle is gone.
+- `PowerIntegrator.energy_by_window`, `segment_energy` and
+  `to_energy_deltas` use true calendar bounds for `'W'`, `'MS'` and `'ME'`.
+  `'ME'` and `'W'` used to give negative kWh. `'1D'` is the real local day.
+- `PowerIntegrator.energy_by_window(total=True)` counts a meter with no data
+  in a window as coverage 0.
+
+### Transforms
+
+- `DataHarmonizer.resample_to_uniform` and `merge_multi_signals`:
+  - New keyword `sampling="first"|"interpolate"`.
+    - `"first"` is the default, as before: the first sample in each bin,
+      labeled with the bin start.
+    - `"interpolate"` gives the value at each grid timestamp.
+  - Interpolation no longer extends a signal before its first or after its
+    last sample. Those rows are now NaN.
+- `IntegerFilter.filter_value_integer_not_match` and
+  `StringFilter.filter_value_string_not_match` keep missing values for
+  nullable dtypes, as documented.
+- `TimezoneShift.revert_to_original_timezone` on a naive column raises a
+  `ValueError` that points to `shift_timezone`.
+
+### Features
+
+- `TimeWindowedFeatureTable`:
+  - `compute_long` reports true window bounds for right-labeled windows. The
+    `'ME'` window labeled 2024-01-31 is now `[2024-01-01, 2024-02-01)`.
+  - `compute` has a row for every window between the first and last sample,
+    NaN-filled where no data is available.
+- `CycleExtractor`: a cycle already running at the first non-missing sample
+  has `is_complete=False`.
+- `CrossSignalAnalytics.granger_causality`:
+  - New `p_value_adjusted`, the Bonferroni-adjusted minimum p-value.
+  - `is_causal` now uses it. On independent noise the false-positive rate
+    drops from about 15 % to about 2 %.
+  - `p_value` is unchanged.
+- `NumericStatistics.column_sum` and `column_range` on integer columns no
+  longer wrap around int64.
+
+### Loaders
+
+- **Naive bounds:** `trim_to_time_range` and every loader that trims rows
+  read naive bounds as UTC, as the folder selection always did. To select
+  by local time, pass aware bounds.
+- **`S3ProxyDataAccess`:** reads floored UTC hour folders and drops rows
+  outside `[start, end]`. With no files it returns an empty frame.
+- **`ParquetLoader`:** `load_by_time_range` and
+  `load_files_by_time_range_and_uuids` drop rows outside `[start, end]`.
+  Pass `trim_to_range=False` to get whole hour folders.
+- **Hour patterns without `{H}`:** an `hour_pattern` without `{H}` no longer
+  returns each row once per hour. This covers the Azure parquet and flexible
+  loaders and the Databricks Unity and Spark loaders.
+- **`AzureBlobEnergyLoader` and `DatabricksUnityEnergyLoader`:**
+  - They drop rows outside a `start`/`end` pair; a date-only `end` keeps that
+    whole day.
+  - Azure `load_by_series_ids` accepts a single open bound.
+  - Databricks day folders are UTC days.
+- **`value_double`:** always `float64`, in the energy loaders and in
+  `EnergyAPILoader`.
+- **`parse_utc_times`:** infers the epoch unit from magnitude (seconds below
+  1e11, milliseconds below 1e14, microseconds below 1e17, else nanoseconds),
+  or takes `unit=`.
+- **`TimescaleDBDataAccess.fetch_data_as_parquet`:** no longer writes an
+  `hour` column.
+- **`MetadataJsonLoader`:** raises in strict mode when the index maps' keys
+  differ. With `strict=False` missing fields are filled. Mixed digit and text
+  keys sort with the digits first.
+- **`DatapointAPI`:** accepts datapoints without `enabled` or `config`. An
+  unknown device gets an empty frame.
+
 ## October 2026, round 17 (part I): event log, pipeline, signals
 
 Each change is pinned by a hand-computed test in

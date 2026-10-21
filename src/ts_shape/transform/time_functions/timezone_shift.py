@@ -171,10 +171,23 @@ class TimezoneShift(Base):
 
         Returns:
             pd.DataFrame: A DataFrame with timestamps reverted to the original timezone.
+
+        Raises:
+            ValueError: If ``time_column`` is timezone-naive (and holds a
+                timestamp): there is no zone to convert from. Localize it
+                first with :meth:`shift_timezone`. An all-missing naive
+                column is taken as UTC.
         """
         original_timezone = _valid_timezone(original_timezone, what="original timezone")
         times = _times(dataframe, time_column, "revert_to_original_timezone")
-        if times.dt.tz is None and times.isna().all():
+        if times.dt.tz is None:
+            if not times.isna().all():
+                raise ValueError(
+                    "TimezoneShift.revert_to_original_timezone: column "
+                    f"{time_column!r} is timezone-naive, so there is no zone to "
+                    "convert from. Localize it first with "
+                    "TimezoneShift.shift_timezone."
+                )
             times = times.dt.tz_localize("UTC")
         # Work on a copy: the caller's frame must not be mutated.
         dataframe = dataframe.copy()

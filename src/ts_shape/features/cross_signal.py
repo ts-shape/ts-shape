@@ -124,17 +124,31 @@ class CrossSignalAnalytics:
     ) -> dict:
         """Test whether `cause` Granger-causes `effect` using F-test.
 
+        One F-test is run per lag ``1..max_lag`` and the lag with the smallest
+        p-value is reported. Picking the best of several tests inflates the
+        false-positive rate (about 15% instead of 5% for ``max_lag=10`` on
+        independent noise), so the decision uses a Bonferroni correction for
+        the number of lags tested: ``p_value_adjusted = min(1, p_value * k)``
+        with ``k`` the number of lags that could be fitted, and ``is_causal``
+        is ``p_value_adjusted < significance``. This is conservative (the
+        lag tests are correlated) but keeps the false-positive rate at or
+        below ``significance``.
+
         Args:
             cause: Column name of the potential cause signal.
             effect: Column name of the potential effect signal.
             max_lag: Maximum number of lags to test.
-            significance: P-value threshold for declaring causality.
+            significance: Threshold on the adjusted p-value for declaring
+                causality.
 
         Returns:
-            Dict with optimal_lag, f_statistic, p_value, is_causal, results_by_lag.
-                Only rows where both signals have a value are used. With too
-                few of them to fit a lag, ``f_statistic`` and ``p_value`` are
-                NaN and ``is_causal`` is False.
+            Dict with optimal_lag, f_statistic, p_value (the smallest,
+                unadjusted p-value over the lags), p_value_adjusted (the
+                Bonferroni-adjusted one), is_causal and results_by_lag (each
+                entry with lag, f_statistic and unadjusted p_value). Only rows
+                where both signals have a value are used. With too few of them
+                to fit a lag, ``f_statistic``, ``p_value`` and
+                ``p_value_adjusted`` are NaN and ``is_causal`` is False.
         """
         from scipy import stats as scipy_stats
 
@@ -185,16 +199,20 @@ class CrossSignalAnalytics:
                 "optimal_lag": 0,
                 "f_statistic": float("nan"),
                 "p_value": float("nan"),
+                "p_value_adjusted": float("nan"),
                 "is_causal": False,
                 "results_by_lag": [],
             }
 
         best = min(results_by_lag, key=lambda r: r["p_value"])
+        # Bonferroni over the lags actually tested.
+        p_adjusted = min(1.0, best["p_value"] * len(results_by_lag))
         return {
             "optimal_lag": best["lag"],
             "f_statistic": best["f_statistic"],
             "p_value": best["p_value"],
-            "is_causal": best["p_value"] < significance,
+            "p_value_adjusted": p_adjusted,
+            "is_causal": p_adjusted < significance,
             "results_by_lag": results_by_lag,
         }
 

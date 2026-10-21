@@ -91,7 +91,9 @@ class StringFilter(Base):
                 values included), in input order.
         """
         Base._validate_column(dataframe, value_column)
-        return dataframe[dataframe[value_column] != string_value]
+        # The ``string`` dtype gives NA for a missing value; it differs.
+        mask = (dataframe[value_column] != string_value).fillna(True)
+        return dataframe[mask.to_numpy(dtype=bool)]
 
     @classmethod
     @renamed_kwargs(column_name="value_column")
