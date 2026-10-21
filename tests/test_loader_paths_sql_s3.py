@@ -235,7 +235,9 @@ def test_s3_dataframe_reads_every_hour_and_skips_missing(fake_s3):
     loader = _s3(["temp", "flow", "temp"])
     df = loader.fetch_data_as_dataframe()
     assert sorted(df["uuid"].unique()) == ["flow", "temp"]
-    assert len(df) == 9  # temp 00, temp 01, flow 01; flow 00 does not exist
+    # temp 00, temp 01, flow 01 are read (flow 00 does not exist); rows after
+    # end=01:00 are trimmed: temp 00:00/00:20/00:40, temp 01:00, flow 01:00.
+    assert len(df) == 5
     paths = [Path(p).as_posix() for p in loader.s3.opened]
     assert "lake/2024/01/01/00/flow.parquet" in paths
 
@@ -244,7 +246,7 @@ def test_s3_retries_a_transient_error(fake_s3):
     loader = _s3(["temp"], end="2024-01-01 00:00:00")
     loader.s3.flaky["lake/2024/01/01/00/temp.parquet"] = 1
     df = loader.fetch_data_as_dataframe()
-    assert len(df) == 3
+    assert len(df) == 1  # the 00 file has 3 rows; only 00:00 is <= end
     assert loader.s3.opened.count("lake/2024/01/01/00/temp.parquet") == 2
 
 

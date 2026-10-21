@@ -19,7 +19,9 @@ from ts_shape.loader._utils import (
     parse_utc_times,
     read_errors,
     report_failures,
+    trim_to_day_range,
     utc_folder_hours,
+    utc_naive,
 )
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import caller_stacklevel
@@ -264,7 +266,11 @@ class AzureBlobEnergyLoader:
         errors: ErrorsMode = "warn",
     ) -> pd.DataFrame:
         """
-        Load all CSV files in ``csv/YYYY/MM/DD/`` for each date in [start, end].
+        Load all CSV files in ``csv/YYYY/MM/DD/`` for each (UTC) date in [start, end].
+
+        Day folders are read in full; rows whose ``systime`` falls outside
+        ``[start, end]`` are then dropped. A date-only ``end``
+        (``"2026-01-13"``) keeps that whole day; naive bounds are UTC.
 
         Args:
             start: Start date/datetime (inclusive).
@@ -282,7 +288,8 @@ class AzureBlobEnergyLoader:
         check_errors_mode(errors)
         ids_set = set(series_ids) if series_ids else None
         blob_names = self._list_blobs_by_date_range(start, end, ids_set)
-        return self._download_and_concat(blob_names, errors=errors)
+        out = self._download_and_concat(blob_names, errors=errors)
+        return trim_to_day_range(out, start, end)
 
     def load_by_series_ids(
         self,
@@ -295,14 +302,17 @@ class AzureBlobEnergyLoader:
         """
         Load specific series by ID.
 
-        With start/end: lists the day folders in the range and keeps the
-        requested series. Without dates: lists all blobs under ``csv/`` and
-        filters by stem.
+        With start/end: lists the day folders in the range, keeps the
+        requested series and drops rows outside ``[start, end]`` (as
+        :meth:`load_by_time_range`). Without dates: lists all blobs under
+        ``csv/`` and filters by stem. With only one bound the range is open on
+        the other side: every day folder on or after ``start`` (or on or
+        before ``end``) is read in full.
 
         Args:
             series_ids: Series IDs to load.
-            start: Optional start date filter.
-            end: Optional end date filter.
+            start: Optional start date filter (inclusive).
+            end: Optional end date filter (inclusive).
             errors: ``"warn"`` (default) skips a CSV that cannot be downloaded
                 or parsed and emits one
                 :class:`~ts_shape.errors.DataQualityWarning` naming every
@@ -313,20 +323,12 @@ class AzureBlobEnergyLoader:
             Standard schema DataFrame: systime | uuid | value_double | is_delta
         """
         check_errors_mode(errors)
+        ids_set = set(series_ids)
         if start is not None and end is not None:
-            blob_names = self._list_blobs_by_date_range(start, end, set(series_ids))
-        else:
-            ids_set = set(series_ids)
-            prefix = self._full_path(_CSV_PREFIX)
-            all_blobs = self.container_client.list_blobs(
-                name_starts_with=prefix or None
-            )
-            blob_names = [
-                b.name
-                for b in all_blobs
-                if str(b.name).endswith(".csv")
-                and self._series_id_from_blob_name(b.name) in ids_set
-            ]
+            blob_names = self._list_blobs_by_date_range(start, end, ids_set)
+            out = self._download_and_concat(blob_names, errors=errors)
+            return trim_to_day_range(out, start, end)
+        blob_names = self._list_blobs_open_range(start, end, ids_set)
         return self._download_and_concat(blob_names, errors=errors)
 
     def stream_by_time_range(
@@ -340,7 +342,8 @@ class AzureBlobEnergyLoader:
         """
         Stream CSV files one at a time as (series_id, DataFrame) tuples.
 
-        Memory-efficient alternative to load_by_time_range for large date ranges.
+        Memory-efficient alternative to load_by_time_range for large date
+        ranges; rows outside ``[start, end]`` are dropped the same way.
 
         Args:
             start: Start date/datetime (inclusive).
@@ -369,6 +372,7 @@ class AzureBlobEnergyLoader:
                     ) from exc
                 failures.append((blob_name, exc))
                 continue
+            df = trim_to_day_range(df, start, end)
             if not df.empty:
                 yield self._series_id_from_blob_name(blob_name), df
         report_failures(failures, what="CSV blob(s)", errors=errors)
@@ -438,6 +442,47 @@ class AzureBlobEnergyLoader:
                 blob_names.append(name)
         return blob_names
 
+    def _list_blobs_open_range(
+        self,
+        start: str | pd.Timestamp | None,
+        end: str | pd.Timestamp | None,
+        ids_set: set,
+    ) -> list[str]:
+        """CSV blobs of ``ids_set`` in UTC day folders within an open range."""
+        lo = None if start is None else utc_naive(start).normalize()
+        hi = None if end is None else utc_naive(end).normalize()
+        prefix = self._full_path(_CSV_PREFIX)
+        blob_names: list[str] = []
+        for blob in self.container_client.list_blobs(name_starts_with=prefix or None):
+            name = str(blob.name)
+            if not name.endswith(".csv"):
+                continue
+            if self._series_id_from_blob_name(name) not in ids_set:
+                continue
+            if lo is not None or hi is not None:
+                day = self._day_of_blob_name(name, prefix)
+                if day is None:
+                    continue
+                if (lo is not None and day < lo) or (hi is not None and day > hi):
+                    continue
+            blob_names.append(name)
+        return blob_names
+
+    @staticmethod
+    def _day_of_blob_name(blob_name: str, csv_prefix: str) -> pd.Timestamp | None:
+        """The ``YYYY/MM/DD`` day folder of a blob under ``csv_prefix``, or None."""
+        if not blob_name.startswith(csv_prefix):
+            return None
+        parts = blob_name[len(csv_prefix) :].strip("/").split("/")
+        if len(parts) != 4:
+            return None
+        try:
+            return pd.Timestamp(
+                year=int(parts[0]), month=int(parts[1]), day=int(parts[2])
+            )
+        except ValueError:
+            return None
+
     @staticmethod
     def _series_id_from_blob_name(blob_name: str) -> str:
         """Extract series_id from blob path: csv/2026/01/13/sensor_001.csv → sensor_001"""
@@ -491,7 +536,7 @@ class AzureBlobEnergyLoader:
         out["uuid"] = series_id
         out["value_double"] = to_numeric_checked(
             raw["value"], what=f"series {series_id!r}"
-        )
+        ).astype("float64")
         out["is_delta"] = True
         return out.sort_values("systime").reset_index(drop=True)
 

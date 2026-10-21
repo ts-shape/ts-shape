@@ -47,12 +47,15 @@ temperature = ParquetLoader.load_files_by_time_range_and_uuids(
 )
 ```
 
-`ParquetLoader` selects whole hour folders: the second call returns the 07:00
-and 08:00 folders completely (07:00 to 08:59). Filter the rows afterwards if you
-need an exact range. A start in the middle of an hour includes that hour's
-folder. Folder hours are UTC: tz-aware bounds are converted to UTC, naive
-bounds are taken as UTC (the same for `DatabricksSparkParquetLoader`). A file
-matches a uuid only when its name is exactly `<uuid>.parquet`.
+`ParquetLoader` reads whole hour folders, then drops the rows outside
+`[start, end]` (`trim_to_range=True`, the default): the second call reads the
+07:00 and 08:00 folders and returns 07:00 to 08:00. Pass `trim_to_range=False`
+to keep the whole folders (07:00 to 08:59). A start in the middle of an hour
+includes that hour's folder. Folder hours are UTC: tz-aware bounds are
+converted to UTC, naive bounds are taken as UTC (the same for every loader with
+this layout), also when the rows are compared: a naive bound is UTC even
+when `systime` is stored in another timezone. A file matches a uuid only when
+its name is exactly `<uuid>.parquet`.
 
 ## Azure Blob Storage
 
@@ -83,6 +86,8 @@ df = loader.load_files_by_time_range_and_uuids(
 - `load_by_time_range` reads all signals; `stream_by_time_range` yields
   `(blob_name, frame)` pairs one blob at a time.
 - Rows outside `[start, end]` are dropped (`trim_to_range=True`, the default).
+- An `hour_pattern` without `{H}` (for example `"{Y}/{m}/{d}/"`, one folder per
+  day) lists each folder once, so its rows are not repeated per hour.
 - A blob that cannot be downloaded or parsed is skipped, and one
   `DataQualityWarning` names every skipped blob. Pass `errors="raise"` to get a
   `LoaderError` instead. The Databricks Unity loader takes the same argument.
@@ -113,6 +118,12 @@ loader = S3ProxyDataAccess(
 )
 df = loader.fetch_data_as_dataframe()
 ```
+
+The loader reads the UTC hour folders from the one that contains `start` to the
+one that contains `end`, then drops the rows outside `[start, end]`, in
+`fetch_data_as_dataframe` and in the files `fetch_data_as_parquet` writes. When
+no file exists, `fetch_data_as_dataframe` returns an empty frame with the
+standard columns.
 
 ## Databricks
 
@@ -211,6 +222,12 @@ Both also offer `load_by_series_ids`, `stream_by_time_range` (one CSV file
 at a time, as `(series_id, frame)` pairs) and `list_series`; a file that cannot be read is skipped with a
 `DataQualityWarning` (`errors="raise"` raises `LoaderError`).
 
+Day folders are UTC days. With a `start`/`end` pair the rows outside the range
+are dropped; an `end` given as a date only (`"2026-06-20"`) keeps that whole
+day. With only one bound (`load_by_series_ids(ids, start=...)`) the range is
+open on the other side and whole day folders are read. `value_double` is
+always `float64`, also when the CSV holds integers.
+
 `EnergyAPILoader` fetches JSON records from a REST endpoint and assigns one
 `uuid` to every row:
 
@@ -228,6 +245,10 @@ df = loader.fetch_data_as_dataframe(
 )
 ```
 
+Times may be text (with or without a UTC offset) or epoch numbers. The epoch
+unit follows from the magnitude: seconds below `1e11`, milliseconds below
+`1e14`, microseconds below `1e17`, nanoseconds above.
+
 ## Signal metadata from Datadash and the config repository
 
 `DatapointAPI` (Datadash REST API, bearer token) and `DatapointDB` (the
@@ -236,7 +257,10 @@ PostgreSQL config repository) collect the datapoints (`uuid`, `label`,
 `<device>_data_points.json` per device to `output_path` (default `"data"`),
 and return the uuids per device with `get_all_uuids()`, for example as the
 uuid list of `AzureBlobParquetLoader`. `filter_enabled=True` (the default)
-keeps enabled datapoints only (`DatapointDB` also drops archived ones).
+keeps enabled datapoints only (`DatapointDB` also drops archived ones); a
+datapoint without `enabled` does not count as enabled, and one without
+`config` gets `None`. A device that is not found gets an empty frame and
+an empty uuid list.
 
 <!-- no-run -->
 
@@ -251,7 +275,10 @@ uuids = db.get_all_uuids()["Press 1"]
 
 `MetadataJsonLoader` reads signal metadata (a `uuid`, `label` and `config` per
 signal; `config` keys become columns). `DataIntegratorHybrid.combine_data`
-joins it to the timeseries on `uuid`:
+joins it to the timeseries on `uuid`. In the index-map form below, every
+column must have the same keys (`strict=True`, the default); with
+`strict=False` a record missing from `label` or `config` gets an empty value.
+Digit keys sort numerically, before text keys.
 
 ```python
 from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader

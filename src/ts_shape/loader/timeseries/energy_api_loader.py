@@ -236,7 +236,7 @@ class EnergyAPILoader:
         if value_key in df.columns:
             df["value_double"] = to_numeric_checked(
                 df[value_key], what=f"{uuid_value} value key {value_key!r}"
-            )
+            ).astype("float64")
         else:
             warnings.warn(
                 f"{uuid_value}: none of the {len(df)} API record(s) has the value "

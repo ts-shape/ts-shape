@@ -16,8 +16,10 @@ same behavior and error type.
 
 from __future__ import annotations
 
+import datetime
 import functools
 import logging
+import re
 import time
 import urllib.parse
 import warnings
@@ -342,19 +344,62 @@ def azure_container_repr(obj: Any) -> str:
     )
 
 
-def parse_utc_times(values: pd.Series) -> pd.Series:
+#: Unit of epoch numbers, see :func:`parse_utc_times`.
+EpochUnit = Literal["s", "ms", "us", "ns"]
+
+#: Epoch unit inferred from the largest absolute value, see :func:`epoch_unit`.
+_EPOCH_UNIT_LIMITS: tuple[tuple[float, EpochUnit], ...] = (
+    (1e11, "s"),
+    (1e14, "ms"),
+    (1e17, "us"),
+)
+
+
+def epoch_unit(values: pd.Series) -> EpochUnit:
+    """Unit of epoch numbers, inferred from their magnitude.
+
+    The largest absolute value decides: below ``1e11`` it is seconds, below
+    ``1e14`` milliseconds, below ``1e17`` microseconds, otherwise
+    nanoseconds. (Seconds up to ``1e11`` reach the year 5138; the current
+    time in ms is about ``1.7e12``, in us ``1.7e15``, in ns ``1.7e18``.)
+
+    Args:
+        values: Numeric epoch values; nulls are ignored.
+
+    Returns:
+        ``"s"``, ``"ms"``, ``"us"`` or ``"ns"``; ``"s"`` when all are null.
+    """
+    peak = pd.to_numeric(values, errors="coerce").abs().max()
+    if pd.isna(peak):
+        return "s"
+    for limit, unit in _EPOCH_UNIT_LIMITS:
+        if peak < limit:
+            return unit
+    return "ns"
+
+
+def parse_utc_times(values: pd.Series, unit: EpochUnit | None = None) -> pd.Series:
     """Parse timestamps to tz-aware UTC.
 
     Strings with an offset (``2024-01-01T00:00:00+01:00``) are converted to
     UTC; strings without one are taken as UTC. A column that mixes both
     (or mixes ISO layouts) is parsed value by value.
 
+    Numbers are epoch times. Their unit is ``unit``, or, when None (the
+    default), inferred from their magnitude (see :func:`epoch_unit`):
+    ``1704067200``, ``1704067200000`` and ``1704067200000000000`` all give
+    ``2024-01-01 00:00 UTC``.
+
     Args:
         values: Timestamps as text, numbers or datetimes.
+        unit: Epoch unit of numeric values (``"s"``, ``"ms"``, ``"us"``,
+            ``"ns"``); None infers it. Ignored for text and datetimes.
 
     Returns:
         ``datetime64[ns, UTC]`` values.
     """
+    if pd.api.types.is_numeric_dtype(values) and not pd.api.types.is_bool_dtype(values):
+        return pd.to_datetime(values, utc=True, unit=unit or epoch_unit(values))
     try:
         return pd.to_datetime(values, utc=True)
     except (TypeError, ValueError):
@@ -423,14 +468,19 @@ def utc_naive(timestamp: str | pd.Timestamp) -> pd.Timestamp:
     return ts
 
 
-def _align_bound(bound: pd.Timestamp, column: pd.Series) -> pd.Timestamp:
-    """Match ``bound``'s timezone-awareness to a datetime ``column``."""
-    col_tz = getattr(column.dt, "tz", None)
-    if col_tz is not None and bound.tz is None:
-        return bound.tz_localize(col_tz)
-    if col_tz is None and bound.tz is not None:
-        return bound.tz_convert("UTC").tz_localize(None)
-    return bound
+def _utc_bound(bound: str | pd.Timestamp) -> pd.Timestamp:
+    """``bound`` as a UTC Timestamp; a naive bound is taken as UTC."""
+    ts = pd.Timestamp(bound)
+    if ts.tzinfo is None:
+        return ts.tz_localize("UTC")
+    return ts.tz_convert("UTC")
+
+
+def _column_times(column: pd.Series) -> pd.Series:
+    """A datetime view of ``column``; text and numbers are parsed as UTC."""
+    if pd.api.types.is_datetime64_any_dtype(column):
+        return column
+    return parse_utc_times(column)
 
 
 def trim_to_time_range(
@@ -443,8 +493,14 @@ def trim_to_time_range(
     """Keep the rows whose ``time_column`` lies in ``[start, end]`` (both inclusive).
 
     Frames without ``time_column`` (e.g. because a column projection left it
-    out) are returned unchanged. A naive bound is interpreted in the column's
-    timezone; an aware bound is compared against a naive column in UTC.
+    out) are returned unchanged.
+
+    Bounds are read as the folder selection reads them: a naive bound is UTC
+    (or, when the other bound is tz-aware, in that bound's timezone, as
+    :func:`same_tz_bounds`), whatever the column's timezone. A tz-aware
+    column is compared in its own timezone, which gives the same instants; a
+    naive column is taken as UTC. A text or numeric column is parsed with
+    :func:`parse_utc_times`, so mixed UTC offsets and epoch numbers work.
 
     Args:
         df: Frame to trim.
@@ -460,13 +516,54 @@ def trim_to_time_range(
         return df
     if start is None and end is None:
         return df
-    times = pd.to_datetime(df[time_column])
+    if start is not None and end is not None:
+        start, end = same_tz_bounds(start, end)
+    times = _column_times(df[time_column])
+    col_tz = getattr(times.dt, "tz", None)
+
+    def _aligned(bound: str | pd.Timestamp) -> pd.Timestamp:
+        utc = _utc_bound(bound)
+        return utc if col_tz is not None else utc.tz_localize(None)
+
     mask = pd.Series(True, index=df.index)
     if start is not None:
-        mask &= times >= _align_bound(pd.to_datetime(start), times)
+        mask &= times >= _aligned(start)
     if end is not None:
-        mask &= times <= _align_bound(pd.to_datetime(end), times)
+        mask &= times <= _aligned(end)
     return df.loc[mask].reset_index(drop=True)
+
+
+_DATE_ONLY = re.compile(r"\d{4}([-/]?)\d{2}\1\d{2}")
+
+
+def is_date_only(bound: object) -> bool:
+    """True for a calendar date with no time of day.
+
+    ``"2024-01-31"``, ``"2024/01/31"``, ``"20240131"`` and a
+    :class:`datetime.date` (not a :class:`datetime.datetime`) are dates;
+    ``"2024-01-31 00:00"`` and Timestamps are not.
+    """
+    if isinstance(bound, datetime.date) and not isinstance(bound, datetime.datetime):
+        return True
+    return isinstance(bound, str) and _DATE_ONLY.fullmatch(bound.strip()) is not None
+
+
+def trim_to_day_range(
+    df: pd.DataFrame,
+    start: str | pd.Timestamp | None,
+    end: str | pd.Timestamp | None,
+    *,
+    time_column: str = "systime",
+) -> pd.DataFrame:
+    """:func:`trim_to_time_range` for loaders whose folders are whole days.
+
+    The same, except that an ``end`` given as a date only (see
+    :func:`is_date_only`) keeps that whole day: ``("2024-01-01",
+    "2024-01-01")`` keeps every row of 1 January (UTC).
+    """
+    if end is not None and is_date_only(end):
+        end = pd.Timestamp(end) + pd.Timedelta(days=1) - pd.Timedelta(1, "ns")
+    return trim_to_time_range(df, start, end, time_column=time_column)
 
 
 #: How a loader that reads many objects treats one it cannot read: ``"warn"``

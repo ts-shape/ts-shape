@@ -16,6 +16,14 @@ from ts_shape.loader._utils import REDACTED, loader_repr, redact_url, require_op
 
 logger = logging.getLogger(__name__)
 
+#: Columns of a device's metadata frame.
+_METADATA_COLUMNS = ["uuid", "label", "config"]
+
+
+def _is_enabled(flag: Any) -> bool:
+    """True for an ``enabled`` flag equal to True (``True`` or ``1``)."""
+    return isinstance(flag, int | float) and flag == 1
+
 
 class DatapointAPI:
     """
@@ -254,22 +262,28 @@ class DatapointAPI:
                 if metadata:
                     break
 
-            metadata_df = pd.DataFrame(metadata)
-            if not metadata_df.empty:
-                if self.filter_enabled:
-                    # ``eq(True)``: a missing flag does not count as enabled.
-                    metadata_df = metadata_df[metadata_df["enabled"].eq(True)]
+            # .get: the API may leave out ``enabled`` or ``config`` (a missing
+            # ``enabled`` does not count as enabled). A device that is not
+            # found, or has no data points, gets an empty frame, as DatapointDB.
+            kept = [
+                dp
+                for dp in metadata
+                if not self.filter_enabled or _is_enabled(dp.get("enabled"))
+            ]
+            # Column lists (not records) keep a missing value as None, not NaN.
+            metadata_df = pd.DataFrame(
+                {col: [dp.get(col) for dp in kept] for col in _METADATA_COLUMNS},
+                columns=_METADATA_COLUMNS,
+                dtype=object,
+            )
+            if self.required_uuid_list:
+                metadata_df = metadata_df[
+                    metadata_df["uuid"].isin(self.required_uuid_list)
+                ].reset_index(drop=True)
 
-                metadata_df = metadata_df[["uuid", "label", "config"]]
-
-                if self.required_uuid_list:
-                    metadata_df = metadata_df[
-                        metadata_df["uuid"].isin(self.required_uuid_list)
-                    ]
-
-                self.device_metadata[device_name] = metadata_df
-                self.device_uuids[device_name] = metadata_df["uuid"].tolist()
-                self._export_json(metadata_df.to_dict(orient="records"), device_name)
+            self.device_metadata[device_name] = metadata_df
+            self.device_uuids[device_name] = metadata_df["uuid"].tolist()
+            self._export_json(metadata_df.to_dict(orient="records"), device_name)
 
     def _export_json(self, data_points: list[dict], device_name: str) -> None:
         """Write data points to a JSON file for the specified device."""

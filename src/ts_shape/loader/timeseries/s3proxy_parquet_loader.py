@@ -10,11 +10,14 @@ except ImportError:  # optional extra: ts-shape[s3]
     s3fs = None
 
 from ts_shape.loader._utils import (
+    empty_signal_frame,
     loader_repr,
     redact_url,
     require_config,
     require_optional,
     retry_call,
+    trim_to_time_range,
+    utc_folder_hours,
 )
 from ts_shape.utils.deprecation import deprecated_attribute, renamed_kwargs
 
@@ -92,12 +95,14 @@ class S3ProxyDataAccess:
     def _generate_timeslot_paths(self) -> Iterator[Path]:
         """Generate time-based directory paths for each hour in the range.
 
-        The range spans ``start_timestamp`` to ``end_timestamp``.
+        The folders are UTC hours: the hour that contains ``start`` through the
+        hour that contains ``end``. tz-aware bounds are converted to UTC;
+        naive bounds are taken as UTC.
 
         Returns:
             A generator yielding paths in the format year/month/day/hour.
         """
-        for timeslot in pd.date_range(start=self.start, end=self.end, freq="h"):
+        for timeslot in utc_folder_hours(self.start, self.end):
             timeslot_dir = Path(
                 str(timeslot.year),
                 str(timeslot.month).zfill(2),
@@ -137,7 +142,9 @@ class S3ProxyDataAccess:
     def fetch_data_as_parquet(self, output_dir: str) -> None:
         """Retrieve timeseries data from S3 and save it as Parquet files.
 
-        Each file is saved as ``<output_dir>/year/month/day/hour/<uuid>.parquet``.
+        Each file is saved as ``<output_dir>/year/month/day/hour/<uuid>.parquet``,
+        with only the rows whose ``systime`` lies in ``[start, end]`` (a file
+        left with no rows is not written).
 
         Args:
             output_dir: Base directory to save the Parquet files.
@@ -146,6 +153,8 @@ class S3ProxyDataAccess:
             for uuid in set(self.uuids):
                 df = self._fetch_parquet(uuid, timeslot_dir)
                 if df is not None:
+                    df = trim_to_time_range(df, self.start, self.end)
+                if df is not None and not df.empty:
                     output_path = Path(output_dir, timeslot_dir)
                     output_path.mkdir(parents=True, exist_ok=True)
                     df.to_parquet(output_path / f"{uuid}.parquet")
@@ -153,16 +162,22 @@ class S3ProxyDataAccess:
     def fetch_data_as_dataframe(self) -> pd.DataFrame:
         """Retrieve timeseries data from S3 and return it as a single DataFrame.
 
+        Hour folders are read in full; rows whose ``systime`` falls outside
+        ``[start, end]`` (both inclusive) are then dropped.
+
         Returns:
-            A combined DataFrame with data for all specified UUIDs and time slots.
+            A combined DataFrame with data for all specified UUIDs and time
+            slots; an empty long-format frame (see
+            :func:`~ts_shape.loader._utils.empty_signal_frame`) when no file
+            was found.
         """
         data_frames = [
-            self._fetch_parquet(uuid, timeslot_dir)
+            df
             for timeslot_dir in self._generate_timeslot_paths()
             for uuid in set(self.uuids)
+            if (df := self._fetch_parquet(uuid, timeslot_dir)) is not None
         ]
-        return (
-            pd.concat([df for df in data_frames if df is not None], ignore_index=True)
-            if data_frames
-            else pd.DataFrame()
-        )
+        if not data_frames:
+            return empty_signal_frame()
+        out = pd.concat(data_frames, ignore_index=True)
+        return trim_to_time_range(out, self.start, self.end)

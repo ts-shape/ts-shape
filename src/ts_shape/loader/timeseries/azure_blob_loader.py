@@ -374,6 +374,14 @@ class AzureBlobParquetLoader:
         )
         return f"{base}{sub}"
 
+    def _hour_prefixes(self, slots: Iterable[pd.Timestamp]) -> list[str]:
+        """Distinct hour prefixes of ``slots``, in order.
+
+        A ``hour_pattern`` without ``{H}`` maps every hour of a day to the
+        same prefix; listing it once per hour would load its blobs 24 times.
+        """
+        return list(dict.fromkeys(self._hour_prefix(ts) for ts in slots))
+
     def load_all_files(
         self,
         columns: list[str] | None = None,
@@ -466,7 +474,7 @@ class AzureBlobParquetLoader:
         """
         check_errors_mode(errors)
         slots = list(utc_folder_hours(start, end))
-        hour_prefixes = [self._hour_prefix(ts) for ts in slots]
+        hour_prefixes = self._hour_prefixes(slots)
         blob_names: list[str] = []
         for pfx in hour_prefixes:
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
@@ -537,7 +545,7 @@ class AzureBlobParquetLoader:
         """
         check_errors_mode(errors)
         slots = list(utc_folder_hours(start, end))
-        hour_prefixes = [self._hour_prefix(ts) for ts in slots]
+        hour_prefixes = self._hour_prefixes(slots)
 
         def _names_iter() -> Iterator[str]:
             for pfx in hour_prefixes:
@@ -624,7 +632,7 @@ class AzureBlobParquetLoader:
 
         variants_ordered = self._uuid_variants(uuid_list)
         slots = list(utc_folder_hours(start, end))
-        hour_prefixes = [self._hour_prefix(ts) for ts in slots]
+        hour_prefixes = self._hour_prefixes(slots)
         all_blob_names, guessed, fallback_note = self._resolve_uuid_blobs(
             "load_files_by_time_range_and_uuids", hour_prefixes, variants_ordered
         )
@@ -706,7 +714,7 @@ class AzureBlobParquetLoader:
 
         variants_ordered = self._uuid_variants(uuid_list)
         slots = list(utc_folder_hours(start, end))
-        hour_prefixes = [self._hour_prefix(ts) for ts in slots]
+        hour_prefixes = self._hour_prefixes(slots)
         all_blob_names, guessed, fallback_note = self._resolve_uuid_blobs(
             "stream_files_by_time_range_and_uuids", hour_prefixes, variants_ordered
         )
@@ -999,6 +1007,14 @@ class AzureBlobFlexibleFileLoader:
         )
         return f"{base}{sub}"
 
+    def _hour_prefixes(self, slots: Iterable[pd.Timestamp]) -> list[str]:
+        """Distinct hour prefixes of ``slots``, in order.
+
+        A ``hour_pattern`` without ``{H}`` maps every hour of a day to the
+        same prefix; listing it once per hour would load its blobs 24 times.
+        """
+        return list(dict.fromkeys(self._hour_prefix(ts) for ts in slots))
+
     # ---- Core operations ----
     def _download_bytes(self, blob_name: str) -> bytes:
         """Download one blob's content.
@@ -1136,7 +1152,7 @@ class AzureBlobFlexibleFileLoader:
         allowed_exts = self._normalize_exts(extensions)
         names: list[str] = []
         collected = 0
-        for pfx in (self._hour_prefix(ts) for ts in utc_folder_hours(start, end)):
+        for pfx in self._hour_prefixes(utc_folder_hours(start, end)):
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             for b in blob_iter:
                 name = str(b.name)
@@ -1171,7 +1187,7 @@ class AzureBlobFlexibleFileLoader:
                 ``{"json", ".bmp"}``), case-insensitive. None keeps every file.
         """
         allowed_exts = self._normalize_exts(extensions)
-        for pfx in (self._hour_prefix(ts) for ts in utc_folder_hours(start, end)):
+        for pfx in self._hour_prefixes(utc_folder_hours(start, end)):
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             for b in blob_iter:
                 name = str(b.name)
@@ -1323,7 +1339,7 @@ class AzureBlobFlexibleFileLoader:
         base_set = {str(b).strip() for b in basenames if str(b).strip()}
         allowed_exts = self._normalize_exts(extensions)
         candidates: list[str] = []
-        for pfx in (self._hour_prefix(ts) for ts in utc_folder_hours(start, end)):
+        for pfx in self._hour_prefixes(utc_folder_hours(start, end)):
             blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
             for b in blob_iter:
                 name = str(b.name)
@@ -1377,7 +1393,7 @@ class AzureBlobFlexibleFileLoader:
         allowed_exts = self._normalize_exts(extensions)
 
         def _names_iter() -> Iterator[str]:
-            for pfx in (self._hour_prefix(ts) for ts in utc_folder_hours(start, end)):
+            for pfx in self._hour_prefixes(utc_folder_hours(start, end)):
                 blob_iter = self.container_client.list_blobs(name_starts_with=pfx)
                 for b in blob_iter:
                     name = str(b.name)

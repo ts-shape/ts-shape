@@ -9,6 +9,7 @@ from ts_shape.errors import LoaderConfigWarning
 from ts_shape.loader._utils import (
     retry_call,
     same_tz_bounds,
+    trim_to_time_range,
     utc_naive,
     validate_local_path,
 )
@@ -126,7 +127,12 @@ class ParquetLoader:
     @classmethod
     @renamed_kwargs(start_time="start", end_time="end")
     def load_by_time_range(
-        cls, base_path: str, start: pd.Timestamp, end: pd.Timestamp
+        cls,
+        base_path: str,
+        start: pd.Timestamp,
+        end: pd.Timestamp,
+        *,
+        trim_to_range: bool = True,
     ) -> pd.DataFrame:
         """
         Loads parquet files that fall within a specified time range based on the directory structure.
@@ -139,6 +145,10 @@ class ParquetLoader:
             base_path (str): The base directory where parquet files are stored.
             start (pd.Timestamp): The start timestamp.
             end (pd.Timestamp): The end timestamp.
+            trim_to_range: If True (default), drop rows whose ``systime``
+                falls outside ``[start, end]`` (both bounds inclusive; naive
+                bounds are UTC). Frames without a ``systime`` column are left
+                as read. False keeps whole hour folders.
 
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files within the time range.
@@ -165,7 +175,8 @@ class ParquetLoader:
                 # Skip files that do not follow the expected folder structure
                 continue
 
-        return cls._read_concat(valid_files, root)
+        out = cls._read_concat(valid_files, root)
+        return trim_to_time_range(out, start, end) if trim_to_range else out
 
     @classmethod
     def load_by_uuid_list(cls, base_path: str, uuid_list: list) -> pd.DataFrame:
@@ -204,6 +215,8 @@ class ParquetLoader:
         start: pd.Timestamp,
         end: pd.Timestamp,
         uuid_list: list,
+        *,
+        trim_to_range: bool = True,
     ) -> pd.DataFrame:
         """
         Loads parquet files that fall within a specified time range and match any UUID in the list.
@@ -217,6 +230,10 @@ class ParquetLoader:
             start (pd.Timestamp): The start timestamp.
             end (pd.Timestamp): The end timestamp.
             uuid_list (list): A list of UUIDs to filter the files.
+            trim_to_range: If True (default), drop rows whose ``systime``
+                falls outside ``[start, end]`` (both bounds inclusive; naive
+                bounds are UTC). Frames without a ``systime`` column are left
+                as read. False keeps whole hour folders.
 
         Returns:
             pd.DataFrame: A DataFrame containing the data from the parquet files that meet both criteria.
@@ -244,4 +261,5 @@ class ParquetLoader:
                 # Skip files that do not follow the expected folder structure
                 continue
 
-        return cls._read_concat(valid_files, root)
+        out = cls._read_concat(valid_files, root)
+        return trim_to_time_range(out, start, end) if trim_to_range else out
