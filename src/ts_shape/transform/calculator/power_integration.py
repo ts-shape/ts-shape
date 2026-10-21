@@ -57,6 +57,7 @@ from ts_shape.utils.frames import (
     require_columns,
     window_offset,
 )
+from ts_shape.utils.time_accounting import grouper_periods
 
 logger = logging.getLogger(__name__)
 
@@ -145,12 +146,28 @@ def _is_fixed(offset: object) -> bool:
     return isinstance(offset, Tick)
 
 
-def _calendar_floor(ts: pd.Timestamp, window: str) -> pd.Timestamp:
-    """Start of the calendar period containing ``ts`` (e.g. local midnight)."""
-    period_start = (
-        pd.Series(1, index=pd.DatetimeIndex([ts])).resample(window).sum().index[0]
-    )
-    return period_start
+def _calendar_grid(t0: pd.Timestamp, t1: pd.Timestamp, window: str) -> pd.DatetimeIndex:
+    """Boundaries of the ``resample(window)`` bins covering ``[t0, t1]``.
+
+    The true bin bounds (:func:`~ts_shape.utils.time_accounting.grouper_periods`),
+    not the resample labels: a right-labeled frequency (``'W'``, ``'ME'``,
+    ``'QE'``, ``'YE'``) labels a bin with its *last* day.
+    """
+    periods = grouper_periods(t0, t1, window)
+    if periods.empty:
+        raise ValueError(f"window {window!r} gives no bins for the data range")
+    starts = pd.DatetimeIndex(periods["start"])
+    return starts.append(pd.DatetimeIndex([periods["end"].iloc[-1]]))
+
+
+def _window_ends(starts: pd.Series, window: str) -> pd.Series:
+    """End of each window that starts at ``starts`` (calendar-correct)."""
+    offset = window_offset(window)
+    if _is_fixed(offset) or starts.empty:
+        return starts + offset
+    grid = _calendar_grid(starts.min(), starts.max(), window)
+    pos = grid.searchsorted(pd.DatetimeIndex(starts), side="left")
+    return pd.Series(grid[pos + 1], index=starts.index)
 
 
 class PowerIntegrator(Base):
@@ -316,25 +333,30 @@ class PowerIntegrator(Base):
         end = segments["end"]
         if start.empty:
             return _empty_segments(start.dtype)
-        first = (
-            start.min().floor(window)
-            if _is_fixed(offset)
-            else _calendar_floor(start.min(), window)
-        )
-        if first + offset <= first:
-            raise ValueError(f"window must be a positive frequency, got {window!r}")
-        # Window boundaries on the calendar of the data's timezone: hourly
-        # windows stay one real hour across DST, daily windows are 23 h / 25 h.
-        grid = pd.date_range(first, end.max(), freq=window)
-        grid = grid.append(pd.DatetimeIndex([grid[-1] + offset]))
-        while grid[-1] < end.max():
+        if _is_fixed(offset):
+            first = start.min().floor(window)
+            if first + offset <= first:
+                raise ValueError(f"window must be a positive frequency, got {window!r}")
+            grid = pd.date_range(first, end.max(), freq=window)
             grid = grid.append(pd.DatetimeIndex([grid[-1] + offset]))
+            while grid[-1] < end.max():
+                grid = grid.append(pd.DatetimeIndex([grid[-1] + offset]))
+        else:
+            # Calendar windows ('1D', 'W', 'MS', 'ME', ...) on the calendar of
+            # the data's timezone: a DST day lasts 23 h / 25 h, a month its
+            # real length, and right-labeled bins start after their label.
+            grid = _calendar_grid(start.min(), end.max(), window)
 
         # Window of each segment's start, and the first boundary at/after its
         # (exclusive) end: a segment ending exactly on a boundary does not
         # reach into the next window.
         i0 = grid.searchsorted(start, side="right") - 1
         i1 = grid.searchsorted(end, side="left")
+        if (i0 < 0).any() or (i1 >= len(grid)).any():
+            raise RuntimeError(
+                f"PowerIntegrator: window grid for {window!r} does not cover "
+                "the data (internal error)"
+            )
         n_buckets = np.maximum(i1 - i0, 0)
 
         idx = np.repeat(np.arange(len(segments)), n_buckets)
@@ -400,7 +422,8 @@ class PowerIntegrator(Base):
 
         Args:
             dataframe: Long-format power data (ts-shape schema by default).
-            window: Fixed window size the segments are cut on ('1h', '15min', '1D').
+            window: Window the segments are cut on ('1h', '15min', '1D', 'W',
+                'MS', 'ME'); see :meth:`energy_by_window`.
             method: 'locf' (step hold) or 'linear' (trapezoidal).
             max_gap: Gaps longer than this (e.g. '15min') are treated as
                 logging outages: the segment is dropped entirely and counts
@@ -513,8 +536,9 @@ class PowerIntegrator(Base):
                 i.e. ``kwh`` divided by the hours actually logged. With full
                 coverage and ``window='1h'`` this equals ``kwh``.
             - ``coverage`` -- fraction of the window backed by data (with
-                ``total=True``, that of the least-covered signal). Anything below
-                1.0 means the window is under-reported.
+                ``total=True``, that of the least-covered signal; a signal
+                with no data in the window counts as 0). Anything below 1.0
+                means the window is under-reported.
             - ``sample_count`` -- sample intervals contributing to the window.
                 One interval straddling a boundary counts in both windows.
 
@@ -522,13 +546,16 @@ class PowerIntegrator(Base):
             0.0 kWh, so "not measured" never renders as "used nothing".
 
         Note:
-            ``window`` must be a *fixed* frequency ('15min', '1h', '1D'), and
-            windows are fixed-length and anchored on the floored sample
-            timestamp. Elapsed time and total energy are always correct on
-            tz-aware input, but a ``'1D'`` window spans 24 elapsed hours
-            rather than the 23/25-hour local day, so window labels drift by an
-            hour after a daylight-saving changeover. Use ``'1h'`` and
-            aggregate to local days afterwards if that matters.
+            ``window`` is a fixed frequency ('15min', '1h') or a calendar one
+            ('1D', 'W', 'MS', 'ME', ...). Fixed windows are anchored on the
+            floored sample timestamp and last exactly that long. Calendar
+            windows are the ``resample`` bins on the local calendar of the
+            data's timezone: ``start`` / ``end`` are the true bin bounds
+            (also for right-labeled frequencies such as 'W' and 'ME', whose
+            resample label is the bin's last day), so a ``'1D'`` window is
+            the real local day -- 23 h or 25 h on a daylight-saving change
+            -- and a month window its real number of days. ``coverage`` and
+            ``duration_seconds`` use that real length.
         """
         extra = [] if total else ["uuid"]
 
@@ -546,11 +573,10 @@ class PowerIntegrator(Base):
         if parts.empty:
             return _empty_windows(parts["start"].dtype, total)
 
-        offset = window_offset(window)
-
         def window_seconds(starts: pd.Series) -> pd.Series:
-            # Real window length: calendar windows are 23 h / 25 h on DST days.
-            return (starts + offset - starts).dt.total_seconds()
+            # Real window length: calendar windows are 23 h / 25 h on DST days,
+            # a month its real number of days.
+            return (_window_ends(starts, window) - starts).dt.total_seconds()
 
         per_uuid = (
             parts.groupby(["uuid", "window_start"], sort=True)
@@ -566,14 +592,28 @@ class PowerIntegrator(Base):
         )
 
         if total:
+            # A meter with no data in a window covers none of it: the total's
+            # coverage is the minimum over every meter, absent ones as 0.
+            grid = pd.MultiIndex.from_product(
+                [per_uuid["uuid"].unique(), per_uuid["window_start"].unique()],
+                names=["uuid", "window_start"],
+            )
+            coverage = (
+                per_uuid.set_index(["uuid", "window_start"])["coverage"]
+                .reindex(grid, fill_value=0.0)
+                .groupby(level="window_start", sort=True)
+                .min()
+                .rename("coverage")
+                .reset_index()
+            )
             grouped = (
                 per_uuid.groupby("window_start", sort=True)
                 .agg(
                     kwh=("kwh", "sum"),
-                    coverage=("coverage", "min"),
                     sample_count=("sample_count", "sum"),
                 )
                 .reset_index()
+                .merge(coverage, on="window_start", how="left")
             )
             # Sum of the per-signal mean demands, not a mean across signals.
             avg = (
@@ -598,8 +638,8 @@ class PowerIntegrator(Base):
             )
 
         out = out.rename(columns={"window_start": "start"})
-        out["end"] = out["start"] + offset
-        out["duration_seconds"] = window_seconds(out["start"])
+        out["end"] = _window_ends(out["start"], window)
+        out["duration_seconds"] = (out["end"] - out["start"]).dt.total_seconds()
         return out[extra + _WINDOW_COLUMNS].reset_index(drop=True)
 
     @classmethod

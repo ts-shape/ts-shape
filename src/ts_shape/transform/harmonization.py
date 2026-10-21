@@ -1,5 +1,6 @@
 import logging
 import warnings
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,33 @@ from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import as_datetime, require_columns
 
 logger = logging.getLogger(__name__)
+
+Sampling = Literal["first", "interpolate"]
+
+
+def _to_grid(
+    wide: pd.DataFrame,
+    window: str,
+    *,
+    sampling: Sampling,
+    method: str,
+    limit: int | None = None,
+) -> pd.DataFrame:
+    """``wide`` on the ``resample(window)`` grid (see :meth:`resample_to_uniform`)."""
+    if sampling not in ("first", "interpolate"):
+        raise ValueError(f"sampling must be 'first' or 'interpolate', got {sampling!r}")
+    binned = wide.resample(window).first()
+    if sampling == "first":
+        return binned.interpolate(method=method, limit=limit, limit_area="inside")
+    grid = binned.index
+    union = wide.index.union(grid)
+    # 'linear' on a DatetimeIndex ignores the timestamps; 'time' is linear in
+    # time, which is what a value at a grid instant needs.
+    how = "time" if method == "linear" else method
+    dense = wide.reindex(union).interpolate(
+        method=how, limit=limit, limit_area="inside"
+    )
+    return dense.reindex(grid)
 
 
 class DataHarmonizer(Base):
@@ -111,6 +139,8 @@ class DataHarmonizer(Base):
         window: str,
         method: str = "linear",
         fill_limit: int | None = None,
+        *,
+        sampling: Sampling = "first",
     ) -> pd.DataFrame:
         """Resample to a uniform time grid with interpolation.
 
@@ -118,17 +148,36 @@ class DataHarmonizer(Base):
         row per distinct timestamp, see its memory note) is built before it
         is reduced to the grid.
 
+        The grid is the ``resample(window)`` bin starts. ``sampling`` sets
+        what a grid row holds:
+
+        - ``"first"`` (default): the *first sample in the bin*
+          ``[t, t + window)``, labeled with the bin start ``t``. The value is
+          not the signal at ``t``: a sample at ``t + 0.5 s`` in a 1 s bin is
+          reported at ``t``. Empty bins are then interpolated with
+          ``method``.
+        - ``"interpolate"``: the signal's value *at* ``t``, interpolated
+          between the raw samples on either side (linear in time for
+          ``method="linear"``).
+
+        Either way a signal is only filled *between* its samples
+        (``limit_area="inside"``): grid rows before its first or after its
+        last sample stay NaN rather than repeat the edge value.
+
         Args:
             window: Pandas frequency string (e.g. '1s', '100ms', '1min').
-            method: Interpolation method ('linear', 'time', 'nearest', 'quadratic', 'cubic').
+            method: Interpolation method ('linear', 'time', 'nearest',
+                'quadratic', 'cubic').
             fill_limit: Maximum number of consecutive NaNs to fill.
+            sampling: ``"first"`` (default) or ``"interpolate"``, see above.
 
         Returns:
             DataFrame with uniform DatetimeIndex.
         """
         wide = self.pivot_to_wide()
-        resampled = wide.resample(window).first()
-        return resampled.interpolate(method=method, limit=fill_limit)
+        return _to_grid(
+            wide, window, sampling=sampling, method=method, limit=fill_limit
+        )
 
     def detect_gaps(self, threshold: str = "10s") -> pd.DataFrame:
         """Identify time gaps per UUID exceeding the threshold.
@@ -292,6 +341,8 @@ class DataHarmonizer(Base):
         uuids: list[str] | None = None,
         window: str | None = None,
         method: str = "linear",
+        *,
+        sampling: Sampling = "first",
     ) -> pd.DataFrame:
         """End-to-end harmonization: pivot, filter, resample, interpolate.
 
@@ -302,6 +353,11 @@ class DataHarmonizer(Base):
             uuids: Optional list of UUIDs to include. None means all.
             window: Optional resample frequency. None means no resampling.
             method: Interpolation method for resampling.
+            sampling: With ``window``, ``"first"`` (default: the first sample
+                in each bin, labeled with the bin start) or ``"interpolate"``
+                (the value at each grid timestamp); see
+                :meth:`resample_to_uniform`. A signal is not extended before
+                its first or after its last sample.
 
         Returns:
             Wide-format DataFrame ready for cross-signal analytics.
@@ -313,7 +369,6 @@ class DataHarmonizer(Base):
         wide = self._pivot(df, "first")
 
         if window is not None:
-            wide = wide.resample(window).first()
-            wide = wide.interpolate(method=method)
+            wide = _to_grid(wide, window, sampling=sampling, method=method)
 
         return wide
