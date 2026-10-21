@@ -271,13 +271,15 @@ class DutyCycleEvents(Base):
                     }
                 )
         else:
-            window_td = pd.to_timedelta(window)
             resampled = s.set_index(self.time_column)["state"].resample(window).mean()
-            for ts, pct in resampled.items():
+            # The window's real length (a DST day lasts 23 h or 25 h).
+            w_start, w_end = window_bounds(resampled.index.to_series(), window)
+            window_s = (w_end - w_start).dt.total_seconds().tolist()
+            for (ts, pct), span_s in zip(resampled.items(), window_s, strict=True):
                 if pd.isna(pct):
                     continue
-                on_time = pct * window_td.total_seconds()
-                off_time = (1 - pct) * window_td.total_seconds()
+                on_time = pct * span_s
+                off_time = (1 - pct) * span_s
                 events.append(
                     {
                         "start": ts,

@@ -214,7 +214,9 @@ class MicroStopEvents(Base):
             duration_seconds, uuid, source_uuid, count, total_lost_time,
             pct_of_window.
 
-            ``total_lost_time`` is in seconds.
+            ``total_lost_time`` is in seconds; ``pct_of_window`` is it as a
+            percentage of the window's real ``duration_seconds`` (23 h or
+            25 h for a daily window on a DST change).
 
             Canonical twin columns: ``micro_stop_count`` (after ``count``),
             ``total_lost_time_seconds`` (after ``total_lost_time``) and
@@ -226,7 +228,6 @@ class MicroStopEvents(Base):
         if stops.empty:
             return self._with_window(pd.DataFrame(columns=cols), window)
 
-        window_td = pd.to_timedelta(window)
         stops["duration_seconds"] = stops["duration"].dt.total_seconds()
         stops_indexed = stops.drop(columns=["end", "uuid", "source_uuid"]).set_index(
             "start"
@@ -237,9 +238,10 @@ class MicroStopEvents(Base):
             total_lost_seconds=("duration_seconds", "sum"),
         )
 
-        resampled["pct_of_window"] = (
-            resampled["total_lost_seconds"] / window_td.total_seconds() * 100
-        )
+        # Share of the window's real length (a DST day lasts 23 h or 25 h).
+        w_start, w_end = window_bounds(resampled.index.to_series(), window)
+        window_s = (w_end - w_start).dt.total_seconds().to_numpy(dtype=np.float64)
+        resampled["pct_of_window"] = resampled["total_lost_seconds"] / window_s * 100
 
         result = resampled.reset_index()
         result = result.rename(

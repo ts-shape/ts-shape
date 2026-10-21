@@ -10,7 +10,7 @@ from ts_shape.events._output import (
     finalize_summary_df,
     twin_columns,
 )
-from ts_shape.events._windows import add_window_bounds
+from ts_shape.events._windows import add_window_bounds, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
@@ -55,7 +55,7 @@ def _pairwise_sum_slice(values: np.ndarray, offset: int, length: int) -> float:
 
 
 def _time_weighted_above_fraction_loop(
-    above: pd.Series, window_starts: pd.Index, window_td: pd.Timedelta
+    above: pd.Series, window_starts: pd.Index, window_ends: pd.Index
 ) -> list[float]:
     """Reference per-window loop (used when a timestamp is missing)."""
     times = above.index.to_series().reset_index(drop=True)
@@ -63,12 +63,12 @@ def _time_weighted_above_fraction_loop(
     flags = above.reset_index(drop=True).astype(bool)
     starts, stops = times[flags], seg_end[flags]
     fractions: list[float] = []
-    for w_start in window_starts:
-        w_end = w_start + window_td
+    for w_start, w_end in zip(window_starts, window_ends, strict=True):
         overlap = (
             stops.clip(upper=w_end) - starts.clip(lower=w_start)
         ).dt.total_seconds()
-        fractions.append(float(overlap.clip(lower=0).sum()) / window_td.total_seconds())
+        window_s = (w_end - w_start).total_seconds()
+        fractions.append(float(overlap.clip(lower=0).sum()) / window_s)
     return fractions
 
 
@@ -341,7 +341,10 @@ class ThresholdMonitoringEvents(Base):
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, time_above,
-            pct_above, exceedance_count. ``end`` is ``start`` + ``window``.
+            pct_above, exceedance_count. ``end`` is ``start`` + ``window``,
+            calendar-correct: on tz-aware data a daily window on a DST change
+            lasts 23 h or 25 h, and ``time_above`` / ``pct_above`` are
+            measured against that real ``duration_seconds``.
             ``exceedance_count`` counts the samples that start an exceedance
             (at or above ``threshold`` while the previous sample was below);
             a signal that is already above at its first sample starts one
@@ -367,7 +370,6 @@ class ThresholdMonitoringEvents(Base):
         prev_above = sig["above"].shift(1, fill_value=0.0)
         sig["enter_above"] = ((sig["above"] == 1) & (prev_above == 0)).astype(int)
 
-        window_td = pd.to_timedelta(window)
         resampled = sig.resample(window).agg(
             above_frac=("above", "mean"),
             exceedance_count=("enter_above", "sum"),
@@ -377,9 +379,13 @@ class ThresholdMonitoringEvents(Base):
             raise ValueError(
                 f"interval_end must be one of {INTERVAL_END_MODES}, got {interval_end!r}"
             )
+        # The real [start, end) of each window: a calendar day lasts 23 h or
+        # 25 h on a DST change, so time shares use that, not a fixed length.
+        w_start, w_end = window_bounds(resampled.index.to_series(), window)
+        resampled["window_seconds"] = (w_end - w_start).dt.total_seconds().to_numpy()
         if interval_end == "next_change":
             resampled["above_frac"] = self._time_weighted_above_fraction(
-                sig["above"], resampled.index, window_td
+                sig["above"], pd.Index(w_start), pd.Index(w_end)
             )
 
         if interval_end == "next_change":
@@ -394,7 +400,8 @@ class ThresholdMonitoringEvents(Base):
         events = pd.DataFrame(
             {
                 "start": kept.index,
-                "time_above": above_frac * window_td.total_seconds(),
+                "time_above": above_frac
+                * kept["window_seconds"].to_numpy(dtype=np.float64),
                 "pct_above": above_frac * 100,
                 "exceedance_count": kept["exceedance_count"]
                 .to_numpy(dtype=np.float64)
@@ -406,29 +413,29 @@ class ThresholdMonitoringEvents(Base):
 
     @staticmethod
     def _time_weighted_above_fraction(
-        above: pd.Series, window_starts: pd.Index, window_td: pd.Timedelta
+        above: pd.Series, window_starts: pd.Index, window_ends: pd.Index
     ) -> list[float]:
         """Fraction of each window spent above, holding values to the next sample.
 
         Per window this is the sum, over all flagged samples, of the overlap
         of ``[sample, next sample)`` with the window (clipped at 0), divided
-        by the window length. Only the samples near the window overlap it, so
-        the sum is computed over that slice -- with the pairwise summation
-        order of the full-length sum, so the result is bit-identical.
+        by the window's real length (``window_ends - window_starts``: 23 h
+        or 25 h for a calendar day on a DST change). Only the samples near
+        the window overlap it, so the sum is computed over that slice -- with
+        the pairwise summation order of the full-length sum, so the result is
+        bit-identical.
         """
         times = above.index.to_series().reset_index(drop=True)
         if bool(times.isna().any()):
-            return _time_weighted_above_fraction_loop(above, window_starts, window_td)
+            return _time_weighted_above_fraction_loop(above, window_starts, window_ends)
         seg_end = times.shift(-1).fillna(times)
         flags = above.reset_index(drop=True).astype(bool).to_numpy()
         starts = np.asarray(times.array[flags].asi8, dtype=np.int64)
         stops = np.asarray(seg_end.array[flags].asi8, dtype=np.int64)
         per_second = 10.0 ** {"s": 0, "ms": 3, "us": 6, "ns": 9}[times.dt.unit]
-        window_s = window_td.total_seconds()
-        w_lo = np.asarray(window_starts.as_unit(times.dt.unit).asi8, dtype=np.int64)
-        w_hi = np.asarray(
-            (window_starts + window_td).as_unit(times.dt.unit).asi8, dtype=np.int64
-        )
+        unit = times.dt.unit
+        w_lo = np.asarray(pd.DatetimeIndex(window_starts).as_unit(unit).asi8, np.int64)
+        w_hi = np.asarray(pd.DatetimeIndex(window_ends).as_unit(unit).asi8, np.int64)
         first = np.searchsorted(stops, w_lo, side="right")
         last = np.searchsorted(starts, w_hi, side="left")
         fractions: list[float] = []
@@ -442,7 +449,7 @@ class ThresholdMonitoringEvents(Base):
                 )
             else:
                 total = 0.0
-            fractions.append(float(total) / window_s)
+            fractions.append(float(total) / ((hi - lo) / per_second))
         return fractions
 
     @keyword_only(2)

@@ -10,7 +10,7 @@ from ts_shape.events._output import (
     finalize_summary_df,
     twin_columns,
 )
-from ts_shape.events._windows import add_window_bounds
+from ts_shape.events._windows import add_window_bounds, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 
@@ -370,11 +370,12 @@ class DisturbanceRecoveryEvents(Base):
         t_min = self.signal[self.time_column].min()
         t_max = self.signal[self.time_column].max()
         windows = pd.date_range(start=t_min, end=t_max, freq=window)
-        window_td = pd.Timedelta(window)
+        # The real end of each window (a daily window on a DST change lasts
+        # 23 h or 25 h), as reported in ``end``; the share is of that length.
+        _, window_ends = window_bounds(pd.Series(windows), window)
 
         events: list[dict[str, Any]] = []
-        for ws in windows:
-            we = ws + window_td
+        for ws, we in zip(windows, window_ends, strict=True):
             if not disturbances.empty:
                 in_window = disturbances[
                     (disturbances["start"] >= ws) & (disturbances["start"] < we)
@@ -385,7 +386,7 @@ class DisturbanceRecoveryEvents(Base):
                 count = 0
                 total_dur = 0.0
 
-            pct = (total_dur / window_td.total_seconds()) * 100
+            pct = (total_dur / (we - ws).total_seconds()) * 100
 
             if not recovery.empty:
                 rec_in = recovery[

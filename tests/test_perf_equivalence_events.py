@@ -24,7 +24,7 @@ from ts_shape.events._output import (
     finalize_point_df,
     finalize_summary_df,
 )
-from ts_shape.events._windows import add_window_bounds, finish_events
+from ts_shape.events._windows import add_window_bounds, finish_events, window_bounds
 from ts_shape.events.engineering.rate_of_change import RateOfChangeEvents
 from ts_shape.events.engineering.startup_events import (
     StartupDetectionEvents,
@@ -1263,7 +1263,6 @@ def _ref_thresholdmonitoring_time_above_threshold(
     sig = sig.set_index(self.time_column)
     sig["above"] = (sig[self.value_column] >= threshold).astype(float)
     sig["enter_above"] = (sig["above"].diff().fillna(sig["above"]) == 1).astype(int)
-    window_td = pd.to_timedelta(window)
     resampled = sig.resample(window).agg(
         above_frac=("above", "mean"),
         exceedance_count=("enter_above", "sum"),
@@ -1273,16 +1272,20 @@ def _ref_thresholdmonitoring_time_above_threshold(
         raise ValueError(
             f"interval_end must be one of {INTERVAL_END_MODES}, got {interval_end!r}"
         )
+    # Round 16: shares are of each window's real [start, end) (23 h / 25 h
+    # on a DST day), not a fixed window length.
+    w_start, w_end = window_bounds(resampled.index.to_series(), window)
+    resampled["window_seconds"] = (w_end - w_start).dt.total_seconds().to_numpy()
     if interval_end == "next_change":
         resampled["above_frac"] = _ref_thresholdmonitoring_time_weighted_above_fraction(
-            sig["above"], resampled.index, window_td
+            sig["above"], pd.Index(w_start), pd.Index(w_end)
         )
     events: list[dict[str, Any]] = []
     for ts, row in resampled.iterrows():
         if row["sample_count"] == 0 and interval_end != "next_change":
             continue
         pct = float(row["above_frac"] * 100)
-        time_above_seconds = row["above_frac"] * window_td.total_seconds()
+        time_above_seconds = row["above_frac"] * row["window_seconds"]
         events.append(
             {
                 "start": ts,
@@ -1299,19 +1302,19 @@ def _ref_thresholdmonitoring_time_above_threshold(
 
 
 def _ref_thresholdmonitoring_time_weighted_above_fraction(
-    above: pd.Series, window_starts: pd.Index, window_td: pd.Timedelta
+    above: pd.Series, window_starts: pd.Index, window_ends: pd.Index
 ) -> list[float]:
     times = above.index.to_series().reset_index(drop=True)
     seg_end = times.shift(-1).fillna(times)
     flags = above.reset_index(drop=True).astype(bool)
     starts, stops = (times[flags], seg_end[flags])
     fractions: list[float] = []
-    for w_start in window_starts:
-        w_end = w_start + window_td
+    for w_start, w_end in zip(window_starts, window_ends, strict=True):
         overlap = (
             stops.clip(upper=w_end) - starts.clip(lower=w_start)
         ).dt.total_seconds()
-        fractions.append(float(overlap.clip(lower=0).sum()) / window_td.total_seconds())
+        window_s = (w_end - w_start).total_seconds()
+        fractions.append(float(overlap.clip(lower=0).sum()) / window_s)
     return fractions
 
 
