@@ -6,6 +6,80 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 17 (part I): event log, pipeline, signals
+
+Each change is pinned by a hand-computed test in
+`tests/reference/test_round17_eventlog.py` and
+`tests/reference/test_round17_pipeline_signals.py`.
+
+### Event log
+
+- Event ids now include the objects bound with `objects=`. The same detector
+  row bound to asset M1 and to asset M2 gives two events, so `concat` of
+  per-asset logs no longer merges them. Ids of logs built without `objects=`
+  are unchanged; ids of logs built with `objects=` change.
+- `to_event_log_xes(lifecycle="two_row")` puts `start` before `complete` when
+  both have the same timestamp.
+- `concat` keeps object changes that differ only in `ocel:type`, and
+  relations that differ only in `ocel:qualifier`. `filter_by_pack` and
+  `filter_by_object` keep only the changes of the `(oid, type)` objects they
+  keep.
+- Severity follows each detector's own scale. The new
+  `LabelRule.severity_thresholds` sets the warn and critical levels.
+  - `detect_outliers_isolation_forest` is warn from a score of 0.6 and
+    critical from 0.7. Before, it was always `info`.
+  - `detect_outliers_iqr` is warn from 1.5 and critical from 3.0 IQR beyond
+    the fence. Before, the levels were 3.0 and 4.5.
+- `severity_level` ignores case and surrounding blanks, so "High" maps like
+  "high".
+- Rows with a missing event timestamp are dropped with a
+  `DataQualityWarning`. The timestamp is `systime` for point rows and `end`
+  otherwise.
+- `to_event_log_xes` on an empty log returns an empty XES frame instead of
+  raising.
+
+### Context
+
+- `ValueMapper` reads mapping-file keys as text. "007" and "7" are different
+  keys, and a file key "1.0" no longer matches the code 1. Integer,
+  integral-float and text codes still match the key "1".
+
+### Pipeline
+
+- `init__<name>=` and `method__<name>=` send an argument to the constructor
+  only or to the method only. A plain name that both accept still goes to
+  both. Watch `LongDowntimeEvents.count_events_between_gaps` and
+  `ContinuousProcessAlignmentEvents.align_to_reference`, where `value_column`
+  means different things on each side.
+- Class-method and static-method detect steps carry a `"Class.method"`
+  identity and appear in `to_event_log()`. Unknown arguments on them now
+  raise `ValueError` when the pipeline is built.
+- A plain-callable step whose arguments name its first parameter (for
+  example `dataframe="$prev"`) gets the frame by keyword.
+- Every detect step gets a private copy of the working frame, and every use
+  of `$input` is a fresh copy. A step that changes its input in place no
+  longer affects later steps.
+- `Pipeline.run_stream`: each detect step sees the data transformed only by
+  the transforms before it, as in `run()`. Before, it saw the data after all
+  transforms.
+
+### Signals
+
+- Inference decides sampled or change-encoded by the share of intervals
+  within ±10 % of the median. At least 80 % means sampled. This replaces the
+  mean/std CV, so a regular signal with a few long gaps stays sampled and
+  `profile()` reports its gaps.
+- A slow monotonic counter with at least 3 increases is a counter. Two-level
+  and constant signals never are. A slow rise over 16 or fewer integer levels
+  stays a state; pass `kind="counter"` to override.
+- `windows()` with `"W"` or `"ME"` gives real calendar windows: Monday to
+  Monday weeks, and months from the 1st. The first window contains `start`.
+- `intervals()` no longer holds the last value to `data_end` across more than
+  `max_gap`. The last interval then ends at its last sample, as in
+  `per_window`.
+- The primitives take `uuid_column=` (default `"uuid"`). A frame without that
+  column whose timestamps repeat now raises `ValueError`.
+
 ## October 2026, round 16: DST-day windows, more chunkable methods
 
 Each change is pinned by a hand-computed test in
