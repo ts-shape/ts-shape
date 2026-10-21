@@ -9,7 +9,7 @@ from ts_shape.features.segment_analysis._grouped_stats import summarize_groups
 from ts_shape.features.segment_analysis.segment_processor import ALL_METRICS
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
-from ts_shape.utils.frames import as_datetime, window_offset
+from ts_shape.utils.frames import as_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +82,12 @@ class TimeWindowedFeatureTable(Base):
         Returns:
             DataFrame with columns [time_window, uuid, segment_value?,
             sample_count, metric_1, ..., start, end, duration_seconds], one row
-            per (window, uuid, segment) sorted in that order. ``start`` is the
-            window start (= ``time_window``), ``end`` the next window start.
+            per (window, uuid, segment) sorted in that order. ``time_window``
+            is the pandas bin label; ``[start, end)`` is the window itself.
+            For left-labeled windows ('1min', 'D', 'MS' ...) ``start`` equals
+            ``time_window``; right-labeled ones ('W', 'ME', 'QE', 'YE' ...)
+            are labeled by their last day, so e.g. the 'ME' window labeled
+            2024-01-31 has ``start`` 2024-01-01 and ``end`` 2024-02-01.
             Empty (with these columns) when no group has 2 values.
         """
         cls._validate_column(dataframe, time_column)
@@ -136,8 +140,11 @@ class TimeWindowedFeatureTable(Base):
             )
             return empty
         result.columns = [*leading, *result.columns[len(leading) :]]
-        result["start"] = result["time_window"]
-        result["end"] = result["time_window"] + window_offset(window)
+        # Lazy import: ts_shape.events imports the features package.
+        from ts_shape.events._windows import window_bounds
+
+        # A right-labeled window ('W', 'ME', ...) is labeled by its last day.
+        result["start"], result["end"] = window_bounds(result["time_window"], window)
         result["duration_seconds"] = (
             (result["end"] - result["start"]).dt.total_seconds().astype("float64")
         )
@@ -168,7 +175,9 @@ class TimeWindowedFeatureTable(Base):
 
         Each column is named ``{uuid}{separator}{metric}`` (e.g.
         ``temperature__mean``).  Windows where a UUID has insufficient data
-        are filled with NaN.
+        are filled with NaN. Every window between the first and the last
+        sample appears, also one where no UUID has 2 values (all NaN; with
+        a ``segment_column`` its segment is NaN too).
 
         Args:
             dataframe: Input DataFrame (typically output of SegmentProcessor.apply_ranges).
@@ -182,7 +191,11 @@ class TimeWindowedFeatureTable(Base):
             column_separator: Separator between uuid and metric in wide column names.
 
         Returns:
-            DataFrame with columns [time_window, segment_value?, {uuid}__{metric}, ...].
+            DataFrame with columns [time_window, segment_value?, {uuid}__{metric}, ...],
+                sorted by ``time_window``; ``time_window`` is the pandas bin
+                label (see :meth:`compute_long`). Empty input gives an empty
+                frame; input with no group of 2 values gives one row per
+                window and only the index columns.
         """
         long_df = cls.compute_long(
             dataframe,
@@ -198,8 +211,13 @@ class TimeWindowedFeatureTable(Base):
         if segment_column is not None and segment_column in long_df.columns:
             index_cols.append(segment_column)
 
+        windows = cls._all_windows(dataframe, time_column, window)
+
         if long_df.empty:
-            return long_df[index_cols].reset_index(drop=True)
+            empty = long_df[index_cols].reset_index(drop=True)
+            if windows is None:
+                return empty
+            return cls._add_missing_windows(empty, windows)
 
         # Identify metric columns to pivot (window bounds are not metrics)
         value_cols = [
@@ -236,8 +254,41 @@ class TimeWindowedFeatureTable(Base):
                     ordered_cols.append(col_name)
 
         result = result[ordered_cols]
+        if windows is not None:
+            result = cls._add_missing_windows(result, windows)
 
         logger.info(
             f"Wide feature table: {len(result)} rows x {len(result.columns)} columns."
         )
         return result
+
+    @staticmethod
+    def _all_windows(
+        dataframe: pd.DataFrame, time_column: str, window: str
+    ) -> pd.Index | None:
+        """Labels of every window from the first to the last sample."""
+        if dataframe.empty:
+            return None
+        times = as_datetime(
+            dataframe[time_column], where="TimeWindowedFeatureTable.compute"
+        ).dropna()
+        if times.empty:
+            return None
+        counts = pd.Series(1, index=pd.DatetimeIndex(times)).resample(window).size()
+        return counts.index
+
+    @staticmethod
+    def _add_missing_windows(result: pd.DataFrame, windows: pd.Index) -> pd.DataFrame:
+        """Append an all-NaN row for each window not in ``result``."""
+        missing = windows[~windows.isin(result["time_window"])]
+        if not len(missing):
+            return result
+        filler = pd.DataFrame({"time_window": missing})
+        if result.empty:
+            # Keep the index columns (and their dtypes) of the empty result.
+            filler = filler.reindex(columns=result.columns)
+            filler["time_window"] = missing
+            return filler.reset_index(drop=True)
+        out = pd.concat([result, filler], ignore_index=True)
+        order = np.argsort(out["time_window"].to_numpy(), kind="stable")
+        return out.iloc[order].reset_index(drop=True)

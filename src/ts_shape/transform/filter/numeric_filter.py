@@ -71,7 +71,8 @@ class IntegerFilter(Base):
                 values included), in input order.
         """
         values = _numbers(dataframe, value_column)
-        return _rows(dataframe, values != integer_value)
+        # A nullable dtype (Int64) gives NA for a missing value; it differs.
+        return _rows(dataframe, (values != integer_value).fillna(True))
 
     @classmethod
     @renamed_kwargs(column_name="value_column")

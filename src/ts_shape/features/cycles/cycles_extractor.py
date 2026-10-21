@@ -20,8 +20,9 @@ all methods:
   and counted in ``get_extraction_stats()["unmatched_ends"]``.
 - ``is_complete`` is True only when both boundaries were seen. A cycle with no
   end (the last one, or an aborted one) has ``cycle_end = NaT``. A cycle that
-  was already running at the first sample (its real start lies before the
-  data) keeps its observed end but has ``is_complete = False``.
+  was already running at the first non-missing sample (its real start lies
+  before the data) keeps its observed end but has ``is_complete = False``;
+  leading rows with a missing value do not count as data.
 - Several start rows at the same timestamp are one start.
 - ``cycle_uuid`` is deterministic: the same signal, method and start time
   always give the same id, so ids are stable across runs and unique within a
@@ -169,32 +170,43 @@ class CycleExtractor(Base):
             return pd.Series(pd.NA, index=frame.index, dtype="boolean")
         return frame["value_bool"].astype("boolean")
 
-    def _bool_edges(self, frame: pd.DataFrame) -> tuple[pd.Series, pd.Series, bool]:
+    def _bool_edges(
+        self, frame: pd.DataFrame
+    ) -> tuple[pd.Series, pd.Series, pd.Timestamp | None]:
         """Rising and falling edge times of ``value_bool``.
 
-        A missing sample holds the previous state. Returns the rising-edge
-        times, the falling-edge times, and whether the signal was already True
-        at its first known sample (the first rising edge is then not seen).
+        A missing sample holds the previous state; leading missing samples
+        count as False. Returns the rising-edge times, the falling-edge times,
+        and the time of the first non-missing sample when that sample is
+        True (else None): the signal was already True when it was first seen,
+        so the first rising edge (at that time) is not a real start.
         """
         raw = self._bool_state(frame)
-        known = raw.dropna()
-        initially_true = bool(len(known)) and bool(known.iloc[0])
+        known_at = np.flatnonzero(raw.notna().to_numpy(dtype=bool))
+        times = frame[self.time_column]
+        partial = (
+            times.iloc[known_at[0]]
+            if len(known_at) and bool(raw.iloc[known_at[0]])
+            else None
+        )
         state = raw.ffill().fillna(False).astype(bool)
         prev = state.shift(fill_value=False)
-        times = frame[self.time_column]
-        return times[state & ~prev], times[~state & prev], initially_true
+        return times[state & ~prev], times[~state & prev], partial
 
-    def _bool_events(self, frame: pd.DataFrame) -> tuple[pd.Series, bool]:
-        """Times of the True events of a pulse signal.
+    def _bool_events(
+        self, frame: pd.DataFrame
+    ) -> tuple[pd.Series, pd.Timestamp | None]:
+        """Times of the True events of a pulse signal, and the partial start.
 
         A signal that is never False is an event log: every True row is an
-        event. Otherwise a held True counts once, at its rising edge.
+        event (and none is partial). Otherwise a held True counts once, at
+        its rising edge; see :meth:`_bool_edges` for the partial start.
         """
         raw = self._bool_state(frame)
         if not raw.eq(False).fillna(False).any():
-            return frame[self.time_column][raw.eq(True).fillna(False)], False
-        rising, _, initially_true = self._bool_edges(frame)
-        return rising, initially_true
+            return frame[self.time_column][raw.eq(True).fillna(False)], None
+        rising, _, partial = self._bool_edges(frame)
+        return rising, partial
 
     # ------------------------------------------------------------------
     # Extraction methods
@@ -206,19 +218,17 @@ class CycleExtractor(Base):
         A cycle starts at a rising edge (False -> True) and ends at the next
         falling edge (True -> False), i.e. at the first False sample. A missing
         sample holds the previous state. A signal already True at its first
-        sample gives a first cycle with ``is_complete = False``.
+        non-missing sample gives a first cycle with ``is_complete = False``
+        (leading missing samples are not data).
 
         Returns:
             One row per cycle (see the module docstring); empty, with the
                 full column set, when no cycle is found.
         """
         frame = self._signal_frame()
-        starts, ends, initially_true = self._bool_edges(frame)
+        starts, ends, partial = self._bool_edges(frame)
         return self._generate_cycle_dataframe(
-            starts,
-            ends,
-            method="persistent",
-            partial_start=frame[self.time_column].iloc[0] if initially_true else None,
+            starts, ends, method="persistent", partial_start=partial
         )
 
     def process_trigger_cycle(self) -> pd.DataFrame:
@@ -234,13 +244,9 @@ class CycleExtractor(Base):
                 full column set, when no cycle is found.
         """
         frame = self._signal_frame()
-        starts, initially_true = self._bool_events(frame)
+        starts, partial = self._bool_events(frame)
         return self._generate_cycle_dataframe(
-            starts,
-            starts,
-            method="trigger",
-            same_rows=True,
-            partial_start=frame[self.time_column].iloc[0] if initially_true else None,
+            starts, starts, method="trigger", same_rows=True, partial_start=partial
         )
 
     def process_separate_start_end_cycle(self) -> pd.DataFrame:
@@ -258,8 +264,7 @@ class CycleExtractor(Base):
                 full column set, when no cycle is found.
         """
         start_frame = self._signal_frame(self.start_uuid)
-        starts, start_initially = self._bool_events(start_frame)
-        partial = start_frame[self.time_column].iloc[0] if start_initially else None
+        starts, partial = self._bool_events(start_frame)
         if self.uuid_column not in self.df.columns or self.start_uuid == self.end_uuid:
             return self._generate_cycle_dataframe(
                 starts,
@@ -301,10 +306,12 @@ class CycleExtractor(Base):
         times = frame[self.time_column]
         starts = times[entered & (step == start_step)]
         ends = times[entered & (step == end_step)]
-        known = raw.dropna()
+        # Time of the first non-missing sample: leading missing samples are
+        # not part of the step sequence.
+        known_at = np.flatnonzero(raw.notna().to_numpy(dtype=bool))
         partial = (
-            frame[self.time_column].iloc[0]
-            if len(known) and known.iloc[0] == start_step
+            times.iloc[known_at[0]]
+            if len(known_at) and raw.iloc[known_at[0]] == start_step
             else None
         )
         return self._generate_cycle_dataframe(

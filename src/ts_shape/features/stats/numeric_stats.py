@@ -1,7 +1,9 @@
 import logging
 from typing import cast
 
+import numpy as np
 import pandas as pd
+from pandas.api import types as ptypes
 
 from ts_shape.features.stats._values import numeric_values
 from ts_shape.utils.base import Base
@@ -12,6 +14,18 @@ logger = logging.getLogger(__name__)
 # pandas ships no type information here (no py.typed, pandas-stubs not
 # installed), so every reduction is ``Any``; ``cast`` records the documented
 # scalar type without converting it (the numpy scalar is returned as before).
+
+_INT64_MAX = 2**63 - 1
+
+
+def _is_int(values: pd.Series) -> bool:
+    return ptypes.is_integer_dtype(values.dtype) and not ptypes.is_bool_dtype(
+        values.dtype
+    )
+
+
+def _fits_int64(number: int) -> bool:
+    return -_INT64_MAX - 1 <= number <= _INT64_MAX
 
 
 class NumericStatistics(Base):
@@ -144,14 +158,21 @@ class NumericStatistics(Base):
             value_column: Name of the numeric column to analyze.
 
         Returns:
-            The sum of the values; 0 when there is none.
+            The sum of the values; 0 when there is none. An integer column
+                is summed exactly: in ``int64`` when the sum cannot overflow
+                (a numpy integer is returned, as before), otherwise with
+                Python integers (a Python ``int``), so a sum beyond the
+                ``int64`` range is not wrapped around. ``float64`` is not
+                used for this: it is exact only up to ``2**53``.
         """
-        return cast(
-            float,
-            numeric_values(
-                dataframe, value_column, where="NumericStatistics.column_sum"
-            ).sum(),
+        values = numeric_values(
+            dataframe, value_column, where="NumericStatistics.column_sum"
         )
+        if _is_int(values) and len(values):
+            largest = max(abs(int(values.min())), abs(int(values.max())))
+            if largest * len(values) > _INT64_MAX:
+                return cast(float, sum(int(v) for v in values.to_numpy()))
+        return cast(float, values.sum())
 
     @classmethod
     @renamed_kwargs(column_name="value_column")
@@ -247,11 +268,18 @@ class NumericStatistics(Base):
             value_column: Name of the numeric column to analyze.
 
         Returns:
-            Largest minus smallest value; NaN when there is none.
+            Largest minus smallest value; NaN when there is none. For an
+                integer column the difference is taken with Python integers,
+                so it is exact and does not wrap around: an ``int64`` result
+                when it fits, else a Python ``int`` (e.g. ``2**63 + 1`` for
+                ``[2**62 + 1, -2**62]``).
         """
         values = numeric_values(
             dataframe, value_column, where="NumericStatistics.column_range"
         )
+        if _is_int(values) and len(values):
+            spread = int(values.max()) - int(values.min())
+            return cast(float, np.int64(spread) if _fits_int64(spread) else spread)
         return cast(float, values.max() - values.min())
 
     @classmethod
