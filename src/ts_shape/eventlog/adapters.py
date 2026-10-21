@@ -179,7 +179,7 @@ def _is_datetime64(dtype: object) -> bool:
 
 
 #: Rows rendered and hashed at a time by :func:`_content_eids`.
-_EID_CHUNK = 1 << 18
+_EID_CHUNK = 1 << 16
 
 
 def _stable_datetimes(values: pd.Series) -> list[str] | None:
@@ -267,19 +267,109 @@ def _stable_column(values: pd.Series) -> list[str]:
     return [_stable(v) for v in values.tolist()]
 
 
-#: (nibble & 0x3) | 0x8 -- the RFC 4122 variant bits -- indexed by nibble.
-_VARIANT = "89ab89ab89ab89ab"
+_HEX = np.frombuffer(b"0123456789abcdef", dtype=np.uint8)
+#: Width of an event id: ``"e-"`` and the 36 characters of a UUID.
+_EID_WIDTH = 38
 
 
-def _uuid5_text(hexdigest: str) -> str:
-    """``str(uuid.UUID(bytes=sha1_digest[:16], version=5))`` from the hex
-    digest: what ``str(uuid.uuid5(namespace, name))`` returns for the digest
-    of ``namespace.bytes + name``, without building a ``UUID``."""
-    h = hexdigest
-    return (
-        f"{h[:8]}-{h[8:12]}-5{h[13:16]}-"
-        f"{_VARIANT[int(h[16], 16)]}{h[17:20]}-{h[20:32]}"
+def _eid_text_bytes(digests: np.ndarray) -> np.ndarray:
+    """``("e-" + str(uuid.UUID(bytes=d[:16], version=5))).encode()`` of each
+    SHA-1 digest ``d`` -- the text of ``uuid.uuid5(namespace, name)`` for the
+    digest of ``namespace.bytes + name``.
+
+    ``digests`` is an ``(n, 20)`` ``uint8`` array; the result is ``(n, 38)``
+    ASCII bytes, built without a Python object per row.
+    """
+    n = len(digests)
+    nib = np.empty((n, 32), dtype=np.uint8)
+    nib[:, 0::2] = digests[:, :16] >> 4
+    nib[:, 1::2] = digests[:, :16] & 0xF
+    nib[:, 12] = 5  # the version nibble
+    nib[:, 16] = (nib[:, 16] & 0x3) | 0x8  # the RFC 4122 variant bits
+    hexed = _HEX[nib]
+    del nib
+    out = np.empty((n, _EID_WIDTH), dtype=np.uint8)
+    out[:, :2] = np.frombuffer(b"e-", dtype=np.uint8)
+    dash = ord("-")
+    pos = 2
+    for a, b in ((0, 8), (8, 12), (12, 16), (16, 20), (20, 32)):
+        if a:
+            out[:, pos] = dash
+            pos += 1
+        out[:, pos : pos + b - a] = hexed[:, a:b]
+        pos += b - a
+    return out
+
+
+def _eid_series(digests: np.ndarray) -> pd.Series:
+    """The ``"string"`` Series of event ids of ``(n, 20)`` SHA-1 digests.
+
+    With Arrow-backed strings the column is assembled from one buffer;
+    otherwise the ids are decoded a chunk at a time.
+    """
+    n = len(digests)
+    dtype = pd.StringDtype()
+    if dtype.storage == "pyarrow" and n:
+        import pyarrow as pa
+
+        text = _eid_text_bytes(digests).reshape(-1)
+        offsets = np.arange(0, (n + 1) * _EID_WIDTH, _EID_WIDTH, dtype=np.int64)
+        arr = pa.Array.from_buffers(
+            pa.large_string(), n, [None, pa.py_buffer(offsets), pa.py_buffer(text)]
+        )
+        return pd.Series(pd.arrays.ArrowStringArray(arr)).astype(dtype)
+    parts = [
+        np.char.decode(
+            _eid_text_bytes(digests[a : a + _EID_CHUNK])
+            .view(f"S{_EID_WIDTH}")
+            .reshape(-1),
+            "ascii",
+        ).astype(object)
+        for a in range(0, n, _EID_CHUNK)
+    ]
+    values = np.concatenate(parts) if parts else np.array([], dtype=object)
+    return pd.Series(pd.array(values, dtype=dtype))
+
+
+def _sha1_digests(prefix: bytes, keys: list[str]) -> np.ndarray:
+    """SHA-1 of ``prefix + key`` (UTF-8) for every key, as ``(n, 20)`` bytes."""
+    sha1 = hashlib.sha1
+    joined = b"".join([sha1(prefix + key.encode("utf-8")).digest() for key in keys])
+    return np.frombuffer(joined, dtype=np.uint8).reshape(-1, 20)
+
+
+def _hash_keys(
+    head: str,
+    frame: pd.DataFrame,
+    payload_cols: list[str],
+    ts_start: pd.Series,
+    ts_end: pd.Series,
+    activities: pd.Series,
+    bindings: Mapping[str, pd.Series] | None,
+    rows: slice | np.ndarray,
+) -> list[str]:
+    """The hash input of the rows ``rows`` (a slice or positions)."""
+    m = len(range(len(frame))[rows]) if isinstance(rows, slice) else len(rows)
+    rendered = [
+        [f"{c}={v}" for v in _stable_column(frame[c].iloc[rows])] for c in payload_cols
+    ]
+    source = (
+        _stable_column(frame["source_uuid"].iloc[rows])
+        if "source_uuid" in frame.columns
+        else ["\x00"] * m
     )
+    starts = _stable_column(ts_start.iloc[rows])
+    ends = _stable_column(ts_end.iloc[rows])
+    acts = [str(x) for x in activities.iloc[rows].tolist()]
+    keys = [
+        head + "|".join(parts)
+        for parts in zip(source, starts, ends, acts, *rendered, strict=True)
+    ]
+    del rendered, source, starts, ends, acts
+    if bindings:
+        suffixes = _binding_suffixes(bindings, rows, m)
+        keys = [k + sfx for k, sfx in zip(keys, suffixes, strict=True)]
+    return keys
 
 
 def _content_eids(
@@ -310,56 +400,65 @@ def _content_eids(
     holds the caller-bound objects (``objects=``) aligned with ``frame``;
     with none, the key and so the id are the same as before bindings were
     hashed.
+
+    The keys are built and hashed :data:`_EID_CHUNK` rows at a time and only
+    the 20-byte digests are kept. Rows whose digest occurs more than once
+    are found afterwards; only their keys are built again, to hash them
+    with the occurrence suffix.
     """
     n = len(frame)
     payload_cols = sorted(str(c) for c in frame.columns if c not in time_cols)
     head = detector + "|"
     prefix = _NAMESPACE.bytes
-    sha1 = hashlib.sha1
-    # Occurrences of each key, held by its digest (the key itself is only
-    # needed for the rows of one chunk, which bounds memory).
-    seen: dict[bytes, int] = {}
-    eids: list[str] = []
+
+    def keys_of(rows: slice | np.ndarray) -> list[str]:
+        return _hash_keys(
+            head, frame, payload_cols, ts_start, ts_end, activities, bindings, rows
+        )
+
+    digests = np.empty((n, 20), dtype=np.uint8)
     for a in range(0, n, _EID_CHUNK):
         b = min(a + _EID_CHUNK, n)
-        rendered = [
-            [f"{c}={v}" for v in _stable_column(frame[c].iloc[a:b])]
-            for c in payload_cols
-        ]
-        source = (
-            _stable_column(frame["source_uuid"].iloc[a:b])
-            if "source_uuid" in frame.columns
-            else ["\x00"] * (b - a)
-        )
-        starts = _stable_column(ts_start.iloc[a:b])
-        ends = _stable_column(ts_end.iloc[a:b])
-        acts = [str(x) for x in activities.iloc[a:b].tolist()]
-        keys = [
-            head + "|".join(parts)
-            for parts in zip(source, starts, ends, acts, *rendered, strict=True)
-        ]
-        if bindings:
-            suffixes = _binding_suffixes(bindings, a, b)
-            keys = [k + sfx for k, sfx in zip(keys, suffixes, strict=True)]
-        for key in keys:
-            digest = sha1(prefix + key.encode("utf-8")).digest()
+        digests[a:b] = _sha1_digests(prefix, keys_of(slice(a, b)))
+
+    # Identical rows: the k-th repeat (k >= 1) of a key hashes ``key|#k``.
+    # Candidates share the first 8 digest bytes; the full digest decides.
+    lead = np.ascontiguousarray(digests[:, :8]).view(np.uint64).reshape(-1)
+    candidates = np.flatnonzero(
+        pd.Series(lead, copy=False).duplicated(keep=False).to_numpy()
+    )
+    del lead
+    if len(candidates):
+        seen: dict[bytes, int] = {}
+        repeats: list[int] = []
+        counts: list[int] = []
+        for i in candidates.tolist():
+            digest = digests[i].tobytes()
             k = seen.get(digest, 0)
             seen[digest] = k + 1
             if k:
-                # Identical rows: the occurrence number makes the id unique.
-                digest = sha1(prefix + f"{key}|#{k}".encode()).digest()
-            eids.append("e-" + _uuid5_text(digest.hex()))
-    return pd.Series(eids, dtype="string")
+                repeats.append(i)
+                counts.append(k)
+        if repeats:
+            rows = np.asarray(repeats, dtype=np.intp)
+            keys = keys_of(rows)
+            digests[rows] = _sha1_digests(
+                prefix, [f"{key}|#{k}" for key, k in zip(keys, counts, strict=True)]
+            )
+    return _eid_series(digests)
 
 
-def _binding_suffixes(bindings: Mapping[str, pd.Series], a: int, b: int) -> list[str]:
-    """``|obj:<type>=<oid>`` per bound object of rows ``a:b`` (sorted types).
+def _binding_suffixes(
+    bindings: Mapping[str, pd.Series], rows: slice | np.ndarray, m: int
+) -> list[str]:
+    """``|obj:<type>=<oid>`` per bound object of the ``m`` rows ``rows``
+    (sorted types).
 
     Missing and empty oids (which give no relation) add nothing.
     """
-    out = [""] * (b - a)
+    out = [""] * m
     for otype in sorted(bindings):
-        values = bindings[otype].iloc[a:b].tolist()
+        values = bindings[otype].iloc[rows].tolist()
         for i, v in enumerate(values):
             if v is None or _is_missing(v):
                 continue
@@ -461,37 +560,60 @@ def _render_activities(rule: LabelRule, frame: pd.DataFrame) -> pd.Series:
     template = rule.template
     n = len(frame)
     if "{" not in template:
-        return pd.Series([template] * n, index=frame.index, dtype="string")
+        return _repeat_string(template, n, index=frame.index)
     parts = _template_parts(template)
     fields = {name for is_field, name in parts if is_field}
     present = [name for name in fields if name in frame.columns]
+    common: np.dtype | None = None
     if present:
         row_wise = not frame.columns.is_unique or isinstance(
             frame.iloc[0].dtype, pd.api.extensions.ExtensionDtype
         )
-        if row_wise or frame.iloc[:1].values.dtype.kind in "mM":
+        common = frame.iloc[:1].values.dtype
+        if row_wise or common.kind in "mM":
             return frame.apply(lambda r: render_activity(rule, r), axis=1).astype(
                 "string"
             )
-    out: list[str] = []
+    # Each activity is stored once; the rows hold its code.
+    uniques: dict[str, int] = {}
+    codes = np.empty(n, dtype=np.intp)
     for a in range(0, n, _EID_CHUNK):
         b = min(a + _EID_CHUNK, n)
-        # The common-dtype row values of this chunk (as apply builds rows).
-        values = frame.iloc[a:b].values if present else None
         rendered: dict[str, list[str]] = {}
         for name in fields:
-            if values is None or name not in frame.columns:
+            if common is None or name not in frame.columns:
                 rendered[name] = ["unknown"] * (b - a)
                 continue
-            column = values[:, frame.columns.get_loc(name)]
+            # The field's values cast to the frame's common dtype, as in the
+            # rows ``apply`` builds (``frame.values``).
+            column = frame[name].iloc[a:b].to_numpy(dtype=common)
             rendered[name] = [
                 "unknown" if v is None or _is_missing(v) else str(v) for v in column
             ]
         pieces = [
             rendered[name] if is_field else [name] * (b - a) for is_field, name in parts
         ]
-        out.extend("".join(row) for row in zip(*pieces, strict=True))
-    return pd.Series(out, index=frame.index, dtype="string")
+        texts = np.array(["".join(row) for row in zip(*pieces, strict=True)], object)
+        del rendered, pieces
+        chunk_codes, chunk_uniques = pd.factorize(texts)
+        remap = np.array(
+            [uniques.setdefault(t, len(uniques)) for t in chunk_uniques.tolist()],
+            dtype=np.intp,
+        )
+        codes[a:b] = remap[chunk_codes]
+    values = pd.array(list(uniques), dtype="string").take(codes)
+    return pd.Series(values, index=frame.index)
+
+
+def _repeat_string(value: object, n: int, index: pd.Index | None = None) -> pd.Series:
+    """``pd.Series([value] * n, dtype="string")`` without the list."""
+    one = pd.array([value], dtype="string")
+    return pd.Series(one.take(np.zeros(n, dtype=np.intp)), index=index)
+
+
+def _nat_series(n: int) -> pd.Series:
+    """``pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")`` without the list."""
+    return pd.Series(np.full(n, np.datetime64("NaT", "ns"))).dt.tz_localize("UTC")
 
 
 #: ``(warn, critical)`` lower bounds of a numeric severity score: the
@@ -569,14 +691,20 @@ def _resolve_objects(
         if isinstance(value, str) and value in frame.columns:
             bindings[otype] = frame[value].reset_index(drop=True).astype("string")
         elif callable(value):
+            # Row records a chunk at a time (not the whole frame at once).
             bindings[otype] = pd.Series(
-                [value(r) for r in frame.to_dict("records")], dtype="string"
+                [
+                    value(r)
+                    for a in range(0, len(frame), _EID_CHUNK)
+                    for r in frame.iloc[a : a + _EID_CHUNK].to_dict("records")
+                ],
+                dtype="string",
             )
         elif isinstance(value, pd.Series):
             bindings[otype] = _align_series(otype, value, index)
         else:
             # Scalar broadcast (a string that is not a column name included).
-            bindings[otype] = pd.Series([str(value)] * len(frame), dtype="string")
+            bindings[otype] = _repeat_string(str(value), len(frame))
 
     if user_objects:
         for otype, val in user_objects.items():
@@ -627,39 +755,46 @@ def _to_relations(
 
     qualifiers = qualifiers or {}
     rel_frames: list[pd.DataFrame] = []
-    obj_pairs: list[tuple[str, str]] = []
+    obj_frames: list[pd.DataFrame] = []
+    eids = eids.reset_index(drop=True).astype("string")
     for otype, oids in object_bindings.items():
-        oids = oids.reset_index(drop=True)
-        mask = oids.notna() & (oids.astype(str) != "") & (oids.astype(str) != "<NA>")
-        if not mask.any():
+        text = oids.reset_index(drop=True).astype(str)
+        mask = np.array(oids.notna(), dtype=bool)
+        mask &= ~text.isin(["", "<NA>"]).to_numpy(dtype=bool)
+        del text
+        m = int(mask.sum())
+        if not m:
             continue
+        kept = oids.reset_index(drop=True)[mask].astype("string").reset_index(drop=True)
         rel_frames.append(
             pd.DataFrame(
                 {
-                    schema.OCEL_EID: eids[mask].reset_index(drop=True).astype("string"),
-                    schema.OCEL_OID: oids[mask].astype("string").reset_index(drop=True),
-                    schema.OCEL_TYPE: pd.Series(
-                        [otype] * int(mask.sum()), dtype="string"
-                    ),
-                    schema.OCEL_QUALIFIER: pd.Series(
-                        [qualifiers.get(otype)] * int(mask.sum()), dtype="string"
-                    ),
+                    schema.OCEL_EID: eids[mask].reset_index(drop=True),
+                    schema.OCEL_OID: kept,
+                    schema.OCEL_TYPE: _repeat_string(otype, m),
+                    schema.OCEL_QUALIFIER: _repeat_string(qualifiers.get(otype), m),
                 }
             )
         )
-        for o in oids[mask].astype(str).unique():
-            obj_pairs.append((o, otype))
+        # Objects in order of first appearance, per type.
+        unique = pd.Series(kept.astype(str).unique()).astype("string")
+        obj_frames.append(
+            pd.DataFrame(
+                {
+                    schema.OCEL_OID: unique,
+                    schema.OCEL_TYPE: _repeat_string(otype, len(unique)),
+                }
+            )
+        )
 
     relations = (
         pd.concat(rel_frames, ignore_index=True)
         if rel_frames
         else schema.empty_relations()
     )
-    if obj_pairs:
-        obj_df = pd.DataFrame(obj_pairs, columns=[schema.OCEL_OID, schema.OCEL_TYPE])
+    if obj_frames:
+        obj_df = pd.concat(obj_frames, ignore_index=True)
         obj_df = obj_df.drop_duplicates().reset_index(drop=True)
-        obj_df[schema.OCEL_OID] = obj_df[schema.OCEL_OID].astype("string")
-        obj_df[schema.OCEL_TYPE] = obj_df[schema.OCEL_TYPE].astype("string")
     else:
         obj_df = schema.empty_objects()
     return obj_df, relations
@@ -676,7 +811,7 @@ def _value_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
     for c in ("value", "value_double", "value_integer", "ts_shape:value"):
         if c in frame.columns:
             return to_numeric_checked(frame[c], what=f"value column {c!r}")
-    return pd.Series([float("nan")] * len(frame), dtype="float64")
+    return pd.Series(np.full(len(frame), np.nan))
 
 
 _SEVERITY_VOCABULARY = SEVERITY_LEVELS
@@ -701,7 +836,7 @@ def _severity_series(frame: pd.DataFrame, rule: LabelRule) -> pd.Series:
     elif "severity" in frame.columns:
         field = "severity"
     else:
-        return pd.Series([pd.NA] * len(frame), dtype="string")
+        return _repeat_string(None, len(frame))
     col = frame[field]
     if field == COL_SEVERITY and COL_SEVERITY_LEVEL in frame.columns:
         level = frame[COL_SEVERITY_LEVEL].astype("string").str.lower()
@@ -761,7 +896,8 @@ def _apply_standard_attrs(
             # Literal scalar (or string that doesn't match a column,
             # which is the common case for ts_shape:method = "zscore"
             # and similar enum-like values). Broadcast to every row.
-            series = pd.Series([source] * n)
+            series = pd.Series([source]).take(np.zeros(n, dtype=np.intp))
+            series = series.reset_index(drop=True)
 
         if numeric_target:
             numeric = to_numeric_checked(series, what=f"attribute {std_key!r}")
@@ -873,15 +1009,15 @@ def adapt(
             n = len(frame)
             if n == 0:
                 return EventLog()
-        ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
-        duration = pd.Series([float("nan")] * n, dtype="float64")
+        ts_start = _nat_series(n)
+        duration = pd.Series(np.full(n, np.nan))
         time_cols_used = {COL_SYSTIME}
     elif rule.shape == "static":
         # No natural time: every row carries one explicit timestamp.
         ts = _to_utc_ts(timestamp) if timestamp is not None else STATIC_TIMESTAMP
         ts_end = pd.Series([ts] * n)
-        ts_start = pd.Series([pd.NaT] * n, dtype="datetime64[ns, UTC]")
-        duration = pd.Series([float("nan")] * n, dtype="float64")
+        ts_start = _nat_series(n)
+        duration = pd.Series(np.full(n, np.nan))
         time_cols_used = set()
     else:
         raise ValueError(f"unknown shape {rule.shape!r}")
@@ -944,8 +1080,8 @@ def adapt(
             schema.OCEL_TIMESTAMP: ts_end.astype("datetime64[ns, UTC]"),
             schema.TS_START_TIMESTAMP: ts_start.astype("datetime64[ns, UTC]"),
             schema.TS_DURATION_S: duration.astype("float64"),
-            schema.TS_DETECTOR: pd.Series([detector] * n, dtype="string"),
-            schema.TS_PACK: pd.Series([rule.pack] * n, dtype="string"),
+            schema.TS_DETECTOR: _repeat_string(detector, n),
+            schema.TS_PACK: _repeat_string(rule.pack, n),
             schema.TS_SEVERITY: severity.astype("string"),
             schema.TS_VALUE: value.astype("float64"),
             **standard_extras,
