@@ -10,7 +10,7 @@ from ts_shape.events._output import (
     finalize_summary_df,
     twin_columns,
 )
-from ts_shape.events._windows import add_window_bounds
+from ts_shape.events._windows import add_window_bounds, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 from ts_shape.utils.frames import to_ns
@@ -281,7 +281,6 @@ class ControlLoopHealthEvents(Base):
             return empty_event_df("interval", cols)
 
         df = self._aligned.set_index(self.time_column)
-        td = pd.Timedelta(window)
         groups = df.resample(window)
 
         osc_windows: list[dict[str, Any]] = []
@@ -328,7 +327,7 @@ class ControlLoopHealthEvents(Base):
             osc_windows.append(
                 {
                     "start": start,
-                    "end": start + td,
+                    "end": pd.NaT,
                     "uuid": self.event_uuid,
                     "is_delta": False,
                     "crossing_count": crossings,
@@ -340,6 +339,12 @@ class ControlLoopHealthEvents(Base):
 
         if not osc_windows:
             return empty_event_df("interval", cols)
+        # The real [start, end) of each window (a DST day lasts 23 h or 25 h).
+        w_start, w_end = window_bounds(
+            pd.Series([w["start"] for w in osc_windows]), window
+        )
+        for w, ws, we in zip(osc_windows, w_start, w_end, strict=True):
+            w["start"], w["end"] = ws, we
 
         # Merge contiguous oscillating windows
         events: list[dict[str, Any]] = []
@@ -526,8 +531,8 @@ class ControlLoopHealthEvents(Base):
 
         events: list[dict[str, Any]] = []
         for _, row in integrals.iterrows():
-            ws = row["start"]
-            we = ws + pd.Timedelta(window)
+            # The window's real end (a DST day lasts 23 h or 25 h).
+            ws, we = row["start"], row["end"]
 
             # Count oscillation events in this window
             if not osc.empty:

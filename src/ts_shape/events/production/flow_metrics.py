@@ -154,7 +154,8 @@ class FlowMetricsEvents(Base):
         wip = self._wip_per_window(window)
         if wip.empty:
             return empty_event_df("summary", extra_cols=extra)
-        wip["end"] = wip["start"] + pd.Timedelta(window)
+        # The real window end (a DST day lasts 23 h or 25 h).
+        _, wip["end"] = window_bounds(wip["start"], window)
         return finalize_summary_df(wip)
 
     @keyword_only(1)

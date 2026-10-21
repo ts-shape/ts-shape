@@ -11,7 +11,10 @@ The harness builds the calls (:func:`harness.build_kwargs`). On every row:
 * every time share in seconds -- each ``*_seconds`` column other than
   ``duration_seconds``, plus the legacy share columns without the suffix in
   :data:`SHARE_SECONDS` -- is at most ``duration_seconds`` (+ 1e-6);
-* every percentage share (``*_pct`` / ``pct_*``) is at most 100 (+ 1e-9).
+* every percentage share (``*_pct`` / ``pct_*``) is at most 100 (+ 1e-9);
+* a day-long window (22 h .. 26 h) that starts at a local midnight ends at
+  a local midnight, except for the deliberately fixed-length windows in
+  :data:`FIXED_LENGTH_WINDOWS`.
 
 A fixed 24 h stand-in for the window length breaks the bounds on the 23 h
 day (an always-true share reads 86400 s / 104 %). Columns that are not
@@ -95,6 +98,17 @@ NOT_A_SHARE: dict[str, str] = {
     "performance_pct": "speed ratio; above 100 when faster than ideal",
     "oee_pct": "product with performance, which may exceed 100",
     "production_achievement_pct": "actual vs. target output",
+}
+
+#: Like :data:`NOT_A_SHARE`, for one method only: ``"Class.method:column"``.
+NOT_A_SHARE_IN: dict[str, str] = {
+    "PerformanceLossEvents.slow_periods:run_seconds": (
+        "whole cycle times booked to the window of the completing count; a "
+        "cycle that started in the previous window is not split"
+    ),
+    "PerformanceLossEvents.slow_periods:loss_seconds": (
+        "derived from run_seconds (same booking)"
+    ),
 }
 
 
@@ -210,7 +224,42 @@ VARIANTS: list[tuple[str, str, str, dict[str, Any], dict[str, Any]]] = [
         {},
         {"interval_end": "last_sample"},
     ),
+    (
+        "BottleneckDetectionEvents.detect_bottleneck[state]",
+        "BottleneckDetectionEvents",
+        "detect_bottleneck",
+        {},
+        {"station_uuids": [harness.STATE]},
+    ),
+    (
+        "PerformanceLossEvents.slow_periods[counter]",
+        "PerformanceLossEvents",
+        "slow_periods",
+        {},
+        {"cycle_uuid": harness.COUNTER, "target_cycle_time": 1.0},
+    ),
+    (
+        "FlowMetricsEvents.wip_over_time[state]",
+        "FlowMetricsEvents",
+        "wip_over_time",
+        {"entry_uuid": harness.STATE, "exit_uuid": harness.STATE},
+        {},
+    ),
 ]
+
+#: Summary methods whose windows are fixed-length on purpose, so a window
+#: starting at a local midnight need not end at one: method -> reason.
+FIXED_LENGTH_WINDOWS: dict[str, str] = {
+    "SetpointChangeEvents.oscillation_frequency": (
+        "fixed response window after each setpoint change"
+    ),
+    "SetpointChangeEvents.overshoot_metrics": (
+        "fixed response window after each setpoint change"
+    ),
+    "VibrationAnalysisEvents.bearing_health_indicators": (
+        "fixed-length grid stepped from the first sample"
+    ),
+}
 
 
 def _cases() -> list[Any]:
@@ -254,8 +303,12 @@ def _call(
 
 def test_not_a_share_entries_are_classified_columns():
     """Every allowlisted column is a seconds or percent column."""
-    stray = [c for c in NOT_A_SHARE if not (_is_pct(c) or _is_share_seconds(c))]
+    cols = [*NOT_A_SHARE, *(k.split(":")[1] for k in NOT_A_SHARE_IN)]
+    stray = [c for c in cols if not (_is_pct(c) or _is_share_seconds(c))]
     assert not stray
+    keys = {k.split(":")[0] for k in [*NOT_A_SHARE_IN, *FIXED_LENGTH_WINDOWS]}
+    unknown = [k for k in keys if tuple(k.split(".")) not in REGISTRY]
+    assert not unknown
 
 
 @pytest.mark.parametrize(
@@ -280,9 +333,27 @@ def test_summary_window_shares_fit_the_real_window(
         span[known], duration[known], rtol=0, atol=1e-6
     ), "end - start != duration_seconds"
 
+    # A day window that starts at a local midnight ends at the next one: a
+    # 24 h stand-in ends at 01:00 after the 23 h day and 23:00 on the 25 h
+    # day.
+    start = pd.to_datetime(out["start"])
+    end = pd.to_datetime(out["end"])
+    daylike = (
+        known & (start == start.dt.normalize()) & span.between(22 * 3600, 26 * 3600)
+    )
+    off = daylike & (end != end.dt.normalize())
+    if f"{cls_name}.{method}" in FIXED_LENGTH_WINDOWS:
+        off = off & False
+    assert not bool(off.any()), (
+        "day window does not end at a local midnight: "
+        f"{start[off].iloc[0]} -> {end[off].iloc[0]}"
+        if bool(off.any())
+        else ""
+    )
+
     problems = []
     for col in map(str, out.columns):
-        if col in NOT_A_SHARE:
+        if col in NOT_A_SHARE or f"{cls_name}.{method}:{col}" in NOT_A_SHARE_IN:
             continue
         s = out[col]
         if not pd.api.types.is_numeric_dtype(s) or pd.api.types.is_bool_dtype(s):

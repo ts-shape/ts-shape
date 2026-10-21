@@ -24,6 +24,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import renamed_kwargs
@@ -313,11 +314,12 @@ class AssetHealthIndexEvents(Base):
         if not per_signal:
             return pd.DataFrame(columns=cols)
 
-        window_td = pd.to_timedelta(window)
         starts = sorted({ts for frame in per_signal.values() for ts in frame.index})
+        # The real [start, end) of each window (a DST day lasts 23 h or 25 h).
+        w_start, w_end = window_bounds(pd.Series(starts), window)
 
         rows: list[dict[str, Any]] = []
-        for start in starts:
+        for start, win_start, win_end in zip(starts, w_start, w_end, strict=True):
             weighted_sum = 0.0
             weight_sum = 0.0
             samples = 0
@@ -346,9 +348,9 @@ class AssetHealthIndexEvents(Base):
             )
             rows.append(
                 {
-                    "start": start,
-                    "end": start + window_td,
-                    "duration_seconds": window_td.total_seconds(),
+                    "start": win_start,
+                    "end": win_end,
+                    "duration_seconds": (win_end - win_start).total_seconds(),
                     "uuid": self.event_uuid,
                     "source_uuid": self.asset_id,
                     "asset_id": self.asset_id,

@@ -16,6 +16,7 @@ from ts_shape.events._windows import (
     add_period_window,
     add_shift_window,
     data_tz,
+    window_bounds,
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
@@ -372,8 +373,8 @@ class PerformanceLossEvents(Base):
                 results.append(
                     {
                         "start": start,
-                        "end": start + pd.Timedelta(window),
-                        "duration_seconds": pd.Timedelta(window).total_seconds(),
+                        "end": pd.NaT,
+                        "duration_seconds": float("nan"),
                         "uuid": self.event_uuid,
                         "source_uuid": cycle_uuid,
                         "actual_parts": parts,
@@ -386,7 +387,13 @@ class PerformanceLossEvents(Base):
                     }
                 )
 
-        return pd.DataFrame(results, columns=_SLOW_COLS)
+        out = pd.DataFrame(results, columns=_SLOW_COLS)
+        if not out.empty:
+            # The real [start, end) of each window (a DST day: 23 h / 25 h).
+            w_start, w_end = window_bounds(out["start"], window)
+            out["start"], out["end"] = w_start, w_end
+            out["duration_seconds"] = (w_end - w_start).dt.total_seconds()
+        return out
 
     def performance_trend(
         self,
