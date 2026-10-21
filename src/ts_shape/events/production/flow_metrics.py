@@ -22,7 +22,7 @@ from ts_shape.events._output import (
     finalize_summary_df,
     twin_columns,
 )
-from ts_shape.events._windows import floor_local
+from ts_shape.events._windows import floor_local, window_bounds
 from ts_shape.events.production._flow import (
     Number,
     rising_edge_times,
@@ -154,7 +154,8 @@ class FlowMetricsEvents(Base):
         wip = self._wip_per_window(window)
         if wip.empty:
             return empty_event_df("summary", extra_cols=extra)
-        wip["end"] = wip["start"] + pd.Timedelta(window)
+        # The real window end (a DST day lasts 23 h or 25 h).
+        _, wip["end"] = window_bounds(wip["start"], window)
         return finalize_summary_df(wip)
 
     @keyword_only(1)
@@ -173,11 +174,12 @@ class FlowMetricsEvents(Base):
         if exits.empty:
             return empty_event_df("summary", extra_cols=extra)
 
-        window_hours = pd.Timedelta(window).total_seconds() / 3600.0
         counts = floor_local(exits, window).value_counts().sort_index()
         out = counts.reset_index()
         out.columns = ["start", "units_out"]
-        out["end"] = out["start"] + pd.Timedelta(window)
+        # Per hour of the window's real length (a DST day lasts 23 h or 25 h).
+        _, out["end"] = window_bounds(out["start"], window)
+        window_hours = (out["end"] - out["start"]).dt.total_seconds() / 3600.0
         out["throughput_per_hour"] = out["units_out"] / window_hours
         return finalize_summary_df(out)
 
@@ -288,5 +290,6 @@ class FlowMetricsEvents(Base):
                 va / merged["lead_time_mean_seconds"] * 100.0
             ).where(merged["lead_time_mean_seconds"] > 0)
 
-        merged["end"] = merged["start"] + pd.Timedelta(window)
+        # The real window end, matching throughput_per_hour's denominator.
+        _, merged["end"] = window_bounds(merged["start"], window)
         return finalize_summary_df(merged)

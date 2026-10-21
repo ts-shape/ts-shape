@@ -37,7 +37,7 @@ import ts_shape  # noqa: E402
 from ts_shape import NotChunkableError, run_chunked  # noqa: E402
 from ts_shape.eventlog.taxonomy import REGISTRY  # noqa: E402
 from ts_shape.pipeline import _param_names  # noqa: E402
-from ts_shape.stream import SUPPORT, _run_chunked  # noqa: E402
+from ts_shape.stream import CONDITIONAL, SUPPORT, _run_chunked  # noqa: E402
 
 BERLIN = "Europe/Berlin"
 
@@ -64,7 +64,11 @@ CALLS: dict[str, dict[str, Any]] = {
     "AnomalyClassificationEvents.detect_drift": {"min_slope": 0.0003},
     "AnomalyClassificationEvents.detect_oscillation": {"window": "30min"},
     "ControlLoopHealthEvents.output_saturation": {"upper_limit": 55.0},
+    # CONDITIONAL entries: the argument that makes them chunkable.
     "DataGapAnalysisEvents.detect_gaps": {"min_gap": "5min"},
+    "DataGapAnalysisEvents.coverage_by_period": {"min_gap": "5min"},
+    "AnomalyClassificationEvents.detect_flatline": {"interval_end": "last_sample"},
+    "ChangeoverEvents.changeover_window": {"until": "fixed_window"},
     "DataGapAnalysisEvents.interpolation_candidates": {
         "max_gap": "30min",
         "min_gap": "2min",
@@ -126,26 +130,40 @@ CALLS: dict[str, dict[str, Any]] = {
 }
 
 
+#: Arguments of a CONDITIONAL entry that make it not chunkable (default:
+#: none, i.e. the argument left out).
+WITHOUT: dict[str, dict[str, Any]] = {
+    "ChangeoverEvents.changeover_window": {"until": "stable_band"},
+}
+
+#: Methods reporting calendar periods: run on the 9-week frame with this
+#: chunk.
+CHUNKS: dict[str, str] = {
+    "PeriodSummaryEvents.weekly_summary": "W",
+    "PeriodSummaryEvents.monthly_summary": "MS",
+}
+
 #: Methods that pass here but use whole-signal context (read in their code),
 #: so they are not in ``SUPPORT``. Kept in sync with ``stream._REASONS``.
 AUDIT_EXCLUDED = (
-    "AnomalyClassificationEvents.detect_flatline",
-    "ChangeoverEvents.changeover_window",
-    "DataGapAnalysisEvents.coverage_by_period",
+    "DataGapAnalysisEvents.interpolation_candidates",
     "DisturbanceRecoveryEvents.before_after_comparison",
     "DisturbanceRecoveryEvents.detect_disturbances",
     "DisturbanceRecoveryEvents.recovery_time",
     "LongDowntimeEvents.count_events_between_gaps",
-    "PeriodSummaryEvents.weekly_summary",
 )
 
 
-def chunk_frame() -> pd.DataFrame:
-    """Seven signals over three local days at one-minute resolution."""
+def chunk_frame(
+    start: str = "2024-03-30", end: str = "2024-04-02", freq: str = "1min"
+) -> pd.DataFrame:
+    """Seven signals over three local days at one-minute resolution.
+
+    With other bounds and rate, the same signals over a longer range (the
+    9-week frame of the calendar-period methods).
+    """
     rng = np.random.default_rng(11)
-    t = pd.date_range(
-        "2024-03-30", "2024-04-02", freq="1min", inclusive="left", tz=BERLIN
-    )
+    t = pd.date_range(start, end, freq=freq, inclusive="left", tz=BERLIN)
     n = len(t)
     minute = np.arange(n)
     # Irregular run / idle pattern; a long run across the first midnight and a
@@ -255,17 +273,26 @@ def shifted(df: pd.DataFrame) -> pd.DataFrame:
     return df.assign(systime=df["systime"] + pd.Timedelta(hours=9, minutes=13))
 
 
-_FRAMES: dict[str, pd.DataFrame] = {}
+_FRAMES: dict[tuple[str, str], pd.DataFrame] = {}
 
 
-def _frame(name: str = "base") -> pd.DataFrame:
-    if name not in _FRAMES:
-        base = _FRAMES.get("base")
+def weeks_frame() -> pd.DataFrame:
+    """Nine weeks from a Wednesday at 15 minutes: two month changes, DST."""
+    return chunk_frame("2024-02-21", "2024-04-24", freq="15min")
+
+
+def _frame(name: str = "base", kind: str = "days") -> pd.DataFrame:
+    """The 3-day (``kind="days"``) or 9-week (``"weeks"``) frame, lazily."""
+    if (kind, name) not in _FRAMES:
+        base = _FRAMES.get((kind, "base"))
         if base is None:
-            base = _FRAMES["base"] = chunk_frame()
+            base = _FRAMES[kind, "base"] = (
+                chunk_frame() if kind == "days" else weeks_frame()
+            )
         if name != "base":
-            _FRAMES[name] = {"skewed": skewed, "shifted": shifted}[name](base)
-    return _FRAMES[name]
+            variant = {"skewed": skewed, "shifted": shifted}[name]
+            _FRAMES[kind, name] = variant(base)
+    return _FRAMES[kind, name]
 
 
 def canonical(frame: pd.DataFrame) -> pd.DataFrame:
@@ -303,14 +330,18 @@ def equivalence(cls_name: str, method: str) -> str:
     variants.
     """
     status = "ok"
+    chunk = CHUNKS.get(f"{cls_name}.{method}", "1D")
+    kind = "days" if chunk == "1D" else "weeks"
     for name in ("base", "skewed", "shifted"):
-        status = _equivalence(cls_name, method, _frame(name))
+        status = _equivalence(cls_name, method, _frame(name, kind), chunk)
         if status != "ok":
             return status if name == "base" else f"{status} ({name})"
     return status
 
 
-def _equivalence(cls_name: str, method: str, df: pd.DataFrame) -> str:
+def _equivalence(
+    cls_name: str, method: str, df: pd.DataFrame, chunk: str = "1D"
+) -> str:
     cls = getattr(ts_shape, cls_name)
     try:
         c_kwargs, m_kwargs, is_cm = H.build_kwargs(cls, method, df, EXTRA)
@@ -338,7 +369,7 @@ def _equivalence(cls_name: str, method: str, df: pd.DataFrame) -> str:
                 iter(daily(df)),
                 cls,
                 method,
-                chunk="1D",
+                chunk=chunk,
                 overlap=None,
                 time_column="systime",
                 # A method that only passes by carrying all data is not
@@ -370,7 +401,7 @@ def statuses(pairs: list[tuple[str, str]]) -> dict[str, str]:
     return {f"{c}.{m}": s for (c, m), s in zip(pairs, out, strict=True)}
 
 
-_SUPPORTED = sorted(tuple(name.split(".", 1)) for name in SUPPORT)
+_SUPPORTED = sorted(tuple(name.split(".", 1)) for name in SUPPORT | set(CONDITIONAL))
 
 
 @pytest.fixture(scope="module")
@@ -392,8 +423,12 @@ def test_audited_exclusions_are_not_supported():
     assert not set(AUDIT_EXCLUDED) & SUPPORT
     assert set(AUDIT_EXCLUDED) <= set(_REASONS)
     assert not set(_REASONS) & SUPPORT
-    for name in _REASONS:
+    assert not set(_REASONS) & set(CONDITIONAL)
+    assert not set(CONDITIONAL) & SUPPORT
+    for name in [*_REASONS, *CONDITIONAL]:
         assert tuple(name.split(".", 1)) in REGISTRY, name
+    for name in CONDITIONAL:
+        assert REGISTRY[tuple(name.split(".", 1))].shape != "static", name
 
 
 @pytest.mark.parametrize("name", [f"{c}.{m}" for c, m in _SUPPORTED])
@@ -402,13 +437,33 @@ def test_supported_method_equals_in_memory(name, support_statuses):
 
 
 @pytest.mark.parametrize(
-    "pair", sorted(k for k in REGISTRY if f"{k[0]}.{k[1]}" not in SUPPORT)
+    "pair",
+    sorted(k for k in REGISTRY if f"{k[0]}.{k[1]}" not in SUPPORT | set(CONDITIONAL)),
 )
 def test_unsupported_method_raises(pair):
     cls_name, method = pair
     cls = getattr(ts_shape, cls_name)
     with pytest.raises(NotChunkableError, match="cannot run chunked"):
         run_chunked([], cls, method)
+
+
+@pytest.mark.parametrize("name", sorted(CONDITIONAL))
+def test_conditional_method_raises_without_its_argument(name):
+    cls_name, method = name.split(".", 1)
+    cls = getattr(ts_shape, cls_name)
+    argument = CONDITIONAL[name].argument
+    with pytest.raises(NotChunkableError, match=f"cannot run chunked with {argument}="):
+        run_chunked([], cls, method, **WITHOUT.get(name, {}))
+    # The harness passes the argument (and the method passes with it).
+    assert argument in CALLS[name]
+
+
+def test_weeks_frame_crosses_months_and_dst():
+    df = _frame(kind="weeks")
+    times = df["systime"]
+    assert times.min().day_name() == "Wednesday"
+    assert {t.month for t in times} == {2, 3, 4}
+    assert (times.max() - times.min()) > pd.Timedelta(weeks=8)
 
 
 def test_frame_crosses_dst_and_borders():
@@ -428,7 +483,11 @@ if __name__ == "__main__":  # pragma: no cover - maintenance entry point
         print(f"{shape:9s} {c}.{m}: {status}", flush=True)
         if status == "ok" and shape != "static":
             passing.append(f"{c}.{m}")
-    passing = [name for name in passing if name not in AUDIT_EXCLUDED]
+    passing = [
+        name
+        for name in passing
+        if name not in AUDIT_EXCLUDED and name not in CONDITIONAL
+    ]
     print(f"\n{len(passing)} non-static methods pass (audit exclusions removed):")
     for name in passing:
         print(f'    "{name}",')

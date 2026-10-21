@@ -271,13 +271,15 @@ class DutyCycleEvents(Base):
                     }
                 )
         else:
-            window_td = pd.to_timedelta(window)
             resampled = s.set_index(self.time_column)["state"].resample(window).mean()
-            for ts, pct in resampled.items():
+            # The window's real length (a DST day lasts 23 h or 25 h).
+            w_start, w_end = window_bounds(resampled.index.to_series(), window)
+            window_s = (w_end - w_start).dt.total_seconds().tolist()
+            for (ts, pct), span_s in zip(resampled.items(), window_s, strict=True):
                 if pd.isna(pct):
                     continue
-                on_time = pct * window_td.total_seconds()
-                off_time = (1 - pct) * window_td.total_seconds()
+                on_time = pct * span_s
+                off_time = (1 - pct) * span_s
                 events.append(
                     {
                         "start": ts,
@@ -425,12 +427,11 @@ class DutyCycleEvents(Base):
             return self._with_window(pd.DataFrame(columns=cols), window)
 
         intervals = self.on_off_intervals()
-        window_td = pd.to_timedelta(window)
 
         events: list[dict[str, Any]] = []
         for _, row in excessive.iterrows():
-            w_start = row["start"]
-            w_end = w_start + window_td
+            # The window's real end (a DST day lasts 23 h or 25 h).
+            w_start, w_end = row["start"], row["end"]
 
             win_intervals = intervals[
                 (intervals["start"] >= w_start) & (intervals["start"] < w_end)
@@ -453,18 +454,29 @@ class DutyCycleEvents(Base):
             events.append(
                 {
                     "start": w_start,
+                    "end": w_end,
                     "transition_count": int(row["total_transitions"]),
                     "avg_on_duration": avg_on,
                     "avg_off_duration": avg_off,
                 }
             )
 
-        return self._with_window(pd.DataFrame(events, columns=cols), window)
+        # ``start`` / ``end`` are already the real bounds (from cycle_count).
+        return self._with_window(
+            pd.DataFrame(events, columns=[cols[0], "end", *cols[1:]]), window
+        )
 
     def _with_window(self, df: pd.DataFrame, window: str) -> pd.DataFrame:
-        """Insert end (start + window), duration_seconds, uuid and source_uuid."""
+        """Insert end (start + window), duration_seconds, uuid and source_uuid.
+
+        A frame that already has ``end`` holds real bounds and keeps them.
+        """
         out = df.copy()
-        if out.empty:
+        if "end" in out.columns:
+            span = pd.to_datetime(out["end"]) - pd.to_datetime(out["start"])
+            seconds = span.dt.total_seconds() if len(out) else pd.Series(dtype=float)
+            out.insert(2, "duration_seconds", seconds.astype("float64"))
+        elif out.empty:
             out.insert(1, "end", pd.Series(dtype="object"))
             out.insert(2, "duration_seconds", pd.Series(dtype="float64"))
         else:

@@ -24,7 +24,7 @@ from ts_shape.events._output import (
     finalize_summary_df,
     twin_columns,
 )
-from ts_shape.events._windows import floor_local
+from ts_shape.events._windows import floor_local, window_bounds
 from ts_shape.events.production._flow import (
     Number,
     rising_edge_times,
@@ -138,8 +138,11 @@ class LineBalancingEvents(Base):
 
     @staticmethod
     def _window_bounds(window: str, starts: pd.Series) -> pd.Series:
-        """Return the window-end timestamps for a series of window starts."""
-        return starts + pd.Timedelta(window)
+        """Return the window-end timestamps for a series of window starts.
+
+        Calendar-correct: a daily window on a DST change lasts 23 h or 25 h.
+        """
+        return window_bounds(starts, window)[1]
 
     # ------------------------------------------------------------------
     # Public API
@@ -282,7 +285,6 @@ class LineBalancingEvents(Base):
             bottleneck_uuid = grp.loc[grp["cycle_time"].idxmax(), "uuid"]
             row = {
                 "start": start,
-                "end": start + pd.Timedelta(window),
                 "n_stations": n,
                 "bottleneck_uuid": bottleneck_uuid,
                 "bottleneck_cycle_time": bottleneck,
@@ -296,7 +298,9 @@ class LineBalancingEvents(Base):
                 row["stations_missing"] = n_known - n_active
             rows.append(row)
 
-        return finalize_summary_df(pd.DataFrame(rows))
+        out = pd.DataFrame(rows)
+        out.insert(1, "end", self._window_bounds(window, out["start"]))
+        return finalize_summary_df(out)
 
     @twin_columns({"cycle_time_mean": "cycle_time_mean_seconds"})
     def yamazumi(

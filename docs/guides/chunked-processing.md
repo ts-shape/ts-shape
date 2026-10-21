@@ -155,8 +155,41 @@ pd.testing.assert_frame_equal(from_db, chunked)
 
 Slices are aligned to the wall clock of the data's time zone (`chunk="1D"` cuts
 at local midnight; a DST day lasts 23 or 25 hours). Naive timestamps work the
-same way. `chunk` can be any fixed length (`"12h"`, `"2D"`); calendar lengths
-such as `"W"` or `"MS"` are not supported.
+same way. `chunk` can be any fixed length (`"12h"`, `"2D"`) or a calendar
+period, see [Calendar chunks](#calendar-chunks).
+
+## Calendar chunks
+
+`chunk="W"` cuts the data into calendar weeks, Monday 00:00 to Monday 00:00
+local time (pandas' weeks ending Sunday, also written `"W-SUN"`; `"W-<DAY>"`
+gives weeks ending on another day). `chunk="MS"` cuts it into calendar months.
+The cuts are made at local midnight like daily slices, so the week of a DST
+change lasts 167 or 169 hours and February its real length.
+
+`PeriodSummaryEvents.weekly_summary` and `monthly_summary` run chunked only
+with the matching chunk -- every week or month is then exactly one slice --
+and raise `ValueError` with any other chunk. Methods with a window that
+divides a day (`"1h"`, `"1D"`) and interval methods run with any calendar
+chunk. The source may still deliver daily frames; slices collect them:
+
+```python
+from ts_shape import PeriodSummaryEvents
+
+ct = pd.date_range("2024-02-01", "2024-05-01", freq="30min", inclusive="left",
+                   tz="Europe/Berlin")
+counter = pd.DataFrame({"systime": ct, "uuid": "press:count",
+                        "value_integer": np.arange(len(ct)) * 3})
+counter_days = (g for _, g in counter.groupby(counter["systime"].dt.normalize()))
+
+weekly = run_chunked(counter_days, PeriodSummaryEvents, "weekly_summary",
+                     chunk="W", counter_uuid="press:count")
+expected = PeriodSummaryEvents(counter).weekly_summary("press:count")
+pd.testing.assert_frame_equal(weekly, expected.reset_index(drop=True))
+print(weekly[["start", "end", "total_production"]].head(3))
+```
+
+`time_range_source(load, start, end, chunk="W")` loads one week per call on
+the same grid.
 
 ## How the borders are stitched
 
@@ -181,6 +214,12 @@ the method's output:
 Rolling methods get history before each slice: `overlap` defaults to the
 method's window-like argument (`window`, `baseline_window`, `lookback`, ...),
 and can be passed explicitly.
+
+Some events are only settled by data after them, and wait for it in the same
+way: a changeover whose new product must hold for `min_duration` (also the
+`min_duration` of `changeover_window`'s `config`), and a stop that counts as
+a micro-stop only up to `max_duration` -- a stop still running at midnight is
+classified by its full length, in the windows of both days.
 
 ## Pipelines
 
@@ -220,8 +259,9 @@ print(streamed)
 `ts_shape.stream.SUPPORT` lists the methods that run chunked. The list is
 data-driven: a test runs every detector method in memory and in daily slices on
 a 3-day dataset across a DST change (and on variants with skewed statistics
-and shifted borders) and keeps the methods whose results are equal and whose
-code uses no whole-signal statistics.
+and shifted borders; the weekly and monthly summaries in weekly and monthly
+slices of a 9-week dataset) and keeps the methods whose results are equal and
+whose code uses no whole-signal statistics.
 
 ```python
 from collections import defaultdict
@@ -234,6 +274,53 @@ for name in sorted(SUPPORT):
     by_class[cls].append(method)
 for cls, methods in by_class.items():
     print(f"{cls}: {', '.join(methods)}")
+```
+
+A few results need the whole run; the engine completes them at the end of
+the stream, so they still equal the in-memory result:
+
+- `DataGapAnalysisEvents.detect_gaps` counts `samples_before_gap` and
+  `samples_after_gap` over the whole signal: a running count per signal
+  offsets each slice, and `samples_after_gap` is filled in once the total is
+  known. `iter_chunked` therefore yields all of its rows together, after the
+  last slice.
+- `DataGapAnalysisEvents.coverage_by_period` counts one median sampling step
+  of the whole signal after its last sample as covered: the engine counts
+  every sampling step and corrects the last window at the end (`iter_chunked`
+  yields that window last).
+- `MicroStopEvents.micro_stop_frequency` reports every window from the first
+  to the last micro-stop, with zeros in between: the zero windows between two
+  slices are inserted when they are merged, on the method's window grid.
+
+## Conditional support
+
+Some methods run chunked only when one argument is passed explicitly: their
+default takes something from the whole signal, which an explicit value
+replaces. `ts_shape.stream.CONDITIONAL` maps each of them to the argument and
+the reason:
+
+| Method | Pass | Because the default |
+|---|---|---|
+| `DataGapAnalysisEvents.detect_gaps` | `min_gap=...` | is twice the whole signal's median sampling step |
+| `DataGapAnalysisEvents.coverage_by_period` | `min_gap=...` | is twice the whole signal's median sampling step |
+| `AnomalyClassificationEvents.detect_flatline` | `interval_end="last_sample"` | `"next_change"` keeps a one-sample run only when the gap after it is longer than the whole signal's median sampling step |
+| `ChangeoverEvents.changeover_window` | `until="fixed_window"` (the default) | `"stable_band"` compares against an expanding median over all data after each change |
+
+Without the argument the call raises `NotChunkableError`, which names it:
+
+```python
+from ts_shape import DataGapAnalysisEvents, NotChunkableError
+from ts_shape.stream import CONDITIONAL
+
+print(CONDITIONAL["DataGapAnalysisEvents.detect_gaps"].argument)
+try:
+    run_chunked(days(), DataGapAnalysisEvents, "detect_gaps",
+                signal_uuid="press:run")
+except NotChunkableError as exc:
+    print(exc)
+
+gaps = run_chunked(days(), DataGapAnalysisEvents, "detect_gaps",
+                   signal_uuid="press:run", min_gap="2min")
 ```
 
 ## Limitations

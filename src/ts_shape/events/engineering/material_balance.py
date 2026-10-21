@@ -274,7 +274,6 @@ class MaterialBalanceEvents(Base):
         if not unbalanced.any():
             return empty_event_df("interval", cols)
 
-        window_td = pd.Timedelta(window)
         min_td = pd.Timedelta(min_duration)
 
         groups = (unbalanced != unbalanced.shift()).cumsum()
@@ -285,7 +284,8 @@ class MaterialBalanceEvents(Base):
                 continue
             seg = bc.loc[seg_idx.index]
             start = seg["start"].iloc[0]
-            end = seg["start"].iloc[-1] + window_td
+            # The last window's real end (a DST day lasts 23 h or 25 h).
+            end = seg["end"].iloc[-1]
             dur = end - start
             if dur < min_td:
                 continue

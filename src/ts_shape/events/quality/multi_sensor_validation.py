@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
-from ts_shape.events._windows import finish_events
+from ts_shape.events._windows import finish_events, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import (
     REMOVAL,
@@ -143,14 +143,15 @@ class MultiSensorValidationEvents(Base):
         means, spread = means[hit], spread[hit]
         events: list[dict[str, Any]] = []
         if not means.empty:
-            win_td = pd.to_timedelta(window)
-            for ts, sp, hi, lo in zip(
-                means.index,
+            # The real [start, end) of each window (a DST day: 23 h / 25 h).
+            w_start, w_end = window_bounds(means.index.to_series(), window)
+            for ts, end, sp, hi, lo in zip(
+                w_start,
+                w_end,
                 spread,
                 means.idxmax(axis=1),
                 means.idxmin(axis=1),
             ):
-                end = ts + win_td
                 events.append(
                     {
                         "start": ts,

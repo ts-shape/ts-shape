@@ -179,12 +179,12 @@ class BottleneckDetectionEvents(Base):
 
         idx = util.groupby("start")["utilization_pct"].idxmax()
         bottlenecks = util.loc[idx].copy()
-        window_td = pd.to_timedelta(window)
-
+        # The window's real end from station_utilization (a DST day lasts
+        # 23 h or 25 h), not start + a fixed window length.
         out = pd.DataFrame(
             {
                 "start": bottlenecks["start"].array,
-                "end": bottlenecks["start"].array + window_td,
+                "end": bottlenecks["end"].array,
                 "bottleneck_uuid": bottlenecks["uuid"].values,
                 "utilization_pct": bottlenecks["utilization_pct"].values,
             }

@@ -10,11 +10,21 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._windows import finish_events
+from ts_shape.events._windows import finish_events, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 
 logger = logging.getLogger(__name__)
+
+
+def _bounds(label: pd.Timestamp, window: str) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """Real ``[start, end)`` of the ``resample(window)`` bin labeled ``label``.
+
+    Calendar-correct (see :func:`ts_shape.events._windows.window_bounds`): a
+    daily window on a DST change lasts 23 h or 25 h.
+    """
+    start, end = window_bounds(pd.Series([label]), window)
+    return start.iloc[0], end.iloc[0]
 
 
 class SensorDriftEvents(Base):
@@ -148,8 +158,8 @@ class SensorDriftEvents(Base):
             if len(vals) < 2:
                 continue
 
-            end = ts + pd.to_timedelta(window)
-            ref = self._get_reference_for_window(ts, end)
+            w_start, end = _bounds(ts, window)
+            ref = self._get_reference_for_window(w_start, end)
             if ref is not None:
                 mean_offset = float(vals.mean()) - ref
             else:
@@ -199,7 +209,7 @@ class SensorDriftEvents(Base):
                 severity = "low"
 
             event = {
-                "start": ts,
+                "start": w_start,
                 "end": end,
                 "mean_offset": float(mean_offset),
                 "drift_rate": float(drift_rate),
@@ -262,8 +272,8 @@ class SensorDriftEvents(Base):
             if len(vals) < 2:
                 continue
 
-            end = ts + pd.to_timedelta(window)
-            ref = self._get_reference_for_window(ts, end)
+            w_start, end = _bounds(ts, window)
+            ref = self._get_reference_for_window(w_start, end)
             if ref is None or ref == 0:
                 continue
 
@@ -418,8 +428,8 @@ class SensorDriftEvents(Base):
             if len(vals) < 2:
                 continue
 
-            end = ts + pd.to_timedelta(window)
-            ref = self._get_reference_for_window(ts, end)
+            w_start, end = _bounds(ts, window)
+            ref = self._get_reference_for_window(w_start, end)
 
             mean_val = float(vals.mean())
             precision = float(vals.std())

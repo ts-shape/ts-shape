@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events._windows import with_window_bounds
+from ts_shape.events._windows import window_bounds, with_window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import interval_end_times
@@ -160,7 +160,9 @@ class InventoryMonitoringEvents(Base):
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, is_delta, consumption_rate, level_start, level_end.
-            ``end`` is ``start`` plus ``window``.
+            ``end`` is ``start`` plus ``window`` (calendar-correct: a daily
+            window on a DST change lasts 23 h or 25 h, and the rate is per
+            hour of that real length).
         """
         empty_cols = [
             "start",
@@ -197,8 +199,9 @@ class InventoryMonitoringEvents(Base):
             return with_window_bounds(pd.DataFrame(columns=empty_cols), window)
 
         # Consumption is positive when level decreases
-        window_td = pd.to_timedelta(window)
-        window_hours = window_td.total_seconds() / 3600.0
+        # Per hour of the window's real length (a DST day lasts 23 h or 25 h).
+        w_start, w_end = window_bounds(result["start"], window)
+        window_hours = (w_end - w_start).dt.total_seconds().to_numpy() / 3600.0
         if handle_refills:
             consumed = (
                 (-lv[self.value_column].diff()).clip(lower=0).resample(window).sum()
