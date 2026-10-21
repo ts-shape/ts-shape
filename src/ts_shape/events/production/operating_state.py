@@ -43,6 +43,9 @@ class OperatingStateEvents(Base):
     - dwell_time_violation: Did the machine stay in a state too long?
     """
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     def __init__(
         self,
         dataframe: pd.DataFrame,

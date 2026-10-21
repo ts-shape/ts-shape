@@ -34,6 +34,9 @@ logger = logging.getLogger(__name__)
 class GoldenBatchDeviationEvents(Base):
     """Quantify deviation of a new batch from a golden reference batch."""
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     @renamed_kwargs(reference_df="dataframe")
     def __init__(
         self,

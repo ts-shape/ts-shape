@@ -132,6 +132,9 @@ class RoutingTraceabilityEvents(Base):
     id_value_column = deprecated_attribute("value_column_id")
     routing_value_column = deprecated_attribute("value_column_routing")
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     @renamed_kwargs(
         id_value_column="value_column_id", routing_value_column="value_column_routing"
     )

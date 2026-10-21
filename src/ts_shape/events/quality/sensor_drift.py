@@ -60,6 +60,9 @@ class SensorDriftEvents(Base):
         5 2025-01-02 16:00:00         1.88  critical
     """
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     def __init__(
         self,
         dataframe: pd.DataFrame,

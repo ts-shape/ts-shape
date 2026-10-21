@@ -63,6 +63,9 @@ class GaugeRepeatabilityEvents(Base):
     - measurement_bias: Compare measurements to known reference values.
     """
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     def __init__(
         self,
         dataframe: pd.DataFrame,

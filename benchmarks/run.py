@@ -170,6 +170,12 @@ def _cases() -> dict[str, Case]:
                 df, TEMP
             ).detect_trend_degradation(),
         ),
+        "threshold_monitoring.time_above_threshold": (
+            ident,
+            lambda df: ts_shape.ThresholdMonitoringEvents(
+                df, TEMP
+            ).time_above_threshold(threshold=50.0),
+        ),
         "signals.profile": (ident, lambda df: ts_shape.profile(df)),
         "eventlog.to_event_log": (
             run_idle_frame,

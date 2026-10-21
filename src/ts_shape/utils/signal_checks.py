@@ -54,6 +54,15 @@ VALUE_COLUMNS = ("value_double", "value_integer", "value_bool", "value_string")
 _UUIDS = "_ts_shape_uuids"
 # Set on every wrapped method so ``Base`` can tell which methods are checked.
 _CHECKED_MARKER = "__ts_shape_checked__"
+# ``(frame, uuids)``: the constructor's frame and signal uuids, handed to
+# ``Base.__init__`` for a detector that reads only those signals' rows.
+_REQUEST = "_ts_shape_signal_request"
+# ``(input frame, its row count, kept uuids)`` of a detector whose
+# ``dataframe`` holds only the rows of its own signals (see ``Base``).
+_SOURCE = "_ts_shape_source"
+#: Class attribute: the detector's methods read ``self.dataframe`` only for
+#: the signals its constructor names (checked per class, not inherited).
+OWN_SIGNALS_ONLY = "_reads_own_signals_only"
 
 
 def _mark_checked(wrapper: Callable[..., Any]) -> None:
@@ -101,6 +110,50 @@ def remember_uuids(obj: Any, frame: pd.DataFrame, column: str, uuids: set[str]) 
         pass
 
 
+def take_signal_request(obj: Any, frame: pd.DataFrame) -> frozenset[str] | None:
+    """The signal uuids the constructor named, when ``frame`` is its input.
+
+    Read (and cleared) by ``Base.__init__``; ``None`` when the detector does
+    not declare :data:`OWN_SIGNALS_ONLY` or ``frame`` is not the frame its
+    constructor was given.
+    """
+    request = getattr(obj, _REQUEST, None)
+    if request is None:
+        return None
+    _clear(obj, _REQUEST)
+    requested, uuids = request
+    return uuids if requested is frame else None
+
+
+def _clear(obj: Any, name: str) -> None:
+    try:
+        object.__delattr__(obj, name)
+    except (AttributeError, TypeError):
+        pass
+
+
+def remember_source(
+    obj: Any, frame: pd.DataFrame, n_rows: int, kept: frozenset[str]
+) -> None:
+    """Record that ``obj.dataframe`` holds only the ``kept`` signals of ``frame``."""
+    try:
+        object.__setattr__(obj, _SOURCE, (frame, n_rows, kept))
+    except (AttributeError, TypeError):
+        pass
+
+
+def signal_source(obj: Any) -> tuple[pd.DataFrame, int, frozenset[str]] | None:
+    """``(input frame, row count, kept uuids)`` of a signal-rows detector."""
+    source = getattr(obj, _SOURCE, None)
+    return source if isinstance(source, tuple) else None
+
+
+def _rows_of_input(obj: Any, frame: pd.DataFrame) -> int:
+    """Row count of the detector's whole input (``len(frame)`` normally)."""
+    source = signal_source(obj)
+    return source[1] if source is not None else len(frame)
+
+
 def _present_uuids(obj: Any, frame: pd.DataFrame, column: str) -> set[str]:
     """``set(frame[column].dropna().astype(str).unique())``, cached per frame."""
     cached = getattr(obj, _UUIDS, None)
@@ -137,7 +190,10 @@ def check_signals(obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict) -
     present = _present_uuids(obj, frame, column)
     # A method that also takes its own frame (production_df, report_df ...)
     # may name signals that live there.
+    source = signal_source(obj)
     for value in bound.arguments.values():
+        if source is not None and value is source[0] and column == "uuid":
+            continue  # the input itself: its uuids are ``present`` already
         if value is not frame and isinstance(value, pd.DataFrame):
             if column in value.columns:
                 present |= unique_text(value[column])
@@ -303,7 +359,7 @@ def _selected_rows(obj: Any, frame: pd.DataFrame, column: str, uuid: str) -> Any
             and value is not frame
             and not value.empty
             and column in value.columns
-            and len(value) <= len(frame)
+            and len(value) <= _rows_of_input(obj, frame)
         ):
             ids = value[column]
             if ids.iloc[0] == uuid and bool((ids == uuid).all()):
@@ -349,7 +405,12 @@ def check_value_columns(obj: Any, named: Mapping[str, Any], *, lookup: bool) -> 
                 done.add((uuid, value_column))
                 continue
             values = [c for c in VALUE_COLUMNS if c in frame.columns]
-            rows = frame.loc[(frame[column] == uuid).to_numpy(), values]
+            source = signal_source(obj)
+            # A signal-rows detector holds only its own signals; another
+            # signal's rows are read from the input (values not normalized,
+            # but missing where the normalized ones are).
+            held = frame if source is None or uuid in source[2] else source[0]
+            rows = held.loc[(held[column] == uuid).to_numpy(), values]
         done.add((uuid, value_column))
         warn_if_values_elsewhere(rows, uuid, value_column, where=type(obj).__name__)
 
@@ -469,6 +530,8 @@ def checked_init(fn: Callable[..., Any]) -> Callable[..., Any]:
                     f"{type(self).__name__}: the data has no {column!r} column. "
                     f"Columns: {list(frame.columns)}"
                 )
+        if type(self).__init__ is wrapper and vars(type(self)).get(OWN_SIGNALS_ONLY):
+            _request_signal_rows(self, fn, args, kwargs)
         try:
             fn(self, *args, **kwargs)
         except KeyError as err:
@@ -477,6 +540,8 @@ def checked_init(fn: Callable[..., Any]) -> Callable[..., Any]:
             if error is None:
                 raise
             raise error from err
+        finally:
+            _clear(self, _REQUEST)
         if type(self).__init__ is wrapper or not getattr(self, _CHECKING, False):
             check_signals(self, fn, args, kwargs)
             check_value_columns(
@@ -485,3 +550,41 @@ def checked_init(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     _mark_checked(wrapper)
     return wrapper
+
+
+def _request_signal_rows(
+    obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict
+) -> None:
+    """Hand the constructor's frame and signal uuids to ``Base.__init__``."""
+    try:
+        bound = inspect.signature(fn).bind(obj, *args, **kwargs)
+    except TypeError:
+        return
+    bound.apply_defaults()
+    frame = bound.arguments.get("dataframe")
+    uuids: set[str] = set()
+    for name, value in bound.arguments.items():
+        named = _signal_values(name, value)
+        if not named and value is None:
+            continue
+        if not _complete(name, value, named):
+            return  # a signal the uuids found here would miss: keep every row
+        uuids.update(named)
+    if isinstance(frame, pd.DataFrame) and uuids:
+        try:
+            object.__setattr__(obj, _REQUEST, (frame, frozenset(uuids)))
+        except (AttributeError, TypeError):
+            pass
+
+
+def _complete(name: str, value: Any, named: list[str]) -> bool:
+    """Whether ``named`` (from :func:`_signal_values`) is every signal of ``value``."""
+    if name == "signals":
+        return isinstance(value, Mapping) and all(isinstance(k, str) for k in value)
+    if name in _NOT_SIGNALS or not (name.endswith("_uuid") or name.endswith("_uuids")):
+        return True  # not a signal argument
+    if isinstance(value, str):
+        return True
+    if isinstance(value, (Mapping, list, tuple, set)):
+        return all(isinstance(v, str) for v in value)
+    return False
