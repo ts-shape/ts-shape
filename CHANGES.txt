@@ -1,3 +1,19 @@
+# October 21, 2026 (round 17, part J)
+Second audit: loaders, transforms, features, performance loss.
+fix: performance loss splits cycles at window/shift edges (no run time
+  above the window, no false slow periods).
+fix: PowerIntegrator calendar windows (W/MS/ME) use true bounds (no negative
+  kWh); total coverage counts missing meters.
+change: DataHarmonizer no longer extends a signal past its first/last
+  sample; feat: sampling="first"|"interpolate".
+fix: TimeWindowedFeatureTable right-labeled bounds and empty windows;
+  partial cycles at data start; Granger Bonferroni (p_value_adjusted);
+  not_match filters keep NA; exact integer sum/range.
+fix: loaders: naive bounds are UTC everywhere; S3 proxy hours and trim;
+  no duplicates without {H}; ParquetLoader and energy loaders trim rows;
+  float value_double; epoch units inferred; metadata loader robustness.
+  See docs/migration.md.
+
 # October 21, 2026 (round 17, part I)
 Second audit: event log, pipeline, context, signals.
 fix: event ids include caller-bound objects (logs with objects= get new
