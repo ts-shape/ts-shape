@@ -45,3 +45,15 @@ class LoaderError(Exception):
     fails after the configured number of retries. Callers can catch this single
     type regardless of the underlying backend (local, S3, Azure, database).
     """
+
+
+class NotChunkableError(ValueError):
+    """Raised when a detector method cannot run slice by slice.
+
+    :func:`ts_shape.run_chunked` and :meth:`ts_shape.Pipeline.run_stream`
+    only run methods whose chunked result is known to equal the in-memory
+    result (:data:`ts_shape.stream.SUPPORT`). Methods that need the whole
+    signal at once -- whole-signal statistics, a model fit, a baseline taken
+    from the first window -- raise this error. Subclasses ``ValueError`` so
+    existing ``except ValueError`` handlers keep working.
+    """

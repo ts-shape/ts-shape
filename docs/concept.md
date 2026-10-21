@@ -104,5 +104,8 @@ one event log. See [Event log](guides/eventlog/index.md).
 ## Scope
 
 ts-shape runs in memory on pandas. It is meant for batch analysis of
-historian, data-lake and database extracts, not for stream processing or
-low-latency control.
+historian, data-lake and database extracts, not for low-latency control. Data
+larger than memory can be processed slice by slice (one day at a time, with
+events and windows stitched across the borders) by
+[chunked processing](guides/chunked-processing.md), for the detectors whose
+result does not need the whole signal at once.

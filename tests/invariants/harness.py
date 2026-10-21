@@ -398,8 +398,20 @@ def _required(fn: Any, skip: int) -> list[tuple[str, inspect.Parameter]]:
     ]
 
 
-def build_call(cls: Any, method: str, df: pd.DataFrame) -> Any:
-    """Return a zero-argument callable that runs ``cls(df, ...).method(...)``."""
+def build_kwargs(
+    cls: Any,
+    method: str,
+    df: pd.DataFrame,
+    extra: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    """``(constructor kwargs, method kwargs, is_classmethod)`` for a call.
+
+    The arguments :func:`build_call` passes to ``cls(df, ...).method(...)``
+    (a classmethod / staticmethod gets no constructor kwargs). ``extra``
+    gives values for required parameters by name (a callable is called with
+    ``df``); the harness itself passes none.
+    """
+    extra = extra or {}
     raw = inspect.getattr_static(cls, method)
     is_cm = isinstance(raw, (classmethod, staticmethod))
     fn = getattr(cls, method)
@@ -412,23 +424,38 @@ def build_call(cls: Any, method: str, df: pd.DataFrame) -> Any:
             raise Unsupported("classmethod without a dataframe first parameter")
         m_params = m_params[1:]
     for name, param in m_params:
-        m_kwargs[name] = (
-            _resolve(overrides[name], df)
-            if name in overrides
-            else _value_for(name, param)
-        )
+        if name in overrides:
+            m_kwargs[name] = _resolve(overrides[name], df)
+        elif name in extra:
+            m_kwargs[name] = _resolve(extra[name], df)
+        else:
+            m_kwargs[name] = _value_for(name, param)
     for name, value in OPTIONAL_METHOD_ARGS.get((cls.__name__, method), {}).items():
         m_kwargs[name] = _resolve(value, df)
 
     if is_cm:
-        return lambda: fn(df, **m_kwargs)
+        return {}, m_kwargs, True
 
     c_kwargs = {
         k: _resolve(v, df) for k, v in INIT_OVERRIDES.get(cls.__name__, {}).items()
     }
     for name, param in _required(cls.__init__, 2):
-        if name not in c_kwargs:
+        if name in c_kwargs:
+            continue
+        if name in extra:
+            c_kwargs[name] = _resolve(extra[name], df)
+        else:
             c_kwargs[name] = _value_for(name, param)
+    return c_kwargs, m_kwargs, False
+
+
+def build_call(cls: Any, method: str, df: pd.DataFrame) -> Any:
+    """Return a zero-argument callable that runs ``cls(df, ...).method(...)``."""
+    c_kwargs, m_kwargs, is_cm = build_kwargs(cls, method, df)
+    fn = getattr(cls, method)
+
+    if is_cm:
+        return lambda: fn(df, **m_kwargs)
 
     def call() -> Any:
         with warnings.catch_warnings():
