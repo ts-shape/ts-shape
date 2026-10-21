@@ -36,6 +36,7 @@ nav:
   - Context and enrichment: guides/context.md
   - Features for ML: guides/ml-features.md
   - Pipelines: guides/pipeline-builder.md
+  - Chunked processing: guides/chunked-processing.md
   - Event log (XES and OCEL):
     - Overview: guides/eventlog/index.md
     - Object detection: guides/eventlog/objects.md

@@ -1,3 +1,12 @@
+# October 21, 2026 (round 15)
+Chunked processing for data larger than memory.
+feat: run_chunked / iter_chunked run a detector slice by slice (one day by
+  default) with the same result as the in-memory call; time_range_source
+  loads one slice per call; Pipeline.run_stream runs a pipeline the same way.
+feat: NotChunkableError for methods that need the whole signal;
+  ts_shape.stream.SUPPORT lists the chunkable methods.
+  No change to existing behavior. See docs/guides/chunked-processing.md.
+
 # October 18, 2026 (round 14)
 Audit leftovers.
 change: demand_by_period counts periods without orders as zero demand

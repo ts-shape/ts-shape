@@ -355,6 +355,9 @@ class _Step:
     executor: Callable[..., pd.DataFrame]
     detector_id: str | None
     kwargs: dict[str, Any]
+    # The step's target and method name, for Pipeline.run_stream.
+    target: Any = None
+    method: str | None = None
 
 
 @dataclass(frozen=True)
@@ -532,6 +535,8 @@ class Pipeline:
                 executor,
                 None,
                 kwargs,
+                target,
+                method,
             )
         )
         return self
@@ -588,7 +593,9 @@ class Pipeline:
         """
         executor, detector_id = _resolve(target, method, kwargs)
         step_name = self._step_name(name, target, method, kind="detect")
-        self._steps.append(_Step("detect", step_name, executor, detector_id, kwargs))
+        self._steps.append(
+            _Step("detect", step_name, executor, detector_id, kwargs, target, method)
+        )
         return self
 
     @property
@@ -732,6 +739,57 @@ class Pipeline:
         """
         _, _, _, intermediates = self._execute(dataframe, capture=True)
         return intermediates
+
+    def run_stream(
+        self,
+        source: Any,
+        *,
+        chunk: Any = "1D",
+        overlap: Any = None,
+        time_column: str = "systime",
+        max_carry: Any = None,
+        keep_data: bool = False,
+    ) -> PipelineResult:
+        """Execute the pipeline slice by slice on data larger than memory.
+
+        Every detect step runs through :func:`ts_shape.run_chunked`'s engine,
+        so each step's events equal those of :meth:`run` on the concatenated
+        data. Transforms run on each slice separately: they must be
+        **row-local** (each output row depends only on its input row, as unit
+        conversions, scaling and value mappings do). The ``$input`` /
+        ``$prev`` sentinels refer to the current slice.
+
+        Args:
+            source: Frames or ``(name, frame)`` pairs in time order, or a
+                :func:`ts_shape.time_range_source`.
+            chunk: Slice length (default ``"1D"``).
+            overlap: History before each slice; default per detector.
+            time_column: Time column of the source frames.
+            max_carry: Longest an event may stay open across slices
+                (default 7 days).
+            keep_data: When True, ``result.data`` is the transformed data of
+                every slice concatenated (it then holds all rows in memory);
+                by default it is an empty frame with the transformed columns.
+
+        Returns:
+            A :class:`PipelineResult`.
+
+        Raises:
+            NotChunkableError: If a detect step's method cannot run chunked
+                (see :data:`ts_shape.stream.SUPPORT`), or is a plain callable.
+            TypeError: If the pipeline has a ``.source()`` step.
+        """
+        from ts_shape.stream import _run_pipeline
+
+        return _run_pipeline(
+            self,
+            source,
+            chunk=chunk,
+            overlap=overlap,
+            time_column=time_column,
+            max_carry=max_carry,
+            keep_data=keep_data,
+        )
 
     def __repr__(self) -> str:
         return self.describe()

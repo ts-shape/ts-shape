@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from ts_shape.errors import DataQualityWarning as DataQualityWarning
     from ts_shape.errors import LoaderConfigWarning as LoaderConfigWarning
     from ts_shape.errors import LoaderError as LoaderError
+    from ts_shape.errors import NotChunkableError as NotChunkableError
     from ts_shape.errors import PerformanceWarning as PerformanceWarning
     from ts_shape.errors import TsShapeWarning as TsShapeWarning
     from ts_shape.eventlog import OCEL_ACTIVITY as OCEL_ACTIVITY
@@ -462,6 +463,9 @@ if TYPE_CHECKING:
     from ts_shape.signals import SignalSpec as SignalSpec
     from ts_shape.signals import SignalSpecs as SignalSpecs
     from ts_shape.signals import infer_specs as infer_specs
+    from ts_shape.stream import iter_chunked as iter_chunked
+    from ts_shape.stream import run_chunked as run_chunked
+    from ts_shape.stream import time_range_source as time_range_source
     from ts_shape.transform.calculator.numeric_calc import IntegerCalc as IntegerCalc
     from ts_shape.transform.calculator.power_integration import (
         PowerIntegrator as PowerIntegrator,
@@ -640,6 +644,9 @@ _LAZY: dict[str, str] = {
     "make_id_signal": "ts_shape.datasets",
     "Pipeline": "ts_shape.pipeline",
     "PipelineResult": "ts_shape.pipeline",
+    "iter_chunked": "ts_shape.stream",
+    "run_chunked": "ts_shape.stream",
+    "time_range_source": "ts_shape.stream",
     "ValueMapper": "ts_shape.context.value_mapping",
     # -- transform ------------------------------------------------------
     "BooleanFilter": "ts_shape.transform.filter.boolean_filter",
@@ -685,6 +692,7 @@ _ERRORS: dict[str, str] = {
         "DataQualityWarning",
         "LoaderConfigWarning",
         "LoaderError",
+        "NotChunkableError",
         "PerformanceWarning",
         "TsShapeWarning",
     )

@@ -6,6 +6,31 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 15: chunked processing
+
+New only; no existing result changes. See
+[Chunked processing](guides/chunked-processing.md).
+
+- `ts_shape.run_chunked(source, Target, "method", chunk="1D", **kwargs)` runs
+  a detector slice by slice and returns the same frame as
+  `Target(all_data, ...).method(...)`. Events and windows that cross a slice
+  border are stitched: open intervals are carried into the next slice, and
+  overnight shift windows belong to the day they start. `iter_chunked` yields
+  finished rows slice by slice. `time_range_source(load, start, end)` loads
+  one slice per call, for databases. A source can be any iterable of frames
+  or `(name, frame)` pairs in time order, such as a loader's
+  `stream_by_time_range`.
+- `Pipeline.run_stream(source, chunk="1D")` runs a pipeline the same way.
+  Transforms must be row-local. `keep_data=True` keeps the transformed data.
+- `ts_shape.NotChunkableError` (a `ValueError`) is raised for methods that
+  need the whole signal: whole-signal statistics, model fits, first-window
+  baselines and static summaries. `ts_shape.stream.SUPPORT` lists the
+  chunkable methods, each checked against the in-memory result by
+  `tests/test_stream_equivalence.py`.
+- On data in a time zone with DST, chunked runs reject windows of several
+  hours that are not whole days (for example `"8h"`). Use a window that
+  divides an hour, whole days, or UTC data.
+
 ## October 2026, round 14: audit leftovers
 
 Each change is pinned by a hand-computed test in
