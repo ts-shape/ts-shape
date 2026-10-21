@@ -762,7 +762,8 @@ class Pipeline:
         Args:
             source: Frames or ``(name, frame)`` pairs in time order, or a
                 :func:`ts_shape.time_range_source`.
-            chunk: Slice length (default ``"1D"``).
+            chunk: Slice length (default ``"1D"``), or a calendar period
+                (``"W"``, ``"MS"``) as in :func:`ts_shape.run_chunked`.
             overlap: History before each slice; default per detector.
             time_column: Time column of the source frames.
             max_carry: Longest an event may stay open across slices
@@ -776,7 +777,8 @@ class Pipeline:
 
         Raises:
             NotChunkableError: If a detect step's method cannot run chunked
-                (see :data:`ts_shape.stream.SUPPORT`), or is a plain callable.
+                (see :data:`ts_shape.stream.SUPPORT` and
+                :data:`ts_shape.stream.CONDITIONAL`), or is a plain callable.
             TypeError: If the pipeline has a ``.source()`` step.
         """
         from ts_shape.stream import _run_pipeline
