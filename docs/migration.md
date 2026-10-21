@@ -6,6 +6,87 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 16: DST-day windows, more chunkable methods
+
+Each change is pinned by a hand-computed test in
+`tests/reference/test_round16_dst.py`. `tests/invariants/test_dst_windows.py`
+checks every summary method on both DST changes.
+
+### Results that change (DST days on tz-aware data only)
+
+On a DST change a daily window is 23 h (82800 s, spring) or 25 h (90000 s,
+fall) long. These methods measured it as a fixed 24 h; they now use the real
+window. Windows that do not cross a DST change are unchanged, bit for bit.
+
+- Time shares, percentages and rates:
+  - `ThresholdMonitoringEvents.time_above_threshold`: `time_above`,
+    `time_above_seconds`, `pct_above` and `time_above_pct`, in both
+    `interval_end` modes. A signal that is always above the threshold on
+    2024-03-31 in Europe/Berlin reads 82800 s and 100 %. Before, it read
+    86400 s, or 95.8 % when the data ended at midnight.
+  - `ThresholdMonitoringEvents.threshold_exceedance_trend`:
+    `total_duration(_seconds)`.
+  - `MicroStopEvents.micro_stop_frequency`: `pct_of_window` and
+    `share_of_window_pct`.
+  - `DutyCycleEvents.duty_cycle_by_window(time_weighted=False)`: `on_time`
+    and `off_time`.
+  - `InventoryMonitoringEvents.consumption_rate`: the rate per hour.
+  - `FlowMetricsEvents.throughput` and `flow_summary`:
+    `throughput_per_hour`.
+  - `DisturbanceRecoveryEvents.disturbance_frequency`: `pct_time_disturbed`
+    and `time_disturbed_pct`.
+- `end` is the next local midnight and `duration_seconds` the real length,
+  instead of start + 24 h. Affected:
+  - `FlowMetricsEvents.throughput`, `flow_summary` and `wip_over_time`
+  - `BottleneckDetectionEvents.detect_bottleneck`
+  - `AssetHealthIndexEvents.health_index`
+  - `MultiSensorValidationEvents.detect_disagreement`
+  - `SensorDriftEvents.detect_zero_drift`
+  - `MaterialBalanceEvents.detect_balance_exceedance`
+  - `LineBalancingEvents.station_cycle_times` and `balance_metrics`
+  - `PerformanceLossEvents.slow_periods`
+  - `ControlLoopHealthEvents.detect_oscillation`
+- Membership follows the real day:
+  - `SensorDriftEvents.detect_zero_drift`, `detect_span_drift` and
+    `calibration_health` look up the reference over the real day. A 23 h
+    day no longer includes reference samples from the next day's first
+    hour.
+  - `ControlLoopHealthEvents.loop_health_summary` counts oscillation
+    episodes in the real window (`oscillation_count`).
+  - `DutyCycleEvents.excessive_cycling` averages the intervals in the real
+    window (`avg_on_duration` / `avg_off_duration`).
+- `DisturbanceRecoveryEvents.disturbance_frequency` also assigns
+  disturbances to windows by the real day.
+
+### Chunked processing
+
+- `ts_shape.stream.CONDITIONAL` (`"Class.method" -> Condition(argument,
+  reason)`) lists methods that run chunked only with one argument:
+  - `DataGapAnalysisEvents.detect_gaps` and `coverage_by_period` need
+    `min_gap=...`.
+  - `AnomalyClassificationEvents.detect_flatline` needs
+    `interval_end="last_sample"`.
+  - `ChangeoverEvents.changeover_window` works, but not with
+    `until="stable_band"`.
+
+  Without it, `NotChunkableError` names the argument to pass.
+- Calendar chunks: `chunk="W"` (Monday to Monday; also `"W-<DAY>"`) and
+  `chunk="MS"`, cut at local midnight.
+  `PeriodSummaryEvents.weekly_summary` and `monthly_summary` are chunkable
+  with `chunk="W"` and `chunk="MS"`.
+- `MicroStopEvents.micro_stop_frequency` is chunkable. Empty windows between
+  slices are filled in on merge.
+- `iter_chunked` yields all `detect_gaps` rows, and the last
+  `coverage_by_period` window, after the last slice. They need the whole
+  run's sample count or median sampling step.
+- Fix: chunked `ChangeoverEvents.detect_changeover` with `min_duration`,
+  `changeover_window` with a `config` `min_duration`, and
+  `MicroStopEvents.micro_stop_impact` now match the in-memory result when an
+  event crosses a slice border.
+- `DataGapAnalysisEvents.interpolation_candidates` is no longer chunkable.
+  Its `safe_to_interpolate` uses the whole signal's standard deviation, so
+  run it in memory.
+
 ## October 2026, round 15: chunked processing
 
 New only; no existing result changes. See

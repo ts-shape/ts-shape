@@ -1,3 +1,19 @@
+# October 21, 2026 (round 16)
+DST-day windows; more chunkable methods.
+fix: on tz-aware data, daily windows on a DST change are measured over their
+  real length (23 h / 25 h): time shares, percentages, rates, ends, durations
+  and window membership in threshold, micro-stop, duty-cycle, inventory, flow,
+  disturbance, bottleneck, asset-health, sensor-drift, multi-sensor, material
+  balance, line balancing, performance loss and control-loop methods. Other
+  windows are unchanged bit for bit.
+feat: stream.CONDITIONAL (chunkable with an explicit argument: detect_gaps,
+  coverage_by_period, detect_flatline, changeover_window); calendar chunks
+  "W" / "MS" for weekly / monthly summaries; micro_stop_frequency chunkable.
+fix: chunked results across slice borders for detect_changeover with
+  min_duration, changeover_window and micro_stop_impact;
+  interpolation_candidates is no longer chunkable.
+  See docs/migration.md.
+
 # October 21, 2026 (round 15)
 Chunked processing for data larger than memory.
 feat: run_chunked / iter_chunked run a detector slice by slice (one day by
