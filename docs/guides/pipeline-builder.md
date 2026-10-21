@@ -39,8 +39,10 @@ The pipeline is linear. You declare the role of each step:
 Step names are unique: a second step with an explicit name that is taken
 raises `ValueError`, while a transform without `name=` gets a `_2`, `_3`
 suffix. `"input"` is reserved for the input frame in `run_steps()`. Each
-transform works on a copy of the working DataFrame, so a transform that
-changes its input in place never changes the DataFrame passed to `run()`.
+transform and detect step works on its own copy of the working DataFrame,
+and every `"$input"` sentinel is a fresh copy, so a step that changes its
+input in place never changes the DataFrame passed to `run()` or the input of
+a later step.
 
 ## Step targets
 
@@ -56,7 +58,44 @@ or a `(class, "method")` pair. A classmethod or staticmethod (the filters,
 `IntegerCalc`) is called on the class; for an instance method (detectors,
 `DataHarmonizer`) the class is instantiated first. Keyword arguments are
 passed flat and routed to the constructor or the method by parameter name. An
-unknown keyword raises a `ValueError` listing what both accept.
+unknown keyword raises a `ValueError` listing what both accept; for a
+classmethod or staticmethod the check runs against its own signature when
+the step is added.
+
+### A keyword both sides accept goes to both
+
+When the constructor and the method both take a parameter of the same name,
+a flat keyword is passed to **both**. That is what you want for shared
+settings such as `time_column`, but a trap when the two parameters mean
+different things:
+
+- `LongDowntimeEvents.count_events_between_gaps`: the constructor's
+  `value_column` is the column of the **run-state** signal (default
+  `value_bool`), the method's `value_column` the column of the **production
+  counter** (default `value_integer`). A flat `value_column="value_integer"`
+  makes the constructor read the run state from `value_integer`, so no
+  downtime is found.
+- `ContinuousProcessAlignmentEvents.align_to_reference`: the constructor's
+  `value_column` is the line-speed column, the method's the station value
+  carried through.
+
+Prefix the keyword to send it to one side only: `init__<name>=` goes to the
+constructor only, `method__<name>=` to the method only. A prefixed name is
+checked against that side's signature, and wins over the flat name on its
+side.
+
+```python
+from ts_shape.events.production.long_downtime_events import LongDowntimeEvents
+
+pipe = Pipeline(name="between-stops").detect(
+    LongDowntimeEvents, "count_events_between_gaps",
+    name="windows",
+    run_state_uuid="m:run",                 # constructor only
+    production_df="$input", production_uuid="m:count",
+    aggregation="sum",
+    method__value_column="value_integer",   # the counter column, method only
+)
+```
 
 ## Loading inside the pipeline
 

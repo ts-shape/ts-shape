@@ -69,7 +69,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning, NotChunkableError
-from ts_shape.pipeline import _param_names, _resolve
+from ts_shape.pipeline import _param_names, _plain_kwargs, _resolve
 from ts_shape.utils.frames import to_ns
 
 if TYPE_CHECKING:
@@ -939,7 +939,7 @@ def _effective(target: type, method: str, kwargs: dict[str, Any]) -> dict[str, A
     init, func = getattr(target, "__init__"), getattr(target, method)
     params = {**_signature_defaults(init), **_signature_defaults(func)}
     renames = {**_renames(init), **_renames(func)}
-    for key, value in kwargs.items():
+    for key, value in _plain_kwargs(kwargs).items():
         params[renames.get(key, key)] = value
     return params
 
@@ -948,7 +948,9 @@ def _explicit(target: type, method: str, kwargs: dict[str, Any]) -> dict[str, An
     """``kwargs`` under their current names (deprecated names resolved)."""
     init, func = getattr(target, "__init__"), getattr(target, method)
     renames = {**_renames(init), **_renames(func)}
-    return {renames.get(key, key): value for key, value in kwargs.items()}
+    return {
+        renames.get(key, key): value for key, value in _plain_kwargs(kwargs).items()
+    }
 
 
 def _as_delta(value: Any) -> pd.Timedelta | None:
@@ -1134,7 +1136,25 @@ def _probe_kwargs(params: dict[str, Any], kwargs: dict[str, Any]) -> dict[str, A
         delta = _as_delta(params.get(name))
         if delta is not None and delta > pd.Timedelta(0):
             off[name] = "0s"
-    return {**kwargs, **off} if off else {}
+    if not off:
+        return {}
+    # Keep an ``init__`` / ``method__`` prefix, so the zero goes to the side
+    # the caller routed the filter to.
+    out = dict(kwargs)
+    for key in kwargs:
+        name = _unprefixed(key)
+        if name in off:
+            out[key] = off[name]
+    named = {_unprefixed(key) for key in kwargs}
+    out.update({name: value for name, value in off.items() if name not in named})
+    return out
+
+
+def _unprefixed(key: str) -> str:
+    for prefix in ("init__", "method__"):
+        if key.startswith(prefix):
+            return key[len(prefix) :]
+    return key
 
 
 def _plan(
@@ -1860,9 +1880,17 @@ def _run_pipeline(
     carry = _max_carry(max_carry)
     engines: dict[str, _Engine] = {}
     detector_ids: dict[str, str | None] = {}
+    # How many transforms run before each detect step: as in Pipeline.run,
+    # a detect step sees the data transformed only by the steps before it.
+    stage_of: dict[str, int] = {}
+    n_before = 0
     for step in steps:
+        if step.kind == "transform":
+            n_before += 1
+            continue
         if step.kind != "detect":
             continue
+        stage_of[step.name] = n_before
         plan = _plan(
             step.target,
             step.method,
@@ -1887,9 +1915,11 @@ def _run_pipeline(
     data_empty: pd.DataFrame | None = None
     slicer = _Slicer(source, step_len, time_column, carry, watch)
 
-    def _transform(frame: pd.DataFrame) -> pd.DataFrame:
+    def _stages(frame: pd.DataFrame) -> list[pd.DataFrame]:
+        """``frame`` after 0, 1, ... all transforms (``[-1]`` is the result)."""
         raw = frame
         working = frame
+        stages = [frame]
         for index, step in enumerate(transforms):
             try:
                 result = step.executor(working.copy(), raw)
@@ -1904,34 +1934,36 @@ def _run_pipeline(
                     f"{type(result).__name__}, expected a DataFrame"
                 )
             working = result
-        return working
+            stages.append(working)
+        return stages
 
     for sl in slicer:
-        core = _transform(sl.core)
-        ahead = _transform(sl.ahead) if len(sl.ahead) else sl.ahead
+        cores = _stages(sl.core)
+        aheads = _stages(sl.ahead) if len(sl.ahead) else None
         if data_empty is None:
-            data_empty = core.iloc[:0]
+            data_empty = cores[-1].iloc[:0]
         if keep_data:
-            data_parts.append(core)
+            data_parts.append(cores[-1])
         for name, engine in engines.items():
-            outputs[name].append(engine.step(sl, core, ahead))
+            stage = stage_of[name]
+            ahead = aheads[stage] if aheads is not None else sl.ahead
+            outputs[name].append(engine.step(sl, cores[stage], ahead))
     for name, engine in engines.items():
         outputs[name].append(engine.close())
 
-    empty_in: pd.DataFrame | None = None
+    empty_stages: list[pd.DataFrame] | None = None
     events: dict[str, pd.DataFrame] = {}
     for name, engine in engines.items():
         if engine.empty is None:
-            if empty_in is None:
-                empty_in = _transform(_empty_input(slicer.template, time_column))
+            if empty_stages is None:
+                empty_stages = _stages(_empty_input(slicer.template, time_column))
+            empty_in = empty_stages[stage_of[name]]
             engine.empty = engine.plan.executor(empty_in, empty_in)
         events[name] = _finish(outputs[name], engine.empty)
     if data_empty is None:
-        data_empty = (
-            empty_in
-            if empty_in is not None
-            else _transform(_empty_input(slicer.template, time_column))
-        )
+        if empty_stages is None:
+            empty_stages = _stages(_empty_input(slicer.template, time_column))
+        data_empty = empty_stages[-1]
     data = _finish(data_parts, data_empty) if keep_data else data_empty.iloc[:0]
     return PipelineResult(
         name=pipe.name, data=data, events=events, _detector_ids=detector_ids

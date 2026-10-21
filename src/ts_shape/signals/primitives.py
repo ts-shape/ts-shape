@@ -35,7 +35,6 @@ from ts_shape.utils.frames import (
     localize_like,
     require_columns,
     same_time_axis,
-    window_offset,
 )
 from ts_shape.utils.normalize import normalize_signal_frame, text_mask
 from ts_shape.utils.shifts import DEFAULT_SHIFTS
@@ -54,6 +53,11 @@ __all__ = [
 INTERVAL_COLUMNS = ["start", "end", "state", "duration_seconds", "sample_count"]
 
 
+#: Without a uuid column, a frame whose timestamps repeat this often is taken
+#: to hold several signals.
+MULTI_SIGNAL_DUPLICATE_SHARE = 0.1
+
+
 def _frame_times(
     dataframe: pd.DataFrame, spec: SignalSpec, time_column: str, uuid_column: str
 ) -> tuple[pd.DataFrame, pd.Series]:
@@ -62,8 +66,32 @@ def _frame_times(
     rows = dataframe
     if uuid_column in dataframe.columns:
         rows = dataframe[text_mask(dataframe[uuid_column], str(spec.uuid))]
+    else:
+        _check_single_signal(dataframe, spec, time_column, uuid_column)
     times = as_datetime(rows[time_column], where=f"signal {spec.uuid!r}")
     return rows, times
+
+
+def _check_single_signal(
+    dataframe: pd.DataFrame, spec: SignalSpec, time_column: str, uuid_column: str
+) -> None:
+    """Refuse a frame without ``uuid_column`` that clearly holds several signals.
+
+    A frame without the id column is read as one signal. When its
+    timestamps repeat (at least :data:`MULTI_SIGNAL_DUPLICATE_SHARE` of the
+    rows) it holds several signals, and nothing could be filtered.
+    """
+    n = len(dataframe)
+    if n < 2:
+        return
+    repeated = int(dataframe[time_column].duplicated().sum())
+    if repeated / n >= MULTI_SIGNAL_DUPLICATE_SHARE:
+        raise ValueError(
+            f"signal {spec.uuid!r}: the frame has no {uuid_column!r} column, "
+            f"but {repeated} of its {n} timestamps repeat, so it looks like "
+            f"several signals; pass uuid_column= naming the signal-id column, "
+            f"or pass the rows of one signal only"
+        )
 
 
 def signal_series(
@@ -83,7 +111,9 @@ def signal_series(
         dataframe: Long-format frame.
         spec: The signal's spec (``uuid`` and ``value_column``).
         time_column: Timestamp column.
-        uuid_column: Signal identifier column; ignored when absent.
+        uuid_column: Signal identifier column. A frame without it is read
+            as one signal (a ``ValueError`` when its timestamps repeat, i.e.
+            it clearly holds several).
 
     Returns:
         Values indexed by time, named after ``spec.uuid``.
@@ -91,6 +121,8 @@ def signal_series(
     Raises:
         ColumnNotFoundError: When ``time_column`` or ``spec.value_column`` is
             missing.
+        ValueError: When the frame has no ``uuid_column`` but clearly holds
+            several signals.
     """
     return _series(dataframe, spec, time_column, uuid_column, keep_missing=False)
 
@@ -121,6 +153,7 @@ def intervals(
     *,
     data_end: pd.Timestamp | None = None,
     time_column: str = "systime",
+    uuid_column: str = "uuid",
 ) -> pd.DataFrame:
     """Constant-value intervals of a held signal, correctly closed.
 
@@ -130,7 +163,10 @@ def intervals(
       ends at its last sample and a new interval starts after the gap, even
       if the value is unchanged.
     * The final interval ends at ``data_end`` when given (e.g. "now" or the
-      end of the analysis window), otherwise at its last sample.
+      end of the analysis window), otherwise at its last sample. As in
+      :func:`per_window`, the last value is not held across more than
+      ``spec.max_gap``: when ``data_end`` is further than that after the
+      last sample, the final interval ends at its last sample.
 
     Args:
         dataframe: Long-format frame.
@@ -138,6 +174,10 @@ def intervals(
         data_end: End of the last interval; a naive bound on tz-aware data is
             read in the data's timezone.
         time_column: Timestamp column.
+        uuid_column: Signal identifier column; rows of other uuids are
+            ignored. A frame without it is read as one signal (a
+            ``ValueError`` when its timestamps repeat, i.e. it clearly holds
+            several).
 
     Returns:
         DataFrame with ``start``, ``end``, ``state``, ``duration_seconds``,
@@ -147,7 +187,7 @@ def intervals(
         ColumnNotFoundError: When ``time_column`` or ``spec.value_column`` is
             missing.
     """
-    s = signal_series(dataframe, spec, time_column=time_column)
+    s = signal_series(dataframe, spec, time_column=time_column, uuid_column=uuid_column)
     if s.empty:
         return pd.DataFrame(
             {
@@ -177,6 +217,9 @@ def intervals(
     last_end = (
         localize_like(data_end, times) if data_end is not None else times.iloc[-1]
     )
+    if spec.max_gap is not None and last_end - times.iloc[-1] > spec.max_gap:
+        # No data for longer than max_gap: the value is not held to data_end.
+        last_end = times.iloc[-1]
     end.iloc[-1] = max(last_end, times.iloc[-1]) if spec.holds_value else times.iloc[-1]
 
     frame = pd.DataFrame(
@@ -200,6 +243,7 @@ def increments(
     spec: SignalSpec,
     *,
     time_column: str = "systime",
+    uuid_column: str = "uuid",
 ) -> pd.Series:
     """Per-reading increase of a counter, reset-aware.
 
@@ -213,6 +257,10 @@ def increments(
         dataframe: Long-format frame.
         spec: The counter's spec.
         time_column: Timestamp column.
+        uuid_column: Signal identifier column; rows of other uuids are
+            ignored. A frame without it is read as one signal (a
+            ``ValueError`` when its timestamps repeat, i.e. it clearly holds
+            several).
 
     Returns:
         Float increments indexed by reading time.
@@ -224,7 +272,9 @@ def increments(
     """
     if spec.kind != "counter":
         raise ValueError(f"increments() needs a counter; {spec.uuid!r} is {spec.kind}")
-    s = pd.to_numeric(signal_series(dataframe, spec, time_column=time_column))
+    s = pd.to_numeric(
+        signal_series(dataframe, spec, time_column=time_column, uuid_column=uuid_column)
+    )
     if spec.reset_policy == "none":
         return s.diff().fillna(0.0).astype(float)
     return counter_increments(s)
@@ -237,6 +287,7 @@ def per_window(
     *,
     data_end: pd.Timestamp | None = None,
     time_column: str = "systime",
+    uuid_column: str = "uuid",
 ) -> pd.Series:
     """The right per-window aggregate for the signal's kind.
 
@@ -256,6 +307,10 @@ def per_window(
         data_end: Hold the last value until this time; a naive bound on
             tz-aware data is read in the data's timezone.
         time_column: Timestamp column.
+        uuid_column: Signal identifier column; rows of other uuids are
+            ignored. A frame without it is read as one signal (a
+            ``ValueError`` when its timestamps repeat, i.e. it clearly holds
+            several).
 
     Returns:
         A float Series indexed by window start and named after ``spec.uuid``
@@ -267,7 +322,7 @@ def per_window(
         ColumnNotFoundError: When ``time_column`` or ``spec.value_column`` is
             missing.
     """
-    s = _series(dataframe, spec, time_column, "uuid", keep_missing=True)
+    s = _series(dataframe, spec, time_column, uuid_column, keep_missing=True)
     end = localize_like(data_end, s.index.to_series()) if data_end is not None else None
     if spec.kind == "counter":
         out = counter_per_window(
@@ -321,6 +376,7 @@ def align(
     right_spec: SignalSpec,
     *,
     time_column: str = "systime",
+    uuid_column: str = "uuid",
 ) -> pd.DataFrame:
     """Pair each sample of ``left`` with the ``right`` value in force at that time.
 
@@ -338,6 +394,10 @@ def align(
         right_spec: Spec of the right signal.
         time_column: Timestamp column of both frames; also the name of the
             output time column.
+        uuid_column: Signal identifier column; rows of other uuids are
+            ignored. A frame without it is read as one signal (a
+            ``ValueError`` when its timestamps repeat, i.e. it clearly holds
+            several).
 
     Returns:
         DataFrame with ``<time_column>``, ``<left uuid>``, ``<right uuid>``.
@@ -349,8 +409,10 @@ def align(
         ColumnNotFoundError: When a frame lacks ``time_column`` or its value
             column.
     """
-    a = signal_series(left, left_spec, time_column=time_column)
-    b = signal_series(right, right_spec, time_column=time_column)
+    a = signal_series(left, left_spec, time_column=time_column, uuid_column=uuid_column)
+    b = signal_series(
+        right, right_spec, time_column=time_column, uuid_column=uuid_column
+    )
     left_name, right_name = str(left_spec.uuid), str(right_spec.uuid)
     if left_name == right_name:
         left_name, right_name = f"{left_name}_left", f"{right_name}_right"
@@ -408,6 +470,11 @@ def windows(
     at 13:00+02:00 after the spring change, not at 12:00). For wall-clock
     windows such as shifts use :func:`shift_windows`.
 
+    Every window is ``[start, end)`` and the first one contains ``start``,
+    also for frequencies ``resample`` labels by their last day: ``"1W"``
+    gives Monday-to-Monday weeks (``"W-SUN"`` weeks end on Sunday), ``"ME"``
+    calendar months from the 1st.
+
     Example:
         >>> from ts_shape.signals.primitives import windows
         >>> w = windows("2024-03-30", "2024-04-01", "12h", tz="Europe/Berlin")
@@ -433,17 +500,24 @@ def windows(
         DataFrame with ``start``, ``end``, ``duration_seconds``; empty when
         ``start >= end``.
     """
+    from ts_shape.events._windows import window_bounds
+
     t0, t1 = _localize(pd.Timestamp(start), tz), _localize(pd.Timestamp(end), tz)
     t0, t1 = _same_tz(t0, t1)
-    offset = window_offset(freq)
     if t0 >= t1:
         starts = pd.DatetimeIndex([], tz=t0.tz)
+        ends = starts
     else:
-        starts = (
+        labels = (
             pd.Series(0, index=pd.DatetimeIndex([t0, t1])).resample(freq).count().index
         )
-        starts = starts[starts < t1]
-    ends = pd.DatetimeIndex([s + offset for s in starts], tz=starts.tz)
+        # ``resample`` labels right-labeled bins ("W", "ME", ...) by their
+        # last day; window_bounds turns every label into the real
+        # [start, end) of its calendar window.
+        lo, hi = window_bounds(pd.Series(labels), freq)
+        keep = ((lo < t1) & (hi > t0)).to_numpy()
+        starts = pd.DatetimeIndex(lo[keep])
+        ends = pd.DatetimeIndex(hi[keep])
     out = pd.DataFrame({"start": starts, "end": ends})
     out["duration_seconds"] = (out["end"] - out["start"]).dt.total_seconds()
     return out
