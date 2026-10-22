@@ -6,6 +6,17 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 19 follow-up: `setup` group
+
+- `identify_objects` reports `setup` when a recipe, a tool and a fixture
+  score within 0.15 of each other. This happens for a tiny pool of codes held
+  for hours that changes with no other id: without a work order or a format
+  cue, the data cannot tell a recipe from a tool or a fixture.
+- Before, the best guess among the three was reported with a low confidence.
+- A recipe tied to a work order, and a tool or fixture with a format cue,
+  are still reported as their own type.
+- `hints` and `register_identifier_pattern` separate them as before.
+
 ## October 2026, round 19: object-identifier signals (new)
 
 New, plus pandas 3.1 compatibility (below); no other result changes.

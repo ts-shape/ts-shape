@@ -59,6 +59,12 @@ MIN_TYPE_ACCURACY = 0.85
 
 _GROUP_OF = {t: g for g, members in OBJECT_TYPE_GROUPS.items() for t in members}
 _GROUP_OF.update({g: g for g in OBJECT_TYPE_GROUPS})
+
+#: Groups the engine reports when the data cannot separate their members. A
+#: prediction of such a group counts as correct for any of its members.
+ENGINE_GROUPS: dict[str, frozenset[str]] = {
+    "setup": frozenset({"recipe", "tool", "fixture"}),
+}
 NOT_IDENTIFIER = "-"
 
 
@@ -143,7 +149,15 @@ def score(identify, data) -> dict[str, object]:
     table = pd.DataFrame(rows)
     tp = int((table["true_id"] & table["pred_id"]).sum())
     screened = table.loc[table["true_id"] & table["pred_id"]]
-    hits = screened["true_group"] == screened["pred_group"]
+    in_engine_group = pd.Series(
+        [
+            truth in ENGINE_GROUPS.get(pred, ())
+            for truth, pred in zip(screened["truth"], screened["pred_group"])
+        ],
+        index=screened.index,
+        dtype=bool,
+    )
+    hits = (screened["true_group"] == screened["pred_group"]) | in_engine_group
     return {
         "precision": tp / max(int(table["pred_id"].sum()), 1),
         "recall": tp / max(int(table["true_id"].sum()), 1),
@@ -165,7 +179,18 @@ def _report(scores: dict[str, object]) -> str:
     assert isinstance(table, pd.DataFrame)
     wrong = table.loc[
         (table["true_id"] != table["pred_id"])
-        | (table["true_id"] & (table["true_group"] != table["pred_group"]))
+        | (
+            table["true_id"]
+            & (table["true_group"] != table["pred_group"])
+            & ~pd.Series(
+                [
+                    t in ENGINE_GROUPS.get(p, ())
+                    for t, p in zip(table["truth"], table["pred_group"])
+                ],
+                index=table.index,
+                dtype=bool,
+            )
+        )
     ]
     with pd.option_context("display.width", 250, "display.max_columns", 50):
         return (

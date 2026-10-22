@@ -1,3 +1,7 @@
+# October 22, 2026 (round 19 follow-up)
+feat: identify_objects reports the setup group (recipe, tool or fixture) when
+  the data cannot separate them, instead of a low-confidence guess.
+
 # October 22, 2026 (round 19)
 New: find and classify object-identifier signals.
 fix: compatibility with pandas 3.1
