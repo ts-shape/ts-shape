@@ -8,36 +8,29 @@ This test runs every ``(class, method)`` of the registry on the
 signals) and compares a digest of each result, of the warnings recorded
 during the call (category, text and the file they point at), of the error
 raised, and of ``get_dataframe()`` / ``repr()`` of the detector, with the
-digests captured from the code before the change.
-
-The digests depend on the pandas version (dtypes and reprs differ), so they
-are pinned per ``major.minor``; a version without digests is skipped.
-Regenerate (only when a result is meant to change) with::
-
-    PYTHONPATH=src python -m tests.invariants.test_signal_rows_equivalence --update
+same call run with the fast path switched off (every class on the full-frame
+path, as before round 18). Both runs happen in the same process, so the
+comparison does not depend on the machine's floating-point results.
 """
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import hashlib
 import json
 import os
 import re
-import sys
 import warnings
+from collections.abc import Iterator
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from . import harness
 
-BASELINE = Path(__file__).with_name("signal_rows_baseline.json")
-PANDAS = ".".join(pd.__version__.split(".")[:2])
 _ADDRESS = re.compile(r"0x[0-9a-fA-F]+")
 
 
@@ -152,39 +145,46 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-def pair_digests(pair: tuple[str, str]) -> dict[str, str]:
-    """``{variant: digest}`` of one registry method on every input."""
+@contextlib.contextmanager
+def _full_frame_path() -> Iterator[None]:
+    """Run ``Base`` as before round 18: no class keeps only its signal rows."""
+    from ts_shape.utils import base
+
+    saved = base.OWN_SIGNALS_ONLY
+    base.OWN_SIGNALS_ONLY = "_no_class_sets_this_attribute"
+    try:
+        yield
+    finally:
+        base.OWN_SIGNALS_ONLY = saved
+
+
+def pair_mismatches(pair: tuple[str, str]) -> list[str]:
+    """Inputs on which one registry method differs between the two paths."""
     import ts_shape
 
     cls_name, method = pair
     cls = getattr(ts_shape, cls_name)
-    return {
-        name: _digest(_call(cls, method, frame.copy()))
-        for name, frame in sorted(_variants().items())
-    }
+    bad = []
+    for name, frame in sorted(_variants().items()):
+        fast = _digest(_call(cls, method, frame.copy()))
+        with _full_frame_path():
+            full = _digest(_call(cls, method, frame.copy()))
+        if fast != full:
+            bad.append(name)
+    return bad
 
 
-def digest_of(per_variant: dict[str, str]) -> str:
-    return _digest(sorted(per_variant.items()))
-
-
-def compute(pairs: list[tuple[str, str]]) -> dict[str, dict[str, str]]:
+def compute(pairs: list[tuple[str, str]]) -> dict[str, list[str]]:
     jobs = harness._jobs()
     if jobs <= 1 or len(pairs) < 40:
-        values = [pair_digests(p) for p in pairs]
+        values = [pair_mismatches(p) for p in pairs]
     else:
         import multiprocessing
 
         ctx = multiprocessing.get_context("spawn")
         with ProcessPoolExecutor(max_workers=jobs, mp_context=ctx) as pool:
-            values = list(pool.map(pair_digests, pairs, chunksize=4))
-    return {f"{c}.{m}": v for (c, m), v in zip(pairs, values, strict=True)}
-
-
-def load() -> dict[str, dict[str, str]]:
-    if not BASELINE.exists():
-        return {}
-    return dict(json.loads(BASELINE.read_text(encoding="utf-8")))
+            values = list(pool.map(pair_mismatches, pairs, chunksize=4))
+    return {f"{c}.{m}": v for (c, m), v in zip(pairs, values, strict=True) if v}
 
 
 # ---------------------------------------------------------------------------
@@ -192,31 +192,6 @@ def load() -> dict[str, dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 
-def test_results_and_warnings_match_the_pre_round18_baseline():
-    pinned = load().get(PANDAS)
-    if pinned is None:
-        pytest.skip(f"no digests pinned for pandas {PANDAS}")
-    entries = harness.entries()
-    assert set(pinned) == {f"{c}.{m}" for c, m in entries}
-    actual = compute(entries)
-    changed = sorted(
-        key
-        for key, per_variant in actual.items()
-        if digest_of(per_variant) != pinned[key]
-    )
-    assert not changed, f"results or warnings changed for {len(changed)}: {changed}"
-
-
-if __name__ == "__main__":  # pragma: no cover - maintenance entry point
-    results = compute(harness.entries())
-    if "--dump" in sys.argv:
-        out = Path(sys.argv[sys.argv.index("--dump") + 1])
-        out.write_text(json.dumps(results, indent=1, sort_keys=True) + "\n")
-        print(f"per-variant digests written: {out}")
-    if "--update" in sys.argv:
-        data = load()
-        data[PANDAS] = {key: digest_of(v) for key, v in sorted(results.items())}
-        BASELINE.write_text(
-            json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8"
-        )
-        print(f"digests for pandas {PANDAS} written: {BASELINE}")
+def test_signal_rows_path_matches_the_full_frame_path():
+    changed = compute(harness.entries())
+    assert not changed, f"results or warnings differ for {len(changed)}: {changed}"

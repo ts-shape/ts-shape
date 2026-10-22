@@ -24,7 +24,7 @@ your tests with `-W error::DeprecationWarning`. The dated record is the
   named in their constructor: `MachineStateEvents`,
   `ThresholdMonitoringEvents`, `SignalQualityEvents` and 33 others.
   - **What stays the same:** results, warnings, `get_dataframe()` and
-    `repr()`. `tests/invariants/test_signal_rows_equivalence.py` pins all
+    `repr()`. `tests/invariants/test_signal_rows_equivalence.py` checks all
     330 registry methods.
   - **Savings:** on 10M rows with 5 signals, the memory used on top of the
     input drops from about 0.42 to about 0.25 GB on pandas 3, and the time
