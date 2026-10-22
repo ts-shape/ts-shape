@@ -6,6 +6,39 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 19: object-identifier signals (new)
+
+New only; no existing result changes. `SignalSpec`, `infer_spec` and
+`profile()` are unchanged. See
+[Object identification](guides/object-identification.md).
+
+- `ts_shape.identify_objects(dataframe)` returns an `ObjectReport` with one
+  row per uuid:
+  - **Stage 1, screening:** the `role` (identifier, state, free text,
+    measurement, counter, timestamp, constant, insufficient data) and an
+    `identifier_score`.
+  - **Stage 2, identification:** the `object_type`, with `type_confidence`
+    and a runner-up type.
+  - **Supporting columns:** the screening features, the detected
+    `parent_uuid` (nesting), and an evidence trail. `explain(signal_uuid)`
+    prints the evidence for one signal.
+- **What it looks at.** It reads only the values and how they behave over
+  time: formats with check digits (GS1, GTIN, SSCC, EPC, SAP widths, date
+  codes), cardinality, holds, revisits, recurrence, and relations between
+  signals (nesting, co-changes, alignment with counters and shifts). It never
+  reads uuid names or metadata. `hints={uuid: type}` pins a type.
+- **Types.** Types that cannot be told apart without a format cue are
+  reported as a group: `order` (sales or purchase order) and
+  `business_partner` (customer or supplier). A clear identifier of unknown
+  type is reported as `identifier`.
+- **Extending it.** `register_identifier_type` and
+  `register_identifier_pattern` add site-specific types and formats.
+- **Into the event log.** `ObjectReport.to_object_specs()` returns the
+  `ObjectSpec`s for `detect_objects` / `to_event_log`.
+- **Benchmark.** `ts_shape.make_object_signals(seed=...)` generates a
+  realistic labelled frame. `tests/test_identify_benchmark.py` scores the
+  classifier on the held-out seeds.
+
 ## October 2026, round 18: Databricks open ranges, memory
 
 ### Results that change
