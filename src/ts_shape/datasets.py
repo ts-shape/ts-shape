@@ -13,7 +13,7 @@ transform, or statistic can be exercised without real data or loaders::
 from __future__ import annotations
 
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -190,6 +190,76 @@ def make_id_signal(
     if source_uuid is not None:
         frame["source_uuid"] = source_uuid
     return frame
+
+
+def make_object_signals(
+    *,
+    seed: int = 0,
+    days: float = 3,
+    include: Iterable[str] | None = None,
+    noise: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Generate a labelled benchmark of object-identifier signals.
+
+    Simulates one or two production lines and the plant around them (work
+    orders with setups, stops and cycles; batches inside the material; one
+    serial per cycle with a companion part counter; carriers circulating in a
+    loop; operators logging in at the 06:00 / 14:00 / 22:00 shift changes;
+    orders, customers and suppliers stamped at shipping and goods receipt;
+    SSCC-labelled boxes put away into storage bins) and samples every signal
+    the way a historian stores it: on change, with keep-alive re-sends, or
+    periodically, with gaps. Identifiers use real formats (SAP numbers,
+    GTIN-13/14 and SSCC with check digits, GS1 application identifiers,
+    EPC GRAI-96 hex, UUIDs, date-coded batches); several formats per object
+    type are drawn per seed. Negative controls (states, alarm texts,
+    measurements, counters, timestamps, constants, plus hard cases such as a
+    1/2/3 mode code) are mixed in.
+
+    The uuids are opaque (``"sig:0007"``) and shuffled, so only the values and
+    their behaviour over time tell what a signal carries.
+
+    Seeds 0-4 are the dev split; seeds 100-119 the held-out split
+    (``ts_shape._object_signals.DEV_SEEDS`` / ``HELDOUT_SEEDS``). Seeds from
+    100 on also draw formats that dev seeds never use, plus wider and
+    differently shaped hold-time distributions; the ``variant`` label names
+    the format.
+
+    Args:
+        seed: Seed of the whole simulation; the output is deterministic per
+            seed.
+        days: Length of the recording in days.
+        include: Object types (``"batch"``), roles (``"state"``) or negative
+            kinds (``"alarm_text"``) to keep; ``None`` keeps every signal.
+        noise: Add realistic read noise: missing readings, empty strings,
+            garbage reads (``"NOREAD"``, truncated ids, ``65535``), lower-case
+            and stripped leading zeros, and extra per-signal gaps.
+
+    Returns:
+        ``(frame, labels)``. ``frame`` is the long-format frame with the
+        standard columns. ``labels`` has one row per uuid with ``uuid``,
+        ``role`` (identifier, state, free_text, measurement, counter,
+        timestamp or constant), ``object_type`` (``None`` unless an
+        identifier), ``value_column``, ``parent_uuid`` (the signal it nests
+        in: batch in material, serial in batch; else ``None``) and
+        ``variant`` (the format or negative kind).
+
+    Raises:
+        ValueError: If ``days`` is not positive or ``include`` names an
+            unknown object type or role.
+
+    Example:
+        >>> import ts_shape
+        >>> frame, labels = ts_shape.make_object_signals(seed=0, days=1)
+        >>> sorted(labels["role"].unique())
+        ['constant', 'counter', 'free_text', 'identifier', 'measurement',
+         'state', 'timestamp']
+        >>> batch = labels.loc[labels["object_type"] == "batch"].iloc[0]
+        >>> labels.set_index("uuid").loc[batch["parent_uuid"], "object_type"]
+        'material'
+    """
+    from ts_shape._object_signals import generate
+
+    return generate(seed=seed, days=days, include=include, noise=noise)
 
 
 def _is_integral(value: object) -> bool:

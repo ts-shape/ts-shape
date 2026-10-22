@@ -294,6 +294,7 @@ EXEMPT: dict[str, str] = {
     "eventlog.run_backtest": "needs a registered rule; covered by LambdaDetector",
     "datasets.make_timeseries": "generator without a frame input",
     "datasets.make_id_signal": "generator without a frame input",
+    "datasets.make_object_signals": "generator without a frame input",
 }
 
 
