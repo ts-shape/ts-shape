@@ -677,6 +677,24 @@ class DatabricksUnityParquetLoader:
         except ValueError:
             return None
 
+    def _folder_floor(self, ts: pd.Timestamp) -> pd.Timestamp:
+        """``ts`` floored to the finest time token of ``hour_pattern``.
+
+        :meth:`_hour_of_path` dates a file by the tokens its folder carries
+        (missing ones default to the start of the period), so a bound must be
+        floored the same way to compare with it.
+        """
+        pattern = self.hour_pattern
+        if "{H}" in pattern:
+            return ts.floor("h")
+        if "{d}" in pattern:
+            return ts.normalize()
+        if "{m}" in pattern:
+            return pd.Timestamp(year=ts.year, month=ts.month, day=1)
+        if "{Y}" in pattern:
+            return pd.Timestamp(year=ts.year, month=1, day=1)
+        return pd.Timestamp(year=1970, month=1, day=1)
+
     def _load_open_range(
         self,
         start: str | pd.Timestamp | None,
@@ -687,9 +705,14 @@ class DatabricksUnityParquetLoader:
         trim_to_range: bool,
         errors: ErrorsMode,
     ) -> pd.DataFrame:
-        """Load the hour folders on or after ``start`` / on or before ``end``."""
-        lo = None if start is None else utc_naive(start).floor("h")
-        hi = None if end is None else utc_naive(end).floor("h")
+        """Load the hour folders on or after ``start`` / on or before ``end``.
+
+        Bounds are floored to the folder granularity of ``hour_pattern``
+        (hour with ``{H}``, else day, month or year), so a mid-day start
+        still reads that day's folder of a ``{Y}/{m}/{d}/`` layout.
+        """
+        lo = None if start is None else self._folder_floor(utc_naive(start))
+        hi = None if end is None else self._folder_floor(utc_naive(end))
         paths = []
         for path in self._walk_parquet(self.base_path):
             hour = self._hour_of_path(path)
@@ -745,8 +768,9 @@ class DatabricksUnityParquetLoader:
 
         Args:
             start: Start of the range; None leaves the start open.
-                Bounds select whole hour folders (the start is floored to the
-                hour); see ``trim_to_range``.
+                Bounds select whole folders (floored to the folder granularity
+                of ``hour_pattern``: hour, or day without ``{H}``); see
+                ``trim_to_range``.
             end: End of the range, inclusive; None leaves the end open.
             columns: Subset of parquet columns to read; None reads all columns.
             filters: pyarrow-style predicate pushdown in DNF form, e.g.

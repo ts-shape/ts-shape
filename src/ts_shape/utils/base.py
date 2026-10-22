@@ -34,6 +34,7 @@ the right one based on the complexity of the operation:
 """
 
 import logging
+import sys
 import warnings
 from typing import ClassVar
 
@@ -43,8 +44,20 @@ import pandas as pd
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.deprecation import caller_stacklevel, renamed_kwargs
 from ts_shape.utils.frames import require_columns
-from ts_shape.utils.normalize import normalize_signal_frame, unique_text
-from ts_shape.utils.signal_checks import checked, checked_init, remember_uuids
+from ts_shape.utils.normalize import (
+    normalize_signal_frame,
+    rows_normalize_alike,
+    unique_text,
+)
+from ts_shape.utils.signal_checks import (
+    OWN_SIGNALS_ONLY,
+    checked,
+    checked_init,
+    remember_source,
+    remember_uuids,
+    signal_source,
+    take_signal_request,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +67,21 @@ def _copy_on_write() -> bool:
     if int(pd.__version__.split(".")[0]) >= 3:
         return True
     return pd.get_option("mode.copy_on_write") is True
+
+
+def _release_arrow_memory() -> None:
+    """Return memory pyarrow freed (string columns copied to ``object``) to the OS.
+
+    pyarrow's allocator keeps freed pages for reuse; after a large column
+    was converted they would stay in the process for no purpose.
+    """
+    pa = sys.modules.get("pyarrow")
+    if pa is None:
+        return
+    try:
+        pa.default_memory_pool().release_unused()
+    except Exception:  # noqa: BLE001 - only a memory hint
+        pass
 
 
 def _is_numpy_datetime(series: pd.Series) -> bool:
@@ -70,8 +98,8 @@ def _all_missing(series: pd.Series) -> bool:
     if isinstance(dtype, np.dtype) and dtype.kind in "biu":  # no NaN possible
         return False
     n = len(series)
-    if n and isinstance(dtype, np.dtype):
-        values = series.to_numpy()
+    if n:
+        values = series.to_numpy() if isinstance(dtype, np.dtype) else series.array
         for i in (0, n // 2, n - 1):
             if not _is_missing_scalar(values[i]):
                 return False
@@ -94,8 +122,61 @@ def _ticks(series: pd.Series) -> np.ndarray | None:
 
 def _missing_last(codes: np.ndarray) -> np.ndarray:
     """Factorize codes (``-1``: missing) with missing as the largest, in place."""
-    codes[codes < 0] = np.iinfo(np.int64).max
+    codes[codes < 0] = np.iinfo(codes.dtype).max
     return codes
+
+
+def _code_dtype(n_values: int) -> np.dtype:
+    """The smallest signed integer type holding ``0 .. n_values`` (missing: max)."""
+    for name in ("int8", "int16", "int32"):
+        dtype = np.dtype(name)
+        if n_values < np.iinfo(dtype).max:
+            return dtype
+    return np.dtype("int64")
+
+
+#: Rows factorized at a time by :func:`_text_uuid_codes` (bounds its scratch).
+_CODE_CHUNK = 1 << 18
+
+
+def _text_uuid_codes(series: pd.Series) -> tuple[np.ndarray, list[str]] | None:
+    """Sort-order codes of a uuid column whose values are all text.
+
+    The codes order the uuids as :class:`_SortOrder` orders the normalized
+    column (text compared as Python strings; a categorical by its
+    categories), with missing values last, in the smallest integer type.
+    Returns ``(codes, labels)`` -- ``labels[code]`` is the uuid -- or
+    ``None`` when a value (or category) is not a ``str``.
+
+    The column is factorized ``_CODE_CHUNK`` rows at a time, so the scratch
+    space is one chunk's ``int64`` codes, not the whole column's.
+    """
+    if isinstance(series.dtype, pd.CategoricalDtype):
+        labels = list(series.cat.categories)
+        if not all(isinstance(v, str) for v in labels):
+            return None
+        codes = np.asarray(series.cat.codes).astype(_code_dtype(len(labels)))
+        return _missing_last(codes), labels
+    seen: dict[str, int] = {}
+    codes = np.empty(len(series), dtype=np.int8)
+    for start in range(0, len(series), _CODE_CHUNK):
+        raw, uniques = pd.factorize(series.iloc[start : start + _CODE_CHUNK])
+        values = list(uniques)
+        if not all(isinstance(v, str) for v in values):
+            return None
+        for v in values:
+            seen.setdefault(v, len(seen))
+        if np.iinfo(codes.dtype).max <= len(seen):
+            codes = codes.astype(_code_dtype(len(seen)))
+        # -1 (missing) maps to the last entry; set to the maximum below.
+        lut = np.array([seen[v] for v in values] + [-1], dtype=codes.dtype)
+        codes[start : start + len(raw)] = lut[raw]
+    labels = sorted(seen)
+    rank = np.empty(len(seen) + 1, dtype=codes.dtype)
+    rank[[seen[v] for v in labels]] = np.arange(len(labels), dtype=codes.dtype)
+    rank[-1] = np.iinfo(codes.dtype).max  # missing: sorted last
+    np.take(rank, codes, out=codes)
+    return codes, labels
 
 
 class _SortOrder:
@@ -109,7 +190,12 @@ class _SortOrder:
     that is not ``datetime64``) take the pandas calls themselves.
     """
 
-    def __init__(self, frame: pd.DataFrame, time_col: str) -> None:
+    def __init__(
+        self,
+        frame: pd.DataFrame,
+        time_col: str,
+        uuid_codes: tuple[np.ndarray, set[str]] | None = None,
+    ) -> None:
         self.frame = frame
         self.keys = [time_col] + (["uuid"] if "uuid" in frame.columns else [])
         self.ticks: np.ndarray | None = None
@@ -123,7 +209,9 @@ class _SortOrder:
         self.ticks = _ticks(frame[time_col])
         if self.ticks is not None:
             self.nat = np.asarray(frame[time_col].isna(), dtype=bool)
-        if "uuid" in frame.columns:
+        if uuid_codes is not None:
+            self.codes, self.uuids = uuid_codes
+        elif "uuid" in frame.columns:
             self.codes, self.uuids = self._uuid_codes(frame["uuid"])
         self.exact = self.ticks is not None and (
             "uuid" not in frame.columns or self.codes is not None
@@ -168,7 +256,14 @@ class _SortOrder:
         if not self.exact:
             self.frame = self.frame.sort_values(by=self.keys, kind="stable")
             return self.frame
-        assert self.ticks is not None and self.nat is not None
+        order = self.sort_keys()
+        frame = self.frame
+        self.frame = frame.take(order).__finalize__(frame, method="sort_values")
+        return self.frame
+
+    def sort_keys(self) -> np.ndarray:
+        """Sort the keys (not the frame); return the stable sort order."""
+        assert self.exact and self.ticks is not None and self.nat is not None
         if self.codes is None:
             order = np.lexsort((self.ticks, self.nat))
         else:
@@ -176,18 +271,17 @@ class _SortOrder:
             self.codes = self.codes[order]
         self.ticks = self.ticks[order]
         self.nat = self.nat[order]
-        frame = self.frame
-        self.frame = frame.take(order).__finalize__(frame, method="sort_values")
-        return self.frame
+        return order
 
     def nat_count(self) -> int:
         if self.nat is None:
             return int(self.frame[self.keys[0]].isna().sum())
         return int(self.nat.sum())
 
-    def duplicate_count(self, frame: pd.DataFrame) -> int:
-        """Rows repeating an earlier row's keys (the frame is sorted)."""
+    def duplicate_count(self, frame: pd.DataFrame | None) -> int:
+        """Rows repeating an earlier row's keys (the keys are sorted)."""
         if not self.exact:
+            assert frame is not None
             return int(frame.duplicated(subset=self.keys).sum())
         assert self.ticks is not None
         same = self.ticks[1:] == self.ticks[:-1]
@@ -200,6 +294,11 @@ class Base:
     #: Severity label overrides for ``severity_level``, keyed by method name
     #: (``"*"`` for all methods); ``None`` when ``severity`` is a score.
     _severity_levels: ClassVar[dict[str, dict[str, str]] | None] = {}
+    #: A detector sets this (in its own class body; it is not inherited)
+    #: when its methods read ``self.dataframe`` only for the signals its
+    #: constructor names in ``*_uuid`` / ``*_uuids`` arguments. ``Base`` then
+    #: keeps only those rows (see ``_keep_signal_rows``).
+    _reads_own_signals_only: ClassVar[bool] = False
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         """Give every detector in ``ts_shape.events`` the same input checks.
@@ -290,6 +389,13 @@ class Base:
             raise TypeError(
                 f"Expected pandas DataFrame, got {type(dataframe).__name__}"
             )
+        wanted = take_signal_request(self, dataframe)
+        if (
+            wanted is not None
+            and vars(type(self)).get(OWN_SIGNALS_ONLY)
+            and self._keep_signal_rows(dataframe, time_col, wanted)
+        ):
+            return
         # Under copy-on-write (always on in pandas 3) a shallow copy is a
         # private copy: the first write to a column copies that column.
         # Without it, the frame is copied once below unless sorting already
@@ -392,10 +498,97 @@ class Base:
         # Warn on columns that are entirely NaN. In long format each signal
         # fills one value_* column, so unused value columns are normal; they
         # are reported only when no value column holds any data.
-        all_nan_cols = [
-            col for col in self.dataframe.columns if _all_missing(self.dataframe[col])
-        ]
-        value_cols = [c for c in self.dataframe.columns if str(c).startswith("value_")]
+        self._warn_all_nan(self.dataframe)
+
+    def _keep_signal_rows(
+        self, dataframe: pd.DataFrame, time_col: str, wanted: frozenset[str]
+    ) -> bool:
+        """Keep only the rows of the ``wanted`` signals; False: not possible here.
+
+        For a detector that declares ``_reads_own_signals_only`` (its methods
+        read ``self.dataframe`` only for the signals its constructor names).
+        The checks of the full constructor -- missing timestamps, duplicate
+        ``(time, uuid)`` keys, all-NaN columns -- are computed on the whole
+        input from integer keys, so they warn exactly as before; then only
+        the wanted rows are copied, sorted and normalized. Such a frame is
+        the subset of the frame the full constructor builds, row for row
+        (same order, index and dtypes).
+
+        Returns False, before warning about anything, when that would not
+        hold: an empty input, repeated column names, a time column that is
+        not ``datetime64``, a uuid column with non-text values, a column
+        :func:`~ts_shape.utils.normalize.normalize_signal_frame` converts
+        from the whole column (see
+        :func:`~ts_shape.utils.normalize.rows_normalize_alike`), or a wanted
+        uuid that is not in the data (the detector's own error or empty
+        result then comes from the full frame).
+        """
+        if (
+            dataframe.empty
+            or not dataframe.columns.is_unique
+            or time_col not in dataframe.columns
+            or "uuid" not in dataframe.columns
+            or not _is_numpy_datetime(dataframe[time_col])
+            or not rows_normalize_alike(dataframe, time_column=time_col)
+        ):
+            return False
+        uuid_codes = _text_uuid_codes(dataframe["uuid"])
+        if uuid_codes is None:
+            return False
+        codes, labels = uuid_codes
+        if isinstance(dataframe["uuid"].dtype, pd.CategoricalDtype):
+            uuids = unique_text(dataframe["uuid"])
+        else:
+            uuids = set(labels)
+        if not wanted <= uuids:
+            return False
+
+        order = _SortOrder(dataframe, time_col, (codes, uuids))
+        positions = None if order.is_sorted() else order.sort_keys()
+        assert order.codes is not None
+        hits = [i for i, label in enumerate(labels) if label in wanted]
+        keep = np.isin(order.codes, np.asarray(hits, dtype=order.codes.dtype))
+        rows = np.flatnonzero(keep) if positions is None else positions[keep]
+        del keep, positions
+        n_rows = len(dataframe)
+
+        # The full constructor's warnings, from the whole input.
+        nat_count = order.nat_count()
+        if 0 < nat_count < n_rows:
+            warnings.warn(
+                f"Column '{time_col}' contains {nat_count} missing or "
+                "unparseable timestamp(s) (NaT). Consider dropping them "
+                "before processing.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
+        dup_count = order.duplicate_count(None)
+        if dup_count:
+            warnings.warn(
+                f"DataFrame contains {dup_count} duplicate timestamp(s) "
+                f"(checked on {order.keys}). Consider deduplicating before "
+                "processing.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
+        del order
+        self._warn_all_nan(dataframe)
+
+        # ``take`` builds new arrays: the kept rows are this detector's own.
+        frame = dataframe.take(rows)
+        del rows
+        normalize_signal_frame(frame, time_column=time_col)
+        _release_arrow_memory()
+        self.dataframe = frame
+        remember_uuids(self, frame, "uuid", uuids)
+        remember_source(self, dataframe, n_rows, wanted)
+        object.__setattr__(self, "_ts_shape_time_column", time_col)
+        return True
+
+    def _warn_all_nan(self, frame: pd.DataFrame) -> None:
+        """Warn on columns that are entirely NaN (see ``__init__``)."""
+        all_nan_cols = [col for col in frame.columns if _all_missing(frame[col])]
+        value_cols = [c for c in frame.columns if str(c).startswith("value_")]
         if any(c not in all_nan_cols for c in value_cols):
             all_nan_cols = [c for c in all_nan_cols if c not in value_cols]
         if all_nan_cols:
@@ -406,8 +599,28 @@ class Base:
             )
 
     def get_dataframe(self) -> pd.DataFrame:
-        """Returns the processed DataFrame."""
-        return self.dataframe
+        """Returns the processed DataFrame.
+
+        A detector that keeps only its own signals' rows (see
+        ``_keep_signal_rows``) builds the whole processed frame on the first
+        call, from the input it was given.
+        """
+        source = signal_source(self)
+        if source is None:
+            return self.dataframe
+        cache = self.__dict__.setdefault("_ts_shape_full", [])
+        if not cache:
+            full = Base.__new__(Base)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                Base.__init__(
+                    full,
+                    source[0],
+                    time_column=self.__dict__.get("_ts_shape_time_column", "systime"),
+                )
+            cache.append(full.dataframe)
+        frame: pd.DataFrame = cache[0]
+        return frame
 
     def __repr__(self) -> str:
         """Concise, interactive-friendly summary of the instance.
@@ -417,6 +630,9 @@ class Base:
         """
         df = getattr(self, "dataframe", None)
         n_rows = len(df) if isinstance(df, pd.DataFrame) else 0
+        source = signal_source(self)
+        if source is not None:
+            n_rows = source[1]  # the input's rows, not only the kept ones
         parts = [f"rows={n_rows}"]
         for key, val in self.__dict__.items():
             if isinstance(val, str) and (

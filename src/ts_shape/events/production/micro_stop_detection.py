@@ -53,6 +53,9 @@ class MicroStopEvents(Base):
         The 45 s stop at 08:30 is longer than ``max_duration`` and is not listed.
     """
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     def __init__(
         self,
         dataframe: pd.DataFrame,

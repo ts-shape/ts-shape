@@ -62,6 +62,9 @@ class AlarmManagementEvents(Base):
         0 2025-01-01 08:20:00 2025-01-01 09:30:00            4200.0
     """
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     def __init__(
         self,
         dataframe: pd.DataFrame,

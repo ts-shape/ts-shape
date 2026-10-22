@@ -1,3 +1,14 @@
+# October 21, 2026 (round 18)
+Databricks open-range fix; memory at 10M-100M rows.
+fix: DatabricksUnityParquetLoader open ranges floor to the folder
+  granularity of hour_pattern (a mid-day start no longer skips its day).
+perf: detectors that read only their own signals keep only those rows
+  (about 40 % less memory over the input and about half the time at 10M
+  rows); results and warnings unchanged.
+perf: to_event_log builds ids and activities in chunks: 100M-row inputs
+  peak at about 7.4 GB, 1.5-2x faster; ids and tables byte-identical.
+  See docs/migration.md.
+
 # October 21, 2026 (round 17, part J)
 Second audit: loaders, transforms, features, performance loss.
 fix: performance loss splits cycles at window/shift edges (no run time

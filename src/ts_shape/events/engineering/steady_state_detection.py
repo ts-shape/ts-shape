@@ -25,6 +25,9 @@ class SteadyStateDetectionEvents(Base):
     - steady_state_value_bands: Operating band (mean +/- std) per steady interval.
     """
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     def __init__(
         self,
         dataframe: pd.DataFrame,

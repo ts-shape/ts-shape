@@ -18,6 +18,12 @@ interleaved on a 1 s grid: a run/idle state (bool), a production counter
 (integer), two analog signals (double) and a part id (string). Every value
 column is filled on every row.
 
+Event-log cases beyond the defaults (run them with ``--cases``):
+``eventlog.to_event_log.objects`` (the interval case with caller-bound
+objects), ``eventlog.to_event_log.point[.objects]`` (state transitions, a
+point detector) and ``eventlog.to_event_log.frame[.objects]`` (the whole
+frame as point events, one per row: the adapter's worst case).
+
 Reported per case: ``seconds`` (the timed call only; generating the data and
 any ``setup`` step are excluded), ``peak_rss_mb`` (high-water mark during the
 timed call, reset through ``/proc/self/clear_refs`` on Linux), ``base_rss_mb``
@@ -66,24 +72,33 @@ def make_frame(
         slim: Only ``systime``, ``uuid``, ``value_double`` and ``value_bool``
             (for runs at 100M rows).
     """
+    # Temporaries are freed as soon as possible and the text columns are
+    # built by ``take`` (no Python object per row), so the full frame fits
+    # at 100M rows; the values are the same as built naively.
     rng = np.random.default_rng(seed)
     k = len(UUIDS)
     step = np.arange(n_rows, dtype=np.int64) // k
     systime = pd.to_datetime("2025-01-01") + pd.to_timedelta(step, unit="s")
-    names = np.array(sorted(UUIDS), dtype=object)
-    uuid_values = names[np.arange(n_rows) % k]
+    names = sorted(UUIDS)
+    which = np.arange(n_rows) % k
     if uuid_dtype == "object":
-        uuid: Any = pd.Series(uuid_values, dtype=object)
+        uuid: Any = pd.Series(np.array(names, dtype=object)[which], dtype=object)
     elif uuid_dtype == "category":
-        uuid = pd.Categorical(uuid_values)
+        uuid = pd.Categorical(np.array(names, dtype=object)[which])
     else:
         # The dtype pandas infers for Python strings, without building
         # n_rows Python objects first.
-        uuid = pd.Series(names.tolist()).take(np.arange(n_rows) % k).array
-    # Run/idle state with runs of 1..60 samples.
+        uuid = pd.Series(names).take(which).array
+    del which
+    # Run/idle state with runs of 1..60 samples (only the runs that fit).
     lengths = rng.integers(1, 60, size=n_rows // 2 + 2)
-    state = np.repeat(np.arange(len(lengths)) % 2 == 0, lengths)[:n_rows]
-    walk = np.cumsum(rng.normal(0.0, 0.05, n_rows)) + 50.0
+    used = int(np.searchsorted(np.cumsum(lengths), n_rows)) + 1
+    lengths = lengths[:used]
+    state = np.repeat(np.arange(used) % 2 == 0, lengths)[:n_rows].copy()
+    del lengths
+    walk = rng.normal(0.0, 0.05, n_rows)
+    np.cumsum(walk, out=walk)
+    walk += 50.0
     if slim:
         return pd.DataFrame(
             {
@@ -91,11 +106,15 @@ def make_frame(
                 "uuid": uuid,
                 "value_double": walk,
                 "value_bool": state,
-            }
+            },
+            copy=False,
         )
-    counter = np.cumsum(state.astype(np.int64))
-    parts = np.array(["P-100", "P-200", "P-300"], dtype=object)
-    part = parts[(step // 3600) % len(parts)]
+    counter = state.astype(np.int64)
+    np.cumsum(counter, out=counter)
+    part_code = (step // 3600) % 3
+    del step
+    part = pd.Series(["P-100", "P-200", "P-300"]).take(part_code).array
+    del part_code
     return pd.DataFrame(
         {
             "systime": systime,
@@ -104,7 +123,8 @@ def make_frame(
             "value_integer": counter,
             "value_bool": state,
             "value_string": part,
-        }
+        },
+        copy=False,
     )
 
 
@@ -121,6 +141,25 @@ def _cases() -> dict[str, Case]:
 
     def run_idle_frame(df: pd.DataFrame) -> pd.DataFrame:
         return ts_shape.MachineStateEvents(df, STATE).detect_run_idle()
+
+    def transition_frame(df: pd.DataFrame) -> pd.DataFrame:
+        return ts_shape.MachineStateEvents(df, STATE).transition_events()
+
+    def batch_objects(out: pd.DataFrame) -> dict[str, Any]:
+        # Caller-bound objects: a column, a Series and a scalar binding.
+        batch = pd.Series(np.arange(len(out)) // 1000, index=out.index)
+        return {
+            "signal": "source_uuid",
+            "batch": batch.map("B-{}".format),
+            "line": "L1",
+        }
+
+    def with_objects(frame_fn: Callable[[pd.DataFrame], Any]) -> Callable:
+        def setup(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
+            out = frame_fn(df)
+            return out, batch_objects(out)
+
+        return setup
 
     return {
         "base": (ident, lambda df: Base(df)),
@@ -170,11 +209,51 @@ def _cases() -> dict[str, Case]:
                 df, TEMP
             ).detect_trend_degradation(),
         ),
+        "threshold_monitoring.time_above_threshold": (
+            ident,
+            lambda df: ts_shape.ThresholdMonitoringEvents(
+                df, TEMP
+            ).time_above_threshold(threshold=50.0),
+        ),
         "signals.profile": (ident, lambda df: ts_shape.profile(df)),
         "eventlog.to_event_log": (
             run_idle_frame,
             lambda out: ts_shape.to_event_log(
                 out, detector="MachineStateEvents.detect_run_idle"
+            ),
+        ),
+        "eventlog.to_event_log.objects": (
+            with_objects(run_idle_frame),
+            lambda ctx: ts_shape.to_event_log(
+                ctx[0], detector="MachineStateEvents.detect_run_idle", objects=ctx[1]
+            ),
+        ),
+        "eventlog.to_event_log.point": (
+            transition_frame,
+            lambda out: ts_shape.to_event_log(
+                out, detector="MachineStateEvents.transition_events"
+            ),
+        ),
+        "eventlog.to_event_log.point.objects": (
+            with_objects(transition_frame),
+            lambda ctx: ts_shape.to_event_log(
+                ctx[0], detector="MachineStateEvents.transition_events", objects=ctx[1]
+            ),
+        ),
+        # The whole 6-column frame as point events (one event per row), the
+        # worst case for the adapter: every row is hashed and rendered.
+        "eventlog.to_event_log.frame": (
+            ident,
+            lambda df: ts_shape.to_event_log(
+                df, detector="OutlierDetectionEvents.detect_outliers_zscore"
+            ),
+        ),
+        "eventlog.to_event_log.frame.objects": (
+            ident,
+            lambda df: ts_shape.to_event_log(
+                df,
+                detector="OutlierDetectionEvents.detect_outliers_zscore",
+                objects={"signal": "uuid", "line": "L1"},
             ),
         ),
     }
@@ -230,15 +309,25 @@ def _current_rss_mb() -> float:
         return float("nan")
 
 
+def _phase(name: str) -> None:
+    """Report the phase the child enters (named when it runs out of memory)."""
+    print(
+        f"phase: {name} (rss {_current_rss_mb():.0f} MB)", file=sys.stderr, flush=True
+    )
+
+
 def child(case: str, n_rows: int, uuid_dtype: str, slim: bool) -> dict[str, Any]:
     """Run one case in this process and return its measurements."""
     import warnings
 
     warnings.simplefilter("ignore")
+    _phase("data")
     df = make_frame(n_rows, uuid_dtype=uuid_dtype, slim=slim)
     setup, run = _cases()[case]
+    _phase("setup")
     ctx = setup(df)
     base_rss = _current_rss_mb()
+    _phase("run")
     reset = _reset_peak_rss()
     start = time.perf_counter()
     run(ctx)
@@ -306,9 +395,15 @@ def run_one(
     lines = [ln for ln in proc.stdout.splitlines() if ln.startswith("{")]
     if proc.returncode == 0 and lines:
         return dict(json.loads(lines[-1]))
-    err = (proc.stderr.strip().splitlines() or ["?"])[-1]
+    errors = [
+        ln for ln in proc.stderr.strip().splitlines() if not ln.startswith("phase: ")
+    ]
+    err = (errors or [f"exit code {proc.returncode}"])[-1]
     if "MemoryError" in proc.stderr or "bad_alloc" in proc.stderr:
         err = f"out of memory (cap {max_gb:g} GB)"
+    phases = [ln for ln in proc.stderr.splitlines() if ln.startswith("phase: ")]
+    if phases:
+        err += f" in {phases[-1][len('phase: '):]}"
     return {
         "case": case,
         "n_rows": n_rows,

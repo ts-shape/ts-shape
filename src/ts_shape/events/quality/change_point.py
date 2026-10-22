@@ -267,6 +267,9 @@ class ChangePointEvents(Base):
         0 2025-01-01 00:25:00        100.1       104.8          6.1
     """
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     def __init__(
         self,
         dataframe: pd.DataFrame,

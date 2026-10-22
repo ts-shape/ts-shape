@@ -86,6 +86,10 @@ removed.
   100M-row frames no longer run out of memory. `ChangePointEvents` defaults
   to `method="auto"`: exact PELT up to 20,000 samples, binary segmentation
   above, so change points are no longer quadratic on long signals.
+- Done: a detector whose methods read only the signals its constructor
+  names keeps only those rows; the input checks still warn from the whole
+  frame. On 10M rows with five signals a one-signal detector adds about
+  0.25 GB to its input instead of 0.4 GB, and runs in half the time.
 - Done: `benchmarks/run.py` measures time and peak memory per detector and
   row count, and CI runs a scaling check (`pytest -m scale`).
 - After 1.0: backend-agnostic primitives (Polars, DuckDB), TimescaleDB

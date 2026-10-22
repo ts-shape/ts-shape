@@ -6,6 +6,51 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 18: Databricks open ranges, memory
+
+### Results that change
+
+- `DatabricksUnityParquetLoader.fetch_data_as_dataframe` with only `start`
+  or only `end` floors the bound to the folder granularity of
+  `hour_pattern`: the hour with `{H}`, otherwise the day, month or year.
+  With a `{Y}/{m}/{d}/` layout, a mid-day `start` now reads that day's
+  folder, which was skipped before. Closed ranges and the Azure loaders are
+  unchanged.
+
+### Memory and speed (results unchanged)
+
+- **Detectors that read only their own signals** keep just those rows in
+  `detector.dataframe`. These are the classes that read only the signals
+  named in their constructor: `MachineStateEvents`,
+  `ThresholdMonitoringEvents`, `SignalQualityEvents` and 33 others.
+  - **What stays the same:** results, warnings, `get_dataframe()` and
+    `repr()`. `tests/invariants/test_signal_rows_equivalence.py` checks all
+    330 registry methods.
+  - **Savings:** on 10M rows with 5 signals, the memory used on top of the
+    input drops from about 0.42 to about 0.25 GB on pandas 3, and the time
+    roughly halves.
+  - **If you read `detector.dataframe` directly** on these classes, it now
+    holds only the detector's own signals. Use `get_dataframe()` for the
+    whole processed frame. It is built from your input on the first call,
+    so changes you make to that input after construction show up in it.
+  - **Data that keeps the full-frame path:** some data still goes through
+    the previous path, with the same memory use as before:
+    - text numbers;
+    - nullable or pyarrow numeric/boolean columns;
+    - a time column that is not datetime;
+    - uuids that are not text;
+    - a requested uuid that is missing from the data.
+- **`to_event_log`** builds event ids and activities in chunks, and
+  `schema.validate` checks Arrow-string ids without a hash table.
+  - **What stays the same:** event ids, activities and every table are
+    byte-identical, including dtypes.
+  - **100M-row frame:** with the full 6-column frame, run/idle or
+    transition events (about 3M events) peak at about 7.4 GB, down from
+    7.8–9.0 GB.
+  - **Speed:** large logs are about 1.5–2 times faster.
+  - **One event per input row:** a log with one event per input row still
+    needs about 300 B per event, mostly in the output's string columns.
+
 ## October 2026, round 17 (part J): loaders, transforms, features
 
 Each change is pinned by a hand-computed test in

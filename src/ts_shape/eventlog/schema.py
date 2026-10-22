@@ -10,8 +10,9 @@ exporter; they do not appear in the canonical schema.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
@@ -270,9 +271,82 @@ def empty_object_changes() -> pd.DataFrame:
 # ---- Validation -------------------------------------------------------------
 
 
+def _arrow_strings(values: pd.Series) -> Any | None:
+    """The Arrow array behind an Arrow-backed string Series, else None."""
+    dtype = values.dtype
+    if isinstance(dtype, pd.StringDtype) and dtype.storage == "pyarrow":
+        return values.array.__arrow_array__()
+    return None
+
+
 def _isin(values: pd.Series, allowed: pd.Series) -> pd.Series:
-    """``values.isin(allowed)`` via object dtype (Arrow-string ``isin`` is slow)."""
+    """``values.isin(allowed)``.
+
+    Arrow-backed strings are matched by ``pyarrow.compute.is_in``; other
+    columns via object dtype (Arrow-string ``Series.isin`` is slow).
+    """
+    left, right = _arrow_strings(values), _arrow_strings(allowed)
+    if left is not None and right is not None:
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        value_set = pa.chunked_array(right).combine_chunks().cast(left.type)
+        hit = pc.is_in(left, value_set=value_set)
+        mask = np.asarray(hit.to_numpy(zero_copy_only=False), dtype=bool)
+        return pd.Series(mask, index=values.index)
     return values.astype(object).isin(pd.Index(allowed.astype(object).unique()))
+
+
+#: Sorted values compared at a time by :func:`_has_duplicates`.
+_SORTED_CHUNK = 1 << 20
+
+
+def _has_duplicates(values: pd.Series) -> bool:
+    """``not values.is_unique``.
+
+    Arrow-backed strings are sorted (an index per row) and neighbours
+    compared a chunk at a time, instead of a hash table holding a copy of
+    every value.
+    """
+    arr = _arrow_strings(values)
+    if arr is None:
+        return not values.is_unique
+    import pyarrow.compute as pc
+
+    if arr.null_count > 1:
+        return True
+    order = pc.sort_indices(arr)
+    n = len(order)
+    for a in range(0, n - 1, _SORTED_CHUNK):
+        chunk = arr.take(order[a : a + _SORTED_CHUNK + 1])
+        if pc.any(pc.equal(chunk[1:], chunk[:-1])).as_py():
+            return True
+    return False
+
+
+def _unknown_pairs(relations: pd.DataFrame, objects: pd.DataFrame) -> np.ndarray:
+    """Mask of relation rows whose ``(oid, type)`` is not in ``objects``.
+
+    Matched one object type at a time (the oids of a type against the
+    objects of that type), which needs no tuple per row.
+    """
+    rel_type, obj_type = relations[OCEL_TYPE], objects[OCEL_TYPE]
+    if rel_type.isna().any() or obj_type.isna().any():
+        known = pd.MultiIndex.from_arrays(
+            [objects[OCEL_OID].astype(object), obj_type.astype(object)]
+        )
+        rel_pairs = pd.MultiIndex.from_arrays(
+            [relations[OCEL_OID].astype(object), rel_type.astype(object)]
+        )
+        return np.asarray(~rel_pairs.isin(known), dtype=bool)
+    unknown = np.zeros(len(relations), dtype=bool)
+    rel_codes, rel_types = pd.factorize(rel_type)
+    obj_type = obj_type.astype(object)
+    for code, otype in enumerate(list(rel_types)):
+        rows = rel_codes == code
+        allowed = objects[OCEL_OID][(obj_type == otype).to_numpy()]
+        unknown[rows] = ~_isin(relations[OCEL_OID][rows], allowed).to_numpy()
+    return unknown
 
 
 def validate(eventlog: EventLog) -> None:
@@ -283,7 +357,7 @@ def validate(eventlog: EventLog) -> None:
     if missing:
         raise ValueError(f"events table missing required columns: {missing}")
 
-    if not events.empty and events[OCEL_EID].is_unique is False:
+    if not events.empty and _has_duplicates(events[OCEL_EID]):
         dup = events[OCEL_EID][events[OCEL_EID].duplicated()].iloc[0]
         raise ValueError(f"duplicate {OCEL_EID}: {dup!r}")
 
@@ -299,15 +373,10 @@ def validate(eventlog: EventLog) -> None:
         bad = relations[OCEL_EID][~_isin(relations[OCEL_EID], events[OCEL_EID])]
         if not bad.empty:
             raise ValueError(f"relations reference unknown {OCEL_EID}: {bad.iloc[0]!r}")
-        known = pd.MultiIndex.from_arrays(
-            [objects[OCEL_OID].astype(object), objects[OCEL_TYPE].astype(object)]
-        )
-        rel_pairs = pd.MultiIndex.from_arrays(
-            [relations[OCEL_OID].astype(object), relations[OCEL_TYPE].astype(object)]
-        )
-        unknown_pairs = ~rel_pairs.isin(known)
+        unknown_pairs = _unknown_pairs(relations, objects)
         if unknown_pairs.any():
-            pair = rel_pairs[unknown_pairs][0]
+            first = int(np.flatnonzero(unknown_pairs)[0])
+            pair = (relations[OCEL_OID].iloc[first], relations[OCEL_TYPE].iloc[first])
             raise ValueError(
                 f"relation references unknown object {pair!r}; "
                 "every (oid, type) in relations must appear in objects"

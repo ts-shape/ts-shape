@@ -129,6 +129,9 @@ class ReliabilityEvents(Base):
 
     state_uuid = deprecated_attribute("run_state_uuid")
 
+    #: Methods read only the constructor's signals (``Base`` keeps their rows).
+    _reads_own_signals_only = True
+
     @renamed_kwargs(state_uuid="run_state_uuid")
     def __init__(
         self,

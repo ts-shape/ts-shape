@@ -192,6 +192,50 @@ def normalize_signal_frame(
     return frame
 
 
+def rows_normalize_alike(
+    frame: pd.DataFrame,
+    *,
+    time_column: str = "systime",
+    uuid_column: str = "uuid",
+) -> bool:
+    """Whether :func:`normalize_signal_frame` treats every row on its own.
+
+    True when every column it touches is either left as is or is a string
+    column turned into ``object`` value by value. Normalizing a subset of
+    the rows then gives exactly those rows of the normalized frame. False
+    when a conversion depends on the whole column (nullable or pyarrow
+    numbers and booleans pick their dtype from whether any value is
+    missing; text numbers are parsed with a warning counting them) or a
+    pyarrow time column is converted.
+    """
+    for column in frame.columns:
+        if not isinstance(column, str):
+            continue
+        series = frame[column]
+        if column == time_column:
+            if _arrow_timestamp(series):
+                return False
+            continue
+        if column != uuid_column and not column.startswith("value_"):
+            continue
+        if _is_extension(series):
+            if column in NUMERIC_VALUE_COLUMNS or not _is_text_dtype(series.dtype):
+                return False
+        elif column in NUMERIC_VALUE_COLUMNS and series.dtype == object:
+            return False
+    return True
+
+
+def _is_text_dtype(dtype: object) -> bool:
+    """A string dtype that :func:`_plain` converts value by value."""
+    return (
+        ptypes.is_string_dtype(dtype)
+        and not ptypes.is_bool_dtype(dtype)
+        and not ptypes.is_numeric_dtype(dtype)
+        and not ptypes.is_datetime64_any_dtype(dtype)
+    )
+
+
 def _parse_numbers(frame: pd.DataFrame, column: str, uuid_column: str) -> pd.Series:
     """Text numbers as floats; warn naming the signals with unparseable text."""
     series = frame[column]
