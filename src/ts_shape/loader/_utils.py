@@ -396,14 +396,17 @@ def parse_utc_times(values: pd.Series, unit: EpochUnit | None = None) -> pd.Seri
             ``"ns"``); None infers it. Ignored for text and datetimes.
 
     Returns:
-        ``datetime64[ns, UTC]`` values.
+        ``datetime64[ns, UTC]`` values, whatever resolution pandas would
+        infer (it differs between pandas versions and inputs).
     """
     if pd.api.types.is_numeric_dtype(values) and not pd.api.types.is_bool_dtype(values):
-        return pd.to_datetime(values, utc=True, unit=unit or epoch_unit(values))
-    try:
-        return pd.to_datetime(values, utc=True)
-    except (TypeError, ValueError):
-        return pd.to_datetime(values, utc=True, format="mixed")
+        out = pd.to_datetime(values, utc=True, unit=unit or epoch_unit(values))
+    else:
+        try:
+            out = pd.to_datetime(values, utc=True)
+        except (TypeError, ValueError):
+            out = pd.to_datetime(values, utc=True, format="mixed")
+    return out.dt.as_unit("ns")
 
 
 def same_tz_bounds(

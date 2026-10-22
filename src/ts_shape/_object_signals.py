@@ -568,7 +568,7 @@ def _batch_id(
     if variant == "gs1_10":
         return f"(10){ts:%y%m%d}{'ABCD'[line]}{seq_day:02d}"
     if variant == "julian":
-        return f"{ts:%y}{ts.dayofyear:03d}-{line + 1}-{seq_day:03d}"
+        return f"{ts:%y}{ts.day_of_year:03d}-{line + 1}-{seq_day:03d}"
     return int(f"{ts:%y%m%d}{seq_day:02d}")
 
 
@@ -601,7 +601,7 @@ def _serial_ids(
     days = starts_abs.normalize()
     seq = pd.Series(1, index=range(n)).groupby(np.asarray(days)).cumsum().to_numpy()
     yy = starts_abs.strftime("%y")
-    doy = starts_abs.dayofyear
+    doy = starts_abs.day_of_year
     return [f"{y}{d:03d}-{s:06d}" for y, d, s in zip(yy, doy, seq, strict=True)]
 
 

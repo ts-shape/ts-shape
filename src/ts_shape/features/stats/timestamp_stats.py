@@ -214,7 +214,7 @@ class TimestampStatistics(Base):
         """
         return time_values(
             dataframe, time_column, where="TimestampStatistics.weekday_distribution"
-        ).dt.weekday.value_counts()
+        ).dt.day_of_week.value_counts()
 
     @classmethod
     @renamed_kwargs(column_name="time_column")
@@ -253,7 +253,7 @@ class TimestampStatistics(Base):
             time_values(
                 dataframe, time_column, where="TimestampStatistics.most_frequent_day"
             )
-            .dt.weekday.dropna()
+            .dt.day_of_week.dropna()
             .mode()
         )
         if modes.empty:

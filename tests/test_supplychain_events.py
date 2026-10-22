@@ -292,7 +292,7 @@ class TestDemandPatternEvents:
         demand = []
         for t in times:
             # Base demand by day of week (Mon-Fri: ~100, Sat-Sun: ~30)
-            if t.dayofweek < 5:
+            if t.day_of_week < 5:
                 base = 100.0
             else:
                 base = 30.0

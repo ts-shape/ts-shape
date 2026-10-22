@@ -301,7 +301,7 @@ class DemandPatternEvents(Base):
                 "Saturday",
                 "Sunday",
             ]
-            period_data["label"] = period_data["start"].dt.dayofweek
+            period_data["label"] = period_data["start"].dt.day_of_week
             grouped = period_data.groupby("label")["total_demand"]
             stats = grouped.agg(["mean", "std", "min", "max"]).reset_index()
             stats.columns = [

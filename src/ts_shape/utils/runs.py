@@ -418,16 +418,26 @@ def run_argmax(values: Any, runs: Runs) -> _Ints:
     return np.where(first < 0, runs.starts, first)
 
 
+# pandas 3.1 made the scalar ``Timedelta.total_seconds()`` keep nanoseconds:
+# it now equals the vectorized ``TimedeltaIndex.total_seconds()``. Earlier
+# versions drop everything below a microsecond (1 ns gives 0.0).
+_SCALAR_TOTAL_SECONDS_KEEPS_NS = pd.Timedelta(1, unit="ns").total_seconds() != 0.0
+
+
 def total_seconds(deltas: Any) -> npt.NDArray[np.float64]:
     """Seconds per timedelta, bit-identical to scalar ``Timedelta.total_seconds()``.
 
-    The scalar method computes ``days * 86400 + seconds + microseconds / 1e6``
-    (dropping sub-microsecond precision); the vectorized
-    ``TimedeltaIndex.total_seconds()`` divides nanoseconds by ``1e9``, which
-    can differ in the last bit. Use this when replacing a per-row
-    ``(end - start).total_seconds()`` loop. ``NaT`` gives NaN.
+    Before pandas 3.1 the scalar method computes ``days * 86400 + seconds +
+    microseconds / 1e6`` (dropping sub-microsecond precision), while the
+    vectorized ``TimedeltaIndex.total_seconds()`` divides nanoseconds by
+    ``1e9``, which can differ in the last bit. From pandas 3.1 on the two
+    agree (full nanosecond precision). Either way this returns what the
+    scalar method of the installed pandas returns, so use it when replacing a
+    per-row ``(end - start).total_seconds()`` loop. ``NaT`` gives NaN.
     """
     td = pd.TimedeltaIndex(deltas)
+    if _SCALAR_TOTAL_SECONDS_KEEPS_NS:
+        return np.array(td.total_seconds(), dtype=np.float64)  # writable copy
     if td.unit == "ns":
         us = td.asi8 // 1000
     else:

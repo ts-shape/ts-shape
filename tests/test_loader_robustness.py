@@ -133,6 +133,26 @@ def test_parse_utc_times_mixes_offsets_and_naive_strings():
     assert out.tolist() == [pd.Timestamp("2024-01-01", tz="UTC")] * 2
 
 
+@pytest.mark.parametrize(
+    "values",
+    [
+        [1_704_067_200],  # epoch s
+        [1_704_067_200_000],  # epoch ms
+        [1_704_067_200_000_000],  # epoch us
+        [1_704_067_200_000_000_000],  # epoch ns
+        [1_704_067_200.0, None],  # whole float seconds with a null
+        [1_704_067_200.5],
+        ["2024-01-01T01:00:00+01:00"],
+        ["2024-01-01 00:00"],
+    ],
+)
+def test_parse_utc_times_is_always_nanoseconds(values):
+    """The resolution pandas infers differs by version (pandas 3.0 keeps the
+    epoch unit, 3.1 at least microseconds, 2.2 nanoseconds); the documented
+    ``datetime64[ns, UTC]`` holds on all of them."""
+    assert str(parse_utc_times(pd.Series(values)).dtype) == "datetime64[ns, UTC]"
+
+
 # ---------- MetadataJsonLoader ---------------------------------------------
 
 

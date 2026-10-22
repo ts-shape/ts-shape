@@ -1,5 +1,6 @@
 # October 22, 2026 (round 19)
 New: find and classify object-identifier signals.
+fix: compatibility with pandas 3.1
 feat: identify_objects(dataframe) screens every uuid for values that identify
   physical objects (serial, batch, lot, material, recipe, orders, tools,
   fixtures, carriers, RFID tags, machines, stations, locations, operators,

@@ -8,9 +8,22 @@ your tests with `-W error::DeprecationWarning`. The dated record is the
 
 ## October 2026, round 19: object-identifier signals (new)
 
-New only; no existing result changes. `SignalSpec`, `infer_spec` and
-`profile()` are unchanged. See
+New, plus pandas 3.1 compatibility (below); no other result changes.
+`SignalSpec`, `infer_spec` and `profile()` are unchanged. See
 [Object identification](guides/object-identification.md).
+
+- **pandas 3.1: timestamp resolution.** The energy loaders (`systime` from
+  epoch numbers or text), `parse_utc_times` and
+  `TimestampConverter.convert_to_datetime` now always return
+  `datetime64[ns, tz]`, as documented. pandas infers the resolution itself
+  and it differs by version (2.2: ns; 3.0: the epoch unit, `us` for text;
+  3.1: at least `us`). Unchanged on pandas 2.2; on 3.0 the unit was `s`,
+  `ms` or `us`. Values are unchanged.
+- **pandas 3.1: sub-microsecond seconds.** pandas 3.1 keeps nanoseconds in
+  `Timedelta.total_seconds()` (earlier versions drop them). The vectorized
+  `duration_seconds` (and similar) columns follow the installed pandas, so
+  they equal the per-row results on every version. With pandas 3.1, for
+  nanosecond timestamps only, they can differ from 3.0 by under 1 µs.
 
 - `ts_shape.identify_objects(dataframe)` returns an `ObjectReport` with one
   row per uuid:
