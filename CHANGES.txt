@@ -1,3 +1,14 @@
+# October 22, 2026 (round 19)
+New: find and classify object-identifier signals.
+fix: compatibility with pandas 3.1
+feat: identify_objects(dataframe) screens every uuid for values that identify
+  physical objects (serial, batch, lot, material, recipe, orders, tools,
+  fixtures, carriers, RFID tags, machines, stations, locations, operators,
+  customers/suppliers, handling units) from the values and their behaviour
+  only; ObjectReport.to_object_specs() feeds detect_objects.
+feat: make_object_signals() generates a labelled benchmark frame.
+  See docs/guides/object-identification.md.
+
 # October 21, 2026 (round 18)
 Databricks open-range fix; memory at 10M-100M rows.
 fix: DatabricksUnityParquetLoader open ranges floor to the folder

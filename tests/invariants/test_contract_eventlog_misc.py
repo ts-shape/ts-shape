@@ -189,6 +189,9 @@ CASES: dict[str, Case] = {
     ),
     # -- profiling / pipeline ---------------------------------------------
     "profiling.profile": Case(lambda df: profiling.profile(df).table),
+    "signals.identify_objects": Case(
+        lambda df: signals.identify_objects(df, min_samples=1).table
+    ),
     "pipeline.Pipeline": Case(
         lambda df: pipeline.Pipeline()
         .transform(lambda d: d.assign(value_double=d["value_double"] * 2), name="x2")
@@ -268,6 +271,9 @@ EXEMPT: dict[str, str] = {
     "signals.primitives.windows": "takes time bounds, not a frame; see test_bounds",
     "signals.primitives.shift_windows": "takes time bounds, not a frame; see test_bounds",
     "profiling.ProfileReport": "result container of profile()",
+    "signals.ObjectReport": "result container of identify_objects()",
+    "signals.register_identifier_type": "registry; see test_identify_objects",
+    "signals.register_identifier_pattern": "registry; see test_identify_objects",
     "pipeline.PipelineResult": "result container of Pipeline.run()",
     "eventlog.EventLog": "result container",
     "eventlog.OCEL2Tables": "result container",
@@ -294,6 +300,7 @@ EXEMPT: dict[str, str] = {
     "eventlog.run_backtest": "needs a registered rule; covered by LambdaDetector",
     "datasets.make_timeseries": "generator without a frame input",
     "datasets.make_id_signal": "generator without a frame input",
+    "datasets.make_object_signals": "generator without a frame input",
 }
 
 

@@ -60,17 +60,20 @@ PAGES = sorted(p for p in DOCS.rglob("*.md") if _blocks(p.read_text(encoding="ut
 
 @pytest.fixture(autouse=True)
 def _restore_registries():
-    """Undo what a page registers (custom adapters, rules, object types).
+    """Undo what a page registers (adapters, rules, object and identifier types).
 
     The event-log guides register a custom detector; left in the global
     registries it would fail the registry-consistency tests run later.
     """
     from ts_shape.eventlog import adapters, archetypes, schema, taxonomy
+    from ts_shape.signals import identify
 
     saved = [
         (taxonomy.REGISTRY, dict(taxonomy.REGISTRY)),
         (archetypes.ARCHETYPE_BY_METHOD, dict(archetypes.ARCHETYPE_BY_METHOD)),
         (adapters._OVERRIDES, dict(adapters._OVERRIDES)),
+        (identify.IDENTIFIER_TYPES, dict(identify.IDENTIFIER_TYPES)),
+        (identify._PATTERNS, dict(identify._PATTERNS)),
     ]
     object_types = set(schema._OBJECT_TYPES)
     yield

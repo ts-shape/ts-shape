@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from ts_shape.catalog import list_detectors as list_detectors
     from ts_shape.context.value_mapping import ValueMapper as ValueMapper
     from ts_shape.datasets import make_id_signal as make_id_signal
+    from ts_shape.datasets import make_object_signals as make_object_signals
     from ts_shape.datasets import make_timeseries as make_timeseries
     from ts_shape.errors import ColumnNotFoundError as ColumnNotFoundError
     from ts_shape.errors import DataQualityWarning as DataQualityWarning
@@ -460,9 +461,15 @@ if TYPE_CHECKING:
     from ts_shape.pipeline import PipelineResult as PipelineResult
     from ts_shape.profiling import ProfileReport as ProfileReport
     from ts_shape.profiling import profile as profile
+    from ts_shape.signals import ObjectReport as ObjectReport
     from ts_shape.signals import SignalSpec as SignalSpec
     from ts_shape.signals import SignalSpecs as SignalSpecs
+    from ts_shape.signals import identify_objects as identify_objects
     from ts_shape.signals import infer_specs as infer_specs
+    from ts_shape.signals import (
+        register_identifier_pattern as register_identifier_pattern,
+    )
+    from ts_shape.signals import register_identifier_type as register_identifier_type
     from ts_shape.stream import iter_chunked as iter_chunked
     from ts_shape.stream import run_chunked as run_chunked
     from ts_shape.stream import time_range_source as time_range_source
@@ -639,9 +646,14 @@ _LAZY: dict[str, str] = {
     "profile": "ts_shape.profiling",
     "ProfileReport": "ts_shape.profiling",
     "infer_specs": "ts_shape.signals",
+    "identify_objects": "ts_shape.signals",
+    "ObjectReport": "ts_shape.signals",
+    "register_identifier_type": "ts_shape.signals",
+    "register_identifier_pattern": "ts_shape.signals",
     "SignalSpec": "ts_shape.signals",
     "SignalSpecs": "ts_shape.signals",
     "make_id_signal": "ts_shape.datasets",
+    "make_object_signals": "ts_shape.datasets",
     "Pipeline": "ts_shape.pipeline",
     "PipelineResult": "ts_shape.pipeline",
     "iter_chunked": "ts_shape.stream",

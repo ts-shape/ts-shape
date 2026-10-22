@@ -16,6 +16,25 @@ def test_timestamp_converter_ms_to_tz():
     assert (out["t2"] - out["t1"]).dt.total_seconds().iloc[1] == 3600
 
 
+@pytest.mark.parametrize(
+    ("unit", "value"),
+    [
+        ("s", 1_700_000_000),
+        ("ms", 1_700_000_000_000),
+        ("us", 1_700_000_000_000_000),
+        ("ns", 1_700_000_000_000_000_000),
+    ],
+)
+def test_timestamp_converter_resolution_is_nanoseconds(unit, value):
+    """Not the resolution pandas infers, which differs between versions."""
+    df = pd.DataFrame({"t": [value, value + 1]})
+    out = TimestampConverter.convert_to_datetime(
+        df, "t", unit=unit, timezone="Europe/Berlin"
+    )
+    assert str(out["t"].dtype) == "datetime64[ns, Europe/Berlin]"
+    assert out["t"].iloc[0] == pd.Timestamp(1_700_000_000, unit="s", tz="UTC")
+
+
 def test_timestamp_converter_invalid_unit():
     df = pd.DataFrame({"t": [0, 1]})
     with pytest.raises(ValueError):

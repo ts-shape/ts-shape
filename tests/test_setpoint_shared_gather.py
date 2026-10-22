@@ -5,7 +5,11 @@
 implementation before the shared gather (commit 40210c2), which sliced a
 pandas window and re-derived the change table in every KPI method. Floats
 are stored with 17 significant digits, so they round-trip exactly:
-the comparison is exact.
+the comparison is exact. Timestamps are compared as ``Timestamp.isoformat()``
+of the parsed stored value (see :func:`_stamp`): ``Series.astype(str)``
+formats them differently across pandas versions (3.1 prints tz-aware columns
+with the column-wide resolution, like naive ones), without the values
+differing.
 
 The ``control_quality_metrics`` calls pin ``deadband=0``: the former code
 counted every sign change of the error, and the settle-band default that
@@ -26,6 +30,11 @@ import pandas as pd
 from ts_shape.events.engineering.setpoint_events import SetpointChangeEvents
 
 REFERENCE = Path(__file__).parent / "data" / "setpoint_kpis_reference.csv"
+
+
+def _stamp(value: object) -> str:
+    """A pandas-version independent spelling of a timestamp (or its text)."""
+    return pd.Timestamp(value).isoformat()
 
 
 def _frame(tz: str | None) -> pd.DataFrame:
@@ -88,7 +97,7 @@ def _outputs() -> pd.DataFrame:
                 out = call(SetpointChangeEvents(df, "sp"))
             out = out.drop(columns=["uuid", "source_uuid"])
             for col in ("start", "end"):
-                out[col] = out[col].astype(str)
+                out[col] = [_stamp(t) for t in out[col]]
             long = out.reset_index(drop=True).melt(
                 id_vars=["start"],
                 var_name="column",
@@ -107,6 +116,9 @@ def _outputs() -> pd.DataFrame:
 
 def test_kpis_match_the_former_per_change_implementation():
     expected = pd.read_csv(REFERENCE, dtype=str, keep_default_na=False)
+    expected["start"] = expected["start"].map(_stamp)
+    is_end = expected["column"] == "end"
+    expected.loc[is_end, "value"] = expected.loc[is_end, "value"].map(_stamp)
     got = _outputs().astype(str).reset_index(drop=True)
     # The reference was written with pandas 3 / numpy 2.5 on one machine.
     # Other numpy versions and CPUs (SIMD paths) round some sums differently
