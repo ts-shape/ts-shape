@@ -312,6 +312,104 @@ def test_shift_definitions_drive_operator_alignment():
     assert _row(out, "f")["object_type"] != "operator"
 
 
+# ---------- clean-up, codes and states ----------------------------------------
+
+
+def test_misreads_do_not_hide_a_small_pool():
+    # three fixtures, each held for hours, read with no-reads, truncations,
+    # lower case and dropped samples: still three code values, an identifier
+    seq = [v for v in ["FX-13", "FX-35", "FX-13", "FX-28"] * 3 for _ in range(60)]
+    for i, noise in zip(range(7, len(seq), 37), ["NOREAD", "FX-", "fx-13", None] * 30):
+        seq[i] = noise
+    out = identify_objects(
+        _sig("z", pd.date_range(START, periods=len(seq), freq="2min"), seq)
+    )
+    row = _row(out, "z")
+    assert row["role"] == "identifier", out.explain("z")
+    assert row["distinct_count"] == 3
+    assert any("misread" in e for e in row["evidence"])
+
+
+def test_small_enumerations_are_states_and_sparse_integers_codes():
+    enum = _held("u", [1, 2, 3, 1, 3, 2] * 10, 20, column="value_integer")
+    assert _row(identify_objects(enum), "u")["role"] == "state"
+    programs = _held("p", [17, 23, 5, 17, 5, 23] * 4, 90, column="value_integer")
+    assert _row(identify_objects(programs), "p")["role"] == "identifier"
+
+
+def test_decimal_text_and_compact_dates_are_not_ids():
+    t = pd.date_range(START, periods=600, freq="10min")  # about 4 days
+    rng = np.random.default_rng(5)
+    temps = _sig("m", t, [f"{60 + x:.1f}" for x in rng.normal(0, 0.4, 600)])
+    days = _sig("d", t, [x.strftime("%Y%m%d") for x in t])
+    stamps = _sig("s", t, [x.strftime("%d.%m.%y %H:%M") for x in t])
+    epoch = _sig("e", t, [str(int(x.timestamp())) for x in t])
+    out = identify_objects(pd.concat([temps, days, stamps, epoch]))
+    roles = out.table.set_index("uuid")["role"]
+    assert roles["m"] == "measurement"
+    assert roles[["d", "s", "e"]].tolist() == ["timestamp"] * 3
+
+
+def test_messages_that_embed_ids_are_free_text():
+    t = pd.date_range(START, periods=60, freq="20min")
+    msgs = [
+        f"Batch B25W10-{i:03d} released" if i % 3 else f"Order WO-{1000 + i} started"
+        for i in range(60)
+    ]
+    assert _row(identify_objects(_sig("z", t, msgs)), "z")["role"] == "free_text"
+
+
+def test_a_brief_code_from_a_pool_is_a_fault_code():
+    # E-codes set at a stop for a few minutes, then cleared for hours
+    rng = np.random.default_rng(2)
+    t = pd.date_range(START, periods=3000, freq="1min")
+    values = [""] * 3000
+    for start in rng.choice(np.arange(0, 2990, 50), 40, replace=False):
+        code = f"E{rng.choice([1043, 2077, 3101, 4410, 5120, 6033])}"
+        for k in range(int(start), int(start) + int(rng.integers(2, 6))):
+            values[k] = code
+    row = _row(identify_objects(_sig("z", t, values)), "z")
+    assert row["role"] == "state", row["evidence"]
+    assert any("fault or alarm code" in e for e in row["evidence"])
+
+
+# ---------- cross-signal relations --------------------------------------------
+
+
+def test_attribute_of_a_work_order_is_a_recipe_of_an_order_a_partner():
+    # production: a work order over batches over serials, with a recipe that
+    # changes only when the work order does
+    wo_codes = [f"WO-{5000 + i}" for i in range(12)]
+    recipe_of = ["R-7", "R-9", "R-7", "R-4", "R-9", "R-7"] * 2
+    wo = _held("wo", wo_codes, 240)
+    recipe = _held("rcp", recipe_of, 240)
+    batch = _held("b", [f"B{100 + i}" for i in range(48)], 60)
+    serial = _held("s", [f"SN{100000 + i}" for i in range(960)], 3)
+    # business: orders arriving at random, a customer changing with them
+    rng = np.random.default_rng(4)
+    times = START + pd.to_timedelta(np.cumsum(rng.exponential(1800, 60)), unit="s")
+    custs = [f"C{x}" for x in rng.choice([17, 22, 35, 41, 58, 63, 77], 60)]
+    order = _sig("so", times, [f"{8800000 + i}" for i in range(60)])
+    cust = _sig("cu", times, custs)
+    frames = [wo, recipe, batch, serial, order, cust]
+    out = identify_objects(pd.concat(frames))
+    types = out.table.set_index("uuid")["object_type"]
+    assert types["rcp"] == "recipe", out.explain("rcp")
+    assert types["wo"] == "work_order", out.explain("wo")
+    assert types["b"] == "batch", out.explain("b")
+    assert types["cu"] == "business_partner", out.explain("cu")
+    assert types["so"] == "order", out.explain("so")
+
+
+def test_a_fixed_count_of_parts_is_a_handling_unit():
+    serial = _held("s", [f"SN{100000 + i}" for i in range(1200)], 2, freq="30s")
+    packs = _held("h", [f"PK{7000 + i}" for i in range(50)], 48, freq="30s")
+    out = identify_objects(pd.concat([serial, packs]))
+    row = _row(out, "h")
+    assert row["object_type"] == "handling_unit", out.explain("h")
+    assert any("fixed count" in e for e in row["evidence"])
+
+
 # ---------- report API --------------------------------------------------------
 
 
@@ -337,6 +435,15 @@ def test_identifiers_explain_summary(report):
     frame = report.to_frame()
     frame.loc[0, "role"] = "changed"
     assert report.table.loc[0, "role"] != "changed"
+
+
+def test_report_is_a_mapping_of_types(report):
+    types = dict(report)
+    assert len(report) == len(report.table) == len(types)
+    assert {u: t for u, t in types.items() if t is not None} == EXPECTED_TYPES
+    assert report["p"] is None and report["a"] == "serial"
+    with pytest.raises(KeyError):
+        report["missing"]
 
 
 def test_to_object_specs_round_trip(plant, report):
@@ -447,14 +554,19 @@ def test_nan_and_empty_readings_mean_no_item():
 
 
 def test_all_empty_and_short_signals_are_insufficient():
+    # The default min_samples is 3 (it was 20): a recipe or tool logged on
+    # change has only a handful of rows over days, and 20 rows hid it.
     t = pd.date_range(START, periods=30, freq="1min")
     blank = _sig("z", t, [""] * 30)
+    tiny = _held("x", ["SN1", "SN2"], 1)
     short = _held("y", [f"SN{i}" for i in range(10)], 1)
-    out = identify_objects(pd.concat([blank, short]))
+    out = identify_objects(pd.concat([blank, tiny, short]))
     assert _row(out, "z")["role"] == "insufficient_data"
-    assert _row(out, "y")["role"] == "insufficient_data"
+    assert _row(out, "x")["role"] == "insufficient_data"
+    assert _row(out, "y")["role"] == "identifier"
     assert _row(out, "y")["sample_count"] == 10
-    assert _row(identify_objects(short, min_samples=5), "y")["role"] == "identifier"
+    strict = identify_objects(short, min_samples=20)
+    assert _row(strict, "y")["role"] == "insufficient_data"
 
 
 def test_hints_pin_the_type(plant):

@@ -31,9 +31,12 @@ import pytest
 import ts_shape
 
 #: The type vocabulary, grouped where the data cannot tell the types apart.
-#: Every key is a group; a type's own group has the type's name.
+#: Every key is a group; a type's own group has the type's name. ``article``,
+#: ``rfid_tag`` and ``asset`` are the engine's names (``IDENTIFIER_TYPES``)
+#: for a material, a carrier's tag and a machine; the generator never emits
+#: them.
 OBJECT_TYPE_GROUPS: dict[str, frozenset[str]] = {
-    "material": frozenset({"material"}),
+    "material": frozenset({"material", "article"}),
     "recipe": frozenset({"recipe"}),
     "batch": frozenset({"batch"}),
     "lot": frozenset({"lot"}),
@@ -41,8 +44,8 @@ OBJECT_TYPE_GROUPS: dict[str, frozenset[str]] = {
     "work_order": frozenset({"work_order"}),
     "order": frozenset({"sales_order", "purchase_order"}),
     "tooling": frozenset({"tool", "fixture"}),
-    "carrier": frozenset({"carrier"}),
-    "equipment": frozenset({"machine", "station"}),
+    "carrier": frozenset({"carrier", "rfid_tag"}),
+    "equipment": frozenset({"machine", "station", "asset"}),
     "location": frozenset({"location"}),
     "operator": frozenset({"operator"}),
     "business_partner": frozenset({"customer", "supplier"}),
@@ -59,11 +62,15 @@ _GROUP_OF.update({g: g for g in OBJECT_TYPE_GROUPS})
 NOT_IDENTIFIER = "-"
 
 
+#: Engine vocabulary names that are members of a generator group.
+ENGINE_ALIASES = frozenset({"article", "rfid_tag", "asset"})
+
+
 def test_vocabulary_matches_the_generator():
     from ts_shape._object_signals import OBJECT_TYPES
 
     members = set().union(*OBJECT_TYPE_GROUPS.values())
-    assert members == set(OBJECT_TYPES)
+    assert members - ENGINE_ALIASES == set(OBJECT_TYPES)
     assert sum(len(m) for m in OBJECT_TYPE_GROUPS.values()) == len(members)
 
 

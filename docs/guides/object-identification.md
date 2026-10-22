@@ -49,8 +49,8 @@ print(report.table[["uuid", "role", "object_type", "type_confidence", "parent_uu
 
 ```text
      uuid         role object_type  type_confidence parent_uuid
-0  line:a   identifier      serial         0.897436      line:b
-1  line:b   identifier       batch         0.648148        None
+0  line:a   identifier      serial         0.775510      line:b
+1  line:b   identifier       batch         0.622222        None
 2  line:c      counter        None              NaN        None
 3  line:d  measurement        None              NaN        None
 4  line:e        state        None              NaN        None
@@ -65,19 +65,20 @@ print(report.explain("line:a"))
 
 ```text
 line:a: identifier (value_string)
-  identifier score 0.80; type serial (confidence 0.90), runner-up sales_order (0.03)
+  identifier score 0.80; type serial (confidence 0.78), runner-up batch (0.15)
   720 samples, 240 distinct, 240 runs, median hold 180 s, revisit 0.00, ...
   - 240 distinct values (> 16) +0.30
   - shape A{2}9{6} (100% regular) +0.25
   - held 3 samples per run (median) +0.15
   - single tokens of 2..40 characters +0.10
-  - serial 1.75: values never come back (revisit <= 0.02) +0.25; many distinct
+  - serial 1.90: values never come back (revisit <= 0.02) +0.25; many distinct
     values (>= 50) +0.25; held about one cycle (median <= 1800 s) +0.25; next value
     is 1..5 above (>= 80%) +0.15; changes once per counted part (aligned with a
     counter) +0.50; each presence lies inside one presence of another id +0.10;
-    prefix family 'SN' +0.25
+    changes whenever a coarser non-recurring id changes +0.15; prefix family 'SN'
+    +0.25
   - nested in line:b (depth 1)
-  type scores: serial 1.75, sales_order 0.20, purchase_order 0.20, batch 0.15, ...
+  type scores: serial 1.90, batch 0.55, handling_unit 0.40
 ```
 
 Then turn the confident identifiers into object specs, detect the objects and build
@@ -101,7 +102,9 @@ print(log.relations["ocel:type"].value_counts().sort_index())
 ```
 
 `report.summary()` gives a one-screen overview, `report.identifiers()` the
-identifier rows, and `report.type_scores[uuid]` every type's raw score.
+identifier rows, and `report.type_scores[uuid]` every type's raw score. The report is
+also a read-only mapping: `report["line:a"]` is the type of a signal, `None` when it
+is not an identifier, and `dict(report)` gives all of them.
 
 ## The report table
 
@@ -130,25 +133,52 @@ reading (`""`, whitespace, NaN) means "no item".
 ## How screening works
 
 Each signal is reduced to its run-length encoding and its distinct values, so
-screening is O(n) and holds one signal in memory at a time. 10 million rows over 20
-signals take about 6-8 seconds. `value_string`, `value_integer` and integral
+screening is O(n) and holds one signal in memory at a time. 1 million rows over 20
+signals take under a second. `value_string`, `value_integer` and integral
 `value_double` can carry ids.
+
+**Clean-up first.** Readers misread, so before anything is measured:
+
+- spellings that differ only in case, surrounding blanks or leading zeros
+  (`vr-415` and `VR-415`, `0000140630` and `140630`) are one value;
+- a *misread* keeps the previous reading: a value that never lasts more than two
+  samples, is rare (under a quarter of the runs or samples of the typical value)
+  and is foreign to the typical values -- no letter or digit (`????????`), a PLC
+  default number (0, -1, 32767, 65535, ...), a shape no typical value has
+  (`NOREAD` among `FX-13`), or a truncation of one (`FX-`). In an integer column a
+  PLC default in a shape of its own is a misread however long it lasts;
+- a single empty sample inside a hold (`A A _ A`) is a dropped reading, not "no
+  item"; one-sample ids cleared by an empty (`A _ B _`) keep their empties.
+
+The evidence counts the misreads. Shares of a format or a shape are weighed by each
+value's runs, so a misread that survives cannot outvote a pool of three tools.
 
 The negative roles are checked first, in this order:
 
-1. `insufficient_data`: fewer than `min_samples` rows (default 20), or no non-empty
-   reading.
+1. `insufficient_data`: fewer than `min_samples` rows (default 3: a recipe logged on
+   change has only a handful of rows over days), or no non-empty reading.
 2. `constant`: one value.
 3. `state`: booleans.
-4. `measurement`: non-integral floats.
-5. `timestamp`: values parse as dates or times, or numbers that track the sample
-   time (epoch).
-6. `counter`: monotonic with small steps and resets. A fixed-width (5+ digits)
-   number that steps by +1 without a reset is a serial instead.
+4. `measurement`: non-integral floats, or decimal numbers stored as text (`60.9`).
+5. `timestamp`: ISO and local date/time formats; compact dates (`20240315`,
+   `20240315143000`, and `240315` on the day it appears); numbers or digit strings
+   that track the sample time (epoch s/ms/us/ns); any short text of digits and date
+   punctuation that a date parser reads as the moment the value appears (within 2
+   days; a date alone within 31 days before).
+6. `counter`: monotonic with small steps and resets, or a count that steps up by
+   1-5 at nearly every change and restarts (a reset polled late). A fixed-width
+   (5+ digits) number that only rises and never resets is a serial instead.
 7. `measurement`: a quantized analog value (small steps up and down), or a number
-   that changes at nearly every sample with no format and no holding.
-8. `state`: at most 16 word-like values (RUN/IDLE) or small integer codes (1/2/3).
-9. `free_text`: spaces, variable or long length, irregular shapes.
+   that changes at nearly every sample with no format, no holding and no
+   circulating pool.
+8. `state`: at most 16 values that are word-like (RUN/IDLE, Running), a small dense
+   integer enumeration (starting at -1, 0 or 1 and filling half its range: 1/2/3),
+   or a phase sequence (values in a fixed order, each held under 15 s: step names).
+   Integer *codes* stay: sparse (17, 23, 5), large (4711) or starting elsewhere
+   (9..13), and a tiny pool that takes turns every cycle (parallel machines).
+9. `free_text`: sentences (two or more plain words, even when they embed ids:
+   `Batch B24W07-008 released`), or spaces with a variable or long length and
+   irregular shapes.
 
 What is left gets an identifier score, the sum of these features (clipped to 0-1):
 
@@ -157,12 +187,18 @@ What is left gets an identifier score, the sum of these features (clipped to 0-1
 | `high_cardinality` | more than 16 distinct values | +0.30 |
 | `fixed_pool` | 3-16 values that recur regularly (recurrence CV <= 0.5) | +0.30 |
 | `low_cardinality_codes` | 2-16 values that are codes, not words | +0.20 |
-| `regular_format` | one shape signature for 80 %+ of the values | +0.25 |
+| `regular_format` | one shape, coarse shape, shape family (`M-7`, `M-58`) or segment structure (`RZ_PP_GF30_v5`) for 80 %+ of the values | +0.25 |
 | `known_format` | a format detector matches 90 %+ of the values | +0.35 |
 | `held` | median of 2+ samples per run | +0.15 |
 | `event_stamped` | one-sample ids cleared by an empty reading (80 %+) | +0.15 |
-| `token` | no spaces, 2-40 characters | +0.10 |
-| `changes_every_sample` | a number, new at nearly every sample, no format | -0.30 |
+| `token` | no spaces, 2-40 characters (1-40 for integers) | +0.10 |
+| `changes_every_sample` | a number of more than 16 values, new at nearly every sample, no format, not a running number, no circulating pool | -0.30 |
+
+**Fault and alarm codes.** After the cross-signal stage, an identifier from a
+recurring pool that is present less than 20 % of the time, in no fixed order, with
+no known format and changing with no other id becomes a `state`: that is what a
+fault code (`E1043`, set at a stop and cleared) does. A partner changes with its
+order; a carrier on a loop keeps a fixed order or circulates.
 
 ## How types are identified
 
@@ -176,13 +212,13 @@ score of 0.5 or more; its confidence is
 
 | Format | Type | Weight |
 |---|---|---|
-| GS1 element string, AI (00) / (21) / (10) / (01) | handling_unit / serial / batch / article | 1.2 |
+| GS1 element string, AI (00) / (21) / (10) / (01) | handling_unit / serial / batch (lot 1.0) / article | 1.2 |
 | GTIN-8/12/13/14 with a valid mod-10 check digit | article | 1.0 |
-| SSCC-18 with a valid check digit | handling_unit | 1.2 |
+| SSCC-18 with a valid check digit (also an integer without its leading zeros) | handling_unit | 1.2 |
 | SAP-style 18-digit zero-padded material number | material | 1.2 |
 | Date code YYMMDD / YYWW / YYDDD + sequence, a valid date at most 31 days before the value first appears | batch (0.7), lot (0.6) | |
 | EPC hex, 24 or 32 hex characters | rfid_tag | 1.2 |
-| Aisle-rack-level code (`A-01-03`) | location | 1.2 |
+| Location code: aisle-rack-level (`A-01-03`) or lettered levels (`R08-S05-F4`) | location | 1.2 |
 | UUID / GUID | type-neutral: screening only | |
 | Prefix family (`SN`, `WO`, `FA`, `SO`, `PO`, `WT`, `WZ`, ... on the value) | the family's type | 0.25 |
 
@@ -192,35 +228,47 @@ A prefix family is never decisive alone: 0.25 is below the type threshold.
 
 | Type | Distinguishing evidence |
 |---|---|
-| `serial` | 50+ values, never revisited, held about one cycle (<= 30 min), sequential; changes once per counted part when a counter is present; nested in a batch or order |
-| `batch` | long holds (>= 30 min), never revisited, increasing; contains serials; date codes |
-| `lot` | long holds, occasionally revisited (interleaved consumption); date codes, `LOT` prefix |
-| `work_order` | hours-long holds, occasionally revisited (a resumed order); contains serials or batches |
-| `recipe` | 2-100 values, often revisited, long holds (not days) |
-| `material` | like recipe; contains batches; SAP material numbers |
-| `article` | like recipe; contains serials; GTIN |
-| `tool` / `fixture` | at most 8 values, very long holds (>= 8 h) |
-| `carrier` | a fixed pool recurring regularly, each value with a fixed successor |
-| `rfid_tag` | EPC hex |
-| `asset` | few values, very long holds, a two-level code (`L1-M03`) |
-| `station` | few values, numbers in steps of 10 (`OP10`, `OP20`), fixed successor |
-| `location` | aisle-rack-level codes |
-| `operator` | changes at shift boundaries (80 %+ within 15 min) |
-| `order` (`sales_order`, `purchase_order`) | event-stamped, never revisited, changes together with a recurring id |
-| `business_partner` (`customer`, `supplier`) | event-stamped, often revisited, changes together with an id that never repeats |
-| `handling_unit` | SSCC |
+| `serial` | 50+ values, never revisited, held about one cycle (<= 30 min), sequential; changes once per counted part; nested in a batch; changes whenever its batch changes |
+| `batch` | long holds, never revisited, a running number; contains serials; changes whenever its coarser work order changes; date codes; held under 30 min counts against it |
+| `lot` | long holds, occasionally revisited, unrelated to the other ids; date codes, `LOT` prefix |
+| `work_order` | hours-long holds, occasionally revisited (a resumed order); coarser than its batches; recipe and material change with it; contains batches |
+| `order` (`sales_order`, `purchase_order`) | event-stamped or held, never revisited, arrivals spread like independent events (hold CV 0.75-1.6), a recurring partner changes with it, no production structure under it |
+| `recipe` | a tiny pool (<= 4), often revisited, long holds; changes only when a work order of the production hierarchy changes |
+| `material` / `article` | like recipe with more values; contains batches; SAP material numbers, GTIN |
+| `tool` / `fixture` | a tiny pool, long or very long holds, changed on its own (no other id changes with it) |
+| `carrier` | a circulating pool (a tour of as many runs as values shows nearly all of them), recurring regularly at cycle rate |
+| `rfid_tag` | EPC hex (on a circulating carrier) |
+| `asset` | a tiny pool that takes turns every cycle (parallel machines), in any order; a two-level code (`L1-M03`) |
+| `station` | numbers in steps of 10 (`OP10`, `OP20`), fixed successor |
+| `location` | location codes; a fixed count of parts per value with no running number |
+| `operator` | changes at shift boundaries (30 %+ and 3+ within 15 min), never held longer than a shift, the badges come back |
+| `business_partner` (`customer`, `supplier`) | often revisited, changes only when an event-like id outside production (an order) changes |
+| `handling_unit` | SSCC; a fixed count of parts per value (a package of N) with a running number |
 
 **Cross-signal structure** runs among the screened identifiers only (at most 64),
-O(signals² × runs) with searchsorted on the run boundaries:
+O(signals² × runs) with searchsorted on the run boundaries. Change times match
+within 5 s, or within 5 s plus the polling interval of the signals (up to 15 min)
+when chance alone would not give the match (the other signal changes at most 10 %
+of the time within that window):
 
 - **Nesting**: each presence of A lies inside one presence of B, A has at least 1.5×
   as many presences, and B's changes coincide with a change of A. The closest
   container is recorded as `parent_uuid`, and the depth is evidence (serial ⊂ batch ⊂
-  material). Resources and people (tools, carriers, stations, operators, partners)
-  are never nested: a long-running tool contains every batch without owning it.
-- **Co-change**: two event-stamped ids that change together; the recurring one is a
-  partner, the one that never repeats an order.
-- **Counter alignment**: an id that changes once per counter increment is a serial.
+  material). Resources, people and serials (tools, carriers, stations, operators,
+  partners) are never containers: a long-running tool contains every batch without
+  owning it.
+- **Attributes**: A changes only when B changes (70 %+), B is not revisited, and A
+  recurs (revisit > 0.2): A is an attribute of B. When B is part of the production
+  hierarchy (it nests batches or serials, or is coarser or finer than another
+  unique id) A is a production attribute (recipe, material); otherwise B is an
+  order-like host, and an event-like B makes A its business partner. A unique A
+  that changes only with a unique, finer B is the coarser of the two (a work order
+  over its batches).
+- **Part clocks**: the changes of a serial-like id, or the increments of a counter,
+  counted between an id's changes. A fixed count (CV <= 0.3) is a package of N
+  parts (handling unit) or its storage location; one change per counted part is a
+  serial.
+- **Unrelated**: an id that changes with no other id at all (a tool, a lot).
 
 The operator evidence uses the shift boundaries of `shift_definitions` (default
 `ts_shape.utils.shifts.DEFAULT_SHIFTS`: 06:00, 14:00, 22:00), read on the local wall
@@ -232,18 +280,28 @@ clock for tz-aware data.
   order, or a customer from a supplier. The report gives the group, `order` or
   `business_partner`; a prefix family (`SO`, `PO`, `CUST`, `SUP`, ...) or a registered
   pattern separates them.
-- **Types that need a format cue:** `rfid_tag` (EPC), `location` (aisle-rack-level),
-  `handling_unit` (SSCC), `asset` (a two-level code), and `fixture` (it scores just
-  below `tool` on the same behaviour). Register a pattern for your site's format.
-- **Weak pairs** (separated by small margins of behaviour): recipe / material /
-  article (nesting and formats separate them), batch / lot / work order (revisits and
-  hold length), tool / fixture, station / carrier, order / handling unit, and a batch
-  that happens to change at shift boundaries reads as an operator.
+- **Types that need a format cue:** `rfid_tag` (EPC), `location` and
+  `handling_unit` without a part clock (no serial or counter signal), and `fixture`
+  (it scores just below `tool` on the same behaviour). Register a pattern for your
+  site's format.
+- **Weak pairs** (separated by small margins of behaviour):
+    - recipe / tool: a tiny pool of codes held for hours that changes with no other
+      id is a tool, a fixture, or a recipe whose work order is not in the data. Only
+      the relation to the work order separates them; without it the call is close
+      to a guess.
+    - recipe / material / article: separated by the pool size (a recipe has a tiny
+      pool), nesting and formats.
+    - customer / material: both change only with a unique id; the host's
+      production structure separates them, so an order next to a production order
+      with no batch or serial signal reads alike.
+    - batch / lot / work order: structure (nesting, the coarser-finer relation),
+      revisits and a running number.
+    - station / carrier and asset / station: the pool size and a fixed order.
 - **Encoding.** An id written once per change, without an empty reading after it, is
   read as held until the next value. Only ids cleared by an empty reading count as
   event-stamped.
-- **Counters.** An integer that counts up by one with a fixed width of 5+ digits and
-  never resets is read as a serial, not a counter.
+- **Counters.** An integer that counts up with a fixed width of 5+ digits and never
+  resets is read as a serial, not a counter.
 
 Pin what the data cannot tell with `hints`:
 
