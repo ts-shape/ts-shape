@@ -45,6 +45,9 @@ id_template="{value}", attributes={})` says that signal `uuid` carries ids of
   the blip. The last id on a signal is never dropped.
 
 `object_specs_from_metadata(metadata)` builds the specs from a metadata table.
+Without metadata, [`identify_objects`](../object-identification.md) finds the id
+signals and their types from the values alone; `report.to_object_specs()` returns the
+specs.
 
 ## When is an object present?
 
