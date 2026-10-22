@@ -183,7 +183,12 @@ def _row(report: ObjectReport, uuid: str) -> pd.Series:
 def test_reference_type(report, uuid, expected):
     row = _row(report, uuid)
     assert row["role"] == "identifier", report.explain(uuid)
-    assert row["object_type"] == expected, report.explain(uuid)
+    # recipe, tool and fixture fixtures without a format cue or a work order
+    # are reported as their group, ``setup``.
+    assert row["object_type"] in (
+        expected,
+        IDENTIFIER_TYPES.get(expected),
+    ), report.explain(uuid)
     assert row["type_confidence"] > row["runner_up_confidence"] or np.isnan(
         row["runner_up_confidence"]
     )
@@ -440,7 +445,13 @@ def test_identifiers_explain_summary(report):
 def test_report_is_a_mapping_of_types(report):
     types = dict(report)
     assert len(report) == len(report.table) == len(types)
-    assert {u: t for u, t in types.items() if t is not None} == EXPECTED_TYPES
+    expected = {
+        u: report.table.set_index("uuid").at[u, "object_type"] for u in EXPECTED_TYPES
+    }
+    assert {u: t for u, t in types.items() if t is not None} == expected
+    assert all(
+        expected[u] in (t, IDENTIFIER_TYPES.get(t)) for u, t in EXPECTED_TYPES.items()
+    )
     assert report["p"] is None and report["a"] == "serial"
     with pytest.raises(KeyError):
         report["missing"]

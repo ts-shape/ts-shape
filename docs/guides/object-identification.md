@@ -276,19 +276,26 @@ clock for tz-aware data.
 
 ## Limits
 
-- **Groups.** Without a format cue, the data cannot tell a sales order from a purchase
-  order, or a customer from a supplier. The report gives the group, `order` or
-  `business_partner`; a prefix family (`SO`, `PO`, `CUST`, `SUP`, ...) or a registered
-  pattern separates them.
+- **Groups.** When the data cannot tell group members apart, the report gives the
+  group instead of guessing:
+    - `order`: a sales order or a purchase order, without a format cue.
+    - `business_partner`: a customer or a supplier, without a format cue.
+    - `setup`: a recipe, tool or fixture. This is reported when a tiny pool of codes
+      held for hours changes with no other id, so no work order shows it is a
+      recipe, and no format shows it is a tool or a fixture.
+
+  A group is reported when two of its members score within 0.15 of each other. A
+  prefix family (`SO`, `PO`, `CUST`, `SUP`, `WZ`, `FX`, ...), a registered pattern or a
+  hint separates them.
 - **Types that need a format cue:** `rfid_tag` (EPC), `location` and
   `handling_unit` without a part clock (no serial or counter signal), and `fixture`
   (it scores just below `tool` on the same behaviour). Register a pattern for your
   site's format.
 - **Weak pairs** (separated by small margins of behaviour):
-    - recipe / tool: a tiny pool of codes held for hours that changes with no other
-      id is a tool, a fixture, or a recipe whose work order is not in the data. Only
-      the relation to the work order separates them; without it the call is close
-      to a guess.
+    - recipe / tool / fixture: a tiny pool of codes held for hours that changes with
+      no other id is a tool, a fixture, or a recipe whose work order is not in the
+      data. Only the relation to the work order separates them; without it the
+      report gives the `setup` group.
     - recipe / material / article: separated by the pool size (a recipe has a tiny
       pool), nesting and formats.
     - customer / material: both change only with a unique id; the host's

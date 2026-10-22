@@ -143,14 +143,14 @@ IDENTIFIER_TYPES: dict[str, str | None] = {
     "lot": None,  # a lot (often of incoming material)
     "material": None,  # material number
     "article": None,  # part / article number
-    "recipe": None,  # recipe or product variant
+    "recipe": "setup",  # recipe or product variant
     # orders
     "work_order": None,  # production order
     "sales_order": "order",
     "purchase_order": "order",
     # resources
-    "tool": None,  # tool, mold or die
-    "fixture": None,
+    "tool": "setup",  # tool, mold or die
+    "fixture": "setup",
     "carrier": None,  # carrier, container, pallet, tray, kanban bin
     "rfid_tag": None,
     "asset": None,  # machine
@@ -182,7 +182,7 @@ ROLES: tuple[str, ...] = (
 #: parent or child (a long-running tool contains every batch without owning
 #: it).
 _NOT_NESTED = frozenset(
-    {"tool", "fixture", "carrier", "rfid_tag", "asset", "station", "location"}
+    {"tool", "fixture", "setup", "carrier", "rfid_tag", "asset", "station", "location"}
     | {"operator", "customer", "supplier", "business_partner"}
 )
 
