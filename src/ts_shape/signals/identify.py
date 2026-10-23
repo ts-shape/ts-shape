@@ -59,7 +59,7 @@ tour, alternation at cycle rate, shift alignment and shift-bounded holds,
 the spread of holds) add the weights of :data:`TYPE_RULES` to the types they
 point at. Cross-signal structure adds a second round of facts:
 
-* nesting -- each presence of A lies inside one presence of B and B's
+* containment -- each presence of A lies inside one presence of B and B's
   changes are matched by A's (a serial in its batch);
 * attributes -- A changes only when B changes (a recipe or material with
   its work order, a customer with its order); whether B belongs to the
@@ -77,6 +77,23 @@ otherwise the type is ``identifier`` and the evidence says what was missing.
 When the two best types belong to one group of :data:`IDENTIFIER_TYPES` and
 no format cue separates them, the group is reported (``order``,
 ``business_partner``).
+
+Nesting
+-------
+On the types the values and the relations point at, each serial, batch and
+lot gets a *production parent* (``parent_uuid``): for a serial its batch or
+lot, else its order, material or recipe; for a batch or lot its material or
+recipe, else its order (:data:`_PARENT_RANK`, :data:`_QUANTITY_PARENT_RANK`;
+a farther level only when the data has no id of the nearest one). The
+parent must nest the child both ways: the parent keeps its value during the
+child's presences, and the parent's changes meet the child's starts, ends
+or pauses far more often than chance would give (:data:`NEST_MIN_LIFT`,
+:data:`NEST_MAX_CHANCE_P`), so an id on another line or clock is never a
+parent. A handling unit (or any id holding a fixed count of parts) that
+nests a serial is its *packing parent* (``packing_parent_uuid``), next to
+the production parent. Resources and people (tools, carriers, operators,
+stations, locations, partners) and messages that name an id are never
+part of a nesting.
 
 Confidence: ``best / (best + runner_up) * min(1, best / CONFIDENT_SCORE)``,
 with ``runner_up`` the best score outside the reported type (or group).
@@ -178,13 +195,51 @@ ROLES: tuple[str, ...] = (
     "insufficient_data",
 )
 
-#: Object types that are resources or people: never part of a nesting, as
-#: parent or child (a long-running tool contains every batch without owning
-#: it).
+#: Object types that are resources or people: no part of the containment
+#: evidence for the types, as container or contained (a long-running tool
+#: contains every batch without owning it).
 _NOT_NESTED = frozenset(
     {"tool", "fixture", "setup", "carrier", "rfid_tag", "asset", "station", "location"}
     | {"operator", "customer", "supplier", "business_partner"}
 )
+
+#: Types that get a production parent in the reported nesting.
+_NEST_CHILDREN = frozenset({"serial", "batch", "lot"})
+#: Production parents of a serial, preferred in this order (lower first): its
+#: batch or lot, else its order, else its material, else its recipe.
+_PARENT_RANK: dict[str, int] = {
+    "batch": 0,
+    "lot": 0,
+    "work_order": 1,
+    "order": 1,
+    "sales_order": 1,
+    "purchase_order": 1,
+    "material": 2,
+    "article": 2,
+    "recipe": 3,
+    "setup": 3,
+}
+#: Production parents of a batch or lot. A batch is a quantity of one
+#: material made by one recipe (batch numbers are kept per material; ISA-88
+#: runs a batch on a recipe): its material or recipe -- the finer of them --
+#: comes before the order that produced it. On its values alone a material
+#: that was never revisited in the recording is easily taken for a lot; the
+#: two-way alignment tells a refilled raw-material lot (its own clock) apart.
+_QUANTITY_PARENT_RANK: dict[str, int] = {
+    "material": 0,
+    "article": 0,
+    "recipe": 0,
+    "setup": 0,
+    "lot": 0,
+    "work_order": 1,
+    "order": 1,
+    "sales_order": 1,
+    "purchase_order": 1,
+}
+#: Packing parents: a package that holds parts, next to their production
+#: parent (also any id that holds a fixed count of parts, see
+#: ``fixed_count``).
+_PACKING_TYPES = frozenset({"handling_unit"})
 
 # ---------------------------------------------------------------------------
 # Thresholds (documented; all values are on the data, never on names)
@@ -272,16 +327,33 @@ EVENT_STAMPED_SHARE = 0.8
 SHIFT_TOLERANCE_SECONDS = 900.0
 #: Two changes within this many seconds happen together.
 COCHANGE_TOLERANCE_SECONDS = 5.0
-#: Nesting: this share of the child's presences lies inside the parent's,
-#: the child has at least NEST_MIN_FANOUT times as many presences, and
-#: this share of the parent's changes has a child change within
-#: NEST_ALIGN_HOLD_SHARE of the child's median hold (at least
-#: COCHANGE_TOLERANCE_SECONDS). Without the alignment, any short presence
-#: lies trivially inside any long one.
+#: Reported nesting (:func:`_nest`): during this share of the child's
+#: presences the parent keeps its value (the polling lag of either signal
+#: may stick out), and the child has at least NEST_MIN_FANOUT times as many
+#: presences ...
 NEST_MIN_SHARE = 0.9
-NEST_MIN_FANOUT = 1.5
-NEST_ALIGN_SHARE = 0.8
+NEST_MIN_FANOUT = 1.25
+#: ... and the parent's changes meet a change of the child -- a presence
+#: starts or ends, nothing is present, or the child pauses (a presence of
+#: NEST_PAUSE_HOLDS median holds or more) -- within
+#: COCHANGE_TOLERANCE_SECONDS or NEST_ALIGN_HOLD_SHARE of the child's median
+#: hold, widened by the polling lag: at least NEST_ALIGN_SHARE of them, a
+#: lift ``(matched - chance) / (1 - chance)`` of NEST_MIN_LIFT or more over
+#: the share of the time such windows cover, and a binomial tail of at most
+#: NEST_MAX_CHANCE_P. Without the chance correction a parent on another
+#: line would nest every serial: any moment is near a change of a fast
+#: clock.
+NEST_ALIGN_SHARE = 0.5
 NEST_ALIGN_HOLD_SHARE = 0.1
+NEST_MIN_LIFT = 0.4
+NEST_MAX_CHANCE_P = 1e-2
+NEST_PAUSE_HOLDS = 4.0
+#: A preferred parent whose alignment polling hides replaces the verified
+#: one when it lies in it with at least this fan-out (1:1, give or take).
+NEST_ALIAS_FANOUT = 0.9
+#: A signal is polled (seen up to one period late) when this share of its
+#: sample intervals lies within 5 % of the median interval.
+POLL_REGULAR_SHARE = 0.6
 #: Attribute relation: this share of A's changes has a change of B within
 #: COCHANGE_TOLERANCE_SECONDS plus the polling lag (capped at
 #: MAX_LAG_SECONDS); B's changes would cover at most ATTRIBUTE_MAX_CHANCE of
@@ -297,6 +369,12 @@ MAX_LAG_SECONDS = 900.0
 COARSER_RATIO = 0.8
 #: Fixed count: the parts counted between changes vary by at most this CV.
 FIXED_COUNT_CV = 0.3
+#: Containment evidence for the types (:func:`_containers`): share of the
+#: child's presences inside one of the container's, fan-out, and share of
+#: the container's changes matched by the child's.
+CONTAIN_MIN_SHARE = 0.9
+CONTAIN_MIN_FANOUT = 1.5
+CONTAIN_ALIGN_SHARE = 0.8
 #: Cross-signal work runs among at most this many identifiers.
 MAX_CROSS_SIGNALS = 64
 #: Screening thresholds of the negative roles.
@@ -1093,6 +1171,8 @@ class _Signal:
     # presence runs (id runs, empties break them)
     p_start: _I64 = field(default_factory=lambda: np.empty(0, np.int64))
     p_end: _I64 = field(default_factory=lambda: np.empty(0, np.int64))
+    # value code of each presence
+    p_code: _I64 = field(default_factory=lambda: np.empty(0, np.int64))
     # changes: start of every id presence after the first
     changes: _I64 = field(default_factory=lambda: np.empty(0, np.int64))
     increments: _I64 = field(default_factory=lambda: np.empty(0, np.int64))
@@ -1104,10 +1184,13 @@ class _Signal:
     runner_up: str | None = None
     runner_up_confidence: float = math.nan
     parent: str | None = None
+    packing_parent: str | None = None
     depth: int = 0
     distinct: int = 0
     runs: int = 0
     lag_ns: int = 0
+    # sampling period of a polled signal (regular sample times), else 0
+    poll_ns: int = 0
     # measured features behind the facts (hold spread, time presence, ...)
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -1350,6 +1433,20 @@ def _is_epoch_like(values: npt.NDArray[np.float64], t_ns: _I64) -> bool:
     return False
 
 
+def _poll_period(t_ns: _I64) -> int:
+    """The sampling period when the samples lie on a regular grid (at least
+    :data:`POLL_REGULAR_SHARE` of the intervals within 5 % of the median),
+    else 0. A polled value is seen up to one period after it changed."""
+    if len(t_ns) < 4:
+        return 0
+    gaps = np.diff(t_ns).astype(np.float64)
+    med = float(np.median(gaps))
+    if med <= 0:
+        return 0
+    regular = float((np.abs(gaps - med) <= 0.05 * med).mean())
+    return int(med) if regular >= POLL_REGULAR_SHARE else 0
+
+
 @functools.lru_cache(maxsize=32)
 def _shift_bounds(definitions: tuple[tuple[str, str], ...]) -> npt.NDArray[np.float64]:
     """Shift boundaries as seconds after midnight."""
@@ -1429,7 +1526,7 @@ def _screen(
     is_id = rc >= 0
     followed_empty = np.append(rc[1:] == -1, False)[is_id]
     p_start, p_end, p_len = rstart[is_id], rend[is_id], rlen[is_id]
-    sig.p_start, sig.p_end = p_start, p_end
+    sig.p_start, sig.p_end, sig.p_code = p_start, p_end, rc[is_id]
     sig.changes = p_start[1:]
 
     present = codes >= 0
@@ -1459,6 +1556,7 @@ def _screen(
     if nonempty > 2 and runs < 0.5 * nonempty:
         # polled: a change is seen up to one sampling interval late
         sig.lag_ns = int(np.median(np.diff(ne_t)))
+    sig.poll_ns = _poll_period(t)
     one_cleared = (p_len == 1) & followed_empty
     event_stamped = len(p_len) >= 3 and float(one_cleared.mean()) >= EVENT_STAMPED_SHARE
     held = len(p_len) > 0 and float(np.median(p_len)) >= 2
@@ -1927,16 +2025,19 @@ def _clock_share(
         if not _CLOCK_CANDIDATE.fullmatch(text):
             continue
         for dayfirst in (False, True):
+            # a parse far from the recording (``"T3-0000123"`` reads as the
+            # year 123) is out of the nanosecond range: not a date
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     when = pd.Timestamp(pd.to_datetime(text, dayfirst=dayfirst))
+                if when.tzinfo is not None:
+                    when = when.tz_convert(None)
+                ref = first.tz_convert(None) if first.tzinfo is not None else first
+                age = (ref - when).total_seconds() / 86400
             except (ValueError, OverflowError, TypeError):
+                # OutOfBoundsDatetime / OutOfBoundsTimedelta are ValueErrors
                 continue
-            if when.tzinfo is not None:
-                when = when.tz_convert(None)
-            ref = first.tz_convert(None) if first.tzinfo is not None else first
-            age = (ref - when).total_seconds() / 86400
             if when == when.normalize():
                 ok = -1 <= age <= DATE_CODE_MAX_AGE_DAYS
             else:
@@ -2176,6 +2277,349 @@ def _aligned(
     return _matched_share(a, b, tol_ns + lag_ns) >= share
 
 
+def _value_changes(sig: _Signal) -> _I64:
+    """When ``sig`` takes a new value (not the same value again after an
+    empty reading)."""
+    new = np.asarray(sig.p_code[1:] != sig.p_code[:-1], dtype=bool)
+    out: _I64 = sig.p_start[1:][new]
+    return out
+
+
+def _containment(child: _Signal, parent: _Signal, slack_ns: int = 0) -> float:
+    """Share of the child's presences during which the parent keeps its
+    value (no change of the parent's value more than ``slack_ns``, the
+    polling lag, inside them), among those that overlap a parent presence
+    at all; 0 when fewer than half do. A child presence while the parent is
+    empty (not recorded) is no evidence either way."""
+    ps, pe = parent.p_start, parent.p_end
+    cs, ce = child.p_start, child.p_end
+    if len(ps) == 0 or len(cs) == 0:
+        return 0.0
+    vc = _value_changes(parent)
+    lo, hi = cs + slack_ns, ce - slack_ns
+    crossed = np.searchsorted(vc, hi, side="left") > np.searchsorted(
+        vc, lo, side="right"
+    )
+    crossed &= hi > lo
+    # overlapping: a parent presence starts before the child ends and ends
+    # after it starts
+    j = np.searchsorted(ps, ce, side="left") - 1
+    overlaps = (j >= 0) & (pe[np.clip(j, 0, len(ps) - 1)] > cs)
+    k = np.searchsorted(ps, cs, side="right") - 1
+    overlaps |= (k >= 0) & (pe[np.clip(k, 0, len(ps) - 1)] > cs)
+    if overlaps.sum() < 0.5 * len(cs):
+        return 0.0
+    return float((overlaps & ~crossed).sum() / overlaps.sum())
+
+
+def _change_windows(
+    sig: _Signal, before_ns: int, after_ns: int, *, pauses_only: bool = False
+) -> tuple[_I64, _I64]:
+    """Disjoint ``(starts, ends)`` of the moments that meet a change of
+    ``sig``: a presence starts or ends from ``before_ns`` before to
+    ``after_ns`` after them, or nothing is present (no presence can straddle
+    a change then), or a presence lasts far longer than usual (a pause: the
+    line stood still). ``pauses_only`` leaves out the starts and ends."""
+    # a boundary seen up to ``after_ns`` after the change it meets
+    bounds = np.concatenate([sig.p_start[1:], sig.p_end[:-1]])
+    if pauses_only:
+        bounds = bounds[:0]
+    lo, hi = bounds - after_ns, bounds + before_ns
+    gap = sig.p_end[:-1] < sig.p_start[1:]
+    lo = np.concatenate([lo, sig.p_end[:-1][gap] - after_ns])
+    hi = np.concatenate([hi, sig.p_start[1:][gap] + before_ns])
+    # a pause: a presence held far longer than usual (the line stood still)
+    hold = sig.p_end - sig.p_start
+    pause = hold > NEST_PAUSE_HOLDS * float(np.median(hold)) if len(hold) else hold
+    lo = np.concatenate([lo, sig.p_start[pause] - after_ns])
+    hi = np.concatenate([hi, sig.p_end[pause] + before_ns])
+    if len(lo) == 0:
+        return lo, hi
+    order = np.argsort(lo, kind="stable")
+    lo, hi = lo[order], np.maximum.accumulate(hi[order])
+    new = np.ones(len(lo), dtype=bool)
+    new[1:] = lo[1:] > hi[:-1]
+    group = np.cumsum(new) - 1
+    ends = np.zeros(int(group[-1]) + 1, dtype=np.int64)
+    np.maximum.at(ends, group, hi)
+    return lo[new], ends
+
+
+def _cochange_lift(
+    edges: _I64,
+    child: _Signal,
+    before_ns: int,
+    after_ns: int,
+    lo: int,
+    hi: int,
+    *,
+    pauses_only: bool = False,
+) -> float:
+    """How far above chance the ``edges`` (a parent's changes) meet a change
+    of the child (:func:`_change_windows`): ``(matched - chance) / (1 -
+    chance)``, with ``chance`` the share of ``[lo, hi]`` the windows cover;
+    ``-inf`` when fewer than :data:`NEST_ALIGN_SHARE` of the edges match."""
+    if len(edges) == 0 or hi <= lo:
+        return -math.inf
+    ws, we = _change_windows(child, before_ns, after_ns, pauses_only=pauses_only)
+    if len(ws) == 0:
+        return -math.inf
+    k = np.searchsorted(ws, edges, side="right") - 1
+    hit = (k >= 0) & (edges <= we[np.clip(k, 0, len(we) - 1)])
+    matched = float(hit.mean())
+    if matched < NEST_ALIGN_SHARE:
+        return -math.inf
+    covered = float((np.minimum(we, hi) - np.maximum(ws, lo)).clip(min=0).sum())
+    chance = min(1.0, covered / float(hi - lo))
+    if chance >= 1.0:
+        return -math.inf
+    if _binomial_tail(int(hit.sum()), len(edges), chance) > NEST_MAX_CHANCE_P:
+        return -math.inf
+    return (matched - chance) / (1.0 - chance)
+
+
+def _binomial_tail(k: int, n: int, p: float) -> float:
+    """``P(X >= k)`` for ``X ~ Binomial(n, p)``."""
+    if k <= 0:
+        return 1.0
+    if p <= 0.0:
+        return 0.0
+    if p >= 1.0:
+        return 1.0
+    lp, lq = math.log(p), math.log1p(-p)
+    terms = [
+        math.lgamma(n + 1)
+        - math.lgamma(i + 1)
+        - math.lgamma(n - i + 1)
+        + i * lp
+        + (n - i) * lq
+        for i in range(k, n + 1)
+    ]
+    top = max(terms)
+    return min(1.0, math.exp(top) * sum(math.exp(t - top) for t in terms))
+
+
+_WORDY_SHAPE = re.compile(r"(?:^|\s)a\{(?:[3-9]|\d\d)\}|\sAa\{[2-9]\}")
+
+
+def _wordy(sig: _Signal) -> bool:
+    """Whether the values read like a message around an id (``"Batch
+    25061207 released"``): blanks between words. Such a signal follows the
+    id it names, so it is kept out of the nesting."""
+    shape = sig.metrics.get("pattern")
+    return isinstance(shape, str) and " " in shape and bool(_WORDY_SHAPE.search(shape))
+
+
+def _late_ns(sig: _Signal) -> int:
+    """How late a change of ``sig`` may be seen: its polling lag."""
+    return min(max(sig.lag_ns, sig.poll_ns), int(MAX_LAG_SECONDS * 1e9))
+
+
+def _align_ns(sig: _Signal) -> int:
+    """Tolerance for meeting a change of ``sig``: :data:`NEST_ALIGN_HOLD_SHARE`
+    of its median hold, at least :data:`COCHANGE_TOLERANCE_SECONDS`."""
+    hold = sig.metrics.get("median_hold_seconds", math.nan)
+    hold = 0.0 if math.isnan(hold) else hold
+    return int(max(COCHANGE_TOLERANCE_SECONDS, NEST_ALIGN_HOLD_SHARE * hold) * 1e9)
+
+
+def _inside(child: _Signal, parent: _Signal, fanout: float = NEST_MIN_FANOUT) -> bool:
+    """The child's presences lie inside the parent's: at least
+    :data:`NEST_MIN_SHARE` of them inside one parent presence, and
+    ``fanout`` times as many of them."""
+    if parent is child or len(parent.p_start) < 2:
+        return False
+    if len(child.p_start) < fanout * len(parent.p_start):
+        return False
+    # a polled reading is late by up to one period (give or take jitter)
+    slack = int(1.05 * max(_late_ns(child), _late_ns(parent)))
+    slack += int(COCHANGE_TOLERANCE_SECONDS * 1e9)
+    return _containment(child, parent, slack) >= NEST_MIN_SHARE
+
+
+def _cochange(child: _Signal, parent: _Signal) -> float:
+    """How far above chance the parent's changes meet a change of the child
+    (a presence starts or ends, none is present, or the child pauses): the
+    best :func:`_cochange_lift` over the windows tried, ``-inf`` when none
+    passes. A parent on another line or clock co-varies with the child only
+    by chance. A polled signal is seen up to one sampling period late, so
+    the window reaches that far: after the parent's change for a polled
+    child, before it for a polled parent. Tried within
+    :data:`COCHANGE_TOLERANCE_SECONDS` and within
+    :data:`NEST_ALIGN_HOLD_SHARE` of the child's median hold."""
+    lo, hi = int(child.p_start[0]), int(child.p_end[-1])
+    vc = _value_changes(parent)
+    edges = vc[(vc > lo) & (vc < hi)]
+    if len(edges) == 0:
+        return -math.inf
+    lift = -math.inf
+    for tol in sorted({int(COCHANGE_TOLERANCE_SECONDS * 1e9), _align_ns(child)}):
+        before, after = tol + _late_ns(parent), tol + _late_ns(child)
+        lift = max(
+            lift,
+            _cochange_lift(edges, child, tol, tol, lo, hi),
+            _cochange_lift(edges, child, before, after, lo, hi),
+            # polled too coarsely for the starts and ends: the pauses tell
+            _cochange_lift(edges, child, before, after, lo, hi, pauses_only=True),
+        )
+    return lift
+
+
+def _cochanges(child: _Signal, parent: _Signal) -> bool:
+    """Whether the parent co-varies with the child (:func:`_cochange`)."""
+    return _cochange(child, parent) >= NEST_MIN_LIFT
+
+
+def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
+    """Choose each id's production parent and packing parent.
+
+    Children are the ids typed :data:`_NEST_CHILDREN` (serials, batches,
+    lots); their production parents are the types of :data:`_PARENT_RANK`
+    (:data:`_QUANTITY_PARENT_RANK` for a batch or lot), preferred in that
+    order; among equals the finer id (:func:`_finer_key`). A parent must
+    nest the child both ways: the child's presences lie inside the
+    parent's (:func:`_inside`) and the parent's changes meet the child's
+    far above chance (:func:`_cochanges`) -- an id on another line or clock
+    does not. A farther level is taken only when the data has no id of the
+    nearest one (a serial goes under its order only without any batch or
+    lot). A handling unit, or any id that holds a fixed count of parts,
+    that nests a serial is its packing parent. Messages that name an id
+    (:func:`_wordy`) and event-stamped ids are left out.
+
+    Where polling hides when the child changed (a serial read every half
+    cycle, a batch polled every few minutes), the co-change test cannot
+    decide. A preferred parent the child lies inside then still wins over
+    the verified one when it nests in that verified parent itself: both
+    belong to the line the verified parent puts the child on.
+    """
+    held = [
+        s
+        for s in ids
+        if "event_stamped" not in s.facts and len(s.p_start) and not _wordy(s)
+    ]
+    for child in held:
+        kind = base[child.uuid]
+        if kind not in _NEST_CHILDREN:
+            continue
+        ranks = _QUANTITY_PARENT_RANK if kind in ("batch", "lot") else _PARENT_RANK
+        verified: list[tuple[int, _Signal]] = []
+        unverified: list[tuple[int, _Signal]] = []
+        packing: list[_Signal] = []
+        for parent in held:
+            ptype = base[parent.uuid]
+            if ptype is None or ptype == kind:
+                continue
+            production = ptype in ranks
+            packs = kind == "serial" and (
+                ptype in _PACKING_TYPES or "fixed_count" in parent.facts
+            )
+            if not (production or packs) or not _inside(child, parent):
+                continue
+            if not _cochanges(child, parent):
+                if production:
+                    unverified.append((ranks[ptype], parent))
+                continue
+            if production:
+                verified.append((ranks[ptype], parent))
+            if packs:
+                packing.append(parent)
+        if kind in ("batch", "lot"):
+            # an order that holds another order is no order: it is the
+            # material the orders make (a material never revisited in the
+            # recording looks like an order on its own values)
+            orders = [p for r, p in verified if r == ranks["work_order"]]
+            verified = [
+                (
+                    (0, p)
+                    if any(o is not p and _inside(o, p, 1.0) for o in orders)
+                    else (r, p)
+                )
+                for r, p in verified
+            ]
+        if verified:
+            rank, best = min(verified, key=lambda rp: (rp[0], _finer_key(rp[1])))
+            for r, cand in sorted(
+                unverified, key=lambda rp: (rp[0], _finer_key(rp[1]))
+            ):
+                if (
+                    r <= rank
+                    and _inside(cand, best, NEST_ALIAS_FANOUT)
+                    and _cochanges(cand, best)
+                ):
+                    rank, best = r, cand
+                    break
+            nearest = {t for t, r in ranks.items() if r == 0}
+            if rank == 0 or not any(
+                base[s.uuid] in nearest for s in held if s is not child
+            ):
+                child.parent = best.uuid
+        packing = [p for p in packing if p.uuid != child.parent]
+        if packing:
+            child.packing_parent = min(
+                packing,
+                key=lambda p: (base[p.uuid] not in _PACKING_TYPES, _finer_key(p)),
+            ).uuid
+
+
+def _finer_key(sig: _Signal) -> tuple[bool, int, int, str]:
+    """Sort key among equally preferred parents: not a package (a fixed
+    count of parts) first, then the finer id -- more distinct values (a
+    material under its recipe), then more presences."""
+    return ("fixed_count" in sig.facts, -sig.distinct, -len(sig.p_start), sig.uuid)
+
+
+def _containers(ids: list[_Signal], base: Mapping[str, str | None]) -> dict[str, str]:
+    """Type evidence of nesting: each held id's finest container.
+
+    A container holds the child's presences (:data:`CONTAIN_MIN_SHARE`,
+    :data:`CONTAIN_MIN_FANOUT` times as many) and its changes are matched by
+    the child's (:data:`CONTAIN_ALIGN_SHARE`); of several, the one with the
+    most presences. This is looser than the reported nesting
+    (:func:`_nest`) -- a serial lies in its handling unit as well as in its
+    batch -- and it is what the nesting facts of :data:`TYPE_RULES`
+    (``nested_child``, ``parent_of_serial``, ``parent_of_batch``) were
+    weighed on.
+
+    Returns:
+        ``{child uuid: container uuid}``.
+    """
+    held = [
+        s
+        for s in ids
+        if "event_stamped" not in s.facts
+        and len(s.p_start)
+        and base[s.uuid] not in _NOT_NESTED
+    ]
+    out: dict[str, str] = {}
+    for child in held:
+        best: _Signal | None = None
+        align_ns = _align_ns(child)
+        for parent in held:
+            if parent is child or base[parent.uuid] == "serial":
+                continue
+            if len(parent.p_start) < 2:
+                continue
+            if len(child.p_start) < CONTAIN_MIN_FANOUT * len(parent.p_start):
+                continue
+            lag = min(max(child.lag_ns, parent.lag_ns), int(MAX_LAG_SECONDS * 1e9))
+            if _contained_share(child, parent, lag) < CONTAIN_MIN_SHARE:
+                continue
+            lo, hi = child.p_start[0], child.p_end[-1]
+            edges = parent.changes[(parent.changes > lo) & (parent.changes < hi)]
+            if len(edges) == 0:
+                continue
+            rate = len(child.changes) / max(hi - lo, 1)
+            if not _aligned(
+                edges, child.changes, align_ns, lag, rate, CONTAIN_ALIGN_SHARE
+            ):
+                continue
+            if best is None or len(parent.p_start) > len(best.p_start):
+                best = parent
+        if best is not None:
+            out[child.uuid] = best.uuid
+    return out
+
+
 def _contained_share(child: _Signal, parent: _Signal, slack_ns: int = 0) -> float:
     """Share of the child's presences inside one presence of the parent
     (each end may stick out by ``slack_ns``, the polling lag)."""
@@ -2190,68 +2634,38 @@ def _contained_share(child: _Signal, parent: _Signal, slack_ns: int = 0) -> floa
     return float(inside.mean())
 
 
-def _cross_signal(ids: list[_Signal], counters: list[_Signal]) -> None:
+def _depth(uuid: str, parent_of: Mapping[str, str | None]) -> int:
+    depth, cur, seen = 0, uuid, {uuid}
+    while (nxt := parent_of.get(cur)) is not None and nxt not in seen:
+        seen.add(nxt)
+        depth += 1
+        cur = nxt
+    return depth
+
+
+def _cross_signal(
+    ids: list[_Signal],
+    counters: list[_Signal],
+    hints: Mapping[str, str] | None = None,
+) -> None:
     tol = int(COCHANGE_TOLERANCE_SECONDS * 1e9)
     base = {s.uuid: _base_type(s) for s in ids}
-    # nesting (held ids only: an event-stamped presence is a point in time)
-    held = [
-        s
-        for s in ids
-        if "event_stamped" not in s.facts
-        and len(s.p_start)
-        and base[s.uuid] not in _NOT_NESTED
-    ]
-    for child in held:
-        best: _Signal | None = None
-        hold = child.metrics.get("median_hold_seconds", math.nan)
-        align_ns = int(
-            max(
-                COCHANGE_TOLERANCE_SECONDS,
-                NEST_ALIGN_HOLD_SHARE * (0.0 if math.isnan(hold) else hold),
-            )
-            * 1e9
-        )
-        for parent in held:
-            if parent is child or base[parent.uuid] == "serial":
-                continue
-            if len(parent.p_start) < 2:
-                continue
-            if len(child.p_start) < NEST_MIN_FANOUT * len(parent.p_start):
-                continue
-            lag = min(max(child.lag_ns, parent.lag_ns), int(MAX_LAG_SECONDS * 1e9))
-            if _contained_share(child, parent, lag) < NEST_MIN_SHARE:
-                continue
-            lo, hi = child.p_start[0], child.p_end[-1]
-            edges = parent.changes[(parent.changes > lo) & (parent.changes < hi)]
-            if len(edges) == 0:
-                continue
-            rate = len(child.changes) / max(hi - lo, 1)
-            if not _aligned(
-                edges, child.changes, align_ns, lag, rate, NEST_ALIGN_SHARE
-            ):
-                continue
-            if best is None or len(parent.p_start) > len(best.p_start):
-                best = parent
-        if best is not None:
-            child.parent = best.uuid
     by_uuid = {s.uuid: s for s in ids}
+    # containment evidence for the types (the reported nesting follows at
+    # the end)
+    container = _containers(ids, base)
     for sig in ids:
-        depth, cur, seen = 0, sig, {sig.uuid}
-        while cur.parent is not None and cur.parent not in seen:
-            seen.add(cur.parent)
-            depth += 1
-            cur = by_uuid[cur.parent]
-        sig.depth = depth
+        depth = _depth(sig.uuid, container)
         if depth >= 1:
             sig.facts["nested_child"] = 1.0
         if depth >= 2:
             sig.facts["nested_depth2"] = 1.0
-        if sig.parent is not None:
-            parent = by_uuid[sig.parent]
+        if sig.uuid in container:
+            holder = by_uuid[container[sig.uuid]]
             if base[sig.uuid] == "serial":
-                parent.facts["parent_of_serial"] = 1.0
+                holder.facts["parent_of_serial"] = 1.0
             if base[sig.uuid] in ("batch", "lot"):
-                parent.facts["parent_of_batch"] = 1.0
+                holder.facts["parent_of_batch"] = 1.0
     # attributes: A changes only when B changes -- a recipe or material with
     # its work order, a customer with its order. The tolerance covers the
     # polling lag of both signals; a relation that chance alone would give
@@ -2282,17 +2696,6 @@ def _cross_signal(ids: list[_Signal], counters: list[_Signal]) -> None:
             elif not stamped and len(a.changes) <= COARSER_RATIO * len(b.changes):
                 a.facts["coarser_unique"] = 1.0
                 b.facts["finer_unique"] = 1.0
-    # whose attribute: a host inside the production hierarchy (a work order
-    # over batches or serials) has production attributes -- recipe,
-    # material; a host outside it that arrives like events (an order) has a
-    # business partner
-    for a, b in attributes:
-        if any(f in b.facts for f in _PRODUCTION_FACTS):
-            a.facts["attribute_of_production"] = 1.0
-        else:
-            b.facts["plain_host"] = 1.0
-            if "poisson_holds" in b.facts or "event_stamped" in b.facts:
-                a.facts["attribute_of_event"] = 1.0
     # changes aligned with a counter (one serial per counted part)
     for sig in ids:
         if len(sig.changes) < 3:
@@ -2329,11 +2732,67 @@ def _cross_signal(ids: list[_Signal], counters: list[_Signal]) -> None:
             if parts.mean() >= 2 and parts.std() <= FIXED_COUNT_CV * parts.mean():
                 sig.facts["fixed_count"] = 1.0
                 break
-    children = {s.parent for s in ids if s.parent is not None}
+    # whose attribute: a host inside the production hierarchy (a work order
+    # over batches or serials) has production attributes -- recipe,
+    # material; a host outside it that arrives like events (an order) has a
+    # business partner
+    for a, b in attributes:
+        if any(f in b.facts for f in _PRODUCTION_FACTS):
+            a.facts["attribute_of_production"] = 1.0
+        else:
+            b.facts["plain_host"] = 1.0
+            if "poisson_holds" in b.facts or "event_stamped" in b.facts:
+                a.facts["attribute_of_event"] = 1.0
+    holders = set(container.values())
     for sig in ids:
-        if len(sig.changes) >= 3 and sig.parent is None and sig.uuid not in children:
+        alone = sig.uuid not in container and sig.uuid not in holders
+        if len(sig.changes) >= 3 and alone:
             if not any(f in sig.facts for f in _RELATION_FACTS):
                 sig.facts["unrelated"] = 1.0
+    # the reported nesting, on the types the values and the relations to
+    # other ids point at (a work order that looked like a batch on its own
+    # values is a coarser unique id by now), without the containment
+    # evidence it is to decide afresh
+    # (a hinted type is taken as given)
+    pinned = dict(hints or {})
+    _nest(
+        ids,
+        {
+            s.uuid: pinned.get(s.uuid) or _base_type_without(s, _CONTAINMENT_FACTS)
+            for s in ids
+        },
+    )
+    parent_of = {s.uuid: s.parent for s in ids}
+    for sig in ids:
+        sig.depth = _depth(sig.uuid, parent_of)
+
+
+#: Facts that come from the containment evidence (:func:`_containers`).
+_CONTAINMENT_FACTS = frozenset(
+    {
+        "nested_child",
+        "nested_depth2",
+        "parent_of_serial",
+        "parent_of_batch",
+        "attribute_of_production",
+        "plain_host",
+        "attribute_of_event",
+        "unrelated",
+    }
+)
+
+
+def _base_type_without(sig: _Signal, facts: frozenset[str]) -> str | None:
+    """The best type on the facts other than ``facts`` (scores are restored)."""
+    kept = sig.facts
+    scores, contributions = sig.scores, sig.contributions
+    sig.facts = {k: v for k, v in kept.items() if k not in facts}
+    try:
+        _score_types(sig)
+        return _base_type(sig)
+    finally:
+        sig.facts = kept
+        sig.scores, sig.contributions = scores, contributions
 
 
 #: Facts that put an id inside the production hierarchy.
@@ -2370,7 +2829,7 @@ def _is_fault_code(sig: _Signal) -> str | None:
         return None
     if "fixed_successor" in f or "circulating" in f:
         return None
-    if any(k in f for k in _RELATION_FACTS) or sig.parent is not None:
+    if any(k in f for k in _RELATION_FACTS) or "nested_child" in f:
         return None
     share = sig.extra.get("time_presence", math.nan)
     return (
@@ -2405,6 +2864,7 @@ REPORT_COLUMNS = [
     "sequential_ratio",
     "recurrence_cv",
     "parent_uuid",
+    "packing_parent_uuid",
     "evidence",
 ]
 
@@ -2433,7 +2893,9 @@ class ObjectReport(Mapping[str, "str | None"]):
 
     Attributes:
         table: One row per signal (columns :data:`REPORT_COLUMNS`), sorted by
-            uuid.
+            uuid. ``parent_uuid`` is an identifier's production parent (a
+            serial's batch, a batch's material), ``packing_parent_uuid`` the
+            handling unit that packs it; both ``None`` when there is none.
         type_scores: ``{uuid: {object_type: score}}`` for every identifier,
             before the decision (the raw evidence sums).
 
@@ -2570,6 +3032,8 @@ class ObjectReport(Mapping[str, "str | None"]):
             )
         for row in self.identifiers().itertuples(index=False):
             parent = f" in {row.parent_uuid}" if row.parent_uuid is not None else ""
+            if row.packing_parent_uuid is not None:
+                parent += f", packed in {row.packing_parent_uuid}"
             lines.append(
                 f"  {row.uuid}: {row.object_type} "
                 f"({row.type_confidence:.2f}){parent}"
@@ -2594,6 +3058,7 @@ def _row(sig: _Signal) -> dict[str, Any]:
         "runner_up_confidence": sig.runner_up_confidence if is_id else math.nan,
         **m,
         "parent_uuid": sig.parent if is_id else None,
+        "packing_parent_uuid": sig.packing_parent if is_id else None,
         "evidence": tuple(sig.screen_evidence + sig.evidence),
     }
 
@@ -2638,7 +3103,9 @@ def identify_objects(
         uuid_column: Signal identifier column.
 
     Returns:
-        :class:`ObjectReport` with one row per signal.
+        :class:`ObjectReport` with one row per signal; ``parent_uuid`` and
+        ``packing_parent_uuid`` give each identifier's production and
+        packing parent (see *Nesting* in the module docstring).
 
     Raises:
         ColumnNotFoundError: When ``uuid_column`` or ``time_column`` is missing.
@@ -2696,7 +3163,7 @@ def identify_objects(
         ids, key=lambda s: (-(0 if math.isnan(s.score) else s.score), s.uuid)
     )
     counters = [s for s in signals if s.role == "counter"]
-    _cross_signal(cross[:MAX_CROSS_SIGNALS], counters)
+    _cross_signal(cross[:MAX_CROSS_SIGNALS], counters, hints)
     for sig in list(ids):
         why = None if sig.uuid in hints else _is_fault_code(sig)
         if why is not None:
@@ -2722,6 +3189,8 @@ def identify_objects(
             _decide(sig)
         if sig.parent is not None:
             sig.evidence.append(f"nested in {sig.parent} (depth {sig.depth})")
+        if sig.packing_parent is not None:
+            sig.evidence.append(f"packed in {sig.packing_parent}")
 
     if not signals:
         return ObjectReport(table=_empty_table(), type_scores={})
@@ -2736,6 +3205,7 @@ def identify_objects(
         "runner_up_type",
         "pattern",
         "parent_uuid",
+        "packing_parent_uuid",
     ):
         table[c] = table[c].astype(object).where(table[c].notna(), None)
     scores = {s.uuid: dict(s.scores) for s in ids}

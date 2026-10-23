@@ -123,7 +123,8 @@ One row per signal, sorted by uuid:
 | `pattern`, `pattern_share` | Dominant shape signature (`A` upper, `a` lower, `9` digit: `A{2}-9{5}`) and its share |
 | `sequential_ratio` | Share of changes to a number 1-5 higher |
 | `recurrence_cv` | Regularity of re-appearance (low: a pool cycling at a fixed pace) |
-| `parent_uuid` | The id signal this one is nested in |
+| `parent_uuid` | The production parent: the id signal this one is nested in (a serial's batch, a batch's material); `None` when there is none |
+| `packing_parent_uuid` | The packing parent: the handling unit (box, package) that holds this serial, next to its production parent |
 | `evidence` | Short tuple of reasons, each with its weight |
 
 The id semantics are those of the id-consuming detectors and of object detection: a
@@ -251,12 +252,13 @@ within 5 s, or within 5 s plus the polling interval of the signals (up to 15 min
 when chance alone would not give the match (the other signal changes at most 10 %
 of the time within that window):
 
-- **Nesting**: each presence of A lies inside one presence of B, A has at least 1.5×
-  as many presences, and B's changes coincide with a change of A. The closest
-  container is recorded as `parent_uuid`, and the depth is evidence (serial ⊂ batch ⊂
-  material). Resources, people and serials (tools, carriers, stations, operators,
-  partners) are never containers: a long-running tool contains every batch without
-  owning it.
+- **Containment**: each presence of A lies inside one presence of B, A has at
+  least 1.5× as many presences, and B's changes coincide with a change of A. This
+  is type evidence (a serial inside something, a batch-like id that contains
+  serials); the reported nesting is decided separately, see
+  [Nesting](#nesting). Resources, people and serials (tools, carriers, stations,
+  operators, partners) are never containers: a long-running tool contains every
+  batch without owning it.
 - **Attributes**: A changes only when B changes (70 %+), B is not revisited, and A
   recurs (revisit > 0.2): A is an attribute of B. When B is part of the production
   hierarchy (it nests batches or serials, or is coarser or finer than another
@@ -273,6 +275,86 @@ of the time within that window):
 The operator evidence uses the shift boundaries of `shift_definitions` (default
 `ts_shape.utils.shifts.DEFAULT_SHIFTS`: 06:00, 14:00, 22:00), read on the local wall
 clock for tz-aware data.
+
+## Nesting
+
+Once the types are known, every serial, batch and lot gets a **production parent**
+(`parent_uuid`) and a serial also a **packing parent** (`packing_parent_uuid`):
+
+```python
+t = pd.date_range("2025-03-03 06:00", periods=1170, freq="1min")  # a part a minute
+lengths = [20, 90, 35, 120, 50, 25, 100, 40, 75, 30] * 2  # batch sizes
+batch = [i for i, n in enumerate(lengths) for _ in range(n)]
+parts = pd.concat(
+    [
+        pd.DataFrame({"systime": t, "uuid": "line:serial",
+                      "value_string": [f"SN{100000 + i}" for i in range(1170)]}),
+        pd.DataFrame({"systime": t, "uuid": "line:batch",
+                      "value_string": [f"B250303-{b + 1:03d}" for b in batch]}),
+        pd.DataFrame({"systime": t, "uuid": "line:box",  # 24 parts a box
+                      "value_string": [f"PK{7000 + i // 24}" for i in range(1170)]}),
+    ],
+    ignore_index=True,
+)
+packed = identify_objects(parts)
+print(packed.table[["uuid", "object_type", "parent_uuid", "packing_parent_uuid"]])
+```
+
+```text
+          uuid    object_type parent_uuid packing_parent_uuid
+0   line:batch          batch        None                None
+1     line:box  handling_unit        None                None
+2  line:serial         serial  line:batch            line:box
+```
+
+The serial lies inside both the batch and the box; the batch is where it belongs in
+production, the box is how it is packed.
+
+**Which parent.** The candidates are ranked by type, and a farther level is taken
+only when the data has no id of the nearest one:
+
+| Child | Production parent, in order of preference |
+|---|---|
+| `serial` | `batch` / `lot` → `work_order` / order → `material` / `article` → `recipe` / `setup` |
+| `batch`, `lot` | `material` / `article` / `recipe` (a batch is a quantity of one material made by one recipe) → `work_order` / order |
+
+Among equals the finer id wins (more distinct values: a material inside its
+recipe). A handling unit, or any id that holds a fixed count of parts, that nests
+a serial is its packing parent. Tools, fixtures, carriers,
+operators, stations, locations and partners are never part of a nesting, and
+neither are orders as children (an order is not nested in its material) or
+messages that name an id (`"Batch 25061207 released"`).
+
+**Aligned both ways.** A parent must nest the child in both directions:
+
+- the parent keeps its value during the child's presences (90 %+ of them; the
+  polling lag of either signal may stick out), and the child has at least 1.25×
+  as many presences;
+- the parent's changes coincide with a change of the child: a presence starts or
+  ends, nothing is present, or the child pauses (a presence 4× its median hold, a
+  stopped line), within 5 s or 10 % of the child's median hold, widened by the
+  polling period of a polled signal. At least half of them must, and far more
+  often than chance would give: the lift `(matched - chance) / (1 - chance)`
+  over the share of time such windows cover is 0.4 or more, and the binomial
+  probability of the matches by chance is at most 1 %.
+
+The chance correction is what keeps a batch of another line, or a lot refilled on
+its own clock, from nesting a serial: any moment lies close to a change of a fast
+part clock, so plain coincidence is no evidence.
+
+**Polled signals.** A signal sampled on a regular grid is seen up to one period
+late. When that hides when the child changed (a serial read every half cycle, a
+batch polled every five minutes), the alignment cannot be shown. A preferred parent
+the child lies inside still wins over a verified, farther one when it nests in that
+farther parent itself: both belong to the line the farther parent puts the child
+on. Without any verified parent the child stays without one rather than getting a
+guess.
+
+`explain()` and `summary()` show both parents (`nested in line:batch (depth 1)`,
+`packed in line:box`). On the held-out benchmark split the nesting scores about 0.83
+precision and 0.77 recall per edge; the misses are mostly a material its batch
+cannot be told from (a recipe that changes with it, a material never revisited in
+the recording) and serials whose batch is polled too coarsely to align.
 
 ## Limits
 

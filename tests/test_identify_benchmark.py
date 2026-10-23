@@ -12,7 +12,11 @@ Scores, pooled over every held-out uuid:
 * screening precision and recall of ``role == "identifier"``;
 * type accuracy among the correctly screened identifiers, where a predicted
   type counts as correct when it falls in the same group of
-  :data:`OBJECT_TYPE_GROUPS` as the label.
+  :data:`OBJECT_TYPE_GROUPS` as the label;
+* nesting precision and recall: the predicted ``parent_uuid`` edges (child
+  -> production parent) against the labelled ones (a serial in its batch, a
+  batch in its material). A predicted edge counts when its parent is the
+  labelled one.
 
 The result of ``identify_objects`` may be a DataFrame with a ``uuid`` column
 (or index) and an ``object_type`` column (``None``/NaN for non-identifiers),
@@ -56,6 +60,8 @@ HELDOUT_SEEDS = tuple(range(100, 120))
 MIN_PRECISION = 0.95
 MIN_RECALL = 0.95
 MIN_TYPE_ACCURACY = 0.85
+MIN_NESTING_PRECISION = 0.8
+MIN_NESTING_RECALL = 0.75
 
 _GROUP_OF = {t: g for g, members in OBJECT_TYPE_GROUPS.items() for t in members}
 _GROUP_OF.update({g: g for g in OBJECT_TYPE_GROUPS})
@@ -169,9 +175,65 @@ def score(identify, data) -> dict[str, object]:
     }
 
 
+def _parents(result: object) -> dict[str, str]:
+    """``{child uuid: predicted parent uuid}`` (no entry: no parent)."""
+    if not isinstance(result, pd.DataFrame) or "parent_uuid" not in result.columns:
+        return {}
+    frame = result if "uuid" in result.columns else result.reset_index()
+    return {
+        str(u): str(p)
+        for u, p in zip(frame["uuid"], frame["parent_uuid"], strict=True)
+        if not _missing(p)
+    }
+
+
+def nesting_score(identify, data) -> dict[str, object]:
+    """Nesting precision and recall of ``identify`` on ``benchmark_data()``."""
+    rows = []
+    for seed, frame, labels in data:
+        result = identify(frame)
+        table = getattr(result, "table", result)
+        predicted = _parents(table)
+        truth = {
+            str(u): str(p)
+            for u, p in zip(labels["uuid"], labels["parent_uuid"], strict=True)
+            if not _missing(p)
+        }
+        for child in sorted(set(predicted) | set(truth)):
+            rows.append(
+                {
+                    "seed": seed,
+                    "child": child,
+                    "predicted": predicted.get(child),
+                    "truth": truth.get(child),
+                }
+            )
+    table = pd.DataFrame(rows, columns=["seed", "child", "predicted", "truth"])
+    hit = table["predicted"].notna() & (table["predicted"] == table["truth"])
+    return {
+        "precision": int(hit.sum()) / max(int(table["predicted"].notna().sum()), 1),
+        "recall": int(hit.sum()) / max(int(table["truth"].notna().sum()), 1),
+        "table": table,
+    }
+
+
 @pytest.fixture(scope="module")
-def heldout_scores():
-    return score(_identify(), benchmark_data())
+def heldout_results():
+    """The held-out data and one ``identify_objects`` result per frame."""
+    identify = _identify()
+    data = benchmark_data()
+    results = {id(frame): identify(frame) for _, frame, _ in data}
+    return data, lambda frame: results[id(frame)]
+
+
+@pytest.fixture(scope="module")
+def heldout_scores(heldout_results):
+    return score(heldout_results[1], heldout_results[0])
+
+
+@pytest.fixture(scope="module")
+def heldout_nesting(heldout_results):
+    return nesting_score(heldout_results[1], heldout_results[0])
 
 
 def _report(scores: dict[str, object]) -> str:
@@ -215,6 +277,29 @@ def test_type_accuracy(heldout_scores):
     assert heldout_scores["type_accuracy"] >= MIN_TYPE_ACCURACY, _report(heldout_scores)
 
 
+def _nesting_report(scores: dict[str, object]) -> str:
+    table = scores["table"]
+    assert isinstance(table, pd.DataFrame)
+    wrong = table[table["predicted"] != table["truth"]]
+    with pd.option_context("display.width", 250, "display.max_rows", 200):
+        return (
+            f"nesting precision={scores['precision']:.3f} "
+            f"recall={scores['recall']:.3f}\nwrong edges:\n{wrong.to_string()}"
+        )
+
+
+def test_nesting_precision(heldout_nesting):
+    assert heldout_nesting["precision"] >= MIN_NESTING_PRECISION, _nesting_report(
+        heldout_nesting
+    )
+
+
+def test_nesting_recall(heldout_nesting):
+    assert heldout_nesting["recall"] >= MIN_NESTING_RECALL, _nesting_report(
+        heldout_nesting
+    )
+
+
 def test_scoring_rewards_the_labels_and_punishes_guessing():
     """The scorer itself: an oracle scores 1.0, calling everything a material
     finds every identifier but has poor precision and typing."""
@@ -230,6 +315,22 @@ def test_scoring_rewards_the_labels_and_punishes_guessing():
     perfect = score(oracle, data)
     assert (perfect["precision"], perfect["recall"]) == (1.0, 1.0)
     assert perfect["type_accuracy"] == 1.0
+    nested = nesting_score(lambda frame: labels_of[id(frame)], data)
+    assert (nested["precision"], nested["recall"]) == (1.0, 1.0)
+    assert len(nested["table"]) > 0
+
+    # an edge to the wrong parent is wrong; no edge finds nothing
+    def shifted(frame):
+        labels = labels_of[id(frame)].copy()
+        labels["parent_uuid"] = labels["parent_uuid"].map(
+            lambda p: None if p is None else p + "x"
+        )
+        return labels
+
+    off = nesting_score(shifted, data)
+    assert (off["precision"], off["recall"]) == (0.0, 0.0)
+    none = nesting_score(lambda frame: oracle(frame), data)
+    assert none["recall"] == 0.0
     naive = score(everything, data)
     assert naive["recall"] == 1.0
     assert naive["precision"] < 0.7 and naive["type_accuracy"] < 0.2
