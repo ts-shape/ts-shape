@@ -6,6 +6,28 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 20 (part N): object analytics (new)
+
+New API; results of existing calls are unchanged except where noted.
+
+- **Hand-off from `identify_objects`:**
+  - `report.to_event_log(dataframe, events=...)` runs the whole chain in one call: specs, then `detect_objects` with `report.hierarchy()`, then `attach_objects`.
+  - `report.hierarchy()` returns signal-level parent edges for `detect_objects(hierarchy=...)`.
+  - `to_object_specs(namespace=True, attributes=True)` gives `"{type}:{value}"` ids and fills `ObjectSpec.attributes`.
+  - New report column `attribute_of`, appended at the end of the table: the identifier a signal describes, e.g. the customer of a sales order.
+- **Presence events:** `presence_events(intervals)` gives enter/leave events per object presence. Convert them with `to_event_log(..., detector="eventlog.presence_events")`, so a serial-centric XES log has one trace per serial.
+- **Object KPIs (`ts_shape.eventlog`):**
+  - `object_kpis`: lead time, dwell per station, throughput per window.
+  - `wip_over_time`: mean and max WIP per window, DST-safe.
+  - `carrier_loops`: loop count and loop times.
+  - `attach_counts`: counter increments per object, split pro rata over presences.
+- **Genealogy:**
+  - `where_used`, `where_from` and `lineage`, as functions and as `EventLog` methods.
+  - `EventLog.filter_by_object_type` and `EventLog.filter_by_time`, which return sub-logs with no dangling references.
+  - New `ts_shape.ObjectNotFoundError` (a `KeyError`).
+  - The `o2o` table has no validity time, so time windows use object presence from the lifecycle rows.
+- **Behaviour change:** the `detect_objects` lifecycle no longer merges touching presences at different stations. A serial that leaves st1 at 10 and enters st2 at 10 now has `active` 0, `active` 10, `released` 20; before, it had `active` 0, `released` 20. Overlapping presences, and touching ones at the same station, are still merged.
+
 ## October 2026, round 20: correct object handling
 
 Results change for event logs with objects, for `identify_objects` nesting
