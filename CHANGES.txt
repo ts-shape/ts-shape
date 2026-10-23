@@ -1,3 +1,18 @@
+# October 23, 2026 (round 20)
+Correct object handling.
+change: interval events link to every object they overlap; scope= keeps
+  links within a line or station; a warning names unscoped fan-out.
+change: PLC misreads (NOREAD, #N/A, 0, 65535, ...) are no longer objects and
+  no longer split presences (ObjectSpec.exclude, default "misreads").
+change: default o2o is the declared hierarchy only (co_occurs is opt-in);
+  hierarchy= takes signal-level edges with several parents.
+fix: identify_objects no longer crashes on ids like T3-0000123; nesting
+  rebuilt (production parent plus new packing_parent_uuid).
+feat: MachineStateEvents(run_states=...) for text states, with a warning
+  when text states have no mapping.
+perf: detect_objects groups the frame by uuid once.
+  See docs/migration.md.
+
 # October 22, 2026 (round 19 follow-up)
 feat: identify_objects reports the setup group (recipe, tool or fixture) when
   the data cannot separate them, instead of a low-confidence guess.

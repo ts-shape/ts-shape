@@ -77,8 +77,10 @@ def test_unknown_object_type_is_auto_registered(id_signals):
 
 
 def test_default_o2o_is_co_occurs_not_part_of(id_signals):
-    # part_of must NOT be guessed from temporal overlap alone.
-    log = detect_objects(id_signals, SPECS)
+    # part_of must NOT be guessed from temporal overlap alone; without a
+    # hierarchy the default derives no o2o, co_occurs is opt-in.
+    assert detect_objects(id_signals, SPECS).o2o.empty
+    log = detect_objects(id_signals, SPECS, infer_o2o="co_occurs")
     assert set(log.o2o[OCEL_QUALIFIER]) == {"co_occurs"}
     assert "part_of" not in set(log.o2o[OCEL_QUALIFIER])
 
@@ -176,6 +178,7 @@ def test_attach_objects_links_events_by_containment(id_signals):
         id_signals,
         SPECS,
         qualifiers={"batch": "during_batch", "serial": "identified_by"},
+        infer_o2o="co_occurs",
     )
     validate(enriched)
     # Events now reference detected objects via E2O relations.

@@ -144,7 +144,8 @@ def test_derive_o2o_hierarchy_part_of(intervals):
 
 
 def test_derive_o2o_cooccurrence_without_hierarchy(intervals):
-    o2o = derive_o2o(intervals)
+    assert derive_o2o(intervals).empty  # co_occurs is opt-in
+    o2o = derive_o2o(intervals, co_occurs=True)
     assert set(o2o[schema.OCEL_QUALIFIER]) == {"co_occurs"}
     # batch<->serial overlaps only (B1/S1, B1/S2); B2 overlaps neither serial.
     assert len(o2o) == 2

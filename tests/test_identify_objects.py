@@ -237,6 +237,122 @@ def test_three_level_nesting_gives_depth():
     assert any("depth 2" in e for e in _row(out, "a")["evidence"])
 
 
+def _runs(uuid, values, minutes, *, start=START, every="1min"):
+    """``values[i]`` held for ``minutes[i]`` minutes, read every ``every``."""
+    times, out = [], []
+    t = start
+    step = pd.Timedelta(every)
+    for value, m in zip(values, minutes, strict=True):
+        end = t + pd.Timedelta(minutes=m)
+        while t < end:
+            times.append(t)
+            out.append(value)
+            t += step
+    return _sig(uuid, times, out)
+
+
+def test_nesting_prefers_the_batch_over_the_handling_unit():
+    # One part a minute; batches of irregular length; boxes of 24 parts.
+    # The serial lies in both: the batch is its production parent, the box
+    # its packing parent.
+    lengths = [20, 90, 35, 120, 50, 25, 100, 40, 75, 30] * 2
+    parts = sum(lengths)
+    serial = _runs("s", [f"SN{100000 + i}" for i in range(parts)], [1] * parts)
+    batch = _runs("b", [f"B250303-{i + 1:03d}" for i in range(len(lengths))], lengths)
+    boxes = parts // 24
+    box = _runs("h", [f"PK{7000 + i}" for i in range(boxes)], [24] * boxes)
+    out = identify_objects(pd.concat([serial, batch, box]))
+    row = _row(out, "s")
+    assert row["parent_uuid"] == "b", out.explain("s")
+    assert row["packing_parent_uuid"] == "h", out.explain("s")
+    assert any("packed in h" in e for e in row["evidence"])
+    assert "packed in h" in out.summary()
+    for uuid in ("b", "h"):
+        assert _row(out, uuid)["packing_parent_uuid"] is None
+
+
+def test_batch_nests_in_its_material_not_its_work_order():
+    # A work order makes one material in two or three batches; materials
+    # come back. The batch is a quantity of its material.
+    wo_batches = [2, 3, 2, 2, 3, 2, 3, 2, 2, 3, 2, 3]
+    wo_material = [0, 1, 0, 2, 1, 0, 2, 1, 0, 1, 2, 0]
+    lengths = [55, 65, 70, 50, 60, 75, 45, 80, 62, 58]
+    batch_minutes = [lengths[i % len(lengths)] for i in range(sum(wo_batches))]
+    batch = _runs(
+        "b", [f"B25031{i:04d}" for i in range(len(batch_minutes))], batch_minutes
+    )
+    wo_minutes, k = [], 0
+    for n in wo_batches:
+        wo_minutes.append(sum(batch_minutes[k : k + n]))
+        k += n
+    order = _runs("o", [f"FA47{1100 + i}" for i in range(len(wo_batches))], wo_minutes)
+    materials = [f"{m:018d}" for m in (100234, 100567, 100890)]
+    material = _runs("n", [materials[m] for m in wo_material], wo_minutes)
+    out = identify_objects(pd.concat([batch, order, material]))
+    assert _row(out, "b")["parent_uuid"] == "n", out.explain("b")
+    # an order is not nested in its material
+    assert _row(out, "o")["parent_uuid"] is None, out.explain("o")
+    assert _row(out, "n")["parent_uuid"] is None
+
+
+def test_a_parent_on_another_line_is_never_chosen():
+    # Two lines with their own clocks (a part every 60 s / every 45 s) and
+    # their own batches: each serial nests in its own line's batch only.
+    rng = np.random.default_rng(3)
+    frames = []
+    for line, (every, offset) in {"1": ("60s", "0s"), "2": ("45s", "17s")}.items():
+        start = START + pd.Timedelta(offset)
+        lengths = rng.integers(15, 150, 22).tolist()
+        parts = int(sum(lengths))
+        step = pd.Timedelta(every)
+        frames.append(
+            _runs(
+                f"s{line}",
+                [f"SN{line}{100000 + i}" for i in range(parts)],
+                [step / pd.Timedelta("1min")] * parts,
+                start=start,
+                every=every,
+            )
+        )
+        frames.append(
+            _runs(
+                f"b{line}",
+                [f"B25030{3 + int(line)}-{i + 1:03d}" for i in range(len(lengths))],
+                [n * step / pd.Timedelta("1min") for n in lengths],
+                start=start,
+                every=every,
+            )
+        )
+    out = identify_objects(pd.concat(frames))
+    assert _row(out, "s1")["parent_uuid"] == "b1", out.explain("s1")
+    assert _row(out, "s2")["parent_uuid"] == "b2", out.explain("s2")
+    for uuid in ("b1", "b2"):
+        assert _row(out, uuid)["parent_uuid"] is None
+
+
+@pytest.mark.parametrize(
+    "fmt",
+    ["T3-{:07d}", "A-{:08d}", "3-{:07d}", "T{}-0000123", "{:020d}", "{:024d}"],
+)
+def test_ids_a_date_parser_reads_out_of_range_are_not_timestamps(fmt):
+    # "T3-0000123" parses as the year 123, "A-99999999" or 20+ digits as no
+    # date at all: none of it follows the clock, and nothing may raise.
+    t = pd.date_range(START, periods=600, freq="1min")
+    values = [fmt.format(i // 5 + 1) for i in range(600)]
+    out = identify_objects(_sig("x", t, values))
+    row = _row(out, "x")
+    assert row["role"] == "identifier", out.explain("x")
+    assert row["role"] != "timestamp"
+
+
+def test_clock_share_treats_out_of_range_parses_as_no_date():
+    seen = [START.as_unit("ns")] * 4
+    texts = ["T3-0000123", "1-0000001", "T3-0000001", "12-0000123"]
+    assert identify._clock_share(texts, seen) == 0.0
+    tz_seen = [START.as_unit("ns").tz_localize("UTC")] * 4
+    assert identify._clock_share(texts, tz_seen) == 0.0
+
+
 def test_group_is_reported_without_a_format_cue(report):
     g, h = _row(report, "g"), _row(report, "h")
     assert g["object_type"] == "order"

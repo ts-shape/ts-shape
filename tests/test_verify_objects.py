@@ -249,7 +249,7 @@ def test_simultaneous_hand_over_on_two_stations():
     df = pd.concat([st1, st2], ignore_index=True)
     specs = [ObjectSpec("st1", "batch"), ObjectSpec("st2", "carrier")]
     ev = EventLog(events=_events([10, 5]))
-    log = attach_objects(ev, df, specs)
+    log = attach_objects(ev, df, specs, infer_o2o="co_occurs")
     assert _links(log.relations) == {"e0": ["B2", "C2"], "e1": ["B1", "C1"]}
     pairs = set(zip(log.o2o[schema.OCEL_OID], log.o2o[schema.OCEL_OID2]))
     assert pairs == {("B1", "C1"), ("B2", "C2")}  # touching is not overlapping
@@ -262,7 +262,9 @@ def test_same_serial_handed_from_station_to_station():
     df = pd.concat([st1, st2], ignore_index=True)
     specs = [ObjectSpec("st1", "part"), ObjectSpec("st2", "part")]
     ev = EventLog(events=_events([10, 15]))
-    log = attach_objects(ev, df, specs)
+    # Two parts present at once from two signals: the fan-out check speaks up.
+    with pytest.warns(DataQualityWarning, match="present at the same time"):
+        log = attach_objects(ev, df, specs)
     # At 10 P1 arrives at st2 while P2 enters st1: both present.
     assert _links(log.relations) == {"e0": ["P1", "P2"], "e1": ["P1", "P2"]}
     assert sorted(log.objects[schema.OCEL_OID]) == ["P1", "P2", "P3"]
@@ -320,7 +322,8 @@ def test_nested_hierarchy_part_of_picks_the_owning_parent(nested):
 
 def test_nested_without_hierarchy_is_co_occurs(nested):
     df, specs = nested
-    log = detect_objects(df, specs)
+    assert detect_objects(df, specs).o2o.empty  # co_occurs is opt-in
+    log = detect_objects(df, specs, infer_o2o="co_occurs")
     got = set(zip(log.o2o[schema.OCEL_OID], log.o2o[schema.OCEL_OID2]))
     # Types sort batch < carrier < part; pairs share time (touching excluded).
     expected_bk = {("B1", "K1"), ("B1", "K2"), ("B2", "K1"), ("B2", "K3")}

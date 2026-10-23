@@ -38,4 +38,5 @@ quality = events.state_quality_metrics()
 - A missing state (`None`, `NaN`, `pd.NA`) is unknown, not idle: the time from it to the next known sample is in no run or idle interval, and no transition. `state_quality_metrics` averages and the run/idle ratio use the observed time; an average over no intervals is NaN.
 - `min_duration` drops short intervals, e.g. a few seconds of sensor glitch.
 - For a numeric state, pass `value_range=(low, high)` to the constructor.
+- For a text state (`"RUN"`, `"IDLE"`, …), pass `run_states={"RUN", ...}` with the values that mean running. Without it, every non-empty text counts as running, and the constructor raises a `DataQualityWarning` saying so.
 - `state_quality_metrics(..., as_frame=False)` returns the deprecated dict.
