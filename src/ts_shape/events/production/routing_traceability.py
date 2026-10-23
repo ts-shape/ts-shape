@@ -42,6 +42,12 @@ from ts_shape.utils.deprecation import (
     renamed_kwargs,
 )
 
+from ._trace_objects import (
+    IntervalEnd,
+    check_interval_end,
+    intervals_frame,
+)
+
 logger = logging.getLogger(__name__)
 
 _NUMBER_RE = re.compile(r"\s*[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?\s*")
@@ -264,7 +270,10 @@ class RoutingTraceabilityEvents(Base):
         return f"{self.id_uuid},{self.routing_uuid}"
 
     def build_routing_timeline(
-        self, *, infer_dwell_from_next: bool = False
+        self,
+        *,
+        infer_dwell_from_next: bool = False,
+        interval_end: IntervalEnd = "last_sample",
     ) -> pd.DataFrame:
         """Correlate the ID signal with the state/routing signal to build a timeline.
 
@@ -281,6 +290,15 @@ class RoutingTraceabilityEvents(Base):
                 item's next routing arrival, giving the honest
                 arrival-here → arrival-at-next-state dwell. The last visit per
                 item stays open.
+            interval_end: Where a segment ends. ``"last_sample"`` (default):
+                at its last routing sample. ``"next_change"``: at the next
+                routing sample with another (item, state) pair, or with no
+                item yet, so the state is held until it changes (like
+                :func:`ts_shape.eventlog.object_intervals`); the last segment
+                is held until the last timestamp of the two signals. The
+                change is seen at a routing sample: an item change on the ID
+                signal alone ends the segment at the next routing sample.
+                ``infer_dwell_from_next`` is applied afterwards.
 
         Returns:
             DataFrame with columns:
@@ -288,7 +306,7 @@ class RoutingTraceabilityEvents(Base):
             - routing_value: Raw signal value.
             - station_name: Resolved station/step name from state_map.
             - start: First timestamp of interval.
-            - end: Last timestamp of interval.
+            - end: Last timestamp of interval (see ``interval_end``).
             - duration_seconds: Time at this state.
             - sample_count: Number of routing samples in interval.
             - station_sequence: Visit order per item (1-based).
@@ -296,6 +314,9 @@ class RoutingTraceabilityEvents(Base):
             - source_uuid: ``"<id_uuid>,<routing_uuid>"`` (the two
                 correlated input signals).
         """
+        check_interval_end(
+            interval_end, "RoutingTraceabilityEvents.build_routing_timeline"
+        )
         if self.routing_data.empty or self.id_data.empty:
             return pd.DataFrame(
                 columns=[
@@ -331,6 +352,8 @@ class RoutingTraceabilityEvents(Base):
                 self.value_column_routing: "routing_value",
             }
         )
+        # Time of the next routing sample (any item, or none), per row.
+        all_times = merged[self.time_column]
         merged = merged.dropna(subset=["item_id"])
         merged["item_id"] = merged["item_id"].astype(str)
 
@@ -358,6 +381,16 @@ class RoutingTraceabilityEvents(Base):
         times = merged[self.time_column]
         start = times.iloc[first_pos].reset_index(drop=True)
         end = times.iloc[last_pos].reset_index(drop=True)
+        if interval_end == "next_change":
+            data_end = max(
+                self.routing_data[self.time_column].max(),
+                self.id_data[self.time_column].max(),
+            )
+            # merge_asof keeps a RangeIndex: labels are positions in the
+            # routing samples before rows without an item were dropped.
+            after = merged.index.to_numpy()[last_pos] + 1
+            nxt = all_times.reindex(after).reset_index(drop=True)
+            end = nxt.fillna(data_end)
         routing_vals = merged["routing_value"].iloc[first_pos].tolist()
         timeline = pd.DataFrame(
             {
@@ -459,7 +492,10 @@ class RoutingTraceabilityEvents(Base):
     # ------------------------------------------------------------------
 
     def station_statistics(
-        self, *, infer_dwell_from_next: bool = False
+        self,
+        *,
+        infer_dwell_from_next: bool = False,
+        interval_end: IntervalEnd = "last_sample",
     ) -> pd.DataFrame:
         """Compute dwell-time statistics per station/step across all items.
 
@@ -467,6 +503,7 @@ class RoutingTraceabilityEvents(Base):
             infer_dwell_from_next: Forwarded to :meth:`build_routing_timeline`;
                 pass True for change-encoded routing signals so dwell is measured
                 to the item's next routing arrival instead of collapsing to zero.
+            interval_end: Forwarded to :meth:`build_routing_timeline`.
 
         Returns:
             DataFrame with columns:
@@ -479,7 +516,7 @@ class RoutingTraceabilityEvents(Base):
             - total_dwell_seconds
         """
         timeline = self.build_routing_timeline(
-            infer_dwell_from_next=infer_dwell_from_next
+            infer_dwell_from_next=infer_dwell_from_next, interval_end=interval_end
         )
 
         if timeline.empty:
@@ -549,3 +586,55 @@ class RoutingTraceabilityEvents(Base):
         )
 
         return stats.sort_values("item_count", ascending=False).reset_index(drop=True)
+
+    # ------------------------------------------------------------------
+    # to_intervals
+    # ------------------------------------------------------------------
+
+    def to_intervals(
+        self,
+        *,
+        object_type: str = "serial",
+        interval_end: IntervalEnd = "last_sample",
+    ) -> pd.DataFrame:
+        """The routing timeline as an object interval table (one row per visit).
+
+        The result has the columns of
+        :func:`ts_shape.eventlog.object_intervals` plus ``station``, so it
+        feeds :func:`~ts_shape.eventlog.presence_events`,
+        :func:`~ts_shape.eventlog.object_kpis`,
+        :func:`~ts_shape.eventlog.wip_over_time`,
+        :func:`~ts_shape.eventlog.attach_counts`,
+        :func:`~ts_shape.eventlog.relate` and
+        :func:`~ts_shape.eventlog.link_events_to_objects` directly.
+
+        Args:
+            object_type: Object type of the items (``"serial"``,
+                ``"work_order"``, ``"batch"``, ...).
+            interval_end: Forwarded to :meth:`build_routing_timeline`.
+
+        Returns:
+            DataFrame with columns:
+            - oid: The item ID (text).
+            - type: ``object_type``.
+            - start / end: The visit, in UTC (naive input is read as UTC).
+            - duration_seconds
+            - uuid: The ID signal (``id_uuid``).
+            - source_uuid: ``"<id_uuid>,<routing_uuid>"``, as in the timeline.
+            - station: The station / step name from ``state_map``; the
+                analysis functions use it as the station (to
+                :func:`~ts_shape.eventlog.relate` it is an object attribute,
+                recorded at each visit).
+            Ordered by item, then start. No visit gives an empty frame with
+            these columns.
+        """
+        tl = self.build_routing_timeline(interval_end=interval_end)
+        return intervals_frame(
+            oid=tl["item_id"],
+            object_type=object_type,
+            start=tl["start"],
+            end=tl["end"],
+            uuid=self.id_uuid,
+            source_uuid=self._source_uuid,
+            station=tl["station_name"],
+        )

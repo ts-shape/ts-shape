@@ -268,9 +268,18 @@ def test_same_serial_handed_from_station_to_station():
     # At 10 P1 arrives at st2 while P2 enters st1: both present.
     assert _links(log.relations) == {"e0": ["P1", "P2"], "e1": ["P1", "P2"]}
     assert sorted(log.objects[schema.OCEL_OID]) == ["P1", "P2", "P3"]
-    # Continuous presence across the two stations: one active, one released.
-    assert _lifecycle(log, "P1") == [("active", _m(0)), ("released", _m(20))]
-    assert _lifecycle(log, "P2") == [("active", _m(10)), ("released", _m(30))]
+    # A hand-over to the next station starts a new presence there: the
+    # incoming presence owns the instant, so it reads active, not released.
+    assert _lifecycle(log, "P1") == [
+        ("active", _m(0)),
+        ("active", _m(10)),
+        ("released", _m(20)),
+    ]
+    assert _lifecycle(log, "P2") == [
+        ("active", _m(10)),
+        ("active", _m(20)),
+        ("released", _m(30)),
+    ]
 
 
 # ---------------------------------------------------------------------------

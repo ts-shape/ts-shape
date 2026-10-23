@@ -38,6 +38,7 @@ from ..utils.deprecation import renamed_kwargs
 from . import schema
 from .model import EventLog
 from .taxonomy import (
+    ROW_OBJECT,
     LabelRule,
     _is_missing,
     render_activity,
@@ -673,7 +674,10 @@ def _resolve_objects(
     """Produce ``object_type -> Series-of-oids`` aligned with the frame rows.
 
     Auto-extracts types declared in ``rule.produces_objects`` from the
-    detector frame's standard columns (e.g. ``source_uuid -> asset``).
+    detector frame's standard columns (e.g. ``source_uuid -> asset``;
+    :data:`~ts_shape.eventlog.taxonomy.ROW_OBJECT`: the row's ``oid`` of type
+    ``type``; ``rule.object_columns``: a declared type from its named column,
+    e.g. ``identifier -> serial``).
     Caller-supplied bindings via ``user_objects`` are always honored —
     object types not declared by the adapter are treated as contextual
     annotations the caller knows about (e.g. "this outlier happened
@@ -709,6 +713,23 @@ def _resolve_objects(
     if user_objects:
         for otype, val in user_objects.items():
             _bind(otype, val)
+
+    # A frame naming its own objects: row -> object ``oid`` of type ``type``.
+    if ROW_OBJECT in declared and {"oid", "type"} <= set(frame.columns):
+        oid = frame["oid"].reset_index(drop=True).astype("string")
+        otype = frame["type"].reset_index(drop=True).astype("string")
+        for name in otype.dropna().unique():
+            if name not in bindings:
+                bindings[str(name)] = oid.where(otype == name)
+
+    # Declared types read from the column the rule names (``object_columns``),
+    # unless the caller bound the type (``None`` included: no object).
+    for otype, column in rule.object_columns.items():
+        if otype not in declared or otype in bindings or column not in frame.columns:
+            continue
+        if user_objects and otype in user_objects:
+            continue
+        bindings[otype] = frame[column].reset_index(drop=True).astype("string")
 
     # Defaults: asset = source_uuid if column exists.
     if "asset" in declared and "asset" not in bindings:

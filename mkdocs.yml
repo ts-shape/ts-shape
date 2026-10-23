@@ -40,6 +40,8 @@ nav:
   - Event log (XES and OCEL):
     - Overview: guides/eventlog/index.md
     - Object detection: guides/eventlog/objects.md
+    - Genealogy: guides/eventlog/genealogy.md
+    - Object analytics: guides/eventlog/object-analytics.md
     - Object identification: guides/object-identification.md
     - Labeling and taxonomy: guides/eventlog/taxonomy.md
     - Adapters: guides/eventlog/adapters.md

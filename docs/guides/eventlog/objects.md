@@ -80,6 +80,11 @@ specs.
 with `objects`, `o2o` and `object_changes` (each object's active/released lifecycle
 and attribute changes).
 
+- The lifecycle joins presences of one object that overlap, or that touch at the
+  same station. A hand-over to another station at the same instant starts a new
+  presence: the lifecycle reads `active` again there (one value per instant, and
+  the incoming presence owns it). For enter and leave events per station, lead
+  times and WIP, see [Object analytics](object-analytics.md).
 - With a `hierarchy`, each child presence is `part_of` the declared parent it
   overlaps longest. Only declared pairs are related; without a hierarchy `o2o` is
   empty.

@@ -28,10 +28,11 @@ stats = tracer.station_statistics()
 
 | Method | Returns |
 |---|---|
-| `build_routing_timeline(infer_dwell_from_next=False)` | one row per item and step: `item_id`, `routing_value`, `station_name`, `start`, `end`, `duration_seconds`, `sample_count`, `station_sequence` |
+| `build_routing_timeline(infer_dwell_from_next=False, interval_end="last_sample")` | one row per item and step: `item_id`, `routing_value`, `station_name`, `start`, `end`, `duration_seconds`, `sample_count`, `station_sequence` |
 | `lead_time()` | per item: `first_station`, `last_station`, `first_seen`, `last_seen`, `lead_time_seconds`, `stations_visited`, `routing_path` |
-| `station_statistics(infer_dwell_from_next=False)` | per step: `routing_value`, `item_count`, `min_`/`avg_`/`max_`/`total_dwell_seconds` |
+| `station_statistics(infer_dwell_from_next=False, interval_end="last_sample")` | per step: `routing_value`, `item_count`, `min_`/`avg_`/`max_`/`total_dwell_seconds` |
 | `routing_paths()` | per path: `item_count`, `avg_`/`min_`/`max_lead_time_seconds` |
+| `to_intervals(object_type="serial", interval_end="last_sample")` | one row per visit: `oid`, `type`, `start`, `end`, `duration_seconds`, `uuid` (the ID signal), `source_uuid`, `station` (the step name) |
 
 ## Notes
 
@@ -39,3 +40,6 @@ stats = tracer.station_statistics()
 - `state_map` translates routing values (int, float or str keys) to names; without it the raw values are the labels. `station_map` is a deprecated alias.
 - Defaults: ID in `value_string`, routing value in `value_integer` (`value_column_id=`, `value_column_routing=` to change).
 - By default an interval ends at its last routing sample, so a change-only routing signal gives a dwell of 0; `infer_dwell_from_next=True` ends it at the item's next routing arrival.
+- `interval_end="next_change"` ends a visit at the next different reading on the routing signal (the next routing sample with another item or step, or with no item) instead of at its last sample, so the item is held until it changes, like [`object_intervals`](../../guides/eventlog/objects.md); the last segment is held until the last timestamp of the two signals. An item change on the ID signal alone is seen at the next routing sample. The default `"last_sample"` keeps the results as before. `infer_dwell_from_next` is applied after it.
+- `to_intervals(object_type="serial")` returns the visits as an object interval table: the columns of `object_intervals` (`oid`, `type`, `start`, `end` in UTC, `duration_seconds`, `uuid`, `source_uuid`) plus `station`. It feeds `presence_events`, `object_kpis`, `wip_over_time`, `attach_counts` and `relate` directly; see [Object analytics](../../guides/eventlog/object-analytics.md#traceability-classes).
+- In `to_event_log`, the item column binds objects of type `serial` and the station column objects of type `station` (plus `asset` from `source_uuid`). These links do not change the event ids. Pass `objects={"serial": None}` to leave one out, or `objects={"work_order": "item_id"}` to name the type yourself.

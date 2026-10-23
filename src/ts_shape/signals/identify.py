@@ -95,6 +95,19 @@ the production parent. Resources and people (tools, carriers, operators,
 stations, locations, partners) and messages that name an id are never
 part of a nesting.
 
+Attribute signals
+-----------------
+A signal of any role whose value changes only at an identifier's presence
+boundaries, is constant within its presences and comes back with its
+values (the customer of an order, the material of a work order, a
+description text) gets ``attribute_of``, that identifier's uuid; the
+identifier's own parents are not its attributes. See
+:func:`_attribute_hosts`. :meth:`ObjectReport.to_object_specs` with
+``attributes=True`` turns them into :attr:`ObjectSpec.attributes
+<ts_shape.eventlog.ObjectSpec.attributes>`, :meth:`ObjectReport.hierarchy`
+the nesting into ``part_of`` edges, and :meth:`ObjectReport.to_event_log`
+runs the chain into an event log.
+
 Confidence: ``best / (best + runner_up) * min(1, best / CONFIDENT_SCORE)``,
 with ``runner_up`` the best score outside the reported type (or group).
 
@@ -131,6 +144,7 @@ from ts_shape.utils.frames import require_columns, to_ns
 from ts_shape.utils.shifts import DEFAULT_SHIFTS
 
 if TYPE_CHECKING:
+    from ts_shape.eventlog.model import EventLog
     from ts_shape.eventlog.objects import ObjectSpec
 
 __all__ = [
@@ -377,6 +391,13 @@ CONTAIN_MIN_FANOUT = 1.5
 CONTAIN_ALIGN_SHARE = 0.8
 #: Cross-signal work runs among at most this many identifiers.
 MAX_CROSS_SIGNALS = 64
+#: ``attribute_of`` (:func:`_attribute_hosts`): the share of a signal's value
+#: changes that meet a presence boundary of the host, and of the host's
+#: presences during which the signal keeps one value, and of the host's
+#: revisited values that bring back the same value of the signal; at least
+#: ATTRIBUTE_OF_MIN_CHANGES value changes.
+ATTRIBUTE_OF_SHARE = 0.9
+ATTRIBUTE_OF_MIN_CHANGES = 3
 #: Screening thresholds of the negative roles.
 #: word-like share of the values for a ``state`` (with <= 16 values)
 STATE_WORD_SHARE = 0.8
@@ -1185,6 +1206,8 @@ class _Signal:
     runner_up_confidence: float = math.nan
     parent: str | None = None
     packing_parent: str | None = None
+    # the identifier whose presences this signal's value describes
+    attribute_of: str | None = None
     depth: int = 0
     distinct: int = 0
     runs: int = 0
@@ -2838,6 +2861,138 @@ def _is_fault_code(sig: _Signal) -> str | None:
     )
 
 
+def _ancestors(sig: _Signal, by_uuid: Mapping[str, _Signal]) -> set[str]:
+    """The production and packing parents of ``sig``, and theirs."""
+    out: set[str] = set()
+    todo = [sig]
+    while todo:
+        cur = todo.pop()
+        for up in (cur.parent, cur.packing_parent):
+            if up is not None and up not in out:
+                out.add(up)
+                if up in by_uuid:
+                    todo.append(by_uuid[up])
+    return out
+
+
+def _one_value_per_host_value(attr: _Signal, host: _Signal) -> bool:
+    """Whether a revisited host value brings back the same attribute value:
+    the attribute is a function of the host's value (an order keeps its
+    customer). Read at the middle of each host presence; true when the host
+    revisits no value."""
+    if len(attr.p_start) == 0:
+        return False
+    mid = host.p_start + (host.p_end - host.p_start) // 2
+    k = np.searchsorted(attr.p_start, mid, side="right") - 1
+    kk = np.clip(k, 0, len(attr.p_start) - 1)
+    present = (k >= 0) & (mid < attr.p_end[kk])
+    if not present.any():
+        return False
+    pairs = pd.DataFrame({"h": host.p_code[present], "a": attr.p_code[kk][present]})
+    sizes = pairs.groupby("h")["a"].transform("size")
+    pairs = pairs[sizes.to_numpy() >= 2]
+    if pairs.empty:
+        return True
+    top = pairs.groupby("h")["a"].agg(lambda s: int(s.value_counts().iloc[0]))
+    return float(top.sum()) / len(pairs) >= ATTRIBUTE_OF_SHARE
+
+
+def _bounds(sig: _Signal) -> _I64:
+    """The presence boundaries of ``sig`` (starts and ends), sorted."""
+    out: _I64 = np.unique(np.concatenate([sig.p_start, sig.p_end]))
+    return out
+
+
+def _describes(attr: _Signal, host: _Signal, changes: _I64, bounds: _I64) -> bool:
+    """Whether ``attr``'s value ``changes`` happen only at ``host``'s
+    presence ``bounds`` (:data:`ATTRIBUTE_OF_SHARE` of them, far more often
+    than chance) -- the one test of :func:`_attribute_hosts` that is used
+    both ways, to find aliases."""
+    if len(changes) < ATTRIBUTE_OF_MIN_CHANGES or len(host.p_start) < 2:
+        return False
+    if len(bounds) < len(changes):
+        return False
+    tol = int(COCHANGE_TOLERANCE_SECONDS * 1e9) + max(_late_ns(attr), _late_ns(host))
+    near = _matched_share(changes, bounds, tol)
+    if near < ATTRIBUTE_OF_SHARE:
+        return False
+    span = float(host.p_end[-1] - host.p_start[0])
+    if span <= 0:
+        return False
+    chance = min(1.0, len(bounds) * 2.0 * tol / span)
+    if chance > ATTRIBUTE_MAX_CHANCE:
+        return False
+    hits = round(near * len(changes))
+    return _binomial_tail(hits, len(changes), chance) <= NEST_MAX_CHANCE_P
+
+
+def _attribute_hosts(signals: list[_Signal], hosts: list[_Signal]) -> None:
+    """Set ``attribute_of``: the identifier whose presences a signal describes.
+
+    A signal (of any role but constant or insufficient data) describes an
+    identifier -- the customer of an order, the material of a batch, a
+    description text -- when its value changes only at the identifier's
+    presence boundaries (:func:`_describes`), it keeps one value during
+    :data:`ATTRIBUTE_OF_SHARE` of the identifier's presences, and a
+    revisited identifier value brings back the same value
+    (:func:`_one_value_per_host_value`). Not an attribute: the identifier's
+    production or packing parent (or theirs), and a non-recurring identifier
+    holding several of the host's presences (a container the nesting did
+    not report). Two ids that change together one to one are aliases: the
+    one with fewer distinct values is the attribute, a non-identifier before
+    an identifier, otherwise neither. Of several hosts the coarsest (fewest
+    presences) wins.
+    """
+    hosts = sorted(hosts, key=lambda h: h.uuid)
+    by_uuid = {h.uuid: h for h in hosts}
+    ancestors = {h.uuid: _ancestors(h, by_uuid) for h in hosts}
+    bounds = {h.uuid: _bounds(h) for h in hosts}
+    host_changes = {h.uuid: _value_changes(h) for h in hosts}
+    for attr in signals:
+        if attr.role in ("constant", "insufficient_data") or attr.distinct < 2:
+            continue
+        changes = host_changes.get(attr.uuid)
+        if changes is None:
+            changes = _value_changes(attr)
+        if len(changes) < ATTRIBUTE_OF_MIN_CHANGES:
+            continue
+        attr_bounds: _I64 | None = None
+        is_id = attr.role == "identifier"
+        revisit = attr.metrics.get("revisit_ratio", math.nan)
+        best: _Signal | None = None
+        for host in hosts:
+            if host is attr or attr.uuid in ancestors[host.uuid]:
+                continue
+            if best is not None and len(host.p_start) >= len(best.p_start):
+                continue
+            if (
+                is_id
+                and not revisit > ATTRIBUTE_MIN_REVISIT
+                and len(host.p_start) >= NEST_MIN_FANOUT * len(attr.p_start)
+            ):
+                continue
+            if not _describes(attr, host, changes, bounds[host.uuid]):
+                continue
+            slack = int(1.05 * max(_late_ns(attr), _late_ns(host)))
+            slack += int(COCHANGE_TOLERANCE_SECONDS * 1e9)
+            if _containment(host, attr, slack) < ATTRIBUTE_OF_SHARE:
+                continue
+            if not _one_value_per_host_value(attr, host):
+                continue
+            if attr_bounds is None:
+                attr_bounds = bounds.get(attr.uuid)
+                if attr_bounds is None:
+                    attr_bounds = _bounds(attr)
+            if _describes(host, attr, host_changes[host.uuid], attr_bounds) and not (
+                attr.distinct < host.distinct
+                or (not is_id and attr.distinct <= host.distinct)
+            ):
+                continue
+            best = host
+        if best is not None:
+            attr.attribute_of = best.uuid
+
+
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
@@ -2866,6 +3021,7 @@ REPORT_COLUMNS = [
     "parent_uuid",
     "packing_parent_uuid",
     "evidence",
+    "attribute_of",
 ]
 
 _FLOAT_COLUMNS = (
@@ -2896,6 +3052,8 @@ class ObjectReport(Mapping[str, "str | None"]):
             uuid. ``parent_uuid`` is an identifier's production parent (a
             serial's batch, a batch's material), ``packing_parent_uuid`` the
             handling unit that packs it; both ``None`` when there is none.
+            ``attribute_of`` (last column) is the identifier whose objects a
+            signal describes (the customer of an order), else ``None``.
         type_scores: ``{uuid: {object_type: score}}`` for every identifier,
             before the decision (the raw evidence sums).
 
@@ -2944,7 +3102,12 @@ class ObjectReport(Mapping[str, "str | None"]):
         return out.reset_index(drop=True)
 
     def to_object_specs(
-        self, min_confidence: float = 0.6, *, include_generic: bool = False
+        self,
+        min_confidence: float = 0.6,
+        *,
+        include_generic: bool = False,
+        namespace: bool = False,
+        attributes: bool = False,
     ) -> list[ObjectSpec]:
         """Object specs for :func:`~ts_shape.eventlog.detect_objects`.
 
@@ -2953,14 +3116,48 @@ class ObjectReport(Mapping[str, "str | None"]):
                 least this.
             include_generic: Also keep identifiers typed ``identifier`` (their
                 confidence is the identifier score).
+            namespace: Render object ids as ``"{type}:{value}"``
+                (:attr:`~ts_shape.eventlog.ObjectSpec.id_template`), so the
+                same value on two types (an order and a batch both numbered
+                ``4711``) gives two object ids.
+            attributes: Fill :attr:`~ts_shape.eventlog.ObjectSpec.attributes`
+                with the signals whose ``attribute_of`` is the spec's signal
+                (the customer of an order, the material of a work order). An
+                attribute is named by its type when it is an identifier typed
+                with at least ``min_confidence``, else by its uuid. Such an
+                identifier is still its own spec when it is kept.
 
         Returns:
             One :class:`~ts_shape.eventlog.ObjectSpec` per kept identifier,
             in uuid order.
         """
-        from ts_shape.eventlog.objects import ObjectSpec
+        from ts_shape.eventlog.objects import _RESERVED, ObjectSpec
 
         _register_vocabulary()
+        described: dict[str, dict[str, str]] = {}
+        if attributes and "attribute_of" in self.table.columns:
+            hosts = self.table["attribute_of"].to_numpy()
+            names: defaultdict[str, list[tuple[str, str]]] = defaultdict(list)
+            for row, host in zip(self.table.itertuples(index=False), hosts):
+                if host is None or (isinstance(host, float) and math.isnan(host)):
+                    continue
+                typed = (
+                    row.role == "identifier"
+                    and row.object_type not in (None, "identifier")
+                    and row.type_confidence >= min_confidence
+                )
+                name = str(row.object_type) if typed else str(row.uuid)
+                names[str(host)].append((name, str(row.uuid)))
+            for host, pairs in names.items():
+                counts: defaultdict[str, int] = defaultdict(int)
+                for name, _ in pairs:
+                    counts[name] += 1
+                described[host] = {
+                    (
+                        name if counts[name] == 1 and name not in _RESERVED else uuid
+                    ): uuid
+                    for name, uuid in pairs
+                }
         specs = []
         for row in self.identifiers().itertuples(index=False):
             if row.object_type is None or not (row.type_confidence >= min_confidence):
@@ -2972,9 +3169,122 @@ class ObjectReport(Mapping[str, "str | None"]):
                     uuid=str(row.uuid),
                     object_type=str(row.object_type),
                     value_column=str(row.value_column),
+                    id_template="{type}:{value}" if namespace else "{value}",
+                    attributes=described.get(str(row.uuid), {}),
                 )
             )
         return specs
+
+    def hierarchy(
+        self, min_confidence: float = 0.6, *, include_generic: bool = False
+    ) -> dict[str, list[str]]:
+        """Signal-level ``part_of`` edges for
+        :func:`~ts_shape.eventlog.detect_objects`.
+
+        ``{child_uuid: [parent_uuid, packing_parent_uuid]}`` from the nesting
+        columns, for the signals :meth:`to_object_specs` keeps with the same
+        arguments (a parent it does not keep is left out, and so is a child
+        left without parents). Pass it as
+        ``detect_objects(frame, specs, hierarchy=report.hierarchy())``.
+
+        Args:
+            min_confidence: As for :meth:`to_object_specs`.
+            include_generic: As for :meth:`to_object_specs`.
+
+        Returns:
+            Child signal uuid -> its production parent, then its packing
+            parent, in uuid order of the children.
+        """
+        kept = {
+            s.uuid
+            for s in self.to_object_specs(
+                min_confidence, include_generic=include_generic
+            )
+        }
+        out: dict[str, list[str]] = {}
+        for row in self.identifiers().itertuples(index=False):
+            if str(row.uuid) not in kept:
+                continue
+            parents = [
+                str(p)
+                for p in (row.parent_uuid, row.packing_parent_uuid)
+                if p is not None and str(p) in kept
+            ]
+            if parents:
+                out[str(row.uuid)] = parents
+        return out
+
+    def to_event_log(
+        self,
+        dataframe: pd.DataFrame,
+        events: object = None,
+        *,
+        min_confidence: float = 0.6,
+        scope: Mapping[str, object] | None = None,
+        namespace: bool = True,
+        attributes: bool = True,
+        include_generic: bool = False,
+        detector: str | None = None,
+        **kwargs: Any,
+    ) -> EventLog:
+        """The objects of the report as an OCEL 2.0 event log, in one call.
+
+        Runs :meth:`to_object_specs` and :meth:`hierarchy`, then
+        :func:`~ts_shape.eventlog.detect_objects` (without ``events``) or
+        :func:`~ts_shape.eventlog.attach_objects` (with ``events``) on
+        ``dataframe``.
+
+        Args:
+            dataframe: The long-format frame the report was made from (the id
+                and attribute signals).
+            events: The events to link to the objects: an
+                :class:`~ts_shape.eventlog.EventLog`, a detector frame (with
+                ``detector=``), ``{detector: frame}``, or a list of these.
+                ``None`` gives an object-only log (``objects``, ``o2o``,
+                ``object_changes``; no events or relations).
+            min_confidence: As for :meth:`to_object_specs`.
+            scope: ``{signal_uuid: label}`` for
+                :func:`~ts_shape.eventlog.attach_objects`: an event links only
+                to objects of its own line or station. Needs ``events``.
+            namespace: Object ids ``"{type}:{value}"`` (default ``True``).
+            attributes: Capture the ``attribute_of`` signals as object
+                attributes (default ``True``).
+            include_generic: As for :meth:`to_object_specs`.
+            detector: ``"ClassName.method_name"`` of the detector frames in
+                ``events``, for :func:`~ts_shape.eventlog.to_event_log`.
+            **kwargs: Passed to ``detect_objects`` / ``attach_objects``
+                (``hierarchy`` replaces :meth:`hierarchy`; ``qualifiers``,
+                ``fanout_threshold``, ``infer_o2o``, ``uuid_column``,
+                ``time_column``, ``validate``).
+
+        Returns:
+            :class:`~ts_shape.eventlog.EventLog`.
+
+        Raises:
+            ValueError: When ``scope`` is given without ``events``, or a
+                detector frame without ``detector``.
+            TypeError: For an ``events`` value of another kind.
+        """
+        from ts_shape.eventlog.objects import attach_objects, detect_objects
+
+        specs = self.to_object_specs(
+            min_confidence,
+            include_generic=include_generic,
+            namespace=namespace,
+            attributes=attributes,
+        )
+        kwargs.setdefault(
+            "hierarchy",
+            self.hierarchy(min_confidence, include_generic=include_generic),
+        )
+        if events is None:
+            if scope is not None:
+                raise ValueError(
+                    "to_event_log: scope= links events to objects; pass events="
+                )
+            return detect_objects(dataframe, specs, **kwargs)
+        log = _events_log(events, detector)
+        return attach_objects(log, dataframe, specs, scope=scope, **kwargs)
 
     def explain(self, signal_uuid: str) -> str:
         """Why a signal got its role and type.
@@ -3044,6 +3354,38 @@ class ObjectReport(Mapping[str, "str | None"]):
         return self.summary()
 
 
+def _events_log(events: object, detector: str | None) -> EventLog:
+    """One event log from an EventLog, a detector frame, ``{detector:
+    frame}`` or a list of these."""
+    from ts_shape.eventlog.concat import concat
+    from ts_shape.eventlog.model import EventLog
+    from ts_shape.eventlog.normalizer import to_event_log
+
+    def one(item: object) -> list[EventLog]:
+        if isinstance(item, EventLog):
+            return [item]
+        if isinstance(item, pd.DataFrame):
+            if detector is None:
+                raise ValueError(
+                    "to_event_log: events= is a detector frame; pass "
+                    "detector='ClassName.method_name' (or an EventLog, or "
+                    "{detector: frame})"
+                )
+            return [to_event_log(item, detector=detector)]
+        if isinstance(item, Mapping):
+            return [to_event_log(f, detector=str(d)) for d, f in item.items()]
+        raise TypeError(
+            "to_event_log: events= takes an EventLog, a detector frame, "
+            "{detector: frame} or a list of these; got " + type(item).__name__
+        )
+
+    if isinstance(events, list | tuple):
+        logs = [log for item in events for log in one(item)]
+    else:
+        logs = one(events)
+    return logs[0] if len(logs) == 1 else concat(*logs)
+
+
 def _row(sig: _Signal) -> dict[str, Any]:
     m = sig.metrics
     is_id = sig.role == "identifier"
@@ -3060,6 +3402,7 @@ def _row(sig: _Signal) -> dict[str, Any]:
         "parent_uuid": sig.parent if is_id else None,
         "packing_parent_uuid": sig.packing_parent if is_id else None,
         "evidence": tuple(sig.screen_evidence + sig.evidence),
+        "attribute_of": sig.attribute_of,
     }
 
 
@@ -3191,6 +3534,8 @@ def identify_objects(
             sig.evidence.append(f"nested in {sig.parent} (depth {sig.depth})")
         if sig.packing_parent is not None:
             sig.evidence.append(f"packed in {sig.packing_parent}")
+    cross_ids = {s.uuid for s in cross[:MAX_CROSS_SIGNALS]}
+    _attribute_hosts(signals, [s for s in ids if s.uuid in cross_ids])
 
     if not signals:
         return ObjectReport(table=_empty_table(), type_scores={})
@@ -3206,6 +3551,7 @@ def identify_objects(
         "pattern",
         "parent_uuid",
         "packing_parent_uuid",
+        "attribute_of",
     ):
         table[c] = table[c].astype(object).where(table[c].notna(), None)
     scores = {s.uuid: dict(s.scores) for s in ids}

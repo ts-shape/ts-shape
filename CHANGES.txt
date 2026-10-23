@@ -1,3 +1,17 @@
+# October 23, 2026 (round 20, part N)
+New: object analytics.
+feat: ObjectReport.to_event_log / hierarchy(); to_object_specs(namespace=,
+  attributes=); attribute_of column.
+feat: presence_events (enter/leave traces per object); object_kpis,
+  wip_over_time, carrier_loops, attach_counts.
+feat: genealogy: where_used, where_from, lineage; EventLog.filter_by_object_type,
+  filter_by_time; ObjectNotFoundError.
+feat: traceability classes link serial/station objects in event logs (ids
+  unchanged); to_intervals(); interval_end= option.
+change: the object lifecycle no longer merges touching presences at
+  different stations.
+  See docs/migration.md.
+
 # October 23, 2026 (round 20)
 Correct object handling.
 change: interval events link to every object they overlap; scope= keeps

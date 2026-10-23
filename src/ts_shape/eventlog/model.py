@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Literal
 
 import pandas as pd
 
@@ -142,4 +144,146 @@ class EventLog:
         eids = set(rel[mask][schema.OCEL_EID])
         return self._restrict_to_events(
             self.events[self.events[schema.OCEL_EID].isin(eids)]
+        )
+
+    def filter_by_object_type(
+        self,
+        types: str | Iterable[str],
+        *,
+        keep_events: Literal["linked", "all"] = "linked",
+    ) -> EventLog:
+        """Return a sub-log containing only the objects of some types.
+
+        ``objects`` keeps every object of ``types`` (also one no event links
+        to); ``relations``, ``o2o`` (both ends) and ``object_changes`` are
+        restricted to those objects, so no table references a dropped one.
+
+        Args:
+            types: Object type(s) (``ocel:type``) to keep.
+            keep_events: ``"linked"`` keeps the events related to at least one
+                kept object; ``"all"`` keeps every event (their relations to
+                other objects are dropped).
+
+        Returns:
+            A new EventLog restricted to the objects of ``types``.
+
+        Raises:
+            ValueError: For an unknown ``keep_events``.
+        """
+        from .query import _filter_by_object_type
+
+        return _filter_by_object_type(self, types, keep_events)
+
+    def filter_by_time(self, start: object = None, end: object = None) -> EventLog:
+        """Return a sub-log of the half-open time window ``[start, end)``.
+
+        * ``events``: those whose ``ocel:timestamp`` is in the window.
+        * ``objects``: those present in the window (a ``lifecycle``
+          ``active`` -> ``released`` span of ``object_changes`` overlaps it),
+          those without lifecycle rows (presence unknown), and every object a
+          kept event relates to.
+        * ``relations`` of the kept events; ``o2o`` with both ends kept.
+        * ``object_changes`` of the kept objects inside the window, plus each
+          field's last value before ``start`` (the state at the window start).
+
+        Args:
+            start: Window start (inclusive); ``None``: unbounded. Naive times
+                are UTC.
+            end: Window end (exclusive); ``None``: unbounded.
+
+        Returns:
+            A new EventLog restricted to the window.
+
+        Raises:
+            ValueError: When ``start`` is not before ``end``.
+        """
+        from .query import _filter_by_time
+
+        return _filter_by_time(self, start, end)
+
+    def where_used(
+        self,
+        oid: str,
+        *,
+        depth: int | None = None,
+        start: object = None,
+        end: object = None,
+        qualifiers: str | Iterable[str] | None = None,
+    ) -> pd.DataFrame:
+        """Everything ``oid`` went into; see :func:`~ts_shape.eventlog.where_used`.
+
+        Args:
+            oid: The object to start from.
+            depth: Maximum number of steps; ``None``: no limit.
+            start: Window start (inclusive).
+            end: Window end (exclusive).
+            qualifiers: The ``o2o`` qualifiers to follow (default: all but
+                ``co_occurs``).
+
+        Returns:
+            ``oid``, ``object_type``, ``qualifier``, ``depth``, ``via`` (+ extra
+            ``o2o`` columns).
+        """
+        from .query import where_used
+
+        return where_used(
+            self, oid, depth=depth, start=start, end=end, qualifiers=qualifiers
+        )
+
+    def where_from(
+        self,
+        oid: str,
+        *,
+        depth: int | None = None,
+        start: object = None,
+        end: object = None,
+        qualifiers: str | Iterable[str] | None = None,
+    ) -> pd.DataFrame:
+        """Everything ``oid`` came from; see :func:`~ts_shape.eventlog.where_from`.
+
+        Args:
+            oid: The object to start from.
+            depth: Maximum number of steps; ``None``: no limit.
+            start: Window start (inclusive).
+            end: Window end (exclusive).
+            qualifiers: The ``o2o`` qualifiers to follow (default: all but
+                ``co_occurs``).
+
+        Returns:
+            ``oid``, ``object_type``, ``qualifier``, ``depth``, ``via`` (+ extra
+            ``o2o`` columns).
+        """
+        from .query import where_from
+
+        return where_from(
+            self, oid, depth=depth, start=start, end=end, qualifiers=qualifiers
+        )
+
+    def lineage(
+        self,
+        oid: str,
+        *,
+        depth: int | None = None,
+        start: object = None,
+        end: object = None,
+        qualifiers: str | Iterable[str] | None = None,
+    ) -> pd.DataFrame:
+        """Both directions with a signed ``depth``; see :func:`~ts_shape.eventlog.lineage`.
+
+        Args:
+            oid: The object to start from.
+            depth: Maximum number of steps per direction; ``None``: no limit.
+            start: Window start (inclusive).
+            end: Window end (exclusive).
+            qualifiers: The ``o2o`` qualifiers to follow (default: all but
+                ``co_occurs``).
+
+        Returns:
+            The :meth:`where_from` rows at negative depth, ``oid`` at ``0``,
+            the :meth:`where_used` rows at positive depth.
+        """
+        from .query import lineage
+
+        return lineage(
+            self, oid, depth=depth, start=start, end=end, qualifiers=qualifiers
         )

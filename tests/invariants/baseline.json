@@ -2511,6 +2511,22 @@
   "single_row": "n/a: no rule for mapping parameter 'processes'",
   "tz": "n/a: no rule for mapping parameter 'processes'"
  },
+ "MultiProcessTraceabilityEvents.to_intervals": {
+  "all_nan": "n/a: no rule for mapping parameter 'processes'",
+  "determinism": "n/a: no rule for mapping parameter 'processes'",
+  "dtypes": "n/a: no rule for mapping parameter 'processes'",
+  "dtypes_nan": "n/a: no rule for mapping parameter 'processes'",
+  "dup_ts": "n/a: no rule for mapping parameter 'processes'",
+  "empty": "n/a: no rule for mapping parameter 'processes'",
+  "empty_schema": "n/a: no rule for mapping parameter 'processes'",
+  "extra_uuid": "n/a: no rule for mapping parameter 'processes'",
+  "no_mutation": "n/a: no rule for mapping parameter 'processes'",
+  "output_sanity": "n/a: no rule for mapping parameter 'processes'",
+  "shape": "n/a: no rule for mapping parameter 'processes'",
+  "shuffle": "n/a: no rule for mapping parameter 'processes'",
+  "single_row": "n/a: no rule for mapping parameter 'processes'",
+  "tz": "n/a: no rule for mapping parameter 'processes'"
+ },
  "MultiSensorValidationEvents.consensus_score": {
   "all_nan": "ok",
   "determinism": "ok",
@@ -3664,6 +3680,22 @@
   "tz": "ok"
  },
  "RoutingTraceabilityEvents.station_statistics": {
+  "all_nan": "ok",
+  "determinism": "ok",
+  "dtypes": "ok",
+  "dtypes_nan": "ok",
+  "dup_ts": "ok",
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "no_mutation": "ok",
+  "output_sanity": "ok",
+  "shape": "ok",
+  "shuffle": "ok",
+  "single_row": "ok",
+  "tz": "ok"
+ },
+ "RoutingTraceabilityEvents.to_intervals": {
   "all_nan": "ok",
   "determinism": "ok",
   "dtypes": "ok",
@@ -5152,6 +5184,22 @@
   "tz": "ok"
  },
  "ValueTraceabilityEvents.station_dwell_statistics": {
+  "all_nan": "ok",
+  "determinism": "ok",
+  "dtypes": "ok",
+  "dtypes_nan": "ok",
+  "dup_ts": "ok",
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "no_mutation": "ok",
+  "output_sanity": "ok",
+  "shape": "ok",
+  "shuffle": "ok",
+  "single_row": "ok",
+  "tz": "ok"
+ },
+ "ValueTraceabilityEvents.to_intervals": {
   "all_nan": "ok",
   "determinism": "ok",
   "dtypes": "ok",

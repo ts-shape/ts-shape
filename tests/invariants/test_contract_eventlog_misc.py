@@ -244,6 +244,30 @@ CASES: dict[str, Case] = {
     "eventlog.derive_o2o": Case(
         lambda df: eventlog.derive_o2o(_intervals(df)), tz="utc"
     ),
+    "eventlog.presence_events": Case(
+        lambda df: eventlog.presence_events(_intervals(df)), tz="utc"
+    ),
+    "eventlog.object_kpis": Case(
+        lambda df: eventlog.object_kpis(
+            _intervals(df), object_type="batch", window="15min"
+        ).throughput,
+        tz="utc",
+    ),
+    "eventlog.wip_over_time": Case(
+        lambda df: eventlog.wip_over_time(
+            _intervals(df), object_type="batch", window="15min"
+        ),
+        tz="utc",
+    ),
+    "eventlog.carrier_loops": Case(
+        lambda df: eventlog.carrier_loops(_intervals(df), object_type="batch").loops,
+        tz="utc",
+    ),
+    "eventlog.attach_counts": Case(
+        lambda df: eventlog.attach_counts(
+            _intervals(df), df, COUNTER, object_type="batch", station="sig:id"
+        ),
+    ),
     "eventlog.compile_expression": Case(
         lambda df: eventlog.compile_expression("value_double > 50")(df),
         required="value_double",
@@ -278,6 +302,8 @@ EXEMPT: dict[str, str] = {
     "eventlog.EventLog": "result container",
     "eventlog.OCEL2Tables": "result container",
     "eventlog.BacktestResult": "result container",
+    "eventlog.ObjectKPIs": "result container of object_kpis()",
+    "eventlog.CarrierLoops": "result container of carrier_loops()",
     "eventlog.ObjectSpec": "value object",
     "eventlog.LabelRule": "value object",
     "eventlog.RuleSpec": "value object",
@@ -287,6 +313,9 @@ EXEMPT: dict[str, str] = {
     "eventlog.object_specs_from_metadata": "reads a metadata table, not signals",
     "eventlog.describe": "introspection of a detector name",
     "eventlog.validate": "checks an EventLog",
+    "eventlog.where_used": "queries an EventLog's o2o graph; see eventlog/test_query",
+    "eventlog.where_from": "queries an EventLog's o2o graph; see eventlog/test_query",
+    "eventlog.lineage": "queries an EventLog's o2o graph; see eventlog/test_query",
     "eventlog.empty_o2o": "constructor of an empty table",
     "eventlog.empty_object_changes": "constructor of an empty table",
     "eventlog.register_object_type": "mutates the global object-type registry",

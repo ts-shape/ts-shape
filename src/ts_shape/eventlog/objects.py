@@ -1017,15 +1017,31 @@ def _objects_table(intervals: pd.DataFrame) -> pd.DataFrame:
     return objs
 
 
+def _presence_station(intervals: pd.DataFrame) -> pd.Series:
+    """Where each presence is: its ``source_uuid``, else its id signal ``uuid``.
+
+    ``<NA>`` when the table has neither (a user-supplied object list).
+    """
+    station = pd.Series(pd.NA, index=intervals.index, dtype="string")
+    for column in (_SOURCE, _UUID):
+        if column in intervals.columns:
+            station = station.fillna(intervals[column].astype("string"))
+    return station
+
+
 def _object_changes(
     intervals: pd.DataFrame, extra: pd.DataFrame | None = None
 ) -> pd.DataFrame:
     """Lifecycle + attribute ``object_changes`` derived from the interval table.
 
     ``lifecycle`` is ``active`` when an object becomes present and ``released``
-    when it stops; overlapping or touching presences of the same object (e.g.
-    the same serial handed from one station to the next) form one continuous
-    presence. Attribute columns are inferred from the frame itself -- any
+    when it stops. Overlapping presences of the same object form one
+    continuous presence, and so do touching ones at the same station. A
+    hand-over to another station at the same instant (the serial leaves
+    station A as it enters station B) starts a new presence: the incoming
+    presence owns that instant, so the lifecycle reads ``active`` there and
+    the ``released`` of the outgoing one is not recorded (one value per
+    instant). The station is :func:`_presence_station`. Attribute columns are inferred from the frame itself -- any
     column beyond the reserved interval columns -- and recorded at each
     presence start. ``extra`` adds in-presence attribute changes. Sorted by
     timestamp; one value per ``(oid, field, timestamp)``.
@@ -1049,12 +1065,15 @@ def _object_changes(
     e_open = np.where(end == _NAT, np.iinfo(np.int64).max, end)
     order = np.lexsort((s_open, key))
     k, s, e = key[order], s_open[order], e_open[order]
+    station = pd.factorize(_presence_station(intervals), use_na_sentinel=False)[0]
+    station = station[order]
     runmax = pd.Series(e).groupby(k).cummax().to_numpy()
     prev_max = np.empty_like(runmax)
     prev_max[0] = runmax[0]
     prev_max[1:] = runmax[:-1]
     new = np.ones(len(k), dtype=bool)
-    new[1:] = (k[1:] != k[:-1]) | (s[1:] > prev_max[1:])
+    handover = (s[1:] == prev_max[1:]) & (station[1:] != station[:-1])
+    new[1:] = (k[1:] != k[:-1]) | (s[1:] > prev_max[1:]) | handover
     run = np.cumsum(new) - 1
     first = np.flatnonzero(new)
     run_end = pd.Series(e).groupby(run).max().to_numpy()
