@@ -19,6 +19,13 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.runs import run_bounds, total_seconds
 
+from ._trace_objects import (
+    IntervalEnd,
+    check_interval_end,
+    intervals_frame,
+    next_change_ends,
+)
+
 if TYPE_CHECKING:
     from typing_extensions import deprecated
 
@@ -99,7 +106,15 @@ class ValueTraceabilityEvents(Base):
     # Internal: detect intervals per station (batch-tracking style)
     # ------------------------------------------------------------------
 
-    def _detect_intervals(self, uuid: str) -> pd.DataFrame:
+    def _data_end(self) -> Any:
+        """Last timestamp of the station signals (``None`` without data)."""
+        ends = [sdf[self.time_column].max() for sdf in self._station_data.values()]
+        ends = [t for t in ends if pd.notna(t)]
+        return max(ends) if ends else None
+
+    def _detect_intervals(
+        self, uuid: str, interval_end: IntervalEnd = "last_sample"
+    ) -> pd.DataFrame:
         """Detect contiguous intervals of each identifier at one station."""
         sdf = self._station_data.get(uuid, pd.DataFrame())
         if sdf.empty:
@@ -125,6 +140,10 @@ class ValueTraceabilityEvents(Base):
         times = sdf[self.time_column].array
         start = times[runs.starts[keep]]
         end = times[runs.last[keep]]
+        if interval_end == "next_change":
+            # Held until the next reading on the signal (next identifier or
+            # an empty one); the signal's last run until the end of the data.
+            end = next_change_ends(times[runs.starts], self._data_end())[keep].array
         return pd.DataFrame(
             {
                 "identifier": ids[keep].tolist(),
@@ -141,7 +160,12 @@ class ValueTraceabilityEvents(Base):
     # build_timeline
     # ------------------------------------------------------------------
 
-    def build_timeline(self, *, infer_dwell_from_next: bool = False) -> pd.DataFrame:
+    def build_timeline(
+        self,
+        *,
+        infer_dwell_from_next: bool = False,
+        interval_end: IntervalEnd = "last_sample",
+    ) -> pd.DataFrame:
         """Build a full timeline of every identifier at every station.
 
         Args:
@@ -153,6 +177,14 @@ class ValueTraceabilityEvents(Base):
                 *next* station arrival, so the dwell is the honest
                 arrival-here → arrival-at-next-station time. The last visit per
                 identifier stays open (keeps its own last sample).
+            interval_end: Where a visit ends on its station signal.
+                ``"last_sample"`` (default): at the identifier's last sample
+                there. ``"next_change"``: at the station's next different
+                reading (the next identifier, or an empty / missing one), so
+                the identifier is held until it changes, like
+                :func:`ts_shape.eventlog.object_intervals`; a station's last
+                visit is held until the last timestamp of the station signals.
+                ``infer_dwell_from_next`` is applied afterwards.
 
         Returns:
             DataFrame with columns:
@@ -160,16 +192,18 @@ class ValueTraceabilityEvents(Base):
             - station_uuid: UUID of the station signal.
             - station_name: Human-readable station name.
             - start: Timestamp when the identifier appeared at the station.
-            - end: Timestamp of the last sample at the station.
+            - end: Timestamp of the last sample at the station (see
+                ``interval_end``).
             - duration_seconds: Time spent at the station.
             - sample_count: Number of data points.
             - station_sequence: Order of visit (1-based) per identifier.
             - uuid: Event UUID.
             - source_uuid: UUID of the station signal (same as station_uuid).
         """
+        check_interval_end(interval_end, "ValueTraceabilityEvents.build_timeline")
         all_intervals: list[pd.DataFrame] = []
         for uuid in self.station_uuids:
-            intervals = self._detect_intervals(uuid)
+            intervals = self._detect_intervals(uuid, interval_end)
             if not intervals.empty:
                 all_intervals.append(intervals)
 
@@ -281,13 +315,19 @@ class ValueTraceabilityEvents(Base):
     # current_status
     # ------------------------------------------------------------------
 
-    def current_status(self, *, infer_dwell_from_next: bool = False) -> pd.DataFrame:
+    def current_status(
+        self,
+        *,
+        infer_dwell_from_next: bool = False,
+        interval_end: IntervalEnd = "last_sample",
+    ) -> pd.DataFrame:
         """Determine the last-known station for each identifier.
 
         Args:
             infer_dwell_from_next: Forwarded to :meth:`build_timeline`. Note the
                 *current* (last) station's dwell is still open, so this mainly
                 affects identifiers whose latest visit has a later arrival.
+            interval_end: Forwarded to :meth:`build_timeline`.
 
         Returns:
             DataFrame with columns:
@@ -298,7 +338,9 @@ class ValueTraceabilityEvents(Base):
             - time_at_station_seconds: Dwell time at the current station so far.
             - uuid: Event UUID.
         """
-        timeline = self.build_timeline(infer_dwell_from_next=infer_dwell_from_next)
+        timeline = self.build_timeline(
+            infer_dwell_from_next=infer_dwell_from_next, interval_end=interval_end
+        )
 
         if timeline.empty:
             return pd.DataFrame(
@@ -333,7 +375,10 @@ class ValueTraceabilityEvents(Base):
     # ------------------------------------------------------------------
 
     def station_dwell_statistics(
-        self, *, infer_dwell_from_next: bool = False
+        self,
+        *,
+        infer_dwell_from_next: bool = False,
+        interval_end: IntervalEnd = "last_sample",
     ) -> pd.DataFrame:
         """Compute dwell-time statistics per station (across all identifiers).
 
@@ -342,6 +387,8 @@ class ValueTraceabilityEvents(Base):
                 True when stations log an identifier once on arrival, so dwell
                 is measured arrival-here → arrival-at-next-station instead of
                 collapsing to zero.
+            interval_end: Forwarded to :meth:`build_timeline`;
+                ``"next_change"`` measures dwell to the station's next reading.
 
         Returns:
             DataFrame with columns:
@@ -353,7 +400,9 @@ class ValueTraceabilityEvents(Base):
             - max_dwell_seconds
             - total_dwell_seconds
         """
-        timeline = self.build_timeline(infer_dwell_from_next=infer_dwell_from_next)
+        timeline = self.build_timeline(
+            infer_dwell_from_next=infer_dwell_from_next, interval_end=interval_end
+        )
 
         if timeline.empty:
             return pd.DataFrame(
@@ -381,6 +430,60 @@ class ValueTraceabilityEvents(Base):
         )
 
         return stats
+
+    # ------------------------------------------------------------------
+    # to_intervals
+    # ------------------------------------------------------------------
+
+    def to_intervals(
+        self,
+        *,
+        object_type: str = "serial",
+        interval_end: IntervalEnd = "last_sample",
+    ) -> pd.DataFrame:
+        """The timeline as an object interval table (one row per visit).
+
+        The result has the columns of
+        :func:`ts_shape.eventlog.object_intervals` plus ``station``, so it
+        feeds :func:`~ts_shape.eventlog.presence_events`,
+        :func:`~ts_shape.eventlog.object_kpis`,
+        :func:`~ts_shape.eventlog.wip_over_time`,
+        :func:`~ts_shape.eventlog.attach_counts`,
+        :func:`~ts_shape.eventlog.relate` and
+        :func:`~ts_shape.eventlog.link_events_to_objects` directly.
+
+        Args:
+            object_type: Object type of the identifiers (``"serial"``,
+                ``"work_order"``, ``"batch"``, ...).
+            interval_end: Forwarded to :meth:`build_timeline`.
+                ``"next_change"`` gives the presences
+                :func:`~ts_shape.eventlog.object_intervals` gives for the
+                station signals (every non-empty value an id).
+
+        Returns:
+            DataFrame with columns:
+            - oid: The identifier (text; ``12.0`` renders as ``"12"``).
+            - type: ``object_type``.
+            - start / end: The visit, in UTC (naive input is read as UTC).
+            - duration_seconds
+            - uuid: The station signal.
+            - source_uuid: The station signal.
+            - station: The station name; the analysis functions use it as
+                the station (to :func:`~ts_shape.eventlog.relate` it is an
+                object attribute, recorded at each visit).
+            Ordered by identifier, then start. No visit gives an empty frame
+            with these columns.
+        """
+        tl = self.build_timeline(interval_end=interval_end)
+        return intervals_frame(
+            oid=tl["identifier"],
+            object_type=object_type,
+            start=tl["start"],
+            end=tl["end"],
+            uuid=tl["station_uuid"],
+            source_uuid=tl["station_uuid"],
+            station=tl["station_name"],
+        )
 
 
 #: Deprecated name, removed in the next major release.

@@ -24,6 +24,11 @@ A :class:`LabelRule` describes:
   shift, operator, ...) via the ``objects=`` argument to
   :func:`~ts_shape.eventlog.to_event_log`. Empty tuple means "no
   auto-extraction; objects only appear if the caller binds them".
+* ``object_columns`` — for declared object types, the detector column that
+  carries the oid (e.g. ``{"serial": "identifier", "station":
+  "station_name"}`` for the traceability timelines). Used when the caller
+  does not bind that type; like ``source_uuid -> asset`` the binding is
+  not part of the event id (the column already is).
 """
 
 from __future__ import annotations
@@ -46,7 +51,8 @@ class LabelRule:
     ``value_field`` name legacy columns read into the severity and value
     attributes, ``drop_fields`` lists legacy columns to discard, and
     ``standard_attrs`` maps standard attribute keys to a legacy column name
-    or a literal value. ``severity_thresholds`` is the ``(warn, critical)``
+    or a literal value. ``object_columns`` maps a declared object type to the
+    column that carries its oid. ``severity_thresholds`` is the ``(warn, critical)``
     pair of lower bounds that buckets a *numeric* severity score into
     ``warn`` / ``critical`` (below ``warn`` is ``info``); ``None`` uses the
     z-score bounds ``(3.0, 4.5)``.
@@ -65,6 +71,9 @@ class LabelRule:
     # tuple raise in the coverage test.
     standard_attrs: Mapping[str, object] = field(default_factory=dict)
     severity_thresholds: tuple[float, float] | None = None
+    # Declared object type -> the frame column carrying its oid (bound when
+    # the caller does not bind that type).
+    object_columns: Mapping[str, str] = field(default_factory=dict)
 
 
 # Aliases used while building the registry below to keep entries terse.
@@ -83,6 +92,10 @@ S = "summary"
 ST = "static"
 
 ASSET = ("asset",)
+
+#: ``produces_objects`` entry for frames that name their own objects: each
+#: row links to the object ``oid`` of type ``type`` (its own column values).
+ROW_OBJECT = "{type}"
 
 #: ``(warn, critical)`` bounds of OutlierDetectionEvents scores that are not
 #: z-like (see the rules of detect_outliers_iqr / _isolation_forest).
@@ -1358,8 +1371,9 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ("MultiProcessTraceabilityEvents", "build_timeline"): _r(
         "production.traceability.timeline",
         _PR,
-        P,
+        I,
         objs=("asset", "serial", "station"),
+        object_columns={"asset": "id_uuid", "serial": "item_id", "station": "station"},
         standard_attrs={
             "ts_shape:lifecycle_state": "station_name",
             "ts_shape:direction": "station_sequence",
@@ -1370,6 +1384,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         P,
         objs=("asset", "serial", "station"),
+        object_columns={"serial": "item_id"},
         standard_attrs={
             "ts_shape:lifecycle_state": "handover",
             "ts_shape:direction": "station_sequence",
@@ -1380,6 +1395,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         S,
         objs=("serial",),
+        object_columns={"serial": "item_id"},
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("MultiProcessTraceabilityEvents", "parallel_activity"): _r(
@@ -1387,6 +1403,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         I,
         objs=("serial", "station"),
+        object_columns={"serial": "item_id"},
         standard_attrs={
             "ts_shape:lifecycle_state": "parallel",
             "ts_shape:direction": "station_name",
@@ -1404,7 +1421,16 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         S,
         objs=("station",),
+        object_columns={"station": "station"},
         standard_attrs={"ts_shape:sample_count": None},
+    ),
+    ("MultiProcessTraceabilityEvents", "to_intervals"): _r(
+        "production.traceability.presence",
+        _PR,
+        I,
+        objs=(ROW_OBJECT, "asset", "station"),
+        object_columns={"station": "station"},
+        standard_attrs={"ts_shape:lifecycle_state": "station"},
     ),
     ("OEEEvents", "availability"): _r(
         "production.oee.availability",
@@ -1457,6 +1483,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         I,
         objs=("asset", "serial", "station"),
+        object_columns={"serial": "identifier", "station": "station_name"},
         standard_attrs={
             "ts_shape:lifecycle_state": "station_name",
             "ts_shape:direction": "station_sequence",
@@ -1467,6 +1494,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         ST,
         objs=("serial",),
+        object_columns={"serial": "identifier"},
         standard_attrs={"ts_shape:method": "current_status"},
     ),
     ("ValueTraceabilityEvents", "lead_time"): _r(
@@ -1474,6 +1502,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         I,
         objs=("serial",),
+        object_columns={"serial": "identifier"},
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("ValueTraceabilityEvents", "station_dwell_statistics"): _r(
@@ -1481,7 +1510,16 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         ST,
         objs=("station",),
+        object_columns={"station": "station_name"},
         standard_attrs={"ts_shape:sample_count": "count"},
+    ),
+    ("ValueTraceabilityEvents", "to_intervals"): _r(
+        "production.value_trace.presence",
+        _PR,
+        I,
+        objs=(ROW_OBJECT, "asset", "station"),
+        object_columns={"station": "station"},
+        standard_attrs={"ts_shape:lifecycle_state": "station"},
     ),
     ("PartProductionEvents", "daily_production_summary"): _r(
         "production.part.daily_summary",
@@ -1650,6 +1688,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         I,
         objs=("asset", "serial", "station"),
+        object_columns={"serial": "item_id", "station": "station_name"},
         standard_attrs={
             "ts_shape:lifecycle_state": "station_name",
             "ts_shape:direction": "station_sequence",
@@ -1660,6 +1699,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         I,
         objs=("serial",),
+        object_columns={"serial": "item_id"},
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("RoutingTraceabilityEvents", "routing_paths"): _r(
@@ -1674,7 +1714,16 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         ST,
         objs=("station",),
+        object_columns={"station": "station_name"},
         standard_attrs={"ts_shape:sample_count": "sample_count"},
+    ),
+    ("RoutingTraceabilityEvents", "to_intervals"): _r(
+        "production.routing.presence",
+        _PR,
+        I,
+        objs=(ROW_OBJECT, "asset", "station"),
+        object_columns={"station": "station"},
+        standard_attrs={"ts_shape:lifecycle_state": "station"},
     ),
     ("RuntimeAccountingEvents", "operating_hours_meter"): _r(
         "production.runtime.hours_meter",
@@ -2635,10 +2684,6 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
     ),
 }
 
-
-#: ``produces_objects`` entry for frames that name their own objects: each
-#: row links to the object ``oid`` of type ``type`` (its own column values).
-ROW_OBJECT = "{type}"
 
 #: Label rules of event-log *functions* that return event frames (not
 #: detector-class methods): ``("eventlog", function_name) -> LabelRule``.

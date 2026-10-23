@@ -30,6 +30,13 @@ from ts_shape.utils.coerce import to_numeric_checked
 from ts_shape.utils.deprecation import deprecated_attribute, renamed_kwargs
 from ts_shape.utils.runs import Runs, run_bounds, run_labels, total_seconds
 
+from ._trace_objects import (
+    IntervalEnd,
+    check_interval_end,
+    intervals_frame,
+    next_change_ends,
+)
+
 logger = logging.getLogger(__name__)
 
 _Ints: TypeAlias = npt.NDArray[np.int64]
@@ -237,7 +244,18 @@ class MultiProcessTraceabilityEvents(Base):
     # Internal: detect intervals at one process UUID
     # ------------------------------------------------------------------
 
-    def _detect_intervals(self, id_uuid: str, station_name: str) -> pd.DataFrame:
+    def _data_end(self) -> Any:
+        """Last timestamp of the process signals (``None`` without data)."""
+        ends = [sdf[self.time_column].max() for sdf in self._process_data.values()]
+        ends = [t for t in ends if pd.notna(t)]
+        return max(ends) if ends else None
+
+    def _detect_intervals(
+        self,
+        id_uuid: str,
+        station_name: str,
+        interval_end: IntervalEnd = "last_sample",
+    ) -> pd.DataFrame:
         """Detect contiguous item-ID intervals at a single process UUID."""
         sdf = self._process_data.get(id_uuid, pd.DataFrame())
         if sdf.empty:
@@ -276,6 +294,13 @@ class MultiProcessTraceabilityEvents(Base):
         times = s[self.time_column].array
         start = times[runs.starts[keep]]
         end = times[runs.last[keep]]
+        if interval_end == "next_change":
+            # Held until the next segment on the signal starts, unless that
+            # segment is the same item after a time gap (the item left).
+            changed = value_change.to_numpy(dtype=bool)[runs.starts]
+            held = np.r_[changed[1:], True]
+            nxt = next_change_ends(times[runs.starts], self._data_end(), held=held)
+            end = nxt.fillna(pd.Series(times[runs.last]))[keep].array
         return pd.DataFrame(
             {
                 "item_id": ids[keep].tolist(),
@@ -292,7 +317,12 @@ class MultiProcessTraceabilityEvents(Base):
     # build_timeline
     # ------------------------------------------------------------------
 
-    def build_timeline(self, *, infer_dwell_from_next: bool = False) -> pd.DataFrame:
+    def build_timeline(
+        self,
+        *,
+        infer_dwell_from_next: bool = False,
+        interval_end: IntervalEnd = "last_sample",
+    ) -> pd.DataFrame:
         """Build a full timeline of every item at every station.
 
         Handles parallel stations: the same item may appear at overlapping
@@ -308,6 +338,15 @@ class MultiProcessTraceabilityEvents(Base):
                 arrival-here → arrival-at-next-station dwell. Parallel /
                 overlapping visits keep their own span, since a "next arrival"
                 is not meaningful while the item is at two stations at once.
+            interval_end: Where a visit ends on its process signal.
+                ``"last_sample"`` (default): at the item's last sample there.
+                ``"next_change"``: at the signal's next segment (the next item
+                or an empty / missing reading), so the item is held until it
+                changes, like :func:`ts_shape.eventlog.object_intervals`; a
+                signal's last visit is held until the last timestamp of the
+                process signals. A visit followed by the *same* item after a
+                time gap keeps its last sample (the gap is a leave).
+                ``is_parallel`` and ``infer_dwell_from_next`` use these ends.
 
         Returns:
             DataFrame with columns:
@@ -323,9 +362,14 @@ class MultiProcessTraceabilityEvents(Base):
                 station for the same item.
             - uuid: Event UUID.
         """
+        check_interval_end(
+            interval_end, "MultiProcessTraceabilityEvents.build_timeline"
+        )
         all_intervals: list[pd.DataFrame] = []
         for proc in self.processes:
-            intervals = self._detect_intervals(proc["id_uuid"], proc["station"])
+            intervals = self._detect_intervals(
+                proc["id_uuid"], proc["station"], interval_end
+            )
             if not intervals.empty:
                 all_intervals.append(intervals)
 
@@ -670,7 +714,10 @@ class MultiProcessTraceabilityEvents(Base):
     # ------------------------------------------------------------------
 
     def station_statistics(
-        self, *, infer_dwell_from_next: bool = False
+        self,
+        *,
+        infer_dwell_from_next: bool = False,
+        interval_end: IntervalEnd = "last_sample",
     ) -> pd.DataFrame:
         """Compute dwell-time statistics per station across all items.
 
@@ -680,6 +727,7 @@ class MultiProcessTraceabilityEvents(Base):
             infer_dwell_from_next: Forwarded to :meth:`build_timeline`; pass True
                 when stations log an item once on arrival so dwell is measured
                 to the item's next station arrival instead of collapsing to zero.
+            interval_end: Forwarded to :meth:`build_timeline`.
 
         Returns:
             DataFrame with columns:
@@ -691,7 +739,9 @@ class MultiProcessTraceabilityEvents(Base):
             - max_dwell_seconds
             - total_dwell_seconds
         """
-        timeline = self.build_timeline(infer_dwell_from_next=infer_dwell_from_next)
+        timeline = self.build_timeline(
+            infer_dwell_from_next=infer_dwell_from_next, interval_end=interval_end
+        )
 
         if timeline.empty:
             return pd.DataFrame(
@@ -763,3 +813,56 @@ class MultiProcessTraceabilityEvents(Base):
         )
 
         return stats.sort_values("item_count", ascending=False).reset_index(drop=True)
+
+    # ------------------------------------------------------------------
+    # to_intervals
+    # ------------------------------------------------------------------
+
+    def to_intervals(
+        self,
+        *,
+        object_type: str = "serial",
+        interval_end: IntervalEnd = "last_sample",
+    ) -> pd.DataFrame:
+        """The timeline as an object interval table (one row per visit).
+
+        The result has the columns of
+        :func:`ts_shape.eventlog.object_intervals` plus ``station``, so it
+        feeds :func:`~ts_shape.eventlog.presence_events`,
+        :func:`~ts_shape.eventlog.object_kpis`,
+        :func:`~ts_shape.eventlog.wip_over_time`,
+        :func:`~ts_shape.eventlog.attach_counts`,
+        :func:`~ts_shape.eventlog.relate` and
+        :func:`~ts_shape.eventlog.link_events_to_objects` directly. Parallel
+        visits stay separate rows (``object_kpis`` counts both in the dwell).
+
+        Args:
+            object_type: Object type of the items (``"serial"``,
+                ``"work_order"``, ``"batch"``, ...).
+            interval_end: Forwarded to :meth:`build_timeline`.
+
+        Returns:
+            DataFrame with columns:
+            - oid: The item ID (text).
+            - type: ``object_type``.
+            - start / end: The visit, in UTC (naive input is read as UTC).
+            - duration_seconds
+            - uuid: The cell's ID signal (``id_uuid``).
+            - source_uuid: The cell's ID signal (``id_uuid``).
+            - station: The station name (parallel cells share it); the
+                analysis functions use it as the station (to
+                :func:`~ts_shape.eventlog.relate` it is an object attribute,
+                recorded at each visit).
+            Ordered by item, then start. No visit gives an empty frame with
+            these columns.
+        """
+        tl = self.build_timeline(interval_end=interval_end)
+        return intervals_frame(
+            oid=tl["item_id"],
+            object_type=object_type,
+            start=tl["start"],
+            end=tl["end"],
+            uuid=tl["id_uuid"],
+            source_uuid=tl["id_uuid"],
+            station=tl["station"],
+        )

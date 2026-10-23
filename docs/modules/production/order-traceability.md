@@ -28,10 +28,11 @@ status = tracer.current_status()
 
 | Method | Returns |
 |---|---|
-| `build_timeline(infer_dwell_from_next=False)` | one row per identifier and station: `identifier`, `station_name`, `start`, `end`, `duration_seconds`, `sample_count`, `station_sequence` |
+| `build_timeline(infer_dwell_from_next=False, interval_end="last_sample")` | one row per identifier and station: `identifier`, `station_name`, `start`, `end`, `duration_seconds`, `sample_count`, `station_sequence` |
 | `lead_time()` | per identifier: `first_station`, `last_station`, `first_seen`, `last_seen`, `lead_time_seconds`, `stations_visited`, `station_path` |
-| `current_status()` | per identifier: `current_station`, `arrived_at`, `time_at_station_seconds` |
-| `station_dwell_statistics(infer_dwell_from_next=False)` | per station: `identifier_count`, `min_`/`avg_`/`max_`/`total_dwell_seconds` |
+| `current_status(infer_dwell_from_next=False, interval_end="last_sample")` | per identifier: `current_station`, `arrived_at`, `time_at_station_seconds` |
+| `station_dwell_statistics(infer_dwell_from_next=False, interval_end="last_sample")` | per station: `identifier_count`, `min_`/`avg_`/`max_`/`total_dwell_seconds` |
+| `to_intervals(object_type="serial", interval_end="last_sample")` | one row per visit: `oid`, `type`, `start`, `end`, `duration_seconds`, `uuid`, `source_uuid`, `station` |
 
 ## Notes
 
@@ -39,3 +40,6 @@ status = tracer.current_status()
 - By default a visit ends at the identifier's last sample at the station, so a station that logs the identifier once on arrival reports a dwell of 0. `infer_dwell_from_next=True` ends each visit at the identifier's next station arrival; the last visit stays open.
 - Identifiers must match exactly across stations: `Order-42` and `Order-042` are different items.
 - `OrderTraceabilityEvents` is a deprecated alias of this class.
+- `interval_end="next_change"` ends a visit at the next different reading on the station signal (the next identifier or an empty reading) instead of at its last sample, so the identifier is held until it changes, like [`object_intervals`](../../guides/eventlog/objects.md); a station's last visit is held until the last timestamp of the station signals. The default `"last_sample"` keeps the results as before. `infer_dwell_from_next` is applied after it.
+- `to_intervals(object_type="serial")` returns the visits as an object interval table: the columns of `object_intervals` (`oid`, `type`, `start`, `end` in UTC, `duration_seconds`, `uuid`, `source_uuid`) plus `station`. It feeds `presence_events`, `object_kpis`, `wip_over_time`, `attach_counts` and `relate` directly; see [Object analytics](../../guides/eventlog/object-analytics.md#traceability-classes).
+- In `to_event_log`, the identifier column binds objects of type `serial` and the station column objects of type `station` (plus `asset` from `source_uuid`, the station signal). These links do not change the event ids. Pass `objects={"serial": None}` to leave one out, or `objects={"work_order": "identifier"}` to name the type yourself.

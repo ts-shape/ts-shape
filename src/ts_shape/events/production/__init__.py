@@ -106,6 +106,7 @@ Traceability:
   - lead_time: End-to-end lead time per identifier.
   - current_status: Last-known station for each identifier.
   - station_dwell_statistics: Dwell-time stats per station.
+  - to_intervals: Visits as an object interval table (object analytics).
   (OrderTraceabilityEvents is a deprecated alias.)
 
 - RoutingTraceabilityEvents: Trace item routing using ID + state/routing signal.
@@ -115,6 +116,7 @@ Traceability:
   - lead_time: End-to-end lead time per item.
   - station_statistics: Dwell-time stats per station/step.
   - routing_paths: Most common routing path sequences.
+  - to_intervals: Visits as an object interval table (object analytics).
 
 - ContinuousProcessAlignmentEvents: Align multi-station readings on a continuous line
   to a common material reference time using speed-based transport lag compensation.
@@ -145,6 +147,7 @@ Flow and Line Balancing:
   - handover_log: Extract and correlate handover events with item IDs.
   - station_statistics: Per-station/cell dwell-time stats.
   - routing_paths: Path frequency analysis with parallel flag.
+  - to_intervals: Visits as an object interval table (object analytics).
 
 Setup, Rework, and Operator Tracking:
 - SetupTimeEvents: Analyze changeover/setup durations for SMED improvement.

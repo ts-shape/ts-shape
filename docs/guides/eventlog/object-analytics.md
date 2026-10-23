@@ -177,3 +177,52 @@ print(attach_counts(intervals, counter, "st2:good", object_type="serial"))
   S3 leaves at 06:45, so 2/7 of the 3 parts counted at 06:47 are unattributed.
 
 The quantities add up to the counter's total.
+
+## Traceability classes
+
+`ValueTraceabilityEvents`, `RoutingTraceabilityEvents` and
+`MultiProcessTraceabilityEvents` build a station timeline per item themselves.
+Their `to_intervals(object_type="serial")` returns that timeline as an interval
+table with the columns of `object_intervals` plus `station` (the station name, which
+the functions on this page use as the station), so every function here takes it:
+
+```python
+from ts_shape.events.production import ValueTraceabilityEvents
+
+trace = ValueTraceabilityEvents(
+    df, station_uuids={"st1:serial": "Station 1", "st2:serial": "Station 2"}
+)
+for end in ("last_sample", "next_change"):
+    kpis = object_kpis(trace.to_intervals(interval_end=end), object_type="serial")
+    print(end)
+    print(kpis.objects[["oid", "lead_time_seconds", "dwell_seconds"]])
+```
+
+The two settings of `interval_end` differ in where a visit ends:
+
+- `"last_sample"` (the default of the classes, so their results stay as they were):
+  at the item's last sample at the station. These readers write each serial once, on
+  arrival, so every visit lasts 0 seconds and the lead time runs from the first
+  arrival to the last arrival: 12 minutes for S1 (06:00 to 06:12).
+- `"next_change"`: at the station's next different reading (the next serial or an
+  empty reading), the way `object_intervals` holds an id until it changes; a
+  station's last visit is held until the last timestamp of the station signals. With
+  it, `to_intervals` gives the same presences as `object_intervals` above, and S1
+  again takes 25 minutes with 23 at a station.
+
+`to_intervals` keeps the class's own reading of the signals: every non-empty value
+is an id (misreads are not filtered, unlike `ObjectSpec.exclude`), and
+`MultiProcessTraceabilityEvents` also splits a visit at a time gap.
+
+The classes' event logs link to their objects too: in `to_event_log`, the item column
+of a timeline, lead time or status frame binds objects of type `serial`, the station
+column objects of type `station`. The event ids stay what they were without these
+links.
+
+```python
+log = to_event_log(trace.build_timeline(), detector="ValueTraceabilityEvents.build_timeline")
+print(log.objects.sort_values(["ocel:type", "ocel:oid"]).to_string(index=False))
+```
+
+A frame from `to_intervals` converts with `detector="<class>.to_intervals"`: one
+interval event per visit, linked to its serial, its station and its signal.
