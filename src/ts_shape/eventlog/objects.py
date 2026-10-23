@@ -18,19 +18,21 @@ Three steps, all feeding the OCEL 2.0 tables on :class:`~ts_shape.eventlog.model
 * :func:`object_intervals` — segment id signals into ``(oid, type, start, end)``
   presence intervals (an id is present until the next id on the same signal).
 * :func:`detect_objects` — build the ``objects`` / ``o2o`` / ``object_changes``
-  tables. ``part_of`` is asserted only along a declared ``hierarchy`` (it cannot
-  be inferred from time alone); other overlaps are reported as ``co_occurs``.
+  tables. ``part_of`` is asserted only along a declared ``hierarchy`` of object
+  types or id signals (it cannot be inferred from time alone); the symmetric
+  ``co_occurs`` for every other overlap is opt-in (``infer_o2o="co_occurs"``).
 * :func:`attach_objects` — link an existing event log's events to the detected
-  objects by temporal containment, so the output of *every* event detector gains
-  rich object references with no per-detector changes.
+  objects by temporal overlap, optionally within a ``scope`` (e.g. a line), so
+  the output of *every* event detector gains rich object references with no
+  per-detector changes.
 
 When you already hold the two lists — an **event list** and an **object list**
 (intervals) — the relationship derivation is automated and needs no raw signals:
 
 * :func:`link_events_to_objects` — all event-to-object (E2O) relations, by
-  temporal containment and/or direct ``key_columns`` matching.
+  temporal overlap and/or direct ``key_columns`` matching.
 * :func:`derive_o2o` — all object-to-object (O2O) relations (declared
-  ``part_of`` hierarchy or symmetric ``co_occurs``).
+  ``part_of`` hierarchy, optionally the symmetric ``co_occurs``).
 * :func:`relate` — assemble both, plus objects and ``object_changes``, into one
   validated :class:`EventLog` ready to ingest into an OCEL 2.0 database.
 
@@ -40,6 +42,10 @@ Presence semantics (shared by every function here)
   signal: the next id, or an empty / missing reading (``""``, whitespace,
   ``NaN`` / ``None`` / ``<NA>``), which means "no object". A gap in the data
   does not end an object; only a different value does.
+* A misread (``NOREAD``, ``#N/A``, ``0``, ``65535``, ``"????????"``, a
+  truncated id, ...; see :attr:`ObjectSpec.exclude`) is not an id: between two
+  readings of the same id it is a gap (the id is held across it), anywhere
+  else it is an empty reading.
 * Presence is **half-open** ``[start, end)``: at a hand-over instant the
   incoming object owns the timestamp, never both. The last presence on a signal
   (and, in a user-supplied table, any presence no other object of its signal /
@@ -54,9 +60,9 @@ Presence semantics (shared by every function here)
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import Literal, TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -69,6 +75,7 @@ from ts_shape.utils.deprecation import (
 
 from ..errors import ColumnNotFoundError, DataQualityWarning
 from ..utils.frames import require_columns, to_ns
+from ..utils.id_codes import is_misread
 from . import schema
 from .concat import concat
 from .model import EventLog
@@ -168,21 +175,44 @@ def _rle(codes: _I64, first: _I64, last: _I64) -> tuple[_I64, _I64, _I64, _I64]:
     return codes[idx], starts, ends, idx
 
 
-def _segments(
-    sig: pd.DataFrame,
-    *,
-    value_column: str,
-    time_column: str,
-    min_duration: str | None,
-) -> tuple[_I64, _I64, _I64, _I64, pd.Index]:
-    """Presence runs of one id signal.
+def _fill_excluded(codes: _I64, excluded: _BOOL) -> _I64:
+    """Replace excluded readings: a run of them between two readings of the
+    same id takes that id (a gap in the data), anywhere else it becomes an
+    empty reading (code ``-1``, the presence ends there)."""
+    bad = excluded & (codes >= 0)
+    if not bad.any():
+        return codes
+    n = len(codes)
+    pos = np.arange(n, dtype=np.int64)
+    prev = np.maximum.accumulate(np.where(bad, -1, pos))
+    nxt = np.minimum.accumulate(np.where(bad, n, pos)[::-1])[::-1]
+    prev_code = np.where(prev >= 0, codes[prev.clip(min=0)], -1)
+    next_code = np.where(nxt < n, codes[nxt.clip(max=n - 1)], -1)
+    fill = (prev_code == next_code) & (prev_code >= 0)
+    out = codes.copy()
+    out[bad] = np.where(fill, prev_code, -1)[bad]
+    return out
 
-    Returns ``(codes, start_ns, end_ns, first_row, uniques)`` for the id runs
-    only (empty / missing runs are boundaries, not objects). ``first_row`` is
-    the positional row of each run's first sample in the time-sorted ``sig``.
+
+def _segments(
+    times: _I64,
+    values: pd.Series,
+    *,
+    min_duration: str | None,
+    excluded: _BOOL | None = None,
+) -> tuple[_I64, _I64, _I64, _I64, pd.Index, bool]:
+    """Presence runs of one id signal (``times`` sorted, ``values`` aligned).
+
+    Returns ``(codes, start_ns, end_ns, first_row, uniques, still_set)`` for
+    the id runs only (empty / missing runs are boundaries, not objects).
+    ``first_row`` is the positional row of each run's first sample;
+    ``still_set`` tells whether the last reading is an id. ``excluded`` marks
+    readings that are not ids (see :func:`_fill_excluded`).
     """
-    times = _ns(sig[time_column])
-    codes, uniques = _id_codes(sig[value_column].reset_index(drop=True))
+    codes, uniques = _id_codes(values.reset_index(drop=True))
+    if excluded is not None:
+        codes = _fill_excluded(codes, excluded)
+    still_set = bool(len(codes)) and bool(codes[-1] >= 0)
     rows = np.arange(len(codes), dtype=np.int64)
     c, s, e, first = _rle(codes, times, times)
     first = rows[first]
@@ -215,7 +245,7 @@ def _segments(
             first = first[k]
 
     ids = c >= 0
-    return c[ids], s[ids], e[ids], first[ids], uniques
+    return c[ids], s[ids], e[ids], first[ids], uniques, still_set
 
 
 def _id_text(value: object) -> str:
@@ -234,6 +264,14 @@ def _render_oids(values: pd.Index, template: str, object_type: str) -> pd.Series
     else:
         out = [template.format(value=v, type=object_type) for v in texts]
     return pd.Series(out, dtype="string")
+
+
+#: :attr:`ObjectSpec.exclude` default: drop the readings
+#: :func:`~ts_shape.utils.id_codes.is_misread` flags.
+MISREADS = "misreads"
+
+#: What :attr:`ObjectSpec.exclude` accepts.
+Exclude: TypeAlias = "str | Collection[object] | Callable[[pd.Series], object] | None"
 
 
 @dataclass(frozen=True)
@@ -259,6 +297,18 @@ class ObjectSpec:
             each presence start (last non-missing sample at or before it) plus
             every change of that signal during the presence, emitted as
             ``object_changes``.
+        exclude: Readings that are not ids (scanner no-reads, PLC defaults).
+            ``"misreads"`` (default) applies
+            :func:`ts_shape.utils.id_codes.is_misread` -- ``NOREAD``,
+            ``#N/A``, ``NULL``, ``ERR``, ``0``, ``-1``, ``32767``, ``65535``,
+            ``"????????"``, fillers such as ``"XXXXXXXX"``, truncated reads.
+            A collection of values excludes exactly those values (compared
+            as text, so ``0`` matches ``"0"``); a callable takes the signal's
+            id values in time order and returns a boolean mask; ``None``
+            excludes nothing. An excluded reading never becomes an object and
+            never splits a presence: between two readings of the same id it
+            is a gap in the data (the id is held across it); anywhere else it
+            is an empty reading (the presence before it ends there).
     """
 
     uuid: str
@@ -267,10 +317,73 @@ class ObjectSpec:
     min_duration: str | None = None
     id_template: str = "{value}"
     attributes: Mapping[str, str] = field(default_factory=dict)
+    exclude: Exclude = MISREADS
+
+
+def _exclusion_mask(spec: ObjectSpec, values: pd.Series) -> _BOOL | None:
+    """Boolean mask of the readings ``spec.exclude`` removes (``None``: none)."""
+    rule = spec.exclude
+    if rule is None:
+        return None
+    if isinstance(rule, str):
+        if rule != MISREADS:
+            raise ValueError(
+                f"ObjectSpec({spec.uuid!r}).exclude={rule!r}: the only text value "
+                f"is {MISREADS!r}; pass a list to exclude single values"
+            )
+        return is_misread(values)
+    if callable(rule):
+        mask = np.asarray(rule(values), dtype=bool)
+        if mask.shape != (len(values),):
+            raise ValueError(
+                f"ObjectSpec({spec.uuid!r}).exclude returned a mask of shape "
+                f"{mask.shape}; expected ({len(values)},)"
+            )
+        return mask
+    texts = {_id_text(v).strip() for v in rule}
+    na = values.isna().to_numpy(dtype=bool)
+    return np.array(
+        [
+            not m and _id_text(v).strip() in texts
+            for v, m in zip(values, na, strict=True)
+        ],
+        dtype=bool,
+    )
 
 
 def _check_frame(df: pd.DataFrame, uuid_column: str, time_column: str) -> None:
     require_columns(df, (uuid_column, time_column), where="object detection")
+
+
+class _Signals:
+    """The frame grouped by signal once: time-sorted rows per uuid."""
+
+    def __init__(self, df: pd.DataFrame, uuid_column: str, time_column: str):
+        self.df = df
+        times = _ns(df[time_column]) if len(df) else np.empty(0, dtype=np.int64)
+        codes, uniques = pd.factorize(df[uuid_column], use_na_sentinel=True)
+        codes = np.asarray(codes, dtype=np.int64)
+        valid = np.flatnonzero((times != _NAT) & (codes >= 0))
+        order = valid[np.lexsort((times[valid], codes[valid]))]
+        self.times = times
+        self.order = order
+        self.bounds = np.searchsorted(codes[order], np.arange(len(uniques) + 1))
+        self.code_of = {u: i for i, u in enumerate(uniques)}
+        finite = times[times != _NAT]
+        self.data_end_ns: int | None = int(finite.max()) if len(finite) else None
+
+    def __contains__(self, uuid: object) -> bool:
+        return uuid in self.code_of
+
+    def available(self) -> list[object]:
+        return list(self.code_of)
+
+    def rows(self, uuid: object) -> _I64:
+        """Positional rows of ``uuid`` with a timestamp, in time order."""
+        code = self.code_of.get(uuid)
+        if code is None:
+            return np.empty(0, dtype=np.int64)
+        return self.order[self.bounds[code] : self.bounds[code + 1]]
 
 
 def _detect(
@@ -280,13 +393,16 @@ def _detect(
     uuid_column: str,
     time_column: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Interval table plus the in-presence attribute changes."""
+    """Interval table plus the in-presence attribute changes.
+
+    The frame is grouped by signal once (:class:`_Signals`); every spec then
+    reads its time-sorted rows by position.
+    """
     _check_frame(df, uuid_column, time_column)
     frames: list[pd.DataFrame] = []
     changes: list[pd.DataFrame] = []
-    available = set(df[uuid_column].unique()) if not df.empty else set()
-    times = df[time_column].dropna() if not df.empty else df[time_column]
-    data_end_ns = int(np.max(_ns(times))) if len(times) else None
+    signals = _Signals(df, uuid_column, time_column) if not df.empty else None
+    data_end_ns = signals.data_end_ns if signals is not None else None
     for spec in specs:
         if not schema.is_known_object_type(spec.object_type):
             schema.register_object_type(spec.object_type)
@@ -296,50 +412,46 @@ def _detect(
                 f"ObjectSpec({spec.uuid!r}) attribute name(s) {sorted(clash)} "
                 f"collide with reserved interval columns {list(_RESERVED)}"
             )
-        if df.empty:
+        if signals is None:
             continue
         if spec.value_column not in df.columns:
             raise ColumnNotFoundError(
                 f"value column {spec.value_column!r} of ObjectSpec({spec.uuid!r}) "
                 f"not found; available columns: {list(df.columns)}"
             )
-        if spec.uuid not in available:
+        if spec.uuid not in signals:
             warnings.warn(
                 f"ObjectSpec signal {spec.uuid!r} is not in the frame; no "
                 f"{spec.object_type!r} objects detected from it. Available "
-                f"uuids: {sorted(map(str, available))[:20]}",
+                f"uuids: {sorted(map(str, signals.available()))[:20]}",
                 DataQualityWarning,
                 stacklevel=caller_stacklevel(),
             )
             continue
 
-        sig = df[df[uuid_column] == spec.uuid]
-        sig = sig[sig[time_column].notna()].sort_values(time_column, kind="stable")
-        sig = sig.reset_index(drop=True)
-        codes, start, end, first, uniques = _segments(
-            sig,
-            value_column=spec.value_column,
-            time_column=time_column,
+        rows = signals.rows(spec.uuid)
+        if len(rows) == 0:
+            continue
+        values = df[spec.value_column].iloc[rows].reset_index(drop=True)
+        codes, start, end, first, uniques, still_set = _segments(
+            signals.times[rows],
+            values,
             min_duration=spec.min_duration,
+            excluded=_exclusion_mask(spec, values),
         )
         if len(codes) == 0:
             continue
         # A signal that still carries an id at its last reading (change
         # encoded: the id is not re-sent) keeps that object present until the
         # end of the data, like the last segment of SegmentExtractor.
-        last_value = sig[spec.value_column].iloc[-1]
-        still_set = not (
-            pd.isna(last_value)
-            or (isinstance(last_value, str) and last_value.strip(" \t\r\n\x00") == "")
-        )
         if still_set and data_end_ns is not None and end[-1] < data_end_ns:
             end = end.copy()
             end[-1] = data_end_ns
 
         oids = _render_oids(uniques, spec.id_template, spec.object_type)
         oid = oids.to_numpy()[codes]
-        if _SOURCE in sig.columns:
-            source = sig[_SOURCE].astype("string").to_numpy()[first]
+        if _SOURCE in df.columns:
+            source = df[_SOURCE].iloc[rows[first]].astype("string").to_numpy()
         else:
             source = pd.array([pd.NA] * len(codes), dtype="string")
         out = pd.DataFrame(
@@ -357,13 +469,11 @@ def _detect(
         is_last[-1] = True
         for attr_name, attr_uuid in spec.attributes.items():
             at_start, during = _capture_attribute(
-                df,
+                signals,
                 attr_uuid,
                 start,
                 end,
                 is_last,
-                uuid_column=uuid_column,
-                time_column=time_column,
                 value_column=spec.value_column,
             )
             out[attr_name] = at_start
@@ -415,8 +525,10 @@ def object_intervals(
     sample until the next value on the same signal (next id, or an empty /
     missing reading). A signal whose last reading is still an id keeps that
     object present until the last timestamp of the frame. An id that
-    re-appears later yields another row with the same ``oid``. An empty frame
-    or no matching signal gives an empty frame with the full column set.
+    re-appears later yields another row with the same ``oid``. Readings
+    excluded by :attr:`ObjectSpec.exclude` (misreads by default) are never
+    objects and do not split a presence. An empty frame or no matching
+    signal gives an empty frame with the full column set.
     """
     intervals, _ = _detect(
         dataframe, specs, uuid_column=uuid_column, time_column=time_column
@@ -425,14 +537,12 @@ def object_intervals(
 
 
 def _capture_attribute(
-    df: pd.DataFrame,
+    signals: _Signals,
     attr_uuid: str,
     starts: _I64,
     ends: _I64,
     is_last: _BOOL,
     *,
-    uuid_column: str,
-    time_column: str,
     value_column: str,
 ) -> tuple[pd.Series, pd.DataFrame]:
     """Attribute value at each presence start, and its changes during presence.
@@ -443,9 +553,10 @@ def _capture_attribute(
     and before its end (at or before it, for the last presence).
     """
     empty_during = pd.DataFrame({"_pos": [], "_value": [], "_ts": []})
-    sig = df[df[uuid_column] == attr_uuid]
-    if sig.empty:
+    rows = signals.rows(attr_uuid)
+    if len(rows) == 0:
         return pd.Series([pd.NA] * len(starts), dtype="object"), empty_during
+    sig = signals.df.iloc[rows]
     # Pick the first populated value column for the attribute signal.
     col = next(
         (
@@ -457,10 +568,9 @@ def _capture_attribute(
     )
     if col not in sig.columns:
         return pd.Series([pd.NA] * len(starts), dtype="object"), empty_during
-    sig = sig[sig[time_column].notna() & sig[col].notna()]
-    sig = sig.sort_values(time_column, kind="stable")
-    t = _ns(sig[time_column])
-    vals = sig[col].to_numpy(dtype=object)
+    keep = sig[col].notna().to_numpy(dtype=bool)
+    t = signals.times[rows[keep]]
+    vals = sig[col].to_numpy(dtype=object)[keep]
     if len(t) == 0:
         return pd.Series([pd.NA] * len(starts), dtype="object"), empty_during
 
@@ -478,6 +588,33 @@ def _capture_attribute(
     return pd.Series(at_start, dtype="object"), during
 
 
+#: ``hierarchy`` of :func:`detect_objects`: child -> parent(s), each an object
+#: type or an id-signal uuid.
+Hierarchy: TypeAlias = "Mapping[str, str | Sequence[str]]"
+#: ``infer_o2o`` of :func:`detect_objects`.
+InferO2O: TypeAlias = "bool | Literal['hierarchy', 'co_occurs']"
+#: ``scope`` of :func:`link_events_to_objects`: signal uuid -> scope label.
+Scope: TypeAlias = "Mapping[str, object]"
+
+#: Default ``fanout_threshold``: an event normally refers to one object of a
+#: type at a time.
+FANOUT_THRESHOLD = 1
+
+
+def _o2o_mode(infer_o2o: object) -> tuple[bool, bool]:
+    """``(derive o2o, include co_occurs)`` from an ``infer_o2o`` value."""
+    if infer_o2o is True or infer_o2o == "hierarchy":
+        return True, False
+    if infer_o2o == "co_occurs":
+        return True, True
+    if infer_o2o is False or infer_o2o is None:
+        return False, False
+    raise ValueError(
+        f"infer_o2o={infer_o2o!r}; use True / 'hierarchy' (declared part_of "
+        "edges), 'co_occurs' (also every overlap of two types) or False"
+    )
+
+
 @renamed_kwargs(df="dataframe")
 def detect_objects(
     dataframe: pd.DataFrame,
@@ -485,8 +622,8 @@ def detect_objects(
     *,
     uuid_column: str = "uuid",
     time_column: str = "systime",
-    hierarchy: Mapping[str, str] | None = None,
-    infer_o2o: bool = True,
+    hierarchy: Hierarchy | None = None,
+    infer_o2o: InferO2O = True,
     validate: bool = True,
 ) -> EventLog:
     """Detect object instances and build their OCEL 2.0 tables.
@@ -496,23 +633,39 @@ def detect_objects(
     captured attributes). Compose it with event-detector logs via
     :func:`~ts_shape.eventlog.concat.concat`.
 
-    ``hierarchy`` maps a child object type to its parent type
-    (e.g. ``{"serial": "batch", "batch": "work_order"}``). A compositional
-    ``part_of`` relation is asserted **only** along these declared edges: each
-    child presence is part of the parent presence it overlaps longest —
-    because *part_of cannot be inferred from time alone* (a long-running tool
-    temporally contains every batch without owning it). Without a declared
-    hierarchy, overlapping objects of different types get the honest,
-    symmetric ``co_occurs`` qualifier instead. Set ``infer_o2o=False`` to skip
-    object-to-object relations entirely.
+    ``hierarchy`` declares the compositional ``part_of`` relations, because
+    *part_of cannot be inferred from time alone* (a long-running tool
+    temporally contains every batch without owning it). Each key is a child
+    and each value a parent or a list of parents; a key or value is an
+    **id-signal uuid** when it names one of the specs' signals, else an
+    **object type**:
+
+    * ``{"serial": "batch", "batch": "work_order"}`` -- type level: each
+      serial presence is part of the batch presence it overlaps longest.
+    * ``{"L1:serial": "L1:batch", "L2:serial": "L2:batch"}`` -- signal
+      level: a serial of line 1 is part of a line-1 batch only, so two lines
+      stay apart.
+    * ``{"L1:serial": ["L1:batch", "L1:hu"]}`` -- several parents: one
+      ``part_of`` per parent (a serial in a batch *and* a handling unit).
+
+    Each child presence gets one ``part_of`` per declared parent: to the
+    parent presence it overlaps longest (ties: the earlier parent).
+
+    ``infer_o2o``: ``True`` / ``"hierarchy"`` (default) emits the declared
+    ``part_of`` edges only -- no hierarchy, no ``o2o`` rows.
+    ``"co_occurs"`` also relates every two overlapping objects of different
+    types with the symmetric ``co_occurs`` qualifier (pairs already related
+    by ``part_of`` excepted); on a plant this can be hundreds of thousands
+    of rows. ``False`` skips object-to-object relations.
 
     Args:
         dataframe: Long-format frame with the id signals.
         specs: Which signal carries which object type.
         uuid_column: Signal identifier column.
         time_column: Timestamp column.
-        hierarchy: Child type -> parent type for ``part_of`` relations.
-        infer_o2o: Derive object-to-object relations.
+        hierarchy: Child -> parent(s) for ``part_of`` relations, by object
+            type or id-signal uuid.
+        infer_o2o: Which object-to-object relations to derive.
         validate: Check the result against the canonical schema.
 
     Returns:
@@ -522,13 +675,19 @@ def detect_objects(
     Raises:
         ColumnNotFoundError: When ``dataframe`` lacks the uuid, time or a spec's
             value column.
+        ValueError: For an unknown ``infer_o2o`` value.
     """
+    derive, co_occurs = _o2o_mode(infer_o2o)
     intervals, extra = _detect(
         dataframe, specs, uuid_column=uuid_column, time_column=time_column
     )
     log = EventLog(
         objects=_objects_table(intervals),
-        o2o=_infer_o2o(intervals, hierarchy) if infer_o2o else schema.empty_o2o(),
+        o2o=(
+            _infer_o2o(intervals, hierarchy, co_occurs=co_occurs)
+            if derive
+            else schema.empty_o2o()
+        ),
         object_changes=_object_changes(intervals, extra),
     )
     if validate:
@@ -545,17 +704,21 @@ def attach_objects(
     qualifiers: Mapping[str, str] | None = None,
     uuid_column: str = "uuid",
     time_column: str = "systime",
-    hierarchy: Mapping[str, str] | None = None,
-    infer_o2o: bool = True,
+    hierarchy: Hierarchy | None = None,
+    infer_o2o: InferO2O = True,
+    scope: Scope | None = None,
+    fanout_threshold: int | None = FANOUT_THRESHOLD,
     validate: bool = True,
 ) -> EventLog:
-    """Link an existing event log to detected objects by temporal containment.
+    """Link an existing event log to detected objects by temporal overlap.
 
-    For every event, any object whose presence interval contains the event
-    timestamp is linked with an event-to-object (E2O) relation. The detected
-    objects, ``o2o`` and ``object_changes`` are merged in. This enriches the
-    output of *any* event detector — no per-detector changes required. See
-    :func:`detect_objects` for ``hierarchy`` (declared ``part_of`` edges).
+    Every event is linked with an event-to-object (E2O) relation to each
+    object whose presence overlaps the event (see
+    :func:`link_events_to_objects`, which also explains ``scope`` and
+    ``fanout_threshold``). The detected objects, ``o2o`` and
+    ``object_changes`` are merged in. This enriches the output of *any*
+    event detector — no per-detector changes required. See
+    :func:`detect_objects` for ``hierarchy`` and ``infer_o2o``.
 
     This is a convenience over :func:`relate`: it first segments ``dataframe`` into an
     object-interval table via :func:`object_intervals`, then relates the events
@@ -564,13 +727,21 @@ def attach_objects(
 
     Args:
         event_log: The events to link.
-        dataframe: Long-format frame with the id signals.
+        dataframe: Long-format frame with the id signals. Naive timestamps
+            are read as UTC, like :func:`~ts_shape.eventlog.to_event_log`
+            reads the detector frames.
         specs: Which signal carries which object type.
         qualifiers: Relation qualifier per object type.
         uuid_column: Signal identifier column.
         time_column: Timestamp column.
-        hierarchy: Child type -> parent type for ``part_of`` relations.
-        infer_o2o: Derive object-to-object relations.
+        hierarchy: Child -> parent(s) for ``part_of`` relations.
+        infer_o2o: Which object-to-object relations to derive.
+        scope: ``{signal_uuid: scope_label}`` (e.g. the line of each id and
+            event source signal); an event links only to objects of its own
+            scope.
+        fanout_threshold: Without ``scope``, warn when an event links to
+            more than this many objects of one type present at the same
+            time; ``None`` disables the check.
         validate: Check the result against the canonical schema.
 
     Returns:
@@ -587,6 +758,8 @@ def attach_objects(
         qualifiers=qualifiers,
         key_columns=None,
         infer_o2o=infer_o2o,
+        scope=scope,
+        fanout_threshold=fanout_threshold,
         validate=validate,
     )
 
@@ -595,10 +768,12 @@ def relate(
     event_log: EventLog,
     intervals: pd.DataFrame,
     *,
-    hierarchy: Mapping[str, str] | None = None,
+    hierarchy: Hierarchy | None = None,
     qualifiers: Mapping[str, str] | None = None,
     key_columns: Sequence[str] | None = None,
-    infer_o2o: bool = True,
+    infer_o2o: InferO2O = True,
+    scope: Scope | None = None,
+    fanout_threshold: int | None = FANOUT_THRESHOLD,
     validate: bool = True,
 ) -> EventLog:
     """Assemble a full OCEL 2.0 log from an event list and an object list.
@@ -612,15 +787,17 @@ def relate(
 
     * ``objects`` from the distinct ``(oid, type)`` pairs,
     * ``relations`` (E2O) via :func:`link_events_to_objects`
-      (temporal containment, plus optional ``key_columns`` matching),
-    * ``o2o`` via :func:`derive_o2o` (declared ``part_of`` ``hierarchy`` or
-      symmetric ``co_occurs``),
+      (temporal overlap, optionally within a ``scope``, plus optional
+      ``key_columns`` matching),
+    * ``o2o`` via :func:`derive_o2o` (declared ``part_of`` ``hierarchy``;
+      ``co_occurs`` on request),
     * ``object_changes`` (lifecycle + captured attributes).
 
     A missing ``start`` / ``end`` (``NaT``) means the presence is unbounded on
     that side (e.g. an object that is still active). Every column other than
     ``oid / type / start / end / duration_seconds / uuid / source_uuid`` is an
-    attribute, recorded at the presence start.
+    attribute, recorded at the presence start. A ``uuid`` column (the id
+    signal) enables signal-level ``hierarchy`` entries and ``scope``.
 
     Unlike :func:`attach_objects`, no raw signals or :class:`ObjectSpec` are
     needed -- you bring the two lists, ts-shape derives the relationships.
@@ -628,11 +805,15 @@ def relate(
     Args:
         event_log: The events to link.
         intervals: Object table with ``oid``, ``type`` and optionally
-            ``start`` / ``end`` and attribute columns.
-        hierarchy: Child type -> parent type for ``part_of`` relations.
+            ``start`` / ``end``, ``uuid`` and attribute columns.
+        hierarchy: Child -> parent(s) for ``part_of`` relations, by object
+            type or id-signal uuid (see :func:`detect_objects`).
         qualifiers: Relation qualifier per object type.
         key_columns: Event columns that name an object id directly.
-        infer_o2o: Derive object-to-object relations.
+        infer_o2o: Which object-to-object relations to derive.
+        scope: ``{signal_uuid: scope_label}``; see
+            :func:`link_events_to_objects`.
+        fanout_threshold: See :func:`link_events_to_objects`.
         validate: Check the result against the canonical schema.
 
     Returns:
@@ -641,6 +822,10 @@ def relate(
     Raises:
         ColumnNotFoundError: When ``intervals`` lacks ``oid`` or ``type``.
     """
+    if _START in intervals.columns:
+        _warn_tz_mismatch(
+            event_log.events.get(schema.OCEL_TIMESTAMP), intervals[_START]
+        )
     return _relate(
         event_log,
         intervals,
@@ -649,6 +834,8 @@ def relate(
         qualifiers=qualifiers,
         key_columns=key_columns,
         infer_o2o=infer_o2o,
+        scope=scope,
+        fanout_threshold=fanout_threshold,
         validate=validate,
     )
 
@@ -658,22 +845,40 @@ def _relate(
     intervals: pd.DataFrame,
     extra_changes: pd.DataFrame | None,
     *,
-    hierarchy: Mapping[str, str] | None,
+    hierarchy: Hierarchy | None,
     qualifiers: Mapping[str, str] | None,
     key_columns: Sequence[str] | None,
-    infer_o2o: bool,
+    infer_o2o: InferO2O,
+    scope: Scope | None,
+    fanout_threshold: int | None,
     validate: bool,
 ) -> EventLog:
+    derive, co_occurs = _o2o_mode(infer_o2o)
     iv = _normalize_intervals(intervals)
     detected = EventLog(
         objects=_objects_table(iv),
-        o2o=_infer_o2o(iv, hierarchy) if infer_o2o else schema.empty_o2o(),
+        o2o=(
+            _infer_o2o(iv, hierarchy, co_occurs=co_occurs)
+            if derive
+            else schema.empty_o2o()
+        ),
         object_changes=_object_changes(iv, extra_changes),
     )
     merged = concat(event_log, detected)
 
-    rels = link_events_to_objects(
-        event_log.events, iv, qualifiers=qualifiers, key_columns=key_columns
+    rels = _link(
+        event_log.events,
+        iv,
+        qualifiers=qualifiers,
+        key_columns=key_columns,
+        contain=True,
+        scope=scope,
+        fanout_threshold=fanout_threshold,
+        sources=(
+            _event_sources(event_log.events, event_log.relations)
+            if scope is not None
+            else None
+        ),
     )
     if not rels.empty:
         merged.relations = (
@@ -689,24 +894,31 @@ def _relate(
 
 
 def derive_o2o(
-    intervals: pd.DataFrame, *, hierarchy: Mapping[str, str] | None = None
+    intervals: pd.DataFrame,
+    *,
+    hierarchy: Hierarchy | None = None,
+    co_occurs: bool = False,
 ) -> pd.DataFrame:
     """Derive object-to-object (O2O) relations from an interval table.
 
     Public entry point over the overlap kernel: a declared ``hierarchy``
-    (child type -> parent type) yields ``part_of`` from each child presence to
-    the parent presence it overlaps longest; without one, overlapping objects
-    of different types get the symmetric ``co_occurs`` qualifier (one row per
-    pair, the type that sorts first in ``ocel:oid``).
+    (child -> parent or list of parents, each an object type or an id-signal
+    ``uuid``; see :func:`detect_objects`) yields ``part_of`` from each child
+    presence to the parent presence it overlaps longest. ``co_occurs=True``
+    also relates every two overlapping objects of different types with the
+    symmetric ``co_occurs`` qualifier (one row per pair, the type that sorts
+    first in ``ocel:oid``; pairs related by ``part_of`` excepted).
 
     Args:
-        intervals: Object table with ``oid``, ``type``, ``start``, ``end``.
-        hierarchy: Child type -> parent type.
+        intervals: Object table with ``oid``, ``type``, ``start``, ``end``
+            (and ``uuid`` for signal-level hierarchy entries).
+        hierarchy: Child -> parent(s).
+        co_occurs: Also emit ``co_occurs`` for every overlap of two types.
 
     Returns:
         The OCEL 2.0 ``o2o`` table, de-duplicated.
     """
-    return _infer_o2o(_normalize_intervals(intervals), hierarchy)
+    return _infer_o2o(_normalize_intervals(intervals), hierarchy, co_occurs=co_occurs)
 
 
 def object_specs_from_metadata(
@@ -1011,14 +1223,19 @@ def _intersections(a: _Spans, b: _Spans) -> tuple[_I64, _I64, _I64]:
 
 
 def _infer_o2o(
-    intervals: pd.DataFrame, hierarchy: Mapping[str, str] | None
+    intervals: pd.DataFrame,
+    hierarchy: Hierarchy | None,
+    *,
+    co_occurs: bool = False,
 ) -> pd.DataFrame:
-    """Object-to-object relations from interval overlap between distinct types.
+    """Object-to-object relations from interval overlap.
 
-    With a declared ``hierarchy`` (child type -> parent type), each child
+    Along each declared ``hierarchy`` edge (child -> parent, each an id-signal
+    uuid when the ``uuid`` column has it, else an object type) every child
     presence gets ``part_of`` (child -> parent) to the parent presence it
-    overlaps longest (ties: the earlier parent). Otherwise overlapping objects
-    of different types get the honest symmetric ``co_occurs`` qualifier —
+    overlaps longest (ties: the earlier parent). With ``co_occurs`` every
+    two overlapping objects of different types also get the symmetric
+    ``co_occurs`` qualifier, unless ``part_of`` already relates them —
     ``part_of`` is never guessed from time alone.
     """
     if (
@@ -1030,18 +1247,30 @@ def _infer_o2o(
     iv = intervals.reset_index(drop=True)
     lo, hi = _bounds(_ns(iv[_START]), _ns(iv[_END]))
     spans = _spans(iv, lo, hi)
-    types = iv[_TYPE].astype("string").to_numpy()
+    type_s = iv[_TYPE].astype("string")
+    types = type_s.to_numpy()
     oids = iv[_OID].astype("string").to_numpy()
+    uuid_s = iv[_UUID].astype("string") if _UUID in iv.columns else None
+    uuid_set = set(uuid_s.dropna()) if uuid_s is not None else set()
+
+    def rows_of(name: str) -> _BOOL:
+        col = uuid_s if (uuid_s is not None and name in uuid_set) else type_s
+        return np.asarray(col.eq(name).fillna(False).to_numpy(dtype=bool))
 
     def sub(mask: _BOOL) -> tuple[_I64, _Spans]:
         idx = np.flatnonzero(mask)
         return idx, _Spans(spans.start[idx], spans.end[idx], spans.closed[idx])
 
     frames: list[pd.DataFrame] = []
-    if hierarchy:
-        for child_type, parent_type in hierarchy.items():
-            ci, cs = sub(types == child_type)
-            pi, ps = sub(types == parent_type)
+    for child, parents in (hierarchy or {}).items():
+        plist = [parents] if isinstance(parents, str) else list(parents)
+        ci, cs = sub(rows_of(child))
+        if len(ci) == 0:
+            continue
+        for parent in plist:
+            if parent == child:
+                continue
+            pi, ps = sub(rows_of(parent))
             a, b, overlap = _intersections(cs, ps)
             if len(a) == 0:
                 continue
@@ -1058,7 +1287,8 @@ def _infer_o2o(
                     }
                 )
             )
-    else:
+    if co_occurs:
+        co: list[pd.DataFrame] = []
         uniq = sorted(set(types))
         for i, ta in enumerate(uniq):
             ai, as_ = sub(types == ta)
@@ -1067,7 +1297,7 @@ def _infer_o2o(
                 a, b, _ = _intersections(as_, bs)
                 if len(a) == 0:
                     continue
-                frames.append(
+                co.append(
                     pd.DataFrame(
                         {
                             schema.OCEL_OID: oids[ai[a]],
@@ -1076,6 +1306,24 @@ def _infer_o2o(
                         }
                     )
                 )
+        if co and frames:
+            part = pd.concat(frames, ignore_index=True)
+            related = set(
+                zip(part[schema.OCEL_OID], part[schema.OCEL_OID2], strict=True)
+            )
+            related |= {(b, a) for a, b in related}
+            co = [
+                f[
+                    [
+                        (a, b) not in related
+                        for a, b in zip(
+                            f[schema.OCEL_OID], f[schema.OCEL_OID2], strict=True
+                        )
+                    ]
+                ]
+                for f in co
+            ]
+        frames.extend(co)
     if not frames:
         return schema.empty_o2o()
     out = pd.concat(frames, ignore_index=True)
@@ -1119,97 +1367,226 @@ def _normalize_intervals(intervals: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def link_events_to_objects(
-    events: pd.DataFrame,
-    intervals: pd.DataFrame,
-    *,
-    qualifiers: Mapping[str, str] | None = None,
-    key_columns: Sequence[str] | None = None,
-    contain: bool = True,
-) -> pd.DataFrame:
-    """Derive all event-to-object (E2O) relations from two lists.
+def _tz_kind(values: object) -> str | None:
+    """``"naive"`` / ``"aware"`` for a datetime Series, else ``None``."""
+    if not isinstance(values, pd.Series):
+        return None
+    dtype = values.dtype
+    if isinstance(dtype, pd.DatetimeTZDtype):
+        return "aware"
+    if pd.api.types.is_datetime64_dtype(dtype):
+        return "naive"
+    return None
 
-    Takes an OCEL ``events`` table and an object/interval table (``oid``,
-    ``type`` and, for temporal linking, ``start`` / ``end``) and returns the
-    OCEL 2.0 ``relations`` table -- with no access to the raw signals. Two
-    complementary strategies are unioned and de-duplicated on
-    ``(eid, oid, type)``:
 
-    * **temporal containment** (``contain``, default on): link an event to every
-      object whose presence contains the event timestamp. Presence is
-      half-open ``[start, end)`` when another presence of the same signal
-      (``uuid`` column) or, without one, of the same type starts at ``end`` —
-      so an event at a hand-over instant belongs to the incoming object only —
-      and closed ``[start, end]`` otherwise (the last presence). ``NaT``
-      bounds are open. Requires ``start`` / ``end`` columns.
-    * **key match** (opt-in via ``key_columns``): link an event to the object
-      whose ``oid`` equals the value in one of the event's ``key_columns`` --
-      for events that already name their object (e.g. a ``batch`` attribute).
+def _warn_tz_mismatch(event_times: object, object_times: object) -> None:
+    """Warn when one side is tz-naive and the other tz-aware."""
+    ev, ob = _tz_kind(event_times), _tz_kind(object_times)
+    if ev is None or ob is None or ev == ob:
+        return
+    naive = "event" if ev == "naive" else "object"
+    warnings.warn(
+        f"the {naive} timestamps are tz-naive and the others tz-aware; the naive "
+        "ones are read as UTC. If they are local wall-clock times, localize "
+        "them first (Series.dt.tz_localize) or the links are shifted by the "
+        "UTC offset.",
+        DataQualityWarning,
+        stacklevel=caller_stacklevel(),
+    )
 
-    Args:
-        events: OCEL events table with ``ocel:eid`` (and ``ocel:timestamp``
-            for temporal linking).
-        intervals: Object table with ``oid``, ``type`` and, for temporal
-            linking, ``start`` / ``end``.
-        qualifiers: Maps an object ``type`` to the relation qualifier to stamp
-            (e.g. ``{"batch": "processed_in"}``); unmapped types get ``<NA>``.
-        key_columns: Event columns whose value is an object id. Integral
-            floats (an integer id column with gaps) match ``"1"``, not
-            ``"1.0"``.
-        contain: Link by temporal containment.
 
-    Returns:
-        The OCEL 2.0 ``relations`` table.
+def _event_sources(
+    events: pd.DataFrame, relations: pd.DataFrame | None = None
+) -> npt.NDArray[np.object_]:
+    """The source signal uuid of each event (``None`` when unknown).
 
-    Raises:
-        ColumnNotFoundError: When ``events`` lacks ``ocel:eid`` (or
-            ``ocel:timestamp`` with ``contain``) or ``intervals`` lacks
-            ``oid`` / ``type``.
+    Read from a ``source_uuid`` column or a pack's ``<pack>:source_uuid``
+    attribute (the first one set), else from the event's ``asset`` relation.
     """
-    require_columns(events, (schema.OCEL_EID,), where="link_events_to_objects")
-    if contain:
-        require_columns(
-            events, (schema.OCEL_TIMESTAMP,), where="link_events_to_objects"
-        )
-    if events.empty:
-        return schema.empty_relations()
-    iv = _normalize_intervals(intervals)
-    if iv.empty:
+    out = pd.Series([None] * len(events), index=events.index, dtype="object")
+    cols = [
+        c
+        for c in events.columns
+        if isinstance(c, str) and (c == _SOURCE or c.endswith(":" + _SOURCE))
+    ]
+    for c in cols:
+        vals = events[c]
+        fill = out.isna() & vals.notna()
+        out[fill] = vals[fill].astype(str)
+    if relations is not None and out.isna().any() and not relations.empty:
+        assets = relations[relations[schema.OCEL_TYPE] == "asset"]
+        by_eid = assets.drop_duplicates(schema.OCEL_EID).set_index(schema.OCEL_EID)[
+            schema.OCEL_OID
+        ]
+        fill = out.isna()
+        out[fill] = events.loc[fill, schema.OCEL_EID].map(by_eid)
+    return np.array(
+        [None if pd.isna(v) else str(v) for v in out.to_numpy()], dtype=object
+    )
+
+
+def _scope_labels(
+    keys: Sequence[npt.NDArray[np.object_]], scope: Scope
+) -> npt.NDArray[np.object_]:
+    """Scope label per row: the first of ``keys`` that ``scope`` maps."""
+    n = len(keys[0]) if keys else 0
+    lookup = {k: str(v) for k, v in scope.items() if v is not None}
+    out = pd.Series([None] * n, dtype=object)
+    for k in keys:
+        mapped = pd.Series(k, dtype=object).map(lookup)
+        fill = (out.isna() & mapped.notna()).to_numpy(dtype=bool)
+        out[fill] = mapped[fill]
+    return np.array([None if pd.isna(v) else v for v in out], dtype=object)
+
+
+def _warn_fanout(
+    eids: npt.NDArray[np.object_],
+    ev: _I64,
+    obj: _I64,
+    ev_spans: _Spans,
+    obj_spans: _Spans,
+    types: npt.NDArray[np.object_],
+    oids: npt.NDArray[np.object_],
+    threshold: int,
+) -> None:
+    """Warn when an event links more than ``threshold`` objects of one type
+    present at the same time (a sweep over each (event, type) group)."""
+    if len(ev) <= threshold:
+        return
+    tcode, tuniq = pd.factorize(pd.Series(types[obj], dtype=object))
+    group = ev * (len(tuniq) + 1) + np.asarray(tcode, dtype=np.int64)
+    cs = np.maximum(ev_spans.start[ev], obj_spans.start[obj])
+    ce = np.minimum(ev_spans.end[ev], obj_spans.end[obj])
+    positive = ce > cs
+    g = np.concatenate([group, group])
+    t = np.concatenate([cs, ce])
+    d = np.concatenate([np.ones(len(cs)), -np.ones(len(cs))]).astype(np.int64)
+    # at one instant: ends of real stretches first, then starts, then the
+    # ends of zero-length overlaps (points count while present)
+    o = np.concatenate([np.ones(len(cs)), np.where(positive, 0, 2)]).astype(np.int64)
+    order = np.lexsort((o, t, g))
+    cum = np.cumsum(d[order])
+    gs = g[order]
+    first = np.flatnonzero(np.r_[True, gs[1:] != gs[:-1]])
+    peak = np.maximum.reduceat(cum, first)
+    over = peak > threshold
+    if not over.any():
+        return
+    bad_groups = gs[first][over]
+    n_events = len(np.unique(bad_groups // (len(tuniq) + 1)))
+    worst = int(np.argmax(np.where(over, peak, -1)))
+    wg = gs[first][worst]
+    we = int(wg // (len(tuniq) + 1))
+    wt = str(tuniq[int(wg % (len(tuniq) + 1))])
+    sample = sorted({str(x) for x in oids[obj[group == wg]]})[:5]
+    warnings.warn(
+        f"{n_events} event(s) link to more than {threshold} object(s) of one type "
+        f"present at the same time (worst: event {eids[we]!r} -> {int(peak[worst])} "
+        f"{wt!r} objects at once, e.g. {sample}). The objects come from several id "
+        "signals (e.g. two lines); pass scope={signal_uuid: line} so an event "
+        "links only to the objects of its own line, or fanout_threshold=None to "
+        "silence this check.",
+        DataQualityWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
+def _event_spans(events: pd.DataFrame) -> tuple[_I64, _Spans]:
+    """Valid event rows and their ``[start, end)`` spans (points closed)."""
+    end = _ns(events[schema.OCEL_TIMESTAMP])
+    if schema.TS_START_TIMESTAMP in events.columns:
+        start = _ns(events[schema.TS_START_TIMESTAMP])
+    else:
+        start = np.full(len(end), _NAT, dtype=np.int64)
+    start = np.where((start == _NAT) | (start > end), end, start)
+    valid = np.flatnonzero(end != _NAT)
+    s, e = start[valid], end[valid]
+    return valid, _Spans(s, e, s == e)
+
+
+def _link(
+    events: pd.DataFrame,
+    iv: pd.DataFrame,
+    *,
+    qualifiers: Mapping[str, str] | None,
+    key_columns: Sequence[str] | None,
+    contain: bool,
+    scope: Scope | None,
+    fanout_threshold: int | None,
+    sources: npt.NDArray[np.object_] | None,
+) -> pd.DataFrame:
+    """E2O relations of normalized ``iv`` (see :func:`link_events_to_objects`)."""
+    if events.empty or iv.empty:
         return schema.empty_relations()
     qual = dict(qualifiers or {})
     frames: list[pd.DataFrame] = []
     eids = events[schema.OCEL_EID].to_numpy()
+    oids = iv[_OID].to_numpy()
+    types = iv[_TYPE].to_numpy()
 
     if contain and _START in iv.columns and _END in iv.columns:
-        ts = _ns(events[schema.OCEL_TIMESTAMP])
-        valid = np.flatnonzero(ts != _NAT)
-        order = valid[np.argsort(ts[valid], kind="stable")]
-        ts_sorted = ts[order]
-        lo, hi = _bounds(ts, _ns(iv[_START]), _ns(iv[_END]))
-        sp = _spans(iv, lo, hi)
-        first = np.searchsorted(ts_sorted, sp.start, side="left")
-        last = np.where(
-            sp.closed,
-            np.searchsorted(ts_sorted, sp.end, side="right"),
-            np.searchsorted(ts_sorted, sp.end, side="left"),
+        end_ns = _ns(events[schema.OCEL_TIMESTAMP])
+        start_ns = (
+            _ns(events[schema.TS_START_TIMESTAMP])
+            if schema.TS_START_TIMESTAMP in events.columns
+            else end_ns
         )
-        cnt = np.maximum(last - first, 0).astype(np.int64)
-        total = int(cnt.sum())
-        if total:
-            obj = np.repeat(np.arange(len(iv), dtype=np.int64), cnt)
-            offs = np.arange(total, dtype=np.int64) - np.repeat(
-                np.cumsum(cnt) - cnt, cnt
-            )
-            ev = order[np.repeat(first, cnt) + offs]
-            frames.append(
-                pd.DataFrame(
-                    {
-                        schema.OCEL_EID: eids[ev],
-                        schema.OCEL_OID: iv[_OID].to_numpy()[obj],
-                        schema.OCEL_TYPE: iv[_TYPE].to_numpy()[obj],
-                    }
+        lo, hi = _bounds(end_ns, start_ns, _ns(iv[_START]), _ns(iv[_END]))
+        sp = _spans(iv, lo, hi)
+        rows, es = _event_spans(events)
+        groups: list[tuple[_I64, _I64]] = []
+        if scope is None:
+            groups.append(
+                (
+                    np.arange(len(rows), dtype=np.int64),
+                    np.arange(len(iv), dtype=np.int64),
                 )
             )
+        else:
+            src = sources if sources is not None else _event_sources(events)
+            ev_label = _scope_labels([src[rows]], scope)
+            obj_keys = (
+                [iv[_UUID].astype(object).to_numpy()] if _UUID in iv.columns else []
+            )
+            if _SOURCE in iv.columns:
+                obj_keys.append(iv[_SOURCE].astype(object).to_numpy())
+            obj_label = (
+                _scope_labels(obj_keys, scope)
+                if obj_keys
+                else np.full(len(iv), None, dtype=object)
+            )
+            _warn_unscoped(ev_label, src[rows], obj_label, iv)
+            for label in sorted({x for x in ev_label if x is not None}):
+                e_sel = np.flatnonzero(ev_label == label)
+                o_sel = np.flatnonzero(obj_label == label)
+                if len(e_sel) and len(o_sel):
+                    groups.append((e_sel.astype(np.int64), o_sel.astype(np.int64)))
+        ev_parts: list[_I64] = []
+        obj_parts: list[_I64] = []
+        for e_sel, o_sel in groups:
+            a, b, _ = _intersections(
+                _Spans(es.start[e_sel], es.end[e_sel], es.closed[e_sel]),
+                _Spans(sp.start[o_sel], sp.end[o_sel], sp.closed[o_sel]),
+            )
+            ev_parts.append(e_sel[a])
+            obj_parts.append(o_sel[b])
+        if ev_parts:
+            ev = np.concatenate(ev_parts)
+            obj = np.concatenate(obj_parts)
+            if scope is None and fanout_threshold is not None and len(ev):
+                _warn_fanout(eids[rows], ev, obj, es, sp, types, oids, fanout_threshold)
+            if len(ev):
+                order = np.lexsort((obj, ev))
+                ev, obj = ev[order], obj[order]
+                frames.append(
+                    pd.DataFrame(
+                        {
+                            schema.OCEL_EID: eids[rows[ev]],
+                            schema.OCEL_OID: oids[obj],
+                            schema.OCEL_TYPE: types[obj],
+                        }
+                    )
+                )
 
     if key_columns:
         oid_to_type = iv[[_OID, _TYPE]].drop_duplicates(_OID).set_index(_OID)[_TYPE]
@@ -1217,15 +1594,15 @@ def link_events_to_objects(
             vals = events[col]
             ok = vals.notna().to_numpy(dtype=bool)
             keys = pd.Series([_id_text(v) for v in vals[ok]], dtype="string")
-            types = keys.map(oid_to_type)
-            hit = types.notna().to_numpy(dtype=bool)
+            ktypes = keys.map(oid_to_type)
+            hit = ktypes.notna().to_numpy(dtype=bool)
             if hit.any():
                 frames.append(
                     pd.DataFrame(
                         {
                             schema.OCEL_EID: eids[ok][hit],
                             schema.OCEL_OID: keys.to_numpy()[hit],
-                            schema.OCEL_TYPE: types.to_numpy()[hit],
+                            schema.OCEL_TYPE: ktypes.to_numpy()[hit],
                         }
                     )
                 )
@@ -1240,3 +1617,139 @@ def link_events_to_objects(
     )
     out[schema.OCEL_QUALIFIER] = out[schema.OCEL_TYPE].astype(object).map(qual)
     return out.astype(schema.empty_relations().dtypes.to_dict())
+
+
+def _warn_unscoped(
+    ev_label: npt.NDArray[np.object_],
+    ev_source: npt.NDArray[np.object_],
+    obj_label: npt.NDArray[np.object_],
+    iv: pd.DataFrame,
+) -> None:
+    """Warn about events / objects ``scope`` gives no label (never linked)."""
+    ev_missing = np.array([x is None for x in ev_label], dtype=bool)
+    if ev_missing.any():
+        srcs = sorted({str(x) for x in ev_source[ev_missing] if x is not None})
+        warnings.warn(
+            f"{int(ev_missing.sum())} event(s) have no scope and are linked to no "
+            "object by time: their source signal "
+            + (f"(e.g. {srcs[:5]}) is not in scope" if srcs else "is unknown")
+            + ". Add their source signals to scope.",
+            DataQualityWarning,
+            stacklevel=caller_stacklevel(),
+        )
+    obj_missing = np.array([x is None for x in obj_label], dtype=bool)
+    if obj_missing.any():
+        sigs = (
+            sorted(set(iv.loc[obj_missing, _UUID].dropna().astype(str)))
+            if _UUID in iv.columns
+            else []
+        )
+        warnings.warn(
+            f"{int(obj_missing.sum())} object presence(s) have no scope and are "
+            "linked to no event by time"
+            + (f": id signal(s) {sigs[:5]} are not in scope" if sigs else "")
+            + ". Add the id signals to scope.",
+            DataQualityWarning,
+            stacklevel=caller_stacklevel(),
+        )
+
+
+def link_events_to_objects(
+    events: pd.DataFrame,
+    intervals: pd.DataFrame,
+    *,
+    qualifiers: Mapping[str, str] | None = None,
+    key_columns: Sequence[str] | None = None,
+    contain: bool = True,
+    scope: Scope | None = None,
+    fanout_threshold: int | None = FANOUT_THRESHOLD,
+) -> pd.DataFrame:
+    """Derive all event-to-object (E2O) relations from two lists.
+
+    Takes an OCEL ``events`` table and an object/interval table (``oid``,
+    ``type`` and, for temporal linking, ``start`` / ``end``) and returns the
+    OCEL 2.0 ``relations`` table -- with no access to the raw signals. Two
+    complementary strategies are unioned and de-duplicated on
+    ``(eid, oid, type)``:
+
+    * **temporal overlap** (``contain``, default on): link an event to every
+      object whose presence overlaps the event. An interval event spans
+      ``ts_shape:start_timestamp`` .. ``ocel:timestamp`` (half-open) and
+      links to every object present during a stretch of it -- also one that
+      left before the event ended, and every object of a hand-over inside
+      it; merely touching at an end point is no overlap. A point event (no
+      start, or start == end) links to the objects whose presence contains
+      its timestamp. Presence is half-open ``[start, end)`` when another
+      presence of the same signal (``uuid`` column) or, without one, of the
+      same type starts at ``end`` -- so a point event at a hand-over instant
+      belongs to the incoming object only -- and closed ``[start, end]``
+      otherwise (the last presence). ``NaT`` bounds are open. Requires
+      ``start`` / ``end`` columns.
+    * **key match** (opt-in via ``key_columns``): link an event to the object
+      whose ``oid`` equals the value in one of the event's ``key_columns`` --
+      for events that already name their object (e.g. a ``batch`` attribute).
+      ``scope`` does not apply.
+
+    **Scope.** Without ``scope`` an event links to the objects of *every* id
+    signal, so a machine-state event of line 1 also gets the serials and
+    batches of line 2. ``scope={signal_uuid: scope_label}`` labels the id
+    signals (the ``uuid`` column of ``intervals``, else ``source_uuid``) and
+    the event source signals (a ``source_uuid`` / ``<pack>:source_uuid``
+    column of ``events``); an event then links only to objects with the same
+    label. Events and objects without a label are linked to nothing by time,
+    with a :class:`~ts_shape.errors.DataQualityWarning`. Without ``scope``,
+    a :class:`~ts_shape.errors.DataQualityWarning` suggests one when an
+    event links to more than ``fanout_threshold`` objects of one type
+    present at the same time (one signal carries one object at a time, so
+    this means several signals of that type, e.g. two lines).
+
+    Naive timestamps are read as UTC. When one table is tz-naive and the
+    other tz-aware a :class:`~ts_shape.errors.DataQualityWarning` says so
+    (local wall-clock times would be linked shifted by the UTC offset).
+
+    Args:
+        events: OCEL events table with ``ocel:eid`` (and ``ocel:timestamp``,
+            optionally ``ts_shape:start_timestamp``, for temporal linking).
+        intervals: Object table with ``oid``, ``type`` and, for temporal
+            linking, ``start`` / ``end`` (``uuid`` / ``source_uuid`` for
+            ``scope``).
+        qualifiers: Maps an object ``type`` to the relation qualifier to stamp
+            (e.g. ``{"batch": "processed_in"}``); unmapped types get ``<NA>``.
+        key_columns: Event columns whose value is an object id. Integral
+            floats (an integer id column with gaps) match ``"1"``, not
+            ``"1.0"``.
+        contain: Link by temporal overlap.
+        scope: ``{signal_uuid: scope_label}`` for id and event source
+            signals; links only within one label.
+        fanout_threshold: Without ``scope``, warn when an event links to
+            more than this many objects of one type present at the same
+            time (default 1); ``None`` disables the check.
+
+    Returns:
+        The OCEL 2.0 ``relations`` table.
+
+    Raises:
+        ColumnNotFoundError: When ``events`` lacks ``ocel:eid`` (or
+            ``ocel:timestamp`` with ``contain``) or ``intervals`` lacks
+            ``oid`` / ``type``.
+    """
+    require_columns(events, (schema.OCEL_EID,), where="link_events_to_objects")
+    if contain:
+        require_columns(
+            events, (schema.OCEL_TIMESTAMP,), where="link_events_to_objects"
+        )
+        if _START in intervals.columns:
+            _warn_tz_mismatch(events[schema.OCEL_TIMESTAMP], intervals[_START])
+    if events.empty:
+        return schema.empty_relations()
+    iv = _normalize_intervals(intervals)
+    return _link(
+        events,
+        iv,
+        qualifiers=qualifiers,
+        key_columns=key_columns,
+        contain=contain,
+        scope=scope,
+        fanout_threshold=fanout_threshold,
+        sources=None,
+    )
