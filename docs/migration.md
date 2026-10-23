@@ -6,6 +6,72 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 20: correct object handling
+
+Results change for event logs with objects, for `identify_objects` nesting
+and for text run states.
+
+**Event to object links** (`attach_objects`, `link_events_to_objects`,
+`relate`)
+
+- An interval event links to every object present during part of it
+  (`ts_shape:start_timestamp` to `ocel:timestamp`, half-open). Before, only
+  the objects present at the event's end were linked. A run spanning two
+  batches now links to both; an object that starts exactly at the event's
+  end is no longer linked. Point events link as before.
+- New `scope={signal_uuid: label}`: an event links only to objects whose
+  signal has the same label (line, station) as the event's source signal.
+- Without `scope`, a `DataQualityWarning` fires when an event links to more
+  than one object of a type present at the same time, which is typical for
+  data from several lines or stations. Pass `scope=` or
+  `fanout_threshold=None` to silence it.
+- `link_events_to_objects` and `relate` warn when one table is tz-naive and
+  the other tz-aware (the naive side is read as UTC, as before).
+- Temporal E2O rows are ordered by event, then object.
+
+**Misread ids** (`ObjectSpec.exclude`, default `"misreads"`)
+
+- PLC misreads are no longer objects: blank text, text without letters or
+  digits (`????????`), PLC defaults (`0`, `-1`, `32767`, `65535`, …, as
+  numbers or text), `NOREAD`, `ERR`, `#N/A`, `NULL`, `NONE`, filler like
+  `XXXXXXXX`, and short truncated reads. The filter is
+  `ts_shape.utils.id_codes.is_misread`.
+- A misread between two readings of the same id no longer splits the
+  presence (`A, NOREAD, A` is one presence).
+- Pass `exclude=None` for the old behaviour, or a collection of values or a
+  callable for your own rule.
+
+**Object-to-object relations** (`detect_objects`, `derive_o2o`)
+
+- Without a hierarchy the default o2o is empty; before, every overlapping
+  pair of types got a `co_occurs` row. Use `infer_o2o="co_occurs"` (or
+  `derive_o2o(..., co_occurs=True)`) to get it back.
+- `hierarchy=` also takes signal-level edges `{child_uuid: parent_uuid}`
+  or `{child_uuid: [parent_uuid, ...]}`, so a serial can sit in a batch and a
+  handling unit, and two lines stay apart.
+
+**`identify_objects` nesting**
+
+- `parent_uuid` is the production parent and is set only for serials,
+  batches and lots: a serial's parent is its batch (before often its handling
+  unit), a batch's parent is its material or recipe. Work orders, materials
+  and recipes no longer get a parent.
+- New column `packing_parent_uuid` (between `parent_uuid` and `evidence`):
+  the handling unit or container a serial is packed in. `explain()` and
+  `summary()` say "packed in …".
+- Nesting on the benchmark: precision/recall 0.83/0.77 on held-out seeds and
+  0.93/0.77 on never-seen seeds, up from below 0.2. Screening and typing are
+  unchanged.
+- Ids like `T3-0000123` no longer crash `identify_objects` (an out-of-range
+  date parse is "not a date").
+
+**`MachineStateEvents`**
+
+- New `run_states={...}`: the values of a text state column that mean
+  running. A text state column without `run_states` or `value_range` raises a
+  `DataQualityWarning`, because the bool cast counts every non-empty text,
+  including `"IDLE"`, as running. Results without `run_states` are unchanged.
+
 ## October 2026, round 19 follow-up: `setup` group
 
 - `identify_objects` reports `setup` when a recipe, a tool and a fixture
