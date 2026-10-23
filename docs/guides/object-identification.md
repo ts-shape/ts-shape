@@ -16,8 +16,8 @@ The result is a separate report. It does not change `SignalSpec.kind` or what
 
 ## Workflow
 
-`identify_objects` → review the table → `to_object_specs` → `detect_objects` →
-`to_event_log`.
+`identify_objects` → review the table → `report.to_event_log` (or step by step:
+`to_object_specs` → `detect_objects` with `report.hierarchy()` → `attach_objects`).
 
 ```python
 import numpy as np
@@ -81,30 +81,110 @@ line:a: identifier (value_string)
   type scores: serial 1.90, batch 0.55, handling_unit 0.40
 ```
 
-Then turn the confident identifiers into object specs, detect the objects and build
-the event log:
+Then build the event log. `report.to_event_log` runs the whole chain in one call:
+the confident identifiers become object specs, the nesting becomes the `part_of`
+hierarchy, and the events are linked to the objects:
 
 ```python
-from ts_shape.eventlog import attach_objects, detect_objects, to_event_log
 from ts_shape.events.production.machine_state import MachineStateEvents
-
-specs = report.to_object_specs(min_confidence=0.6)
-print([(s.uuid, s.object_type) for s in specs])
-
-objects = detect_objects(df, specs, hierarchy={"serial": "batch"})
-print(objects.objects.groupby("ocel:type").size())
 
 state = pd.DataFrame({"systime": t, "uuid": "line:e", "value_bool": running})
 events = MachineStateEvents(state, "line:e").detect_run_idle()
+
+log = report.to_event_log(df, events, detector="MachineStateEvents.detect_run_idle")
+print(log)
+print(log.o2o.head(3))
+```
+
+```text
+EventLog(events=8, objects=247, relations=260, o2o=240, object_changes=492)
+          ocel:oid         ocel:oid_2 ocel:qualifier
+0  serial:SN250000  batch:B250303-001        part_of
+1  serial:SN250001  batch:B250303-001        part_of
+2  serial:SN250002  batch:B250303-001        part_of
+```
+
+`events` is a detector frame (with `detector=`), an `EventLog`, a
+`{detector: frame}` mapping or a list of these. Without `events` you get the
+objects alone (`objects`, `o2o`, `object_changes`). The defaults are
+`min_confidence=0.6`, `namespace=True` (object ids are `"{type}:{value}"`, so an
+order and a batch that share a number stay two objects) and `attributes=True`
+(see [Attributes](#attributes)). Pass `scope={signal_uuid: line}` when the data
+holds several lines or stations, so an event links only to the objects of its own
+line. Other keyword arguments (`qualifiers`, `fanout_threshold`, `infer_o2o`, ...)
+go to `attach_objects` / `detect_objects`.
+
+The same chain, step by step:
+
+```python
+from ts_shape.eventlog import attach_objects, detect_objects, to_event_log
+
+specs = report.to_object_specs(min_confidence=0.6, namespace=True, attributes=True)
+print([(s.uuid, s.object_type) for s in specs])
+print(report.hierarchy())
+
+objects = detect_objects(df, specs, hierarchy=report.hierarchy())
+print(objects.objects.groupby("ocel:type").size())
+
 log = to_event_log(events, detector="MachineStateEvents.detect_run_idle")
-log = attach_objects(log, df, specs, hierarchy={"serial": "batch"})
+log = attach_objects(log, df, specs, hierarchy=report.hierarchy())
 print(log.relations["ocel:type"].value_counts().sort_index())
 ```
+
+`report.hierarchy()` gives the signal-level edges
+`{child_uuid: [parent_uuid, packing_parent_uuid]}` from the nesting columns, here
+`{'line:a': ['line:b']}`: each serial is `part_of` the batch it lies in, and two
+lines never mix. It keeps only the signals `to_object_specs` keeps with the same
+`min_confidence`.
 
 `report.summary()` gives a one-screen overview, `report.identifiers()` the
 identifier rows, and `report.type_scores[uuid]` every type's raw score. The report is
 also a read-only mapping: `report["line:a"]` is the type of a signal, `None` when it
 is not an identifier, and `dict(report)` gives all of them.
+
+### Attributes
+
+A signal whose value describes an identifier's objects (the customer of an order,
+the material of a work order, a description text) is reported in `attribute_of`:
+the uuid of the identifier it describes. `to_object_specs(attributes=True)` adds it
+to that spec's `attributes`, so `detect_objects` captures it per object:
+
+```python
+t2 = pd.date_range("2025-03-03 06:00", periods=1440, freq="1min")  # 24 h
+k = np.arange(1440) // 40  # an order every 40 minutes
+pool = ["CUST-0107", "CUST-0212", "CUST-0345", "CUST-0418", "CUST-0526", "CUST-0631"]
+who = np.random.default_rng(1).choice(pool, k.max() + 1)
+sales = pd.concat(
+    [
+        pd.DataFrame({"systime": t2, "uuid": "erp:order",
+                      "value_string": [f"SO-{2500100 + i}" for i in k]}),
+        pd.DataFrame({"systime": t2, "uuid": "erp:customer",
+                      "value_string": [who[i] for i in k]}),
+    ],
+    ignore_index=True,
+)
+sold = identify_objects(sales)
+print(sold.table[["uuid", "role", "attribute_of"]])
+print(sold.to_object_specs(0.55, attributes=True)[0].attributes)
+```
+
+```text
+           uuid        role attribute_of
+0  erp:customer  identifier    erp:order
+1     erp:order  identifier         None
+{'erp:customer': 'erp:customer'}
+```
+
+The test is on the data only: the signal's value changes only where a presence of
+the identifier starts or ends (90 %+ of its changes, far more often than chance), it
+keeps one value during 90 %+ of the identifier's presences, and a value of the
+identifier that comes back brings back the same value of the signal. The
+identifier's production and packing parents are not its attributes (they are in
+`hierarchy()`), nor is a non-recurring id holding several of its presences. Of
+several identifiers the signal describes, the coarsest one (fewest presences) is
+reported. An attribute is named by its type when it is an identifier typed with at
+least `min_confidence`, else by its uuid; such an identifier is still its own
+object spec when it is kept.
 
 ## The report table
 
@@ -126,6 +206,7 @@ One row per signal, sorted by uuid:
 | `parent_uuid` | The production parent: the id signal this one is nested in (a serial's batch, a batch's material); `None` when there is none |
 | `packing_parent_uuid` | The packing parent: the handling unit (box, package) that holds this serial, next to its production parent |
 | `evidence` | Short tuple of reasons, each with its weight |
+| `attribute_of` | The identifier whose objects this signal describes (the customer of an order); `None` when there is none. See [Attributes](#attributes) |
 
 The id semantics are those of the id-consuming detectors and of object detection: a
 value is held until the next value, a change starts a new item, and an empty
