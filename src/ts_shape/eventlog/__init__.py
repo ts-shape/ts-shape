@@ -28,6 +28,15 @@ Typical use::
 
 from .adapters import clear_overrides, has_override, register_adapter
 from .align import align_columns
+from .analysis import (
+    CarrierLoops,
+    ObjectKPIs,
+    attach_counts,
+    carrier_loops,
+    object_kpis,
+    presence_events,
+    wip_over_time,
+)
 from .concat import concat
 from .flat import to_event_log_xes
 from .introspect import describe
@@ -87,6 +96,13 @@ from .schema import (
 from .taxonomy import REGISTRY, LabelRule
 
 __all__ = [
+    "attach_counts",
+    "carrier_loops",
+    "CarrierLoops",
+    "object_kpis",
+    "ObjectKPIs",
+    "presence_events",
+    "wip_over_time",
     "clear_overrides",
     "describe",
     "has_override",

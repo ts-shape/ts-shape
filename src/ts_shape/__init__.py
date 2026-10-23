@@ -56,25 +56,31 @@ if TYPE_CHECKING:
     from ts_shape.eventlog import XES_RESOURCE as XES_RESOURCE
     from ts_shape.eventlog import XES_TIMESTAMP as XES_TIMESTAMP
     from ts_shape.eventlog import BacktestResult as BacktestResult
+    from ts_shape.eventlog import CarrierLoops as CarrierLoops
     from ts_shape.eventlog import EventLog as EventLog
     from ts_shape.eventlog import LabelRule as LabelRule
     from ts_shape.eventlog import LambdaDetector as LambdaDetector
+    from ts_shape.eventlog import ObjectKPIs as ObjectKPIs
     from ts_shape.eventlog import ObjectSpec as ObjectSpec
     from ts_shape.eventlog import OCEL2Tables as OCEL2Tables
     from ts_shape.eventlog import RuleSpec as RuleSpec
     from ts_shape.eventlog import TriggerSpec as TriggerSpec
     from ts_shape.eventlog import UnsafeExpression as UnsafeExpression
     from ts_shape.eventlog import align_columns as align_columns
+    from ts_shape.eventlog import attach_counts as attach_counts
     from ts_shape.eventlog import attach_objects as attach_objects
+    from ts_shape.eventlog import carrier_loops as carrier_loops
     from ts_shape.eventlog import compile_expression as compile_expression
     from ts_shape.eventlog import concat as concat
     from ts_shape.eventlog import detect_objects as detect_objects
     from ts_shape.eventlog import load_dicts as load_dicts
     from ts_shape.eventlog import load_yaml as load_yaml
     from ts_shape.eventlog import object_intervals as object_intervals
+    from ts_shape.eventlog import object_kpis as object_kpis
     from ts_shape.eventlog import (
         object_specs_from_metadata as object_specs_from_metadata,
     )
+    from ts_shape.eventlog import presence_events as presence_events
     from ts_shape.eventlog import register_adapter as register_adapter
     from ts_shape.eventlog import register_lambda_rule as register_lambda_rule
     from ts_shape.eventlog import register_object_type as register_object_type
@@ -84,6 +90,7 @@ if TYPE_CHECKING:
     from ts_shape.eventlog import to_event_log_xes as to_event_log_xes
     from ts_shape.eventlog import unregister_lambda_rule as unregister_lambda_rule
     from ts_shape.eventlog import validate as validate
+    from ts_shape.eventlog import wip_over_time as wip_over_time
     from ts_shape.events.correlation.anomaly_correlation import (
         AnomalyCorrelationEvents as AnomalyCorrelationEvents,
     )
@@ -716,6 +723,13 @@ _ERRORS: dict[str, str] = {
 # __init__, so every eventlog name maps to that one module.
 _EVENTLOG_NAMES = (
     "BacktestResult",
+    "CarrierLoops",
+    "ObjectKPIs",
+    "attach_counts",
+    "carrier_loops",
+    "object_kpis",
+    "presence_events",
+    "wip_over_time",
     "EventLog",
     "OCEL2Tables",
     "ObjectSpec",

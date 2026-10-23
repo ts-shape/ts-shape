@@ -2636,6 +2636,26 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
 }
 
 
+#: ``produces_objects`` entry for frames that name their own objects: each
+#: row links to the object ``oid`` of type ``type`` (its own column values).
+ROW_OBJECT = "{type}"
+
+#: Label rules of event-log *functions* that return event frames (not
+#: detector-class methods): ``("eventlog", function_name) -> LabelRule``.
+#: ``to_event_log(frame, detector="eventlog.<function_name>")`` uses them.
+#: Kept apart from :data:`REGISTRY`, whose entries are all detector methods.
+FUNCTION_REGISTRY: dict[tuple[str, str], LabelRule] = {
+    # Enter / leave point events of object presences (eventlog.analysis).
+    ("eventlog", "presence_events"): _r(
+        "production.presence.{event}.{station}",
+        _PR,
+        P,
+        objs=(ROW_OBJECT, "asset"),
+        standard_attrs={"ts_shape:lifecycle_state": "event"},
+    ),
+}
+
+
 # ----------------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------------
@@ -2719,7 +2739,8 @@ def get(class_name: str, method_name: str) -> LabelRule | None:
     Returns:
         The matching LabelRule, or None if no rule is registered.
     """
-    return REGISTRY.get(resolve(class_name, method_name))
+    key = resolve(class_name, method_name)
+    return REGISTRY.get(key) or FUNCTION_REGISTRY.get(key)
 
 
 def _is_missing(value: object) -> bool:
