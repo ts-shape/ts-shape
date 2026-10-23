@@ -57,3 +57,17 @@ class NotChunkableError(ValueError):
     from the first window -- raise this error. Subclasses ``ValueError`` so
     existing ``except ValueError`` handlers keep working.
     """
+
+
+class ObjectNotFoundError(KeyError):
+    """Raised when an object id is not in an event log.
+
+    Raised by the genealogy queries (:func:`ts_shape.eventlog.where_used`,
+    :func:`~ts_shape.eventlog.where_from`, :func:`~ts_shape.eventlog.lineage`)
+    for an ``ocel:oid`` that is neither in ``objects`` nor in ``o2o``.
+    Subclasses ``KeyError`` so lookups by id can be caught the usual way;
+    the message is printed without the quotes ``KeyError`` adds.
+    """
+
+    def __str__(self) -> str:
+        return str(self.args[0]) if self.args else ""

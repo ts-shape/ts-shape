@@ -57,6 +57,7 @@ from .objects import (
     relate,
 )
 from .ocel import OCEL2Tables, to_event_log_ocel
+from .query import lineage, where_from, where_used
 from .schema import (
     OCEL_ACTIVITY,
     OCEL_EID,
@@ -142,4 +143,8 @@ __all__ = [
     "XES_LIFECYCLE",
     "XES_RESOURCE",
     "XES_TIMESTAMP",
+    # genealogy queries (query.py)
+    "lineage",
+    "where_from",
+    "where_used",
 ]

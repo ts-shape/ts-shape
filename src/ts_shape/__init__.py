@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from ts_shape.errors import LoaderConfigWarning as LoaderConfigWarning
     from ts_shape.errors import LoaderError as LoaderError
     from ts_shape.errors import NotChunkableError as NotChunkableError
+    from ts_shape.errors import ObjectNotFoundError as ObjectNotFoundError
     from ts_shape.errors import PerformanceWarning as PerformanceWarning
     from ts_shape.errors import TsShapeWarning as TsShapeWarning
     from ts_shape.eventlog import OCEL_ACTIVITY as OCEL_ACTIVITY
@@ -705,6 +706,7 @@ _ERRORS: dict[str, str] = {
         "LoaderConfigWarning",
         "LoaderError",
         "NotChunkableError",
+        "ObjectNotFoundError",
         "PerformanceWarning",
         "TsShapeWarning",
     )

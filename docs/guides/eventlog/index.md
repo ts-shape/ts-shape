@@ -9,9 +9,10 @@ ts-shape writes no files and imports no process-mining library; it returns
 DataFrames.
 
 Related pages: [Object detection](objects.md) (batches, serials, recipes as
-OCEL objects), [Labeling and taxonomy](taxonomy.md) (activity names and
-standard attributes), [Adapters](adapters.md) (how a detector frame is
-converted, and custom adapters).
+OCEL objects), [Genealogy](genealogy.md) (where-used and where-from queries
+over the object relations), [Labeling and taxonomy](taxonomy.md) (activity
+names and standard attributes), [Adapters](adapters.md) (how a detector frame
+is converted, and custom adapters).
 
 ## Quick start
 
