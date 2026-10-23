@@ -852,6 +852,135 @@ def _ref_multiprocesstraceability_parallel_activity(self) -> pd.DataFrame:
     )
 
 
+_MULTI_LEAD_COLUMNS = [
+    "item_id",
+    "first_station",
+    "last_station",
+    "first_seen",
+    "last_seen",
+    "lead_time_seconds",
+    "stations_visited",
+    "station_path",
+    "has_parallel",
+    "uuid",
+]
+
+
+def _ref_multiprocesstraceability_lead_time(self) -> pd.DataFrame:
+    """``lead_time`` before the ``start`` / ``end`` / ``duration_seconds`` twins."""
+    timeline = self.build_timeline()
+    if timeline.empty:
+        return pd.DataFrame(columns=_MULTI_LEAD_COLUMNS)
+    rows: list[dict[str, Any]] = []
+    for item_id, grp in timeline.groupby("item_id"):
+        grp = grp.sort_values("start")
+        first_seen = grp["start"].iloc[0]
+        last_seen = grp["end"].iloc[-1]
+        rows.append(
+            {
+                "item_id": item_id,
+                "first_station": grp["station"].iloc[0],
+                "last_station": grp["station"].iloc[-1],
+                "first_seen": first_seen,
+                "last_seen": last_seen,
+                "lead_time_seconds": (last_seen - first_seen).total_seconds(),
+                "stations_visited": grp["station"].nunique(),
+                "station_path": " -> ".join(grp["station"].tolist()),
+                "has_parallel": grp["is_parallel"].any(),
+                "uuid": self.event_uuid,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+_MULTI_HANDOVER_COLUMNS = [
+    "timestamp",
+    "item_id",
+    "from_station",
+    "to_station",
+    "handover_uuid",
+    "handover_value",
+    "uuid",
+]
+
+
+def _ref_multiprocesstraceability_handover_log(self) -> pd.DataFrame:
+    """``handover_log`` before the ``systime`` twin."""
+    rows: list[dict[str, Any]] = []
+    for ho in self.handovers:
+        hdf = self._handover_data.get(ho["uuid"], pd.DataFrame())
+        if hdf.empty:
+            continue
+        hvals = hdf[[self.time_column, self.value_column_handover]].copy()
+        hvals["val"] = pd.to_numeric(
+            hvals[self.value_column_handover], errors="coerce"
+        ).fillna(0)
+        hvals["prev"] = hvals["val"].shift(fill_value=0)
+        triggers = hvals[(hvals["val"] > 0) & (hvals["prev"] <= 0)]
+        if triggers.empty:
+            continue
+        from_frames = [
+            self._process_data[u][[self.time_column, self.value_column_id]]
+            for u in self._station_uuids.get(ho["from_station"], [])
+            if not self._process_data[u].empty
+        ]
+        if not from_frames:
+            continue
+        from_ids = pd.concat(from_frames).sort_values(self.time_column)
+        merged = pd.merge_asof(
+            triggers[[self.time_column]].copy(),
+            from_ids,
+            on=self.time_column,
+            direction="backward",
+        )
+        for _, row in merged.iterrows():
+            item_id = row.get(self.value_column_id, "")
+            if pd.isna(item_id) or item_id == "":
+                continue
+            t = row[self.time_column]
+            match = triggers[triggers[self.time_column] == t]
+            rows.append(
+                {
+                    "timestamp": t,
+                    "item_id": str(item_id),
+                    "from_station": ho["from_station"],
+                    "to_station": ho["to_station"],
+                    "handover_uuid": ho["uuid"],
+                    "handover_value": match["val"].iloc[0] if not match.empty else 0,
+                    "uuid": self.event_uuid,
+                }
+            )
+    if not rows:
+        return pd.DataFrame(columns=_MULTI_HANDOVER_COLUMNS)
+    return pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
+
+
+def _without_twins(out: pd.DataFrame, twins: dict[str, str]) -> pd.DataFrame:
+    """``out`` without its added twin columns, after checking they are copies."""
+    for legacy, twin in twins.items():
+        assert list(out.columns).index(twin) > list(out.columns).index(legacy)
+        pd.testing.assert_series_equal(
+            out[twin], out[legacy].astype(out[twin].dtype), check_names=False
+        )
+    return out.drop(columns=list(twins.values()))
+
+
+_LEAD_TWINS = {
+    "first_seen": "start",
+    "last_seen": "end",
+    "lead_time_seconds": "duration_seconds",
+}
+_PARALLEL_TWINS = {
+    "overlap_start": "start",
+    "overlap_end": "end",
+    "overlap_seconds": "duration_seconds",
+}
+HANDOVERS = [
+    {"uuid": "ho", "from_station": "W1", "to_station": "P"},
+    {"uuid": "route", "from_station": "P", "to_station": "W2"},
+]
+
+
 def _ref_flowconstraint_blocked_events(
     self,
     *,
@@ -1987,8 +2116,20 @@ CASES = [
     (
         "multi_parallel",
         lambda df: MultiProcessTraceabilityEvents(df, PROCESSES),
-        lambda o: o.parallel_activity(),
+        lambda o: _without_twins(o.parallel_activity(), _PARALLEL_TWINS),
         _ref_multiprocesstraceability_parallel_activity,
+    ),
+    (
+        "multi_lead_time",
+        lambda df: MultiProcessTraceabilityEvents(df, PROCESSES),
+        lambda o: _without_twins(o.lead_time(), _LEAD_TWINS),
+        _ref_multiprocesstraceability_lead_time,
+    ),
+    (
+        "multi_handover",
+        lambda df: MultiProcessTraceabilityEvents(df, PROCESSES, handovers=HANDOVERS),
+        lambda o: _without_twins(o.handover_log(), {"timestamp": "systime"}),
+        _ref_multiprocesstraceability_handover_log,
     ),
     *[
         (

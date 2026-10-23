@@ -292,8 +292,10 @@ class TestHandoverLog:
             "handover_uuid",
             "handover_value",
             "uuid",
+            "systime",
         }
         assert set(log.columns) == expected
+        assert (log["systime"] == log["timestamp"]).all()
 
     def test_handover_resolves_item_id(self, tracer):
         log = tracer.handover_log()

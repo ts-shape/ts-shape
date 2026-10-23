@@ -41,6 +41,58 @@ logger = logging.getLogger(__name__)
 
 _Ints: TypeAlias = npt.NDArray[np.int64]
 
+#: Columns of ``lead_time()``; ``start`` / ``end`` / ``duration_seconds``
+#: repeat ``first_seen`` / ``last_seen`` / ``lead_time_seconds``.
+_LEAD_TIME_COLUMNS = (
+    "item_id",
+    "first_station",
+    "last_station",
+    "first_seen",
+    "last_seen",
+    "lead_time_seconds",
+    "stations_visited",
+    "station_path",
+    "has_parallel",
+    "uuid",
+    "start",
+    "end",
+    "duration_seconds",
+)
+#: Columns of ``parallel_activity()``; ``start`` / ``end`` /
+#: ``duration_seconds`` repeat the ``overlap_*`` columns.
+_PARALLEL_COLUMNS = (
+    "item_id",
+    "station_a",
+    "station_b",
+    "overlap_start",
+    "overlap_end",
+    "overlap_seconds",
+    "uuid",
+    "start",
+    "end",
+    "duration_seconds",
+)
+#: Columns of ``handover_log()``; ``systime`` repeats ``timestamp``.
+_HANDOVER_COLUMNS = (
+    "timestamp",
+    "item_id",
+    "from_station",
+    "to_station",
+    "handover_uuid",
+    "handover_value",
+    "uuid",
+    "systime",
+)
+
+
+def _with_interval_twins(df: pd.DataFrame) -> pd.DataFrame:
+    """``parallel_activity`` rows plus ``start`` / ``end`` / ``duration_seconds``."""
+    out = df.copy()
+    out["start"] = out["overlap_start"]
+    out["end"] = out["overlap_end"]
+    out["duration_seconds"] = out["overlap_seconds"].astype("float64")
+    return out
+
 
 def _grouped_searchsorted(
     groups: _Ints, times: _Ints, q_groups: _Ints, q_times: _Ints, side: str
@@ -452,24 +504,14 @@ class MultiProcessTraceabilityEvents(Base):
             - station_path: Ordered station names (" -> ").
             - has_parallel: Whether item had parallel processing.
             - uuid: Event UUID.
+            - start: Same as first_seen.
+            - end: Same as last_seen.
+            - duration_seconds: Same as lead_time_seconds (float seconds).
         """
         timeline = self.build_timeline()
 
         if timeline.empty:
-            return pd.DataFrame(
-                columns=[
-                    "item_id",
-                    "first_station",
-                    "last_station",
-                    "first_seen",
-                    "last_seen",
-                    "lead_time_seconds",
-                    "stations_visited",
-                    "station_path",
-                    "has_parallel",
-                    "uuid",
-                ]
-            )
+            return pd.DataFrame(columns=list(_LEAD_TIME_COLUMNS))
 
         rows: list[dict[str, Any]] = []
         for item_id, grp in timeline.groupby("item_id"):
@@ -489,6 +531,9 @@ class MultiProcessTraceabilityEvents(Base):
                     "station_path": station_path,
                     "has_parallel": grp["is_parallel"].any(),
                     "uuid": self.event_uuid,
+                    "start": first_seen,
+                    "end": last_seen,
+                    "duration_seconds": float((last_seen - first_seen).total_seconds()),
                 }
             )
 
@@ -510,21 +555,21 @@ class MultiProcessTraceabilityEvents(Base):
             - overlap_end: End of overlap period.
             - overlap_seconds: Duration of overlap.
             - uuid: Event UUID.
+            - start: Same as overlap_start.
+            - end: Same as overlap_end.
+            - duration_seconds: Same as overlap_seconds (float seconds).
         """
+        out = self._overlaps()
+        if out.empty:
+            return pd.DataFrame(columns=list(_PARALLEL_COLUMNS))
+        return _with_interval_twins(out)
+
+    def _overlaps(self) -> pd.DataFrame:
+        """``parallel_activity`` rows without the ``start`` / ``end`` twins."""
         timeline = self.build_timeline()
 
         if timeline.empty:
-            return pd.DataFrame(
-                columns=[
-                    "item_id",
-                    "station_a",
-                    "station_b",
-                    "overlap_start",
-                    "overlap_end",
-                    "overlap_seconds",
-                    "uuid",
-                ]
-            )
+            return pd.DataFrame(columns=list(_PARALLEL_COLUMNS[:7]))
 
         pairs = _overlap_pairs(timeline)
         if pairs is None:
@@ -550,17 +595,7 @@ class MultiProcessTraceabilityEvents(Base):
                     "uuid": self.event_uuid,
                 }
             )
-        return pd.DataFrame(
-            columns=[
-                "item_id",
-                "station_a",
-                "station_b",
-                "overlap_start",
-                "overlap_end",
-                "overlap_seconds",
-                "uuid",
-            ]
-        )
+        return pd.DataFrame(columns=list(_PARALLEL_COLUMNS[:7]))
 
     def _parallel_activity_loop(self, timeline: pd.DataFrame) -> list[dict[str, Any]]:
         """Pairwise overlaps (fallback for NaT bounds or tied starts)."""
@@ -613,19 +648,10 @@ class MultiProcessTraceabilityEvents(Base):
             - handover_uuid: UUID of the handover signal.
             - handover_value: Raw value of the handover signal.
             - uuid: Event UUID.
+            - systime: Same as timestamp.
         """
         if not self.handovers:
-            return pd.DataFrame(
-                columns=[
-                    "timestamp",
-                    "item_id",
-                    "from_station",
-                    "to_station",
-                    "handover_uuid",
-                    "handover_value",
-                    "uuid",
-                ]
-            )
+            return pd.DataFrame(columns=list(_HANDOVER_COLUMNS))
 
         rows: list[dict[str, Any]] = []
         for ho in self.handovers:
@@ -691,21 +717,12 @@ class MultiProcessTraceabilityEvents(Base):
                         "handover_uuid": ho_uuid,
                         "handover_value": ho_val,
                         "uuid": self.event_uuid,
+                        "systime": t,
                     }
                 )
 
         if not rows:
-            return pd.DataFrame(
-                columns=[
-                    "timestamp",
-                    "item_id",
-                    "from_station",
-                    "to_station",
-                    "handover_uuid",
-                    "handover_value",
-                    "uuid",
-                ]
-            )
+            return pd.DataFrame(columns=list(_HANDOVER_COLUMNS))
 
         return pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
 

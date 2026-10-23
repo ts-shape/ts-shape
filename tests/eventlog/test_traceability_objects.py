@@ -467,6 +467,7 @@ def test_detector_frames_bind_serial_and_station(kind, method, serial, station):
         ("routing", "build_routing_timeline"),
         ("routing", "station_statistics"),
         ("value", "to_intervals"),
+        ("multi", "build_timeline"),
     ],
 )
 def test_bound_objects_keep_event_ids(kind, method, monkeypatch):
@@ -509,3 +510,104 @@ def test_to_intervals_event_log(kind):
     assert _objects(log, "serial") == ["SN-0001", "SN-0002"]
     assert len(_objects(log, "station")) == 2
     assert set(log.events["ts_shape:lifecycle_state"]) == set(iv["station"])
+
+
+# ---------------------------------------------------------------------------
+# MultiProcessTraceabilityEvents: lead_time, parallel_activity, handover_log
+# ---------------------------------------------------------------------------
+
+
+def _multi_parallel(tz: str | None = None) -> MultiProcessTraceabilityEvents:
+    """SN-0001 at Station 1 [0, 20] and Station 2 [5, 10] (parallel); a
+    handover Station 1 -> Station 2 fires at 15 (rising edge 0 -> 1)."""
+    df = _frame(
+        [
+            (0, "st1:id", "SN-0001"),
+            (20, "st1:id", "SN-0001"),
+            (5, "st2:id", "SN-0001"),
+            (10, "st2:id", "SN-0001"),
+        ],
+        tz,
+    )
+    ho = pd.DataFrame(
+        {
+            "systime": [_m(0, tz), _m(15, tz)],
+            "uuid": "ho",
+            "value_string": None,
+            "value_integer": pd.array([0, 1], dtype="Int64"),
+        }
+    )
+    return MultiProcessTraceabilityEvents(
+        pd.concat([df, ho], ignore_index=True),
+        PROCESSES,
+        handovers=[
+            {"uuid": "ho", "from_station": "Station 1", "to_station": "Station 2"}
+        ],
+    )
+
+
+@pytest.mark.parametrize("tz", [None, "Europe/Berlin"])
+def test_multi_outputs_convert(tz):
+    trace = _multi_parallel(tz)
+    det = "MultiProcessTraceabilityEvents."
+
+    pa = trace.parallel_activity()
+    assert list(pa.columns)[-3:] == ["start", "end", "duration_seconds"]
+    log = to_event_log(pa, detector=det + "parallel_activity")
+    assert len(log) == 1
+    ev = log.events.iloc[0]
+    assert ev["ocel:timestamp"] == _utc(10, tz)
+    assert ev["ts_shape:start_timestamp"] == _utc(5, tz)
+    assert ev["ts_shape:duration_s"] == 300.0
+    assert _objects(log, "serial") == ["SN-0001"]
+    assert _objects(log, "station") == ["Station 1", "Station 2"]
+
+    ho = trace.handover_log()
+    assert list(ho.columns)[-1] == "systime"
+    log = to_event_log(ho, detector=det + "handover_log")
+    assert len(log) == 1
+    assert log.events.iloc[0]["ocel:timestamp"] == _utc(15, tz)
+    assert _objects(log, "serial") == ["SN-0001"]
+    assert _objects(log, "station") == ["Station 1", "Station 2"]
+
+    lead = trace.lead_time()
+    assert list(lead.columns)[-3:] == ["start", "end", "duration_seconds"]
+    log = to_event_log(lead, detector=det + "lead_time")
+    assert len(log) == 1
+    assert log.events.iloc[0]["ts_shape:start_timestamp"] == _utc(0, tz)
+    assert _objects(log, "serial") == ["SN-0001"]
+    assert _objects(log, "station") == []
+
+
+def test_tuple_object_columns_link_once_and_caller_wins():
+    trace = _multi_parallel()
+    pa = trace.parallel_activity()
+    same = pa.assign(station_b=pa["station_a"])
+    log = to_event_log(
+        same, detector="MultiProcessTraceabilityEvents.parallel_activity"
+    )
+    rel = log.relations
+    assert rel.loc[rel["ocel:type"] == "station", "ocel:oid"].tolist() == ["Station 1"]
+    log = to_event_log(
+        pa,
+        detector="MultiProcessTraceabilityEvents.parallel_activity",
+        objects={"station": None},
+    )
+    assert _objects(log, "station") == []
+    log = to_event_log(
+        pa,
+        detector="MultiProcessTraceabilityEvents.parallel_activity",
+        objects={"station": "station_b"},
+    )
+    assert _objects(log, "station") == ["Station 2"]
+
+
+def test_multi_outputs_empty_keep_columns():
+    trace = MultiProcessTraceabilityEvents(_stations().iloc[0:0], PROCESSES)
+    assert list(trace.lead_time().columns)[-3:] == ["start", "end", "duration_seconds"]
+    assert list(trace.parallel_activity().columns)[-3:] == [
+        "start",
+        "end",
+        "duration_seconds",
+    ]
+    assert list(trace.handover_log().columns)[-1] == "systime"
