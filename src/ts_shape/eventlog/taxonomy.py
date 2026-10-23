@@ -1377,8 +1377,8 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("asset", "serial", "station"),
         object_columns={"asset": "id_uuid", "serial": "item_id", "station": "station"},
         standard_attrs={
-            "ts_shape:lifecycle_state": "station_name",
-            "ts_shape:direction": "station_sequence",
+            "ts_shape:lifecycle_state": "station",
+            "ts_shape:direction": "step_sequence",
         },
     ),
     ("MultiProcessTraceabilityEvents", "handover_log"): _r(

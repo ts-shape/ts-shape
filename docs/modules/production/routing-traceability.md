@@ -36,7 +36,8 @@ stats = tracer.station_statistics()
 
 ## Notes
 
-- Each routing sample is assigned the most recent item ID at that time; contiguous samples with the same (item, step) form one interval.
+- Each routing sample is assigned the most recent item ID at that time; contiguous samples with the same (item, step) form one interval. A routing sample with no item (none read yet, or a missing or empty ID reading) or without a routing value is no visit: it ends the interval before it. Rows without a timestamp are left out; readings at the same timestamp keep their input order.
+- `exclude=` drops ID readings that are not item IDs, like [`ObjectSpec.exclude`](../../guides/eventlog/objects.md): `"misreads"` (`NOREAD`, `#N/A`, `0`, `65535`, blanks, ...; see `ts_shape.utils.id_codes.is_misread`), a list of values, or a callable returning a mask. Between two readings of the same item an excluded reading is a gap (the item is held across it); anywhere else it is an empty reading (no item). The default `None` keeps every reading; `"misreads"` is planned to become the default in the next major release.
 - `state_map` translates routing values (int, float or str keys) to names; without it the raw values are the labels. `station_map` is a deprecated alias.
 - Defaults: ID in `value_string`, routing value in `value_integer` (`value_column_id=`, `value_column_routing=` to change).
 - By default an interval ends at its last routing sample, so a change-only routing signal gives a dwell of 0; `infer_dwell_from_next=True` ends it at the item's next routing arrival.

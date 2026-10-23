@@ -87,6 +87,23 @@ def _signal_values(name: str, value: Any) -> list[str]:
     return []
 
 
+#: Arguments that list signal definitions: name -> the key of the signal
+#: uuid in each entry (MultiProcessTraceabilityEvents).
+_SIGNAL_LISTS = {"processes": "id_uuid", "handovers": "uuid"}
+
+
+def _listed_signals(name: str, value: Any) -> list[str]:
+    """Signal uuids of a list of signal definitions (``processes=[{...}]``)."""
+    key = _SIGNAL_LISTS.get(name)
+    if key is None or not isinstance(value, (list, tuple)):
+        return []
+    return [
+        str(entry[key])
+        for entry in value
+        if isinstance(entry, Mapping) and isinstance(entry.get(key), str)
+    ]
+
+
 def _frame_uuids(obj: Any) -> tuple[pd.DataFrame | None, str]:
     frame = getattr(obj, "dataframe", None)
     column = getattr(obj, "uuid_column", None) or getattr(obj, "_uuid_column", "uuid")
@@ -178,7 +195,7 @@ def check_signals(obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict) -
     requested = [
         (name, uuid)
         for name, value in bound.arguments.items()
-        for uuid in _signal_values(name, value)
+        for uuid in _signal_values(name, value) + _listed_signals(name, value)
     ]
     if not requested:
         return
