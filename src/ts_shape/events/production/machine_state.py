@@ -1,10 +1,12 @@
 import logging
-from collections.abc import Mapping
+import warnings
+from collections.abc import Collection, Mapping
 from typing import Any, Literal, overload
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.events._output import twin_columns
 from ts_shape.signals.primitives import intervals as spec_intervals
@@ -57,6 +59,7 @@ class MachineStateEvents(Base):
         value_column: str = "value_bool",
         time_column: str = "systime",
         value_range: tuple[float | None, float | None] | None = None,
+        run_states: Collection[Any] | None = None,
         specs: Mapping[str, SignalSpec] | None = None,
     ) -> None:
         """Initialize the machine state detector.
@@ -72,6 +75,12 @@ class MachineStateEvents(Base):
             value_range: ``(lower, upper)`` inclusive bounds; a value inside counts as
                 running (either bound may be ``None``). ``None`` (default) casts the
                 value to bool.
+            run_states: Values that count as running (e.g. ``{"RUN", "AUTO"}``
+                for a text state column); every other known value is idle.
+                ``None`` (default) uses ``value_range`` or the bool cast. A
+                text state column without ``run_states`` or ``value_range``
+                raises a ``DataQualityWarning``: the bool cast counts every
+                non-empty text, including ``"IDLE"``, as running.
             specs: Optional signal semantics (see :mod:`ts_shape.signals`). When the
                 run-state signal has a spec, interval closing and gap handling follow
                 it.
@@ -85,6 +94,7 @@ class MachineStateEvents(Base):
         self.value_column = value_column
         self.time_column = time_column
         self.value_range = value_range
+        self.run_states = None if run_states is None else frozenset(run_states)
         # An empty frame has no signals at all: return empty results rather
         # than raising. A non-empty frame without the uuid is a caller error.
         if (
@@ -102,17 +112,46 @@ class MachineStateEvents(Base):
             .sort_values(self.time_column)
         )
         self.series[self.time_column] = pd.to_datetime(self.series[self.time_column])
+        self._warn_text_states()
         self._state_groups: pd.Series | None = None
         self._compute_state_groups()
+
+    def _warn_text_states(self) -> None:
+        """Warn when text states would be read by the bool cast."""
+        if self.run_states is not None or self.value_range is not None:
+            return
+        if self.value_column not in self.series.columns:
+            return
+        values = self.series[self.value_column].dropna()
+        if values.empty or pd.api.types.is_bool_dtype(values):
+            return
+        if pd.api.types.is_numeric_dtype(values):
+            return
+        if not values.map(lambda v: isinstance(v, str)).any():
+            return
+        sample = sorted(map(str, values.unique()[:5]))
+        warnings.warn(
+            f"MachineStateEvents: signal {self.run_state_uuid!r} holds text "
+            f"states in {self.value_column!r} (e.g. {sample}); without a "
+            "mapping every non-empty text counts as running. Pass "
+            "run_states={...} with the values that mean running.",
+            DataQualityWarning,
+            stacklevel=3,
+        )
 
     def _as_state(self, col: pd.Series) -> pd.Series:
         """Convert a value series to a boolean running/idle state.
 
-        Uses value_range when set (inclusive on both ends); otherwise casts to
-        bool. A missing value (``None``, ``NaN``, ``pd.NA``) is unknown, not
+        Uses run_states when set (membership means running), else value_range
+        (inclusive on both ends); otherwise casts to bool. A missing value (``None``, ``NaN``, ``pd.NA``) is unknown, not
         idle: it is ``pd.NA`` in the returned nullable ``boolean`` Series.
         """
         known = col.notna()
+        if self.run_states is not None:
+            state = col.isin(self.run_states).to_numpy(dtype=bool)
+            return (
+                pd.Series(state, index=col.index).astype("boolean").where(known, pd.NA)
+            )
         if self.value_range is not None:
             lower, upper = self.value_range
             values = pd.to_numeric(col, errors="coerce")
