@@ -64,8 +64,10 @@ point at. Cross-signal structure adds a second round of facts:
 * attributes -- A changes only when B changes (a recipe or material with
   its work order, a customer with its order); whether B belongs to the
   production hierarchy (it nests batches or serials) tells production
-  attributes from business partners, and a unique id that changes with a
-  coarser unique id is a batch under its work order;
+  attributes from business partners -- a recurring pool on a host typed as
+  an order is that order's partner, the customer of a sales order or the
+  supplier of a purchase order (:func:`_order_partners`) -- and a unique id
+  that changes with a coarser unique id is a batch under its work order;
 * part clocks -- a fixed count of serials (or counter increments) between
   changes is a package (handling unit) or its storage location; one change
   per counted part is a serial.
@@ -379,6 +381,9 @@ ATTRIBUTE_SHARE = 0.7
 #: (a work order over its batches).
 ATTRIBUTE_MIN_REVISIT = 0.2
 ATTRIBUTE_MAX_CHANCE = 0.1
+#: An order's business partner (:func:`_order_partners`) changes at least at
+#: this share of the order's changes (a tool held over many orders does not).
+PARTNER_MIN_CHANGE_SHARE = 0.25
 MAX_LAG_SECONDS = 900.0
 COARSER_RATIO = 0.8
 #: Fixed count: the parts counted between changes vary by at most this CV.
@@ -431,7 +436,10 @@ SCREEN_WEIGHTS: dict[str, float] = {
 }
 
 #: Prefix families, judged on the value content only (the leading letters of
-#: the value). Low weight, never decisive alone.
+#: the value, upper case). Low weight, never decisive alone. A key ending in
+#: ``-`` also needs a separator (``-``, ``_``, ``/`` or ``.``) right after
+#: the letters: a lone ``V`` or ``CU`` is too common (a valve, copper) to
+#: count without it, ``V-20017`` and ``CU-0815`` do.
 PREFIX_FAMILIES: dict[str, tuple[str, ...]] = {
     "SN": ("serial",),
     "SER": ("serial",),
@@ -478,11 +486,23 @@ PREFIX_FAMILIES: dict[str, tuple[str, ...]] = {
     "EMP": ("operator",),
     "BDG": ("operator",),
     "USR": ("operator",),
+    # business partners: customer (Kunde, Debitor), supplier (vendor,
+    # Lieferant, Kreditor)
     "CUST": ("customer",),
+    "CU-": ("customer",),
     "KD": ("customer",),
+    "KND": ("customer",),
+    "KUNDE": ("customer",),
+    "DEB": ("customer",),
     "SUP": ("supplier",),
+    "SUPP": ("supplier",),
+    "SUPPL": ("supplier",),
     "VEND": ("supplier",),
+    "VDR": ("supplier",),
+    "V-": ("supplier",),
     "LF": ("supplier",),
+    "LIEF": ("supplier",),
+    "KRED": ("supplier",),
     "HU": ("handling_unit",),
     "SSCC": ("handling_unit",),
     "PKG": ("handling_unit",),
@@ -559,6 +579,12 @@ FACT_DESCRIPTIONS: dict[str, str] = {
     "attribute_of_production": (
         "changes only when an id of the production hierarchy (a work order) changes"
     ),
+    "attribute_of_order": (
+        "changes only when an order outside production changes, and comes back "
+        "across orders (its business partner)"
+    ),
+    "attribute_of_sales_order": "the order it changes with is a sales order",
+    "attribute_of_purchase_order": "the order it changes with is a purchase order",
     "plain_host": "has a recurring attribute but no production structure",
     "has_attribute": "a recurring id changes only when this one changes",
     "coarser_unique": "a finer non-recurring id changes whenever this one does",
@@ -664,6 +690,7 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("recipe", "event_stamped", -0.30),
     ("recipe", "shift_aligned", -0.30),
     ("recipe", "attribute_of_event", -0.40),
+    ("recipe", "attribute_of_order", -0.30),
     ("recipe", "within_shift", -0.20),
     ("recipe", "cycle_rate", -0.40),
     ("recipe", "unrelated", -0.10),
@@ -679,6 +706,7 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("material", "event_stamped", -0.30),
     ("material", "shift_aligned", -0.30),
     ("material", "attribute_of_event", -0.40),
+    ("material", "attribute_of_order", -0.30),
     ("material", "within_shift", -0.20),
     ("material", "cycle_rate", -0.40),
     ("material", "unrelated", -0.10),
@@ -695,6 +723,7 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("article", "event_stamped", -0.30),
     ("article", "shift_aligned", -0.30),
     ("article", "attribute_of_event", -0.40),
+    ("article", "attribute_of_order", -0.30),
     ("article", "within_shift", -0.20),
     ("article", "cycle_rate", -0.40),
     ("article", "unrelated", -0.10),
@@ -780,6 +809,9 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("business_partner", "attribute_of_unique", 0.20),
     ("business_partner", "attribute_of_event", 0.50),
     ("business_partner", "attribute_of_production", -0.40),
+    ("business_partner", "attribute_of_order", 0.40),
+    ("customer", "attribute_of_sales_order", 0.20),
+    ("supplier", "attribute_of_purchase_order", 0.20),
     ("business_partner", "gtin", -0.50),  # a trade item number, not a partner
     ("business_partner", "sap_material", -0.50),
     ("business_partner", "poisson_holds", 0.20),
@@ -1135,7 +1167,21 @@ def _format_facts(
         rest_ok = sum(wt for t, wt in zip(texts, w) if len(t) > len(token)) / total
         if rest_ok >= FORMAT_MIN_SHARE:
             shares[f"prefix:{token}"] = hits / total
+    elif token and f"{token}-" in PREFIX_FAMILIES:
+        n_lead = len(token)
+        dashed = sum(
+            wt
+            for t, wt in zip(texts, w)
+            if len(t) > n_lead + 1
+            and t[n_lead] in _PREFIX_SEPARATORS
+            and t[:n_lead].upper() == token
+        )
+        if dashed >= FORMAT_MIN_SHARE * total:
+            shares[f"prefix:{token}-"] = dashed / total
     return shares
+
+
+_PREFIX_SEPARATORS = frozenset("-_/.")
 
 
 def _safe(test: Callable[[str], bool], text: str) -> bool:
@@ -2766,6 +2812,7 @@ def _cross_signal(
             b.facts["plain_host"] = 1.0
             if "poisson_holds" in b.facts or "event_stamped" in b.facts:
                 a.facts["attribute_of_event"] = 1.0
+    _order_partners(attributes)
     holders = set(container.values())
     for sig in ids:
         alone = sig.uuid not in container and sig.uuid not in holders
@@ -2803,6 +2850,66 @@ _CONTAINMENT_FACTS = frozenset(
         "unrelated",
     }
 )
+
+
+#: Facts that put an attribute itself in production: a pool that holds
+#: batches or serials, or changes with a production id, is no partner.
+_PRODUCTION_ATTRIBUTE_FACTS = (
+    "attribute_of_production",
+    "parent_of_batch",
+    "parent_of_serial",
+    "nested_child",
+)
+
+
+def _order_partners(attributes: list[tuple[_Signal, _Signal]]) -> None:
+    """Business-partner evidence: a recurring pool that changes only when an
+    order outside production changes (``plain_host``) is the order's
+    partner -- the customer of a sales order, the supplier of a purchase
+    order -- not a recipe or material. The pool comes back across orders
+    (revisit above :data:`ATTRIBUTE_MIN_REVISIT`, as every recurring
+    attribute) and changes at :data:`PARTNER_MIN_CHANGE_SHARE`
+    of the order's changes or more; it must not have production structure
+    of its own (:data:`_PRODUCTION_ATTRIBUTE_FACTS`) or change at cycle rate
+    (a machine taking turns per part).
+
+    The host counts as an order when an order type is its best type on the
+    facts so far (values, behaviour and its attributes), ahead of every
+    type outside the order group by :data:`GROUP_MARGIN` (a work order
+    without detected batches looks like an order on its own); a sales or
+    purchase order ahead of the other by :data:`GROUP_MARGIN` also names
+    the partner (``attribute_of_sales_order`` / ``_purchase_order``)."""
+    groups = _groups()
+    order_types = set(groups.get("order", ()))
+    kinds: dict[str, tuple[str, dict[str, float]]] = {}
+    for a, b in attributes:
+        if "plain_host" not in b.facts:
+            continue
+        if any(f in a.facts for f in _PRODUCTION_ATTRIBUTE_FACTS):
+            continue
+        if "cycle_rate" in a.facts:
+            continue  # a partner is not changed every machine cycle
+        if len(a.changes) < PARTNER_MIN_CHANGE_SHARE * len(b.changes):
+            continue  # a tool or setup held over many orders
+        if b.uuid not in kinds:
+            kept = b.scores, b.contributions
+            _score_types(b)
+            ranked = _ranked(b.scores)
+            kinds[b.uuid] = (ranked[0][0] if ranked else "", dict(b.scores))
+            b.scores, b.contributions = kept
+        best, scores = kinds[b.uuid]
+        if best not in order_types or scores[best] < TYPE_MIN_SCORE:
+            continue
+        other = max((s for t, s in scores.items() if t not in order_types), default=0)
+        if scores[best] - other < GROUP_MARGIN:
+            continue  # barely an order: a work order or batch as likely
+        a.facts["attribute_of_order"] = 1.0
+        sales = scores.get("sales_order", 0.0)
+        purchase = scores.get("purchase_order", 0.0)
+        if sales - purchase >= GROUP_MARGIN:
+            a.facts["attribute_of_sales_order"] = 1.0
+        elif purchase - sales >= GROUP_MARGIN:
+            a.facts["attribute_of_purchase_order"] = 1.0
 
 
 def _base_type_without(sig: _Signal, facts: frozenset[str]) -> str | None:

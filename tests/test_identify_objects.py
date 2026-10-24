@@ -522,6 +522,146 @@ def test_attribute_of_a_work_order_is_a_recipe_of_an_order_a_partner():
     assert types["so"] == "order", out.explain("so")
 
 
+def _orders_with_partner(order_of, pool, *, column="value_string", seed=3):
+    """40 orders held 30-50 min (no random arrivals, no one-sample stamps),
+    each with a partner drawn from ``pool`` that comes back across orders."""
+    rng = np.random.default_rng(seed)
+    n = 40
+    seq = np.repeat(np.arange(n), rng.integers(30, 50, n))
+    partner = rng.choice(len(pool), n)
+    t = pd.date_range(START, periods=len(seq), freq="1min")
+    order = [order_of(i) for i in range(n)]
+    order_column = "value_integer" if isinstance(order[0], int) else "value_string"
+    return pd.concat(
+        [
+            _sig("o", t, [order[i] for i in seq], order_column),
+            _sig("p", t, [pool[partner[i]] for i in seq], column),
+        ],
+        ignore_index=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("order_of", "pool", "column", "order_type", "partner_type"),
+    [
+        (
+            lambda i: f"SO-{2500100 + 7 * i}",
+            [f"CUST-{101 + 13 * k:04d}" for k in range(9)],
+            "value_string",
+            "sales_order",
+            "customer",
+        ),
+        (
+            lambda i: f"PO-{4500100 + 3 * i}",
+            [f"SUP-{20 + 7 * k:04d}" for k in range(7)],
+            "value_string",
+            "purchase_order",
+            "supplier",
+        ),
+        (
+            lambda i: f"PO-{4500100 + 3 * i}",
+            [f"V-{20017 + 31 * k}" for k in range(7)],
+            "value_string",
+            "purchase_order",
+            "supplier",
+        ),
+        (
+            lambda i: f"{8800000 + 11 * i}",
+            [f"P{170 + 13 * k}" for k in range(8)],
+            "value_string",
+            "order",
+            "business_partner",
+        ),
+        (
+            lambda i: f"SO-{2500100 + 7 * i}",
+            [f"P{170 + 13 * k}" for k in range(8)],
+            "value_string",
+            "sales_order",
+            "customer",
+        ),
+        (
+            lambda i: 8800000 + 11 * i,
+            [100234 + 17 * k for k in range(8)],
+            "value_integer",
+            "order",
+            "business_partner",
+        ),
+        (
+            lambda i: f"SO-{2500100 + 7 * i}",
+            [100234 + 17 * k for k in range(8)],
+            "value_integer",
+            "sales_order",
+            "customer",
+        ),
+    ],
+    ids=["cust-so", "sup-po", "v-po", "plain", "plain-so", "numeric", "numeric-so"],
+)
+def test_the_partner_of_an_order_is_a_business_partner(
+    order_of, pool, column, order_type, partner_type
+):
+    # a recurring pool that changes only with an order outside production,
+    # held like the orders (not stamped, no random arrivals): before, a
+    # recipe or material (same pool shape, same holds)
+    out = identify_objects(_orders_with_partner(order_of, pool, column=column))
+    assert out["o"] == order_type, out.explain("o")
+    assert out["p"] == partner_type, out.explain("p")
+    assert out.table.set_index("uuid").loc["p", "attribute_of"] == "o"
+    evidence = " ".join(_row(out, "p")["evidence"])
+    assert "business partner" in evidence
+
+
+def _recipe_on_work_orders(*, lines=True, seed=3):
+    """Work orders held 3-5 h with a recipe each from a pool of four; four
+    batches per order and a serial every two minutes."""
+    rng = np.random.default_rng(seed)
+    n = 14
+    holds = rng.integers(20, 40, n) * 8
+    pool = ["RZ_PA66_GF30_v3", "RZ_PA6_GF15_v2", "RZ_PBT_T20_v1", "RZ_PA66_GF50_v4"]
+    recipe = [pool[i] for i in rng.integers(0, 4, n)]
+    wo, rcp, batch = [], [], []
+    for i, h in enumerate(holds):
+        wo += [f"WO-2025-{1500 + i:06d}"] * h
+        rcp += [recipe[i]] * h
+        for k in range(4):
+            batch += [f"B250303-{4 * i + k + 1:03d}"] * (h // 4)
+    t = pd.date_range(START + pd.Timedelta("7min"), periods=len(wo), freq="1min")
+    frames = [_sig("w", t, wo), _sig("r", t, rcp)]
+    if lines:
+        serial = [f"SN{100000 + j // 2}" for j in range(len(wo))]
+        frames += [_sig("b", t, batch), _sig("s", t, serial)]
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_a_recipe_of_work_orders_is_no_business_partner():
+    out = identify_objects(_recipe_on_work_orders())
+    assert out["w"] == "work_order", out.explain("w")
+    assert out["r"] == "recipe", out.explain("r")
+    assert _row(out, "r")["attribute_of"] == "w"
+    assert not any("business partner" in e for e in _row(out, "r")["evidence"])
+    # without batches and serials the work order looks like an order on its
+    # own values; the recipe is still no partner of a host that is barely
+    # an order
+    alone = identify_objects(_recipe_on_work_orders(lines=False))
+    assert alone["r"] not in ("customer", "supplier", "business_partner")
+
+
+def test_partner_prefixes_need_their_separator():
+    facts = identify._format_facts
+    seen = [START] * 4
+    assert "prefix:V-" in facts(["V-20017", "V-20048", "V-20079", "V-20110"], seen)
+    assert "prefix:CU-" in facts(["CU-0815", "CU-0816", "CU-0911", "CU-1001"], seen)
+    # a lone V or CU is a valve or copper as often as a vendor or customer
+    assert not any(
+        k.startswith("prefix:") for k in facts(["V1", "V2", "V3", "V12"], seen)
+    )
+    assert not any(
+        k.startswith("prefix:") for k in facts(["CUZN37", "CU2", "CU7", "CU9"], seen)
+    )
+    for prefix in ("KUNDE", "DEB", "KND", "SUPP", "LIEF", "KRED", "VDR"):
+        texts = [f"{prefix}{1000 + 37 * k}" for k in range(4)]
+        assert f"prefix:{prefix}" in facts(texts, seen)
+
+
 def test_a_fixed_count_of_parts_is_a_handling_unit():
     serial = _held("s", [f"SN{100000 + i}" for i in range(1200)], 2, freq="30s")
     packs = _held("h", [f"PK{7000 + i}" for i in range(50)], 48, freq="30s")
