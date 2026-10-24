@@ -109,7 +109,7 @@ def _to_utc(values: pd.Series) -> pd.Series:
     return s.dt.as_unit("ns")
 
 
-def _id_text(value: object) -> str:
+def id_text(value: object) -> str:
     """An object id as text; an integral float renders without ``.0``."""
     if isinstance(value, float | np.floating) and float(value).is_integer():
         return str(int(value))
@@ -157,7 +157,7 @@ def intervals_frame(
 
     return pd.DataFrame(
         {
-            "oid": pd.Series([_id_text(v) for v in oid.tolist()], dtype="string"),
+            "oid": pd.Series([id_text(v) for v in oid.tolist()], dtype="string"),
             "type": pd.Series([object_type] * n, dtype="string"),
             "start": s,
             "end": e,

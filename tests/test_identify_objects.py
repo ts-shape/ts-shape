@@ -442,6 +442,94 @@ def test_benchmark_edges_found_by_the_nesting(seed, child):
     assert expected and found == expected
 
 
+def _coarse_line(
+    seed, *, batch=(20, 40), read_batch=60, on_change=True, own=True, foreign=False
+):
+    """A part a minute and batches of ``batch`` minutes, read every
+    ``read_batch`` seconds on the same scan; the material changes every 4-8 batches and is read every 30 min --
+    also when it changes (``on_change``: a historian that re-sends the value
+    every 30 min) or only then (polled: seen up to 30 min late).
+    ``foreign`` adds a material on another clock (its own changes every 2-4
+    h), read every 30 min and when it changes as well."""
+    rng = np.random.default_rng(seed)
+    pool = [f"{m:018d}" for m in (100234, 100567, 100890, 101122)]
+    t, b = 0.0, 0
+    batches: list[tuple[float, str]] = []
+    material: list[tuple[float, str]] = []
+    for k in range(14):
+        material.append((t, pool[k % len(pool)]))
+        for _ in range(int(rng.integers(4, 9))):
+            batches.append((t, f"B250303-{b + 1:03d}"))
+            b += 1
+            t += float(rng.uniform(*batch)) * 60
+    grid = np.arange(0, t, 60.0)
+
+    def read(uuid, pairs, at):
+        at = np.unique(at)
+        idx = np.searchsorted([s for s, _ in pairs], at, side="right") - 1
+        when = START + pd.to_timedelta(at, unit="s")
+        return _sig(uuid, when, [pairs[i][1] for i in idx])
+
+    def every_half_hour(pairs, pushed):
+        beat = np.arange(float(rng.uniform(0, 1800)), t, 1800.0)
+        return np.concatenate([beat, [s for s, _ in pairs]]) if pushed else beat
+
+    serials = [f"SN{100000 + i}" for i in range(len(grid))]
+    frames = [
+        _sig("s", START + pd.to_timedelta(grid, unit="s"), serials),
+        read("b", batches, np.arange(0, t, float(read_batch))),
+    ]
+    if own:
+        frames.append(read("m", material, every_half_hour(material, on_change)))
+    if foreign:
+        other: list[tuple[float, str]] = []
+        ft = 0.0
+        while ft < t:
+            other.append((ft, pool[len(other) % len(pool)][::-1]))
+            ft += float(rng.uniform(2, 4)) * 3600
+        frames.append(read("x", other, every_half_hour(other, True)))
+    return pd.concat(frames, ignore_index=True)
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_material_read_every_half_hour_holds_its_batches(seed):
+    # re-sent every 30 min, more often than the batches of 20-40 min change:
+    # the reads that come between the re-sends are its changes, seen when
+    # they happened, and they meet batch changes far more often than chance
+    out = identify_objects(_coarse_line(seed))
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+    assert _row(out, "s")["parent_uuid"] == "b", out.explain("s")
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_material_polled_every_half_hour_holds_its_batches(seed):
+    # polled only: a change is seen up to 30 min late, after the batch
+    # change it goes with (batches of 30-60 min, read every 2 min); the
+    # window it happened in still meets a batch change far more often than
+    # chance, and no batch is seen to straddle one
+    line = _coarse_line(seed, batch=(30, 60), read_batch=120, on_change=False)
+    out = identify_objects(line)
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+@pytest.mark.parametrize("batch", [(20, 40), (30, 60)])
+def test_a_coarse_signal_on_another_clock_is_no_parent(seed, batch):
+    # read just as coarsely, but changing on its own clock: it meets the
+    # batch changes only as often as chance has it
+    out = identify_objects(_coarse_line(seed, batch=batch, foreign=True))
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+    alone = identify_objects(_coarse_line(seed, batch=batch, own=False, foreign=True))
+    assert _row(alone, "b")["parent_uuid"] is None, alone.explain("b")
+    assert _row(alone, "s")["parent_uuid"] == "b", alone.explain("s")
+    # polled every 30 min over batches of 20-40 min, a material is
+    # undecided (any half hour holds a batch change), never the other clock
+    polled = identify_objects(
+        _coarse_line(seed, batch=batch, on_change=False, foreign=True)
+    )
+    assert _row(polled, "b")["parent_uuid"] in ("m", None), polled.explain("b")
+
+
 @pytest.mark.parametrize(
     "fmt",
     ["T3-{:07d}", "A-{:08d}", "3-{:07d}", "T{}-0000123", "{:020d}", "{:024d}"],

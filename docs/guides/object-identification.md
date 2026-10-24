@@ -432,8 +432,10 @@ only when the data has no id of the nearest one:
 | `batch`, `lot` | `material` / `article` / `recipe` (a batch is a quantity of one material made by one recipe) → `work_order` / order |
 
 Among equals the finer id wins (more distinct values: a material inside its
-recipe). A handling unit, or any id that holds a fixed count of parts, that nests
-a serial is its packing parent.
+recipe). For a serial, an equal that itself nests both ways in a material or
+recipe comes first: a package or a refilled lot on a clock of its own may lie
+around the parts too, but in no material. A handling unit, or any id that
+holds a fixed count of parts, that nests a serial is its packing parent.
 
 **Mistyped materials.** In a recording of a few days a material is often typed
 otherwise on its own values, so a batch's parent is not limited to the ids typed
@@ -477,6 +479,27 @@ The chance correction is what keeps a batch of another line, or a lot refilled o
 its own clock, from nesting a serial: any moment lies close to a change of a fast
 part clock, so plain coincidence is no evidence.
 
+**Sampling windows.** Each change is also tested on the window its own sampling
+leaves open: a value seen at `t` changed after the sample before it, so in
+`(t - u, t]`, with `u` the time since that sample, at most the polling lag. A
+parent change meets a child change when their windows overlap (within 5 s); the
+chance of each parent change is the share of the time where a window as wide as
+its own would meet one, and the matches are tested against those chances (at
+least 3 matches, a lift of 0.6 or more, and at most 1 % by chance). Two cases
+gain:
+
+- a value written when it changes and re-sent every few minutes or hours
+  (keep-alive): the re-sends lie on a grid, a read off that grid is a change seen
+  when it happened (`u = 0`), however long the re-send interval;
+- a material polled every 15 to 60 minutes: its change is seen up to that long
+  after the batch change it goes with. The containment test reads the same
+  windows: a parent change counts as inside a child presence only when its whole
+  window is.
+
+A parent that holds the child in the strong sense needs only 5 % by chance: no
+child presence is seen to straddle one of its changes, and the child has four
+times as many distinct values (a material pool over its batches).
+
 **Polled signals.** A signal sampled on a regular grid is seen up to one period
 late. When that hides when the child changed (a serial read every half cycle, a
 batch polled every minute while a part takes 30 s), the alignment cannot be shown.
@@ -488,12 +511,19 @@ tool or fixture, a package, or an order or material typed otherwise. The verifie
 parent is tried first. Without any such id the child stays without a parent rather
 than getting a guess.
 
+What sampling cannot show stays undecided. A material polled every 30 minutes over
+batches of 20 to 40 minutes is never placed: any half hour holds a batch change,
+so its windows meet them by chance alone. A material that changes only once or
+twice in the recording is rarely placed either.
+
 `explain()` and `summary()` show both parents (`nested in line:batch (depth 1)`,
-`packed in line:box`). On the held-out benchmark split the nesting scores about 0.93
-precision and 0.93 recall per edge (0.96 / 0.89 on never-seen seeds). The misses
-left are mostly serials whose batch is polled too coarsely to align and that lie in
-no other verified id, a package typed as a batch taken for the serial's batch, and
-a material polled every 15 to 60 minutes whose changes cannot be placed.
+`packed in line:box`). On the held-out benchmark split the nesting scores about 0.95
+precision and 0.95 recall per edge (0.99 / 0.94 on never-seen seeds); with every
+material polled every 30 minutes (`material_poll=1800` of the generator) about
+0.82 / 0.82 (0.54 / 0.50 before the sampling windows). The misses left are mostly
+batches whose material is typed as something that is never a parent (an operator,
+a batch), materials that change only a few times, and serials whose batch is
+polled too coarsely to align and that lie in no other verified id.
 
 ## Limits
 

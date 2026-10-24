@@ -164,6 +164,7 @@ class TestBuildTimeline:
             "step_sequence",
             "is_parallel",
             "uuid",
+            "source_uuid",
         }
         assert set(timeline.columns) == expected
 
@@ -293,6 +294,7 @@ class TestHandoverLog:
             "handover_value",
             "uuid",
             "systime",
+            "source_uuid",
         }
         assert set(log.columns) == expected
         assert (log["systime"] == log["timestamp"]).all()

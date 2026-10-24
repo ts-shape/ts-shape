@@ -31,6 +31,10 @@ A :class:`LabelRule` describes:
   not part of the event id (the column already is). A tuple of columns
   links each row to the oid of every column (e.g. ``{"station":
   ("from_station", "to_station")}``); an oid named twice links once.
+* ``eid_omit`` — frame columns left out of the event id: columns appended
+  to a detector after its ids were fixed that repeat a column already in
+  the id (the ``source_uuid`` of the ``MultiProcessTraceabilityEvents``
+  frames), so existing ids stay the same.
 """
 
 from __future__ import annotations
@@ -76,6 +80,9 @@ class LabelRule:
     # Declared object type -> the frame column carrying its oid (bound when
     # the caller does not bind that type).
     object_columns: Mapping[str, str | tuple[str, ...]] = field(default_factory=dict)
+    # Frame columns left out of the event id: columns appended to a detector
+    # after its ids were fixed that repeat columns already hashed.
+    eid_omit: tuple[str, ...] = ()
 
 
 # Aliases used while building the registry below to keep entries terse.
@@ -104,6 +111,10 @@ ROW_OBJECT = "{type}"
 _IQR_SEVERITY_THRESHOLDS = (1.5, 3.0)
 _IFOREST_SEVERITY_THRESHOLDS = (0.6, 0.7)
 NONE: tuple[str, ...] = ()
+#: ``eid_omit`` of the MultiProcessTraceabilityEvents frames: their
+#: ``source_uuid`` repeats ``id_uuid`` / ``handover_uuid`` or the item's
+#: visits, which are in the id already.
+_MULTI_EID_OMIT = ("source_uuid",)
 
 
 def _r(
@@ -1376,6 +1387,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         I,
         objs=("asset", "serial", "station"),
         object_columns={"asset": "id_uuid", "serial": "item_id", "station": "station"},
+        eid_omit=_MULTI_EID_OMIT,
         standard_attrs={
             "ts_shape:lifecycle_state": "station",
             "ts_shape:direction": "step_sequence",
@@ -1387,6 +1399,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         P,
         objs=("asset", "serial", "station"),
         object_columns={"serial": "item_id", "station": ("from_station", "to_station")},
+        eid_omit=_MULTI_EID_OMIT,
         standard_attrs={
             "ts_shape:lifecycle_state": "handover",
             "ts_shape:direction": "station_sequence",
@@ -1398,6 +1411,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         S,
         objs=("serial",),
         object_columns={"serial": "item_id"},
+        eid_omit=_MULTI_EID_OMIT,
         standard_attrs={"ts_shape:sample_count": None},
     ),
     ("MultiProcessTraceabilityEvents", "parallel_activity"): _r(
@@ -1406,6 +1420,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         I,
         objs=("serial", "station"),
         object_columns={"serial": "item_id", "station": ("station_a", "station_b")},
+        eid_omit=_MULTI_EID_OMIT,
         standard_attrs={
             "ts_shape:lifecycle_state": "parallel",
             "ts_shape:direction": "station_name",

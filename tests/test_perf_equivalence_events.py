@@ -970,6 +970,13 @@ def _ref_multiprocesstraceability_handover_log(self) -> pd.DataFrame:
     )
 
 
+def _without_source(out: pd.DataFrame) -> pd.DataFrame:
+    """A MultiProcess frame without its last column, ``source_uuid``
+    (round 23; the references predate it)."""
+    assert list(out.columns)[-1] == "source_uuid"
+    return out.drop(columns="source_uuid")
+
+
 def _without_twins(out: pd.DataFrame, twins: dict[str, str]) -> pd.DataFrame:
     """``out`` without its added twin columns, after checking they are copies."""
     for legacy, twin in twins.items():
@@ -2138,7 +2145,9 @@ CASES = [
         (
             f"multi_timeline_{inf}",
             lambda df: MultiProcessTraceabilityEvents(df, PROCESSES),
-            lambda o, inf=inf: o.build_timeline(infer_dwell_from_next=inf),
+            lambda o, inf=inf: _without_source(
+                o.build_timeline(infer_dwell_from_next=inf)
+            ),
             lambda o, inf=inf: _ref_multiprocesstraceability_build_timeline(
                 o, infer_dwell_from_next=inf
             ),
@@ -2148,19 +2157,23 @@ CASES = [
     (
         "multi_parallel",
         lambda df: MultiProcessTraceabilityEvents(df, PROCESSES),
-        lambda o: _without_twins(o.parallel_activity(), _PARALLEL_TWINS),
+        lambda o: _without_twins(
+            _without_source(o.parallel_activity()), _PARALLEL_TWINS
+        ),
         _ref_multiprocesstraceability_parallel_activity,
     ),
     (
         "multi_lead_time",
         lambda df: MultiProcessTraceabilityEvents(df, PROCESSES),
-        lambda o: _without_twins(o.lead_time(), _LEAD_TWINS),
+        lambda o: _without_twins(_without_source(o.lead_time()), _LEAD_TWINS),
         _ref_multiprocesstraceability_lead_time,
     ),
     (
         "multi_handover",
         lambda df: MultiProcessTraceabilityEvents(df, PROCESSES, handovers=HANDOVERS),
-        lambda o: _without_twins(o.handover_log(), {"timestamp": "systime"}),
+        lambda o: _without_twins(
+            _without_source(o.handover_log()), {"timestamp": "systime"}
+        ),
         _ref_multiprocesstraceability_handover_log,
     ),
     *[

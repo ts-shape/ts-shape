@@ -1678,9 +1678,16 @@ def _outside(t: np.ndarray, gaps: list[tuple[float, float]]) -> np.ndarray:
 
 
 def _sample(
-    rng: Rng, truth: _Truth, horizon: float, gaps: list[tuple[float, float]]
+    rng: Rng,
+    truth: _Truth,
+    horizon: float,
+    gaps: list[tuple[float, float]],
+    period: float | None = None,
 ) -> tuple[np.ndarray, list[Value], bool]:
-    """Rows a historian would store for ``truth``: ``(times, values, is_delta)``."""
+    """Rows a historian would store for ``truth``: ``(times, values, is_delta)``.
+
+    ``period`` polls a held signal every ``period`` seconds instead of the
+    drawn sampling."""
     t = truth.times
     vals = truth.values
     if truth.kind in ("event", "series"):
@@ -1707,11 +1714,11 @@ def _sample(
         t = t[change]
         vals = [v for v, k in zip(vals, change, strict=True) if k]
 
-    periodic = rng.random() < 0.4 and truth.hold_hint >= 30
+    periodic = period is not None or (rng.random() < 0.4 and truth.hold_hint >= 30)
     if periodic:
-        if truth.hold_hint < 600:
+        if period is None and truth.hold_hint < 600:
             period = float(np.clip(truth.hold_hint / 2, 10, 60))
-        else:
+        elif period is None:
             period = float(rng.choice([30.0, 60.0, 120.0, 300.0]))
         grid = np.arange(float(rng.uniform(0, period)), horizon, period)
         grid = grid + rng.uniform(-0.02, 0.02, len(grid)) * period
@@ -1793,7 +1800,14 @@ def generate(
     days: float,
     include: Iterable[str] | None,
     noise: bool,
+    material_poll: float | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The benchmark frame and labels (see ``make_object_signals``).
+
+    ``material_poll`` (seconds, opt-in) polls every line's material on a
+    grid of that period, the way a coarse historian tag would be read;
+    ``None`` (the default) keeps the drawn sampling, so the data of every
+    seed is unchanged."""
     if days <= 0:
         raise ValueError(f"days must be positive; got {days}")
     wanted = _selected(include)
@@ -1838,7 +1852,8 @@ def generate(
         gaps = list(line_gaps[truth.key.split(".")[0]])
         if noise and rng.random() < 0.3:
             gaps += _gaps(rng, horizon, 0.5)
-        times, values, is_delta = _sample(rng, truth, horizon, gaps)
+        period = material_poll if truth.key.endswith(".material") else None
+        times, values, is_delta = _sample(rng, truth, horizon, gaps, period)
         if noise:
             values = _noisy(rng, truth, values, heldout)
         if all(v is None for v in values):  # nothing recorded (a very short run)

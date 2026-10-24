@@ -16,7 +16,11 @@ Scores, pooled over every held-out uuid:
 * nesting precision and recall: the predicted ``parent_uuid`` edges (child
   -> production parent) against the labelled ones (a serial in its batch, a
   batch in its material). A predicted edge counts when its parent is the
-  labelled one.
+  labelled one;
+* the same nesting scores on the held-out seeds generated with every
+  material polled every 30 minutes (``material_poll``, opt-in), where a
+  material change is seen up to half an hour after the batch change it
+  goes with.
 
 The result of ``identify_objects`` may be a DataFrame with a ``uuid`` column
 (or index) and an ``object_type`` column (``None``/NaN for non-identifiers),
@@ -60,8 +64,13 @@ HELDOUT_SEEDS = tuple(range(100, 120))
 MIN_PRECISION = 0.95
 MIN_RECALL = 0.95
 MIN_TYPE_ACCURACY = 0.87
-MIN_NESTING_PRECISION = 0.9
-MIN_NESTING_RECALL = 0.9
+MIN_NESTING_PRECISION = 0.92
+MIN_NESTING_RECALL = 0.92
+#: Material polling period (seconds) of the coarse-material benchmark, and
+#: its nesting thresholds.
+COARSE_MATERIAL_POLL = 1800.0
+MIN_COARSE_NESTING_PRECISION = 0.8
+MIN_COARSE_NESTING_RECALL = 0.8
 
 _GROUP_OF = {t: g for g, members in OBJECT_TYPE_GROUPS.items() for t in members}
 _GROUP_OF.update({g: g for g in OBJECT_TYPE_GROUPS})
@@ -125,10 +134,30 @@ def _predictions(result: object) -> dict[str, str | None]:
     return out
 
 
-def benchmark_data(seeds=HELDOUT_SEEDS, days: float = 3):
-    """``[(seed, frame, labels)]`` of the benchmark seeds."""
+def benchmark_data(
+    seeds=HELDOUT_SEEDS, days: float = 3, material_poll: float | None = None
+):
+    """``[(seed, frame, labels)]`` of the benchmark seeds; ``material_poll``
+    polls every material on a grid of that period (seconds)."""
+    if material_poll is None:
+        return [
+            (seed, *ts_shape.make_object_signals(seed=seed, days=days))
+            for seed in seeds
+        ]
+    from ts_shape._object_signals import generate
+
     return [
-        (seed, *ts_shape.make_object_signals(seed=seed, days=days)) for seed in seeds
+        (
+            seed,
+            *generate(
+                seed=seed,
+                days=days,
+                include=None,
+                noise=True,
+                material_poll=material_poll,
+            ),
+        )
+        for seed in seeds
     ]
 
 
@@ -298,6 +327,44 @@ def test_nesting_recall(heldout_nesting):
     assert heldout_nesting["recall"] >= MIN_NESTING_RECALL, _nesting_report(
         heldout_nesting
     )
+
+
+@pytest.fixture(scope="module")
+def coarse_nesting():
+    """Nesting scores on the held-out seeds with coarsely polled materials."""
+    identify = _identify()
+    data = benchmark_data(material_poll=COARSE_MATERIAL_POLL)
+    return nesting_score(identify, data)
+
+
+def test_coarse_material_nesting(coarse_nesting):
+    # a material polled every 30 min is seen to change up to half an hour
+    # after its batch does: the batch still nests in it
+    assert coarse_nesting["precision"] >= MIN_COARSE_NESTING_PRECISION, _nesting_report(
+        coarse_nesting
+    )
+    assert coarse_nesting["recall"] >= MIN_COARSE_NESTING_RECALL, _nesting_report(
+        coarse_nesting
+    )
+
+
+def test_material_poll_keeps_the_default_data():
+    from ts_shape._object_signals import generate
+
+    frame, labels = ts_shape.make_object_signals(seed=101, days=1)
+    same, same_labels = generate(
+        seed=101, days=1, include=None, noise=True, material_poll=None
+    )
+    pd.testing.assert_frame_equal(frame, same)
+    pd.testing.assert_frame_equal(labels, same_labels)
+    polled, polled_labels = generate(
+        seed=101, days=1, include=None, noise=True, material_poll=1800.0
+    )
+    materials = polled_labels.loc[polled_labels["object_type"] == "material", "uuid"]
+    assert len(materials)
+    for uuid in materials:
+        gaps = polled.loc[polled["uuid"] == uuid, "systime"].diff().dropna()
+        assert gaps.dt.total_seconds().median() == pytest.approx(1800, rel=0.05)
 
 
 def test_scoring_rewards_the_labels_and_punishes_guessing():

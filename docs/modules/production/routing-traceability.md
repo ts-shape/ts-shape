@@ -36,6 +36,7 @@ stats = tracer.station_statistics()
 
 ## Notes
 
+- `item_id` is text. A number with an integer value renders without `.0` (`1001.0` is `1001`, as in `to_intervals()` and the other traceability classes), so `1001.0` and `"1001"` are one item.
 - Each routing sample is assigned the most recent item ID at that time; contiguous samples with the same (item, step) form one interval. A routing sample with no item (none read yet, or a missing or empty ID reading) or without a routing value is no visit: it ends the interval before it. Rows without a timestamp are left out; readings at the same timestamp keep their input order.
 - `exclude=` drops ID readings that are not item IDs, like [`ObjectSpec.exclude`](../../guides/eventlog/objects.md): `"misreads"` (`NOREAD`, `#N/A`, `0`, `65535`, blanks, ...; see `ts_shape.utils.id_codes.is_misread`), a list of values, or a callable returning a mask. Between two readings of the same item an excluded reading is a gap (the item is held across it); anywhere else it is an empty reading (no item). The default `None` keeps every reading; `"misreads"` is planned to become the default in the next major release.
 - `state_map` translates routing values (int, float or str keys) to names; without it the raw values are the labels. `station_map` is a deprecated alias.

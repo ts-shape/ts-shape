@@ -1,3 +1,24 @@
+# October 24, 2026 (round 23)
+identify_objects nesting for coarsely polled materials; traceability leftovers.
+change: nesting tests each change on the window its sampling leaves open
+  (keep-alive reads are exact, a polled material's change may lie up to one
+  period before it is seen); a parent holding the child in the strong sense
+  needs 5 % by chance; a serial's batch that nests in a material beats a
+  package or lot. Held-out nesting 0.93/0.93 -> 0.95/0.95, never-seen
+  0.96/0.89 -> 0.99/0.94, materials polled every 30 min 0.54/0.50 -> 0.82/0.82.
+feat: opt-in generator option material_poll (_object_signals.generate);
+  default data unchanged.
+fix: integral numeric item ids render without ".0" (Routing item_id /
+  to_intervals oid, MultiProcess handover_log item_id, serial objects in
+  every traceability event log).
+feat: handovers take from_id_uuid (the cell of a station shared by
+  parallel cells); without it a DataQualityWarning names the station.
+fix: a handover from a station not in processes warns (once per call).
+feat: MultiProcess build_timeline / lead_time / parallel_activity /
+  handover_log get source_uuid (last column); handover events link the
+  handover signal as asset. Event ids unchanged (LabelRule.eid_omit).
+  See docs/migration.md.
+
 # October 24, 2026 (round 22)
 identify_objects: business partners, nesting recall.
 fix: a pool that changes only with an order (held or stamped, no production
