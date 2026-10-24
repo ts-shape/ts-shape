@@ -91,9 +91,13 @@ parent must nest the child both ways: the parent keeps its value during the
 child's presences, and the parent's changes meet the child's starts, ends
 or pauses far more often than chance would give (:data:`NEST_MIN_LIFT`,
 :data:`NEST_MAX_CHANCE_P`), so an id on another line or clock is never a
-parent. A batch's material mistyped on its own values in a short recording
-(a tiny pool held for days reads as a tool, one never revisited as an
-order) still counts when it nests the batch both ways, and of a material
+parent. Each change is also placed in the window its sampling leaves open
+(after the sample before it; a change a delta signal pushes between
+keep-alive re-sends is exact), so a material polled every half hour still
+nests its batches when those windows meet batch changes far more often than
+chance (:func:`_censored_lift`, :func:`_censored_containment`). A batch's
+material mistyped on its own values in a short recording (a tiny pool held
+for days reads as a tool, one never revisited as an order) still counts when it nests the batch both ways, and of a material
 and a recipe that change together the one whose values read like a
 material wins; a "serial" that holds other serials is read as their batch;
 a serial whose batch is polled too coarsely to show the alignment goes into
@@ -374,6 +378,16 @@ NEST_ALIGN_HOLD_SHARE = 0.1
 NEST_MIN_LIFT = 0.4
 NEST_MAX_CHANCE_P = 1e-2
 NEST_PAUSE_HOLDS = 4.0
+#: The same test on the windows the sampling leaves open
+#: (:func:`_censored_lift`) needs this lift and this many matched changes.
+NEST_CENSORED_MIN_LIFT = 0.6
+NEST_CENSORED_MIN_HITS = 3
+#: ... and a binomial tail of at most NEST_STRONG_CHANCE_P will do for a
+#: parent that holds the child in the strong sense: no child presence
+#: straddles one of its changes, and the child has NEST_STRONG_POOL times as
+#: many distinct values (a material pool over its batches).
+NEST_STRONG_CHANCE_P = 0.05
+NEST_STRONG_POOL = 4
 #: A preferred parent whose alignment polling hides replaces the verified
 #: one when it lies in it with at least this fan-out (1:1, give or take).
 NEST_ALIAS_FANOUT = 0.9
@@ -388,6 +402,10 @@ MATERIAL_SHAPE_LEAN = 0.2
 #: A signal is polled (seen up to one period late) when this share of its
 #: sample intervals lies within 5 % of the median interval.
 POLL_REGULAR_SHARE = 0.6
+#: ... and a sample more than this share of the period off that grid was
+#: pushed when the value changed (:func:`_seen_late`).
+POLL_GRID_SHARE = 0.05
+POLL_GRID_MIN_SECONDS = 1.0
 #: Attribute relation: this share of A's changes has a change of B within
 #: COCHANGE_TOLERANCE_SECONDS plus the polling lag (capped at
 #: MAX_LAG_SECONDS); B's changes would cover at most ATTRIBUTE_MAX_CHANCE of
@@ -1278,6 +1296,11 @@ class _Signal:
     lag_ns: int = 0
     # sampling period of a polled signal (regular sample times), else 0
     poll_ns: int = 0
+    # how long before it was seen each presence may have started (p_u) and
+    # ended (pe_u): the time since the sample before, 0 for a change pushed
+    # off the polling grid (:func:`_seen_late`)
+    p_u: _I64 = field(default_factory=lambda: np.empty(0, np.int64))
+    pe_u: _I64 = field(default_factory=lambda: np.empty(0, np.int64))
     # measured features behind the facts (hold spread, time presence, ...)
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -1534,6 +1557,37 @@ def _poll_period(t_ns: _I64) -> int:
     return int(med) if regular >= POLL_REGULAR_SHARE else 0
 
 
+def _seen_late(
+    t_ns: _I64, starts: npt.NDArray[np.intp], late_ns: int, poll_ns: int
+) -> _I64:
+    """How long before its first sample each run (starting at the positions
+    ``starts`` of ``t_ns``) may have begun: the time since the sample
+    before (the old value was still seen then), at most ``late_ns``, the
+    polling lag; the first run gets ``late_ns``.
+
+    On a polling grid (``poll_ns``), a run seen off the grid was pushed
+    when it changed (a delta signal with keep-alive re-sends): 0. Off the
+    grid is farther from a multiple of the period than the grid's own
+    jitter allows (twice the 95th percentile of the regular intervals'
+    deviation, at least :data:`POLL_GRID_MIN_SECONDS`, at most
+    :data:`POLL_GRID_SHARE` of the period)."""
+    if len(starts) == 0 or late_ns <= 0:
+        return np.zeros(len(starts), dtype=np.int64)
+    out = np.full(len(starts), late_ns, dtype=np.int64)
+    later = starts > 0
+    gap = t_ns[starts[later]] - t_ns[starts[later] - 1]
+    seen = np.minimum(gap, late_ns)
+    if poll_ns > 0 and len(t_ns) > 1:
+        dev = np.abs(np.diff(t_ns) - poll_ns)
+        dev = dev[dev <= POLL_GRID_SHARE * poll_ns]
+        slack = 2.0 * float(np.quantile(dev, 0.95)) if len(dev) else 0.0
+        slack = min(max(slack, POLL_GRID_MIN_SECONDS * 1e9), POLL_GRID_SHARE * poll_ns)
+        off = gap % poll_ns
+        seen[np.minimum(off, poll_ns - off) > slack] = 0
+    out[later] = seen
+    return out
+
+
 @functools.lru_cache(maxsize=32)
 def _shift_bounds(definitions: tuple[tuple[str, str], ...]) -> npt.NDArray[np.float64]:
     """Shift boundaries as seconds after midnight."""
@@ -1644,6 +1698,9 @@ def _screen(
         # polled: a change is seen up to one sampling interval late
         sig.lag_ns = int(np.median(np.diff(ne_t)))
     sig.poll_ns = _poll_period(t)
+    run_u = _seen_late(t, idx, max(sig.lag_ns, sig.poll_ns), sig.poll_ns)
+    sig.p_u = run_u[is_id]
+    sig.pe_u = np.append(run_u[1:], 0)[is_id]
     one_cleared = (p_len == 1) & followed_empty
     event_stamped = len(p_len) >= 3 and float(one_cleared.mean()) >= EVENT_STAMPED_SHARE
     held = len(p_len) > 0 and float(np.median(p_len)) >= 2
@@ -2465,6 +2522,90 @@ def _cochange_lift(
     return (matched - chance) / (1.0 - chance)
 
 
+def _censored_lift(
+    edges: _I64,
+    edges_u: _I64,
+    child: _Signal,
+    tol_ns: int,
+    lo: int,
+    hi: int,
+    max_p: float = NEST_MAX_CHANCE_P,
+) -> float:
+    """:func:`_cochange_lift` on the windows the sampling leaves open.
+
+    A change seen at ``t`` happened after the sample before it (``t - u``,
+    :func:`_seen_late`; ``u`` is 0 when it was pushed). A parent's change
+    seen at ``e`` (``edges_u`` before it at most) meets a start or end of
+    the child's presences seen at ``b`` (``u_b`` before it at most) when
+    the windows ``(e - u, e]`` and ``(b - u_b, b]`` overlap within
+    ``tol_ns``. Each change's chance is the share of ``[lo, hi]`` where a
+    change with its window would meet one, so a coarse window (a material
+    polled every few minutes) counts only as far as it beats chance, and a
+    change a delta signal pushed between keep-alive re-sends is exact. The
+    number matched is tested against the sum of those chances (a
+    Poisson-binomial tail); ``-inf`` below :data:`NEST_CENSORED_MIN_HITS`
+    matches or :data:`NEST_CENSORED_MIN_LIFT`."""
+    bounds = np.concatenate([child.p_start[1:], child.p_end[:-1]])
+    if len(edges) == 0 or len(bounds) == 0 or hi <= lo:
+        return -math.inf
+    seen = np.concatenate([child.p_u[1:], child.pe_u[:-1]])
+    first = bounds - seen - tol_ns
+    order = np.argsort(first, kind="stable")
+    first, bounds = first[order], bounds[order]
+    reach = np.maximum.accumulate(bounds) + tol_ns
+    k = np.searchsorted(first, edges, side="right") - 1
+    hit = (k >= 0) & (reach[np.clip(k, 0, len(reach) - 1)] + edges_u >= edges)
+    matched = float(hit.mean())
+    if matched < NEST_ALIGN_SHARE or hit.sum() < NEST_CENSORED_MIN_HITS:
+        return -math.inf
+    # the chance of a window as wide as each edge's, rounded up to widths
+    # 5 % apart
+    widths = np.zeros(len(edges_u))
+    wide = edges_u > 0
+    widths[wide] = 1.05 ** np.ceil(
+        np.log(np.maximum(edges_u[wide] / 1e9, 1.0)) / math.log(1.05)
+    )
+    chances = np.empty(len(edges))
+    for width in np.unique(widths):
+        covered = _union_length(first, reach + int(width * 1e9), lo, hi)
+        chances[widths == width] = min(1.0, covered / float(hi - lo))
+    chance = float(chances.mean())
+    if chance >= 1.0:
+        return -math.inf
+    if _poisson_binomial_tail(int(hit.sum()), chances) > max_p:
+        return -math.inf
+    lift = (matched - chance) / (1.0 - chance)
+    return lift if lift >= NEST_CENSORED_MIN_LIFT else -math.inf
+
+
+def _union_length(starts: _I64, ends: _I64, lo: int, hi: int) -> float:
+    """Length of the union of the intervals ``[starts, ends)`` within
+    ``[lo, hi]``."""
+    if len(starts) == 0:
+        return 0.0
+    order = np.argsort(starts, kind="stable")
+    a = np.clip(starts[order], lo, hi)
+    b = np.clip(np.maximum.accumulate(ends[order]), lo, hi)
+    nxt = np.append(a[1:], hi)
+    return float((np.minimum(b, nxt) - a).clip(min=0).sum())
+
+
+def _poisson_binomial_tail(k: int, chances: npt.NDArray[np.float64]) -> float:
+    """``P(X >= k)`` for ``X`` the number of successes of independent trials
+    with these chances."""
+    if k <= 0:
+        return 1.0
+    lo, hi = float(chances.min()), float(chances.max())
+    if hi - lo <= 1e-9:
+        return _binomial_tail(k, len(chances), hi)
+    dist = np.zeros(len(chances) + 1)
+    dist[0] = 1.0
+    for i, p in enumerate(chances, start=1):
+        dist[1 : i + 1] = dist[1 : i + 1] * (1.0 - p) + dist[:i] * p
+        dist[0] *= 1.0 - p
+    return float(min(1.0, dist[k:].sum()))
+
+
 def _binomial_tail(k: int, n: int, p: float) -> float:
     """``P(X >= k)`` for ``X ~ Binomial(n, p)``."""
     if k <= 0:
@@ -2510,10 +2651,19 @@ def _align_ns(sig: _Signal) -> int:
     return int(max(COCHANGE_TOLERANCE_SECONDS, NEST_ALIGN_HOLD_SHARE * hold) * 1e9)
 
 
-def _inside(child: _Signal, parent: _Signal, fanout: float = NEST_MIN_FANOUT) -> bool:
+def _inside(
+    child: _Signal,
+    parent: _Signal,
+    fanout: float = NEST_MIN_FANOUT,
+    *,
+    censored: bool = True,
+) -> bool:
     """The child's presences lie inside the parent's: at least
     :data:`NEST_MIN_SHARE` of them inside one parent presence, and
-    ``fanout`` times as many of them."""
+    ``fanout`` times as many of them. ``censored`` also accepts it on the
+    windows the sampling leaves open (:func:`_censored_containment`): a
+    coarse parent is then rarely seen to change inside a presence, so this
+    says little without the co-change test next to it."""
     if parent is child or len(parent.p_start) < 2:
         return False
     if len(child.p_start) < fanout * len(parent.p_start):
@@ -2521,7 +2671,44 @@ def _inside(child: _Signal, parent: _Signal, fanout: float = NEST_MIN_FANOUT) ->
     # a polled reading is late by up to one period (give or take jitter)
     slack = int(1.05 * max(_late_ns(child), _late_ns(parent)))
     slack += int(COCHANGE_TOLERANCE_SECONDS * 1e9)
-    return _containment(child, parent, slack) >= NEST_MIN_SHARE
+    if _containment(child, parent, slack) >= NEST_MIN_SHARE:
+        return True
+    if not censored:
+        return False
+    tol = int(COCHANGE_TOLERANCE_SECONDS * 1e9)
+    return _censored_containment(child, parent, tol) >= NEST_MIN_SHARE
+
+
+def _censored_containment(child: _Signal, parent: _Signal, tol_ns: int) -> float:
+    """:func:`_containment` on the windows the sampling leaves open: a
+    parent change seen at ``e`` (``u`` before it at most, :func:`_seen_late`)
+    is inside a child presence seen from ``s`` to ``t`` (its end seen
+    ``u_t`` late at most) only when ``e - u > s`` and ``e < t - u_t``, give
+    or take ``tol_ns``. A material polled every half hour then still lies
+    around its batches."""
+    ps, pe = parent.p_start, parent.p_end
+    cs, ce = child.p_start, child.p_end
+    if len(ps) == 0 or len(cs) == 0:
+        return 0.0
+    new = np.asarray(parent.p_code[1:] != parent.p_code[:-1], dtype=bool)
+    edges, seen = ps[1:][new], parent.p_u[1:][new]
+    k = np.searchsorted(cs, edges, side="right") - 1
+    ok = k >= 0
+    kk = np.clip(k, 0, len(cs) - 1)
+    inner = (
+        ok
+        & (edges - seen - tol_ns > cs[kk])
+        & (edges + tol_ns < ce[kk] - child.pe_u[kk])
+    )
+    crossed = np.zeros(len(cs), dtype=bool)
+    crossed[kk[inner]] = True
+    j = np.searchsorted(ps, ce, side="left") - 1
+    overlaps = (j >= 0) & (pe[np.clip(j, 0, len(ps) - 1)] > cs)
+    k2 = np.searchsorted(ps, cs, side="right") - 1
+    overlaps |= (k2 >= 0) & (pe[np.clip(k2, 0, len(ps) - 1)] > cs)
+    if overlaps.sum() < 0.5 * len(cs):
+        return 0.0
+    return float((overlaps & ~crossed).sum() / overlaps.sum())
 
 
 def _cochange(child: _Signal, parent: _Signal) -> float:
@@ -2533,13 +2720,31 @@ def _cochange(child: _Signal, parent: _Signal) -> float:
     the window reaches that far: after the parent's change for a polled
     child, before it for a polled parent. Tried within
     :data:`COCHANGE_TOLERANCE_SECONDS` and within
-    :data:`NEST_ALIGN_HOLD_SHARE` of the child's median hold."""
+    :data:`NEST_ALIGN_HOLD_SHARE` of the child's median hold, and on the
+    windows each change's own sampling leaves open
+    (:func:`_censored_lift`): with a binomial tail of
+    :data:`NEST_STRONG_CHANCE_P` for a parent that holds the child in the
+    strong sense (:func:`_censored_containment` without exception, and
+    :data:`NEST_STRONG_POOL` times fewer distinct values)."""
     lo, hi = int(child.p_start[0]), int(child.p_end[-1])
-    vc = _value_changes(parent)
-    edges = vc[(vc > lo) & (vc < hi)]
+    new = np.asarray(parent.p_code[1:] != parent.p_code[:-1], dtype=bool)
+    vc, vu = parent.p_start[1:][new], parent.p_u[1:][new]
+    within = (vc > lo) & (vc < hi)
+    edges = vc[within]
     if len(edges) == 0:
         return -math.inf
-    lift = -math.inf
+    exact = int(COCHANGE_TOLERANCE_SECONDS * 1e9)
+    lift = _censored_lift(edges, vu[within], child, exact, lo, hi)
+    if (
+        lift < NEST_MIN_LIFT
+        and NEST_STRONG_POOL * parent.distinct <= child.distinct
+        and _censored_containment(child, parent, exact) >= 1.0
+    ):
+        # contained in the strong sense: no child presence straddles a
+        # change, and a small pool of values (a material over its batches)
+        lift = _censored_lift(
+            edges, vu[within], child, exact, lo, hi, NEST_STRONG_CHANCE_P
+        )
     for tol in sorted({int(COCHANGE_TOLERANCE_SECONDS * 1e9), _align_ns(child)}):
         before, after = tol + _late_ns(parent), tol + _late_ns(child)
         lift = max(
@@ -2635,6 +2840,9 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
         best: _Signal | None = None
         rank = len(ranks) + 1
         if verified:
+            rank = min(r for r, _ in verified)
+            if not quantity and sum(r == rank for r, _ in verified) > 1:
+                verified = _on_the_line(verified, rank, held, base)
             rank, best = min(verified, key=lambda rp: (rp[0], key(rp[1])))
         # an unverified nearer parent that nests in the verified one, else
         # (no verified parent of the nearest level) in another id that
@@ -2671,6 +2879,32 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
                 packing,
                 key=lambda p: (base[p.uuid] not in _PACKING_TYPES, _finer_key(p)),
             ).uuid
+
+
+#: Types a serial's batch nests in (:func:`_on_the_line`).
+_MATERIAL_TYPES = frozenset({"material", "article", "recipe", "setup"})
+
+
+def _on_the_line(
+    verified: list[tuple[int, _Signal]],
+    rank: int,
+    held: list[_Signal],
+    base: Mapping[str, str | None],
+) -> list[tuple[int, _Signal]]:
+    """Of a serial's equally preferred parents, the ones that nest both
+    ways in a material or recipe themselves (a batch in its material), when
+    there are any: a package or a refilled lot on a clock of its own lies
+    around the parts too, but in no material."""
+    above = [s for s in held if base[s.uuid] in _MATERIAL_TYPES]
+    nested = [
+        (r, p)
+        for r, p in verified
+        if r == rank
+        and any(q is not p and _inside(p, q) and _cochanges(p, q) for q in above)
+    ]
+    if not nested:
+        return verified
+    return nested + [(r, p) for r, p in verified if r != rank]
 
 
 def _serial_holders(
@@ -2797,7 +3031,9 @@ def _quantity_parents(
         else:
             chain.append(parent)
     holders = {
-        p.uuid for p in chain if any(q is not p and _inside(q, p, 1.0) for q in chain)
+        p.uuid
+        for p in chain
+        if any(q is not p and _inside(q, p, 1.0, censored=False) for q in chain)
     }
     if not holders:
         return out
