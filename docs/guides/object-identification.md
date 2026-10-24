@@ -164,16 +164,22 @@ sales = pd.concat(
     ignore_index=True,
 )
 sold = identify_objects(sales)
-print(sold.table[["uuid", "role", "attribute_of"]])
-print(sold.to_object_specs(0.55, attributes=True)[0].attributes)
+print(sold.table[["uuid", "object_type", "type_confidence", "attribute_of"]])
+specs = {s.uuid: s for s in sold.to_object_specs(0.55, attributes=True)}
+print(specs["erp:order"].attributes)
 ```
 
 ```text
-           uuid        role attribute_of
-0  erp:customer  identifier    erp:order
-1     erp:order  identifier         None
-{'erp:customer': 'erp:customer'}
+           uuid  object_type  type_confidence attribute_of
+0  erp:customer     customer         0.604651    erp:order
+1     erp:order  sales_order         0.575758         None
+{'customer': 'erp:customer'}
 ```
+
+The customer pool changes only with the order and comes back across orders, and
+the order has no production structure under it: that makes it the order's
+business partner, and the `SO` prefix of the order makes it a customer (see
+[Business partners](#how-types-are-identified)).
 
 The test is on the data only: the signal's value changes only where a presence of
 the identifier starts or ends (90 %+ of its changes, far more often than chance), it
@@ -304,7 +310,21 @@ score of 0.5 or more; its confidence is
 | UUID / GUID | type-neutral: screening only | |
 | Prefix family (`SN`, `WO`, `FA`, `SO`, `PO`, `WT`, `WZ`, ... on the value) | the family's type | 0.25 |
 
-A prefix family is never decisive alone: 0.25 is below the type threshold.
+A prefix family is never decisive alone: 0.25 is below the type threshold. The
+prefix is the leading letters of the value, in upper case, shared by most of the
+values (`PREFIX_FAMILIES` in `ts_shape.signals.identify` has the full list). The
+business-partner prefixes:
+
+| Prefix | Type | Example |
+|---|---|---|
+| `CUST`, `KD`, `KND`, `KUNDE` (Kunde), `DEB` (Debitor) | customer | `CUST-0107`, `KD10023` |
+| `CU-` | customer | `CU-0815` |
+| `SUP`, `SUPP`, `SUPPL`, `VEND`, `VDR`, `LF`, `LIEF` (Lieferant), `KRED` (Kreditor) | supplier | `SUP-0045`, `LIEF4711` |
+| `V-` | supplier | `V-20017` |
+
+`CU-` and `V-` count only with a separator (`-`, `_`, `/` or `.`) right after the
+letters: a lone `V1` is a valve and `CU2` copper as often as a vendor or a
+customer.
 
 **Behaviour and structure** (the distinguishing evidence per type):
 
@@ -324,7 +344,7 @@ A prefix family is never decisive alone: 0.25 is below the type threshold.
 | `station` | numbers in steps of 10 (`OP10`, `OP20`), fixed successor |
 | `location` | location codes; a fixed count of parts per value with no running number |
 | `operator` | changes at shift boundaries (30 %+ and 3+ within 15 min), never held longer than a shift, the badges come back |
-| `business_partner` (`customer`, `supplier`) | often revisited, changes only when an event-like id outside production (an order) changes |
+| `business_partner` (`customer`, `supplier`) | often revisited, changes only when an order outside production changes (event-like, or typed as an order); the customer of a sales order, the supplier of a purchase order |
 | `handling_unit` | SSCC; a fixed count of parts per value (a package of N) with a running number |
 
 **Cross-signal structure** runs among the screened identifiers only (at most 64),
@@ -347,6 +367,18 @@ of the time within that window):
   order-like host, and an event-like B makes A its business partner. A unique A
   that changes only with a unique, finer B is the coarser of the two (a work order
   over its batches).
+- **Business partners**: when B has no production structure and its values and
+  relations make it an order (a sales or purchase order, or the `order` group,
+  0.15 ahead of every other type), the recurring A is its partner: +0.40 for
+  `business_partner`, -0.30 for recipe, material and article. A sales order
+  0.15 ahead of a purchase order (a prefix such as `SO`) adds +0.20 for
+  `customer`, a purchase order for `supplier`; otherwise the group is reported.
+  This holds for orders held for minutes or hours as much as for one-sample
+  stamps, and needs no prefix on the partner. It does not apply when A has
+  production structure of its own (it contains batches or serials, or changes
+  with a production id), changes at cycle rate (a machine taking turns per part),
+  or changes at fewer than a quarter of B's changes (a tool held over many
+  orders).
 - **Part clocks**: the changes of a serial-like id, or the increments of a counter,
   counted between an id's changes. A fixed count (CV <= 0.3) is a package of N
   parts (handling unit) or its storage location; one change per counted part is a
@@ -401,7 +433,29 @@ only when the data has no id of the nearest one:
 
 Among equals the finer id wins (more distinct values: a material inside its
 recipe). A handling unit, or any id that holds a fixed count of parts, that nests
-a serial is its packing parent. Tools, fixtures, carriers,
+a serial is its packing parent.
+
+**Mistyped materials.** In a recording of a few days a material is often typed
+otherwise on its own values, so a batch's parent is not limited to the ids typed
+material, article or recipe:
+
+- a tool or fixture that nests the batch both ways is a candidate of the nearest
+  level: a material held for half a day from a pool of three reads like a tool;
+- an order, package, batch or lot that nests the batch both ways and holds another
+  such id is the material: one unique id inside another over the batch is the
+  work order inside the material it makes (a material never revisited reads like
+  an order);
+- of a material and a recipe that change together one to one, the one whose
+  values read more like a material wins: its format and prefix evidence, a number
+  of six or more digits (`10423317`) against a number of at most three digits or a
+  name of three or more `_`-separated segments (`17`, `RZ_PA66_GF30_v3`).
+
+These apply only to the finest quantity: an id with another order or batch inside
+it, both ways, is itself an order or material taken for a batch and gets none of
+them. A "serial" that holds other serials (four times as many presences or more,
+both ways) and itself nests in a material, recipe or order with a lift of 0.7 or
+more is read as their batch: batches shorter than half an hour read as serials on
+their values. Tools, fixtures, carriers,
 operators, stations, locations and partners are never part of a nesting, and
 neither are orders as children (an order is not nested in its material) or
 messages that name an id (`"Batch 25061207 released"`).
@@ -425,17 +479,21 @@ part clock, so plain coincidence is no evidence.
 
 **Polled signals.** A signal sampled on a regular grid is seen up to one period
 late. When that hides when the child changed (a serial read every half cycle, a
-batch polled every five minutes), the alignment cannot be shown. A preferred parent
-the child lies inside still wins over a verified, farther one when it nests in that
-farther parent itself: both belong to the line the farther parent puts the child
-on. Without any verified parent the child stays without one rather than getting a
-guess.
+batch polled every minute while a part takes 30 s), the alignment cannot be shown.
+A preferred parent the child lies inside still wins over a verified, farther one
+when it nests in that farther parent itself: both belong to the line the farther
+parent puts the child on. Without a verified parent of the nearest level, any
+other id that nests the child both ways serves the same way: a farther level, a
+tool or fixture, a package, or an order or material typed otherwise. The verified
+parent is tried first. Without any such id the child stays without a parent rather
+than getting a guess.
 
 `explain()` and `summary()` show both parents (`nested in line:batch (depth 1)`,
-`packed in line:box`). On the held-out benchmark split the nesting scores about 0.83
-precision and 0.77 recall per edge; the misses are mostly a material its batch
-cannot be told from (a recipe that changes with it, a material never revisited in
-the recording) and serials whose batch is polled too coarsely to align.
+`packed in line:box`). On the held-out benchmark split the nesting scores about 0.93
+precision and 0.93 recall per edge (0.96 / 0.89 on never-seen seeds). The misses
+left are mostly serials whose batch is polled too coarsely to align and that lie in
+no other verified id, a package typed as a batch taken for the serial's batch, and
+a material polled every 15 to 60 minutes whose changes cannot be placed.
 
 ## Limits
 
@@ -462,8 +520,9 @@ the recording) and serials whose batch is polled too coarsely to align.
     - recipe / material / article: separated by the pool size (a recipe has a tiny
       pool), nesting and formats.
     - customer / material: both change only with a unique id; the host's
-      production structure separates them, so an order next to a production order
-      with no batch or serial signal reads alike.
+      production structure separates them. A work order with no batch or serial
+      signal can read as an order; its recipe stays a recipe unless the order
+      type of the host is clear (0.15 ahead of a work order or batch).
     - batch / lot / work order: structure (nesting, the coarser-finer relation),
       revisits and a running number.
     - station / carrier and asset / station: the pool size and a fixed order.

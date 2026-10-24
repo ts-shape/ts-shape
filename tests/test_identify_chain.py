@@ -96,6 +96,10 @@ def test_customer_is_an_attribute_of_its_order(orders):
     assert report["o"] is not None
     assert host["c"] == "o"
     assert host["d"] == "o"  # a description text, one per order
+    # the pool of an order held for 30-50 min is its partner, not a recipe
+    # or material (the CUST- prefix and the sales order name the customer)
+    assert report["o"] == "sales_order"
+    assert report["c"] == "customer", report.explain("c")
 
 
 def test_independent_signals_are_no_attributes(orders):

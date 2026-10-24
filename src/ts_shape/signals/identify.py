@@ -64,8 +64,10 @@ point at. Cross-signal structure adds a second round of facts:
 * attributes -- A changes only when B changes (a recipe or material with
   its work order, a customer with its order); whether B belongs to the
   production hierarchy (it nests batches or serials) tells production
-  attributes from business partners, and a unique id that changes with a
-  coarser unique id is a batch under its work order;
+  attributes from business partners -- a recurring pool on a host typed as
+  an order is that order's partner, the customer of a sales order or the
+  supplier of a purchase order (:func:`_order_partners`) -- and a unique id
+  that changes with a coarser unique id is a batch under its work order;
 * part clocks -- a fixed count of serials (or counter increments) between
   changes is a package (handling unit) or its storage location; one change
   per counted part is a serial.
@@ -89,9 +91,16 @@ parent must nest the child both ways: the parent keeps its value during the
 child's presences, and the parent's changes meet the child's starts, ends
 or pauses far more often than chance would give (:data:`NEST_MIN_LIFT`,
 :data:`NEST_MAX_CHANCE_P`), so an id on another line or clock is never a
-parent. A handling unit (or any id holding a fixed count of parts) that
-nests a serial is its *packing parent* (``packing_parent_uuid``), next to
-the production parent. Resources and people (tools, carriers, operators,
+parent. A batch's material mistyped on its own values in a short recording
+(a tiny pool held for days reads as a tool, one never revisited as an
+order) still counts when it nests the batch both ways, and of a material
+and a recipe that change together the one whose values read like a
+material wins; a "serial" that holds other serials is read as their batch;
+a serial whose batch is polled too coarsely to show the alignment goes into
+that batch when the batch nests in another id the serial verifiably lies in
+(see :func:`_nest`). A handling unit (or any id holding a fixed count of
+parts) that nests a serial is its *packing parent* (``packing_parent_uuid``),
+next to the production parent. Resources and people (tools, carriers, operators,
 stations, locations, partners) and messages that name an id are never
 part of a nesting.
 
@@ -254,6 +263,9 @@ _QUANTITY_PARENT_RANK: dict[str, int] = {
 #: parent (also any id that holds a fixed count of parts, see
 #: ``fixed_count``).
 _PACKING_TYPES = frozenset({"handling_unit"})
+#: Setup resources that may stand in for a batch's material or recipe in
+#: the nesting when they nest the batch both ways (:func:`_quantity_parents`).
+_SETUP_RESOURCES = frozenset({"tool", "fixture"})
 
 # ---------------------------------------------------------------------------
 # Thresholds (documented; all values are on the data, never on names)
@@ -365,6 +377,14 @@ NEST_PAUSE_HOLDS = 4.0
 #: A preferred parent whose alignment polling hides replaces the verified
 #: one when it lies in it with at least this fan-out (1:1, give or take).
 NEST_ALIAS_FANOUT = 0.9
+#: A serial that nests another serial with this many times as many
+#: presences is a batch (:func:`_serial_holders`).
+SERIAL_HOLDER_FANOUT = 4.0
+#: ... and nests in a material, recipe or order with this lift or more.
+SERIAL_HOLDER_MIN_LIFT = 0.7
+#: Tie-break between a batch's material and its recipe when they change
+#: together (:func:`_material_lean`): the lean a value shape adds.
+MATERIAL_SHAPE_LEAN = 0.2
 #: A signal is polled (seen up to one period late) when this share of its
 #: sample intervals lies within 5 % of the median interval.
 POLL_REGULAR_SHARE = 0.6
@@ -379,6 +399,9 @@ ATTRIBUTE_SHARE = 0.7
 #: (a work order over its batches).
 ATTRIBUTE_MIN_REVISIT = 0.2
 ATTRIBUTE_MAX_CHANCE = 0.1
+#: An order's business partner (:func:`_order_partners`) changes at least at
+#: this share of the order's changes (a tool held over many orders does not).
+PARTNER_MIN_CHANGE_SHARE = 0.25
 MAX_LAG_SECONDS = 900.0
 COARSER_RATIO = 0.8
 #: Fixed count: the parts counted between changes vary by at most this CV.
@@ -431,7 +454,10 @@ SCREEN_WEIGHTS: dict[str, float] = {
 }
 
 #: Prefix families, judged on the value content only (the leading letters of
-#: the value). Low weight, never decisive alone.
+#: the value, upper case). Low weight, never decisive alone. A key ending in
+#: ``-`` also needs a separator (``-``, ``_``, ``/`` or ``.``) right after
+#: the letters: a lone ``V`` or ``CU`` is too common (a valve, copper) to
+#: count without it, ``V-20017`` and ``CU-0815`` do.
 PREFIX_FAMILIES: dict[str, tuple[str, ...]] = {
     "SN": ("serial",),
     "SER": ("serial",),
@@ -478,11 +504,23 @@ PREFIX_FAMILIES: dict[str, tuple[str, ...]] = {
     "EMP": ("operator",),
     "BDG": ("operator",),
     "USR": ("operator",),
+    # business partners: customer (Kunde, Debitor), supplier (vendor,
+    # Lieferant, Kreditor)
     "CUST": ("customer",),
+    "CU-": ("customer",),
     "KD": ("customer",),
+    "KND": ("customer",),
+    "KUNDE": ("customer",),
+    "DEB": ("customer",),
     "SUP": ("supplier",),
+    "SUPP": ("supplier",),
+    "SUPPL": ("supplier",),
     "VEND": ("supplier",),
+    "VDR": ("supplier",),
+    "V-": ("supplier",),
     "LF": ("supplier",),
+    "LIEF": ("supplier",),
+    "KRED": ("supplier",),
     "HU": ("handling_unit",),
     "SSCC": ("handling_unit",),
     "PKG": ("handling_unit",),
@@ -559,6 +597,12 @@ FACT_DESCRIPTIONS: dict[str, str] = {
     "attribute_of_production": (
         "changes only when an id of the production hierarchy (a work order) changes"
     ),
+    "attribute_of_order": (
+        "changes only when an order outside production changes, and comes back "
+        "across orders (its business partner)"
+    ),
+    "attribute_of_sales_order": "the order it changes with is a sales order",
+    "attribute_of_purchase_order": "the order it changes with is a purchase order",
     "plain_host": "has a recurring attribute but no production structure",
     "has_attribute": "a recurring id changes only when this one changes",
     "coarser_unique": "a finer non-recurring id changes whenever this one does",
@@ -664,6 +708,7 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("recipe", "event_stamped", -0.30),
     ("recipe", "shift_aligned", -0.30),
     ("recipe", "attribute_of_event", -0.40),
+    ("recipe", "attribute_of_order", -0.30),
     ("recipe", "within_shift", -0.20),
     ("recipe", "cycle_rate", -0.40),
     ("recipe", "unrelated", -0.10),
@@ -679,6 +724,7 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("material", "event_stamped", -0.30),
     ("material", "shift_aligned", -0.30),
     ("material", "attribute_of_event", -0.40),
+    ("material", "attribute_of_order", -0.30),
     ("material", "within_shift", -0.20),
     ("material", "cycle_rate", -0.40),
     ("material", "unrelated", -0.10),
@@ -695,6 +741,7 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("article", "event_stamped", -0.30),
     ("article", "shift_aligned", -0.30),
     ("article", "attribute_of_event", -0.40),
+    ("article", "attribute_of_order", -0.30),
     ("article", "within_shift", -0.20),
     ("article", "cycle_rate", -0.40),
     ("article", "unrelated", -0.10),
@@ -780,6 +827,9 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("business_partner", "attribute_of_unique", 0.20),
     ("business_partner", "attribute_of_event", 0.50),
     ("business_partner", "attribute_of_production", -0.40),
+    ("business_partner", "attribute_of_order", 0.40),
+    ("customer", "attribute_of_sales_order", 0.20),
+    ("supplier", "attribute_of_purchase_order", 0.20),
     ("business_partner", "gtin", -0.50),  # a trade item number, not a partner
     ("business_partner", "sap_material", -0.50),
     ("business_partner", "poisson_holds", 0.20),
@@ -1135,7 +1185,21 @@ def _format_facts(
         rest_ok = sum(wt for t, wt in zip(texts, w) if len(t) > len(token)) / total
         if rest_ok >= FORMAT_MIN_SHARE:
             shares[f"prefix:{token}"] = hits / total
+    elif token and f"{token}-" in PREFIX_FAMILIES:
+        n_lead = len(token)
+        dashed = sum(
+            wt
+            for t, wt in zip(texts, w)
+            if len(t) > n_lead + 1
+            and t[n_lead] in _PREFIX_SEPARATORS
+            and t[:n_lead].upper() == token
+        )
+        if dashed >= FORMAT_MIN_SHARE * total:
+            shares[f"prefix:{token}-"] = dashed / total
     return shares
+
+
+_PREFIX_SEPARATORS = frozenset("-_/.")
 
 
 def _safe(test: Callable[[str], bool], text: str) -> bool:
@@ -2509,22 +2573,42 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
     that nests a serial is its packing parent. Messages that name an id
     (:func:`_wordy`) and event-stamped ids are left out.
 
+    A batch's material is often mistyped on its own values in a short
+    recording: a material held for days from a tiny pool reads as a tool,
+    one never revisited as an order or a package. So for a batch or lot a
+    tool or fixture that nests it both ways is a candidate of the nearest
+    level (:data:`_SETUP_RESOURCES`), and a unique id (an order, a package,
+    a batch or lot) that nests it both ways and holds another such id is
+    the material those make (:func:`_quantity_parents`). Among the nearest
+    level the finer id wins, then the one whose values read more like a
+    material (:func:`_quantity_key`).
+
     Where polling hides when the child changed (a serial read every half
     cycle, a batch polled every few minutes), the co-change test cannot
     decide. A preferred parent the child lies inside then still wins over
     the verified one when it nests in that verified parent itself: both
-    belong to the line the verified parent puts the child on.
+    belong to the line the verified parent puts the child on. Without a
+    verified parent of the nearest level, any other id that nests the child
+    both ways (a farther level, a setup resource, a package, a mistyped
+    order or material: :func:`_anchors`) serves the same way -- tried only
+    after the verified parent itself.
+
+    Before the children are chosen, a serial that holds other serials is
+    read as a batch (:func:`_serial_holders`).
     """
     held = [
         s
         for s in ids
         if "event_stamped" not in s.facts and len(s.p_start) and not _wordy(s)
     ]
+    base = _serial_holders(held, base)
     for child in held:
         kind = base[child.uuid]
         if kind not in _NEST_CHILDREN:
             continue
-        ranks = _QUANTITY_PARENT_RANK if kind in ("batch", "lot") else _PARENT_RANK
+        quantity = kind in ("batch", "lot")
+        ranks = _QUANTITY_PARENT_RANK if quantity else _PARENT_RANK
+        key = _quantity_key if quantity else _finer_key
         verified: list[tuple[int, _Signal]] = []
         unverified: list[tuple[int, _Signal]] = []
         packing: list[_Signal] = []
@@ -2546,31 +2630,36 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
                 verified.append((ranks[ptype], parent))
             if packs:
                 packing.append(parent)
-        if kind in ("batch", "lot"):
-            # an order that holds another order is no order: it is the
-            # material the orders make (a material never revisited in the
-            # recording looks like an order on its own values)
-            orders = [p for r, p in verified if r == ranks["work_order"]]
-            verified = [
-                (
-                    (0, p)
-                    if any(o is not p and _inside(o, p, 1.0) for o in orders)
-                    else (r, p)
-                )
-                for r, p in verified
-            ]
+        if quantity:
+            verified = _quantity_parents(child, held, base, verified)
+        best: _Signal | None = None
+        rank = len(ranks) + 1
         if verified:
-            rank, best = min(verified, key=lambda rp: (rp[0], _finer_key(rp[1])))
-            for r, cand in sorted(
-                unverified, key=lambda rp: (rp[0], _finer_key(rp[1]))
-            ):
-                if (
-                    r <= rank
-                    and _inside(cand, best, NEST_ALIAS_FANOUT)
-                    and _cochanges(cand, best)
-                ):
-                    rank, best = r, cand
-                    break
+            rank, best = min(verified, key=lambda rp: (rp[0], key(rp[1])))
+        # an unverified nearer parent that nests in the verified one, else
+        # (no verified parent of the nearest level) in another id that
+        # nests the child both ways
+        candidates = sorted(unverified, key=lambda rp: (rp[0], key(rp[1])))
+        rounds = [[best]] if best is not None else []
+        if rank > 0 and candidates:
+            rounds.append(_anchors(child, held, base, ranks, best))
+        for anchors in rounds:
+            alias = next(
+                (
+                    (r, cand)
+                    for r, cand in candidates
+                    if r <= rank
+                    and any(
+                        _inside(cand, a, NEST_ALIAS_FANOUT) and _cochanges(cand, a)
+                        for a in anchors
+                    )
+                ),
+                None,
+            )
+            if alias is not None:
+                rank, best = alias
+                break
+        if best is not None:
             nearest = {t for t, r in ranks.items() if r == 0}
             if rank == 0 or not any(
                 base[s.uuid] in nearest for s in held if s is not child
@@ -2582,6 +2671,172 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
                 packing,
                 key=lambda p: (base[p.uuid] not in _PACKING_TYPES, _finer_key(p)),
             ).uuid
+
+
+def _serial_holders(
+    held: list[_Signal], base: Mapping[str, str | None]
+) -> Mapping[str, str | None]:
+    """``base`` with every serial that holds another serial read as a batch.
+
+    A unique id held for less than half an hour reads as a serial on its
+    own values, but one that nests another serial both ways, with
+    :data:`SERIAL_HOLDER_FANOUT` times as many presences or more, is the
+    batch those parts are made in (a serial holds no serials) -- when it
+    nests both ways in a material, recipe or order itself, as a batch does
+    (a lift of :data:`SERIAL_HOLDER_MIN_LIFT` or more)."""
+    serials = [s for s in held if base[s.uuid] == "serial"]
+    if len(serials) < 2:
+        return base
+    above = [
+        s
+        for s in held
+        if base[s.uuid] in _QUANTITY_PARENT_RANK
+        or base[s.uuid] in _UNIQUE_CHAIN - {"batch", "lot"}
+    ]
+    holders = {
+        p.uuid
+        for p in serials
+        if any(
+            c is not p
+            and len(c.p_start) >= SERIAL_HOLDER_FANOUT * len(p.p_start)
+            and _inside(c, p)
+            and _cochanges(c, p)
+            for c in serials
+        )
+        and any(
+            _inside(p, q) and _cochange(p, q) >= SERIAL_HOLDER_MIN_LIFT for q in above
+        )
+    }
+    if not holders:
+        return base
+    return {u: "batch" if u in holders else t for u, t in base.items()}
+
+
+def _anchors(
+    child: _Signal,
+    held: list[_Signal],
+    base: Mapping[str, str | None],
+    ranks: Mapping[str, int],
+    known: _Signal | None,
+) -> list[_Signal]:
+    """Ids that nest ``child`` both ways without being its production parent
+    (a farther level, a setup resource, a package, an order or material
+    mistyped as one): an unverified parent that nests in one of them is on
+    the child's line (see :func:`_nest`)."""
+    kind = base[child.uuid]
+    out = []
+    for a in held:
+        atype = base[a.uuid]
+        if a is child or a is known or atype in (None, kind):
+            continue
+        if not (
+            atype in ranks
+            or atype in _SETUP_RESOURCES
+            or atype in _UNIQUE_CHAIN
+            or atype in _PACKING_TYPES
+            or "fixed_count" in a.facts
+        ):
+            continue
+        if _inside(child, a) and _cochanges(child, a):
+            out.append(a)
+    return out
+
+
+#: Unique ids that may stand for a batch's material in a short recording
+#: (:func:`_quantity_parents`): a material never revisited reads as one.
+_UNIQUE_CHAIN = frozenset(
+    {"work_order", "order", "sales_order", "purchase_order"}
+    | {"handling_unit", "batch", "lot"}
+)
+
+
+def _quantity_parents(
+    child: _Signal,
+    held: list[_Signal],
+    base: Mapping[str, str | None],
+    verified: list[tuple[int, _Signal]],
+) -> list[tuple[int, _Signal]]:
+    """The verified parents of a batch or lot, with the nearest level
+    (rank 0) widened to the mistyped materials of a short recording.
+
+    * A tool or fixture (:data:`_SETUP_RESOURCES`) that nests the batch
+      both ways: a material or recipe held for days from a tiny pool reads
+      as a tool on its own values.
+    * A unique id (:data:`_UNIQUE_CHAIN`) that nests the batch both ways and
+      holds another such id: one unique id inside another over the batch is
+      its work order inside the material it makes.
+    """
+    out = list(verified)
+    # only for the finest quantity: an id with another unique id inside it
+    # (both ways) is itself a work order or material taken for a batch
+    for inner in held:
+        if (
+            inner is not child
+            and base[inner.uuid] in _UNIQUE_CHAIN
+            and _inside(inner, child)
+            and _cochanges(inner, child)
+        ):
+            return out
+    seen = {p.uuid for _, p in verified}
+    chain: list[_Signal] = []
+    for parent in held:
+        if parent is child:
+            continue
+        ptype = base[parent.uuid]
+        setup = ptype in _SETUP_RESOURCES
+        if not (setup or ptype in _UNIQUE_CHAIN):
+            continue
+        if parent.uuid in seen and not setup:
+            ok = True
+        else:
+            ok = _inside(child, parent) and _cochanges(child, parent)
+        if not ok:
+            continue
+        if setup:
+            out.append((0, parent))
+        else:
+            chain.append(parent)
+    holders = {
+        p.uuid for p in chain if any(q is not p and _inside(q, p, 1.0) for q in chain)
+    }
+    if not holders:
+        return out
+    out = [(0, p) if p.uuid in holders else (r, p) for r, p in out]
+    listed = {p.uuid for _, p in out}
+    out += [(0, p) for p in chain if p.uuid in holders and p.uuid not in listed]
+    return out
+
+
+_LONG_DIGITS = re.compile(r"9\{(?:[6-9]|\d\d)\}")
+_SHORT_NUMBER = re.compile(r"9(?:\{[23]\})?")
+
+
+def _material_lean(sig: _Signal) -> float:
+    """How much more the values read like a material or article than like a
+    recipe or setup resource: the format and prefix evidence (before the
+    relations), and the shape of the values -- a number of six or more
+    digits is a material number (SAP, GTIN), a number of at most three
+    digits or a name of three or more ``_``-separated segments is a
+    program or recipe name (``17``, ``RZ_PA66_GF30_v3``)."""
+    sc = sig.scores
+    material = max(sc.get("material", 0.0), sc.get("article", 0.0))
+    setup = max(sc.get(t, 0.0) for t in ("recipe", "tool", "fixture"))
+    lean = material - setup
+    shape = sig.metrics.get("pattern")
+    if isinstance(shape, str):
+        if _LONG_DIGITS.search(shape):
+            lean += MATERIAL_SHAPE_LEAN
+        if _SHORT_NUMBER.fullmatch(shape) or shape.count("_") >= 2:
+            lean -= MATERIAL_SHAPE_LEAN
+    return lean
+
+
+def _quantity_key(sig: _Signal) -> tuple[int, float, int, str]:
+    """Sort key among equally preferred parents of a batch or lot: the
+    finer id (more distinct values: a material under its recipe), then the
+    one that reads more like a material (a material and its recipe that
+    change together one to one), then more presences."""
+    return (-sig.distinct, -round(_material_lean(sig), 6), -len(sig.p_start), sig.uuid)
 
 
 def _finer_key(sig: _Signal) -> tuple[bool, int, int, str]:
@@ -2766,6 +3021,7 @@ def _cross_signal(
             b.facts["plain_host"] = 1.0
             if "poisson_holds" in b.facts or "event_stamped" in b.facts:
                 a.facts["attribute_of_event"] = 1.0
+    _order_partners(attributes)
     holders = set(container.values())
     for sig in ids:
         alone = sig.uuid not in container and sig.uuid not in holders
@@ -2803,6 +3059,66 @@ _CONTAINMENT_FACTS = frozenset(
         "unrelated",
     }
 )
+
+
+#: Facts that put an attribute itself in production: a pool that holds
+#: batches or serials, or changes with a production id, is no partner.
+_PRODUCTION_ATTRIBUTE_FACTS = (
+    "attribute_of_production",
+    "parent_of_batch",
+    "parent_of_serial",
+    "nested_child",
+)
+
+
+def _order_partners(attributes: list[tuple[_Signal, _Signal]]) -> None:
+    """Business-partner evidence: a recurring pool that changes only when an
+    order outside production changes (``plain_host``) is the order's
+    partner -- the customer of a sales order, the supplier of a purchase
+    order -- not a recipe or material. The pool comes back across orders
+    (revisit above :data:`ATTRIBUTE_MIN_REVISIT`, as every recurring
+    attribute) and changes at :data:`PARTNER_MIN_CHANGE_SHARE`
+    of the order's changes or more; it must not have production structure
+    of its own (:data:`_PRODUCTION_ATTRIBUTE_FACTS`) or change at cycle rate
+    (a machine taking turns per part).
+
+    The host counts as an order when an order type is its best type on the
+    facts so far (values, behaviour and its attributes), ahead of every
+    type outside the order group by :data:`GROUP_MARGIN` (a work order
+    without detected batches looks like an order on its own); a sales or
+    purchase order ahead of the other by :data:`GROUP_MARGIN` also names
+    the partner (``attribute_of_sales_order`` / ``_purchase_order``)."""
+    groups = _groups()
+    order_types = set(groups.get("order", ()))
+    kinds: dict[str, tuple[str, dict[str, float]]] = {}
+    for a, b in attributes:
+        if "plain_host" not in b.facts:
+            continue
+        if any(f in a.facts for f in _PRODUCTION_ATTRIBUTE_FACTS):
+            continue
+        if "cycle_rate" in a.facts:
+            continue  # a partner is not changed every machine cycle
+        if len(a.changes) < PARTNER_MIN_CHANGE_SHARE * len(b.changes):
+            continue  # a tool or setup held over many orders
+        if b.uuid not in kinds:
+            kept = b.scores, b.contributions
+            _score_types(b)
+            ranked = _ranked(b.scores)
+            kinds[b.uuid] = (ranked[0][0] if ranked else "", dict(b.scores))
+            b.scores, b.contributions = kept
+        best, scores = kinds[b.uuid]
+        if best not in order_types or scores[best] < TYPE_MIN_SCORE:
+            continue
+        other = max((s for t, s in scores.items() if t not in order_types), default=0)
+        if scores[best] - other < GROUP_MARGIN:
+            continue  # barely an order: a work order or batch as likely
+        a.facts["attribute_of_order"] = 1.0
+        sales = scores.get("sales_order", 0.0)
+        purchase = scores.get("purchase_order", 0.0)
+        if sales - purchase >= GROUP_MARGIN:
+            a.facts["attribute_of_sales_order"] = 1.0
+        elif purchase - sales >= GROUP_MARGIN:
+            a.facts["attribute_of_purchase_order"] = 1.0
 
 
 def _base_type_without(sig: _Signal, facts: frozenset[str]) -> str | None:

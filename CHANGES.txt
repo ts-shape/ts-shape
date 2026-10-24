@@ -1,3 +1,16 @@
+# October 24, 2026 (round 22)
+identify_objects: business partners, nesting recall.
+fix: a pool that changes only with an order (held or stamped, no production
+  structure) is its business partner -- customer of a sales order, supplier
+  of a purchase order -- not a recipe or material.
+feat: more business-partner prefixes (CU-, KND, KUNDE, DEB; SUPP, SUPPL,
+  VDR, V-, LIEF, KRED).
+change: nesting finds a batch's mistyped material (tool-like, never
+  revisited), prefers the material over a 1:1 recipe, reads serial-typed
+  batches as batches and nests serials whose batch is polled coarsely.
+  Held-out nesting 0.83/0.77 -> 0.93/0.93.
+  See docs/migration.md.
+
 # October 23, 2026 (round 21)
 Traceability audit.
 feat: MultiProcess lead_time / parallel_activity / handover_log convert to

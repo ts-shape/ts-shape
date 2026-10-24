@@ -6,6 +6,62 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 22: business partners and nesting recall
+
+Results change for `identify_objects` typing of order attributes and for its
+nesting (`parent_uuid`); screening is unchanged.
+
+**Business partners**
+
+- A recurring pool that changes only with an order outside production is that
+  order's partner, also when the order is held for minutes or hours (before,
+  only one-sample stamps or orders arriving at random counted). The host must
+  read as an order (`sales_order`, `purchase_order` or the `order` group), 0.15
+  ahead of every other type. The pool gets +0.40 for `business_partner` and
+  -0.30 for recipe, material and article.
+  - A sales order 0.15 ahead of a purchase order adds +0.20 for `customer`, a
+    purchase order +0.20 for `supplier`. Otherwise the group
+    `business_partner` is reported, as before.
+  - Not for a pool with production structure of its own (it holds batches or
+    serials, or changes with a production id), one that changes at cycle rate,
+    or one that changes at fewer than a quarter of the order's changes (a tool).
+  - Before, such a pool (e.g. `CUST-…` on `SO-…` orders) was typed `material`
+    or `recipe`. A work order with no batch or serial signal that reads as an
+    order keeps its recipe a recipe unless the order type is clear.
+- New business-partner prefixes: customer `CU-`, `KND`, `KUNDE`, `DEB`;
+  supplier `SUPP`, `SUPPL`, `VDR`, `V-`, `LIEF`, `KRED` (`CUST`, `KD`, `SUP`,
+  `VEND`, `LF` as before). `CU-` and `V-` count only with a separator after the
+  letters. The weight is 0.25, as for every prefix.
+- `type_scores` and `explain()` show the new facts (`attribute_of_order`,
+  `attribute_of_sales_order`, `attribute_of_purchase_order`).
+- Benchmark type accuracy: 0.871 → 0.891 held-out, 0.880 → 0.890 never-seen.
+
+**Nesting**
+
+- A batch's material that is mistyped on its own values now nests the batch.
+  - A tool or fixture that nests the batch both ways counts as its material or
+    recipe (a tiny pool held for days).
+  - An order, package, batch or lot that nests the batch both ways and holds
+    another such id is the material (it holds the work order).
+  - Neither applies to an id with another order or batch inside it.
+- Of parents of the same level for a batch, after the finer id, the one whose
+  values read like a material wins: its format and prefix evidence, a number
+  of 6+ digits against a number of up to 3 digits or a `_`-segmented name.
+  Before, a material and a recipe that changed together one to one were
+  separated by presence count and uuid. The package-first rule no longer
+  applies to batch parents.
+- A serial that holds other serials (4× the presences, both ways) and nests in
+  a material, recipe or order (lift 0.7+) is a batch for the nesting: batches
+  shorter than 30 minutes now hold their serials. Its reported type is
+  unchanged.
+- A serial whose batch is polled too coarsely to show the alignment goes into
+  that batch when the batch nests in another id the serial verifiably lies in
+  (a farther level, a setup resource, a package, or a mistyped order or
+  material). Before, only a verified production parent served this way.
+- Benchmark nesting precision / recall: held-out 0.83 / 0.77 → 0.93 / 0.93,
+  never-seen 0.93 / 0.77 → 0.96 / 0.89. The benchmark test now requires 0.90 /
+  0.90 (was 0.80 / 0.75), and type accuracy 0.87 (was 0.85).
+
 ## October 2026, round 21: traceability
 
 Results change for the traceability classes where noted.

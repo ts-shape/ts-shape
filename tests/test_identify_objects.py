@@ -76,7 +76,16 @@ def _plant() -> dict[str, pd.DataFrame]:
     holds = rng.integers(60, 180, len(recipes))
     seq = [r for r, h in zip(recipes, holds, strict=True) for _ in range(h)]
     f["c"] = _sig("c", pd.date_range(START, periods=len(seq), freq="1min"), seq)
-    f["d"] = _held("d", ["T01", "T02", "T01", "T03"], 72, freq="10min")
+    # the tool is changed during the setup, minutes after the batch change
+    # (a tool changed exactly at every batch change is the batch's material
+    # or recipe as far as the data can tell)
+    f["d"] = _held(
+        "d",
+        ["T01", "T02", "T01", "T03"],
+        72,
+        freq="10min",
+        start=START + pd.Timedelta("7min"),
+    )
     f["e"] = _stamped("e", [f"WT{i % 12 + 1:02d}" for i in range(240)], gap="2min")
     f["f"] = _held(
         "f",
@@ -330,6 +339,109 @@ def test_a_parent_on_another_line_is_never_chosen():
         assert _row(out, uuid)["parent_uuid"] is None
 
 
+def _setups(seed, materials, *, orders_per_setup=0, recipe_of=None):
+    """Changeovers every 10-16 h, each to the next of ``materials``; batches
+    of 90-150 min restart at each changeover (and at each work order when
+    there are ``orders_per_setup`` per changeover); a part a minute."""
+    rng = np.random.default_rng(seed)
+    t, b = 0.0, 0
+    steps: dict[str, list[tuple[float, str]]] = {"m": [], "w": [], "b": []}
+    for i, material in enumerate(materials):
+        hold = rng.uniform(10, 16) * 3600
+        steps["m"].append((t, material))
+        cuts = [
+            t + k * hold / max(orders_per_setup, 1) for k in range(orders_per_setup)
+        ]
+        for k, cut in enumerate(cuts):
+            steps["w"].append((cut, f"WO-2025-{1500 + i * orders_per_setup + k:06d}"))
+        bt = t
+        while bt < t + hold:
+            steps["b"].append((bt, f"B250303-{b + 1:03d}"))
+            b += 1
+            nxt = bt + rng.uniform(90, 150) * 60
+            bt = min([c for c in cuts if bt < c < nxt] or [nxt])
+        t += hold
+    grid = np.arange(0, t, 60.0)
+    times = START + pd.to_timedelta(grid, unit="s")
+
+    def held(uuid, pairs):
+        at = np.searchsorted([s for s, _ in pairs], grid, side="right") - 1
+        return _sig(uuid, times, [pairs[i][1] for i in at])
+
+    frames = [held(u, p) for u, p in steps.items() if p]
+    if recipe_of is not None:
+        frames.append(held("r", [(s, recipe_of[v]) for s, v in steps["m"]]))
+    frames.append(_sig("s", times, [f"SN{100000 + k}" for k in range(len(grid))]))
+    return pd.concat(frames, ignore_index=True)
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_material_held_for_days_still_holds_its_batches(seed):
+    # three materials, each held 10-16 h with no work order: on its values a
+    # tiny pool held for half a day reads like a tool, yet every batch lies
+    # in it and changes with it
+    pool = ["3KA5130-1AB", "6ES7214-1AG", "3RT2016-1BB"]
+    out = identify_objects(_setups(seed, [pool[i % 3] for i in range(6)]))
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+    assert _row(out, "s")["parent_uuid"] == "b", out.explain("s")
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_material_never_revisited_holds_its_batches(seed):
+    # seven materials, never revisited, two work orders each: the material
+    # reads like an order on its own values, but it holds the work orders
+    materials = [f"{10423317 + 211 * i}" for i in range(7)]
+    out = identify_objects(_setups(seed, materials, orders_per_setup=2))
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+    assert _row(out, "w")["parent_uuid"] is None
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_batch_goes_to_the_material_not_its_one_to_one_recipe(seed):
+    # material and recipe change together one to one: the material number
+    # (eight digits) is preferred over the recipe name
+    numbers = ["10423317", "10423520", "10431177"]
+    names = ["RZ_PA66_GF30_v3", "RZ_PA6_GF15_v2", "RZ_PBT_T20_v1"]
+    out = identify_objects(
+        _setups(
+            seed,
+            [numbers[i % 3] for i in range(6)],
+            recipe_of=dict(zip(numbers, names, strict=True)),
+        )
+    )
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+    assert _row(out, "r")["parent_uuid"] is None
+
+
+@pytest.mark.parametrize(
+    ("seed", "child"),
+    [
+        (1048, "serial"),  # batch polled every 60 s, a part every 34 s
+        (1052, "serial"),
+        (1094, "serial"),  # batches of 27 min read as serials
+        (1094, "batch"),
+        (2000, "serial"),
+        (2000, "batch"),
+    ],
+)
+def test_benchmark_edges_found_by_the_nesting(seed, child):
+    # tuning seeds of the generator (not the held-out split): a serial whose
+    # batch is polled too coarsely to show the alignment, nested through the
+    # id both lie in; batches shorter than half an hour that read as serials
+    frame, labels = ts_shape.make_object_signals(seed=seed, days=3)
+    out = identify_objects(frame)
+    rows = labels[labels["object_type"] == child]
+    found = {
+        u: _row(out, u)["parent_uuid"]
+        for u, p in zip(rows["uuid"], rows["parent_uuid"], strict=True)
+        if p is not None
+    }
+    expected = {
+        u: p for u, p in zip(rows["uuid"], rows["parent_uuid"], strict=True) if p
+    }
+    assert expected and found == expected
+
+
 @pytest.mark.parametrize(
     "fmt",
     ["T3-{:07d}", "A-{:08d}", "3-{:07d}", "T{}-0000123", "{:020d}", "{:024d}"],
@@ -520,6 +632,146 @@ def test_attribute_of_a_work_order_is_a_recipe_of_an_order_a_partner():
     assert types["b"] == "batch", out.explain("b")
     assert types["cu"] == "business_partner", out.explain("cu")
     assert types["so"] == "order", out.explain("so")
+
+
+def _orders_with_partner(order_of, pool, *, column="value_string", seed=3):
+    """40 orders held 30-50 min (no random arrivals, no one-sample stamps),
+    each with a partner drawn from ``pool`` that comes back across orders."""
+    rng = np.random.default_rng(seed)
+    n = 40
+    seq = np.repeat(np.arange(n), rng.integers(30, 50, n))
+    partner = rng.choice(len(pool), n)
+    t = pd.date_range(START, periods=len(seq), freq="1min")
+    order = [order_of(i) for i in range(n)]
+    order_column = "value_integer" if isinstance(order[0], int) else "value_string"
+    return pd.concat(
+        [
+            _sig("o", t, [order[i] for i in seq], order_column),
+            _sig("p", t, [pool[partner[i]] for i in seq], column),
+        ],
+        ignore_index=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("order_of", "pool", "column", "order_type", "partner_type"),
+    [
+        (
+            lambda i: f"SO-{2500100 + 7 * i}",
+            [f"CUST-{101 + 13 * k:04d}" for k in range(9)],
+            "value_string",
+            "sales_order",
+            "customer",
+        ),
+        (
+            lambda i: f"PO-{4500100 + 3 * i}",
+            [f"SUP-{20 + 7 * k:04d}" for k in range(7)],
+            "value_string",
+            "purchase_order",
+            "supplier",
+        ),
+        (
+            lambda i: f"PO-{4500100 + 3 * i}",
+            [f"V-{20017 + 31 * k}" for k in range(7)],
+            "value_string",
+            "purchase_order",
+            "supplier",
+        ),
+        (
+            lambda i: f"{8800000 + 11 * i}",
+            [f"P{170 + 13 * k}" for k in range(8)],
+            "value_string",
+            "order",
+            "business_partner",
+        ),
+        (
+            lambda i: f"SO-{2500100 + 7 * i}",
+            [f"P{170 + 13 * k}" for k in range(8)],
+            "value_string",
+            "sales_order",
+            "customer",
+        ),
+        (
+            lambda i: 8800000 + 11 * i,
+            [100234 + 17 * k for k in range(8)],
+            "value_integer",
+            "order",
+            "business_partner",
+        ),
+        (
+            lambda i: f"SO-{2500100 + 7 * i}",
+            [100234 + 17 * k for k in range(8)],
+            "value_integer",
+            "sales_order",
+            "customer",
+        ),
+    ],
+    ids=["cust-so", "sup-po", "v-po", "plain", "plain-so", "numeric", "numeric-so"],
+)
+def test_the_partner_of_an_order_is_a_business_partner(
+    order_of, pool, column, order_type, partner_type
+):
+    # a recurring pool that changes only with an order outside production,
+    # held like the orders (not stamped, no random arrivals): before, a
+    # recipe or material (same pool shape, same holds)
+    out = identify_objects(_orders_with_partner(order_of, pool, column=column))
+    assert out["o"] == order_type, out.explain("o")
+    assert out["p"] == partner_type, out.explain("p")
+    assert out.table.set_index("uuid").loc["p", "attribute_of"] == "o"
+    evidence = " ".join(_row(out, "p")["evidence"])
+    assert "business partner" in evidence
+
+
+def _recipe_on_work_orders(*, lines=True, seed=3):
+    """Work orders held 3-5 h with a recipe each from a pool of four; four
+    batches per order and a serial every two minutes."""
+    rng = np.random.default_rng(seed)
+    n = 14
+    holds = rng.integers(20, 40, n) * 8
+    pool = ["RZ_PA66_GF30_v3", "RZ_PA6_GF15_v2", "RZ_PBT_T20_v1", "RZ_PA66_GF50_v4"]
+    recipe = [pool[i] for i in rng.integers(0, 4, n)]
+    wo, rcp, batch = [], [], []
+    for i, h in enumerate(holds):
+        wo += [f"WO-2025-{1500 + i:06d}"] * h
+        rcp += [recipe[i]] * h
+        for k in range(4):
+            batch += [f"B250303-{4 * i + k + 1:03d}"] * (h // 4)
+    t = pd.date_range(START + pd.Timedelta("7min"), periods=len(wo), freq="1min")
+    frames = [_sig("w", t, wo), _sig("r", t, rcp)]
+    if lines:
+        serial = [f"SN{100000 + j // 2}" for j in range(len(wo))]
+        frames += [_sig("b", t, batch), _sig("s", t, serial)]
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_a_recipe_of_work_orders_is_no_business_partner():
+    out = identify_objects(_recipe_on_work_orders())
+    assert out["w"] == "work_order", out.explain("w")
+    assert out["r"] == "recipe", out.explain("r")
+    assert _row(out, "r")["attribute_of"] == "w"
+    assert not any("business partner" in e for e in _row(out, "r")["evidence"])
+    # without batches and serials the work order looks like an order on its
+    # own values; the recipe is still no partner of a host that is barely
+    # an order
+    alone = identify_objects(_recipe_on_work_orders(lines=False))
+    assert alone["r"] not in ("customer", "supplier", "business_partner")
+
+
+def test_partner_prefixes_need_their_separator():
+    facts = identify._format_facts
+    seen = [START] * 4
+    assert "prefix:V-" in facts(["V-20017", "V-20048", "V-20079", "V-20110"], seen)
+    assert "prefix:CU-" in facts(["CU-0815", "CU-0816", "CU-0911", "CU-1001"], seen)
+    # a lone V or CU is a valve or copper as often as a vendor or customer
+    assert not any(
+        k.startswith("prefix:") for k in facts(["V1", "V2", "V3", "V12"], seen)
+    )
+    assert not any(
+        k.startswith("prefix:") for k in facts(["CUZN37", "CU2", "CU7", "CU9"], seen)
+    )
+    for prefix in ("KUNDE", "DEB", "KND", "SUPP", "LIEF", "KRED", "VDR"):
+        texts = [f"{prefix}{1000 + 37 * k}" for k in range(4)]
+        assert f"prefix:{prefix}" in facts(texts, seen)
 
 
 def test_a_fixed_count_of_parts_is_a_handling_unit():
