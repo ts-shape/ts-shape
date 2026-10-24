@@ -9,6 +9,7 @@ returns the interval table of :func:`ts_shape.eventlog.object_intervals`
 
 from __future__ import annotations
 
+from collections.abc import Callable, Collection
 from typing import Any, Literal, TypeAlias
 
 import numpy as np
@@ -18,6 +19,44 @@ import pandas as pd
 IntervalEnd: TypeAlias = Literal["last_sample", "next_change"]
 
 INTERVAL_ENDS: tuple[str, ...] = ("last_sample", "next_change")
+
+#: ``exclude`` of the traceability classes (as :attr:`ObjectSpec.exclude`).
+Exclude: TypeAlias = "str | Collection[object] | Callable[[pd.Series], object] | None"
+
+
+def exclude_readings(values: pd.Series, exclude: Exclude, uuid: str) -> pd.Series:
+    """``values`` (one id signal, time order) with excluded readings replaced.
+
+    ``exclude`` is read like :attr:`ts_shape.eventlog.ObjectSpec.exclude`
+    (``"misreads"``, a collection of values, a callable, ``None``). A run of
+    excluded readings between two readings of the same id takes that id (a
+    gap in the data); anywhere else it becomes a missing reading (the visit
+    before it ends there).
+    """
+    if exclude is None or values.empty:
+        return values
+    # Lazy: ``ts_shape.eventlog`` imports the detector packs.
+    from ts_shape.eventlog.objects import ObjectSpec, _exclusion_mask
+
+    s = values.reset_index(drop=True)
+    bad = _exclusion_mask(ObjectSpec(uuid, "serial", exclude=exclude), s)
+    if bad is None or not bad.any():
+        return values
+    codes = np.asarray(pd.factorize(s, use_na_sentinel=True)[0], dtype=np.int64)
+    n = len(s)
+    pos = np.arange(n, dtype=np.int64)
+    prev = np.maximum.accumulate(np.where(bad, -1, pos))
+    nxt = np.minimum.accumulate(np.where(bad, n, pos)[::-1])[::-1]
+    prev_code = np.where(prev >= 0, codes[prev.clip(min=0)], -1)
+    next_code = np.where(nxt < n, codes[nxt.clip(max=n - 1)], -1)
+    fill = bad & (prev_code == next_code) & (prev_code >= 0)
+    out = s.copy()
+    if fill.any():
+        out.iloc[np.flatnonzero(fill)] = s.iloc[prev[fill]].to_numpy()
+    out = out.mask(pd.Series(bad & ~fill))
+    out.index = values.index
+    return out
+
 
 #: Columns of ``to_intervals()``: those of
 #: :func:`ts_shape.eventlog.object_intervals`, then ``station``.

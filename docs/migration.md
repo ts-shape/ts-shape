@@ -6,6 +6,23 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 21: traceability
+
+Results change for the traceability classes where noted.
+
+- **Event logs:** `MultiProcessTraceabilityEvents.lead_time`, `parallel_activity` and `handover_log` now convert with `to_event_log`. `lead_time` and `parallel_activity` get `start`, `end` and `duration_seconds`; `handover_log` gets `systime`. These are copies of `first_seen` / `last_seen` / `lead_time_seconds`, `overlap_*` and `timestamp`, added at the end; the other columns are unchanged.
+  - `parallel_activity` and `handover_log` link the serial and both stations; `lead_time` links the serial.
+  - `LabelRule.object_columns` takes a tuple of columns.
+- **Lead time:** `lead_time()` of `ValueTraceabilityEvents` and `MultiProcessTraceabilityEvents` ends at the latest visit end. Before, it used the end of the last-started visit. X at A [0, 20] and B [5, 10] now has 1200 s, not 600 s. This now matches `object_kpis`.
+- **Routing gaps:** in `RoutingTraceabilityEvents`, a step sample with no item (a missing or empty id) or no step value is no visit, and it ends the visit before it.
+  - Before, the visits around such a sample merged.
+  - Before, `""` was an item and a missing step value was the station `"State nan"`.
+- **Handovers:** `MultiProcessTraceabilityEvents.handover_log` takes the item read just before the trigger. An id written at the trigger instant is the next item arriving, not the transferred one. A missing handover reading holds the previous value, so `1, NaN, 1` is one transfer.
+- **Timestamps:** rows without a timestamp no longer crash the Routing timeline or `handover_log`; they are left out. Readings at the same timestamp keep their input order.
+- **Timeline log attributes:** the `MultiProcessTraceabilityEvents.build_timeline` event log carries the station in `ts_shape:lifecycle_state` and `step_sequence` in `ts_shape:direction`. Before, these were the literal texts `station_name` / `station_sequence`. Event ids are unchanged.
+- **Missing signals:** `MultiProcessTraceabilityEvents` warns about `processes` and `handovers` signals that are not in the data.
+- **Misreads (opt-in):** new `exclude=` on the three classes, the same as `ObjectSpec.exclude` (`"misreads"`, values, or a callable). The default `None` keeps every reading. `"misreads"` is planned to become the default in the next major release.
+
 ## October 2026, round 20 (part N): object analytics (new)
 
 New API; results of existing calls are unchanged except where noted.

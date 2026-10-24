@@ -31,8 +31,10 @@ from ts_shape.utils.deprecation import deprecated_attribute, renamed_kwargs
 from ts_shape.utils.runs import Runs, run_bounds, run_labels, total_seconds
 
 from ._trace_objects import (
+    Exclude,
     IntervalEnd,
     check_interval_end,
+    exclude_readings,
     intervals_frame,
     next_change_ends,
 )
@@ -40,6 +42,58 @@ from ._trace_objects import (
 logger = logging.getLogger(__name__)
 
 _Ints: TypeAlias = npt.NDArray[np.int64]
+
+#: Columns of ``lead_time()``; ``start`` / ``end`` / ``duration_seconds``
+#: repeat ``first_seen`` / ``last_seen`` / ``lead_time_seconds``.
+_LEAD_TIME_COLUMNS = (
+    "item_id",
+    "first_station",
+    "last_station",
+    "first_seen",
+    "last_seen",
+    "lead_time_seconds",
+    "stations_visited",
+    "station_path",
+    "has_parallel",
+    "uuid",
+    "start",
+    "end",
+    "duration_seconds",
+)
+#: Columns of ``parallel_activity()``; ``start`` / ``end`` /
+#: ``duration_seconds`` repeat the ``overlap_*`` columns.
+_PARALLEL_COLUMNS = (
+    "item_id",
+    "station_a",
+    "station_b",
+    "overlap_start",
+    "overlap_end",
+    "overlap_seconds",
+    "uuid",
+    "start",
+    "end",
+    "duration_seconds",
+)
+#: Columns of ``handover_log()``; ``systime`` repeats ``timestamp``.
+_HANDOVER_COLUMNS = (
+    "timestamp",
+    "item_id",
+    "from_station",
+    "to_station",
+    "handover_uuid",
+    "handover_value",
+    "uuid",
+    "systime",
+)
+
+
+def _with_interval_twins(df: pd.DataFrame) -> pd.DataFrame:
+    """``parallel_activity`` rows plus ``start`` / ``end`` / ``duration_seconds``."""
+    out = df.copy()
+    out["start"] = out["overlap_start"]
+    out["end"] = out["overlap_end"]
+    out["duration_seconds"] = out["overlap_seconds"].astype("float64")
+    return out
 
 
 def _grouped_searchsorted(
@@ -184,6 +238,7 @@ class MultiProcessTraceabilityEvents(Base):
         value_column_id: str = "value_string",
         value_column_handover: str = "value_integer",
         time_column: str = "systime",
+        exclude: Exclude = None,
     ) -> None:
         """Initialize multi-process traceability.
 
@@ -196,14 +251,27 @@ class MultiProcessTraceabilityEvents(Base):
                 - uuid: UUID of the handover signal.
                 - from_station: Station name the item leaves.
                 - to_station: Station name the item arrives at.
-                Handover signal value > 0 (or True) indicates a transfer event.
+                A rising edge of the handover signal to a value > 0 (or True)
+                is a transfer event; a missing reading holds the previous
+                value.
             event_uuid: UUID to tag derived events with.
             value_column_id: Column holding item ID strings in process signals.
             value_column_handover: Column holding handover trigger values.
             time_column: Name of timestamp column.
+            exclude: Readings of the process ID signals that are not item
+                IDs, read like :attr:`ts_shape.eventlog.ObjectSpec.exclude`:
+                ``"misreads"`` (:func:`ts_shape.utils.id_codes.is_misread`:
+                ``NOREAD``, ``#N/A``, ``0``, ``65535``, blanks, ...), a
+                collection of values, or a callable returning a boolean mask
+                over a signal's readings in time order. Between two readings
+                of the same item an excluded reading is a gap (the item is
+                held across it); anywhere else it is an empty reading.
+                ``None`` (default) keeps every reading; ``"misreads"`` is
+                planned to become the default in the next major release.
         """
         super().__init__(dataframe, time_column=time_column)
         self.processes = processes
+        self.exclude = exclude
         self.handovers = handovers or []
         self.event_uuid = event_uuid
         self.value_column_id = value_column_id
@@ -220,12 +288,17 @@ class MultiProcessTraceabilityEvents(Base):
         self._process_data: dict[str, pd.DataFrame] = {}
         for proc in self.processes:
             uid = proc["id_uuid"]
+            # Stable: readings at the same instant keep their input order.
             sdf = (
                 self.dataframe[self.dataframe["uuid"] == uid]
                 .copy()
-                .sort_values(self.time_column)
+                .sort_values(self.time_column, kind="stable")
             )
             sdf[self.time_column] = pd.to_datetime(sdf[self.time_column])
+            if exclude is not None and value_column_id in sdf.columns:
+                sdf[value_column_id] = exclude_readings(
+                    sdf[value_column_id], exclude, uid
+                )
             self._process_data[uid] = sdf
 
         # Pre-filter handover data per uuid
@@ -235,7 +308,7 @@ class MultiProcessTraceabilityEvents(Base):
             hdf = (
                 self.dataframe[self.dataframe["uuid"] == uid]
                 .copy()
-                .sort_values(self.time_column)
+                .sort_values(self.time_column, kind="stable")
             )
             hdf[self.time_column] = pd.to_datetime(hdf[self.time_column])
             self._handover_data[uid] = hdf
@@ -328,6 +401,11 @@ class MultiProcessTraceabilityEvents(Base):
         Handles parallel stations: the same item may appear at overlapping
         time intervals at different stations (concurrent processing), or
         different items at parallel cells of the same station type.
+
+        On one cell's ID signal a visit ends where the reading changes (an
+        empty or missing reading is no item) or, for the same item, at a
+        time gap longer than 3x the signal's median sample interval (a rework
+        loop back to the station).
 
         Args:
             infer_dwell_from_next: When False (default), an interval's ``end`` is
@@ -446,36 +524,28 @@ class MultiProcessTraceabilityEvents(Base):
             - first_station: First station visited.
             - last_station: Last station visited.
             - first_seen: Earliest timestamp.
-            - last_seen: Latest timestamp.
+            - last_seen: Latest timestamp (the latest visit end, also when
+                visits overlap).
             - lead_time_seconds: Total elapsed time.
             - stations_visited: Number of distinct stations.
             - station_path: Ordered station names (" -> ").
             - has_parallel: Whether item had parallel processing.
             - uuid: Event UUID.
+            - start: Same as first_seen.
+            - end: Same as last_seen.
+            - duration_seconds: Same as lead_time_seconds (float seconds).
         """
         timeline = self.build_timeline()
 
         if timeline.empty:
-            return pd.DataFrame(
-                columns=[
-                    "item_id",
-                    "first_station",
-                    "last_station",
-                    "first_seen",
-                    "last_seen",
-                    "lead_time_seconds",
-                    "stations_visited",
-                    "station_path",
-                    "has_parallel",
-                    "uuid",
-                ]
-            )
+            return pd.DataFrame(columns=list(_LEAD_TIME_COLUMNS))
 
         rows: list[dict[str, Any]] = []
         for item_id, grp in timeline.groupby("item_id"):
             grp = grp.sort_values("start")
             first_seen = grp["start"].iloc[0]
-            last_seen = grp["end"].iloc[-1]
+            # The latest leave: a parallel visit can end after a later one.
+            last_seen = grp["end"].max()
             station_path = " -> ".join(grp["station"].tolist())
             rows.append(
                 {
@@ -489,6 +559,9 @@ class MultiProcessTraceabilityEvents(Base):
                     "station_path": station_path,
                     "has_parallel": grp["is_parallel"].any(),
                     "uuid": self.event_uuid,
+                    "start": first_seen,
+                    "end": last_seen,
+                    "duration_seconds": float((last_seen - first_seen).total_seconds()),
                 }
             )
 
@@ -510,21 +583,21 @@ class MultiProcessTraceabilityEvents(Base):
             - overlap_end: End of overlap period.
             - overlap_seconds: Duration of overlap.
             - uuid: Event UUID.
+            - start: Same as overlap_start.
+            - end: Same as overlap_end.
+            - duration_seconds: Same as overlap_seconds (float seconds).
         """
+        out = self._overlaps()
+        if out.empty:
+            return pd.DataFrame(columns=list(_PARALLEL_COLUMNS))
+        return _with_interval_twins(out)
+
+    def _overlaps(self) -> pd.DataFrame:
+        """``parallel_activity`` rows without the ``start`` / ``end`` twins."""
         timeline = self.build_timeline()
 
         if timeline.empty:
-            return pd.DataFrame(
-                columns=[
-                    "item_id",
-                    "station_a",
-                    "station_b",
-                    "overlap_start",
-                    "overlap_end",
-                    "overlap_seconds",
-                    "uuid",
-                ]
-            )
+            return pd.DataFrame(columns=list(_PARALLEL_COLUMNS[:7]))
 
         pairs = _overlap_pairs(timeline)
         if pairs is None:
@@ -550,17 +623,7 @@ class MultiProcessTraceabilityEvents(Base):
                     "uuid": self.event_uuid,
                 }
             )
-        return pd.DataFrame(
-            columns=[
-                "item_id",
-                "station_a",
-                "station_b",
-                "overlap_start",
-                "overlap_end",
-                "overlap_seconds",
-                "uuid",
-            ]
-        )
+        return pd.DataFrame(columns=list(_PARALLEL_COLUMNS[:7]))
 
     def _parallel_activity_loop(self, timeline: pd.DataFrame) -> list[dict[str, Any]]:
         """Pairwise overlaps (fallback for NaT bounds or tied starts)."""
@@ -600,9 +663,13 @@ class MultiProcessTraceabilityEvents(Base):
     def handover_log(self) -> pd.DataFrame:
         """Extract handover events and correlate with item IDs.
 
-        For each handover signal, detects trigger points (value > 0 or
-        value changes to a truthy state) and resolves which item was being
-        transferred based on the from-station's ID signal at that time.
+        For each handover signal, detects trigger points (a rising edge to a
+        value > 0 or True; a missing reading holds the previous value) and
+        resolves which item was being transferred from the from-station's ID
+        signal: its last reading *before* the trigger, so an ID written at
+        the trigger instant (the next item arriving) is not the transferred
+        item. A trigger whose reading before it is empty is skipped. Rows
+        without a timestamp are left out.
 
         Returns:
             DataFrame with columns:
@@ -613,19 +680,10 @@ class MultiProcessTraceabilityEvents(Base):
             - handover_uuid: UUID of the handover signal.
             - handover_value: Raw value of the handover signal.
             - uuid: Event UUID.
+            - systime: Same as timestamp.
         """
         if not self.handovers:
-            return pd.DataFrame(
-                columns=[
-                    "timestamp",
-                    "item_id",
-                    "from_station",
-                    "to_station",
-                    "handover_uuid",
-                    "handover_value",
-                    "uuid",
-                ]
-            )
+            return pd.DataFrame(columns=list(_HANDOVER_COLUMNS))
 
         rows: list[dict[str, Any]] = []
         for ho in self.handovers:
@@ -637,12 +695,18 @@ class MultiProcessTraceabilityEvents(Base):
             if hdf.empty:
                 continue
 
-            # Find trigger points: value > 0 after being 0 or NaN
+            # Find trigger points: value > 0 after being <= 0. A missing
+            # reading holds the previous value (0 before the first reading).
             hvals = hdf[[self.time_column, self.value_column_handover]].copy()
-            hvals["val"] = to_numeric_checked(
-                hvals[self.value_column_handover],
-                what=f"handover {ho_uuid!r} ({self.value_column_handover!r})",
-            ).fillna(0)
+            hvals = hvals[hvals[self.time_column].notna()]
+            hvals["val"] = (
+                to_numeric_checked(
+                    hvals[self.value_column_handover],
+                    what=f"handover {ho_uuid!r} ({self.value_column_handover!r})",
+                )
+                .ffill()
+                .fillna(0)
+            )
             hvals["prev"] = hvals["val"].shift(fill_value=0)
             triggers = hvals[(hvals["val"] > 0) & (hvals["prev"] <= 0)]
 
@@ -659,19 +723,25 @@ class MultiProcessTraceabilityEvents(Base):
             for fuid in from_uuids:
                 fdf = self._process_data.get(fuid, pd.DataFrame())
                 if not fdf.empty:
-                    from_frames.append(fdf[[self.time_column, self.value_column_id]])
+                    ids = fdf[[self.time_column, self.value_column_id]]
+                    from_frames.append(ids[ids[self.time_column].notna()])
 
-            if not from_frames:
+            from_ids = (
+                pd.concat(from_frames).sort_values(self.time_column, kind="stable")
+                if from_frames
+                else None
+            )
+            if from_ids is None or from_ids.empty:
                 continue
 
-            from_ids = pd.concat(from_frames).sort_values(self.time_column)
-
             trigger_times = triggers[[self.time_column]].copy()
+            # The item present just before the trigger (not one read at it).
             merged = pd.merge_asof(
                 trigger_times,
                 from_ids,
                 on=self.time_column,
                 direction="backward",
+                allow_exact_matches=False,
             )
 
             for _, row in merged.iterrows():
@@ -691,23 +761,18 @@ class MultiProcessTraceabilityEvents(Base):
                         "handover_uuid": ho_uuid,
                         "handover_value": ho_val,
                         "uuid": self.event_uuid,
+                        "systime": t,
                     }
                 )
 
         if not rows:
-            return pd.DataFrame(
-                columns=[
-                    "timestamp",
-                    "item_id",
-                    "from_station",
-                    "to_station",
-                    "handover_uuid",
-                    "handover_value",
-                    "uuid",
-                ]
-            )
+            return pd.DataFrame(columns=list(_HANDOVER_COLUMNS))
 
-        return pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
+        return (
+            pd.DataFrame(rows)
+            .sort_values("timestamp", kind="stable")
+            .reset_index(drop=True)
+        )
 
     # ------------------------------------------------------------------
     # station_statistics

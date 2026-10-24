@@ -852,6 +852,150 @@ def _ref_multiprocesstraceability_parallel_activity(self) -> pd.DataFrame:
     )
 
 
+_MULTI_LEAD_COLUMNS = [
+    "item_id",
+    "first_station",
+    "last_station",
+    "first_seen",
+    "last_seen",
+    "lead_time_seconds",
+    "stations_visited",
+    "station_path",
+    "has_parallel",
+    "uuid",
+]
+
+
+def _ref_multiprocesstraceability_lead_time(self) -> pd.DataFrame:
+    """``lead_time`` before the ``start`` / ``end`` / ``duration_seconds`` twins."""
+    timeline = self.build_timeline()
+    if timeline.empty:
+        return pd.DataFrame(columns=_MULTI_LEAD_COLUMNS)
+    rows: list[dict[str, Any]] = []
+    for item_id, grp in timeline.groupby("item_id"):
+        grp = grp.sort_values("start")
+        first_seen = grp["start"].iloc[0]
+        # Round 21: the latest visit end (was the end of the last-started).
+        last_seen = grp["end"].max()
+        rows.append(
+            {
+                "item_id": item_id,
+                "first_station": grp["station"].iloc[0],
+                "last_station": grp["station"].iloc[-1],
+                "first_seen": first_seen,
+                "last_seen": last_seen,
+                "lead_time_seconds": (last_seen - first_seen).total_seconds(),
+                "stations_visited": grp["station"].nunique(),
+                "station_path": " -> ".join(grp["station"].tolist()),
+                "has_parallel": grp["is_parallel"].any(),
+                "uuid": self.event_uuid,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+_MULTI_HANDOVER_COLUMNS = [
+    "timestamp",
+    "item_id",
+    "from_station",
+    "to_station",
+    "handover_uuid",
+    "handover_value",
+    "uuid",
+]
+
+
+def _ref_multiprocesstraceability_handover_log(self) -> pd.DataFrame:
+    """``handover_log`` before the ``systime`` twin."""
+    rows: list[dict[str, Any]] = []
+    for ho in self.handovers:
+        hdf = self._handover_data.get(ho["uuid"], pd.DataFrame())
+        if hdf.empty:
+            continue
+        hvals = hdf[[self.time_column, self.value_column_handover]].copy()
+        # Round 21: rows without a timestamp are left out; a missing
+        # reading holds the previous value (was: counted as 0).
+        hvals = hvals[hvals[self.time_column].notna()]
+        hvals["val"] = (
+            pd.to_numeric(hvals[self.value_column_handover], errors="coerce")
+            .ffill()
+            .fillna(0)
+        )
+        hvals["prev"] = hvals["val"].shift(fill_value=0)
+        triggers = hvals[(hvals["val"] > 0) & (hvals["prev"] <= 0)]
+        if triggers.empty:
+            continue
+        from_frames = [
+            self._process_data[u][[self.time_column, self.value_column_id]]
+            for u in self._station_uuids.get(ho["from_station"], [])
+            if not self._process_data[u].empty
+        ]
+        if not from_frames:
+            continue
+        from_ids = pd.concat(from_frames).sort_values(self.time_column, kind="stable")
+        from_ids = from_ids[from_ids[self.time_column].notna()]
+        if from_ids.empty:
+            continue
+        # Round 21: the item read before the trigger (was: at or before).
+        merged = pd.merge_asof(
+            triggers[[self.time_column]].copy(),
+            from_ids,
+            on=self.time_column,
+            direction="backward",
+            allow_exact_matches=False,
+        )
+        for _, row in merged.iterrows():
+            item_id = row.get(self.value_column_id, "")
+            if pd.isna(item_id) or item_id == "":
+                continue
+            t = row[self.time_column]
+            match = triggers[triggers[self.time_column] == t]
+            rows.append(
+                {
+                    "timestamp": t,
+                    "item_id": str(item_id),
+                    "from_station": ho["from_station"],
+                    "to_station": ho["to_station"],
+                    "handover_uuid": ho["uuid"],
+                    "handover_value": match["val"].iloc[0] if not match.empty else 0,
+                    "uuid": self.event_uuid,
+                }
+            )
+    if not rows:
+        return pd.DataFrame(columns=_MULTI_HANDOVER_COLUMNS)
+    return (
+        pd.DataFrame(rows)
+        .sort_values("timestamp", kind="stable")
+        .reset_index(drop=True)
+    )
+
+
+def _without_twins(out: pd.DataFrame, twins: dict[str, str]) -> pd.DataFrame:
+    """``out`` without its added twin columns, after checking they are copies."""
+    for legacy, twin in twins.items():
+        assert list(out.columns).index(twin) > list(out.columns).index(legacy)
+        pd.testing.assert_series_equal(
+            out[twin], out[legacy].astype(out[twin].dtype), check_names=False
+        )
+    return out.drop(columns=list(twins.values()))
+
+
+_LEAD_TWINS = {
+    "first_seen": "start",
+    "last_seen": "end",
+    "lead_time_seconds": "duration_seconds",
+}
+_PARALLEL_TWINS = {
+    "overlap_start": "start",
+    "overlap_end": "end",
+    "overlap_seconds": "duration_seconds",
+}
+HANDOVERS = [
+    {"uuid": "ho", "from_station": "W1", "to_station": "P"},
+    {"uuid": "route", "from_station": "P", "to_station": "W2"},
+]
+
+
 def _ref_flowconstraint_blocked_events(
     self,
     *,
@@ -1636,8 +1780,19 @@ def _ref_routingtraceability_build_routing_timeline(
             self.value_column_routing: "routing_value",
         }
     )
-    merged = merged.dropna(subset=["item_id"])
-    merged["item_id"] = merged["item_id"].astype(str)
+    # Round 21: a routing sample without an item (missing or "") or without
+    # a routing value is no visit and ends the run before it (was: dropped,
+    # so the runs around it merged; "" was an item, a missing value a state).
+    merged["item_id"] = (
+        merged["item_id"].astype(str).where(merged["item_id"].notna(), None)
+    )
+    missing = (
+        merged["item_id"].isna()
+        | (merged["item_id"] == "")
+        | merged["routing_value"].isna()
+    )
+    merged["missing_run"] = (missing != missing.shift()).cumsum()
+    merged = merged[~missing]
     if merged.empty:
         return pd.DataFrame(
             columns=[
@@ -1653,7 +1808,13 @@ def _ref_routingtraceability_build_routing_timeline(
                 "source_uuid",
             ]
         )
-    merged["combo"] = merged["item_id"] + "|" + merged["routing_value"].astype(str)
+    merged["combo"] = (
+        merged["item_id"]
+        + "|"
+        + merged["routing_value"].astype(str)
+        + "|"
+        + merged["missing_run"].astype(str)
+    )
     merged["group"] = (merged["combo"] != merged["combo"].shift()).cumsum()
     n = len(merged)
     first_pos = np.flatnonzero(merged["group"].diff().fillna(1).to_numpy() != 0)
@@ -1987,8 +2148,20 @@ CASES = [
     (
         "multi_parallel",
         lambda df: MultiProcessTraceabilityEvents(df, PROCESSES),
-        lambda o: o.parallel_activity(),
+        lambda o: _without_twins(o.parallel_activity(), _PARALLEL_TWINS),
         _ref_multiprocesstraceability_parallel_activity,
+    ),
+    (
+        "multi_lead_time",
+        lambda df: MultiProcessTraceabilityEvents(df, PROCESSES),
+        lambda o: _without_twins(o.lead_time(), _LEAD_TWINS),
+        _ref_multiprocesstraceability_lead_time,
+    ),
+    (
+        "multi_handover",
+        lambda df: MultiProcessTraceabilityEvents(df, PROCESSES, handovers=HANDOVERS),
+        lambda o: _without_twins(o.handover_log(), {"timestamp": "systime"}),
+        _ref_multiprocesstraceability_handover_log,
     ),
     *[
         (

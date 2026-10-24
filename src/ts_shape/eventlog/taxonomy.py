@@ -28,7 +28,9 @@ A :class:`LabelRule` describes:
   carries the oid (e.g. ``{"serial": "identifier", "station":
   "station_name"}`` for the traceability timelines). Used when the caller
   does not bind that type; like ``source_uuid -> asset`` the binding is
-  not part of the event id (the column already is).
+  not part of the event id (the column already is). A tuple of columns
+  links each row to the oid of every column (e.g. ``{"station":
+  ("from_station", "to_station")}``); an oid named twice links once.
 """
 
 from __future__ import annotations
@@ -52,7 +54,7 @@ class LabelRule:
     attributes, ``drop_fields`` lists legacy columns to discard, and
     ``standard_attrs`` maps standard attribute keys to a legacy column name
     or a literal value. ``object_columns`` maps a declared object type to the
-    column that carries its oid. ``severity_thresholds`` is the ``(warn, critical)``
+    column that carries its oid (or a tuple of such columns). ``severity_thresholds`` is the ``(warn, critical)``
     pair of lower bounds that buckets a *numeric* severity score into
     ``warn`` / ``critical`` (below ``warn`` is ``info``); ``None`` uses the
     z-score bounds ``(3.0, 4.5)``.
@@ -73,7 +75,7 @@ class LabelRule:
     severity_thresholds: tuple[float, float] | None = None
     # Declared object type -> the frame column carrying its oid (bound when
     # the caller does not bind that type).
-    object_columns: Mapping[str, str] = field(default_factory=dict)
+    object_columns: Mapping[str, str | tuple[str, ...]] = field(default_factory=dict)
 
 
 # Aliases used while building the registry below to keep entries terse.
@@ -1375,8 +1377,8 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         objs=("asset", "serial", "station"),
         object_columns={"asset": "id_uuid", "serial": "item_id", "station": "station"},
         standard_attrs={
-            "ts_shape:lifecycle_state": "station_name",
-            "ts_shape:direction": "station_sequence",
+            "ts_shape:lifecycle_state": "station",
+            "ts_shape:direction": "step_sequence",
         },
     ),
     ("MultiProcessTraceabilityEvents", "handover_log"): _r(
@@ -1384,7 +1386,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         P,
         objs=("asset", "serial", "station"),
-        object_columns={"serial": "item_id"},
+        object_columns={"serial": "item_id", "station": ("from_station", "to_station")},
         standard_attrs={
             "ts_shape:lifecycle_state": "handover",
             "ts_shape:direction": "station_sequence",
@@ -1403,7 +1405,7 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         I,
         objs=("serial", "station"),
-        object_columns={"serial": "item_id"},
+        object_columns={"serial": "item_id", "station": ("station_a", "station_b")},
         standard_attrs={
             "ts_shape:lifecycle_state": "parallel",
             "ts_shape:direction": "station_name",

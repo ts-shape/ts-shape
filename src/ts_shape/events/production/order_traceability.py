@@ -20,8 +20,10 @@ from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.runs import run_bounds, total_seconds
 
 from ._trace_objects import (
+    Exclude,
     IntervalEnd,
     check_interval_end,
+    exclude_readings,
     intervals_frame,
     next_change_ends,
 )
@@ -74,6 +76,7 @@ class ValueTraceabilityEvents(Base):
         event_uuid: str = "prod:value_trace",
         value_column: str = "value_string",
         time_column: str = "systime",
+        exclude: Exclude = None,
     ) -> None:
         """Initialize value traceability.
 
@@ -84,9 +87,20 @@ class ValueTraceabilityEvents(Base):
             event_uuid: UUID to tag derived events with.
             value_column: Column holding the identifier string value.
             time_column: Name of timestamp column.
+            exclude: Readings that are not identifiers, read like
+                :attr:`ts_shape.eventlog.ObjectSpec.exclude`: ``"misreads"``
+                (:func:`ts_shape.utils.id_codes.is_misread`: ``NOREAD``,
+                ``#N/A``, ``0``, ``65535``, blanks, ...), a collection of
+                values, or a callable returning a boolean mask over a
+                station's readings in time order. Between two readings of the
+                same identifier an excluded reading is a gap (the identifier
+                is held across it); anywhere else it is an empty reading.
+                ``None`` (default) keeps every reading; ``"misreads"`` is
+                planned to become the default in the next major release.
         """
         super().__init__(dataframe, time_column=time_column)
         self.station_uuids = station_uuids
+        self.exclude = exclude
         self.event_uuid = event_uuid
         self.value_column = value_column
         self.time_column = time_column
@@ -94,12 +108,15 @@ class ValueTraceabilityEvents(Base):
         # Pre-filter and parse per-station data
         self._station_data: dict[str, pd.DataFrame] = {}
         for uuid in self.station_uuids:
+            # Stable: readings at the same instant keep their input order.
             sdf = (
                 self.dataframe[self.dataframe["uuid"] == uuid]
                 .copy()
-                .sort_values(self.time_column)
+                .sort_values(self.time_column, kind="stable")
             )
             sdf[self.time_column] = pd.to_datetime(sdf[self.time_column])
+            if exclude is not None and value_column in sdf.columns:
+                sdf[value_column] = exclude_readings(sdf[value_column], exclude, uuid)
             self._station_data[uuid] = sdf
 
     # ------------------------------------------------------------------
@@ -253,7 +270,8 @@ class ValueTraceabilityEvents(Base):
             - first_station: Name of first station visited.
             - last_station: Name of last station visited.
             - first_seen: Earliest timestamp across all stations.
-            - last_seen: Latest timestamp across all stations.
+            - last_seen: Latest timestamp across all stations (the latest
+                visit end, also when visits overlap).
             - lead_time_seconds: Total time from first seen to last seen.
             - stations_visited: Number of distinct stations visited.
             - station_path: Arrow-separated ordered station names.
@@ -289,7 +307,8 @@ class ValueTraceabilityEvents(Base):
         for identifier, grp in timeline.groupby("identifier"):
             grp = grp.sort_values("start")
             first_seen = grp["start"].iloc[0]
-            last_seen = grp["end"].iloc[-1]
+            # The latest leave: an earlier visit can end after a later one.
+            last_seen = grp["end"].max()
             station_path = " -> ".join(grp["station_name"].tolist())
             rows.append(
                 {

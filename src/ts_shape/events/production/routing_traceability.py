@@ -43,8 +43,10 @@ from ts_shape.utils.deprecation import (
 )
 
 from ._trace_objects import (
+    Exclude,
     IntervalEnd,
     check_interval_end,
+    exclude_readings,
     intervals_frame,
 )
 
@@ -92,6 +94,21 @@ def _combo_run_starts(item_id: pd.Series, routing: pd.Series) -> np.ndarray:
             same = v[1:] == v[:-1]
         change = (ids[1:] != ids[:-1]) | ~same
     return np.flatnonzero(np.r_[True, np.asarray(change, dtype=bool)])
+
+
+#: Columns of ``build_routing_timeline()``.
+_TIMELINE_COLUMNS = (
+    "item_id",
+    "routing_value",
+    "station_name",
+    "start",
+    "end",
+    "duration_seconds",
+    "sample_count",
+    "station_sequence",
+    "uuid",
+    "source_uuid",
+)
 
 
 class RoutingTraceabilityEvents(Base):
@@ -156,6 +173,7 @@ class RoutingTraceabilityEvents(Base):
         value_column_id: str = "value_string",
         value_column_routing: str = "value_integer",
         time_column: str = "systime",
+        exclude: Exclude = None,
     ) -> None:
         """Initialize routing traceability.
 
@@ -176,9 +194,20 @@ class RoutingTraceabilityEvents(Base):
             value_column_id: Column holding the item ID string.
             value_column_routing: Column holding the state/routing value.
             time_column: Name of timestamp column.
+            exclude: Readings of the ID signal that are not item IDs, read
+                like :attr:`ts_shape.eventlog.ObjectSpec.exclude`:
+                ``"misreads"`` (:func:`ts_shape.utils.id_codes.is_misread`:
+                ``NOREAD``, ``#N/A``, ``0``, ``65535``, blanks, ...), a
+                collection of values, or a callable returning a boolean mask
+                over the readings in time order. Between two readings of the
+                same item an excluded reading is a gap (the item is held
+                across it); anywhere else it is an empty reading (no item).
+                ``None`` (default) keeps every reading; ``"misreads"`` is
+                planned to become the default in the next major release.
         """
         super().__init__(dataframe, time_column=time_column)
         self.id_uuid = id_uuid
+        self.exclude = exclude
         self.routing_uuid = routing_uuid
         if station_map is not None:
             warnings.warn(
@@ -202,18 +231,23 @@ class RoutingTraceabilityEvents(Base):
         self.value_column_routing = value_column_routing
         self.time_column = time_column
 
-        # Pre-filter signals
+        # Pre-filter signals (stable: readings at the same instant keep their
+        # input order).
         self.id_data = (
             self.dataframe[self.dataframe["uuid"] == self.id_uuid]
             .copy()
-            .sort_values(self.time_column)
+            .sort_values(self.time_column, kind="stable")
         )
         self.id_data[self.time_column] = pd.to_datetime(self.id_data[self.time_column])
+        if exclude is not None and value_column_id in self.id_data.columns:
+            self.id_data[value_column_id] = exclude_readings(
+                self.id_data[value_column_id], exclude, id_uuid
+            )
 
         self.routing_data = (
             self.dataframe[self.dataframe["uuid"] == self.routing_uuid]
             .copy()
-            .sort_values(self.time_column)
+            .sort_values(self.time_column, kind="stable")
         )
         self.routing_data[self.time_column] = pd.to_datetime(
             self.routing_data[self.time_column]
@@ -280,7 +314,10 @@ class RoutingTraceabilityEvents(Base):
         For each sample of the routing signal, the *current* item ID is
         determined via backward-fill merge (most recent ID at that timestamp).
         Contiguous intervals where the same (item_id, state) pair holds
-        are grouped into single events.
+        are grouped into single events. A routing sample without an item
+        (none read yet, a missing or empty ID reading) or without a routing
+        value is no visit and ends the interval before it; rows without a
+        timestamp are left out.
 
         Args:
             infer_dwell_from_next: When False (default), an interval's ``end`` is
@@ -333,15 +370,20 @@ class RoutingTraceabilityEvents(Base):
                 ]
             )
 
-        # Merge: for each routing sample, attach the most-recent item ID
+        # Merge: for each routing sample, attach the most-recent item ID.
+        # Rows without a timestamp cannot be placed (left out).
         routing_subset = self.routing_data[
             [self.time_column, self.value_column_routing]
-        ].copy()
-        id_subset = self.id_data[[self.time_column, self.value_column_id]].copy()
+        ]
+        routing_subset = routing_subset[routing_subset[self.time_column].notna()]
+        id_subset = self.id_data[[self.time_column, self.value_column_id]]
+        id_subset = id_subset[id_subset[self.time_column].notna()]
+        if routing_subset.empty or id_subset.empty:
+            return pd.DataFrame(columns=list(_TIMELINE_COLUMNS))
 
         merged = pd.merge_asof(
-            routing_subset,
-            id_subset,
+            routing_subset.copy(),
+            id_subset.copy(),
             on=self.time_column,
             direction="backward",
         )
@@ -352,32 +394,29 @@ class RoutingTraceabilityEvents(Base):
                 self.value_column_routing: "routing_value",
             }
         )
-        # Time of the next routing sample (any item, or none), per row.
-        all_times = merged[self.time_column]
-        merged = merged.dropna(subset=["item_id"])
-        merged["item_id"] = merged["item_id"].astype(str)
-
-        if merged.empty:
-            return pd.DataFrame(
-                columns=[
-                    "item_id",
-                    "routing_value",
-                    "station_name",
-                    "start",
-                    "end",
-                    "duration_seconds",
-                    "sample_count",
-                    "station_sequence",
-                    "uuid",
-                    "source_uuid",
-                ]
-            )
+        # A routing sample with no item (none yet, a missing or empty ID
+        # reading) or no routing value is no visit: it ends the segment
+        # before it and is not part of any segment.
+        no_item = merged["item_id"].isna().to_numpy(dtype=bool)
+        item_text = merged["item_id"].astype(str)
+        missing = (
+            no_item
+            | (item_text == "").to_numpy(dtype=bool)
+            | merged["routing_value"].isna().to_numpy(dtype=bool)
+        )
+        if missing.all():
+            return pd.DataFrame(columns=list(_TIMELINE_COLUMNS))
+        key = item_text.where(~pd.Series(missing, index=item_text.index), "\x00")
 
         # One row per contiguous run of the key ``item_id + "|" +
-        # str(routing_value)``, in time order.
+        # str(routing_value)``, in time order; runs of samples without an
+        # item or routing value are dropped.
         n = len(merged)
-        first_pos = _combo_run_starts(merged["item_id"], merged["routing_value"])
-        last_pos = np.r_[first_pos[1:] - 1, n - 1]
+        run_first = _combo_run_starts(key, merged["routing_value"])
+        run_last = np.r_[run_first[1:] - 1, n - 1]
+        visit = ~missing[run_first]
+        first_pos = run_first[visit]
+        last_pos = run_last[visit]
         times = merged[self.time_column]
         start = times.iloc[first_pos].reset_index(drop=True)
         end = times.iloc[last_pos].reset_index(drop=True)
@@ -386,21 +425,19 @@ class RoutingTraceabilityEvents(Base):
                 self.routing_data[self.time_column].max(),
                 self.id_data[self.time_column].max(),
             )
-            # merge_asof keeps a RangeIndex: labels are positions in the
-            # routing samples before rows without an item were dropped.
-            after = merged.index.to_numpy()[last_pos] + 1
-            nxt = all_times.reindex(after).reset_index(drop=True)
+            # The next routing sample (any item, or none) after the run.
+            nxt = times.reindex(last_pos + 1).reset_index(drop=True)
             end = nxt.fillna(data_end)
         routing_vals = merged["routing_value"].iloc[first_pos].tolist()
         timeline = pd.DataFrame(
             {
-                "item_id": merged["item_id"].iloc[first_pos].tolist(),
+                "item_id": item_text.iloc[first_pos].tolist(),
                 "routing_value": routing_vals,
                 "station_name": self._resolve_states(routing_vals),
                 "start": start,
                 "end": end,
                 "duration_seconds": (end - start).dt.total_seconds(),
-                "sample_count": np.diff(np.r_[first_pos, n]).tolist(),
+                "sample_count": (last_pos - first_pos + 1).tolist(),
             }
         )
         timeline = timeline.sort_values(["item_id", "start"]).reset_index(drop=True)
@@ -465,7 +502,9 @@ class RoutingTraceabilityEvents(Base):
         for item_id, grp in timeline.groupby("item_id"):
             grp = grp.sort_values("start")
             first_seen = grp["start"].iloc[0]
-            last_seen = grp["end"].iloc[-1]
+            # The latest leave (the last segment's end: segments do not
+            # overlap on one routing signal).
+            last_seen = grp["end"].max()
             routing_path = " -> ".join(grp["station_name"].tolist())
             rows.append(
                 {

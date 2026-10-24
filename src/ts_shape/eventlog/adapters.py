@@ -724,12 +724,18 @@ def _resolve_objects(
 
     # Declared types read from the column the rule names (``object_columns``),
     # unless the caller bound the type (``None`` included: no object).
-    for otype, column in rule.object_columns.items():
-        if otype not in declared or otype in bindings or column not in frame.columns:
+    # A tuple of columns binds the further columns under
+    # ``_extra_binding_key`` keys (one relation per column, see _to_relations).
+    for otype, spec in rule.object_columns.items():
+        if otype not in declared or otype in bindings:
             continue
         if user_objects and otype in user_objects:
             continue
-        bindings[otype] = frame[column].reset_index(drop=True).astype("string")
+        columns = [spec] if isinstance(spec, str) else list(spec)
+        present = [c for c in columns if c in frame.columns]
+        for k, column in enumerate(present):
+            key = otype if k == 0 else _extra_binding_key(otype, column)
+            bindings[key] = frame[column].reset_index(drop=True).astype("string")
 
     # Defaults: asset = source_uuid if column exists.
     if "asset" in declared and "asset" not in bindings:
@@ -740,6 +746,21 @@ def _resolve_objects(
 
     # Drop empty / all-NaN bindings.
     return {k: v for k, v in bindings.items() if not v.isna().all()}
+
+
+#: Separates the object type from the column in the key of a further
+#: ``object_columns`` column (no object type contains it).
+_EXTRA_KEY_SEP = "\x00"
+
+
+def _extra_binding_key(otype: str, column: str) -> str:
+    """Binding key of a further column of a tuple ``object_columns`` entry."""
+    return f"{otype}{_EXTRA_KEY_SEP}{column}"
+
+
+def _binding_type(key: str) -> str:
+    """The object type of a binding key."""
+    return key.split(_EXTRA_KEY_SEP, 1)[0]
 
 
 def _align_series(otype: str, value: pd.Series, index: pd.Index) -> pd.Series:
@@ -778,7 +799,10 @@ def _to_relations(
     rel_frames: list[pd.DataFrame] = []
     obj_frames: list[pd.DataFrame] = []
     eids = eids.reset_index(drop=True).astype("string")
-    for otype, oids in object_bindings.items():
+    extra = False
+    for key, oids in object_bindings.items():
+        otype = _binding_type(key)
+        extra = extra or otype != key
         text = oids.reset_index(drop=True).astype(str)
         mask = np.array(oids.notna(), dtype=bool)
         mask &= ~text.isin(["", "<NA>"]).to_numpy(dtype=bool)
@@ -813,6 +837,11 @@ def _to_relations(
         if rel_frames
         else schema.empty_relations()
     )
+    if extra:
+        # Two columns of one type naming the same oid: one relation.
+        relations = relations.drop_duplicates(
+            subset=[schema.OCEL_EID, schema.OCEL_OID, schema.OCEL_TYPE]
+        ).reset_index(drop=True)
     if obj_frames:
         obj_df = pd.concat(obj_frames, ignore_index=True)
         obj_df = obj_df.drop_duplicates().reset_index(drop=True)

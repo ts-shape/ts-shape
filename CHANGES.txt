@@ -1,3 +1,17 @@
+# October 23, 2026 (round 21)
+Traceability audit.
+feat: MultiProcess lead_time / parallel_activity / handover_log convert to
+  event logs (start/end/duration_seconds, systime added; serial + stations).
+feat: exclude= (misreads, values, callable) on the traceability classes;
+  default unchanged.
+fix: lead_time ends at the latest visit end (parallel visits).
+fix: routing samples without item or step value end the visit (no "" item,
+  no "State nan").
+fix: handover_log takes the item before the trigger; a missing reading holds.
+fix: no crash on missing timestamps; ties keep input order; MultiProcess
+  warns about missing signals; timeline log attributes carry the station.
+  See docs/migration.md.
+
 # October 23, 2026 (round 20, part N)
 New: object analytics.
 feat: ObjectReport.to_event_log / hierarchy(); to_object_specs(namespace=,
