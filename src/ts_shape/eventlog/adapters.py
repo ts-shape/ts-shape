@@ -35,6 +35,7 @@ from ..events._output import (
 )
 from ..utils.coerce import to_numeric_checked
 from ..utils.deprecation import renamed_kwargs
+from ..utils.id_codes import id_strings
 from . import schema
 from .model import EventLog
 from .taxonomy import (
@@ -735,7 +736,9 @@ def _resolve_objects(
         present = [c for c in columns if c in frame.columns]
         for k, column in enumerate(present):
             key = otype if k == 0 else _extra_binding_key(otype, column)
-            bindings[key] = frame[column].reset_index(drop=True).astype("string")
+            # An integral float id renders without ".0", as in
+            # object_intervals (not part of the event id).
+            bindings[key] = id_strings(frame[column].reset_index(drop=True))
 
     # Defaults: asset = source_uuid if column exists.
     if "asset" in declared and "asset" not in bindings:
@@ -1096,9 +1099,11 @@ def adapt(
     caller_bound = {
         k: v for k, v in object_bindings.items() if objects and k in objects
     }
+    # Columns appended after a detector's ids were fixed stay out of them.
+    omit = [c for c in rule.eid_omit if c in frame.columns]
     eids = _content_eids(
         detector,
-        frame,
+        frame.drop(columns=omit) if omit else frame,
         ts_start,
         ts_end,
         activities,

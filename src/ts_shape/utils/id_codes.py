@@ -213,3 +213,37 @@ def is_misread(values: Iterable[object], *, truncations: bool = True) -> _BOOL:
     if flagged.any():
         out |= flagged[np.cumsum(brk) - 1]
     return out
+
+
+def _integral_float(value: object) -> bool:
+    return (
+        isinstance(value, float | np.floating)
+        and bool(np.isfinite(value))
+        and float(value).is_integer()
+    )
+
+
+def id_strings(values: pd.Series) -> pd.Series:
+    """Object ids as text (``string`` dtype, missing values stay ``<NA>``).
+
+    Like ``values.astype("string")``, except that an integral float renders
+    without ``.0`` (``1001.0`` -> ``"1001"``), as the oids of
+    :func:`ts_shape.eventlog.object_intervals` do. Keeps the index.
+    """
+    out = values.astype("string")
+    if values.dtype.kind == "f":
+        arr = values.to_numpy(dtype=np.float64, na_value=np.nan)
+        integral = np.isfinite(arr) & (arr == np.trunc(arr))
+    elif values.dtype == object:
+        if pd.api.types.infer_dtype(values, skipna=True) in ("string", "empty"):
+            return out
+        arr = values.to_numpy(dtype=object)
+        integral = np.fromiter(
+            (_integral_float(v) for v in arr), dtype=bool, count=len(arr)
+        )
+    else:
+        return out
+    if integral.any():
+        pos = np.flatnonzero(integral)
+        out.iloc[pos] = [str(int(v)) for v in arr[pos].tolist()]
+    return out

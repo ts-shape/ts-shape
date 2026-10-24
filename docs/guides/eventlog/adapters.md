@@ -38,6 +38,8 @@ The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
 | `value_field` | `None` | column used as `ts_shape:value`; without it the first of `value`, `value_double`, `value_integer` |
 | `drop_fields` | `()` | output columns not copied into the event log |
 | `standard_attrs` | `{}` | mapping to the [standard attribute keys](taxonomy.md#standard-attribute-extension) |
+| `object_columns` | `{}` | object type -> the column holding its oid (or a tuple of columns); an integral float oid renders without `.0` |
+| `eid_omit` | `()` | columns left out of `ocel:eid`: columns added to a detector later that repeat one already in the id, so existing ids stay the same (the `source_uuid` of the `MultiProcessTraceabilityEvents` frames) |
 
 ## What `to_event_log` does
 
@@ -54,7 +56,8 @@ The implementation is `adapt` in `src/ts_shape/eventlog/adapters.py`.
       the row and the objects bound with `objects=` (one row bound to asset
       `M1` and to `M2` gives two events). The same input always gives the
       same ids, independent of row order, and the same detector on two
-      machines does not collide;
+      machines does not collide. Columns in the rule's `eid_omit` are
+      left out;
     - fills `ts_shape:severity`, `ts_shape:value` and the standard attributes;
     - copies every other output column as `<pack>:<column>` and drops such
       columns when they are completely empty;

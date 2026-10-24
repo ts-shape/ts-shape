@@ -41,6 +41,7 @@ from ts_shape.utils.deprecation import (
     deprecated_attribute,
     renamed_kwargs,
 )
+from ts_shape.utils.id_codes import id_strings
 
 from ._trace_objects import (
     Exclude,
@@ -398,7 +399,9 @@ class RoutingTraceabilityEvents(Base):
         # reading) or no routing value is no visit: it ends the segment
         # before it and is not part of any segment.
         no_item = merged["item_id"].isna().to_numpy(dtype=bool)
-        item_text = merged["item_id"].astype(str)
+        # Item ids as text; an integral number renders without ".0" (1001.0
+        # is "1001"), as in to_intervals().
+        item_text = id_strings(merged["item_id"]).astype(object).where(~no_item, "")
         missing = (
             no_item
             | (item_text == "").to_numpy(dtype=bool)

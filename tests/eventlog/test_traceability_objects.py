@@ -552,7 +552,8 @@ def test_multi_outputs_convert(tz):
     det = "MultiProcessTraceabilityEvents."
 
     pa = trace.parallel_activity()
-    assert list(pa.columns)[-3:] == ["start", "end", "duration_seconds"]
+    # The interval twins, then source_uuid (round 23).
+    assert list(pa.columns)[-4:] == ["start", "end", "duration_seconds", "source_uuid"]
     log = to_event_log(pa, detector=det + "parallel_activity")
     assert len(log) == 1
     ev = log.events.iloc[0]
@@ -563,7 +564,7 @@ def test_multi_outputs_convert(tz):
     assert _objects(log, "station") == ["Station 1", "Station 2"]
 
     ho = trace.handover_log()
-    assert list(ho.columns)[-1] == "systime"
+    assert list(ho.columns)[-2:] == ["systime", "source_uuid"]
     log = to_event_log(ho, detector=det + "handover_log")
     assert len(log) == 1
     assert log.events.iloc[0]["ocel:timestamp"] == _utc(15, tz)
@@ -571,7 +572,12 @@ def test_multi_outputs_convert(tz):
     assert _objects(log, "station") == ["Station 1", "Station 2"]
 
     lead = trace.lead_time()
-    assert list(lead.columns)[-3:] == ["start", "end", "duration_seconds"]
+    assert list(lead.columns)[-4:] == [
+        "start",
+        "end",
+        "duration_seconds",
+        "source_uuid",
+    ]
     log = to_event_log(lead, detector=det + "lead_time")
     assert len(log) == 1
     assert log.events.iloc[0]["ts_shape:start_timestamp"] == _utc(0, tz)
@@ -604,10 +610,7 @@ def test_tuple_object_columns_link_once_and_caller_wins():
 
 def test_multi_outputs_empty_keep_columns():
     trace = MultiProcessTraceabilityEvents(_stations().iloc[0:0], PROCESSES)
-    assert list(trace.lead_time().columns)[-3:] == ["start", "end", "duration_seconds"]
-    assert list(trace.parallel_activity().columns)[-3:] == [
-        "start",
-        "end",
-        "duration_seconds",
-    ]
-    assert list(trace.handover_log().columns)[-1] == "systime"
+    twins = ["start", "end", "duration_seconds", "source_uuid"]
+    assert list(trace.lead_time().columns)[-4:] == twins
+    assert list(trace.parallel_activity().columns)[-4:] == twins
+    assert list(trace.handover_log().columns)[-2:] == ["systime", "source_uuid"]
