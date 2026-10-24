@@ -433,7 +433,29 @@ only when the data has no id of the nearest one:
 
 Among equals the finer id wins (more distinct values: a material inside its
 recipe). A handling unit, or any id that holds a fixed count of parts, that nests
-a serial is its packing parent. Tools, fixtures, carriers,
+a serial is its packing parent.
+
+**Mistyped materials.** In a recording of a few days a material is often typed
+otherwise on its own values, so a batch's parent is not limited to the ids typed
+material, article or recipe:
+
+- a tool or fixture that nests the batch both ways is a candidate of the nearest
+  level: a material held for half a day from a pool of three reads like a tool;
+- an order, package, batch or lot that nests the batch both ways and holds another
+  such id is the material: one unique id inside another over the batch is the
+  work order inside the material it makes (a material never revisited reads like
+  an order);
+- of a material and a recipe that change together one to one, the one whose
+  values read more like a material wins: its format and prefix evidence, a number
+  of six or more digits (`10423317`) against a number of at most three digits or a
+  name of three or more `_`-separated segments (`17`, `RZ_PA66_GF30_v3`).
+
+These apply only to the finest quantity: an id with another order or batch inside
+it, both ways, is itself an order or material taken for a batch and gets none of
+them. A "serial" that holds other serials (four times as many presences or more,
+both ways) and itself nests in a material, recipe or order with a lift of 0.7 or
+more is read as their batch: batches shorter than half an hour read as serials on
+their values. Tools, fixtures, carriers,
 operators, stations, locations and partners are never part of a nesting, and
 neither are orders as children (an order is not nested in its material) or
 messages that name an id (`"Batch 25061207 released"`).
@@ -457,17 +479,21 @@ part clock, so plain coincidence is no evidence.
 
 **Polled signals.** A signal sampled on a regular grid is seen up to one period
 late. When that hides when the child changed (a serial read every half cycle, a
-batch polled every five minutes), the alignment cannot be shown. A preferred parent
-the child lies inside still wins over a verified, farther one when it nests in that
-farther parent itself: both belong to the line the farther parent puts the child
-on. Without any verified parent the child stays without one rather than getting a
-guess.
+batch polled every minute while a part takes 30 s), the alignment cannot be shown.
+A preferred parent the child lies inside still wins over a verified, farther one
+when it nests in that farther parent itself: both belong to the line the farther
+parent puts the child on. Without a verified parent of the nearest level, any
+other id that nests the child both ways serves the same way: a farther level, a
+tool or fixture, a package, or an order or material typed otherwise. The verified
+parent is tried first. Without any such id the child stays without a parent rather
+than getting a guess.
 
 `explain()` and `summary()` show both parents (`nested in line:batch (depth 1)`,
-`packed in line:box`). On the held-out benchmark split the nesting scores about 0.83
-precision and 0.77 recall per edge; the misses are mostly a material its batch
-cannot be told from (a recipe that changes with it, a material never revisited in
-the recording) and serials whose batch is polled too coarsely to align.
+`packed in line:box`). On the held-out benchmark split the nesting scores about 0.93
+precision and 0.93 recall per edge (0.96 / 0.89 on never-seen seeds). The misses
+left are mostly serials whose batch is polled too coarsely to align and that lie in
+no other verified id, a package typed as a batch taken for the serial's batch, and
+a material polled every 15 to 60 minutes whose changes cannot be placed.
 
 ## Limits
 

@@ -76,7 +76,16 @@ def _plant() -> dict[str, pd.DataFrame]:
     holds = rng.integers(60, 180, len(recipes))
     seq = [r for r, h in zip(recipes, holds, strict=True) for _ in range(h)]
     f["c"] = _sig("c", pd.date_range(START, periods=len(seq), freq="1min"), seq)
-    f["d"] = _held("d", ["T01", "T02", "T01", "T03"], 72, freq="10min")
+    # the tool is changed during the setup, minutes after the batch change
+    # (a tool changed exactly at every batch change is the batch's material
+    # or recipe as far as the data can tell)
+    f["d"] = _held(
+        "d",
+        ["T01", "T02", "T01", "T03"],
+        72,
+        freq="10min",
+        start=START + pd.Timedelta("7min"),
+    )
     f["e"] = _stamped("e", [f"WT{i % 12 + 1:02d}" for i in range(240)], gap="2min")
     f["f"] = _held(
         "f",
@@ -328,6 +337,109 @@ def test_a_parent_on_another_line_is_never_chosen():
     assert _row(out, "s2")["parent_uuid"] == "b2", out.explain("s2")
     for uuid in ("b1", "b2"):
         assert _row(out, uuid)["parent_uuid"] is None
+
+
+def _setups(seed, materials, *, orders_per_setup=0, recipe_of=None):
+    """Changeovers every 10-16 h, each to the next of ``materials``; batches
+    of 90-150 min restart at each changeover (and at each work order when
+    there are ``orders_per_setup`` per changeover); a part a minute."""
+    rng = np.random.default_rng(seed)
+    t, b = 0.0, 0
+    steps: dict[str, list[tuple[float, str]]] = {"m": [], "w": [], "b": []}
+    for i, material in enumerate(materials):
+        hold = rng.uniform(10, 16) * 3600
+        steps["m"].append((t, material))
+        cuts = [
+            t + k * hold / max(orders_per_setup, 1) for k in range(orders_per_setup)
+        ]
+        for k, cut in enumerate(cuts):
+            steps["w"].append((cut, f"WO-2025-{1500 + i * orders_per_setup + k:06d}"))
+        bt = t
+        while bt < t + hold:
+            steps["b"].append((bt, f"B250303-{b + 1:03d}"))
+            b += 1
+            nxt = bt + rng.uniform(90, 150) * 60
+            bt = min([c for c in cuts if bt < c < nxt] or [nxt])
+        t += hold
+    grid = np.arange(0, t, 60.0)
+    times = START + pd.to_timedelta(grid, unit="s")
+
+    def held(uuid, pairs):
+        at = np.searchsorted([s for s, _ in pairs], grid, side="right") - 1
+        return _sig(uuid, times, [pairs[i][1] for i in at])
+
+    frames = [held(u, p) for u, p in steps.items() if p]
+    if recipe_of is not None:
+        frames.append(held("r", [(s, recipe_of[v]) for s, v in steps["m"]]))
+    frames.append(_sig("s", times, [f"SN{100000 + k}" for k in range(len(grid))]))
+    return pd.concat(frames, ignore_index=True)
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_material_held_for_days_still_holds_its_batches(seed):
+    # three materials, each held 10-16 h with no work order: on its values a
+    # tiny pool held for half a day reads like a tool, yet every batch lies
+    # in it and changes with it
+    pool = ["3KA5130-1AB", "6ES7214-1AG", "3RT2016-1BB"]
+    out = identify_objects(_setups(seed, [pool[i % 3] for i in range(6)]))
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+    assert _row(out, "s")["parent_uuid"] == "b", out.explain("s")
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_material_never_revisited_holds_its_batches(seed):
+    # seven materials, never revisited, two work orders each: the material
+    # reads like an order on its own values, but it holds the work orders
+    materials = [f"{10423317 + 211 * i}" for i in range(7)]
+    out = identify_objects(_setups(seed, materials, orders_per_setup=2))
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+    assert _row(out, "w")["parent_uuid"] is None
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_batch_goes_to_the_material_not_its_one_to_one_recipe(seed):
+    # material and recipe change together one to one: the material number
+    # (eight digits) is preferred over the recipe name
+    numbers = ["10423317", "10423520", "10431177"]
+    names = ["RZ_PA66_GF30_v3", "RZ_PA6_GF15_v2", "RZ_PBT_T20_v1"]
+    out = identify_objects(
+        _setups(
+            seed,
+            [numbers[i % 3] for i in range(6)],
+            recipe_of=dict(zip(numbers, names, strict=True)),
+        )
+    )
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+    assert _row(out, "r")["parent_uuid"] is None
+
+
+@pytest.mark.parametrize(
+    ("seed", "child"),
+    [
+        (1048, "serial"),  # batch polled every 60 s, a part every 34 s
+        (1052, "serial"),
+        (1094, "serial"),  # batches of 27 min read as serials
+        (1094, "batch"),
+        (2000, "serial"),
+        (2000, "batch"),
+    ],
+)
+def test_benchmark_edges_found_by_the_nesting(seed, child):
+    # tuning seeds of the generator (not the held-out split): a serial whose
+    # batch is polled too coarsely to show the alignment, nested through the
+    # id both lie in; batches shorter than half an hour that read as serials
+    frame, labels = ts_shape.make_object_signals(seed=seed, days=3)
+    out = identify_objects(frame)
+    rows = labels[labels["object_type"] == child]
+    found = {
+        u: _row(out, u)["parent_uuid"]
+        for u, p in zip(rows["uuid"], rows["parent_uuid"], strict=True)
+        if p is not None
+    }
+    expected = {
+        u: p for u, p in zip(rows["uuid"], rows["parent_uuid"], strict=True) if p
+    }
+    assert expected and found == expected
 
 
 @pytest.mark.parametrize(

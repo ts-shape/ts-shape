@@ -91,9 +91,16 @@ parent must nest the child both ways: the parent keeps its value during the
 child's presences, and the parent's changes meet the child's starts, ends
 or pauses far more often than chance would give (:data:`NEST_MIN_LIFT`,
 :data:`NEST_MAX_CHANCE_P`), so an id on another line or clock is never a
-parent. A handling unit (or any id holding a fixed count of parts) that
-nests a serial is its *packing parent* (``packing_parent_uuid``), next to
-the production parent. Resources and people (tools, carriers, operators,
+parent. A batch's material mistyped on its own values in a short recording
+(a tiny pool held for days reads as a tool, one never revisited as an
+order) still counts when it nests the batch both ways, and of a material
+and a recipe that change together the one whose values read like a
+material wins; a "serial" that holds other serials is read as their batch;
+a serial whose batch is polled too coarsely to show the alignment goes into
+that batch when the batch nests in another id the serial verifiably lies in
+(see :func:`_nest`). A handling unit (or any id holding a fixed count of
+parts) that nests a serial is its *packing parent* (``packing_parent_uuid``),
+next to the production parent. Resources and people (tools, carriers, operators,
 stations, locations, partners) and messages that name an id are never
 part of a nesting.
 
@@ -256,6 +263,9 @@ _QUANTITY_PARENT_RANK: dict[str, int] = {
 #: parent (also any id that holds a fixed count of parts, see
 #: ``fixed_count``).
 _PACKING_TYPES = frozenset({"handling_unit"})
+#: Setup resources that may stand in for a batch's material or recipe in
+#: the nesting when they nest the batch both ways (:func:`_quantity_parents`).
+_SETUP_RESOURCES = frozenset({"tool", "fixture"})
 
 # ---------------------------------------------------------------------------
 # Thresholds (documented; all values are on the data, never on names)
@@ -367,6 +377,14 @@ NEST_PAUSE_HOLDS = 4.0
 #: A preferred parent whose alignment polling hides replaces the verified
 #: one when it lies in it with at least this fan-out (1:1, give or take).
 NEST_ALIAS_FANOUT = 0.9
+#: A serial that nests another serial with this many times as many
+#: presences is a batch (:func:`_serial_holders`).
+SERIAL_HOLDER_FANOUT = 4.0
+#: ... and nests in a material, recipe or order with this lift or more.
+SERIAL_HOLDER_MIN_LIFT = 0.7
+#: Tie-break between a batch's material and its recipe when they change
+#: together (:func:`_material_lean`): the lean a value shape adds.
+MATERIAL_SHAPE_LEAN = 0.2
 #: A signal is polled (seen up to one period late) when this share of its
 #: sample intervals lies within 5 % of the median interval.
 POLL_REGULAR_SHARE = 0.6
@@ -2555,22 +2573,42 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
     that nests a serial is its packing parent. Messages that name an id
     (:func:`_wordy`) and event-stamped ids are left out.
 
+    A batch's material is often mistyped on its own values in a short
+    recording: a material held for days from a tiny pool reads as a tool,
+    one never revisited as an order or a package. So for a batch or lot a
+    tool or fixture that nests it both ways is a candidate of the nearest
+    level (:data:`_SETUP_RESOURCES`), and a unique id (an order, a package,
+    a batch or lot) that nests it both ways and holds another such id is
+    the material those make (:func:`_quantity_parents`). Among the nearest
+    level the finer id wins, then the one whose values read more like a
+    material (:func:`_quantity_key`).
+
     Where polling hides when the child changed (a serial read every half
     cycle, a batch polled every few minutes), the co-change test cannot
     decide. A preferred parent the child lies inside then still wins over
     the verified one when it nests in that verified parent itself: both
-    belong to the line the verified parent puts the child on.
+    belong to the line the verified parent puts the child on. Without a
+    verified parent of the nearest level, any other id that nests the child
+    both ways (a farther level, a setup resource, a package, a mistyped
+    order or material: :func:`_anchors`) serves the same way -- tried only
+    after the verified parent itself.
+
+    Before the children are chosen, a serial that holds other serials is
+    read as a batch (:func:`_serial_holders`).
     """
     held = [
         s
         for s in ids
         if "event_stamped" not in s.facts and len(s.p_start) and not _wordy(s)
     ]
+    base = _serial_holders(held, base)
     for child in held:
         kind = base[child.uuid]
         if kind not in _NEST_CHILDREN:
             continue
-        ranks = _QUANTITY_PARENT_RANK if kind in ("batch", "lot") else _PARENT_RANK
+        quantity = kind in ("batch", "lot")
+        ranks = _QUANTITY_PARENT_RANK if quantity else _PARENT_RANK
+        key = _quantity_key if quantity else _finer_key
         verified: list[tuple[int, _Signal]] = []
         unverified: list[tuple[int, _Signal]] = []
         packing: list[_Signal] = []
@@ -2592,31 +2630,36 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
                 verified.append((ranks[ptype], parent))
             if packs:
                 packing.append(parent)
-        if kind in ("batch", "lot"):
-            # an order that holds another order is no order: it is the
-            # material the orders make (a material never revisited in the
-            # recording looks like an order on its own values)
-            orders = [p for r, p in verified if r == ranks["work_order"]]
-            verified = [
-                (
-                    (0, p)
-                    if any(o is not p and _inside(o, p, 1.0) for o in orders)
-                    else (r, p)
-                )
-                for r, p in verified
-            ]
+        if quantity:
+            verified = _quantity_parents(child, held, base, verified)
+        best: _Signal | None = None
+        rank = len(ranks) + 1
         if verified:
-            rank, best = min(verified, key=lambda rp: (rp[0], _finer_key(rp[1])))
-            for r, cand in sorted(
-                unverified, key=lambda rp: (rp[0], _finer_key(rp[1]))
-            ):
-                if (
-                    r <= rank
-                    and _inside(cand, best, NEST_ALIAS_FANOUT)
-                    and _cochanges(cand, best)
-                ):
-                    rank, best = r, cand
-                    break
+            rank, best = min(verified, key=lambda rp: (rp[0], key(rp[1])))
+        # an unverified nearer parent that nests in the verified one, else
+        # (no verified parent of the nearest level) in another id that
+        # nests the child both ways
+        candidates = sorted(unverified, key=lambda rp: (rp[0], key(rp[1])))
+        rounds = [[best]] if best is not None else []
+        if rank > 0 and candidates:
+            rounds.append(_anchors(child, held, base, ranks, best))
+        for anchors in rounds:
+            alias = next(
+                (
+                    (r, cand)
+                    for r, cand in candidates
+                    if r <= rank
+                    and any(
+                        _inside(cand, a, NEST_ALIAS_FANOUT) and _cochanges(cand, a)
+                        for a in anchors
+                    )
+                ),
+                None,
+            )
+            if alias is not None:
+                rank, best = alias
+                break
+        if best is not None:
             nearest = {t for t, r in ranks.items() if r == 0}
             if rank == 0 or not any(
                 base[s.uuid] in nearest for s in held if s is not child
@@ -2628,6 +2671,172 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
                 packing,
                 key=lambda p: (base[p.uuid] not in _PACKING_TYPES, _finer_key(p)),
             ).uuid
+
+
+def _serial_holders(
+    held: list[_Signal], base: Mapping[str, str | None]
+) -> Mapping[str, str | None]:
+    """``base`` with every serial that holds another serial read as a batch.
+
+    A unique id held for less than half an hour reads as a serial on its
+    own values, but one that nests another serial both ways, with
+    :data:`SERIAL_HOLDER_FANOUT` times as many presences or more, is the
+    batch those parts are made in (a serial holds no serials) -- when it
+    nests both ways in a material, recipe or order itself, as a batch does
+    (a lift of :data:`SERIAL_HOLDER_MIN_LIFT` or more)."""
+    serials = [s for s in held if base[s.uuid] == "serial"]
+    if len(serials) < 2:
+        return base
+    above = [
+        s
+        for s in held
+        if base[s.uuid] in _QUANTITY_PARENT_RANK
+        or base[s.uuid] in _UNIQUE_CHAIN - {"batch", "lot"}
+    ]
+    holders = {
+        p.uuid
+        for p in serials
+        if any(
+            c is not p
+            and len(c.p_start) >= SERIAL_HOLDER_FANOUT * len(p.p_start)
+            and _inside(c, p)
+            and _cochanges(c, p)
+            for c in serials
+        )
+        and any(
+            _inside(p, q) and _cochange(p, q) >= SERIAL_HOLDER_MIN_LIFT for q in above
+        )
+    }
+    if not holders:
+        return base
+    return {u: "batch" if u in holders else t for u, t in base.items()}
+
+
+def _anchors(
+    child: _Signal,
+    held: list[_Signal],
+    base: Mapping[str, str | None],
+    ranks: Mapping[str, int],
+    known: _Signal | None,
+) -> list[_Signal]:
+    """Ids that nest ``child`` both ways without being its production parent
+    (a farther level, a setup resource, a package, an order or material
+    mistyped as one): an unverified parent that nests in one of them is on
+    the child's line (see :func:`_nest`)."""
+    kind = base[child.uuid]
+    out = []
+    for a in held:
+        atype = base[a.uuid]
+        if a is child or a is known or atype in (None, kind):
+            continue
+        if not (
+            atype in ranks
+            or atype in _SETUP_RESOURCES
+            or atype in _UNIQUE_CHAIN
+            or atype in _PACKING_TYPES
+            or "fixed_count" in a.facts
+        ):
+            continue
+        if _inside(child, a) and _cochanges(child, a):
+            out.append(a)
+    return out
+
+
+#: Unique ids that may stand for a batch's material in a short recording
+#: (:func:`_quantity_parents`): a material never revisited reads as one.
+_UNIQUE_CHAIN = frozenset(
+    {"work_order", "order", "sales_order", "purchase_order"}
+    | {"handling_unit", "batch", "lot"}
+)
+
+
+def _quantity_parents(
+    child: _Signal,
+    held: list[_Signal],
+    base: Mapping[str, str | None],
+    verified: list[tuple[int, _Signal]],
+) -> list[tuple[int, _Signal]]:
+    """The verified parents of a batch or lot, with the nearest level
+    (rank 0) widened to the mistyped materials of a short recording.
+
+    * A tool or fixture (:data:`_SETUP_RESOURCES`) that nests the batch
+      both ways: a material or recipe held for days from a tiny pool reads
+      as a tool on its own values.
+    * A unique id (:data:`_UNIQUE_CHAIN`) that nests the batch both ways and
+      holds another such id: one unique id inside another over the batch is
+      its work order inside the material it makes.
+    """
+    out = list(verified)
+    # only for the finest quantity: an id with another unique id inside it
+    # (both ways) is itself a work order or material taken for a batch
+    for inner in held:
+        if (
+            inner is not child
+            and base[inner.uuid] in _UNIQUE_CHAIN
+            and _inside(inner, child)
+            and _cochanges(inner, child)
+        ):
+            return out
+    seen = {p.uuid for _, p in verified}
+    chain: list[_Signal] = []
+    for parent in held:
+        if parent is child:
+            continue
+        ptype = base[parent.uuid]
+        setup = ptype in _SETUP_RESOURCES
+        if not (setup or ptype in _UNIQUE_CHAIN):
+            continue
+        if parent.uuid in seen and not setup:
+            ok = True
+        else:
+            ok = _inside(child, parent) and _cochanges(child, parent)
+        if not ok:
+            continue
+        if setup:
+            out.append((0, parent))
+        else:
+            chain.append(parent)
+    holders = {
+        p.uuid for p in chain if any(q is not p and _inside(q, p, 1.0) for q in chain)
+    }
+    if not holders:
+        return out
+    out = [(0, p) if p.uuid in holders else (r, p) for r, p in out]
+    listed = {p.uuid for _, p in out}
+    out += [(0, p) for p in chain if p.uuid in holders and p.uuid not in listed]
+    return out
+
+
+_LONG_DIGITS = re.compile(r"9\{(?:[6-9]|\d\d)\}")
+_SHORT_NUMBER = re.compile(r"9(?:\{[23]\})?")
+
+
+def _material_lean(sig: _Signal) -> float:
+    """How much more the values read like a material or article than like a
+    recipe or setup resource: the format and prefix evidence (before the
+    relations), and the shape of the values -- a number of six or more
+    digits is a material number (SAP, GTIN), a number of at most three
+    digits or a name of three or more ``_``-separated segments is a
+    program or recipe name (``17``, ``RZ_PA66_GF30_v3``)."""
+    sc = sig.scores
+    material = max(sc.get("material", 0.0), sc.get("article", 0.0))
+    setup = max(sc.get(t, 0.0) for t in ("recipe", "tool", "fixture"))
+    lean = material - setup
+    shape = sig.metrics.get("pattern")
+    if isinstance(shape, str):
+        if _LONG_DIGITS.search(shape):
+            lean += MATERIAL_SHAPE_LEAN
+        if _SHORT_NUMBER.fullmatch(shape) or shape.count("_") >= 2:
+            lean -= MATERIAL_SHAPE_LEAN
+    return lean
+
+
+def _quantity_key(sig: _Signal) -> tuple[int, float, int, str]:
+    """Sort key among equally preferred parents of a batch or lot: the
+    finer id (more distinct values: a material under its recipe), then the
+    one that reads more like a material (a material and its recipe that
+    change together one to one), then more presences."""
+    return (-sig.distinct, -round(_material_lean(sig), 6), -len(sig.p_start), sig.uuid)
 
 
 def _finer_key(sig: _Signal) -> tuple[bool, int, int, str]:
