@@ -6,6 +6,49 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 23: nesting for coarsely polled materials
+
+Results change for `identify_objects` nesting (`parent_uuid`,
+`packing_parent_uuid`) only; screening, types and `attribute_of` are
+unchanged.
+
+- Each change is also tested on the window its sampling leaves open: a value
+  seen at `t` changed after the sample before it. A parent change meets a
+  child change when the two windows overlap (within 5 s); each change's chance
+  is the share of time a window as wide as its own would meet one, and the
+  matches are tested against those chances (at least 3 matches, lift 0.6+,
+  at most 1 % by chance).
+  - A value written on change and re-sent every few minutes or hours
+    (keep-alive): a read off the re-send grid is a change seen when it
+    happened. Before, its change was taken to be up to 15 min late.
+  - A material polled every 15 to 60 minutes: its change, seen up to that
+    long after the batch change, still nests the batch when the windows meet
+    far more often than chance. The containment test reads the same windows.
+- A parent that holds the child in the strong sense needs only 5 % by chance:
+  no child presence straddles one of its changes, and the child has four
+  times as many distinct values (a material pool over its batches).
+- Of a serial's equally preferred parents (batch, lot), one that itself nests
+  in a material or recipe comes first: a package or a lot on its own clock no
+  longer beats the batch for being finer.
+- Still undecided: a material polled every 30 min over batches shorter than
+  that (any half hour holds a batch change), and a material that changes only
+  once or twice in the recording.
+- Benchmark nesting precision / recall: held-out 0.93 / 0.93 -> 0.95 / 0.95,
+  never-seen 0.96 / 0.89 -> 0.99 / 0.94; with every material polled every 30
+  min (new opt-in generator option `material_poll`) held-out 0.54 / 0.50 ->
+  0.82 / 0.82. The benchmark test now requires 0.92 / 0.92 (was 0.90 / 0.90)
+  and 0.80 / 0.80 on the coarse-material split.
+
+## October 2026, round 23: traceability leftovers
+
+Results change for numeric item ids and MultiProcess handovers where noted.
+
+- **Numeric ids:** an item id that is an integral number renders without `.0`: `1001.0` is `"1001"` in `RoutingTraceabilityEvents` (`item_id` of `build_routing_timeline` / `lead_time`, `oid` of `to_intervals`) and in `MultiProcessTraceabilityEvents.handover_log`. Before, these gave `"1001.0"` while `to_intervals` of the other classes gave `"1001"`. A float `1001.0` and the text `"1001"` on one Routing ID signal are now one item. Event ids of these rows change. The `item_id` / `identifier` columns that keep the signal's dtype (Value and MultiProcess timelines, lead times, `parallel_activity`) are unchanged.
+  - In `to_event_log`, the `serial` objects of every traceability log are `"1001"` (before: `"1001.0"` except for `to_intervals`). Event ids are unchanged.
+- **Parallel cells:** a handover can name the cell it leaves, `{"uuid": ..., "from_station": "Weld", "to_station": ..., "from_id_uuid": "w1"}` (or a list of cells). Without it, a `from_station` shared by several cells takes the latest reading of any cell, as before, and `handover_log()` raises a `DataQualityWarning` naming the station. A `from_id_uuid` that is not a cell of `from_station` raises `ValueError`.
+- **Unknown stations:** a handover whose `from_station` is not in `processes` raises a `DataQualityWarning` (once per call); it still gives no rows.
+- **`source_uuid`:** added as the last column of MultiProcess `build_timeline` (the `id_uuid`), `lead_time` (the cells' `id_uuid` in visit order, comma-joined), `parallel_activity` (the two visits' `id_uuid`, comma-joined) and `handover_log` (the handover signal). `handover_log` events now link the handover signal as `asset`. Event ids are unchanged: the new `LabelRule.eid_omit` leaves the column out of the id.
+
 ## October 2026, round 22: business partners and nesting recall
 
 Results change for `identify_objects` typing of order attributes and for its
