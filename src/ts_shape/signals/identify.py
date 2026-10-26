@@ -4708,12 +4708,9 @@ class ObjectReport(Mapping[str, "str | None"]):
             One :class:`~ts_shape.eventlog.ObjectSpec` per kept identifier,
             in uuid order.
         """
-        import dataclasses
-
         from ts_shape.eventlog.objects import _RESERVED, ObjectSpec
 
         _register_vocabulary()
-        has_cycle = "cycle_uuid" in {f.name for f in dataclasses.fields(ObjectSpec)}
         described: dict[str, dict[str, str]] = {}
         if attributes and "attribute_of" in self.table.columns:
             hosts = self.table["attribute_of"].to_numpy()
@@ -4746,7 +4743,7 @@ class ObjectReport(Mapping[str, "str | None"]):
                 continue
             extra: dict[str, Any] = {}
             cycle = getattr(row, "cycle_uuid", None)
-            if has_cycle and isinstance(cycle, str):
+            if isinstance(cycle, str):
                 extra["cycle_uuid"] = cycle
             specs.append(
                 ObjectSpec(
@@ -4854,7 +4851,7 @@ class ObjectReport(Mapping[str, "str | None"]):
     ) -> EventLog:
         """The objects of the report as an OCEL 2.0 event log, in one call.
 
-        Runs :meth:`to_object_specs` and :meth:`hierarchy`, then
+        Runs :meth:`to_object_specs`, :meth:`hierarchy` and :meth:`uses`, then
         :func:`~ts_shape.eventlog.detect_objects` (without ``events``) or
         :func:`~ts_shape.eventlog.attach_objects` (with ``events``) on
         ``dataframe``.
@@ -4878,7 +4875,8 @@ class ObjectReport(Mapping[str, "str | None"]):
             detector: ``"ClassName.method_name"`` of the detector frames in
                 ``events``, for :func:`~ts_shape.eventlog.to_event_log`.
             **kwargs: Passed to ``detect_objects`` / ``attach_objects``
-                (``hierarchy`` replaces :meth:`hierarchy`; ``qualifiers``,
+                (``hierarchy`` replaces :meth:`hierarchy` and ``uses``
+                replaces :meth:`uses`; ``qualifiers``,
                 ``fanout_threshold``, ``infer_o2o``, ``uuid_column``,
                 ``time_column``, ``validate``).
 
@@ -4901,6 +4899,9 @@ class ObjectReport(Mapping[str, "str | None"]):
         kwargs.setdefault(
             "hierarchy",
             self.hierarchy(min_confidence, include_generic=include_generic),
+        )
+        kwargs.setdefault(
+            "uses", self.uses(min_confidence, include_generic=include_generic) or None
         )
         if events is None:
             if scope is not None:

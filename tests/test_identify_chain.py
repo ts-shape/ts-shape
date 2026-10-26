@@ -297,3 +297,32 @@ def test_to_event_log_errors():
         report.to_event_log(df, pd.DataFrame())
     with pytest.raises(TypeError, match="EventLog"):
         report.to_event_log(df, 42)
+
+
+def test_to_event_log_links_usage_and_bounds_serials_by_cycle():
+    """Discrete line: report.to_event_log() carries cycle_uuid into the specs
+    and uses() into the o2o (made_from to the held inputs)."""
+    from ts_shape._object_signals import generate
+
+    frame, labels = generate(
+        seed=7,
+        days=1,
+        include=None,
+        noise=False,
+        discrete_cycles=True,
+        constant_materials=2,
+        lines=1,
+    )
+    report = identify_objects(frame)
+    uses = report.uses()
+    assert uses, "the discrete line has usage links"
+    log = report.to_event_log(frame)
+    o2o = log.o2o
+    assert "made_from" in set(o2o["ocel:qualifier"])
+    specs = {s.uuid: s for s in report.to_object_specs()}
+    cycled = [u for u in uses if specs.get(u) is not None and specs[u].cycle_uuid]
+    assert cycled, "serials get their cycle signal"
+    # Every child with usage links has o2o rows of those qualifiers.
+    for child, parents in uses.items():
+        for qualifier in set(parents.values()):
+            assert (o2o["ocel:qualifier"] == qualifier).any()

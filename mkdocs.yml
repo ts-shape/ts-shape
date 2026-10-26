@@ -43,6 +43,7 @@ nav:
     - Genealogy: guides/eventlog/genealogy.md
     - Object analytics: guides/eventlog/object-analytics.md
     - Object identification: guides/object-identification.md
+    - Object signal variants: guides/object-variants.md
     - Labeling and taxonomy: guides/eventlog/taxonomy.md
     - Adapters: guides/eventlog/adapters.md
   - Lambda rules: guides/lambda-rules.md
