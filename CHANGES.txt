@@ -1,3 +1,18 @@
+# October 26, 2026 (round 24)
+identify_objects: materials that change once a day.
+change: a parent with 1-3 changes in the child's span nests a batch or lot
+  when every change meets a child change and the product of their chances
+  times the pairs tried (Tarone-Bonferroni) is <= 1 %, with strong
+  containment; also through the batch's work order; a finer co-changing
+  material replaces a recipe. Ids changed by the clock (shift boundary or
+  midnight) nest nothing.
+change: types: tops_unique_chain, holds_batches, long_number facts; a
+  batch holds no batches. Held-out type accuracy 0.891 -> 0.898, nesting
+  0.95/0.95 -> 0.98/0.95; once-a-day materials 0.83/0.68 -> 0.93/0.93.
+feat: opt-in generator options material_changes_per_day and
+  continuous_process (_object_signals.generate); default data unchanged.
+  See docs/migration.md.
+
 # October 24, 2026 (round 23)
 identify_objects nesting for coarsely polled materials; traceability leftovers.
 change: nesting tests each change on the window its sampling leaves open

@@ -336,7 +336,7 @@ customer.
 | `work_order` | hours-long holds, occasionally revisited (a resumed order); coarser than its batches; recipe and material change with it; contains batches |
 | `order` (`sales_order`, `purchase_order`) | event-stamped or held, never revisited, arrivals spread like independent events (hold CV 0.75-1.6), a recurring partner changes with it, no production structure under it |
 | `recipe` | a tiny pool (<= 4), often revisited, long holds; changes only when a work order of the production hierarchy changes |
-| `material` / `article` | like recipe with more values; contains batches; SAP material numbers, GTIN |
+| `material` / `article` | like recipe with more values; contains batches (the reported parent of a batch or lot); tops a chain of finer unique ids (over its work orders and batches); SAP material numbers, GTIN, plain numbers of 6+ digits |
 | `tool` / `fixture` | a tiny pool, long or very long holds, changed on its own (no other id changes with it) |
 | `carrier` | a circulating pool (a tour of as many runs as values shows nearly all of them), recurring regularly at cycle rate |
 | `rfid_tag` | EPC hex (on a circulating carrier) |
@@ -513,17 +513,83 @@ than getting a guess.
 
 What sampling cannot show stays undecided. A material polled every 30 minutes over
 batches of 20 to 40 minutes is never placed: any half hour holds a batch change,
-so its windows meet them by chance alone. A material that changes only once or
-twice in the recording is rarely placed either.
+so its windows meet them by chance alone.
+
+### Rarely changing materials
+
+In a continuous process the material often changes once a day: a recording of a
+few days shows one to three changes. That is too few for the co-change test above
+(3 matches at least), yet one exact coincidence can already be very unlikely by
+chance. So a parent with at most 3 changes in the child's span is tested on all of
+them together:
+
+- **Every change meets the child.** Each change of the parent must meet a change
+  of the child's value (a new batch, not the same batch again after an empty
+  reading), on the windows their sampling leaves open, within 5 s.
+- **The chance model.** A change's chance is the share of the child's span where
+  a window as wide as its own would meet a child change: about the number of
+  child changes times (10 s plus the sampling windows) over the span. With
+  batches every 30 minutes, pushed when they change, that is 0.6 % for one change;
+  with batches every 2 hours 0.14 %. The changes are independent draws, so the
+  chance of all of them is the product (two changes on 30-minute batches:
+  0.003 %). It is computed on the times the changes were seen (pushed when they
+  happened) and on the windows the parent's own sampling leaves open; the smaller
+  product is doubled when the two tries differ.
+- **Multiple testing.** Every batch, lot or serial (and every order or package it
+  may be found through) is tried against every id that changes only a few times,
+  so the product times the number of pairs tried must stay at most 1 %
+  (`NEST_FEW_CHANCE_P`): a Bonferroni correction over the pairs that could reach
+  that bound at all (Tarone's correction: a pair whose changes would be likely by
+  chance even if every one of them met the child cannot give a false edge, so it
+  is not counted). Under the chance model, the chance that this test gives a frame
+  one false edge is at most 1 %.
+- **Strong containment.** No child presence straddles one of the parent's
+  changes, the child has twice as many distinct values as the parent at least and
+  6 changes of its own (two ids that both change rarely make no container).
+- **Not by the clock.** A parent whose every change falls on a shift boundary or
+  midnight (within 5 s on the local wall clock) is no parent, whatever it holds: a
+  day order, a date code or a shift label changes there, and a batch made per
+  shift or per day starts there too. This applies to every nesting test.
+
+A material on its own values (a tiny pool held for a day) often reads as no type,
+as a tool, as a lot or as a batch; with that few changes it is still taken for a
+batch's or lot's material. When the batch is polled too coarsely, the material is
+found through the work order the batch lies in (the order's changes meet the
+material's). Of a recipe and a material that both change with the batch, the
+material is taken when it changes at every change of the recipe, as unlikely by
+chance (a recipe pushed when it changes, a material polled every minute). An id
+that another order or batch nests in, or a tiny pool that changes only a few
+times, is no batch to nest itself.
+
+The types follow: a unique id that tops a chain of two finer unique ids held
+longer than parts (a material over its work orders over its batches, never
+revisited in a short recording) gets +0.45 for material, article and recipe and
+-0.30 to -0.40 for work order, batch, lot, order and package; the reported parent
+of a batch or lot gets +0.35 for material, article and recipe and -0.30 to -0.40
+for tool, fixture, work order, batch, lot, order and package (it is related, not
+`unrelated`); and a plain number of 6 or more digits counts -0.25 for a recipe,
+tool or fixture (a material number, not a program). A material without a format
+cue (`3KA5130-1AB`) can still read as the `setup` group.
+
+What it supports, by the opt-in options of the generator
+(`ts_shape._object_signals.generate`): `material_changes_per_day=1.0` runs every
+material in campaigns that change about once a day, at the start of a work order;
+the batch then nests in it at 0.93 / 0.93 precision / recall on the held-out
+split (0.83 / 0.68 before), 0.96 / 0.96 on never-seen seeds (0.93 / 0.87). With
+`continuous_process="lot"` (no batches, no work orders: production lots of a few
+hours inside the material, parts inside the lots) the lot nests in its material
+at 0.94 / 0.61 (0.87 / 0.46); the misses are lots that read as an order or as no
+type, which are no children to nest. With `continuous_process="serial"` (parts
+directly in the material) there is no edge: see the limits.
 
 `explain()` and `summary()` show both parents (`nested in line:batch (depth 1)`,
-`packed in line:box`). On the held-out benchmark split the nesting scores about 0.95
+`packed in line:box`). On the held-out benchmark split the nesting scores about 0.98
 precision and 0.95 recall per edge (0.99 / 0.94 on never-seen seeds); with every
 material polled every 30 minutes (`material_poll=1800` of the generator) about
-0.82 / 0.82 (0.54 / 0.50 before the sampling windows). The misses left are mostly
+0.84 / 0.82 (0.54 / 0.50 before the sampling windows). The misses left are mostly
 batches whose material is typed as something that is never a parent (an operator,
-a batch), materials that change only a few times, and serials whose batch is
-polled too coarsely to align and that lie in no other verified id.
+a batch), materials polled too coarsely to show when they changed, and serials
+whose batch is polled too coarsely to align and that lie in no other verified id.
 
 ## Limits
 
@@ -561,6 +627,22 @@ polled too coarsely to align and that lie in no other verified id.
   event-stamped.
 - **Counters.** An integer that counts up with a fixed width of 5+ digits and never
   resets is read as a serial, not a counter.
+- **Rarely changing materials** (see [Rarely changing materials](#rarely-changing-materials)):
+    - A material that never changes in the recording is a constant: there is no
+      evidence the batches lie in it, and no edge.
+    - One change is found only when the child's changes are timed closely: one
+      change meets a child change by chance with about the share of time the
+      child's change windows cover. Batches polled every 5 minutes, changing
+      every hour or so, cover about a tenth of the time, so one change is no
+      evidence; two or three can be. A material polled coarsely, with one change, is found only
+      through a work order that is timed closely.
+    - Parts directly in the material (no batch, lot or order between them): a
+      part changes every cycle, so any moment meets a part change and a material
+      change says nothing. No edge.
+    - An id that changes only a few times, each time exactly when a batch starts,
+      and never inside a batch, is that batch's parent by the data, whatever it
+      is. Only the clock (a shift boundary or midnight) and an independent clock
+      of its own are told apart.
 
 Pin what the data cannot tell with `hints`:
 

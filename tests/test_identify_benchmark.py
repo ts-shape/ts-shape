@@ -20,7 +20,11 @@ Scores, pooled over every held-out uuid:
 * the same nesting scores on the held-out seeds generated with every
   material polled every 30 minutes (``material_poll``, opt-in), where a
   material change is seen up to half an hour after the batch change it
-  goes with.
+  goes with;
+* the nesting scores of the edges into a material on the held-out seeds
+  generated with materials run in campaigns that change about once a day
+  (``material_changes_per_day``, opt-in): one to three changes in three
+  days.
 
 The result of ``identify_objects`` may be a DataFrame with a ``uuid`` column
 (or index) and an ``object_type`` column (``None``/NaN for non-identifiers),
@@ -71,6 +75,11 @@ MIN_NESTING_RECALL = 0.92
 COARSE_MATERIAL_POLL = 1800.0
 MIN_COARSE_NESTING_PRECISION = 0.8
 MIN_COARSE_NESTING_RECALL = 0.8
+#: Material changes per day of the rare-material benchmark, and the nesting
+#: thresholds of its edges into a material.
+RARE_MATERIAL_CHANGES_PER_DAY = 1.0
+MIN_RARE_NESTING_PRECISION = 0.85
+MIN_RARE_NESTING_RECALL = 0.85
 
 _GROUP_OF = {t: g for g, members in OBJECT_TYPE_GROUPS.items() for t in members}
 _GROUP_OF.update({g: g for g in OBJECT_TYPE_GROUPS})
@@ -134,12 +143,12 @@ def _predictions(result: object) -> dict[str, str | None]:
     return out
 
 
-def benchmark_data(
-    seeds=HELDOUT_SEEDS, days: float = 3, material_poll: float | None = None
-):
-    """``[(seed, frame, labels)]`` of the benchmark seeds; ``material_poll``
-    polls every material on a grid of that period (seconds)."""
-    if material_poll is None:
+def benchmark_data(seeds=HELDOUT_SEEDS, days: float = 3, **options):
+    """``[(seed, frame, labels)]`` of the benchmark seeds; ``options`` are
+    the generator's opt-in options (``material_poll`` polls every material
+    on a grid of that period in seconds, ``material_changes_per_day`` runs
+    the materials in campaigns)."""
+    if not options:
         return [
             (seed, *ts_shape.make_object_signals(seed=seed, days=days))
             for seed in seeds
@@ -147,16 +156,7 @@ def benchmark_data(
     from ts_shape._object_signals import generate
 
     return [
-        (
-            seed,
-            *generate(
-                seed=seed,
-                days=days,
-                include=None,
-                noise=True,
-                material_poll=material_poll,
-            ),
-        )
+        (seed, *generate(seed=seed, days=days, include=None, noise=True, **options))
         for seed in seeds
     ]
 
@@ -216,8 +216,10 @@ def _parents(result: object) -> dict[str, str]:
     }
 
 
-def nesting_score(identify, data) -> dict[str, object]:
-    """Nesting precision and recall of ``identify`` on ``benchmark_data()``."""
+def nesting_score(identify, data, parent_type: str | None = None) -> dict[str, object]:
+    """Nesting precision and recall of ``identify`` on ``benchmark_data()``;
+    with ``parent_type``, of the edges into a parent labelled that type
+    only (labelled, or predicted to a signal of that type)."""
     rows = []
     for seed, frame, labels in data:
         result = identify(frame)
@@ -228,7 +230,15 @@ def nesting_score(identify, data) -> dict[str, object]:
             for u, p in zip(labels["uuid"], labels["parent_uuid"], strict=True)
             if not _missing(p)
         }
-        for child in sorted(set(predicted) | set(truth)):
+        children = set(predicted) | set(truth)
+        if parent_type is not None:
+            of_type = set(labels.loc[labels["object_type"] == parent_type, "uuid"])
+            children = {
+                c
+                for c in children
+                if truth.get(c) in of_type or predicted.get(c) in of_type
+            }
+        for child in sorted(children):
             rows.append(
                 {
                     "seed": seed,
@@ -346,6 +356,104 @@ def test_coarse_material_nesting(coarse_nesting):
     assert coarse_nesting["recall"] >= MIN_COARSE_NESTING_RECALL, _nesting_report(
         coarse_nesting
     )
+
+
+@pytest.fixture(scope="module")
+def rare_nesting():
+    """Nesting scores of the edges into a material on the held-out seeds with
+    materials that change about once a day."""
+    identify = _identify()
+    data = benchmark_data(material_changes_per_day=RARE_MATERIAL_CHANGES_PER_DAY)
+    return nesting_score(identify, data, parent_type="material")
+
+
+def test_rare_material_nesting(rare_nesting):
+    # a material changed about once a day changes one to three times in
+    # three days: every change meets a batch change, all of them together
+    # far less likely by chance than one in a hundred over the pairs tried
+    assert rare_nesting["precision"] >= MIN_RARE_NESTING_PRECISION, _nesting_report(
+        rare_nesting
+    )
+    assert rare_nesting["recall"] >= MIN_RARE_NESTING_RECALL, _nesting_report(
+        rare_nesting
+    )
+
+
+def _digest(frame: pd.DataFrame) -> str:
+    """A digest of the values of ``frame`` (timestamps as nanoseconds)."""
+    import hashlib
+
+    h = hashlib.sha256()
+    for column in frame.columns:
+        values = frame[column]
+        if column == "systime":
+            values = values.astype("datetime64[ns]").astype("int64")
+        cells = values.astype(object).where(values.notna(), None).tolist()
+        h.update(str(column).encode())
+        h.update("\x1f".join(map(repr, cells)).encode())
+    return h.hexdigest()[:16]
+
+
+@pytest.mark.parametrize(
+    ("seed", "material_poll", "frame_digest", "labels_digest"),
+    [
+        # the data of the generator before the opt-in options were added
+        (0, None, "7ee2ba682dce29dc", "27bfa15349b329a5"),
+        (101, None, "f3f81b0edcb68a56", "4eec7681a4a7eabd"),
+        (101, 1800.0, "ef699cbf3c2391df", "4eec7681a4a7eabd"),
+    ],
+)
+def test_generator_options_keep_the_default_data(
+    seed, material_poll, frame_digest, labels_digest
+):
+    from ts_shape._object_signals import generate
+
+    frame, labels = generate(
+        seed=seed, days=1, include=None, noise=True, material_poll=material_poll
+    )
+    assert (_digest(frame), _digest(labels)) == (frame_digest, labels_digest)
+    same = generate(
+        seed=seed,
+        days=1,
+        include=None,
+        noise=True,
+        material_poll=material_poll,
+        material_changes_per_day=None,
+        continuous_process=None,
+    )
+    pd.testing.assert_frame_equal(frame, same[0])
+    pd.testing.assert_frame_equal(labels, same[1])
+
+
+def test_material_campaigns_change_rarely():
+    from ts_shape._object_signals import generate
+
+    frame, labels = generate(
+        seed=101, days=3, include=None, noise=False, material_changes_per_day=1.0
+    )
+    materials = labels.loc[labels["object_type"] == "material", "uuid"]
+    assert len(materials)
+    for uuid in materials:
+        rows = frame[frame["uuid"] == uuid]
+        column = labels.set_index("uuid").loc[uuid, "value_column"]
+        values = rows[column].dropna()
+        assert 1 <= int((values != values.shift()).sum()) - 1 <= 6
+    # every batch nests in its material
+    batches = labels[labels["object_type"] == "batch"]
+    assert batches["parent_uuid"].isin(materials).all()
+    for kind in ("lot", "serial"):
+        cont, cont_labels = generate(
+            seed=101, days=3, include=None, noise=False, continuous_process=kind
+        )
+        types = set(cont_labels["object_type"].dropna())
+        assert "batch" not in types and "work_order" not in types
+        mats = set(cont_labels.loc[cont_labels["object_type"] == "material", "uuid"])
+        nested = cont_labels[cont_labels["object_type"] == kind]
+        assert nested["parent_uuid"].isin(mats).all()
+    with pytest.raises(ValueError, match="continuous_process"):
+        generate(seed=0, days=1, include=None, noise=True, continuous_process="x")
+    with pytest.raises(ValueError, match="material_changes_per_day"):
+        generate(seed=0, days=1, include=None, noise=True, material_changes_per_day=0.0)
 
 
 def test_material_poll_keeps_the_default_data():
