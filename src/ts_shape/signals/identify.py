@@ -127,6 +127,43 @@ identifier's own parents are not its attributes. See
 the nesting into ``part_of`` edges, and :meth:`ObjectReport.to_event_log`
 runs the chain into an event log.
 
+is_delta
+--------
+Many historians flag each row with ``is_delta``: ``True`` where the machine
+wrote the value, ``False`` where the value held is re-sent (``delta_column``
+of :func:`identify_objects`). The flag counts only on a signal whose rows
+carry both values; a signal flagged the same on every row (stored on
+change, or polled) is read as without it. Then a value change at a delta
+row is seen when it happened (no sampling window, :func:`_seen_late`), and
+a delta row that repeats the value is a same-value re-setup: counted in the
+evidence and a write that can put an input on a line (:func:`_same_line`),
+while the presences the nesting compares stay value presences. A signal
+set as a delta at least once, re-sent at a keep-alive cadence
+(:func:`_delta_setup`) and changed at most :data:`NEST_FEW_CHANGES` times
+is a *held setup* when its values read like ids (:func:`_id_like`: a
+number of 6+ digits, a code with a run of 3+ digits, a known format): an
+identifier even when it never changes (``delta_held`` in
+:data:`SCREEN_WEIGHTS`), typed on its format alone -- a prefix family or
+pattern names the type (``named_setup``), else it is the material the
+process was set up with (``held_setup``). A setpoint, a state word or a
+version text written the same way stays a constant.
+
+Cycles and usage links
+----------------------
+A serial's *cycle signal* (``cycle_uuid``) is a bool whose True intervals
+(a door closed, a clamp closed) each hold exactly one change of the serial
+-- at least :data:`CYCLE_MIN_SHARE` of them, holding as many of the
+changes, far above what intervals as long placed at random would give
+(:func:`_cycles`). The ids held while a unit (a serial, a batch, a
+production lot) is made are its *usage links* (``uses``): a parent of a
+type of :data:`USAGE_QUALIFIERS` present during :data:`USES_MIN_SHARE` of
+the unit's presences, outside its production and packing chain --
+``made_from`` (material, article, lot, batch), ``made_with`` (tool,
+fixture, recipe), ``made_by`` (operator), ``carried_by`` (the carrier of a
+part) and ``contains`` (a component serial scanned once in each of the
+part's cycles). With units on more than one line the data must put the
+parent on the unit's line (:func:`_uses`). See :meth:`ObjectReport.uses`.
+
 Confidence: ``best / (best + runner_up) * min(1, best / CONFIDENT_SCORE)``,
 with ``runner_up`` the best score outside the reported type (or group).
 
@@ -490,6 +527,7 @@ SCREEN_WEIGHTS: dict[str, float] = {
     "held": 0.15,  # values held over several samples
     "event_stamped": 0.15,  # one-sample ids cleared by an empty reading
     "token": 0.10,  # no spaces, 2..40 characters
+    "delta_held": 0.30,  # one id-like value set as a delta and re-sent (is_delta)
     "changes_every_sample": -0.30,  # numeric, new value at nearly every sample
 }
 
@@ -566,6 +604,10 @@ PREFIX_FAMILIES: dict[str, tuple[str, ...]] = {
     "PKG": ("handling_unit",),
 }
 PREFIX_WEIGHT = 0.25
+#: A held setup (``named_setup``) whose prefix family or registered pattern
+#: names a type adds this much more to that type: one held value has no
+#: other cue.
+NAMED_SETUP_WEIGHT = 0.60
 
 #: What each fact means (the evidence wording).
 FACT_DESCRIPTIONS: dict[str, str] = {
@@ -654,6 +696,15 @@ FACT_DESCRIPTIONS: dict[str, str] = {
     "tops_unique_chain": (
         f"tops a chain of {CHAIN_MATERIAL_DEPTH}+ finer unique ids (a material "
         "over its work orders and batches)"
+    ),
+    "held_setup": (
+        "an id set as a delta (is_delta) and re-sent at a keep-alive cadence, "
+        f"changed at most {NEST_FEW_CHANGES} times: the material it was set up "
+        "with"
+    ),
+    "named_setup": (
+        "an id set as a delta and re-sent, its prefix or pattern names the type "
+        f"(+{NAMED_SETUP_WEIGHT:.2f} to it)"
     ),
 }
 
@@ -788,6 +839,7 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("material", "within_shift", -0.20),
     ("material", "cycle_rate", -0.40),
     ("material", "unrelated", -0.10),
+    ("material", "held_setup", 0.80),
     ("article", "medium_cardinality", 0.15),
     ("article", "unique_sequence", -0.30),
     ("article", "often_revisited", 0.30),
@@ -807,6 +859,7 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("article", "within_shift", -0.20),
     ("article", "cycle_rate", -0.40),
     ("article", "unrelated", -0.10),
+    ("article", "held_setup", 0.35),
     # tool / fixture: very few values, very long holds, changed on their own
     # (a changeover follows the order change, it does not coincide with it)
     ("tool", "very_few_values", 0.15),
@@ -824,6 +877,7 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("tool", "within_shift", -0.20),
     ("tool", "holds_batches", -0.35),
     ("tool", "long_number", -0.25),
+    ("tool", "held_setup", -0.30),
     ("fixture", "very_few_values", 0.14),
     ("fixture", "unique_sequence", -0.30),
     ("fixture", "tiny_pool", 0.22),
@@ -1356,6 +1410,17 @@ class _Signal:
     pe_u: _I64 = field(default_factory=lambda: np.empty(0, np.int64))
     # measured features behind the facts (hold spread, time presence, ...)
     extra: dict[str, Any] = field(default_factory=dict)
+    # the value code of True (a bool signal), else -1
+    true_code: int = -1
+    # same-value re-setups (a delta row that repeats the value)
+    resetup_t: _I64 = field(default_factory=lambda: np.empty(0, np.int64))
+    # the last presence lasts to the end of the recording (no empty after it)
+    open_end: bool = False
+    # the bool whose True intervals bracket one change each (a serial's
+    # machine cycle, :func:`_cycles`), and the ids held while this one is
+    # made, with their qualifier (:func:`_uses`)
+    cycle: str | None = None
+    uses: tuple[tuple[str, str], ...] = ()
 
 
 def _id_text(value: object) -> str:
@@ -1686,6 +1751,132 @@ def _on_the_clock(
     return np.asarray(dist <= COCHANGE_TOLERANCE_SECONDS, dtype=bool)
 
 
+@dataclass(frozen=True)
+class _DeltaSetup:
+    """What a signal's ``is_delta`` flags say (:func:`_delta_setup`)."""
+
+    # non-empty delta rows (setups, re-setups included)
+    setups: int = 0
+    # delta rows that repeat the value (a new setup with the same value)
+    resetups: int = 0
+    # cadence of the non-delta re-sends (keep-alive), 0 when irregular
+    keep_alive_ns: int = 0
+    # every value change was written as a delta (seen when it happened)
+    exact: bool = False
+
+
+def _delta_flags(
+    rows: pd.DataFrame, column: str | None
+) -> npt.NDArray[np.bool_] | None:
+    """The ``is_delta`` flag of each row (missing: False), or None when the
+    column is absent or the signal's rows do not carry both values: a flag
+    that is the same on every row (a signal stored on change, or polled)
+    says nothing about single rows."""
+    if column is None or column not in rows.columns or len(rows) == 0:
+        return None
+    raw = rows[column]
+    if raw.dtype == bool:
+        flags = raw.to_numpy()
+    else:
+        flags = np.asarray(raw.astype(object).where(raw.notna(), False), dtype=bool)
+    if flags.all() or not flags.any():
+        return None
+    return np.asarray(flags, dtype=bool)
+
+
+def _delta_setup(
+    t: _I64,
+    codes: _I64,
+    flags: npt.NDArray[np.bool_],
+    idx: npt.NDArray[np.intp],
+    rc: _I64,
+    resetups: int,
+) -> _DeltaSetup:
+    """Read the ``is_delta`` flags of one signal: a delta row is a setup (a
+    value written when it was set), a non-delta row a re-send of the value
+    held. The re-sends are a keep-alive when at least
+    :data:`POLL_REGULAR_SHARE` of their intervals lie within 20 % of the
+    median. ``exact``: every run that brings a new value starts at a delta
+    row."""
+    present = codes >= 0
+    setups = int((flags & present).sum())
+    resend = t[~flags & present]
+    keep_alive = 0
+    if len(resend) >= 3:
+        gaps = np.diff(resend).astype(np.float64)
+        med = float(np.median(gaps))
+        if med > 0 and float((np.abs(gaps - med) <= 0.2 * med).mean()) >= (
+            POLL_REGULAR_SHARE
+        ):
+            keep_alive = int(med)
+    new = np.zeros(len(rc), dtype=bool)
+    new[1:] = (rc[1:] >= 0) & (rc[1:] != rc[:-1])
+    exact = bool(new.any()) and bool(flags[idx[new]].all())
+    return _DeltaSetup(setups, resetups, keep_alive, exact)
+
+
+def _id_like(text: str, numeric: bool) -> bool:
+    """Whether one held value reads like an id rather than a setting: a
+    plain number of 6+ digits (a material number; a setpoint is shorter),
+    or a token of letters and digits with a run of 3+ digits and 4+ digits
+    in all (``MAT-100234``, ``T-0815``). Words, decimals, versions
+    (``V2.3.1``) and texts with blanks are settings."""
+    x = text.strip()
+    if " " in x or not 3 <= len(x) <= 40:
+        return False
+    if x.lstrip("+-").isdigit():
+        return not x.startswith(("-", "+")) and len(x) >= 6
+    if numeric or _WORD_LIKE.fullmatch(x) or _DECIMAL_TEXT.fullmatch(x):
+        return False
+    runs = _DIGIT_RUNS.findall(x)
+    return bool(runs) and max(map(len, runs)) >= 3 and sum(map(len, runs)) >= 4
+
+
+def _id_like_share(
+    texts: Sequence[str],
+    seen: Sequence[pd.Timestamp],
+    weights: npt.NDArray[np.float64],
+    numeric: bool,
+    known: Sequence[str],
+) -> float:
+    """Share (by runs) of the values that read like ids (:func:`_id_like`):
+    1 with a known format; 0 when the values are dates or times."""
+    if known:
+        return 1.0
+    if not texts:
+        return 0.0
+    if any(_ISO_TIME.fullmatch(x) for x in texts):
+        return 0.0
+    if _compact_date_share(texts, seen, weights.tolist()) >= FORMAT_MIN_SHARE:
+        return 0.0
+    if not numeric and _clock_share(texts, seen, weights.tolist()) >= FORMAT_MIN_SHARE:
+        return 0.0
+    ok = np.fromiter((_id_like(x, numeric) for x in texts), dtype=float)
+    total = float(weights.sum()) or 1.0
+    return float(np.dot(ok, weights)) / total
+
+
+#: Formats that name a type on their own (a GUID does not).
+_TYPED_FORMATS = _KNOWN_FORMATS - {"guid"}
+
+
+def _held_setup_facts(
+    facts: Mapping[str, float], formats: Mapping[str, float]
+) -> dict[str, float]:
+    """The facts of a held setup (:func:`_screen`): the formats only, plus
+    ``named_setup`` when a prefix family or a registered pattern names the
+    type, else ``held_setup`` (the material it was set up with) unless a
+    format of a type (a GTIN, an SAP material number) decides."""
+    out = {k: v for k, v in formats.items() if v >= FORMAT_MIN_SHARE}
+    if "long_number" in facts:
+        out["long_number"] = 1.0
+    if any(k.startswith(("prefix:", "pattern:")) for k in out):
+        out["named_setup"] = 1.0
+    elif not any(k in _TYPED_FORMATS for k in out):
+        out["held_setup"] = 1.0
+    return out
+
+
 def _screen(
     key: str,
     rows: pd.DataFrame,
@@ -1694,6 +1885,7 @@ def _screen(
     min_samples: int,
     shift_definitions: Mapping[str, tuple[str, str]],
     hinted: bool = False,
+    delta_column: str | None = None,
 ) -> _Signal:
     from ts_shape.eventlog.objects import _id_codes
 
@@ -1723,6 +1915,7 @@ def _screen(
         codes = np.asarray(codes, dtype=np.int64)
         labels = [_id_text(u) for u in uniques]
         misreads = 0
+        sig.true_code = labels.index("True") if "True" in labels else -1
     else:
         codes, uniques = _id_codes(raw)
         codes, labels, misreads = _clean_codes(codes, uniques, text=not numeric)
@@ -1731,6 +1924,17 @@ def _screen(
     # presence runs: RLE over codes, empties (-1) break runs
     brk = np.ones(n, dtype=bool)
     brk[1:] = codes[1:] != codes[:-1]
+    flags = _delta_flags(rows, delta_column)
+    resetups = 0
+    if flags is not None:
+        # a delta row without a value change is a new setup with the same
+        # value (a re-setup): a setup instant of its own. The presences stay
+        # value presences: a re-setup at every order start would make a
+        # held input look nested in the order
+        again = np.zeros(n, dtype=bool)
+        again[1:] = flags[1:] & (codes[1:] >= 0) & (codes[1:] == codes[:-1])
+        resetups = int(again.sum())
+        sig.resetup_t = t[again]
     idx = np.flatnonzero(brk)
     rc = codes[idx]
     rstart = t[idx]
@@ -1741,6 +1945,7 @@ def _screen(
     p_start, p_end, p_len = rstart[is_id], rend[is_id], rlen[is_id]
     sig.p_start, sig.p_end, sig.p_code = p_start, p_end, rc[is_id]
     sig.changes = p_start[1:]
+    sig.open_end = bool(len(rc)) and bool(rc[-1] >= 0)
 
     present = codes >= 0
     ne_codes = codes[present]
@@ -1771,6 +1976,13 @@ def _screen(
         sig.lag_ns = int(np.median(np.diff(ne_t)))
     sig.poll_ns = _poll_period(t)
     run_u = _seen_late(t, idx, max(sig.lag_ns, sig.poll_ns), sig.poll_ns)
+    setup = _DeltaSetup()
+    if flags is not None:
+        setup = _delta_setup(t, codes, flags, idx, rc, resetups)
+        # a run that starts at a delta row was written when it happened
+        run_u[flags[idx]] = 0
+        if setup.exact:
+            sig.lag_ns = sig.poll_ns = 0
     sig.p_u = run_u[is_id]
     sig.pe_u = np.append(run_u[1:], 0)[is_id]
     one_cleared = (p_len == 1) & followed_empty
@@ -1877,6 +2089,8 @@ def _screen(
         "q90_hold": q90_hold,
         "coverage": coverage,
         "on_clock": on_clock,
+        "setup": setup,
+        "texts": texts,
     }
     if misreads:
         sig.screen_evidence.append(
@@ -1976,9 +2190,20 @@ def _screen(
             sig.facts = facts()
         return sig
 
+    # a value set as a delta at a setup and re-sent at a keep-alive cadence,
+    # changed at most a few times (a material held over the recording): an
+    # id when its values read like one
+    held_setup = (
+        setup.keep_alive_ns > 0
+        and setup.setups > 0
+        and runs - 1 <= NEST_FEW_CHANGES
+        and vc != "value_bool"
+        and not non_integral
+        and _id_like_share(texts, seen, weights, numeric, known) >= FORMAT_MIN_SHARE
+    )
     if n < min_samples:
         return role("insufficient_data", f"{n} rows < min_samples={min_samples}")
-    if distinct == 1:
+    if distinct == 1 and not held_setup:
         return role("constant", f"one value ({texts[0]!r})")
     if vc == "value_bool":
         return role("state", "boolean values")
@@ -2092,7 +2317,15 @@ def _screen(
 
     # identifier score
     feats: list[tuple[str, str]] = []
-    if distinct > STATE_MAX_CARDINALITY:
+    if distinct == 1:  # a held setup (see above)
+        feats.append(
+            (
+                "delta_held",
+                f"one value set as a delta at {setup.setups} setup(s) and re-sent "
+                f"every {setup.keep_alive_ns / 1e9:.0f} s (keep-alive)",
+            )
+        )
+    elif distinct > STATE_MAX_CARDINALITY:
         feats.append(
             (
                 "high_cardinality",
@@ -2146,6 +2379,18 @@ def _screen(
         )
     sig.role = "identifier"
     sig.facts = facts()
+    if held_setup:
+        # one value or a few held over the recording: its holds and its
+        # cardinality say nothing about the type (a tiny pool held for days
+        # reads as a tool); its format does, else it is the material the
+        # process was set up with
+        sig.facts = _held_setup_facts(sig.facts, formats)
+        sig.screen_evidence.append(
+            f"set as a delta (is_delta) at {setup.setups} setup(s)"
+            + (f", {setup.resetups} with the same value" if setup.resetups else "")
+            + f", re-sent every {setup.keep_alive_ns / 1e9:.0f} s, "
+            f"{runs - 1} value change(s): a held setup"
+        )
     return sig
 
 
@@ -2378,6 +2623,15 @@ def _score_types(sig: _Signal) -> None:
             pattern = _PATTERNS.get(fact[8:])
             if pattern is not None:
                 add(pattern.object_type, fact, pattern.weight)
+    if "named_setup" in sig.facts:
+        for fact in sig.facts:
+            named: Iterable[str] = ()
+            if fact.startswith("prefix:"):
+                named = PREFIX_FAMILIES.get(fact[7:], ())
+            elif fact.startswith("pattern:") and fact[8:] in _PATTERNS:
+                named = (_PATTERNS[fact[8:]].object_type,)
+            for target in named:
+                add(target, "named_setup", NAMED_SETUP_WEIGHT)
     sig.scores = {k: max(0.0, v) for k, v in scores.items()}
     sig.contributions = contrib
 
@@ -3957,6 +4211,359 @@ def _attribute_hosts(signals: list[_Signal], hosts: list[_Signal]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Cycles and usage links
+# ---------------------------------------------------------------------------
+
+#: A cycle signal (:func:`_cycles`): a bool with at least CYCLE_MIN_INTERVALS
+#: True intervals in the serial's span, CYCLE_MIN_SHARE of them holding
+#: exactly one change of the serial and CYCLE_MIN_SHARE of the changes inside
+#: one, a lift of at least CYCLE_MIN_LIFT over the share a window as long
+#: placed at random would give, and a binomial tail of at most
+#: NEST_MAX_CHANCE_P.
+CYCLE_MIN_INTERVALS = 10
+CYCLE_MIN_SHARE = 0.9
+CYCLE_MIN_LIFT = 0.5
+#: A usage link (:func:`_uses`): the parent is present during at least this
+#: share of the child's presences.
+USES_MIN_SHARE = 0.9
+
+#: Usage qualifiers by the parent's reported type: inputs (``made_from``),
+#: resources (``made_with``), people (``made_by``), transport
+#: (``carried_by``). A component serial built into the unit is ``contains``
+#: (:func:`_component_of`). Orders, packages, partners, machines, stations
+#: and locations are no usage link (production nesting, packing, attributes,
+#: assets).
+USAGE_QUALIFIERS: dict[str, str] = {
+    "material": "made_from",
+    "article": "made_from",
+    "lot": "made_from",
+    "batch": "made_from",
+    "tool": "made_with",
+    "fixture": "made_with",
+    "recipe": "made_with",
+    "setup": "made_with",
+    "operator": "made_by",
+    "carrier": "carried_by",
+    "rfid_tag": "carried_by",
+}
+#: Qualifiers only a part (a serial) has: one carrier or component per part,
+#: not per batch.
+_PART_QUALIFIERS = frozenset({"carried_by", "contains"})
+#: Hosts outside production: an id that describes one (``attribute_of``) is
+#: a business attribute, never a usage link.
+_BUSINESS_HOSTS = frozenset(
+    {"sales_order", "purchase_order", "order", "handling_unit"}
+    | {"customer", "supplier", "business_partner"}
+)
+
+
+def _true_intervals(sig: _Signal) -> tuple[_I64, _I64]:
+    """``(starts, ends)`` of the True presences of a bool signal."""
+    on = sig.p_code == sig.true_code
+    return sig.p_start[on], sig.p_end[on]
+
+
+def _exactly_one_chance(
+    scans: _I64, lengths: _I64, lo: int, hi: int
+) -> npt.NDArray[np.float64]:
+    """For each window length, the share of the start positions in ``[lo,
+    hi - length]`` where a window that long holds exactly one of ``scans``
+    (sorted). Lengths are rounded up to widths 5 % apart."""
+    out = np.zeros(len(lengths))
+    if len(scans) == 0 or hi <= lo:
+        return out
+    c = scans.astype(np.float64)
+    prev = np.append(float(lo), c[:-1])
+    nxt = np.append(c[1:], float(hi))
+    secs = np.maximum(lengths / 1e9, 1e-3)
+    widths = 1.05 ** np.ceil(np.log(secs) / math.log(1.05))
+    for width in np.unique(widths):
+        w = width * 1e9
+        room = hi - lo - w
+        if room <= 0:
+            continue
+        a = np.maximum(np.maximum(prev, c - w), lo)
+        b = np.minimum(np.minimum(c, nxt - w), hi - w)
+        out[widths == width] = min(1.0, float((b - a).clip(min=0).sum()) / room)
+    return out
+
+
+def _one_per_interval(
+    scans: _I64, scans_u: _I64, starts: _I64, ends: _I64
+) -> tuple[float, float, float, int] | None:
+    """How well the intervals ``[starts, ends]`` bracket one of ``scans``
+    each (a scan seen at ``t`` happened after ``t - u``): ``(lift, share,
+    chance, intervals)`` when they pass the cycle tests (see
+    :data:`CYCLE_MIN_SHARE`), else None. Only the intervals within the span
+    of the scans count."""
+    if len(scans) < CYCLE_MIN_INTERVALS or len(starts) < CYCLE_MIN_INTERVALS:
+        return None
+    lo, hi = int(max(scans[0], starts[0])), int(min(scans[-1], ends[-1]))
+    within = (starts >= lo) & (ends <= hi)
+    s, e = starts[within], ends[within]
+    if len(s) < CYCLE_MIN_INTERVALS:
+        return None
+    sel = (scans >= lo) & (scans <= hi)
+    t, u = scans[sel], scans_u[sel]
+    if len(t) == 0:
+        return None
+    k = np.searchsorted(s, t, side="right") - 1
+    kk = np.clip(k, 0, len(s) - 1)
+    inside = (k >= 0) & (t - u <= e[kk])
+    counts = np.bincount(kk[inside], minlength=len(s))
+    one = counts == 1
+    share = float(one.mean())
+    if share < CYCLE_MIN_SHARE or float(inside.mean()) < CYCLE_MIN_SHARE:
+        return None
+    chance = float(_exactly_one_chance(t, e - s, lo, hi).mean())
+    if chance >= 1.0:
+        return None
+    lift = (share - chance) / (1.0 - chance)
+    if lift < CYCLE_MIN_LIFT:
+        return None
+    if _binomial_tail(int(one.sum()), len(s), chance) > NEST_MAX_CHANCE_P:
+        return None
+    return lift, share, chance, len(s)
+
+
+def _cycles(serials: list[_Signal], bools: list[_Signal]) -> None:
+    """Set each serial's ``cycle``: the bool whose True intervals (a door
+    closed, a clamp closed) each hold exactly one change of the serial, and
+    hold nearly all of them, far more often than intervals as long placed at
+    random would (:func:`_one_per_interval`). Of several, the one with the
+    highest lift, then the highest share."""
+    for sig in serials:
+        if len(sig.p_start) < CYCLE_MIN_INTERVALS:
+            continue
+        best: tuple[float, float, float, int, str] | None = None
+        for b in bools:
+            if b.true_code < 0:
+                continue
+            starts, ends = _true_intervals(b)
+            got = _one_per_interval(sig.p_start, sig.p_u, starts, ends)
+            if got is not None and (best is None or got[:2] > best[:2]):
+                best = (*got, b.uuid)
+        if best is not None:
+            _, share, chance, count, uuid = best
+            sig.cycle = uuid
+            sig.evidence.append(
+                f"cycle {uuid}: {share:.0%} of its {count} True intervals hold "
+                f"one change (by chance {chance:.0%})"
+            )
+
+
+def _overlap_share(child: _Signal, parent: _Signal) -> float:
+    """Share of the child's presences during which the parent is present
+    (has a value) at some moment. The parent's last value is held to the end
+    of the recording when nothing cleared it."""
+    ps, pe = parent.p_start, parent.p_end
+    cs, ce = child.p_start, child.p_end
+    if len(ps) == 0 or len(cs) == 0:
+        return 0.0
+    if parent.open_end:
+        pe = pe.copy()
+        pe[-1] = np.iinfo(np.int64).max
+    ce = np.maximum(ce, cs + 1)
+    j = np.searchsorted(ps, ce, side="left") - 1
+    ok = (j >= 0) & (pe[np.clip(j, 0, len(ps) - 1)] > cs)
+    return float(ok.mean())
+
+
+def _joined(a: _Signal, b: _Signal, by_uuid: Mapping[str, _Signal]) -> bool:
+    """Whether two produced units are on one line: one nests in the other,
+    they share a parent or a cycle signal, or one co-varies with the
+    other."""
+    if a.uuid in _ancestors(b, by_uuid) or b.uuid in _ancestors(a, by_uuid):
+        return True
+    if a.parent is not None and a.parent == b.parent:
+        return True
+    if a.cycle is not None and a.cycle == b.cycle:
+        return True
+    if len(a.p_start) < 2 or len(b.p_start) < 2:
+        return False
+    return _cochanges(a, b) or _cochanges(b, a)
+
+
+def _one_line(
+    children: list[_Signal], by_uuid: Mapping[str, _Signal]
+) -> set[str] | None:
+    """The units of the one line in the data, or None when there are more.
+
+    Units joined by :func:`_joined` form groups. A group with two or more
+    units or a serial with a cycle signal is a line (without any, a group
+    with a serial is); a single unit in no line (a raw lot nested by
+    mistake, a timestamp read as a serial) is loose. With exactly one line,
+    every id held while its units are made is theirs."""
+    if len(children) <= 1:
+        return {s.uuid for s in children}
+    group = list(range(len(children)))
+
+    def root(i: int) -> int:
+        while group[i] != i:
+            group[i] = group[group[i]]
+            i = group[i]
+        return i
+
+    for i, a in enumerate(children):
+        for j in range(i + 1, len(children)):
+            if root(i) != root(j) and _joined(a, children[j], by_uuid):
+                group[root(i)] = root(j)
+    members: defaultdict[int, list[_Signal]] = defaultdict(list)
+    for i, sig in enumerate(children):
+        members[root(i)].append(sig)
+    lines = [
+        g
+        for g in members.values()
+        if len(g) >= 2 or any(s.cycle is not None for s in g)
+    ]
+    if not lines:
+        lines = [
+            g for g in members.values() if any(s.object_type == "serial" for s in g)
+        ]
+    if len(lines) != 1:
+        return None
+    return {s.uuid for s in lines[0]}
+
+
+def _same_line(
+    child: _Signal, parent: _Signal, anchors: list[_Signal], tests: int = 1
+) -> bool:
+    """Whether the data puts ``parent`` on the child's line: its changes
+    meet the child's far above chance (:func:`_cochanges`), or its writes
+    (value changes, setups, re-setups) meet the changes of the child or of
+    the child's production parents within the sampling windows, at least
+    half of them and with a chance tail of at most :data:`NEST_MAX_CHANCE_P`
+    over the ``tests`` pairs tried (a Bonferroni correction)
+    (:func:`_censored_hits`)."""
+    if len(parent.p_start) >= 2 and _cochanges(child, parent):
+        return True
+    lo, hi = int(child.p_start[0]), int(child.p_end[-1])
+    edges = np.concatenate([parent.p_start[1:], parent.resetup_t])
+    edges_u = np.concatenate(
+        [parent.p_u[1:], np.zeros(len(parent.resetup_t), np.int64)]
+    )
+    order = np.argsort(edges, kind="stable")
+    edges, edges_u = edges[order], edges_u[order]
+    within = (edges > lo) & (edges < hi)
+    edges, edges_u = edges[within], edges_u[within]
+    if len(edges) == 0:
+        return False
+    tol = int(COCHANGE_TOLERANCE_SECONDS * 1e9)
+    for anchor in anchors:
+        found = _censored_hits(edges, edges_u, anchor, tol, lo, hi)
+        if found is None:
+            continue
+        hit, chances = found
+        if float(hit.mean()) < NEST_ALIGN_SHARE:
+            continue
+        tail = _poisson_binomial_tail(int(hit.sum()), chances)
+        if tail * max(tests, 1) <= NEST_MAX_CHANCE_P:
+            return True
+    return False
+
+
+def _component_of(unit: _Signal, other: _Signal) -> bool:
+    """Whether ``other`` is a component serial built into ``unit``: about one
+    presence per unit presence, exactly one change inside each of the unit's
+    cycles (or presences) far above chance (:func:`_one_per_interval`), no
+    value in common (not the same serial read at another station), and the
+    unit -- not the component -- has a production parent (which of two 1:1
+    serials is built into the other the data shows no other way)."""
+    if unit.parent is None or other.parent is not None:
+        return False
+    n, m = len(unit.p_start), len(other.p_start)
+    if not (n and 0.8 <= m / n <= 1.25):
+        return False
+    intervals = unit.extra.get("cycle_intervals")
+    starts, ends = intervals if intervals is not None else (unit.p_start, unit.p_end)
+    if _one_per_interval(other.p_start, other.p_u, starts, ends) is None:
+        return False
+    texts_u, texts_o = unit.extra.get("texts"), other.extra.get("texts")
+    return not (texts_u and texts_o and set(texts_u) & set(texts_o))
+
+
+def _uses(ids: list[_Signal], bools: list[_Signal]) -> None:
+    """Set ``uses``: the ids held while each produced unit is made.
+
+    Units are serials, batches and lots with a production parent (a
+    production lot; a raw-material lot is an input). A parent of a type in
+    :data:`USAGE_QUALIFIERS` (or a component serial, :func:`_component_of`)
+    links when it is present during :data:`USES_MIN_SHARE` of the unit's
+    presences (:func:`_overlap_share`; a constant id counts), it is not in
+    the unit's production or packing chain (those stay ``part_of``) or
+    nested in the unit, and it is no description: a material or article
+    with an ``attribute_of`` changes only with its host (the output
+    article). With units on more than one line (:func:`_one_line`), the
+    data must put the parent on the unit's line (:func:`_same_line`); a
+    resource on no clock of a line (a lot refilled at random, an operator
+    at the shift change) then links nowhere. Carriers and components link
+    to serials only.
+    """
+    by_uuid = {s.uuid: s for s in ids}
+    by_bool = {b.uuid: b for b in bools}
+    typed = [
+        s for s in ids if len(s.p_start) and s.object_type in ("serial", "batch", "lot")
+    ]
+    # a unit sits in the production: it has a production parent or a cycle,
+    # or it is the production parent of one (an order, a package or a
+    # message read as a batch or serial is none of these); without any such
+    # unit, the serials
+    holders = {s.parent for s in typed if s.parent is not None}
+    children = [
+        s
+        for s in typed
+        if s.parent is not None or s.cycle is not None or s.uuid in holders
+    ]
+    if not children:
+        children = [s for s in typed if s.object_type == "serial"]
+    for s in children:
+        if s.cycle in by_bool:
+            s.extra["cycle_intervals"] = _true_intervals(by_bool[s.cycle])
+    parents = [s for s in ids if len(s.p_start)]
+    line = _one_line(children, by_uuid) or set()
+    tests = sum(s.uuid not in line for s in children) * len(parents)
+    for child in children:
+        single_here = child.uuid in line
+        chain = _ancestors(child, by_uuid)
+        anchors = [child] + [by_uuid[u] for u in sorted(chain) if u in by_uuid]
+        links: list[tuple[str, str]] = []
+        for parent in parents:
+            if parent is child or parent.uuid in chain:
+                continue
+            kind = parent.object_type or ""
+            qualifier = USAGE_QUALIFIERS.get(kind)
+            if kind == "serial":
+                is_part = child.object_type == "serial"
+                qualifier = (
+                    "contains" if is_part and _component_of(child, parent) else None
+                )
+            if qualifier is None:
+                continue
+            if qualifier in _PART_QUALIFIERS and child.object_type != "serial":
+                continue
+            host = by_uuid.get(parent.attribute_of or "")
+            if parent.attribute_of is not None and (
+                kind in ("material", "article")
+                or (
+                    qualifier == "made_from"
+                    and host is not None
+                    and host.object_type in _BUSINESS_HOSTS
+                )
+            ):
+                # it describes its host: the output article of an order, the
+                # partner of a sales or purchase order
+                continue
+            if child.uuid in _ancestors(parent, by_uuid):
+                continue  # nested in the unit
+            if _overlap_share(child, parent) < USES_MIN_SHARE:
+                continue
+            if not single_here and not _same_line(child, parent, anchors, tests):
+                continue
+            links.append((parent.uuid, qualifier))
+        child.uses = tuple(sorted(links))
+
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 
@@ -3985,6 +4592,8 @@ REPORT_COLUMNS = [
     "packing_parent_uuid",
     "evidence",
     "attribute_of",
+    "cycle_uuid",
+    "uses",
 ]
 
 _FLOAT_COLUMNS = (
@@ -4015,8 +4624,13 @@ class ObjectReport(Mapping[str, "str | None"]):
             uuid. ``parent_uuid`` is an identifier's production parent (a
             serial's batch, a batch's material), ``packing_parent_uuid`` the
             handling unit that packs it; both ``None`` when there is none.
-            ``attribute_of`` (last column) is the identifier whose objects a
-            signal describes (the customer of an order), else ``None``.
+            ``attribute_of`` is the identifier whose objects a signal
+            describes (the customer of an order), else ``None``.
+            ``cycle_uuid`` is a serial's cycle signal (a bool whose True
+            intervals hold one serial each), ``uses`` (last column) the
+            ``(parent_uuid, qualifier)`` pairs of the ids held while a unit
+            is made (``made_from``, ``made_with``, ``made_by``,
+            ``carried_by``, ``contains``; see :meth:`uses`).
         type_scores: ``{uuid: {object_type: score}}`` for every identifier,
             before the decision (the raw evidence sums).
 
@@ -4094,9 +4708,12 @@ class ObjectReport(Mapping[str, "str | None"]):
             One :class:`~ts_shape.eventlog.ObjectSpec` per kept identifier,
             in uuid order.
         """
+        import dataclasses
+
         from ts_shape.eventlog.objects import _RESERVED, ObjectSpec
 
         _register_vocabulary()
+        has_cycle = "cycle_uuid" in {f.name for f in dataclasses.fields(ObjectSpec)}
         described: dict[str, dict[str, str]] = {}
         if attributes and "attribute_of" in self.table.columns:
             hosts = self.table["attribute_of"].to_numpy()
@@ -4127,6 +4744,10 @@ class ObjectReport(Mapping[str, "str | None"]):
                 continue
             if row.object_type == "identifier" and not include_generic:
                 continue
+            extra: dict[str, Any] = {}
+            cycle = getattr(row, "cycle_uuid", None)
+            if has_cycle and isinstance(cycle, str):
+                extra["cycle_uuid"] = cycle
             specs.append(
                 ObjectSpec(
                     uuid=str(row.uuid),
@@ -4134,6 +4755,7 @@ class ObjectReport(Mapping[str, "str | None"]):
                     value_column=str(row.value_column),
                     id_template="{type}:{value}" if namespace else "{value}",
                     attributes=described.get(str(row.uuid), {}),
+                    **extra,
                 )
             )
         return specs
@@ -4175,6 +4797,46 @@ class ObjectReport(Mapping[str, "str | None"]):
             ]
             if parents:
                 out[str(row.uuid)] = parents
+        return out
+
+    def uses(
+        self, min_confidence: float = 0.6, *, include_generic: bool = False
+    ) -> dict[str, dict[str, str]]:
+        """Usage links for :func:`~ts_shape.eventlog.detect_objects`
+        (``uses=``).
+
+        ``{child_uuid: {parent_uuid: qualifier}}`` from the ``uses`` column,
+        for the signals :meth:`to_object_specs` keeps with the same arguments
+        (child and parent). Qualifiers: ``made_from`` (a material, article,
+        lot or batch used as input), ``made_with`` (a tool, fixture, recipe
+        or setup), ``made_by`` (an operator), ``carried_by`` (the carrier of
+        a part), ``contains`` (a component serial built into a part). The
+        production parent stays in :meth:`hierarchy` (``part_of``).
+
+        Args:
+            min_confidence: As for :meth:`to_object_specs`.
+            include_generic: As for :meth:`to_object_specs`.
+
+        Returns:
+            Child signal uuid -> parent signal uuid -> qualifier, in uuid
+            order.
+        """
+        kept = {
+            s.uuid
+            for s in self.to_object_specs(
+                min_confidence, include_generic=include_generic
+            )
+        }
+        out: dict[str, dict[str, str]] = {}
+        if "uses" not in self.table.columns:
+            return out
+        for row in self.identifiers().itertuples(index=False):
+            child = str(row.uuid)
+            if child not in kept or not row.uses:
+                continue
+            links = {str(p): str(q) for p, q in row.uses if str(p) in kept}
+            if links:
+                out[child] = dict(sorted(links.items()))
         return out
 
     def to_event_log(
@@ -4287,6 +4949,10 @@ class ObjectReport(Mapping[str, "str | None"]):
             f"revisit {r['revisit_ratio']:.2f}, empty {r['empty_ratio']:.2f}, "
             f"pattern {r['pattern']} ({r['pattern_share']:.0%})"
         )
+        if r.get("cycle_uuid") is not None:
+            lines.append(f"  cycle signal: {r['cycle_uuid']}")
+        if r.get("uses"):
+            lines.append("  uses: " + ", ".join(f"{u} ({q})" for u, q in r["uses"]))
         lines.extend(f"  - {e}" for e in r["evidence"])
         scores = self.type_scores.get(str(r["uuid"]), {})
         top = [f"{t} {s:.2f}" for t, s in _ranked(scores)[:5] if s > 0]
@@ -4366,6 +5032,8 @@ def _row(sig: _Signal) -> dict[str, Any]:
         "packing_parent_uuid": sig.packing_parent if is_id else None,
         "evidence": tuple(sig.screen_evidence + sig.evidence),
         "attribute_of": sig.attribute_of,
+        "cycle_uuid": sig.cycle if is_id else None,
+        "uses": sig.uses if is_id else (),
     }
 
 
@@ -4387,6 +5055,7 @@ def identify_objects(
     shift_definitions: Mapping[str, tuple[str, str]] | None = None,
     time_column: str = "systime",
     uuid_column: str = "uuid",
+    delta_column: str | None = "is_delta",
 ) -> ObjectReport:
     """Screen every signal for object identifiers and classify their type.
 
@@ -4407,11 +5076,22 @@ def identify_objects(
             :data:`ts_shape.utils.shifts.DEFAULT_SHIFTS`.
         time_column: Timestamp column.
         uuid_column: Signal identifier column.
+        delta_column: Bool column that is ``True`` on the rows the machine
+            wrote and ``False`` on rows that re-send the held value (default
+            ``"is_delta"``; ``None``, or a frame without it, ignores it). It
+            counts on signals whose rows carry both values: a delta row
+            starts its value when it happened (no sampling window), a delta
+            row that repeats the value is a new setup (counted, and a write
+            that can place an input on a line), and one id-like value set as a delta and re-sent at a keep-alive
+            cadence is an identifier held over the recording (see *is_delta*
+            in the module docstring).
 
     Returns:
         :class:`ObjectReport` with one row per signal; ``parent_uuid`` and
         ``packing_parent_uuid`` give each identifier's production and
-        packing parent (see *Nesting* in the module docstring).
+        packing parent (see *Nesting* in the module docstring),
+        ``cycle_uuid`` a serial's cycle signal and ``uses`` the ids held
+        while a unit is made (see *Cycles and usage links*).
 
     Raises:
         ColumnNotFoundError: When ``uuid_column`` or ``time_column`` is missing.
@@ -4428,6 +5108,7 @@ def identify_objects(
             )
     shifts = dict(shift_definitions or DEFAULT_SHIFTS)
     frame = dataframe
+    delta = delta_column if delta_column in dataframe.columns else None
     if signal_uuids is not None or hints:
         codes, uniques = pd.factorize(frame[uuid_column])
         present = {str(u) for u in uniques}
@@ -4452,6 +5133,7 @@ def identify_objects(
             min_samples=min_samples,
             shift_definitions=shifts,
             hinted=key in hints,
+            delta_column=delta,
         )
         for key, rows in _iter_signal_groups(frame, uuid_column, time_column)
     ]
@@ -4499,6 +5181,9 @@ def identify_objects(
             sig.evidence.append(f"packed in {sig.packing_parent}")
     cross_ids = {s.uuid for s in cross[:MAX_CROSS_SIGNALS]}
     _attribute_hosts(signals, [s for s in ids if s.uuid in cross_ids])
+    bools = [s for s in signals if s.true_code >= 0 and len(s.p_start)]
+    _cycles([s for s in ids if s.object_type == "serial"], bools)
+    _uses([s for s in ids if s.uuid in cross_ids], bools)
 
     if not signals:
         return ObjectReport(table=_empty_table(), type_scores={})
@@ -4515,6 +5200,7 @@ def identify_objects(
         "parent_uuid",
         "packing_parent_uuid",
         "attribute_of",
+        "cycle_uuid",
     ):
         table[c] = table[c].astype(object).where(table[c].notna(), None)
     scores = {s.uuid: dict(s.scores) for s in ids}

@@ -1321,3 +1321,252 @@ def test_scale_one_million_rows():
     assert roles["s00"] == "identifier" and roles["s02"] == "measurement"
     assert roles["s03"] == "counter" and roles["s04"] == "state"
     assert _row(out, "s00")["object_type"] == "serial"
+
+
+# ---------- is_delta, cycles and usage links ---------------------------------
+
+DAY = pd.Timestamp("2025-03-03 05:00")
+SCREEN_ARGS = {
+    "time_column": "systime",
+    "min_samples": 3,
+    "shift_definitions": {"early": ("06:00", "14:00")},
+}
+
+
+def _keep_alive(
+    uuid,
+    value,
+    *,
+    start=DAY,
+    hours=24,
+    every="2s",
+    resetups=(),
+    column="value_string",
+):
+    """``value`` set as a delta at ``start`` (and again ``resetups`` hours
+    after it, the same value) and re-sent every ``every`` with
+    ``is_delta=False``."""
+    times = pd.date_range(start, start + pd.Timedelta(hours=hours), freq=every)
+    flags = np.zeros(len(times), dtype=bool)
+    flags[0] = True
+    for h in resetups:
+        flags[np.searchsorted(times, start + pd.Timedelta(hours=h))] = True
+    frame = _sig(uuid, times, [value] * len(times), column)
+    frame["is_delta"] = flags
+    return frame
+
+
+def _changes(uuid, times, values, column="value_string"):
+    """Rows on change only (``is_delta=True`` on every row)."""
+    frame = _sig(uuid, times, values, column)
+    frame["is_delta"] = True
+    return frame
+
+
+def _bool_steps(uuid, on, off):
+    times = list(on) + list(off)
+    values = [True] * len(on) + [False] * len(off)
+    order = np.argsort(pd.DatetimeIndex(times).asi8, kind="stable")
+    return _changes(
+        uuid, [times[i] for i in order], [values[i] for i in order], "value_bool"
+    )
+
+
+def _discrete_line(seed=5, *, start=DAY, hours=24, prefix=""):
+    """A door-cycled machine: the door closes for each part and the serial
+    is scanned at a random point inside the closing; an operator logs in at
+    the shift changes; a door of another machine; a material, a tool, a
+    setpoint and a state text written with is_delta and a 2 s keep-alive."""
+    rng = np.random.default_rng(seed)
+    end = start + pd.Timedelta(hours=hours)
+    t = start + pd.Timedelta(seconds=30)
+    close, opened, scans = [], [], []
+    while t < end - pd.Timedelta(minutes=2):
+        c = t + pd.Timedelta(seconds=float(rng.uniform(1, 3)))
+        o = c + pd.Timedelta(seconds=float(rng.uniform(40, 50)))
+        close.append(c)
+        opened.append(o)
+        scans.append(c + (o - c) * float(rng.uniform(0.1, 0.9)))
+        t = o + pd.Timedelta(seconds=float(rng.uniform(8, 14)))
+        if rng.random() < 0.01:
+            t += pd.Timedelta(minutes=float(rng.uniform(5, 30)))
+    serials = [f"SN{4_100_000 + 7 * i}" for i in range(len(scans))]
+    # another machine on its own clock: shut for 33 s of its 47 s cycle
+    t = start + pd.Timedelta(seconds=float(rng.uniform(0, 47)))
+    shut, free = [], []
+    while t < end:
+        shut.append(t)
+        free.append(t + pd.Timedelta(seconds=33))
+        t += pd.Timedelta(seconds=float(rng.uniform(44, 50)))
+    logins = [
+        start + pd.Timedelta(hours=h, minutes=float(rng.uniform(-3, 8)))
+        for h in (1, 9, 17)
+    ]
+    badges = [f"EMP-{1000 + 37 * k}" for k in range(4)]
+    p = prefix
+    return pd.concat(
+        [
+            _bool_steps(p + "door", close, opened),
+            _changes(p + "s", scans, serials),
+            _bool_steps(p + "other", shut, free),
+            _keep_alive(p + "m", "40012345", start=start, hours=hours),
+            _keep_alive(p + "t", "T-0815", start=start, hours=hours),
+            _keep_alive(
+                p + "sp", 1850, start=start, hours=hours, column="value_integer"
+            ),
+            _keep_alive(p + "st", "AUTO", start=start, hours=hours),
+            _changes(p + "op", [start, *logins], badges),
+        ],
+        ignore_index=True,
+    )
+
+
+@pytest.fixture(scope="module")
+def discrete():
+    df = _discrete_line()
+    return df, identify_objects(df)
+
+
+def test_door_cycle_is_the_serials_cycle(discrete):
+    _, report = discrete
+    table = report.table.set_index("uuid")
+    assert table.loc["s", "object_type"] == "serial"
+    assert table.loc["s", "cycle_uuid"] == "door", report.explain("s")
+    assert "cycle signal: door" in report.explain("s")
+    # the bools stay states; a door on another clock is no cycle
+    assert table.loc["door", "role"] == "state"
+    assert table.loc["other", "role"] == "state"
+    assert table["cycle_uuid"].dropna().to_dict() == {"s": "door"}
+
+
+def test_a_door_on_another_clock_is_no_cycle(discrete):
+    df, _ = discrete
+    report = identify_objects(df[df["uuid"] != "door"])
+    assert _row(report, "s")["cycle_uuid"] is None
+
+
+def test_held_material_is_an_identifier(discrete):
+    _, report = discrete
+    row = _row(report, "m")
+    assert row["role"] == "identifier", report.explain("m")
+    assert row["object_type"] == "material"
+    assert row["type_confidence"] >= 0.6
+    assert "held setup" in report.explain("m")
+    assert _row(report, "t")["object_type"] == "tool", report.explain("t")
+    # a setpoint and a state text written the same way stay constants
+    assert _row(report, "sp")["role"] == "constant"
+    assert _row(report, "st")["role"] == "constant"
+
+
+def test_without_is_delta_a_held_value_is_a_constant(discrete):
+    df, _ = discrete
+    for report in (
+        identify_objects(df, delta_column=None),
+        identify_objects(df.drop(columns="is_delta")),
+    ):
+        assert _row(report, "m")["role"] == "constant"
+        assert _row(report, "t")["role"] == "constant"
+        # the operator still is: it changes, so it is an id without is_delta
+        assert _row(report, "s")["uses"] == (("op", "made_by"),)
+
+
+def test_a_flag_on_every_row_says_nothing():
+    df = _keep_alive("m", "40012345", hours=6)
+    df["is_delta"] = True
+    assert _row(identify_objects(df), "m")["role"] == "constant"
+
+
+def test_usage_links_of_the_serial(discrete):
+    _, report = discrete
+    uses = dict(_row(report, "s")["uses"])
+    expected = {"m": "made_from", "t": "made_with", "op": "made_by"}
+    assert uses == expected, report.explain("s")
+    assert "uses:" in report.explain("s")
+    assert report.uses(0.5) == {"s": expected}
+    assert report.uses()["s"].items() <= expected.items()
+    others = report.table.set_index("uuid")["uses"].drop("s")
+    assert all(v == () for v in others)
+
+
+def test_uses_keeps_the_kept_specs_only(discrete):
+    _, report = discrete
+    kept = {s.uuid for s in report.to_object_specs(0.99)}
+    for child, links in report.uses(0.99).items():
+        assert child in kept and set(links) <= kept
+
+
+def test_same_value_resetup_is_a_new_setup():
+    from ts_shape.signals.identify import _screen
+
+    df = _keep_alive("m", "40012345", hours=12, resetups=(4, 8))
+    report = identify_objects(df)
+    assert _row(report, "m")["role"] == "identifier"
+    assert "2 with the same value" in report.explain("m")
+    sig = _screen("m", df, delta_column="is_delta", **SCREEN_ARGS)
+    assert (len(sig.p_start), sig.distinct, len(sig.resetup_t)) == (1, 1, 2)
+    assert len(_screen("m", df, **SCREEN_ARGS).resetup_t) == 0
+
+
+def test_delta_rows_are_exact_change_instants():
+    from ts_shape.signals.identify import _screen
+
+    times = pd.date_range(DAY, periods=600, freq="2s")
+    df = _sig("m", times, ["A-10001"] * 300 + ["A-10002"] * 300)
+    df["is_delta"] = np.isin(np.arange(600), [0, 300])
+    exact = _screen("m", df, delta_column="is_delta", **SCREEN_ARGS)
+    late = _screen("m", df, **SCREEN_ARGS)
+    assert exact.p_u[1] == 0 and late.p_u[1] > 0
+    assert exact.lag_ns == 0
+
+
+def test_two_lines_get_no_cross_links():
+    a = _discrete_line(seed=5, prefix="a")
+    b = _discrete_line(seed=9, prefix="b")
+    b["systime"] = b["systime"] + pd.Timedelta(minutes=17)
+    table = identify_objects(pd.concat([a, b], ignore_index=True)).table
+    table = table.set_index("uuid")
+    assert table.loc["as", "cycle_uuid"] == "adoor"
+    assert table.loc["bs", "cycle_uuid"] == "bdoor"
+    for unit, other in (("as", "b"), ("bs", "a")):
+        assert not any(p.startswith(other) for p, _ in table.loc[unit, "uses"])
+
+
+def test_component_serial_is_contained():
+    rng = np.random.default_rng(3)
+    t = DAY + pd.Timedelta(seconds=10)
+    close, opened, unit, comp = [], [], [], []
+    while t < DAY + pd.Timedelta(hours=12):
+        o = t + pd.Timedelta(seconds=float(rng.uniform(50, 55)))
+        close.append(t)
+        opened.append(o)
+        unit.append(t + pd.Timedelta(seconds=float(rng.uniform(2, 6))))
+        comp.append(t + pd.Timedelta(seconds=float(rng.uniform(30, 45))))
+        t = o + pd.Timedelta(seconds=float(rng.uniform(8, 12)))
+    n = len(unit)
+    batches = np.repeat(np.arange(n // 60 + 1), 60)[:n]
+    df = pd.concat(
+        [
+            _bool_steps("d", close, opened),
+            _changes("u", unit, [f"SN{5_000_000 + i}" for i in range(n)]),
+            _changes("c", comp, [f"CMP{8_000_000 + 13 * i}" for i in range(n)]),
+            _changes("b", unit, [f"B250303-{k:03d}" for k in batches]),
+        ],
+        ignore_index=True,
+    )
+    report = identify_objects(df)
+    table = report.table.set_index("uuid")
+    assert table.loc["u", "parent_uuid"] == "b", report.explain("u")
+    assert ("c", "contains") in table.loc["u", "uses"], report.explain("u")
+    assert ("u", "contains") not in table.loc["c", "uses"]
+
+
+def test_object_specs_carry_the_cycle(discrete):
+    import dataclasses
+
+    from ts_shape.eventlog import ObjectSpec
+
+    _, report = discrete
+    specs = {s.uuid: s for s in report.to_object_specs()}
+    assert "s" in specs
+    if "cycle_uuid" in {f.name for f in dataclasses.fields(ObjectSpec)}:
+        assert specs["s"].cycle_uuid == "door"

@@ -83,10 +83,9 @@ def _parts():
 # -- the table ---------------------------------------------------------------
 
 
-def test_attribute_of_is_the_last_column(orders):
+def test_new_columns_are_appended_at_the_end(orders):
     _, report = orders
-    assert REPORT_COLUMNS[-1] == "attribute_of"
-    assert REPORT_COLUMNS[-2] == "evidence"
+    assert REPORT_COLUMNS[-4:] == ["evidence", "attribute_of", "cycle_uuid", "uses"]
     assert list(report.table.columns) == REPORT_COLUMNS
 
 
