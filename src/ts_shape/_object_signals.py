@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid as _uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -27,6 +27,7 @@ import pandas as pd
 from ts_shape.loader._utils import empty_signal_frame
 
 STR, INT, DBL = "value_string", "value_integer", "value_double"
+BOOL = "value_bool"
 
 OBJECT_TYPES: tuple[str, ...] = (
     "material",
@@ -693,6 +694,11 @@ class _Line:
     # only with ``material_changes_per_day``) and the continuous variant
     material_change_t: np.ndarray | None = None
     continuous: str | None = None
+    # opt-in discrete process (``discrete_cycles``), held inputs
+    # (``constant_materials``) and same-value re-setups
+    discrete: bool = False
+    constants: int = 0
+    resetup: bool = False
 
 
 def _campaigns(
@@ -902,6 +908,14 @@ class _Truth:
     kind: str  # "held" | "event" | "series"
     parent: str | None = None
     hold_hint: float = 3600.0  # typical seconds a value is held
+    # opt-in labels: the key of a serial's cycle signal, the keys and
+    # qualifiers of the ids it uses; stored on change only (no polling, no
+    # keep-alive); ``kind == "rows"``: the rows as stored, with this
+    # ``is_delta`` per row
+    cycle: str | None = None
+    uses: tuple[tuple[str, str], ...] = ()
+    delta_only: bool = False
+    flags: np.ndarray | None = None
 
 
 def _held(
@@ -958,6 +972,20 @@ def _line_signals(
     out: list[_Truth] = []
     ct = p.cycle_time
     cs, ce = line.cycle_start, line.cycle_end
+    scans = cs
+    batch_t = line.batch_t
+    if line.discrete:
+        # a door closes shortly after the cycle starts and opens before it
+        # ends; the serial is scanned at a random point in between, and a
+        # new batch starts with the part scanned
+        d = ce - cs
+        close = cs + rng.uniform(0.01, 0.05, len(cs)) * d
+        opened = cs + rng.uniform(0.85, 0.97, len(cs)) * d
+        scans = close + rng.uniform(0.05, 0.95, len(cs)) * (opened - close)
+        at = np.clip(np.searchsorted(cs, batch_t), 0, max(len(cs) - 1, 0))
+        if len(cs):
+            in_cycle = cs[at] == batch_t
+            batch_t = np.where(in_cycle, scans[at], batch_t)
 
     def variant(object_type: str) -> tuple[str, str]:
         v = _pick_variant(rng, FORMAT_VARIANTS[object_type], heldout)
@@ -1044,7 +1072,7 @@ def _line_signals(
                 "batch",
                 bv,
                 bcol,
-                line.batch_t,
+                batch_t,
                 [batch_ids[k] for k in line.batch_key],
                 p.batch_hours * _HOUR,
                 parent=f"{L}.material",
@@ -1059,7 +1087,7 @@ def _line_signals(
     starts_abs = pd.DatetimeIndex(t0 + pd.to_timedelta(cs, unit="s"))
     serials = _serial_ids(rng, sv, starts_abs, int(rng.integers(1, 2_000_000)))
     clear = clear_value(scol)
-    st, svals = _steps_with_clears(cs, serials, line.run_end, clear)
+    st, svals = _steps_with_clears(scans, serials, line.run_end, clear)
     truth = _held(
         f"{L}.serial",
         "identifier",
@@ -1071,6 +1099,7 @@ def _line_signals(
         ct,
         parent=f"{L}.{serial_parent}",
     )
+    truth.delta_only = line.discrete
     out.append(truth)
 
     # companion part counter: +1 per finished part, reset per policy
@@ -1260,9 +1289,254 @@ def _line_signals(
     out += _line_negatives(
         rng, line, t0, horizon, heldout, materials, orders, batch_ids
     )
+    if line.discrete:
+        out += _cycle_signals(rng, line, close, opened, horizon)
+    if line.constants:
+        out += _held_inputs(rng, line, t0, horizon)
+    if line.discrete or line.constants:
+        _usage_labels(line, out, horizon)
     if line.continuous is not None:  # recorded without orders either
         out = [s for s in out if s.key != f"{L}.work_order"]
     return out
+
+
+def _cycle_signals(
+    rng: Rng,
+    line: _Line,
+    close: np.ndarray,
+    opened: np.ndarray,
+    horizon: float,
+) -> list[_Truth]:
+    """The door of a discrete machine (``True`` while closed, one serial
+    scanned in each closing) and two bools that are no cycle of it: the
+    door of another machine on its own clock, and "running" (``True`` while
+    the line runs, many parts in each)."""
+    L = f"L{line.index}"
+    ct = line.params.cycle_time
+    door_t = np.concatenate([close, opened])
+    door_v: list[Value] = [*([True] * len(close)), *([False] * len(opened))]
+    order = np.argsort(door_t, kind="stable")
+    door = _held(
+        f"{L}.door",
+        "state",
+        None,
+        "door:cycle",
+        BOOL,
+        door_t[order],
+        [door_v[i] for i in order],
+        ct,
+    )
+    door.delta_only = True
+    # another machine: its own cycle time and phase, pausing now and then
+    ct2 = ct * float(rng.uniform(0.6, 1.5))
+    starts: list[float] = []
+    t = float(rng.uniform(0, ct2))
+    while t < horizon:
+        if rng.random() < 0.002:
+            t += float(rng.uniform(5, 60)) * _MIN
+        starts.append(t)
+        t += ct2 * float(np.clip(1 + 0.07 * rng.standard_normal(), 0.7, 1.8))
+    st = np.asarray(starts)
+    shut = st + 0.03 * ct2
+    free = st + float(rng.uniform(0.6, 0.9)) * ct2
+    other_t = np.concatenate([shut, free])
+    other_v: list[Value] = [*([True] * len(shut)), *([False] * len(free))]
+    order = np.argsort(other_t, kind="stable")
+    other = _held(
+        f"{L}.other_door",
+        "state",
+        None,
+        "door:other_machine",
+        BOOL,
+        other_t[order],
+        [other_v[i] for i in order],
+        ct2,
+    )
+    other.delta_only = True
+    running = _held(
+        f"{L}.running",
+        "state",
+        None,
+        "door:running",
+        BOOL,
+        line.state_t,
+        [v == "RUN" for v in line.state_v],
+        line.params.run_minutes * _MIN,
+    )
+    return [door, other, running]
+
+
+#: Formats of held inputs: ``variant -> (value column, make(rng))``.
+_HELD_INPUTS: dict[str, tuple[str, Callable[[Rng], Value]]] = {
+    "plain8": (STR, lambda rng: "4" + _digits(rng, 7)),
+    "int8": (INT, lambda rng: int("5" + _digits(rng, 7))),
+    "mat_prefix": (STR, lambda rng: "MAT-" + _digits(rng, 6)),
+    "part_number": (STR, lambda rng: f"PN-{_digits(rng, 5)}-{_letters(rng, 1)}"),
+    "sap18": (STR, lambda rng: "0000000000" + _digits(rng, 8)),
+}
+#: Settings written the same way (negative controls: constants).
+_HELD_SETTINGS: dict[str, tuple[str, Value]] = {
+    "setpoint": (INT, 1850),
+    "state_text": (STR, "AUTO"),
+    "config_text": (STR, "CFG-V2.1"),
+}
+#: The keep-alive period (seconds) of the held inputs and settings.
+_KEEP_ALIVE = 2.0
+
+
+def _held_rows(
+    rng: Rng,
+    key: str,
+    role: str,
+    object_type: str | None,
+    variant: str,
+    column: str,
+    events: list[tuple[float, Value]],
+    horizon: float,
+) -> _Truth:
+    """A value set as a delta (``is_delta=True``) at each of ``events`` --
+    the setups, a same value again for a re-setup -- and re-sent every
+    :data:`_KEEP_ALIVE` seconds in between (``is_delta=False``)."""
+    first = events[0][0]
+    grid = np.arange(first + _KEEP_ALIVE, horizon, _KEEP_ALIVE)
+    grid = grid + rng.uniform(-0.05, 0.05, len(grid))
+    set_t = np.array([e for e, _ in events])
+    times = np.concatenate([set_t, grid])
+    flags = np.concatenate([np.ones(len(set_t), bool), np.zeros(len(grid), bool)])
+    order = np.argsort(times, kind="stable")
+    times, flags = times[order], flags[order]
+    idx = np.searchsorted(set_t, times, side="right") - 1
+    values = [events[i][1] for i in idx]
+    truth = _Truth(key, role, object_type, variant, column, times, values, "rows", None)
+    truth.flags = flags
+    return truth
+
+
+def _held_inputs(
+    rng: Rng, line: _Line, t0: pd.Timestamp, horizon: float
+) -> list[_Truth]:
+    """``line.constants`` material / purchased-part numbers set at the
+    process start (the first order start in the first 5 % of the recording,
+    else when the recording starts), held over the whole recording or
+    changed once while the line runs (a new container), set again with the
+    same value at some order starts (``line.resetup``); plus a setpoint, a
+    state text and a configuration text written the same way."""
+    L = f"L{line.index}"
+    starts = line.entry_start[(line.entry_start > 0) & (line.entry_start < horizon)]
+    early = starts[starts < 0.05 * horizon]
+    setup = float(early[0]) if len(early) else float(rng.uniform(0, 30))
+    later = starts[starts > setup]
+    out: list[_Truth] = []
+    names = list(_HELD_INPUTS)
+    for j in range(line.constants):
+        variant = names[int(rng.integers(0, len(names)))]
+        column, make = _HELD_INPUTS[variant]
+        value = make(rng)
+        events: list[tuple[float, Value]] = [(setup, value)]
+        # a new container of parts, swapped while the line runs
+        change = float(rng.uniform(0.3, 0.8)) * horizon if rng.random() < 0.35 else None
+        for s in later:
+            if change is not None and s > change:
+                value = make(rng)
+                events.append((change, value))
+                change = None
+            if line.resetup and rng.random() < 0.3:
+                events.append((float(s), value))
+        if change is not None:
+            events.append((change, make(rng)))
+        out.append(
+            _held_rows(
+                rng,
+                f"{L}.input{j}",
+                "identifier",
+                "material",
+                f"held_input:{variant}",
+                column,
+                events,
+                horizon,
+            )
+        )
+    for variant, (column, value) in _HELD_SETTINGS.items():
+        events = [(setup, value)]
+        if line.resetup:
+            events += [(float(s), value) for s in later if rng.random() < 0.3]
+        out.append(
+            _held_rows(
+                rng,
+                f"{L}.{variant}",
+                "constant",
+                None,
+                f"held_setting:{variant}",
+                column,
+                events,
+                horizon,
+            )
+        )
+    return out
+
+
+def _presences(truth: _Truth, horizon: float) -> tuple[np.ndarray, np.ndarray]:
+    """``(starts, ends)`` of the non-empty values of a held truth (the last
+    one held to the horizon), clipped to ``[0, horizon]``."""
+    t = np.asarray(truth.times, dtype=float)
+    order = np.argsort(t, kind="stable")
+    t = t[order]
+    vals = [truth.values[i] for i in order]
+    ends = np.append(t[1:], horizon)
+    ok = np.array([v is not None and v != "" for v in vals], dtype=bool)
+    starts, ends = np.clip(t[ok], 0, horizon), np.clip(ends[ok], 0, horizon)
+    keep = ends > starts
+    return starts[keep], ends[keep]
+
+
+def _present_share(unit: _Truth, parent: _Truth, horizon: float) -> float:
+    """Share of the unit's presences during which the parent has a value at
+    some moment (the usage-link rule of ``identify_objects``, on the truth)."""
+    us, ue = _presences(unit, horizon)
+    ps, pe = _presences(parent, horizon)
+    if len(us) == 0 or len(ps) == 0:
+        return 0.0
+    j = np.searchsorted(ps, ue, side="left") - 1
+    ok = (j >= 0) & (pe[np.clip(j, 0, len(ps) - 1)] > us)
+    return float(ok.mean())
+
+
+def _usage_labels(line: _Line, out: list[_Truth], horizon: float) -> None:
+    """Label the cycle signal of the line's serial and the usage links of
+    its produced units (serial, batch, production lot): the held inputs
+    and the raw-material lot ``made_from``, recipe, tool and fixture
+    ``made_with``, the operator ``made_by``, the carrier ``carried_by`` (a
+    serial only), each when it has a value during at least 90 % of the
+    unit's presences (an operator logged out for a whole shift is not). The
+    production chain (``part_of``) is no usage link."""
+    L = f"L{line.index}"
+    by_key = {t.key: t for t in out}
+    keys = set(by_key)
+    units = [t for t in out if t.object_type in ("serial", "batch")]
+    units += [t for t in out if t.key == f"{L}.lot" and t.parent is not None]
+    parent_of = {t.key: t.parent for t in out}
+    for unit in units:
+        chain: set[str] = set()
+        cur = unit.parent
+        while cur is not None and cur not in chain:
+            chain.add(cur)
+            cur = parent_of.get(cur)
+        links = [(t.key, "made_from") for t in out if t.key.startswith(f"{L}.input")]
+        links.append((f"{L}.lot", "made_from"))
+        links += [(f"{L}.{k}", "made_with") for k in ("recipe", "tool", "fixture")]
+        links.append((f"{L}.operator", "made_by"))
+        if unit.object_type == "serial":
+            links.append((f"{L}.carrier", "carried_by"))
+            if line.discrete:
+                unit.cycle = f"{L}.door"
+        unit.uses = tuple(
+            (k, q)
+            for k, q in links
+            if k in keys
+            and k not in chain
+            and k != unit.key
+            and _present_share(unit, by_key[k], horizon) >= 0.9
+        )
 
 
 def _shift_bounds(t0: pd.Timestamp, horizon: float) -> np.ndarray:
@@ -1769,13 +2043,19 @@ def _sample(
     horizon: float,
     gaps: list[tuple[float, float]],
     period: float | None = None,
-) -> tuple[np.ndarray, list[Value], bool]:
+) -> tuple[np.ndarray, list[Value], bool | np.ndarray]:
     """Rows a historian would store for ``truth``: ``(times, values, is_delta)``.
 
     ``period`` polls a held signal every ``period`` seconds instead of the
-    drawn sampling."""
+    drawn sampling. A ``"rows"`` truth is stored as it is (inside the
+    horizon and outside the gaps), with its own ``is_delta`` per row; a
+    ``delta_only`` truth is stored on change only."""
     t = truth.times
     vals = truth.values
+    if truth.kind == "rows":
+        assert truth.flags is not None
+        keep = np.flatnonzero((t >= 0) & (t < horizon) & _outside(t, gaps))
+        return t[keep], [vals[i] for i in keep], truth.flags[keep]
     if truth.kind in ("event", "series"):
         keep = (t >= 0) & (t < horizon) & _outside(t, gaps)
         idx = np.flatnonzero(keep)
@@ -1800,6 +2080,9 @@ def _sample(
         t = t[change]
         vals = [v for v, k in zip(vals, change, strict=True) if k]
 
+    if truth.delta_only:
+        keep = _outside(t, gaps)
+        return t[keep], [v for v, k in zip(vals, keep, strict=True) if k], True
     periodic = period is not None or (rng.random() < 0.4 and truth.hold_hint >= 30)
     if periodic:
         if period is None and truth.hold_hint < 600:
@@ -1833,7 +2116,7 @@ def _noisy(rng: Rng, truth: _Truth, values: list[Value], heldout: bool) -> list[
     na_rate = (0.0, 0.003, 0.012)[level]
     for i in np.flatnonzero(rng.random(n) < na_rate):
         out[i] = None
-    if truth.role not in ("identifier", "state"):
+    if truth.role not in ("identifier", "state") or truth.value_column == BOOL:
         return out
     junk = (0.0, 0.002, 0.008)[level]
     junk_idx = np.flatnonzero(rng.random(n) < junk)
@@ -1889,6 +2172,10 @@ def generate(
     material_poll: float | None = None,
     material_changes_per_day: float | None = None,
     continuous_process: str | None = None,
+    discrete_cycles: bool = False,
+    constant_materials: int = 0,
+    resetup_same_value: bool = False,
+    lines: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """The benchmark frame and labels (see ``make_object_signals``).
 
@@ -1907,13 +2194,38 @@ def generate(
       every material change, nested in the material; serials nest in it),
       ``"serial"`` keeps the raw-material lot (no parent) and nests the
       serials directly in the material. It implies
-      ``material_changes_per_day=1.0`` unless that is given."""
+      ``material_changes_per_day=1.0`` unless that is given.
+    * ``discrete_cycles`` adds a door bool per line (``True`` while closed);
+      each serial is scanned at a random point inside a closing (and a batch
+      starts with the part scanned), serial and door are stored on change
+      only. Two bools that are no cycle come with it: another machine's door
+      on its own clock and "running". Labels: ``cycle_uuid`` of the serial.
+    * ``constant_materials`` (``k``) adds ``k`` material / purchased-part
+      numbers per line, set at the process start with ``is_delta=True`` and
+      re-sent every 2 s with ``is_delta=False``, held over the recording or
+      changed once; plus a setpoint, a state text and a configuration text
+      written the same way (constants).
+    * ``resetup_same_value`` sets those again with the same value at some
+      order starts (an ``is_delta=True`` row without a value change).
+    * ``lines`` fixes the number of production lines (1 or 2) instead of
+      drawing it.
+
+    With ``discrete_cycles`` or ``constant_materials`` the labels get the
+    columns ``cycle_uuid`` and ``uses`` (a tuple of ``(parent_uuid,
+    qualifier)``: ``made_from``, ``made_with``, ``made_by``,
+    ``carried_by``)."""
     if days <= 0:
         raise ValueError(f"days must be positive; got {days}")
     if continuous_process not in (None, "lot", "serial"):
         raise ValueError(
             f"continuous_process must be None, 'lot' or 'serial'; got "
             f"{continuous_process!r}"
+        )
+    if lines not in (None, 1, 2):
+        raise ValueError(f"lines must be None, 1 or 2; got {lines!r}")
+    if constant_materials < 0:
+        raise ValueError(
+            f"constant_materials must be 0 or more; got {constant_materials}"
         )
     if continuous_process is not None and material_changes_per_day is None:
         material_changes_per_day = 1.0
@@ -1930,9 +2242,11 @@ def generate(
         days=int(rng.integers(0, 730)), hours=int(rng.integers(0, 24))
     )
     n_lines = int(rng.choice([1, 2], p=[0.4, 0.6] if heldout else [0.5, 0.5]))
+    if lines is not None:
+        n_lines = lines
     truths: list[_Truth] = []
     line_gaps: dict[str, list[tuple[float, float]]] = {}
-    lines = []
+    simulated = []
     params = [_params(rng, heldout) for _ in range(n_lines)]
     # keep the frame at a laptop-friendly size: drop the second line when
     # both together would make too many cycles
@@ -1941,11 +2255,14 @@ def generate(
     for i, p in enumerate(params):
         line = _simulate_line(rng, i, horizon, p, t0, material_changes_per_day)
         line.continuous = continuous_process
-        lines.append(line)
+        line.discrete = discrete_cycles
+        line.constants = constant_materials
+        line.resetup = resetup_same_value
+        simulated.append(line)
         sigs = _line_signals(rng, line, t0, horizon, heldout)
         truths += sigs
         line_gaps[f"L{i}"] = _gaps(rng, horizon, 0.7)
-    truths += _plant_signals(rng, lines[0], t0, horizon, heldout)
+    truths += _plant_signals(rng, simulated[0], t0, horizon, heldout)
     line_gaps["P"] = _gaps(rng, horizon, 0.3)
 
     if wanted is not None:
@@ -1960,7 +2277,8 @@ def generate(
     uuid_of = {truths[j].key: f"sig:{k:04d}" for k, j in enumerate(order)}
 
     frames = []
-    labels = []
+    labels: list[dict[str, Any]] = []
+    usage = discrete_cycles or constant_materials > 0
     for truth in truths:
         gaps = list(line_gaps[truth.key.split(".")[0]])
         if noise and rng.random() < 0.3:
@@ -1973,21 +2291,31 @@ def generate(
             continue
         uid = uuid_of[truth.key]
         frames.append(_frame(t0, uid, truth.value_column, times, values, is_delta))
-        labels.append(
-            {
-                "uuid": uid,
-                "role": truth.role,
-                "object_type": truth.object_type,
-                "value_column": truth.value_column,
-                "parent_uuid": uuid_of.get(truth.parent) if truth.parent else None,
-                "variant": truth.variant,
-            }
-        )
+        row: dict[str, Any] = {
+            "uuid": uid,
+            "role": truth.role,
+            "object_type": truth.object_type,
+            "value_column": truth.value_column,
+            "parent_uuid": uuid_of.get(truth.parent) if truth.parent else None,
+            "variant": truth.variant,
+        }
+        if usage:
+            row["cycle_uuid"] = uuid_of.get(truth.cycle) if truth.cycle else None
+            row["uses"] = tuple(
+                sorted((uuid_of[k], q) for k, q in truth.uses if k in uuid_of)
+            )
+        labels.append(row)
     present = {row["uuid"] for row in labels}
     for row in labels:
         if row["parent_uuid"] not in present:
             row["parent_uuid"] = None
+        if usage:
+            if row["cycle_uuid"] not in present:
+                row["cycle_uuid"] = None
+            row["uses"] = tuple((u, q) for u, q in row["uses"] if u in present)
     columns = ["uuid", "role", "object_type", "value_column", "parent_uuid", "variant"]
+    if usage:
+        columns += ["cycle_uuid", "uses"]
     label_frame = (
         pd.DataFrame(labels, columns=columns)
         .sort_values("uuid", ignore_index=True)
@@ -2007,7 +2335,7 @@ def _frame(
     column: str,
     times: np.ndarray,
     values: list[Value],
-    is_delta: bool,
+    is_delta: bool | np.ndarray,
 ) -> pd.DataFrame:
     n = len(times)
     ms = np.round(np.asarray(times, dtype=float) * 1000).astype("int64")
@@ -2015,7 +2343,10 @@ def _frame(
     integers = pd.array([pd.NA] * n, dtype="Int64")
     doubles = np.full(n, np.nan)
     strings = np.full(n, None, dtype=object)
-    if column == INT:
+    bools = pd.array([pd.NA] * n, dtype="boolean")
+    if column == BOOL:
+        bools = pd.array(values, dtype="boolean")
+    elif column == INT:
         integers = pd.array(values, dtype="Int64")
     elif column == DBL:
         doubles = np.array([np.nan if v is None else v for v in values], dtype=float)
@@ -2025,7 +2356,7 @@ def _frame(
         {
             "systime": systime,
             "uuid": uid,
-            "value_bool": pd.array([pd.NA] * n, dtype="boolean"),
+            "value_bool": bools,
             "value_integer": integers,
             "value_double": doubles,
             "value_string": strings,

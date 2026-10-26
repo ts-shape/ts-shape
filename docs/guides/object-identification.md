@@ -213,6 +213,8 @@ One row per signal, sorted by uuid:
 | `packing_parent_uuid` | The packing parent: the handling unit (box, package) that holds this serial, next to its production parent |
 | `evidence` | Short tuple of reasons, each with its weight |
 | `attribute_of` | The identifier whose objects this signal describes (the customer of an order); `None` when there is none. See [Attributes](#attributes) |
+| `cycle_uuid` | A serial's cycle signal: the bool whose True intervals hold one serial each (a door closed); `None` when there is none. See [Cycles](#cycles) |
+| `uses` | The ids held while a unit is made, as `(parent_uuid, qualifier)` pairs: `made_from`, `made_with`, `made_by`, `carried_by`, `contains`; `()` when there are none. See [Usage links](#usage-links) |
 
 The id semantics are those of the id-consuming detectors and of object detection: a
 value is held until the next value, a change starts a new item, and an empty
@@ -591,6 +593,154 @@ batches whose material is typed as something that is never a parent (an operator
 a batch), materials polled too coarsely to show when they changed, and serials
 whose batch is polled too coarsely to align and that lie in no other verified id.
 
+## is_delta
+
+Most historians store a bool column `is_delta`: `True` on the row the machine
+wrote, `False` on rows that re-send the value held. `identify_objects` reads it
+(`delta_column="is_delta"`, the default; `None` ignores it) on every signal whose
+rows carry both values. A signal flagged the same on every row (stored on change
+only, or polled) says nothing about single rows and is read as before; so is a
+frame without the column.
+
+- **Exact change instants.** A new value on a delta row was written when it
+  changed: no sampling window (a value seen up to one poll late) is assumed. When
+  every value change of a signal is a delta row, its polling lag is 0.
+- **Same-value re-setups.** A delta row that repeats the value is a new setup
+  with the same number (an extrusion line set up again for the same material). It
+  is counted in the evidence (`3 setup(s), 2 with the same value`) and is a write
+  that can place an input on a line (see [Usage links](#usage-links)). The
+  presences the nesting compares stay value presences: a re-setup at every order
+  start must not make an input look nested in the order.
+- **Held setups.** A signal set as a delta at least once, re-sent at a keep-alive
+  cadence (the non-delta rows at regular intervals) and changed at most 3 times
+  is a held setup when its values read like ids: a plain number of 6 or more
+  digits, a code with a run of 3+ digits (`MAT-100234`, `T-0815`, `PN-55123-A`),
+  or a known format. It is an identifier even when it never changes over the
+  recording (`delta_held` +0.30 in the screening score). Its holds and its one
+  value say nothing about its type, so it is typed on its format: a prefix family
+  or a registered pattern names the type (`named_setup`, +0.60 to that type: `T-`
+  is a tool, `PN-` an article), a GTIN or an SAP number decides on its own, and
+  otherwise it is the material the process was set up with (`held_setup`: +0.80
+  material, +0.35 article, -0.30 tool).
+- A setpoint (`1850`), a state word (`AUTO`) or a version text (`CFG-V2.1`)
+  written the same way stays a `constant`.
+
+## Cycles
+
+A discrete machine marks each part with a cycle: a bool that is `True` while the
+door or the clamp is closed, with the serial scanned somewhere inside. For each
+serial, `identify_objects` looks for a bool whose True intervals each hold exactly
+one change of the serial: at least 90 % of the intervals, holding at least 90 % of
+the serial's changes, with at least 10 intervals in the serial's span. A window as
+long as each interval, placed at random, holds exactly one change with some chance
+(an interval as long as the cycle nearly always does); the share must beat it by a
+lift of 0.5 or more, with a binomial tail of at most 1 %. A door of another
+machine, a "running" bool (many parts per interval) or a door on another line's
+clock does not pass. Of several, the highest lift wins. `cycle_uuid` names it,
+`explain()` says `cycle signal: ...`, and `to_object_specs()` passes it on as
+`ObjectSpec(cycle_uuid=...)` when `ObjectSpec` has that field.
+
+## Usage links
+
+A produced unit -- a serial, a batch, or a lot with a production parent -- *uses*
+the ids held while it is made. Units are the ids of those types with a production
+parent, a cycle signal, or units of their own (an order, a package or a message
+typed as a batch or serial is no unit). A parent links when it has a value during
+at least 90 % of the unit's presences (a constant counts) and it is not in the
+unit's production or packing chain (that stays `parent_uuid`, `part_of`). The
+qualifier follows the parent's type:
+
+| Parent type | Qualifier | Example |
+|---|---|---|
+| `material`, `article`, `lot`, `batch` | `made_from` | material, purchased-part and pre-product numbers, raw-material lots |
+| `tool`, `fixture`, `recipe`, `setup` | `made_with` | mould, die, program |
+| `operator` | `made_by` | badge logged in |
+| `carrier`, `rfid_tag` | `carried_by` | workpiece carrier (serials only) |
+| a component serial | `contains` | one scanned in each of the part's cycles (serials only) |
+
+Not a usage link: work orders (production nesting), packages (packing parent),
+machines, stations, locations and partners; a material or article that is an
+attribute of something (it changes only with its host: the output article of an
+order); an input-like id that is an attribute of a sales or purchase order (its
+partner).
+
+```python
+import numpy as np
+import pandas as pd
+from ts_shape import identify_objects
+
+start = pd.Timestamp("2025-03-03 06:00")
+rng = np.random.default_rng(1)
+# a press: the door closes for each part, the serial is scanned inside
+close = start + pd.to_timedelta(np.arange(300) * 60 + 5, unit="s")
+opened = close + pd.Timedelta(seconds=45)
+scans = close + pd.to_timedelta(rng.uniform(5, 40, 300), unit="s")
+door = pd.DataFrame({
+    "systime": np.concatenate([close, opened]), "uuid": "press:door",
+    "value_bool": [True] * 300 + [False] * 300, "is_delta": True,
+}).sort_values("systime")
+serial = pd.DataFrame({"systime": scans, "uuid": "press:sn", "is_delta": True,
+                       "value_string": [f"SN{70000 + i}" for i in range(300)]})
+# a material number set once at the setup, re-sent every 2 s
+held = pd.date_range(start, periods=9000, freq="2s")
+material = pd.DataFrame({"systime": held, "uuid": "press:mat",
+                         "value_string": "40012345", "is_delta": held == start})
+press = pd.concat([door, serial, material], ignore_index=True)
+
+press_report = identify_objects(press)
+print(press_report.table[["uuid", "role", "object_type", "cycle_uuid", "uses"]])
+print(press_report.uses())
+```
+
+```text
+         uuid        role object_type  cycle_uuid                       uses
+0  press:door       state        None        None                         ()
+1   press:mat  identifier    material        None                         ()
+2    press:sn  identifier      serial  press:door  ((press:mat, made_from),)
+{'press:sn': {'press:mat': 'made_from'}}
+```
+
+`press_report.uses(min_confidence=0.6)` returns `{child_uuid: {parent_uuid: qualifier}}`
+for the signals `to_object_specs` keeps with the same arguments, for
+`detect_objects(..., uses=...)`.
+
+**Lines.** With the units of one line (one group of units joined by nesting, a
+shared parent or cycle signal, or changes that co-vary; a single unit in no
+group is loose) every id held while they are made is theirs. With two or more
+lines, a parent links only where the data puts it on the unit's line: its changes
+meet the unit's (the co-change test of the nesting), or its writes -- value
+changes, setups, same-value re-setups -- meet the changes of the unit or of its
+production parents within the sampling windows, at least half of them, with a
+chance tail of at most 1 % over all the pairs tried. An id on no clock of a line
+-- a raw-material lot refilled at random, an operator logging in at the shift
+change, a material set before the recording -- then links nowhere: precision over
+recall.
+
+**Benchmark.** The opt-in generator options `discrete_cycles=True` (a door per
+line, serials scanned inside its closings, another machine's door and a "running"
+bool as decoys), `constant_materials=2` (two material or purchased-part numbers
+per line written with `is_delta` at the setup and re-sent every 2 s, held over the
+recording or changed once, plus a setpoint, a state text and a configuration text
+written the same way), `resetup_same_value=True` and `lines=1` label each serial's
+cycle signal and each unit's usage links (an input present during at least 90 % of
+the unit's presences in the simulation). On the held-out seeds:
+
+| Score | held-out (100-119) | never-seen (200-229) |
+|---|---|---|
+| cycle signal precision / recall | 1.00 / 1.00 | 1.00 / 0.97 |
+| held inputs screened as identifiers / typed material or article | 1.00 / 1.00 | 1.00 / 1.00 |
+| setpoint, state and configuration texts kept out of the identifiers | 1.00 | 1.00 |
+| usage links precision / recall, qualifier included, one line | 0.86 / 0.85 | 0.89 / 0.82 |
+| the same, any qualifier | 0.88 / 0.87 | 0.92 / 0.84 |
+| the same with the types pinned to the labels (`hints`) | 0.97 / 0.99 | 0.99 / 0.99 |
+| usage links, qualifier included, one or two lines | 0.77 / 0.62 | 0.87 / 0.51 |
+
+With the types pinned to the labels the links are nearly all right: the misses
+left come from screening, typing and nesting (a recipe typed as a material links
+`made_from` instead of `made_with`; an operator badge written as a name screens as
+a state; a storage bin or a package typed as a lot links `made_from`). On two
+lines the recall drops by design (see **Lines**).
+
 ## Limits
 
 - **Groups.** When the data cannot tell group members apart, the report gives the
@@ -629,7 +779,9 @@ whose batch is polled too coarsely to align and that lie in no other verified id
   resets is read as a serial, not a counter.
 - **Rarely changing materials** (see [Rarely changing materials](#rarely-changing-materials)):
     - A material that never changes in the recording is a constant: there is no
-      evidence the batches lie in it, and no edge.
+      evidence the batches lie in it, and no edge. With `is_delta` (a setup row and
+      a keep-alive) it is a held setup: an identifier typed on its format and an
+      input (`made_from`) of the units, but still no nesting parent.
     - One change is found only when the child's changes are timed closely: one
       change meets a child change by chance with about the share of time the
       child's change windows cover. Batches polled every 5 minutes, changing
@@ -643,6 +795,19 @@ whose batch is polled too coarsely to align and that lie in no other verified id
       and never inside a batch, is that batch's parent by the data, whatever it
       is. Only the clock (a shift boundary or midnight) and an independent clock
       of its own are told apart.
+
+- **Cycles and usage links:**
+    - A cycle is a bool (`value_bool`) whose True intervals bracket the scans. An
+      inverted level (`False` during the cycle), start and end pulses, a step
+      number or a cycle-time value is not read as a cycle.
+    - A component serial (`contains`) is told from the unit only by the
+      production parent: of two serials one to one in the same cycles, the one
+      with a batch is the unit; without one, no link. A semi-finished serial
+      consumed over many parts reads as a batch or lot (`made_from`).
+    - An output article number that changes only with the order is an attribute
+      of the order when the data shows it (3+ changes); one that changes once or
+      never reads as an input (`made_from`).
+    - On several lines, inputs and resources on no clock of a line link nowhere.
 
 Pin what the data cannot tell with `hints`:
 

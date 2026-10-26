@@ -630,6 +630,8 @@ def test_grouped_detect_matches_per_spec_filtering():
                 min_duration="30s" if i % 3 == 0 else None,
                 attributes=attributes,
                 exclude=None,
+                # the reference segments on value changes only (no is_delta)
+                delta_column=None,
             )
         )
     got, got_changes = om._detect(

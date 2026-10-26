@@ -24,7 +24,14 @@ Scores, pooled over every held-out uuid:
 * the nesting scores of the edges into a material on the held-out seeds
   generated with materials run in campaigns that change about once a day
   (``material_changes_per_day``, opt-in): one to three changes in three
-  days.
+  days;
+* on the held-out seeds generated with the discrete options
+  (``DISCRETE_OPTIONS``: a door per line bracketing each serial scan, held
+  inputs written with ``is_delta`` and a keep-alive, same-value re-setups,
+  one line): the cycle signal of each serial (``cycle_uuid``), the usage
+  links with their qualifier (``uses``; also with the types pinned to the
+  labels, which isolates the link logic from typing errors), and the
+  screening and typing of the held inputs.
 
 The result of ``identify_objects`` may be a DataFrame with a ``uuid`` column
 (or index) and an ``object_type`` column (``None``/NaN for non-identifiers),
@@ -420,6 +427,10 @@ def test_generator_options_keep_the_default_data(
         material_poll=material_poll,
         material_changes_per_day=None,
         continuous_process=None,
+        discrete_cycles=False,
+        constant_materials=0,
+        resetup_same_value=False,
+        lines=None,
     )
     pd.testing.assert_frame_equal(frame, same[0])
     pd.testing.assert_frame_equal(labels, same[1])
@@ -454,6 +465,135 @@ def test_material_campaigns_change_rarely():
         generate(seed=0, days=1, include=None, noise=True, continuous_process="x")
     with pytest.raises(ValueError, match="material_changes_per_day"):
         generate(seed=0, days=1, include=None, noise=True, material_changes_per_day=0.0)
+
+
+def _edges(table: pd.DataFrame, column: str) -> set[tuple[str, ...]]:
+    """``(child, parent)`` edges of ``column`` (``cycle_uuid``), or ``(child,
+    parent, qualifier)`` of ``uses``."""
+    out: set[tuple[str, ...]] = set()
+    if column not in table.columns:
+        return out
+    for uuid, value in zip(table["uuid"], table[column], strict=True):
+        if column == "uses":
+            out |= {(str(uuid), str(p), str(q)) for p, q in value or ()}
+        elif not _missing(value):
+            out.add((str(uuid), str(value)))
+    return out
+
+
+def edge_score(results, column: str) -> dict[str, float]:
+    """Precision and recall of the ``column`` edges over ``[(labels,
+    table)]``."""
+    tp = predicted = true = 0
+    for labels, table in results:
+        truth, got = _edges(labels, column), _edges(table, column)
+        tp += len(truth & got)
+        predicted += len(got)
+        true += len(truth)
+    return {"precision": tp / max(predicted, 1), "recall": tp / max(true, 1)}
+
+
+#: The discrete benchmark (opt-in generator options): a door per line
+#: bracketing each serial scan, two held inputs per line written with
+#: is_delta and a 2 s keep-alive (plus a setpoint, a state text and a
+#: configuration text written the same way), same-value re-setups, one line.
+DISCRETE_OPTIONS: dict[str, object] = {
+    "discrete_cycles": True,
+    "constant_materials": 2,
+    "resetup_same_value": True,
+    "lines": 1,
+}
+MIN_CYCLE_PRECISION = 0.95
+MIN_CYCLE_RECALL = 0.95
+#: Usage links, qualifier included: measured 0.86 / 0.85 held-out (the
+#: misses come from screening, typing and nesting); with the types pinned to
+#: the labels 0.97 / 0.99.
+MIN_USES_PRECISION = 0.82
+MIN_USES_RECALL = 0.82
+MIN_PINNED_USES_PRECISION = 0.95
+MIN_PINNED_USES_RECALL = 0.95
+MIN_HELD_INPUTS = 0.95
+
+
+def _pinned(labels: pd.DataFrame) -> dict[str, str]:
+    """The labelled types as hints (the generator's ``machine`` is the
+    engine's ``asset``)."""
+    return {
+        str(u): {"machine": "asset"}.get(str(t), str(t))
+        for u, r, t in zip(labels["uuid"], labels["role"], labels["object_type"])
+        if r == "identifier" and not _missing(t)
+    }
+
+
+@pytest.fixture(scope="module")
+def discrete_results():
+    """``(plain, pinned)``: ``[(labels, table)]`` of ``identify_objects`` on
+    the held-out discrete benchmark, without and with the types pinned."""
+    identify = _identify()
+    data = benchmark_data(**DISCRETE_OPTIONS)
+    plain = [(labels, identify(frame).table) for _, frame, labels in data]
+    pinned = [
+        (labels, identify(frame, hints=_pinned(labels)).table)
+        for _, frame, labels in data
+    ]
+    return plain, pinned
+
+
+def test_cycle_detection(discrete_results):
+    got = edge_score(discrete_results[0], "cycle_uuid")
+    assert got["precision"] >= MIN_CYCLE_PRECISION, got
+    assert got["recall"] >= MIN_CYCLE_RECALL, got
+
+
+def test_usage_links(discrete_results):
+    got = edge_score(discrete_results[0], "uses")
+    assert got["precision"] >= MIN_USES_PRECISION, got
+    assert got["recall"] >= MIN_USES_RECALL, got
+    pinned = edge_score(discrete_results[1], "uses")
+    assert pinned["precision"] >= MIN_PINNED_USES_PRECISION, pinned
+    assert pinned["recall"] >= MIN_PINNED_USES_RECALL, pinned
+
+
+def test_held_inputs_are_typed_materials(discrete_results):
+    rows = []
+    for labels, table in discrete_results[0]:
+        merged = labels.merge(table, on="uuid", suffixes=("", "_got"))
+        rows.append(merged)
+    both = pd.concat(rows, ignore_index=True)
+    held = both[both["variant"].str.startswith("held_input")]
+    assert len(held)
+    assert (held["role_got"] == "identifier").mean() >= MIN_HELD_INPUTS
+    typed = held["object_type_got"].map(lambda t: _GROUP_OF.get(t, t))
+    assert (typed == "material").mean() >= MIN_HELD_INPUTS
+    settings = both[both["variant"].str.startswith("held_setting")]
+    assert len(settings) and (settings["role_got"] != "identifier").all()
+
+
+def test_discrete_options_label_cycles_and_uses():
+    from ts_shape._object_signals import generate
+
+    frame, labels = generate(
+        seed=101, days=1, include=None, noise=False, **DISCRETE_OPTIONS
+    )
+    assert list(labels.columns)[-2:] == ["cycle_uuid", "uses"]
+    serials = labels[labels["object_type"] == "serial"]
+    assert serials["cycle_uuid"].notna().all()
+    doors = set(serials["cycle_uuid"])
+    assert set(frame.loc[frame["uuid"].isin(doors), "value_bool"].dropna()) == {
+        True,
+        False,
+    }
+    qualifiers = {q for uses in serials["uses"] for _, q in uses}
+    assert qualifiers <= {"made_from", "made_with", "made_by", "carried_by"}
+    assert "made_from" in qualifiers
+    held = labels.loc[labels["variant"].str.startswith("held_input"), "uuid"]
+    assert len(held) == 2
+    rows = frame[frame["uuid"] == held.iloc[0]]
+    assert rows["is_delta"].any() and not rows["is_delta"].all()
+    with pytest.raises(ValueError, match="lines"):
+        generate(seed=0, days=1, include=None, noise=True, lines=3)
+    with pytest.raises(ValueError, match="constant_materials"):
+        generate(seed=0, days=1, include=None, noise=True, constant_materials=-1)
 
 
 def test_material_poll_keeps_the_default_data():

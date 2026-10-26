@@ -1,3 +1,20 @@
+# October 26, 2026 (round 25)
+Change flags, cycles, usage links.
+feat: eventlog.objects: ObjectSpec.delta_column (default "is_delta") -- on a
+  signal with both True and False flags (hold + repeat), a flagged
+  same-value reading is a re-setup and starts a new presence; change-only
+  (all True) and unflagged signals unchanged.
+feat: eventlog.objects: ObjectSpec.cycle_uuid / cycle_value_column --
+  presences bounded by the machine cycle the scan falls in.
+feat: eventlog.objects: uses={child: {parent: qualifier}} on detect_objects,
+  derive_o2o, relate, attach_objects -- made_from / made_with / made_by links
+  to every overlapping parent presence; where_used/where_from follow them.
+feat: identify_objects reads is_delta (exact change instants, same-value
+  re-setups, constant id-like setups become identifiers); new columns
+  cycle_uuid and uses, ObjectReport.uses(); to_event_log passes uses().
+docs: object signal variant matrix (continuous, discrete, batch, plastics).
+  See docs/migration.md.
+
 # October 26, 2026 (round 24)
 identify_objects: materials that change once a day.
 change: a parent with 1-3 changes in the child's span nests a batch or lot

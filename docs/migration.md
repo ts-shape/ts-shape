@@ -6,6 +6,78 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 25: change flags, cycles, usage links
+
+Results change for `object_intervals` / `detect_objects` only on signals
+whose `is_delta` column has both `True` and `False` rows and a flagged
+reading that repeats the id before it. `identify_objects` results for frames
+without a mixed `is_delta` flag are unchanged; its new columns are filled for
+every frame.
+
+**Event log (`eventlog.objects`)**
+
+- **Change flags:** new `ObjectSpec.delta_column` (default `"is_delta"`). On
+  a signal with both `True` and `False` rows (hold + repeat: `True` on the
+  written change, `False` on the repeats), a flagged reading that repeats
+  the id before it (a re-setup with the same material number) starts a new
+  presence of the same object. A signal whose rows are all `True` is a
+  change-only store: an unchanged flagged row there is a re-send
+  (keep-alive, reconnect) and does not split. All `False` / missing flags,
+  no column, or `delta_column=None` keep the value-change behaviour. Value
+  changes split as before; a flag right after a misread or empty reading
+  adds nothing (`A, NOREAD, A` stays one presence); a missing flag never
+  starts a presence. `make_object_signals` results are unchanged.
+- **Cycles (opt-in):** new `ObjectSpec.cycle_uuid` / `cycle_value_column`
+  (default `"value_bool"`). A presence spans the cycle `[rise, fall)` of the
+  bool signal its first reading (the scan) falls in: a serial scanned
+  mid-cycle is the part made in that cycle. Rescans in one cycle are one
+  presence; a presence outside every cycle keeps its span, with a
+  `DataQualityWarning`; two ids in one cycle each get the cycle, with a
+  `DataQualityWarning`. A `cycle_uuid` not in the frame raises `ValueError`.
+- **Usage links (opt-in):** new `uses={child: {parent: qualifier}}` on
+  `detect_objects`, `derive_o2o`, `relate` and `attach_objects`, e.g.
+  `{"cell:serial": {"line:material": "made_from", "line:tool": "made_with"}}`.
+  Every child presence is linked to every parent presence it overlaps, so
+  every serial made while a material is held is `made_from` it, also when
+  the material never changes; a serial whose cycle spans a material change
+  is linked to both. `where_used` / `where_from` follow these qualifiers.
+  `co_occurs` leaves out pairs `uses` relates. Default `uses=None`: unchanged.
+
+**`identify_objects`**
+
+- **`is_delta`** (`identify_objects(..., delta_column="is_delta")`, `None`
+  ignores it) counts on a signal whose rows carry both values. A new value on
+  a delta row is exact (no sampling window). A delta row that repeats the
+  value is a same-value re-setup: counted in the evidence and used as line
+  evidence for usage links; nesting compares value presences.
+- **Held setups:** a value set as a delta, re-sent at a keep-alive cadence
+  and changed at most 3 times is an identifier when it reads like an id (6+
+  digits, a code with a 3+ digit run, a known format), also when it never
+  changes (`delta_held` +0.30). Typed on its format (`named_setup`: +0.60 to
+  the type its prefix or pattern names), else as a material (`held_setup`).
+  A setpoint, a state word or a version text written that way stays
+  `constant`.
+- **`cycle_uuid`** (new column): a serial's cycle signal, a bool whose True
+  intervals each hold one change of it (90 %+ of them, a lift of 0.5+ over
+  chance, tail ≤ 1 %). Shown in `explain()`; `to_object_specs` passes
+  `ObjectSpec(cycle_uuid=...)`.
+- **`uses`** (new last column) and `ObjectReport.uses()`: the ids held during
+  90 %+ of a unit's presences, outside its production and packing chain:
+  `made_from` (material, article, lot, batch), `made_with` (tool, fixture,
+  recipe, setup), `made_by` (operator), `carried_by` (carrier, serials only),
+  `contains` (a component serial, serials only). With several lines a link
+  needs data evidence for the unit's line. `ObjectReport.to_event_log` now
+  passes `uses()` to the event log (override with `uses=`).
+- Generator: opt-in `discrete_cycles`, `constant_materials`,
+  `resetup_same_value`, `lines`; default data unchanged.
+- Benchmark (held-out, one line): cycle 1.00 / 1.00; held inputs 100 %
+  screened and typed; usage links 0.86 / 0.85 (0.97 / 0.99 with the types
+  pinned).
+- Not read as a cycle yet: an inverted level, start / end pulses, a step
+  number, a cycle-time value. These and the other machine-builder variants
+  are listed in the new [Object signal variants](guides/object-variants.md)
+  page, which the next rounds test against.
+
 ## October 2026, round 24: materials that change once a day
 
 Results change for `identify_objects` types of materials and their

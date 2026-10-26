@@ -19,8 +19,10 @@ Three steps, all feeding the OCEL 2.0 tables on :class:`~ts_shape.eventlog.model
   presence intervals (an id is present until the next id on the same signal).
 * :func:`detect_objects` — build the ``objects`` / ``o2o`` / ``object_changes``
   tables. ``part_of`` is asserted only along a declared ``hierarchy`` of object
-  types or id signals (it cannot be inferred from time alone); the symmetric
-  ``co_occurs`` for every other overlap is opt-in (``infer_o2o="co_occurs"``).
+  types or id signals (it cannot be inferred from time alone); usage links
+  (``made_from`` / ``made_with`` / ``made_by``) along declared ``uses``; the
+  symmetric ``co_occurs`` for every other overlap is opt-in
+  (``infer_o2o="co_occurs"``).
 * :func:`attach_objects` — link an existing event log's events to the detected
   objects by temporal overlap, optionally within a ``scope`` (e.g. a line), so
   the output of *every* event detector gains rich object references with no
@@ -53,6 +55,12 @@ Presence semantics (shared by every function here)
   observation.
 * The same id appearing again later is the **same object** (one row in
   ``objects``) with several presence intervals.
+* With a change flag (``is_delta``, see :attr:`ObjectSpec.delta_column`) on
+  a signal with both flagged and unflagged rows, a flagged reading that
+  repeats the id before it is a re-setup and starts a new presence of the
+  same object.
+* With a cycle signal (:attr:`ObjectSpec.cycle_uuid`) a presence spans the
+  machine cycle ``[rise, fall)`` its first reading falls in.
 * All timestamps are UTC (OCEL 2.0); tz-aware input is converted, naive input
   is taken as UTC.
 """
@@ -159,15 +167,21 @@ def _id_codes(raw: pd.Series) -> tuple[_I64, pd.Index]:
     return codes, pd.Index(uniques)
 
 
-def _rle(codes: _I64, first: _I64, last: _I64) -> tuple[_I64, _I64, _I64, _I64]:
+def _rle(
+    codes: _I64, first: _I64, last: _I64, forced: _BOOL | None = None
+) -> tuple[_I64, _I64, _I64, _I64]:
     """Run-length encode ``codes`` (one entry per sample or per sub-segment).
 
     Returns ``(codes, start, end, first_index)`` per run. A run ends where the
-    next run starts; the final run ends at its last observation.
+    next run starts; the final run ends at its last observation. ``forced``
+    marks entries that start a new run although the code repeats (a
+    same-value re-setup).
     """
     n = len(codes)
     brk = np.ones(n, dtype=bool)
     brk[1:] = codes[1:] != codes[:-1]
+    if forced is not None:
+        brk[1:] |= forced[1:]
     idx = np.flatnonzero(brk)
     starts = first[idx]
     last_idx = np.append(idx[1:] - 1, n - 1)
@@ -200,6 +214,7 @@ def _segments(
     *,
     min_duration: str | None,
     excluded: _BOOL | None = None,
+    delta: _BOOL | None = None,
 ) -> tuple[_I64, _I64, _I64, _I64, pd.Index, bool]:
     """Presence runs of one id signal (``times`` sorted, ``values`` aligned).
 
@@ -207,14 +222,26 @@ def _segments(
     the id runs only (empty / missing runs are boundaries, not objects).
     ``first_row`` is the positional row of each run's first sample;
     ``still_set`` tells whether the last reading is an id. ``excluded`` marks
-    readings that are not ids (see :func:`_fill_excluded`).
+    readings that are not ids (see :func:`_fill_excluded`). ``delta`` marks
+    readings where the id was set: one that repeats the reading just before
+    it (both ids, neither excluded) starts a new run.
     """
     codes, uniques = _id_codes(values.reset_index(drop=True))
+    forced: _BOOL | None = None
+    if delta is not None and len(codes) > 1:
+        forced = np.zeros(len(codes), dtype=bool)
+        same = (codes[1:] == codes[:-1]) & (codes[1:] >= 0)
+        if excluded is not None:
+            same &= ~excluded[1:] & ~excluded[:-1]
+        forced[1:] = delta[1:] & same
+        if not forced.any():
+            forced = None
     if excluded is not None:
         codes = _fill_excluded(codes, excluded)
     still_set = bool(len(codes)) and bool(codes[-1] >= 0)
     rows = np.arange(len(codes), dtype=np.int64)
-    c, s, e, first = _rle(codes, times, times)
+    c, s, e, first = _rle(codes, times, times, forced)
+    run_forced = forced[first] if forced is not None else None
     first = rows[first]
 
     if min_duration is not None and len(c) > 1:
@@ -241,8 +268,12 @@ def _segments(
             drop = short & (d < left) & (d <= right)
             keep = ~drop
             c, s, last, first = c[keep], s[keep], e[keep], first[keep]
-            c, s, e, k = _rle(c, s, last)
+            if run_forced is not None:
+                run_forced = run_forced[keep]
+            c, s, e, k = _rle(c, s, last, run_forced)
             first = first[k]
+            if run_forced is not None:
+                run_forced = run_forced[k]
 
     ids = c >= 0
     return c[ids], s[ids], e[ids], first[ids], uniques, still_set
@@ -309,6 +340,35 @@ class ObjectSpec:
             never splits a presence: between two readings of the same id it
             is a gap in the data (the id is held across it); anywhere else it
             is an empty reading (the presence before it ends there).
+        delta_column: Column flagging the rows where the id was *set* (the
+            historian's ``is_delta``: ``True`` when the operator scans or
+            sets up the id, ``False`` on the periodic repeats). When the
+            column exists and the signal has both ``True`` and ``False``
+            rows (hold + repeat: the flag tells changes from snapshots), a
+            flagged row whose value equals the reading before it starts a
+            new presence (a re-setup with the same material number). On a
+            signal whose rows are all ``True`` (a change-only store, where
+            an unchanged row is a re-send) or all ``False`` / missing, the
+            flag is not used. A value
+            change starts a new presence with or without the flag. A flag
+            right after a misread or an empty reading adds nothing (the
+            change it marks is the one back from the misread), so
+            ``A, NOREAD, A`` stays one presence. A missing flag never starts
+            a presence and is not a ``False`` row. ``None`` ignores the
+            column (value changes only).
+        cycle_uuid: A bool signal whose ``True`` stretches are the machine
+            cycles (e.g. "door closed"). Each presence is assigned to the
+            cycle ``[rise, fall)`` its first reading (the scan) falls in and
+            then spans exactly that cycle: the serial scanned mid-cycle is
+            the part made in that cycle. Several presences of one id in one
+            cycle are one presence. A presence that starts outside every
+            cycle keeps its own span (scan to next change), with one
+            :class:`~ts_shape.errors.DataQualityWarning` per call. A cycle
+            still ``True`` at the cycle signal's last reading ends at the
+            last timestamp of the frame. ``None`` (default): no cycles.
+        cycle_value_column: Value column of ``cycle_uuid`` (default
+            ``"value_bool"``; numbers count as ``True`` when non-zero, text
+            when it reads ``true`` / ``1`` / ``on`` / ``yes``).
     """
 
     uuid: str
@@ -318,6 +378,9 @@ class ObjectSpec:
     id_template: str = "{value}"
     attributes: Mapping[str, str] = field(default_factory=dict)
     exclude: Exclude = MISREADS
+    delta_column: str | None = "is_delta"
+    cycle_uuid: str | None = None
+    cycle_value_column: str = "value_bool"
 
 
 def _exclusion_mask(spec: ObjectSpec, values: pd.Series) -> _BOOL | None:
@@ -349,6 +412,100 @@ def _exclusion_mask(spec: ObjectSpec, values: pd.Series) -> _BOOL | None:
         ],
         dtype=bool,
     )
+
+
+_TRUE_TEXT = frozenset({"true", "1", "on", "yes", "t", "y"})
+
+
+def _truthy(values: pd.Series) -> _BOOL:
+    """``True`` where a flag / bool reading is set (missing -> ``False``)."""
+    codes, uniques = pd.factorize(values, use_na_sentinel=True)
+    codes = np.asarray(codes, dtype=np.int64)
+    truth = np.array(
+        [
+            v.strip().lower() in _TRUE_TEXT if isinstance(v, str) else bool(v)
+            for v in uniques
+        ],
+        dtype=bool,
+    )
+    if len(truth) == 0:
+        return np.zeros(len(codes), dtype=bool)
+    return np.asarray((codes >= 0) & truth[codes.clip(min=0)], dtype=bool)
+
+
+def _delta_mask(spec: ObjectSpec, df: pd.DataFrame, rows: _I64) -> _BOOL | None:
+    """``spec.delta_column`` of the signal's rows (``None``: no flag in use).
+
+    The flag tells changes from snapshots only on a signal that has both
+    ``True`` and ``False`` rows (hold + repeat). A signal whose rows are all
+    ``True`` (a change-encoded store: an unchanged ``True`` row is a
+    re-send) or all ``False`` / missing gives ``None``.
+    """
+    col = spec.delta_column
+    if col is None or col not in df.columns:
+        return None
+    flags = df[col].iloc[rows]
+    mask = _truthy(flags)
+    if not mask.any():
+        return None
+    has_false = bool((flags.notna().to_numpy(dtype=bool) & ~mask).any())
+    return mask if has_false else None
+
+
+def _cycles(
+    signals: _Signals, spec: ObjectSpec, data_end_ns: int
+) -> tuple[_I64, _I64, _BOOL]:
+    """``(rise, fall, open_end)`` of the ``True`` stretches of the cycle signal.
+
+    Missing readings are dropped (the state is held). A first reading that
+    is ``True`` starts a cycle there; a cycle still ``True`` at the last
+    reading ends at ``data_end_ns`` and is flagged ``open_end``.
+    """
+    rows = signals.rows(spec.cycle_uuid)
+    vals = signals.df[spec.cycle_value_column].iloc[rows]
+    ok = vals.notna().to_numpy(dtype=bool)
+    t = signals.times[rows][ok]
+    b = _truthy(vals[ok])
+    prev = np.r_[False, b[:-1]]
+    rise = t[b & ~prev]
+    fall = t[~b & prev]
+    open_end = np.zeros(len(rise), dtype=bool)
+    if len(fall) < len(rise):
+        fall = np.append(fall, max(data_end_ns, int(rise[-1])))
+        open_end[-1] = True
+    return rise.astype(np.int64), fall.astype(np.int64), open_end
+
+
+def _assign_cycles(
+    codes: _I64,
+    start: _I64,
+    end: _I64,
+    first: _I64,
+    cycles: tuple[_I64, _I64, _BOOL],
+) -> tuple[_I64, _I64, _I64, _I64, int, int]:
+    """Presences spanning the cycle their first reading falls in.
+
+    Returns the new ``(codes, start, end, first)`` sorted by start, the
+    number of presences outside every cycle, and the number of cycles that
+    hold more than one id.
+    """
+    rise, fall, open_end = cycles
+    n = len(codes)
+    k = np.searchsorted(rise, start, side="right") - 1
+    kc = k.clip(min=0)
+    inside = (k >= 0) & ((start < fall[kc]) | (open_end[kc] & (start <= fall[kc])))
+    if len(rise) == 0:
+        inside = np.zeros(n, dtype=bool)
+    cyc = np.where(inside, k, -1 - np.arange(n, dtype=np.int64))
+    keep = ~pd.DataFrame({"c": codes, "k": cyc}).duplicated().to_numpy(dtype=bool)
+    new_start = np.where(inside, rise[kc], start)
+    new_end = np.where(inside, fall[kc], end)
+    idx = np.flatnonzero(keep)
+    idx = idx[np.argsort(new_start[idx], kind="stable")]
+    in_k = cyc[idx][inside[idx]]
+    multi = int((np.bincount(in_k)[np.unique(in_k)] > 1).sum()) if len(in_k) else 0
+    outside = int((~inside).sum())
+    return codes[idx], new_start[idx], new_end[idx], first[idx], outside, multi
 
 
 def _check_frame(df: pd.DataFrame, uuid_column: str, time_column: str) -> None:
@@ -429,6 +586,21 @@ def _detect(
             )
             continue
 
+        cycles = None
+        if spec.cycle_uuid is not None:
+            if spec.cycle_uuid not in signals:
+                raise ValueError(
+                    f"ObjectSpec({spec.uuid!r}).cycle_uuid={spec.cycle_uuid!r} "
+                    "is not a signal of the frame"
+                )
+            if spec.cycle_value_column not in df.columns:
+                raise ColumnNotFoundError(
+                    f"cycle value column {spec.cycle_value_column!r} of "
+                    f"ObjectSpec({spec.uuid!r}) not found; available columns: "
+                    f"{list(df.columns)}"
+                )
+            cycles = _cycles(signals, spec, data_end_ns or 0)
+
         rows = signals.rows(spec.uuid)
         if len(rows) == 0:
             continue
@@ -438,6 +610,7 @@ def _detect(
             values,
             min_duration=spec.min_duration,
             excluded=_exclusion_mask(spec, values),
+            delta=_delta_mask(spec, df, rows),
         )
         if len(codes) == 0:
             continue
@@ -447,6 +620,26 @@ def _detect(
         if still_set and data_end_ns is not None and end[-1] < data_end_ns:
             end = end.copy()
             end[-1] = data_end_ns
+        if cycles is not None:
+            codes, start, end, first, outside, multi = _assign_cycles(
+                codes, start, end, first, cycles
+            )
+            if outside:
+                warnings.warn(
+                    f"ObjectSpec({spec.uuid!r}): {outside} presence(s) start "
+                    f"outside every cycle of {spec.cycle_uuid!r}; they keep "
+                    "their own span (reading to next change)",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
+                )
+            if multi:
+                warnings.warn(
+                    f"ObjectSpec({spec.uuid!r}): {multi} cycle(s) of "
+                    f"{spec.cycle_uuid!r} hold more than one id; each id "
+                    "gets the whole cycle",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
+                )
 
         oids = _render_oids(uniques, spec.id_template, spec.object_type)
         oid = oids.to_numpy()[codes]
@@ -527,8 +720,15 @@ def object_intervals(
     object present until the last timestamp of the frame. An id that
     re-appears later yields another row with the same ``oid``. Readings
     excluded by :attr:`ObjectSpec.exclude` (misreads by default) are never
-    objects and do not split a presence. An empty frame or no matching
-    signal gives an empty frame with the full column set.
+    objects and do not split a presence. A reading flagged in
+    :attr:`ObjectSpec.delta_column` (``is_delta``) that repeats the id before
+    it starts a new presence (a re-setup). With :attr:`ObjectSpec.cycle_uuid`
+    each presence spans the cycle its first reading falls in, sorted by
+    start. An empty frame or no matching signal gives an empty frame with
+    the full column set.
+
+    Raises:
+        ValueError: When a spec's ``cycle_uuid`` is not in the frame.
     """
     intervals, _ = _detect(
         dataframe, specs, uuid_column=uuid_column, time_column=time_column
@@ -591,6 +791,10 @@ def _capture_attribute(
 #: ``hierarchy`` of :func:`detect_objects`: child -> parent(s), each an object
 #: type or an id-signal uuid.
 Hierarchy: TypeAlias = "Mapping[str, str | Sequence[str]]"
+#: ``uses`` of :func:`detect_objects`: child -> {parent: qualifier}, each an
+#: id-signal uuid or an object type (e.g. ``{"serial_sig": {"mat_sig":
+#: "made_from", "tool_sig": "made_with"}}``).
+Uses: TypeAlias = "Mapping[str, Mapping[str, str]]"
 #: ``infer_o2o`` of :func:`detect_objects`.
 InferO2O: TypeAlias = "bool | Literal['hierarchy', 'co_occurs']"
 #: ``scope`` of :func:`link_events_to_objects`: signal uuid -> scope label.
@@ -625,6 +829,7 @@ def detect_objects(
     hierarchy: Hierarchy | None = None,
     infer_o2o: InferO2O = True,
     validate: bool = True,
+    uses: Uses | None = None,
 ) -> EventLog:
     """Detect object instances and build their OCEL 2.0 tables.
 
@@ -651,12 +856,24 @@ def detect_objects(
     Each child presence gets one ``part_of`` per declared parent: to the
     parent presence it overlaps longest (ties: the earlier parent).
 
+    ``uses`` declares usage (bill-of-materials) links: ``{child: {parent:
+    qualifier}}``, named like ``hierarchy`` entries, e.g. ``{"cell:serial":
+    {"line:material": "made_from", "line:tool": "made_with", "line:operator":
+    "made_by"}}`` (any qualifier text works). Each child presence is linked
+    to *every* parent presence it overlaps (half-open; touching is no
+    overlap), so every serial made while a material is held is ``made_from``
+    it, also when the material never changes, and a serial whose cycle spans
+    a material change is ``made_from`` both. One row per ``(child, parent,
+    qualifier)``. :func:`~ts_shape.eventlog.where_used` and
+    :func:`~ts_shape.eventlog.where_from` follow these qualifiers.
+
     ``infer_o2o``: ``True`` / ``"hierarchy"`` (default) emits the declared
     ``part_of`` edges only -- no hierarchy, no ``o2o`` rows.
     ``"co_occurs"`` also relates every two overlapping objects of different
     types with the symmetric ``co_occurs`` qualifier (pairs already related
-    by ``part_of`` excepted); on a plant this can be hundreds of thousands
-    of rows. ``False`` skips object-to-object relations.
+    by ``part_of`` or ``uses`` excepted); on a plant this can be hundreds
+    of thousands of rows. ``False`` skips object-to-object relations (also
+    ``uses``).
 
     Args:
         dataframe: Long-format frame with the id signals.
@@ -667,6 +884,8 @@ def detect_objects(
             type or id-signal uuid.
         infer_o2o: Which object-to-object relations to derive.
         validate: Check the result against the canonical schema.
+        uses: Child -> ``{parent: qualifier}`` usage links, by id-signal uuid
+            or object type.
 
     Returns:
         An :class:`EventLog` with ``objects``, ``o2o`` and ``object_changes``
@@ -674,8 +893,11 @@ def detect_objects(
 
     Raises:
         ColumnNotFoundError: When ``dataframe`` lacks the uuid, time or a spec's
-            value column.
-        ValueError: For an unknown ``infer_o2o`` value.
+            value column (or a spec's ``cycle_value_column``).
+        ValueError: For an unknown ``infer_o2o`` value, a ``cycle_uuid`` that
+            is not in the frame, or an empty ``uses`` qualifier.
+        TypeError: When a ``uses`` entry is not a ``{parent: qualifier}``
+            mapping.
     """
     derive, co_occurs = _o2o_mode(infer_o2o)
     intervals, extra = _detect(
@@ -684,7 +906,7 @@ def detect_objects(
     log = EventLog(
         objects=_objects_table(intervals),
         o2o=(
-            _infer_o2o(intervals, hierarchy, co_occurs=co_occurs)
+            _infer_o2o(intervals, hierarchy, co_occurs=co_occurs, uses=uses)
             if derive
             else schema.empty_o2o()
         ),
@@ -709,6 +931,7 @@ def attach_objects(
     scope: Scope | None = None,
     fanout_threshold: int | None = FANOUT_THRESHOLD,
     validate: bool = True,
+    uses: Uses | None = None,
 ) -> EventLog:
     """Link an existing event log to detected objects by temporal overlap.
 
@@ -743,6 +966,8 @@ def attach_objects(
             more than this many objects of one type present at the same
             time; ``None`` disables the check.
         validate: Check the result against the canonical schema.
+        uses: Child -> ``{parent: qualifier}`` usage links (see
+            :func:`detect_objects`).
 
     Returns:
         ``event_log`` merged with the detected objects and the new relations.
@@ -761,6 +986,7 @@ def attach_objects(
         scope=scope,
         fanout_threshold=fanout_threshold,
         validate=validate,
+        uses=uses,
     )
 
 
@@ -775,6 +1001,7 @@ def relate(
     scope: Scope | None = None,
     fanout_threshold: int | None = FANOUT_THRESHOLD,
     validate: bool = True,
+    uses: Uses | None = None,
 ) -> EventLog:
     """Assemble a full OCEL 2.0 log from an event list and an object list.
 
@@ -815,6 +1042,8 @@ def relate(
             :func:`link_events_to_objects`.
         fanout_threshold: See :func:`link_events_to_objects`.
         validate: Check the result against the canonical schema.
+        uses: Child -> ``{parent: qualifier}`` usage links (see
+            :func:`detect_objects`).
 
     Returns:
         The validated five-table :class:`EventLog`.
@@ -837,6 +1066,7 @@ def relate(
         scope=scope,
         fanout_threshold=fanout_threshold,
         validate=validate,
+        uses=uses,
     )
 
 
@@ -852,13 +1082,14 @@ def _relate(
     scope: Scope | None,
     fanout_threshold: int | None,
     validate: bool,
+    uses: Uses | None = None,
 ) -> EventLog:
     derive, co_occurs = _o2o_mode(infer_o2o)
     iv = _normalize_intervals(intervals)
     detected = EventLog(
         objects=_objects_table(iv),
         o2o=(
-            _infer_o2o(iv, hierarchy, co_occurs=co_occurs)
+            _infer_o2o(iv, hierarchy, co_occurs=co_occurs, uses=uses)
             if derive
             else schema.empty_o2o()
         ),
@@ -898,6 +1129,7 @@ def derive_o2o(
     *,
     hierarchy: Hierarchy | None = None,
     co_occurs: bool = False,
+    uses: Uses | None = None,
 ) -> pd.DataFrame:
     """Derive object-to-object (O2O) relations from an interval table.
 
@@ -907,18 +1139,24 @@ def derive_o2o(
     presence to the parent presence it overlaps longest. ``co_occurs=True``
     also relates every two overlapping objects of different types with the
     symmetric ``co_occurs`` qualifier (one row per pair, the type that sorts
-    first in ``ocel:oid``; pairs related by ``part_of`` excepted).
+    first in ``ocel:oid``; pairs related by ``part_of`` or ``uses``
+    excepted). ``uses`` (child -> ``{parent: qualifier}``) links each child
+    presence to every parent presence it overlaps (see
+    :func:`detect_objects`).
 
     Args:
         intervals: Object table with ``oid``, ``type``, ``start``, ``end``
             (and ``uuid`` for signal-level hierarchy entries).
         hierarchy: Child -> parent(s).
         co_occurs: Also emit ``co_occurs`` for every overlap of two types.
+        uses: Child -> ``{parent: qualifier}`` usage links.
 
     Returns:
         The OCEL 2.0 ``o2o`` table, de-duplicated.
     """
-    return _infer_o2o(_normalize_intervals(intervals), hierarchy, co_occurs=co_occurs)
+    return _infer_o2o(
+        _normalize_intervals(intervals), hierarchy, co_occurs=co_occurs, uses=uses
+    )
 
 
 def object_specs_from_metadata(
@@ -1241,11 +1479,36 @@ def _intersections(a: _Spans, b: _Spans) -> tuple[_I64, _I64, _I64]:
     return ia, jb, overlap
 
 
+def _check_uses(uses: Uses | None) -> Mapping[str, Mapping[str, str]]:
+    """``uses`` as given, after checking its shape (child -> {parent: q})."""
+    if uses is None:
+        return {}
+    if not isinstance(uses, Mapping):
+        raise TypeError(
+            f"uses must map a child signal to {{parent_signal: qualifier}}; got "
+            f"{type(uses).__name__}"
+        )
+    for child, parents in uses.items():
+        if not isinstance(parents, Mapping):
+            raise TypeError(
+                f"uses[{child!r}] must map parent signals to a qualifier, e.g. "
+                f'{{"material_signal": "made_from"}}; got {parents!r}'
+            )
+        for parent, qualifier in parents.items():
+            if not isinstance(qualifier, str) or not qualifier:
+                raise ValueError(
+                    f"uses[{child!r}][{parent!r}]: the qualifier must be a "
+                    f"non-empty text such as 'made_from'; got {qualifier!r}"
+                )
+    return uses
+
+
 def _infer_o2o(
     intervals: pd.DataFrame,
     hierarchy: Hierarchy | None,
     *,
     co_occurs: bool = False,
+    uses: Uses | None = None,
 ) -> pd.DataFrame:
     """Object-to-object relations from interval overlap.
 
@@ -1254,8 +1517,10 @@ def _infer_o2o(
     presence gets ``part_of`` (child -> parent) to the parent presence it
     overlaps longest (ties: the earlier parent). With ``co_occurs`` every
     two overlapping objects of different types also get the symmetric
-    ``co_occurs`` qualifier, unless ``part_of`` already relates them —
-    ``part_of`` is never guessed from time alone.
+    ``co_occurs`` qualifier, unless ``part_of`` or a ``uses`` link already
+    relates them — ``part_of`` is never guessed from time alone. Along each
+    ``uses`` entry every child presence is linked to every parent presence
+    it overlaps, with the entry's qualifier.
     """
     if (
         intervals.empty
@@ -1303,6 +1568,26 @@ def _infer_o2o(
                         schema.OCEL_OID: oids[ci[pick["c"].to_numpy()]],
                         schema.OCEL_OID2: oids[pi[pick["p"].to_numpy()]],
                         schema.OCEL_QUALIFIER: "part_of",
+                    }
+                )
+            )
+    for child, used in _check_uses(uses).items():
+        ci, cs = sub(rows_of(child))
+        if len(ci) == 0:
+            continue
+        for parent, qualifier in used.items():
+            if parent == child:
+                continue
+            pi, ps = sub(rows_of(parent))
+            a, b, _ = _intersections(cs, ps)
+            if len(a) == 0:
+                continue
+            frames.append(
+                pd.DataFrame(
+                    {
+                        schema.OCEL_OID: oids[ci[a]],
+                        schema.OCEL_OID2: oids[pi[b]],
+                        schema.OCEL_QUALIFIER: str(qualifier),
                     }
                 )
             )
