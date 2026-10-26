@@ -55,9 +55,10 @@ Presence semantics (shared by every function here)
   observation.
 * The same id appearing again later is the **same object** (one row in
   ``objects``) with several presence intervals.
-* With a change flag (``is_delta``, see :attr:`ObjectSpec.delta_column`) a
-  flagged reading that repeats the id before it is a re-setup and starts a
-  new presence of the same object.
+* With a change flag (``is_delta``, see :attr:`ObjectSpec.delta_column`) on
+  a signal with both flagged and unflagged rows, a flagged reading that
+  repeats the id before it is a re-setup and starts a new presence of the
+  same object.
 * With a cycle signal (:attr:`ObjectSpec.cycle_uuid`) a presence spans the
   machine cycle ``[rise, fall)`` its first reading falls in.
 * All timestamps are UTC (OCEL 2.0); tz-aware input is converted, naive input
@@ -342,14 +343,19 @@ class ObjectSpec:
         delta_column: Column flagging the rows where the id was *set* (the
             historian's ``is_delta``: ``True`` when the operator scans or
             sets up the id, ``False`` on the periodic repeats). When the
-            column exists and the signal has at least one ``True`` row, a
+            column exists and the signal has both ``True`` and ``False``
+            rows (hold + repeat: the flag tells changes from snapshots), a
             flagged row whose value equals the reading before it starts a
-            new presence (a re-setup with the same material number). A value
+            new presence (a re-setup with the same material number). On a
+            signal whose rows are all ``True`` (a change-only store, where
+            an unchanged row is a re-send) or all ``False`` / missing, the
+            flag is not used. A value
             change starts a new presence with or without the flag. A flag
             right after a misread or an empty reading adds nothing (the
             change it marks is the one back from the misread), so
-            ``A, NOREAD, A`` stays one presence. Missing flags count as
-            ``False``. ``None`` ignores the column (value changes only).
+            ``A, NOREAD, A`` stays one presence. A missing flag never starts
+            a presence and is not a ``False`` row. ``None`` ignores the
+            column (value changes only).
         cycle_uuid: A bool signal whose ``True`` stretches are the machine
             cycles (e.g. "door closed"). Each presence is assigned to the
             cycle ``[rise, fall)`` its first reading (the scan) falls in and
@@ -428,12 +434,22 @@ def _truthy(values: pd.Series) -> _BOOL:
 
 
 def _delta_mask(spec: ObjectSpec, df: pd.DataFrame, rows: _I64) -> _BOOL | None:
-    """``spec.delta_column`` of the signal's rows (``None``: no flag in use)."""
+    """``spec.delta_column`` of the signal's rows (``None``: no flag in use).
+
+    The flag tells changes from snapshots only on a signal that has both
+    ``True`` and ``False`` rows (hold + repeat). A signal whose rows are all
+    ``True`` (a change-encoded store: an unchanged ``True`` row is a
+    re-send) or all ``False`` / missing gives ``None``.
+    """
     col = spec.delta_column
     if col is None or col not in df.columns:
         return None
-    mask = _truthy(df[col].iloc[rows])
-    return mask if mask.any() else None
+    flags = df[col].iloc[rows]
+    mask = _truthy(flags)
+    if not mask.any():
+        return None
+    has_false = bool((flags.notna().to_numpy(dtype=bool) & ~mask).any())
+    return mask if has_false else None
 
 
 def _cycles(

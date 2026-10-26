@@ -135,7 +135,7 @@ def test_flag_after_a_misread_does_not_split():
 def test_missing_flags_count_as_false_and_custom_column():
     frame = _resetup_frame()
     frame["is_delta"] = pd.array(
-        [True, None, None, True, None, True, None], dtype="boolean"
+        [True, False, None, True, None, True, None], dtype="boolean"
     )
     iv = object_intervals(frame, [ObjectSpec(MAT, "material")])
     assert len(iv) == 3
@@ -166,11 +166,28 @@ def test_generator_frames_without_flags_are_unchanged():
     ]
     without = _quiet(object_intervals, frame.drop(columns="is_delta"), on)
     pd.testing.assert_frame_equal(without, _quiet(object_intervals, frame, off))
-    # with the generator's flags (every on-change row, keep-alives included)
-    # presences only split: the objects are the same
-    flagged = _quiet(object_intervals, frame, on)
-    assert len(flagged) >= len(without)
-    assert set(flagged["oid"]) == set(without["oid"])
+    # the generator flags every row of a change-only signal (keep-alive
+    # re-sends included) and no row of a polled one: neither tells changes
+    # from snapshots, so its flags change nothing
+    pd.testing.assert_frame_equal(without, _quiet(object_intervals, frame, on))
+
+
+def test_hold_and_repeat_signal_splits_at_a_same_value_flag():
+    # True on the written change, False on the repeats: the flagged M1 at 6
+    # is a re-setup
+    iv = object_intervals(_resetup_frame(), [ObjectSpec(MAT, "material")])
+    assert [r.oid for r in iv.itertuples()] == ["M1", "M1", "M2"]
+
+
+def test_change_only_signal_resend_is_not_a_resetup():
+    # every row flagged (a change-only store): M1 at 6 is a keep-alive
+    # re-send of the unchanged value, not a new setup
+    frame = _rows(MAT, [0, 6, 10], ["M1", "M1", "M2"], delta=[True, True, True])
+    iv = object_intervals(frame, [ObjectSpec(MAT, "material")])
+    assert _spans(iv) == [("M1", _utc(0), _utc(10)), ("M2", _utc(10), _utc(10))]
+    # all flags missing or True: still a change-only store
+    frame["is_delta"] = pd.array([True, None, True], dtype="boolean")
+    assert len(object_intervals(frame, [ObjectSpec(MAT, "material")])) == 2
 
 
 # ---------------------------------------------------------------------------

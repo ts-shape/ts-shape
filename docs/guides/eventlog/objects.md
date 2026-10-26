@@ -104,16 +104,18 @@ print(object_intervals(material, [spec])[["oid", "start", "end"]])
 
 The re-setup at 06:00:06 starts a second presence of M-100 (still one object).
 
-- The flag is used when the column exists and the signal has at least one `True`
-  row. A value change starts a new presence with or without the flag.
+- The flag is used on a signal that has both `True` and `False` rows (hold and
+  repeat): there it tells a written change from a snapshot. A value change starts a
+  new presence with or without the flag.
+- A change-only store flags every row it keeps, and the only unchanged rows it keeps
+  are re-sends (keep-alives, reconnects). On a signal whose rows are all `True`, an
+  unchanged flagged row is a re-send and does not split the presence. All `False` or
+  missing flags also leave the value changes alone.
 - A flag right after a misread or an empty reading adds nothing: it marks the change
   back from the misread, so `A, NOREAD, A` is still one presence.
-- Missing flags count as `False`. Without the column, or with `delta_column=None`,
-  presences follow value changes only, as before.
-- A historian that flags every re-send (keep-alives stored as deltas) splits each
-  presence at each re-send. The objects, the lifecycle and the relations stay the
-  same, but `object_intervals` and the presence analytics get more rows; pass
-  `delta_column=None` for such data.
+- A missing flag is no flag: it never starts a presence, and it does not count as a
+  `False` row (`True` and missing only is a change-only store). Without the column,
+  or with `delta_column=None`, presences follow value changes only, as before.
 
 ## Cycles
 
