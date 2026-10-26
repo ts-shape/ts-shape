@@ -78,9 +78,9 @@ Two distinctions matter most and are tested explicitly:
 
 ### Plastics processes
 
-From the user's plastics process knowledge base (polymer-atlas). The vault
-describes processes, not machine tags, so the signal forms are the expected
-ones; they are the variants the scenarios generate.
+Common plastics processes and the objects they carry. The signal forms are
+the expected ones for each process; they are the variants the scenarios
+generate.
 
 | Process | Type | Unit | Boundary signal | Plastics-specific objects and relations |
 |---|---|---|---|---|
@@ -93,18 +93,18 @@ ones; they are the variants the scenarios generate.
 | Stretch blow moulding (two-stage) | discrete | bottle | blow cycle | preform lot from an injection-moulding process → bottle (cross-process genealogy) |
 | Thermoforming (roll-fed) | discrete | formed sheet, n cavities | forming stroke, stacker count | film reel as input (often an extrusion roll) |
 | Compounding | continuous | lot per container fill | container change | recipe, feeder components; compound lot becomes granulate input downstream |
-| Rubber compounding | batch | mixer batch | drop-door pulse, batch counter | up to 20 ingredients per batch |
+| Rubber compounding | batch | mixer batch | drop-door pulse, batch counter | many ingredient lots per batch |
 | Particle foam (EPS/EPP) | batch + discrete | block → n boards | steam-chest cycle | silo per grade and bulk density (container lot) |
-| Rotational moulding | discrete, long cycles | part | arm cycle | 3–4 arms with independent cycles (parallel cycle streams) |
-| SMC / BMC pressing | discrete | part | press cycle | SMC roll matured 1–3 days, resin supplier lot; traceability down to each raw-material batch |
+| Rotational moulding | discrete, long cycles | part | arm cycle | several arms with independent cycles (parallel cycle streams) |
+| SMC / BMC pressing | discrete | part | press cycle | matured SMC roll, resin supplier lot; traceability down to each raw-material batch |
 
 Two plastics effects the matrix adds:
 
 - **Material lag.** Granulate passes a dryer hopper and the conveying line
   before it reaches the screw: a new lot reaches the parts only after the
-  residence time (hours). The lot → part link is shifted by that lag.
+  residence time. The lot → part link is shifted by that lag.
 - **Regrind.** Sprues, flash, edge trim and rejects are ground and fed back
-  (up to 50 %). The regrind share is a measurement, not an object; the
+  in a set share. The regrind share is a measurement, not an object; the
   regrind loop makes a part's input partly an earlier part.
 
 ## 3. Variant dimensions
@@ -279,8 +279,8 @@ Plastics scenarios (section 2):
 | PL09 | two-stage stretch blow | CY1, preform lot input | bottle ← preform lot (cross-process) |
 | PL10 | roll-fed thermoforming | CY1 stroke, CY4 stacker count, input film reel | formed sheets ← film reel |
 | PL11 | compounding | CO1 container fill ids, recipe | compound lot per container, recipe `made_with` |
-| PL12 | rubber mixer | B: drop pulse + batch counter, 10 ingredient lots | batch `made_from` each ingredient lot |
-| PL13 | rotational moulding carousel | 3 arms, CY1 per arm, long cycles | parts per arm, no cross-arm links |
+| PL12 | rubber mixer | B: drop pulse + batch counter, several ingredient lots | batch `made_from` each ingredient lot |
+| PL13 | rotational moulding carousel | several arms, CY1 per arm, long cycles | parts per arm, no cross-arm links |
 | PL14 | any of the above via the spec's data path | FLOW6 heartbeats, ID7 no is_delta | same results after dropping duplicates |
 
 Each scenario's status (supported, partly supported with numbers, not
