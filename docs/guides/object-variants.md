@@ -60,6 +60,53 @@ Two distinctions matter most and are tested explicitly:
   the article number changes with the order and never independently of it,
   an input may change on its own (MAT6) or be one of several slots (MAT4).
 
+### Alignment with the Open Manufacturing spec
+
+- Signal kinds use the spec's `semanticKind` tokens: `measurement`,
+  `setpoint`, `counter`, `status`, `state`, `alarm-flag`, `identifier`,
+  `parameter`. Object signals are `identifier`s.
+- Trace units are `lot`, `serial` or `container`, identified as
+  `{scheme, id}` (e.g. `lot:P-100:L2026-1020-A`, `gs1-sgtin`, `sscc`).
+  `namespace=True` object ids follow the same `type:value` pattern.
+- Genealogy edges carry a precision: `exact` (the unit's own cycle), `window`
+  (an input held during the unit's presence) or `order` (only the order is
+  shared).
+- The spec has no `is_delta` flag and no production-cycle signal. A held
+  value may be re-sent by a heartbeat with its original timestamp; such
+  duplicates (same address, time and value) are dropped before analysis,
+  and a change is then known only from the value (variant ID7).
+
+### Plastics processes
+
+From the user's plastics process knowledge base (polymer-atlas). The vault
+describes processes, not machine tags, so the signal forms are the expected
+ones; they are the variants the scenarios generate.
+
+| Process | Type | Unit | Boundary signal | Plastics-specific objects and relations |
+|---|---|---|---|---|
+| Injection moulding | discrete | shot with n cavities → n parts | mould closed / open, eject pulse, shot counter | granulate grade and lot (`made_from`), masterbatch / colour, mould with cavities (`made_with`), per-shot quality values (cushion, injection time, peak pressure) as shot attributes |
+| Insert / multi-component moulding | discrete | shot | as above | inserts consumed per shot; a pre-moulding that crosses one cycle boundary (work in progress) |
+| Extrusion: profile, pipe, sheet | continuous | cut length | saw / cutter pulse, length counter | die (`made_with`), granulate lot, sections cut from a continuous stream |
+| Blown / cast film, calendering | continuous | roll | winder reel change | one or two rolls in parallel (slit web) |
+| Cable sheathing, extrusion coating | continuous | output reel | reel change, length counter | input reel (conductor, substrate) → output reel, linked by length range |
+| Extrusion blow moulding | discrete on continuous parison | moulded part, n per cycle | mould close | one extruder feeding several clamping stations (shuttle) |
+| Stretch blow moulding (two-stage) | discrete | bottle | blow cycle | preform lot from an injection-moulding process → bottle (cross-process genealogy) |
+| Thermoforming (roll-fed) | discrete | formed sheet, n cavities | forming stroke, stacker count | film reel as input (often an extrusion roll) |
+| Compounding | continuous | lot per container fill | container change | recipe, feeder components; compound lot becomes granulate input downstream |
+| Rubber compounding | batch | mixer batch | drop-door pulse, batch counter | up to 20 ingredients per batch |
+| Particle foam (EPS/EPP) | batch + discrete | block → n boards | steam-chest cycle | silo per grade and bulk density (container lot) |
+| Rotational moulding | discrete, long cycles | part | arm cycle | 3–4 arms with independent cycles (parallel cycle streams) |
+| SMC / BMC pressing | discrete | part | press cycle | SMC roll matured 1–3 days, resin supplier lot; traceability down to each raw-material batch |
+
+Two plastics effects the matrix adds:
+
+- **Material lag.** Granulate passes a dryer hopper and the conveying line
+  before it reaches the screw: a new lot reaches the parts only after the
+  residence time (hours). The lot → part link is shifted by that lag.
+- **Regrind.** Sprues, flash, edge trim and rejects are ground and fed back
+  (up to 50 %). The regrind share is a measurement, not an object; the
+  regrind loop makes a part's input partly an earlier part.
+
 ## 3. Variant dimensions
 
 ### ID: how an identifier value is written
@@ -128,6 +175,17 @@ Two distinctions matter most and are tested explicitly:
 | RES2 | program / recipe number (integer) |
 | RES3 | operator badge, changes at shift change |
 | RES4 | tool change shown only by a tool-life counter reset |
+
+### FLOW: material flow effects
+
+| Code | Variant |
+|---|---|
+| FLOW1 | lag: an input lot reaches the units only after a residence time (dryer, hopper, conveying line) |
+| FLOW2 | length-mapped input: an input reel is consumed over a length range of the output |
+| FLOW3 | parallel outputs: two rolls / n cavities / n stations from one stream |
+| FLOW4 | work in progress across a cycle boundary (pre-moulding, preform in a rotary mould) |
+| FLOW5 | one feeder, several stations (shuttle blow moulding, one extruder for several clamps) |
+| FLOW6 | heartbeat duplicates: a held value re-sent with its original timestamp |
 
 ### TOP: topology
 
@@ -205,6 +263,25 @@ base scenario):
 | K06 | D04 | container filled with 20 parts | `part_of` packing |
 | K07 | D02 | sales order and customer next to the work order | order `part_of`, customer attribute of the order |
 | K08 | C02 | tool life counter only (RES4) | tool presence from counter resets |
+
+Plastics scenarios (section 2):
+
+| # | Process | Variants | Must find |
+|---|---|---|---|
+| PL01 | injection moulding, 4 cavities | CY1 mould closed, ID3 part marks per cavity, MAT6 granulate lot, FLOW1 dryer lag 2 h | 4 parts per shot, lot → part shifted by the lag, mould `made_with` |
+| PL02 | injection moulding without part ids | CY4 shot counter, SC6 | shots as units, n = cavities, lot and mould links on the shot |
+| PL03 | insert moulding | CY1, insert lot per shot | inserts `made_from`, one per part |
+| PL04 | multi-component, rotary platen | CY1, FLOW4 | the pre-moulding spans two cycles, the finished part links both |
+| PL05 | profile extrusion | CO3 saw pulse + CO2 length counter, MAT2 granulate | sections with lengths, granulate lot per section |
+| PL06 | blown film, slit web | CO1 roll ids, FLOW3 two rolls | two rolls per reel change, both `made_from` the same lot |
+| PL07 | cable sheathing | CO1, FLOW2 conductor reel | output reel ← conductor reel(s) by length range |
+| PL08 | extrusion blow moulding, shuttle | CY1 per station, FLOW5 | parts per station, all `made_from` the one extruder's lot |
+| PL09 | two-stage stretch blow | CY1, preform lot input | bottle ← preform lot (cross-process) |
+| PL10 | roll-fed thermoforming | CY1 stroke, CY4 stacker count, input film reel | formed sheets ← film reel |
+| PL11 | compounding | CO1 container fill ids, recipe | compound lot per container, recipe `made_with` |
+| PL12 | rubber mixer | B: drop pulse + batch counter, 10 ingredient lots | batch `made_from` each ingredient lot |
+| PL13 | rotational moulding carousel | 3 arms, CY1 per arm, long cycles | parts per arm, no cross-arm links |
+| PL14 | any of the above via the spec's data path | FLOW6 heartbeats, ID7 no is_delta | same results after dropping duplicates |
 
 Each scenario's status (supported, partly supported with numbers, not
 supported with the reason) is reported by the variant test suite and listed
