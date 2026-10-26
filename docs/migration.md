@@ -6,6 +6,48 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## October 2026, round 24: materials that change once a day
+
+Results change for `identify_objects` types of materials and their
+neighbours, and for nesting (`parent_uuid`); screening is unchanged.
+
+- A parent that changes only one to three times in the child's span (a
+  material changed once a day in a continuous process) nests a batch or lot
+  when every one of its changes meets a value change of the child (within
+  5 s, on the windows the sampling leaves open), the product of the
+  changes' chances times the number of child-parent pairs tried is at most
+  1 % (a Bonferroni count over the pairs that could reach it, Tarone's
+  correction), no batch straddles one of its changes, and the child has
+  twice its distinct values and 6+ changes. Before, at least 3 matched
+  changes were needed.
+  - It also counts when the material reads as no type, or as a lot or batch.
+  - It is found through the work order the batch lies in when the batch is
+    polled too coarsely.
+  - A finer id that changes at every change of a recipe, just as unlikely by
+    chance, takes the recipe's place.
+- An id whose every change falls on a shift boundary or midnight (within
+  5 s, local wall clock) nests nothing: a day order or date code meets a
+  batch made per shift or day by the clock.
+- No production parent for a tiny pool with at most 3 changes, nor for an
+  id that another order or batch nests in (a work order read as a batch).
+- Types: a unique id over two levels of finer unique ids (a material over
+  its work orders and batches) +0.45 for material, article and recipe; the
+  reported parent of a batch or lot +0.35 for them and -0.30 to -0.40 for
+  tool, fixture, work order, batch, lot, order and package (no longer
+  `unrelated`); a plain number of 6+ digits -0.25 for recipe, tool and
+  fixture; a batch that holds a batch -0.40. New facts `tops_unique_chain`,
+  `holds_batches`, `long_number` in `type_scores` and `explain()`.
+- Still undecided: a material that never changes (a constant), parts
+  directly in a material, and one change over coarsely polled batches.
+- Benchmark: type accuracy held-out 0.891 -> 0.898, never-seen 0.890 ->
+  0.903; nesting held-out 0.95 / 0.95 -> 0.98 / 0.95 (never-seen 0.99 /
+  0.94 unchanged), materials polled every 30 min 0.82 / 0.82 -> 0.84 /
+  0.82. With materials changed about once a day (new opt-in generator
+  option `material_changes_per_day`) the edges into a material go from
+  0.83 / 0.68 to 0.93 / 0.93 held-out; the new benchmark test requires
+  0.85 / 0.85. New opt-in option `continuous_process` ("lot", "serial").
+  Default generator data are unchanged.
+
 ## October 2026, round 23: nesting for coarsely polled materials
 
 Results change for `identify_objects` nesting (`parent_uuid`,
