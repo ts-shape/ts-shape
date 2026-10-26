@@ -258,6 +258,11 @@ NOT_COLUMN_EXCEPTIONS: dict[tuple[str, str], str] = {
         "ts_shape.context.value_mapping:ValueMapper.__init__",
         "mapping_value_column",
     ): "a column of the mapping table, paired with mapping_key_column",
+    (
+        "ts_shape.eventlog.objects:ObjectSpec.__init__",
+        "cycle_value_column",
+    ): "ObjectSpec field paired with cycle_uuid (the spec's own id column is "
+    "value_column); a column of the cycle signal, not of the id signal",
     ("ts_shape.utils.signal_checks:remember_uuids", "column"): "internal helper",
     ("ts_shape.utils.signal_checks:remember_uuids", "uuids"): "internal helper",
     (

@@ -8,7 +8,7 @@ were present. The result is an [`EventLog`](index.md) in OCEL 2.0 form.
 
 ```python
 import pandas as pd
-from ts_shape.eventlog import ObjectSpec, detect_objects, object_intervals
+from ts_shape.eventlog import ObjectSpec, detect_objects, object_intervals, where_used
 
 t = pd.date_range("2024-01-01 06:00", periods=6, freq="10min")
 df = pd.concat([
@@ -33,8 +33,9 @@ until S3 at 06:30. B2 is sent once at 06:30 and stays present to the end of the 
 ## Declare the objects
 
 `ObjectSpec(uuid, object_type, value_column="value_string", min_duration=None,
-id_template="{value}", attributes={}, exclude="misreads")` says that signal `uuid`
-carries ids of `object_type`.
+id_template="{value}", attributes={}, exclude="misreads", delta_column="is_delta",
+cycle_uuid=None, cycle_value_column="value_bool")` says that signal `uuid` carries
+ids of `object_type`.
 
 - Unknown object types are registered automatically.
 - `id_template` builds the object id, e.g. `"{type}:{value}"` when two types can use
@@ -74,6 +75,94 @@ specs.
 `object_intervals` returns one row per presence: `oid`, `type`, `start`, `end`,
 `duration_seconds`, `uuid`, `source_uuid`, and one column per attribute.
 
+## Change flags (is_delta)
+
+Many historians flag the row where a value was *set*: `is_delta=True` when the
+operator scans or sets up a material number, `is_delta=False` on the repeats sent
+every few seconds until the next change. A re-setup with the same material number
+is a new flagged row without a value change. `ObjectSpec.delta_column` (default
+`"is_delta"`) reads that flag:
+
+```python
+stamps = pd.date_range("2024-01-01 06:00", periods=7, freq="2s")
+material = pd.DataFrame({
+    "systime": stamps,
+    "uuid": "ext:material",
+    "value_string": ["M-100", "M-100", "M-100", "M-100", "M-100", "M-200", "M-200"],
+    "is_delta": [True, False, False, True, False, True, False],
+})
+spec = ObjectSpec("ext:material", "material")
+print(object_intervals(material, [spec])[["oid", "start", "end"]])
+```
+
+```text
+     oid                     start                       end
+0  M-100 2024-01-01 06:00:00+00:00 2024-01-01 06:00:06+00:00
+1  M-100 2024-01-01 06:00:06+00:00 2024-01-01 06:00:10+00:00
+2  M-200 2024-01-01 06:00:10+00:00 2024-01-01 06:00:12+00:00
+```
+
+The re-setup at 06:00:06 starts a second presence of M-100 (still one object).
+
+- The flag is used when the column exists and the signal has at least one `True`
+  row. A value change starts a new presence with or without the flag.
+- A flag right after a misread or an empty reading adds nothing: it marks the change
+  back from the misread, so `A, NOREAD, A` is still one presence.
+- Missing flags count as `False`. Without the column, or with `delta_column=None`,
+  presences follow value changes only, as before.
+- A historian that flags every re-send (keep-alives stored as deltas) splits each
+  presence at each re-send. The objects, the lifecycle and the relations stay the
+  same, but `object_intervals` and the presence analytics get more rows; pass
+  `delta_column=None` for such data.
+
+## Cycles
+
+In a discrete process a cycle runs while a bool signal is `True`, for example from
+"door closed" to "door open". The serial number is scanned somewhere inside the
+cycle, and the part it names is the one made in that cycle. `cycle_uuid` makes the
+cycle the serial's presence:
+
+```python
+s = pd.Timestamp("2024-01-01 08:00")
+sec = pd.to_timedelta
+door = pd.DataFrame({
+    "systime": s + sec([0, 60, 70, 120], unit="s"),
+    "uuid": "cell:door_closed",
+    "value_bool": [True, False, True, False],
+})
+serial = pd.DataFrame({
+    "systime": s + sec([20, 40, 60, 80, 85, 105, 125], unit="s"),
+    "uuid": "cell:serial",
+    "value_string": ["SN-1", "SN-1", "SN-1", "SN-1", "SN-2", "SN-2", "SN-2"],
+    "is_delta": [True, False, False, False, True, False, False],
+})
+cell = pd.concat([door, serial], ignore_index=True)
+serial_spec = ObjectSpec("cell:serial", "serial", cycle_uuid="cell:door_closed")
+print(object_intervals(cell, [serial_spec])[["oid", "start", "end"]])
+```
+
+```text
+    oid                     start                       end
+0  SN-1 2024-01-01 08:00:00+00:00 2024-01-01 08:01:00+00:00
+1  SN-2 2024-01-01 08:01:10+00:00 2024-01-01 08:02:00+00:00
+```
+
+SN-1 is scanned at 08:00:20 and is present for its cycle, 08:00–08:01, although the
+scanner repeats it until 08:01:20. Without the cycle it would run from the scan to
+the next scan.
+
+- A presence belongs to the cycle `[rise, fall)` its first reading (the scan) falls
+  in. Repeats of the id in the next cycle do not count; only a new scan does.
+- Several scans of one id in one cycle give one presence. Two different ids in one
+  cycle each get the whole cycle, with a `DataQualityWarning`.
+- A presence that starts outside every cycle keeps its own span (scan to next
+  change); one `DataQualityWarning` per call gives the count.
+- A cycle still `True` at the cycle signal's last reading ends at the last timestamp
+  of the data. Missing readings of the cycle signal are skipped.
+- `cycle_value_column` (default `"value_bool"`) names the cycle signal's column;
+  numbers count as `True` when non-zero. A `cycle_uuid` that is not in the frame
+  raises `ValueError`.
+
 ## Relations between objects
 
 `detect_objects(df, specs, hierarchy=None, infer_o2o=True)` returns an `EventLog`
@@ -106,6 +195,72 @@ and attribute changes).
   count; pairs already `part_of` are not repeated). On a plant this can be hundreds
   of thousands of rows. `infer_o2o=False` skips `o2o`. `derive_o2o(intervals,
   hierarchy=..., co_occurs=False)` does the same from an interval table.
+
+## Usage links (made_from / made_with / made_by)
+
+Material, purchased-part and pre-product numbers are set at the start of a run and
+often stay the same over many cycles. Every part made while such a number is held
+used it: a bill-of-materials link that `hierarchy` (one parent, the longest
+overlap) does not express. `uses` declares these links per child signal:
+
+```python
+setup = pd.DataFrame({
+    "systime": [s, s, s + sec(65, unit="s")],
+    "uuid": ["cell:material", "cell:tool", "cell:material"],
+    "value_string": ["MAT-A", "T-7", "MAT-B"],
+    "is_delta": True,
+})
+plant = pd.concat([cell, setup], ignore_index=True)
+cell_specs = [
+    serial_spec,
+    ObjectSpec("cell:material", "material"),
+    ObjectSpec("cell:tool", "tool"),
+]
+bom = detect_objects(
+    plant,
+    cell_specs,
+    uses={"cell:serial": {"cell:material": "made_from", "cell:tool": "made_with"}},
+)
+print(bom.o2o)
+```
+
+```text
+  ocel:oid ocel:oid_2 ocel:qualifier
+0     SN-1      MAT-A      made_from
+1     SN-2      MAT-B      made_from
+2     SN-1        T-7      made_with
+3     SN-2        T-7      made_with
+```
+
+The material changes at 08:01:05, between the two cycles; the tool is set once and
+held to the end.
+
+- Keys are child signals, values map parent signals to a qualifier: `made_from`
+  (material), `made_with` (tool), `made_by` (operator) or any text. Names follow the
+  `hierarchy` rule: a uuid of one of the specs' signals, else an object type.
+- Each child presence is linked to every parent presence it overlaps (touching
+  end-to-start is no overlap). A parent held over the whole recording, even one read
+  only once, links every child. Several materials give several links.
+- A serial whose cycle spans a material change is linked to both materials: the
+  part may hold material of either lot.
+- One row per (child, parent, qualifier). `uses` works next to `hierarchy`, and
+  `infer_o2o="co_occurs"` leaves out the pairs it already relates.
+  `infer_o2o=False` skips it with the rest of `o2o`.
+- `derive_o2o`, `relate` and `attach_objects` take `uses=` too.
+
+Genealogy follows the new qualifiers: `where_used(bom, "MAT-A")` lists the serials
+made from MAT-A, `where_from(bom, "SN-1")` the material and tool SN-1 was made from
+and with.
+
+```python
+print(where_used(bom, "T-7"))
+```
+
+```text
+    oid object_type  qualifier  depth  via
+0  SN-1      serial  made_with      1  T-7
+1  SN-2      serial  made_with      1  T-7
+```
 
 ## Link events to objects
 
