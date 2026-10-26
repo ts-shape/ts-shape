@@ -689,10 +689,54 @@ class _Line:
     batch_seq_day: list[int]
     batch_seq_week: list[int]
     batch_entry: list[int]
+    # opt-in scenarios (``generate``): when the material changes (seconds;
+    # only with ``material_changes_per_day``) and the continuous variant
+    material_change_t: np.ndarray | None = None
+    continuous: str | None = None
+
+
+def _campaigns(
+    rng: Rng,
+    entries: list[tuple[float, float, float, int, int]],
+    p: _Params,
+    weights: np.ndarray,
+    per_day: float,
+    horizon: float,
+) -> tuple[list[tuple[float, float, float, int, int]], np.ndarray]:
+    """Material campaigns: the material changes about ``per_day`` times a
+    day, at the first order entry after each campaign end (the line is set
+    up for it); every order of a campaign runs its material. Returns the
+    entries with their material replaced and the change times."""
+    gap = _DAY / per_day
+    ends: list[float] = []
+    t = -float(rng.uniform(0.1, 0.9)) * gap
+    while t < horizon:
+        t += gap * float(rng.uniform(0.6, 1.4))
+        ends.append(t)
+    mat = int(rng.choice(p.n_material, p=weights))
+    out: list[tuple[float, float, float, int, int]] = []
+    changes: list[float] = []
+    k = 0
+    for start, setup_end, end, wo, _mat in entries:
+        if k < len(ends) and start >= ends[k]:
+            while k < len(ends) and start >= ends[k]:
+                k += 1
+            if p.n_material > 1:
+                w = weights.copy()
+                w[mat] = 0.0
+                mat = int(rng.choice(p.n_material, p=w / w.sum()))
+                changes.append(start)
+        out.append((start, setup_end, end, wo, mat))
+    return out, np.asarray(changes, dtype=float)
 
 
 def _simulate_line(
-    rng: Rng, index: int, horizon: float, p: _Params, t0: pd.Timestamp
+    rng: Rng,
+    index: int,
+    horizon: float,
+    p: _Params,
+    t0: pd.Timestamp,
+    material_changes_per_day: float | None = None,
 ) -> _Line:
     weights = _zipf_weights(rng, p.n_material, 1.1)
     entries: list[tuple[float, float, float, int, int]] = []
@@ -728,6 +772,11 @@ def _simulate_line(
             t += s + dur
             wo += 1
         prev_mat = mat
+    material_change_t = None
+    if material_changes_per_day is not None:
+        entries, material_change_t = _campaigns(
+            rng, entries, p, weights, material_changes_per_day, horizon
+        )
 
     state_t: list[float] = []
     state_v: list[Value] = []
@@ -832,6 +881,7 @@ def _simulate_line(
         batch_seq_day=[int(s) + offset_day for s in seq_day],
         batch_seq_week=[int(s) + offset_week for s in seq_week],
         batch_entry=batch_entry,
+        material_change_t=material_change_t,
     )
 
 
@@ -986,19 +1036,23 @@ def _line_signals(
         )
         for k in range(len(line.batch_created))
     ]
-    out.append(
-        _held(
-            f"{L}.batch",
-            "identifier",
-            "batch",
-            bv,
-            bcol,
-            line.batch_t,
-            [batch_ids[k] for k in line.batch_key],
-            p.batch_hours * _HOUR,
-            parent=f"{L}.material",
+    if line.continuous is None:
+        out.append(
+            _held(
+                f"{L}.batch",
+                "identifier",
+                "batch",
+                bv,
+                bcol,
+                line.batch_t,
+                [batch_ids[k] for k in line.batch_key],
+                p.batch_hours * _HOUR,
+                parent=f"{L}.material",
+            )
         )
-    )
+    # a continuous process has no batches: its serials lie in the
+    # production lot (``"lot"``) or directly in the material (``"serial"``)
+    serial_parent = {None: "batch", "lot": "lot", "serial": "material"}[line.continuous]
 
     # serial: one per cycle, cleared whenever the line stops; nested in batch
     sv, scol = variant("serial")
@@ -1015,7 +1069,7 @@ def _line_signals(
         st,
         svals,
         ct,
-        parent=f"{L}.batch",
+        parent=f"{L}.{serial_parent}",
     )
     out.append(truth)
 
@@ -1163,21 +1217,51 @@ def _line_signals(
     t = -float(rng.uniform(0, p.lot_hours * _HOUR))
     previous: Value = None
     current: Value = None
+    production_lot = line.continuous == "lot"
     while t < horizon:
-        if previous is not None and rng.random() < 0.1:  # partial container back
+        if production_lot:  # a new production lot, never one back
+            previous, current = current, _lot_id(rng, lv, _abs_time(t0, max(t, 0)))
+        elif previous is not None and rng.random() < 0.1:  # partial container back
             previous, current = current, previous
         else:
             previous, current = current, _lot_id(rng, lv, _abs_time(t0, max(t, 0)))
         lt.append(t)
         lval.append(current)
         t += max(_duration(rng, p.lot_hours * _HOUR, p.family), 0.3 * _HOUR)
+    if production_lot and line.material_change_t is not None:
+        # the production lot of a continuous process: started with the
+        # next part (as a batch is), and a new one at every material change
+        # too, so each lot lies in one material
+        snap = np.searchsorted(cs, np.asarray(lt), side="left")
+        lt = [
+            float(cs[k]) if 0 < x and k < len(cs) else x
+            for x, k in zip(lt, snap.tolist(), strict=True)
+        ]
+        for c in line.material_change_t:
+            lt.append(float(c))
+            lval.append(_lot_id(rng, lv, _abs_time(t0, max(float(c), 0))))
+        order = np.argsort(lt, kind="stable")
+        lt = [lt[i] for i in order]
+        lval = [lval[i] for i in order]
     out.append(
-        _held(f"{L}.lot", "identifier", "lot", lv, lcol, lt, lval, p.lot_hours * _HOUR)
+        _held(
+            f"{L}.lot",
+            "identifier",
+            "lot",
+            lv,
+            lcol,
+            lt,
+            lval,
+            p.lot_hours * _HOUR,
+            parent=f"{L}.material" if production_lot else None,
+        )
     )
 
     out += _line_negatives(
         rng, line, t0, horizon, heldout, materials, orders, batch_ids
     )
+    if line.continuous is not None:  # recorded without orders either
+        out = [s for s in out if s.key != f"{L}.work_order"]
     return out
 
 
@@ -1487,6 +1571,8 @@ def _line_negatives(
                 f"{materials[line.entry_material[e]]}"
             )
         for t, k in zip(line.batch_t, line.batch_key, strict=True):
+            if line.continuous is not None:
+                break
             mt.append(float(t) + 1.0)
             msgs.append(f"Batch {batch_ids[k]} released")
         order = np.argsort(mt)
@@ -1801,15 +1887,41 @@ def generate(
     include: Iterable[str] | None,
     noise: bool,
     material_poll: float | None = None,
+    material_changes_per_day: float | None = None,
+    continuous_process: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """The benchmark frame and labels (see ``make_object_signals``).
 
-    ``material_poll`` (seconds, opt-in) polls every line's material on a
-    grid of that period, the way a coarse historian tag would be read;
-    ``None`` (the default) keeps the drawn sampling, so the data of every
-    seed is unchanged."""
+    The options are opt-in; with their defaults the data of every seed is
+    unchanged.
+
+    * ``material_poll`` (seconds) polls every line's material on a grid of
+      that period, the way a coarse historian tag would be read.
+    * ``material_changes_per_day`` runs each material as a campaign: the
+      material changes about that often (e.g. ``1.0``, once a day in a
+      continuous process), always at the start of a work order, so a batch
+      boundary goes with every change. Recipe, tool and fixture follow it.
+    * ``continuous_process`` drops the batches and the work orders (a
+      continuous process run in material campaigns): ``"lot"`` makes the
+      line's lot the production lot (a new one every few hours and at
+      every material change, nested in the material; serials nest in it),
+      ``"serial"`` keeps the raw-material lot (no parent) and nests the
+      serials directly in the material. It implies
+      ``material_changes_per_day=1.0`` unless that is given."""
     if days <= 0:
         raise ValueError(f"days must be positive; got {days}")
+    if continuous_process not in (None, "lot", "serial"):
+        raise ValueError(
+            f"continuous_process must be None, 'lot' or 'serial'; got "
+            f"{continuous_process!r}"
+        )
+    if continuous_process is not None and material_changes_per_day is None:
+        material_changes_per_day = 1.0
+    if material_changes_per_day is not None and not material_changes_per_day > 0:
+        raise ValueError(
+            f"material_changes_per_day must be positive; got "
+            f"{material_changes_per_day}"
+        )
     wanted = _selected(include)
     rng = np.random.default_rng(seed)
     heldout = seed >= HELDOUT_SEED_MIN
@@ -1827,7 +1939,8 @@ def generate(
     if n_lines == 2 and sum(horizon / p.cycle_time for p in params) > 4500 * days:
         params = params[:1]
     for i, p in enumerate(params):
-        line = _simulate_line(rng, i, horizon, p, t0)
+        line = _simulate_line(rng, i, horizon, p, t0, material_changes_per_day)
+        line.continuous = continuous_process
         lines.append(line)
         sigs = _line_signals(rng, line, t0, horizon, heldout)
         truths += sigs

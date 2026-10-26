@@ -530,6 +530,139 @@ def test_a_coarse_signal_on_another_clock_is_no_parent(seed, batch):
     assert _row(polled, "b")["parent_uuid"] in ("m", None), polled.explain("b")
 
 
+def _pushed(uuid, steps, end, rng, *, beat=3600.0):
+    """``steps`` = ``[(seconds, value)]``, recorded when the value changes
+    and re-sent every ``beat`` seconds (a historian's keep-alive)."""
+    first = float(rng.uniform(0, beat))
+    at = np.unique(np.concatenate([[s for s, _ in steps], np.arange(first, end, beat)]))
+    idx = np.searchsorted([s for s, _ in steps], at, side="right") - 1
+    keep = idx >= 0
+    when = START + pd.to_timedelta(at[keep], unit="s")
+    return _sig(uuid, when, [steps[i][1] for i in idx[keep]])
+
+
+def _rare_line(seed, material_at, *, lots=False, foreign_at=(), daily=False):
+    """Three days of a part a minute, batches of 25-35 min (or, with
+    ``lots``, production lots of 1-7 h and no batches: a continuous
+    process), and a material that changes only at the batch (lot) starts
+    nearest to ``material_at`` (days). ``foreign_at``: days at which an
+    independent id changes, on its own clock. ``daily``: a day order and a
+    shift label that change at 06:00 sharp, when a batch starts too."""
+    rng = np.random.default_rng(seed)
+    end = 3 * 86400.0
+    minutes = (60, 420) if lots else (25, 35)
+    starts = [0.0]
+    while starts[-1] < end:
+        starts.append(starts[-1] + 60.0 * round(float(rng.uniform(*minutes))))
+    starts = [s for s in starts if s < end]
+    if daily:  # a batch starts at every 06:00 as well
+        starts = sorted(set(starts) | {86400.0, 2 * 86400.0})
+    near = np.asarray(starts)
+    changes = [starts[int(np.argmin(np.abs(near - d * 86400)))] for d in material_at]
+    child = "l" if lots else "b"
+    name = "L{:05d}A" if lots else "B250303-{:03d}"
+    frames = [
+        _sig(
+            "s",
+            START + pd.to_timedelta(np.arange(0, end, 60.0), unit="s"),
+            [f"SN{100000 + i}" for i in range(int(end // 60))],
+        ),
+        _pushed(
+            child, [(s, name.format(i + 1)) for i, s in enumerate(starts)], end, rng
+        ),
+    ]
+    pool = [f"{m:018d}" for m in (10423317, 10423520, 10431177, 10435511)]
+    material = [(0.0, pool[0])] + [(c, pool[i + 1]) for i, c in enumerate(changes)]
+    frames.append(_pushed("m", material, end, rng))
+    if foreign_at:
+        other = [(0.0, "000000000010999001")] + [
+            (d * 86400 + 17.0 + 977.0 * i, f"0000000000109990{i + 2:02d}")
+            for i, d in enumerate(foreign_at)
+        ]
+        frames.append(_pushed("x", other, end, rng))
+    if daily:
+        days = [d * 86400.0 for d in range(3)]
+        frames.append(
+            _pushed("d", [(t, f"DO-{4500 + i}") for i, t in enumerate(days)], end, rng)
+        )
+        frames.append(
+            _pushed("k", [(t, "ABC"[i]) for i, t in enumerate(days)], end, rng)
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+@pytest.mark.parametrize("material_at", [[1.5], [0.8, 2.1]], ids=["once", "twice"])
+def test_a_material_changed_once_or_twice_holds_its_batches(seed, material_at):
+    # one change in three days, at a batch start: batches start every half
+    # hour, so a change meets one within 5 s by chance with about 0.6 %
+    # (two changes: 0.003 %); no batch straddles it
+    out = identify_objects(_rare_line(seed, material_at))
+    assert _row(out, "b")["parent_uuid"] == "m", out.explain("b")
+    assert _row(out, "s")["parent_uuid"] == "b", out.explain("s")
+    material = _row(out, "m")
+    assert material["role"] == "identifier", out.explain("m")
+    assert material["object_type"] == "material", out.explain("m")
+    assert _row(out, "m")["parent_uuid"] is None
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+@pytest.mark.parametrize("material_at", [[1.4], [1.0, 2.0]], ids=["once", "twice"])
+def test_a_continuous_material_holds_its_production_lots(seed, material_at):
+    # a continuous process with no batches: the production lot changes every
+    # few hours and with the material; the parts lie in the lots
+    out = identify_objects(_rare_line(seed, material_at, lots=True))
+    assert _row(out, "l")["parent_uuid"] == "m", out.explain("l")
+    assert _row(out, "s")["parent_uuid"] == "l", out.explain("s")
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_material_over_parts_alone_gets_no_edge(seed):
+    # no batch and no lot: the material changes when some part does, which
+    # one minute's parts always do -- no evidence, no edge (a limit)
+    line = _rare_line(seed, [1.0, 2.0])
+    out = identify_objects(line[line["uuid"] != "b"])
+    assert _row(out, "s")["parent_uuid"] is None, out.explain("s")
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_rare_id_on_another_clock_is_no_parent(seed):
+    # an id changed once a day at times of its own: it meets no batch start
+    alone = identify_objects(_rare_line(seed, [], foreign_at=[1.3]))
+    assert _row(alone, "b")["parent_uuid"] is None, alone.explain("b")
+    both = identify_objects(_rare_line(seed, [0.8, 2.1], foreign_at=[1.2, 2.5]))
+    assert _row(both, "b")["parent_uuid"] == "m", both.explain("b")
+    assert _row(both, "x")["parent_uuid"] is None
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_day_order_or_shift_label_is_no_parent(seed):
+    # a day order and a shift label change at 06:00 sharp, and so does a
+    # batch: they change by the clock, which is no evidence of nesting
+    out = identify_objects(_rare_line(seed, [], daily=True))
+    assert _row(out, "b")["parent_uuid"] is None, out.explain("b")
+    assert _row(out, "k")["role"] != "identifier", out.explain("k")
+    assert _row(out, "d")["parent_uuid"] is None
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_constant_material_gives_no_edge(seed):
+    # never changed in the recording: no evidence the batches lie in it
+    out = identify_objects(_rare_line(seed, []))
+    assert _row(out, "m")["role"] == "constant", out.explain("m")
+    assert _row(out, "b")["parent_uuid"] is None, out.explain("b")
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_an_id_changed_only_at_a_batch_start_is_taken_for_its_parent(seed):
+    # the documented limit: an id that changes once, exactly when a batch
+    # starts, and never inside one is a parent by the data, whatever it is
+    line = _rare_line(seed, [1.5])
+    line["uuid"] = line["uuid"].replace({"m": "x"})
+    out = identify_objects(line)
+    assert _row(out, "b")["parent_uuid"] == "x", out.explain("b")
+
+
 @pytest.mark.parametrize(
     "fmt",
     ["T3-{:07d}", "A-{:08d}", "3-{:07d}", "T{}-0000123", "{:020d}", "{:024d}"],

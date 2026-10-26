@@ -95,7 +95,13 @@ parent. Each change is also placed in the window its sampling leaves open
 (after the sample before it; a change a delta signal pushes between
 keep-alive re-sends is exact), so a material polled every half hour still
 nests its batches when those windows meet batch changes far more often than
-chance (:func:`_censored_lift`, :func:`_censored_containment`). A batch's
+chance (:func:`_censored_lift`, :func:`_censored_containment`). A material
+that changes only once or a few times in the recording (once a day in a
+continuous process) nests a batch or lot when each of its changes meets a
+change of the child and all of them together are that unlikely by chance
+over every pair tried (:func:`_few_changes_nest`); an id whose every change
+falls on a shift boundary or midnight (changed by the clock) nests nothing.
+A batch's
 material mistyped on its own values in a short recording (a tiny pool held
 for days reads as a tool, one never revisited as an order) still counts when it nests the batch both ways, and of a material
 and a recipe that change together the one whose values read like a
@@ -388,6 +394,18 @@ NEST_CENSORED_MIN_HITS = 3
 #: many distinct values (a material pool over its batches).
 NEST_STRONG_CHANCE_P = 0.05
 NEST_STRONG_POOL = 4
+#: A parent with at most NEST_FEW_CHANGES changes in the child's span (a
+#: material changed once a day) nests a child it holds in the strong sense
+#: when every one of its changes meets a value change of the child and the
+#: product of their chances, times the number of child-parent pairs the
+#: nesting tries (a Bonferroni correction), is at most NEST_FEW_CHANCE_P
+#: (:func:`_few_changes_p`, :func:`_few_change_tests`).
+NEST_FEW_CHANGES = 3
+NEST_FEW_CHANCE_P = 0.01
+#: ... and the child has this many times as many distinct values, and at
+#: least NEST_FEW_MIN_CHILD_CHANGES changes of its own.
+NEST_FEW_POOL = 2
+NEST_FEW_MIN_CHILD_CHANGES = 6
 #: A preferred parent whose alignment polling hides replaces the verified
 #: one when it lies in it with at least this fan-out (1:1, give or take).
 NEST_ALIAS_FANOUT = 0.9
@@ -422,6 +440,10 @@ ATTRIBUTE_MAX_CHANCE = 0.1
 PARTNER_MIN_CHANGE_SHARE = 0.25
 MAX_LAG_SECONDS = 900.0
 COARSER_RATIO = 0.8
+#: An id over a chain of this many finer unique ids held longer than parts
+#: (a batch in its work order) is what the order makes
+#: (``tops_unique_chain``).
+CHAIN_MATERIAL_DEPTH = 2
 #: Fixed count: the parts counted between changes vary by at most this CV.
 FIXED_COUNT_CV = 0.3
 #: Containment evidence for the types (:func:`_containers`): share of the
@@ -627,6 +649,12 @@ FACT_DESCRIPTIONS: dict[str, str] = {
     "finer_unique": "changes whenever a coarser non-recurring id changes",
     "unrelated": "changes with no other identifier",
     "fixed_count": f"a fixed count of parts per value (CV <= {FIXED_COUNT_CV})",
+    "long_number": "a plain number of 6+ digits (a material number, not a program)",
+    "holds_batches": "the reported production parent of a batch or lot",
+    "tops_unique_chain": (
+        f"tops a chain of {CHAIN_MATERIAL_DEPTH}+ finer unique ids (a material "
+        "over its work orders and batches)"
+    ),
 }
 
 #: Type rules: ``(target, fact, weight)``. A target is a type or a group of
@@ -668,6 +696,9 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("batch", "poisson_holds", -0.15),
     ("batch", "has_attribute", -0.10),
     ("batch", "coarser_unique", -0.30),
+    ("batch", "tops_unique_chain", -0.40),
+    ("batch", "holds_batches", -0.40),
+    ("batch", "parent_of_batch", -0.40),  # a batch holds no batches
     # lot: long holds, occasionally revisited, independent of the order flow
     ("lot", "rarely_revisited", 0.10),
     ("lot", "occasionally_revisited", 0.25),
@@ -682,6 +713,8 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("lot", "poisson_holds", -0.10),
     ("lot", "increasing", -0.10),
     ("lot", "sequential", -0.10),
+    ("lot", "tops_unique_chain", -0.30),
+    ("lot", "holds_batches", -0.30),
     # work order: hours-long holds; recipe and material change with it
     ("work_order", "hours_hold", 0.30),
     ("work_order", "occasionally_revisited", 0.15),
@@ -700,6 +733,8 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("work_order", "poisson_holds", -0.20),
     ("work_order", "finer_unique", -0.20),
     ("work_order", "shuffled", -0.20),
+    ("work_order", "tops_unique_chain", -0.40),
+    ("work_order", "holds_batches", -0.30),
     # orders: business events -- one record each, irregular arrivals, a
     # partner that changes with them
     ("order", "event_stamped", 0.35),
@@ -713,6 +748,8 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("order", "parent_of_batch", -0.30),
     ("order", "finer_unique", -0.30),
     ("order", "coarser_unique", -0.30),
+    ("order", "tops_unique_chain", -0.30),
+    ("order", "holds_batches", -0.30),
     # recipe / material / article: few values, revisited, long holds; they
     # change with the work order
     ("recipe", "medium_cardinality", 0.15),
@@ -722,6 +759,9 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("recipe", "long_hold", 0.20),
     ("recipe", "attribute_of_unique", 0.15),
     ("recipe", "attribute_of_production", 0.30),
+    ("recipe", "tops_unique_chain", 0.45),
+    ("recipe", "holds_batches", 0.35),
+    ("recipe", "long_number", -0.25),
     ("recipe", "very_long_hold", -0.20),
     ("recipe", "event_stamped", -0.30),
     ("recipe", "shift_aligned", -0.30),
@@ -738,6 +778,8 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("material", "attribute_of_production", 0.30),
     ("material", "parent_of_batch", 0.35),
     ("material", "sap_material", 1.20),
+    ("material", "tops_unique_chain", 0.45),
+    ("material", "holds_batches", 0.35),
     ("material", "tiny_pool", -0.10),
     ("material", "event_stamped", -0.30),
     ("material", "shift_aligned", -0.30),
@@ -755,6 +797,8 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("article", "parent_of_serial", 0.25),
     ("article", "gtin", 1.00),
     ("article", "gs1_gtin", 1.20),
+    ("article", "tops_unique_chain", 0.45),
+    ("article", "holds_batches", 0.35),
     ("article", "tiny_pool", -0.10),
     ("article", "event_stamped", -0.30),
     ("article", "shift_aligned", -0.30),
@@ -778,6 +822,8 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("tool", "attribute_of_unique", -0.30),
     ("tool", "cycle_rate", -0.40),
     ("tool", "within_shift", -0.20),
+    ("tool", "holds_batches", -0.35),
+    ("tool", "long_number", -0.25),
     ("fixture", "very_few_values", 0.14),
     ("fixture", "unique_sequence", -0.30),
     ("fixture", "tiny_pool", 0.22),
@@ -791,6 +837,8 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("fixture", "attribute_of_unique", -0.30),
     ("fixture", "cycle_rate", -0.40),
     ("fixture", "within_shift", -0.20),
+    ("fixture", "holds_batches", -0.35),
+    ("fixture", "long_number", -0.25),
     # carrier: a fixed pool circulating regularly at cycle rate
     ("carrier", "regular_recurrence", 0.45),
     ("carrier", "unique_sequence", -0.30),
@@ -861,6 +909,8 @@ TYPE_RULES: tuple[tuple[str, str, float], ...] = (
     ("handling_unit", "fixed_count", 0.45),
     ("handling_unit", "increasing", 0.20),
     ("handling_unit", "shuffled", -0.30),
+    ("handling_unit", "tops_unique_chain", -0.30),
+    ("handling_unit", "holds_batches", -0.30),
 )
 
 # Facts that count as a known format in screening.
@@ -1291,6 +1341,9 @@ class _Signal:
     # the identifier whose presences this signal's value describes
     attribute_of: str | None = None
     depth: int = 0
+    # child-parent pairs the nesting tries with a parent of few changes
+    # (the multiple-testing correction of :func:`_few_changes_p`)
+    nest_tests: int = 1
     distinct: int = 0
     runs: int = 0
     lag_ns: int = 0
@@ -1614,6 +1667,25 @@ def _shift_alignment(
     return float((dist <= SHIFT_TOLERANCE_SECONDS).mean())
 
 
+def _on_the_clock(
+    changes: _I64, tz: Any, shift_definitions: Mapping[str, tuple[str, str]]
+) -> npt.NDArray[np.bool_]:
+    """Which ``changes`` fall on a shift boundary or midnight (local wall
+    clock), within :data:`COCHANGE_TOLERANCE_SECONDS`: a daily order, a
+    date code or a shift label changes there by the clock, whatever the
+    production does."""
+    if len(changes) == 0:
+        return np.zeros(0, dtype=bool)
+    idx = pd.DatetimeIndex(changes.view("datetime64[ns]"))
+    if tz is not None:
+        idx = idx.tz_localize("UTC").tz_convert(tz)
+    tod = (idx - idx.normalize()).total_seconds().to_numpy()
+    b = np.append(_shift_bounds(tuple(shift_definitions.values())), 0.0)
+    dist = np.abs(tod[:, None] - b[None, :])
+    dist = np.minimum(dist, 86400 - dist).min(axis=1)
+    return np.asarray(dist <= COCHANGE_TOLERANCE_SECONDS, dtype=bool)
+
+
 def _screen(
     key: str,
     rows: pd.DataFrame,
@@ -1764,6 +1836,7 @@ def _screen(
         float(min(1.0, (p_end - p_start).sum() / 1e9 / span)) if span > 0 else 1.0
     )
     shift_share = _shift_alignment(sig.changes, sig.tz, shift_definitions)
+    on_clock = _on_the_clock(sig.changes, sig.tz, shift_definitions)
     shift_len = _shift_length(tuple(shift_definitions.values()))
     max_hold = float(holds.max()) if len(holds) else math.nan
     q90_hold = float(np.quantile(holds, 0.9)) if len(holds) else math.nan
@@ -1803,6 +1876,7 @@ def _screen(
         "max_hold": max_hold,
         "q90_hold": q90_hold,
         "coverage": coverage,
+        "on_clock": on_clock,
     }
     if misreads:
         sig.screen_evidence.append(
@@ -1844,6 +1918,9 @@ def _screen(
             ),
             "sequential": seq_ratio >= RATIO_HOLDS,
             "increasing": inc_ratio >= RATIO_HOLDS,
+            "long_number": (
+                isinstance(pattern, str) and _LONG_DIGITS.fullmatch(pattern) is not None
+            ),
             "shuffled": (
                 distinct >= 10
                 and SHUFFLED_INCREASE[0] <= inc_ratio <= SHUFFLED_INCREASE[1]
@@ -2545,9 +2622,32 @@ def _censored_lift(
     number matched is tested against the sum of those chances (a
     Poisson-binomial tail); ``-inf`` below :data:`NEST_CENSORED_MIN_HITS`
     matches or :data:`NEST_CENSORED_MIN_LIFT`."""
+    found = _censored_hits(edges, edges_u, child, tol_ns, lo, hi)
+    if found is None:
+        return -math.inf
+    hit, chances = found
+    matched = float(hit.mean())
+    if matched < NEST_ALIGN_SHARE or hit.sum() < NEST_CENSORED_MIN_HITS:
+        return -math.inf
+    chance = float(chances.mean())
+    if chance >= 1.0:
+        return -math.inf
+    if _poisson_binomial_tail(int(hit.sum()), chances) > max_p:
+        return -math.inf
+    lift = (matched - chance) / (1.0 - chance)
+    return lift if lift >= NEST_CENSORED_MIN_LIFT else -math.inf
+
+
+def _censored_hits(
+    edges: _I64, edges_u: _I64, child: _Signal, tol_ns: int, lo: int, hi: int
+) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64]] | None:
+    """Which of the parent's ``edges`` meet a start or end of the child's
+    presences on the windows the sampling leaves open, and each edge's
+    chance of that (see :func:`_censored_lift`); None without edges or
+    child boundaries."""
     bounds = np.concatenate([child.p_start[1:], child.p_end[:-1]])
     if len(edges) == 0 or len(bounds) == 0 or hi <= lo:
-        return -math.inf
+        return None
     seen = np.concatenate([child.p_u[1:], child.pe_u[:-1]])
     first = bounds - seen - tol_ns
     order = np.argsort(first, kind="stable")
@@ -2555,9 +2655,6 @@ def _censored_lift(
     reach = np.maximum.accumulate(bounds) + tol_ns
     k = np.searchsorted(first, edges, side="right") - 1
     hit = (k >= 0) & (reach[np.clip(k, 0, len(reach) - 1)] + edges_u >= edges)
-    matched = float(hit.mean())
-    if matched < NEST_ALIGN_SHARE or hit.sum() < NEST_CENSORED_MIN_HITS:
-        return -math.inf
     # the chance of a window as wide as each edge's, rounded up to widths
     # 5 % apart
     widths = np.zeros(len(edges_u))
@@ -2569,13 +2666,130 @@ def _censored_lift(
     for width in np.unique(widths):
         covered = _union_length(first, reach + int(width * 1e9), lo, hi)
         chances[widths == width] = min(1.0, covered / float(hi - lo))
-    chance = float(chances.mean())
-    if chance >= 1.0:
-        return -math.inf
-    if _poisson_binomial_tail(int(hit.sum()), chances) > max_p:
-        return -math.inf
-    lift = (matched - chance) / (1.0 - chance)
-    return lift if lift >= NEST_CENSORED_MIN_LIFT else -math.inf
+    return np.asarray(hit, dtype=bool), chances
+
+
+def _change_spans(sig: _Signal) -> tuple[_I64, _I64]:
+    """``(earliest, seen)`` of each value change of ``sig`` (a new value,
+    not the same one again after an empty reading): it happened after
+    ``earliest`` -- when the old value was last seen, or the sample before
+    (:func:`_seen_late`) -- and was seen at ``seen``."""
+    new = np.flatnonzero(np.asarray(sig.p_code[1:] != sig.p_code[:-1], dtype=bool))
+    seen: _I64 = sig.p_start[new + 1]
+    earliest: _I64 = np.minimum(sig.p_end[new] - sig.pe_u[new], seen)
+    return earliest, seen
+
+
+def _few_changes_p(child: _Signal, parent: _Signal, tol_ns: int) -> tuple[float, float]:
+    """``(best, observed)`` chance that a parent with only a few changes in
+    the child's span (1 to :data:`NEST_FEW_CHANGES`) meets the child's
+    value changes as it does, were the two independent.
+
+    A parent change seen at ``e`` meets a child change when its window
+    meets the child's (:func:`_change_spans`, give or take ``tol_ns``).
+    Its chance is the share of the child's span where a window as wide as
+    its own would meet one; the changes of one parent are independent
+    draws, so the chance of all of them is the product. Tried on the seen
+    times (a change pushed when it happened) and on the windows the
+    parent's sampling leaves open; the smaller product, doubled for the two
+    tries (when they differ). ``best`` is that product had every change met
+    (what the pair could reach at most: :func:`_few_change_tests`),
+    ``observed`` it when every change did meet one and the parent holds the
+    child in the strong sense -- no child presence straddles one of its
+    changes -- else 1.
+
+    Both are 1 unless the child has :data:`NEST_FEW_POOL` times as many
+    distinct values as the parent (a material over its batches, not an id
+    that changes with it one to one) and at least
+    :data:`NEST_FEW_MIN_CHILD_CHANGES` changes; and when every change of
+    the parent falls on a shift boundary or midnight
+    (:func:`_on_the_clock`): a daily order or date code meets a batch made
+    per shift or day by the clock."""
+    if len(child.p_start) < 2 or NEST_FEW_POOL * parent.distinct > child.distinct:
+        return 1.0, 1.0
+    lo, hi = int(child.p_start[0]), int(child.p_end[-1])
+    early, seen = _change_spans(parent)
+    within = (seen > lo) & (seen < hi)
+    if not 1 <= int(within.sum()) <= NEST_FEW_CHANGES:
+        return 1.0, 1.0
+    early, seen = early[within], seen[within]
+    if _by_the_clock(parent, seen):
+        return 1.0, 1.0  # changed by the clock (a day or shift), no evidence
+    c_early, c_seen = _change_spans(child)
+    if len(c_seen) < NEST_FEW_MIN_CHILD_CHANGES or hi <= lo:
+        return 1.0, 1.0  # two ids that both change rarely: no container
+    first = c_early - tol_ns
+    order = np.argsort(first, kind="stable")
+    first = first[order]
+    reach = np.maximum.accumulate(c_seen[order]) + tol_ns
+    k = np.searchsorted(first, seen, side="right") - 1
+    best, observed = 1.0, 1.0
+    for width in (np.zeros(len(seen), dtype=np.int64), seen - early):
+        hit = (k >= 0) & (reach[np.clip(k, 0, len(reach) - 1)] + width >= seen)
+        chance = 1.0
+        for w in width:
+            covered = _union_length(first, reach + int(w), lo, hi)
+            chance *= min(1.0, covered / float(hi - lo))
+        best = min(best, chance)
+        if bool(hit.all()):
+            observed = min(observed, chance)
+    if observed < 1.0 and _censored_containment(child, parent, tol_ns) < 1.0:
+        observed = 1.0
+    tries = 2.0 if bool((seen > early).any()) else 1.0
+    return min(1.0, tries * best), min(1.0, tries * observed)
+
+
+def _by_the_clock(sig: _Signal, changes: _I64) -> bool:
+    """Whether every one of ``changes`` (times of ``sig.changes``) falls on
+    a shift boundary or midnight (:func:`_on_the_clock`): an id changed by
+    the clock -- a day order, a date code -- meets a batch made per shift
+    or day there whatever it holds."""
+    on = sig.extra.get("on_clock")
+    if on is None or len(on) != len(sig.changes) or not bool(on.any()):
+        return False
+    return bool(np.isin(changes, sig.changes[on]).all())
+
+
+def _few_changes_nest(child: _Signal, parent: _Signal) -> bool:
+    """Whether a parent that changes only once or a few times nests the
+    child: every change meets a change of the child, and all of them
+    together are that unlikely by chance over every pair the nesting tries
+    (:func:`_few_changes_p` times :func:`_few_change_tests` at most
+    :data:`NEST_FEW_CHANCE_P`)."""
+    _, chance = _few_changes_p(child, parent, int(COCHANGE_TOLERANCE_SECONDS * 1e9))
+    return chance * max(child.nest_tests, 1) <= NEST_FEW_CHANCE_P
+
+
+def _few_change_tests(
+    held: list[_Signal], base: Mapping[str, str | None], alpha: float
+) -> int:
+    """How many child-parent pairs the few-change test
+    (:func:`_few_changes_p`) runs: the Bonferroni count over the pairs of a
+    child (:data:`_NEST_CHILDREN`, or a unique id it may be found through:
+    :func:`_through_parent`) and an id of another type with a few changes
+    in its span, counting only the pairs that could reach ``alpha``
+    over that count at all (Tarone's correction for discrete tests: a pair
+    whose changes would be likely by chance even if all of them met the
+    child cannot give a false edge)."""
+    tol = int(COCHANGE_TOLERANCE_SECONDS * 1e9)
+    reachable: list[float] = []
+    for child in held:
+        kind = base[child.uuid]
+        if kind not in _NEST_CHILDREN | _UNIQUE_CHAIN:
+            continue
+        for parent in held:
+            if parent is child or base[parent.uuid] == kind:
+                continue
+            best, _ = _few_changes_p(child, parent, tol)
+            if best < 1.0:
+                reachable.append(best)
+    if not reachable:
+        return 1
+    ranked = np.sort(np.asarray(reachable))
+    for m in range(1, len(ranked) + 1):
+        if int(np.searchsorted(ranked, alpha / m, side="right")) <= m:
+            return m
+    return len(ranked)
 
 
 def _union_length(starts: _I64, ends: _I64, lo: int, hi: int) -> float:
@@ -2725,16 +2939,21 @@ def _cochange(child: _Signal, parent: _Signal) -> float:
     (:func:`_censored_lift`): with a binomial tail of
     :data:`NEST_STRONG_CHANCE_P` for a parent that holds the child in the
     strong sense (:func:`_censored_containment` without exception, and
-    :data:`NEST_STRONG_POOL` times fewer distinct values)."""
+    :data:`NEST_STRONG_POOL` times fewer distinct values). A parent with only
+    a few changes in the child's span is tested on all of them together
+    (:func:`_few_changes_nest`); one whose every change falls on a shift
+    boundary or midnight (:func:`_by_the_clock`) gives no evidence."""
     lo, hi = int(child.p_start[0]), int(child.p_end[-1])
     new = np.asarray(parent.p_code[1:] != parent.p_code[:-1], dtype=bool)
     vc, vu = parent.p_start[1:][new], parent.p_u[1:][new]
     within = (vc > lo) & (vc < hi)
     edges = vc[within]
-    if len(edges) == 0:
+    if len(edges) == 0 or _by_the_clock(parent, edges):
         return -math.inf
     exact = int(COCHANGE_TOLERANCE_SECONDS * 1e9)
     lift = _censored_lift(edges, vu[within], child, exact, lo, hi)
+    if len(edges) <= NEST_FEW_CHANGES and _few_changes_nest(child, parent):
+        return 1.0
     if (
         lift < NEST_MIN_LIFT
         and NEST_STRONG_POOL * parent.distinct <= child.distinct
@@ -2798,6 +3017,18 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
     order or material: :func:`_anchors`) serves the same way -- tried only
     after the verified parent itself.
 
+    A material that changes only once or a few times in the recording
+    (:data:`NEST_FEW_CHANGES`; a continuous process changed once a day)
+    gives the co-change test too few changes. It nests a batch or lot when
+    every one of its changes meets a change of the child and all of them
+    together are that unlikely by chance over every pair tried
+    (:func:`_few_changes_nest`), also when its values read as no type or as
+    the child's type; through the work order the batch lies in
+    (:func:`_through_parent`); and a finer id that changes at each of its
+    changes, as unlikely by chance, takes its place
+    (:func:`_finer_alternative`). A tiny pool with that few changes, or an
+    id another order or batch nests in, is no batch to nest.
+
     Before the children are chosen, a serial that holds other serials is
     read as a batch (:func:`_serial_holders`).
     """
@@ -2806,12 +3037,27 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
         for s in ids
         if "event_stamped" not in s.facts and len(s.p_start) and not _wordy(s)
     ]
+    tests = _few_change_tests(held, base, NEST_FEW_CHANCE_P)
+    for s in held:
+        s.nest_tests = tests
     base = _serial_holders(held, base)
     for child in held:
         kind = base[child.uuid]
         if kind not in _NEST_CHILDREN:
             continue
         quantity = kind in ("batch", "lot")
+        if (
+            quantity
+            and child.distinct <= TINY_POOL
+            and len(child.changes) <= (NEST_FEW_CHANGES)
+        ):
+            # a tiny pool that changes a few times (a material held for a
+            # day, read as a batch): nothing to nest
+            continue
+        if quantity and _holds_unique(child, held, base):
+            # a work order (or material) over its batches, taken for a batch
+            # on its own values: no production parent
+            continue
         ranks = _QUANTITY_PARENT_RANK if quantity else _PARENT_RANK
         key = _quantity_key if quantity else _finer_key
         verified: list[tuple[int, _Signal]] = []
@@ -2819,6 +3065,13 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
         packing: list[_Signal] = []
         for parent in held:
             ptype = base[parent.uuid]
+            if (ptype is None or ptype == kind) and quantity and parent is not child:
+                # a material pool held for a day reads as nothing in
+                # particular, or as a lot or batch itself: an id that changes
+                # only a few times, each time with the batch
+                if _inside(child, parent) and _few_changes_nest(child, parent):
+                    verified.append((0, parent))
+                continue
             if ptype is None or ptype == kind:
                 continue
             production = ptype in ranks
@@ -2849,6 +3102,10 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
         # nests the child both ways
         candidates = sorted(unverified, key=lambda rp: (rp[0], key(rp[1])))
         rounds = [[best]] if best is not None else []
+        if quantity and rank > 0:
+            rare = _through_parent(child, held, base, ranks, verified)
+            if rare is not None:
+                rank, best, rounds = 0, rare, []
         if rank > 0 and candidates:
             rounds.append(_anchors(child, held, base, ranks, best))
         for anchors in rounds:
@@ -2867,6 +3124,8 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
             if alias is not None:
                 rank, best = alias
                 break
+        if quantity and best is not None and rank == 0:
+            best = _finer_alternative(child, best, held, base)
         if best is not None:
             nearest = {t for t, r in ranks.items() if r == 0}
             if rank == 0 or not any(
@@ -2879,6 +3138,127 @@ def _nest(ids: list[_Signal], base: Mapping[str, str | None]) -> None:
                 packing,
                 key=lambda p: (base[p.uuid] not in _PACKING_TYPES, _finer_key(p)),
             ).uuid
+
+
+def _holds_unique(
+    child: _Signal, held: list[_Signal], base: Mapping[str, str | None]
+) -> bool:
+    """Whether another order, batch or lot (held longer than a part,
+    :data:`CYCLE_RATE_SECONDS`) nests in ``child`` both ways: then ``child``
+    is the work order or material over it, not a batch."""
+    inner_types = _UNIQUE_CHAIN - _PACKING_TYPES
+    return any(
+        inner is not child and base[inner.uuid] in inner_types
+        # a part's serial taken for a batch on its format is no level
+        and inner.metrics.get("median_hold_seconds", 0.0) > CYCLE_RATE_SECONDS
+        and _inside(inner, child)
+        and _cochanges(inner, child)
+        for inner in held
+    )
+
+
+def _changes_with(a: _Signal, b: _Signal, lo: int, hi: int, tol_ns: int) -> float:
+    """The chance that every change of ``a`` within ``(lo, hi)`` meets a
+    change of ``b`` as it does, on the windows their sampling leaves open
+    (:func:`_change_spans`, give or take ``tol_ns``): the product of each
+    change's chance (the share of ``(lo, hi)`` where a window as wide as its
+    own would meet one of ``b``) when all of them meet one, else 1. A
+    change seen only hours after the one before meets anything."""
+    a_early, a_seen = _change_spans(a)
+    within = (a_seen > lo) & (a_seen < hi)
+    a_early, a_seen = a_early[within], a_seen[within]
+    b_early, b_seen = _change_spans(b)
+    if len(a_seen) == 0 or len(b_seen) == 0 or hi <= lo:
+        return 1.0
+    first = b_early - tol_ns
+    order = np.argsort(first, kind="stable")
+    first = first[order]
+    reach = np.maximum.accumulate(b_seen[order]) + tol_ns
+    k = np.searchsorted(first, a_seen + tol_ns, side="right") - 1
+    hit = (k >= 0) & (reach[np.clip(k, 0, len(reach) - 1)] >= a_early - tol_ns)
+    if not bool(hit.all()):
+        return 1.0
+    chance = 1.0
+    for width in a_seen - a_early:
+        covered = _union_length(first - tol_ns, reach + tol_ns + int(width), lo, hi)
+        chance *= min(1.0, covered / float(hi - lo))
+    return chance
+
+
+def _finer_alternative(
+    child: _Signal,
+    best: _Signal,
+    held: list[_Signal],
+    base: Mapping[str, str | None],
+) -> _Signal:
+    """A batch's parent that changes only a few times, or a finer one that
+    changes with it: an id with at least as many values that holds the
+    batch in the strong sense too (no batch straddles one of its few
+    changes) and changes at every change of ``best``, far more often than
+    chance (:func:`_changes_with`, the test of :func:`_few_changes_nest`)
+    -- the material under a recipe whose own sampling hides when it
+    changed. The preferred one (:func:`_quantity_key`)."""
+    lo, hi = int(child.p_start[0]), int(child.p_end[-1])
+    tol = int(COCHANGE_TOLERANCE_SECONDS * 1e9)
+
+    def few(sig: _Signal) -> bool:
+        seen = _change_spans(sig)[1]
+        return 1 <= int(((seen > lo) & (seen < hi)).sum()) <= NEST_FEW_CHANGES
+
+    if not few(best):
+        return best
+    skip = {"serial"} | _PACKING_TYPES
+    alts = [
+        x
+        for x in held
+        if x is not child
+        and x is not best
+        and base[x.uuid] not in skip
+        and x.distinct >= best.distinct
+        and NEST_FEW_POOL * x.distinct <= child.distinct
+        and few(x)
+        and _inside(child, x)
+        and _censored_containment(child, x, tol) >= 1.0
+        and _changes_with(best, x, lo, hi, tol) * max(child.nest_tests, 1)
+        <= NEST_FEW_CHANCE_P
+    ]
+    return min([best, *alts], key=_quantity_key)
+
+
+def _through_parent(
+    child: _Signal,
+    held: list[_Signal],
+    base: Mapping[str, str | None],
+    ranks: Mapping[str, int],
+    verified: list[tuple[int, _Signal]],
+) -> _Signal | None:
+    """A batch's or lot's material that changes only a few times
+    (:data:`NEST_FEW_CHANGES`), found through an id the child verifiably
+    lies in: the child is inside its work order (or another id that nests
+    it both ways, :func:`_anchors`), and that id nests in the material both
+    ways -- its changes meet the material's far above chance. A polled
+    batch rarely shows when it changed; its order often does. Of several,
+    the preferred one (:func:`_quantity_key`)."""
+    through = [p for _, p in verified]
+    through += [a for a in _anchors(child, held, base, ranks, None) if a not in through]
+    if not through:
+        return None
+    lo, hi = int(child.p_start[0]), int(child.p_end[-1])
+    found = []
+    for cand in held:
+        ctype = base[cand.uuid]
+        if cand is child or cand in through:
+            continue
+        if ranks.get(ctype or "", -1) != 0 and ctype not in _SETUP_RESOURCES:
+            continue
+        vc = _value_changes(cand)
+        if not 1 <= int(((vc > lo) & (vc < hi)).sum()) <= NEST_FEW_CHANGES:
+            continue
+        if not _inside(child, cand):
+            continue
+        if any(_inside(w, cand) and _cochanges(w, cand) for w in through):
+            found.append(cand)
+    return min(found, key=_quantity_key) if found else None
 
 
 #: Types a serial's batch nests in (:func:`_on_the_line`).
@@ -3148,6 +3528,21 @@ def _contained_share(child: _Signal, parent: _Signal, slack_ns: int = 0) -> floa
     return float(inside.mean())
 
 
+def _chain_depth(
+    uuid: str, finer_of: Mapping[str, list[str]], memo: dict[str, int]
+) -> int:
+    """Levels of finer unique ids below ``uuid`` (``finer_of``: the ids
+    each one is coarser than), along the longest chain. A coarser id
+    changes less often than the finer one, so the chains have no loops."""
+    if uuid not in memo:
+        memo[uuid] = 0  # guards a loop all the same
+        below = [b for b in finer_of.get(uuid, ()) if b != uuid]
+        memo[uuid] = 1 + max(
+            (_chain_depth(b, finer_of, memo) for b in below), default=-1
+        )
+    return memo[uuid]
+
+
 def _depth(uuid: str, parent_of: Mapping[str, str | None]) -> int:
     depth, cur, seen = 0, uuid, {uuid}
     while (nxt := parent_of.get(cur)) is not None and nxt not in seen:
@@ -3185,6 +3580,7 @@ def _cross_signal(
     # polling lag of both signals; a relation that chance alone would give
     # (B changing so often that any time is near a change) is not counted.
     attributes: list[tuple[_Signal, _Signal]] = []
+    finer_of: dict[str, list[str]] = {}
     for a in ids:
         if len(a.changes) < 3:
             continue
@@ -3210,6 +3606,16 @@ def _cross_signal(
             elif not stamped and len(a.changes) <= COARSER_RATIO * len(b.changes):
                 a.facts["coarser_unique"] = 1.0
                 b.facts["finer_unique"] = 1.0
+                if base[b.uuid] != "serial" and "cycle_hold" not in b.facts:
+                    finer_of.setdefault(a.uuid, []).append(b.uuid)
+    # a chain of unique ids held for longer than parts, each changing only
+    # when the one below does: a batch in its work order; one more level
+    # above the order is what the order makes -- a material held for a day
+    # or more, never revisited in a short recording
+    memo: dict[str, int] = {}
+    for sig in ids:
+        if _chain_depth(sig.uuid, finer_of, memo) >= CHAIN_MATERIAL_DEPTH:
+            sig.facts["tops_unique_chain"] = 1.0
     # changes aligned with a counter (one serial per counted part)
     for sig in ids:
         if len(sig.changes) < 3:
@@ -3270,13 +3676,18 @@ def _cross_signal(
     # evidence it is to decide afresh
     # (a hinted type is taken as given)
     pinned = dict(hints or {})
-    _nest(
-        ids,
-        {
-            s.uuid: pinned.get(s.uuid) or _base_type_without(s, _CONTAINMENT_FACTS)
-            for s in ids
-        },
-    )
+    nest_base = {
+        s.uuid: pinned.get(s.uuid) or _base_type_without(s, _CONTAINMENT_FACTS)
+        for s in ids
+    }
+    _nest(ids, nest_base)
+    # the reported parent of a batch or lot is related (to its batches),
+    # and that is what a material or recipe does, not a tool or an order
+    for sig in ids:
+        if sig.parent in by_uuid and nest_base[sig.uuid] in ("batch", "lot"):
+            holder = by_uuid[sig.parent]
+            holder.facts["holds_batches"] = 1.0
+            holder.facts.pop("unrelated", None)
     parent_of = {s.uuid: s.parent for s in ids}
     for sig in ids:
         sig.depth = _depth(sig.uuid, parent_of)
