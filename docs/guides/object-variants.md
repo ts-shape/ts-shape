@@ -21,7 +21,46 @@ rows that repeat the held value.
 | P-B | Batch (mixing, curing, heat treatment) | batch / charge | batch start and end | recipe, raw-material lots |
 | P-L | Line with several stations | the same serial at station after station | per-station cycle | per-station resources |
 
-## 2. Variant dimensions
+## 2. Object kinds and how each is handled
+
+Different processes carry different kinds of objects, and each kind is
+identified and handled differently: what its presence is, and how it relates
+to the produced unit. The kind decides the presence rule and the link, not
+the signal's data type.
+
+| Kind | Role | Seen in | Presence | Link from the produced unit |
+|---|---|---|---|---|
+| Serial (part) | output unit, one per cycle | P-D, P-DN, P-L | its cycle; scan → next unit without a cycle signal | – (it is the unit) |
+| Roll / coil / reel / section | output unit | P-C | cut → next cut | – (it is the unit) |
+| Batch / charge | output unit | P-B | batch start → end | – (it is the unit) |
+| Output article / product number | describes what the unit is (type, not instance) | all | held until change | attribute of the unit (`article`), not an input |
+| Material number (input type) | input, type-level | all | held until change, often constant | `made_from` |
+| Input lot / raw-material batch / incoming coil | input, instance-level | all | held until change, own clock (MAT6) | `made_from` (traceable lot) |
+| Purchased-part / pre-product number | input, type-level | P-D, P-L | held until change | `made_from` |
+| Component serial (traceable part built in) | input, instance-level, 1:1 | P-D (assembly), P-L | a scan inside the unit's cycle | `contains` (assembly genealogy, one component per unit) |
+| Semi-finished serial (pre-product instance) | input from an earlier process | P-D after P-C (coil into a press) | held while being consumed | `made_from` |
+| Work / production order | context, groups units | all | held until change | `part_of` |
+| Sales order, customer | context | all | held until change | attribute of the order |
+| Tool / mould / die / fixture | resource | P-D, P-C | held until change or tool-life reset (RES4) | `made_with` |
+| Program / recipe / setup | resource | all | held until change | `made_with` |
+| Operator / badge | resource | all | held until shift change / logout | `made_by` |
+| Workpiece carrier / tray | transport | P-L, P-D | one loop through the line, re-appears | `carried_by` (presence of the unit on the carrier) |
+| Container / package / SSCC | logistics, holds finished units | end of line | from first to last unit packed | `part_of` (packing), via `packing_parent_uuid` |
+| Machine / station | location | all | constant | asset of the events, not an object link |
+
+Two distinctions matter most and are tested explicitly:
+
+- **Type vs instance.** A material number names *what* is used (one value for
+  thousands of units); an input lot or a component serial names *which*
+  physical piece was used. Both link with `made_from` / `contains`, but only
+  an instance link answers "which units contain this faulty lot".
+- **Input vs description.** The output article number describes the unit
+  itself and is an attribute; a material number on the same machine is an
+  input. From data alone the two can look alike (both long-held numbers);
+  the article number changes with the order and never independently of it,
+  an input may change on its own (MAT6) or be one of several slots (MAT4).
+
+## 3. Variant dimensions
 
 ### ID: how an identifier value is written
 
@@ -99,7 +138,7 @@ rows that repeat the held value.
 | TOP3 | parallel cells sharing a station name |
 | TOP4 | two independent lines in one frame (links must not cross lines) |
 
-## 3. What must be found
+## 4. What must be found
 
 For every scenario the expected result is stated in these terms:
 
@@ -109,15 +148,19 @@ For every scenario the expected result is stated in these terms:
 - **Presences**: one presence per unit. A serial's presence is its cycle when
   a cycle signal exists (CY1–CY6), from scan to the next unit otherwise.
 - **Cycle signal**: the cycle signal of each serial (`cycle_uuid`).
+- **Object kind**: each object signal gets the right kind from section 2
+  (output unit, input type, input instance, component, order, resource,
+  carrier, container, description), and the kind decides its presence rule.
 - **Usage links**: every serial / roll / batch links to each input and
-  resource held during its presence (`made_from`, `made_with`, `made_by`),
-  including constant inputs.
+  resource held during its presence with the qualifier of its kind
+  (`made_from`, `contains`, `made_with`, `made_by`, `carried_by`), including
+  constant inputs; the output article number is an attribute, not a link.
 - **Production nesting**: unit → batch / order / material where the data
   shows it (`part_of`).
 - **No false links**: nothing across lines, nothing from states, shift
   labels or clock-driven ids.
 
-## 4. Scenario set
+## 5. Scenario set
 
 The full cross product is far too large. The scenarios below cover every
 variant of every dimension at least once and every pair of the dimensions
@@ -149,10 +192,24 @@ is one generated scenario with ground-truth labels.
 | B01 | P-B | ID1 | batch start/end bool | – | MAT4 (raw lots) | RES2 | TOP1 |
 | B02 | P-B | ID4 | step number | – | MAT3 | RES3 | TOP1 |
 
+Scenarios for the object kinds of section 2 (each adds the named kind to a
+base scenario):
+
+| # | Base | Adds | Must find |
+|---|---|---|---|
+| K01 | D01 | component serial scanned once per cycle (ID3) | `contains`, one component per serial |
+| K02 | D01 | output article number changing with the work order | attribute `article`, no `made_from` |
+| K03 | C01 | input lot changing on its own clock next to a constant material number | both `made_from`, the lot as instance |
+| K04 | D11 | workpiece carrier pool looping through 4 stations | `carried_by` per station visit, carrier loops |
+| K05 | D01 | coil serial of a pre-product feeding a press (semi-finished) | `made_from` the coil for every part made while it is held |
+| K06 | D04 | container filled with 20 parts | `part_of` packing |
+| K07 | D02 | sales order and customer next to the work order | order `part_of`, customer attribute of the order |
+| K08 | C02 | tool life counter only (RES4) | tool presence from counter resets |
+
 Each scenario's status (supported, partly supported with numbers, not
 supported with the reason) is reported by the variant test suite and listed
 in the table in the next section once it runs.
 
-## 5. Status
+## 6. Status
 
 To be filled from `tests/test_object_variants.py`.
