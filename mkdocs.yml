@@ -47,6 +47,7 @@ nav:
     - Labeling and taxonomy: guides/eventlog/taxonomy.md
     - Adapters: guides/eventlog/adapters.md
     - OCEL 2.x gap analysis: guides/eventlog/ocel-gap-analysis.md
+    - OCEL 2.x implementation plan: guides/eventlog/ocel-implementation-plan.md
   - Lambda rules: guides/lambda-rules.md
   - Example scripts: examples.md
 - Module reference:
