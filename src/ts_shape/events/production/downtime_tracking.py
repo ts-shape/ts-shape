@@ -11,6 +11,7 @@ import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 
 from ts_shape.events._compat import state_mask
@@ -68,6 +69,16 @@ _TOP_COLS = [
     "total_seconds",
     "pct_of_total",
     "cumulative_pct",
+]
+_PARETO_COLS = [
+    "rank",
+    "reason",
+    "occurrences",
+    "total_minutes",
+    "total_seconds",
+    "pct_of_total",
+    "cumulative_pct",
+    "is_vital_few",
 ]
 
 
@@ -401,6 +412,89 @@ class DowntimeEvents(Base):
         reason_stats = reason_stats.sort_values("total_minutes", ascending=False)
 
         return reason_stats[_REASON_COLS].reset_index(drop=True)
+
+    @renamed_kwargs(state_uuid="run_state_uuid")
+    @twin_columns({"pct_of_total": "share_of_total_pct"})
+    def downtime_pareto(
+        self,
+        run_state_uuid: str,
+        reason_uuid: str,
+        *,
+        pareto_threshold: float = 80.0,
+        stopped_value: str | bool = "Stopped",
+        value_column_state: str = "value_string",
+        value_column_reason: str = "value_string",
+    ) -> pd.DataFrame:
+        """Full-breadth Pareto analysis of downtime by reason.
+
+        Where :meth:`top_downtime_reasons` returns the N biggest reasons,
+        :meth:`downtime_pareto` returns **every** reason with ``rank``,
+        ``cumulative_pct`` and an ``is_vital_few`` flag so you can plot an
+        80/20 Pareto chart or filter the "vital few" directly.
+
+        Args:
+            run_state_uuid: UUID for the machine-state signal.
+            reason_uuid: UUID for the downtime-reason signal.
+            pareto_threshold: Cumulative percentage up to which rows are
+                tagged as the vital few. The classical 80/20 rule uses 80.0
+                (the default). The row that *crosses* the threshold is still
+                marked, so the vital few collectively hold at least this
+                much of the total downtime.
+            stopped_value: Value indicating the machine is stopped (string
+                for a ``value_string`` state signal, or ``bool`` for a
+                boolean one; see :meth:`downtime_by_reason`).
+            value_column_state: Column holding the state values.
+            value_column_reason: Column holding the reason codes.
+
+        Returns:
+            DataFrame with columns (:data:`_PARETO_COLS`): rank (1 = largest),
+            reason, occurrences, total_minutes, total_seconds, pct_of_total,
+            cumulative_pct, is_vital_few (bool). Sorted by total_seconds
+            descending.
+
+            Canonical twin: ``share_of_total_pct`` (after ``pct_of_total``);
+            the deprecated column is removed in the next major release.
+
+        Example:
+            >>> import pandas as pd, ts_shape
+            >>> states = ["Running", "Stopped", "Running", "Stopped",
+            ...           "Running", "Stopped", "Running"]
+            >>> reasons = ["-", "Jam", "-", "Jam", "-", "Tool", "-"]
+            >>> df = pd.concat([
+            ...     ts_shape.make_id_signal("state", states, hold=10, freq="1min"),
+            ...     ts_shape.make_id_signal("reason", reasons, hold=10, freq="1min"),
+            ... ])
+            >>> p = ts_shape.DowntimeEvents(df).downtime_pareto("state", "reason")
+            >>> p[["rank", "reason", "pct_of_total", "cumulative_pct", "is_vital_few"]]
+               rank reason  pct_of_total  cumulative_pct  is_vital_few
+            0     1    Jam     66.666667       66.666667          True
+            1     2   Tool     33.333333      100.000000          True
+        """
+        reason_stats = self.downtime_by_reason(
+            run_state_uuid,
+            reason_uuid,
+            stopped_value=stopped_value,
+            value_column_state=value_column_state,
+            value_column_reason=value_column_reason,
+        )
+
+        if reason_stats.empty:
+            return pd.DataFrame(columns=_PARETO_COLS)
+
+        out = reason_stats.copy().reset_index(drop=True)
+        out.insert(0, "rank", np.arange(1, len(out) + 1, dtype="int64"))
+        out["cumulative_pct"] = out["pct_of_total"].cumsum()
+        # The row that crosses ``pareto_threshold`` is marked too, so the
+        # ``is_vital_few`` rows collectively account for at least that share
+        # of the total (an 80/20 split needs the row that lands just above
+        # 80 % to belong to the few).
+        cum = out["cumulative_pct"].to_numpy(dtype=float)
+        first_over = int((cum >= pareto_threshold).argmax()) if len(cum) else 0
+        vital = np.zeros(len(out), dtype=bool)
+        if len(cum):
+            vital[: first_over + 1] = True
+        out["is_vital_few"] = vital
+        return out[_PARETO_COLS]
 
     @renamed_kwargs(state_uuid="run_state_uuid")
     @twin_columns({"pct_of_total": "share_of_total_pct"})

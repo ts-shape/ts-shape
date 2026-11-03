@@ -54,7 +54,9 @@ Daily Production Tracking Classes:
 - DowntimeEvents: Machine availability and downtime analysis.
   - downtime_by_shift: Downtime and availability per shift.
   - downtime_by_reason: Root cause analysis.
-  - top_downtime_reasons: Pareto analysis (80/20 rule).
+  - top_downtime_reasons: Top N reasons with cumulative percentage.
+  - downtime_pareto: Full-breadth Pareto with rank, cum_share and
+    is_vital_few flag.
   - availability_trend: Track availability over time.
 
 - QualityEvents: NOK (defective parts) and quality metrics.

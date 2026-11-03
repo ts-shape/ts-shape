@@ -76,6 +76,12 @@ Classes:
   - fill_gaps: Fill gaps using interpolation, forward/back fill, or constant.
   - align_asof: Align two UUID signals using merge_asof.
   - merge_multi_signals: End-to-end harmonization pipeline.
+
+- SignalTowerDecoder: Collapse several PLC lamp signals (red / yellow /
+  green / buzzer) into one canonical state signal
+  (running / warning / stopped / alarm) by priority.
+  - decode: Change-encoded long-format output ready for state detectors.
+  - to_long_format: Alias of decode.
 """
 
 import importlib as _importlib
@@ -105,6 +111,9 @@ if TYPE_CHECKING:
         LambdaProcessor as LambdaProcessor,
     )
     from ts_shape.transform.harmonization import DataHarmonizer as DataHarmonizer
+    from ts_shape.transform.signal_tower import (
+        SignalTowerDecoder as SignalTowerDecoder,
+    )
     from ts_shape.transform.time_functions.timestamp_converter import (
         TimestampConverter as TimestampConverter,
     )
@@ -126,6 +135,7 @@ _CLASSES = {
     "IsDeltaFilter": "ts_shape.transform.filter.boolean_filter",
     "LambdaProcessor": "ts_shape.transform.functions.lambda_func",
     "PowerIntegrator": "ts_shape.transform.calculator.power_integration",
+    "SignalTowerDecoder": "ts_shape.transform.signal_tower",
     "StringFilter": "ts_shape.transform.filter.string_filter",
     "TimestampConverter": "ts_shape.transform.time_functions.timestamp_converter",
     "TimezoneShift": "ts_shape.transform.time_functions.timezone_shift",

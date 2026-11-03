@@ -102,6 +102,9 @@ if TYPE_CHECKING:
     from ts_shape.events.engineering.startup_events import (
         StartupDetectionEvents as StartupDetectionEvents,
     )
+    from ts_shape.events.engineering.state_transition import (
+        StateTransitionEvents as StateTransitionEvents,
+    )
     from ts_shape.events.engineering.steady_state_detection import (
         SteadyStateDetectionEvents as SteadyStateDetectionEvents,
     )

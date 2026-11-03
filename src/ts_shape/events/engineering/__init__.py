@@ -35,6 +35,13 @@ Classes:
   - rate_statistics: Per-window rate of change statistics.
   - detect_step_changes: Sudden value jumps within a short duration.
 
+- StateTransitionEvents: State transition matrix and per-transition events.
+  - transitions: Point events, one per state change (dwell_seconds carries
+    the time the departing state was held).
+  - transition_matrix: from_state × to_state summary with sample_count,
+    total_dwell_seconds, mean_dwell_seconds, share_of_transitions_pct.
+  - hold_intervals: Underlying per-state intervals used by the above.
+
 - SteadyStateDetectionEvents: Identify steady-state vs transient periods.
   - detect_steady_state: Intervals where rolling std stays below threshold.
   - detect_transient_periods: Intervals where signal is changing.
@@ -115,6 +122,7 @@ from .rate_of_change import RateOfChangeEvents  # re-export
 from .setpoint_events import SetpointChangeEvents  # re-export
 from .signal_comparison import SignalComparisonEvents  # re-export
 from .startup_events import StartupDetectionEvents  # re-export
+from .state_transition import StateTransitionEvents  # re-export
 from .steady_state_detection import SteadyStateDetectionEvents  # re-export
 from .threshold_monitoring import ThresholdMonitoringEvents  # re-export
 from .time_to_threshold import TimeToThresholdEvents  # re-export
@@ -132,6 +140,7 @@ __all__ = [
     "SetpointChangeEvents",
     "SignalComparisonEvents",
     "StartupDetectionEvents",
+    "StateTransitionEvents",
     "SteadyStateDetectionEvents",
     "ThresholdMonitoringEvents",
     "TimeToThresholdEvents",

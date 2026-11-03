@@ -775,6 +775,94 @@ class Pipeline:
             lines.append(f"  {index}. [{step.kind:<9s}] {step.name}{suffix}")
         return "\n".join(lines)
 
+    def explain(
+        self, dataframe: pd.DataFrame | None = None
+    ) -> pd.DataFrame:
+        """Run the pipeline and report what each step did to the shape of the data.
+
+        Pairs with :meth:`describe` (static preview): :meth:`explain` runs the
+        pipeline once with intermediate capture and returns one row per step
+        with its input / output shape so you can see *where* a transform
+        dropped rows or a detector found events.
+
+        Args:
+            dataframe: Input DataFrame; required unless the pipeline has a
+                ``.source()`` step (then omit it).
+
+        Returns:
+            DataFrame with columns:
+
+            - ``step``: zero-based index.
+            - ``kind``: ``"source"``, ``"transform"`` or ``"detect"``.
+            - ``name``: the step's unique name.
+            - ``input_rows``: rows the step received
+              (the working frame it reads; ``source`` is 0).
+            - ``output_rows``: rows the step returned.
+            - ``delta_rows``: ``output_rows - input_rows`` for ``transform``
+              (positive = fan-out, negative = filter); for ``detect`` the
+              number of events emitted; for ``source`` the rows produced.
+            - ``output_cols``: the list of columns in the step's output.
+            - ``n_output_cols``: ``len(output_cols)``.
+        """
+        working, _events, _ids, intermediates = self._execute(
+            dataframe, capture=True
+        )
+        has_source = bool(self._steps) and self._steps[0].kind == "source"
+        rows: list[dict[str, Any]] = []
+        prev_working_rows = 0  # before the first non-source step, input == working
+        if has_source:
+            source_frame = intermediates[self._steps[0].name]
+            prev_working_rows = len(source_frame)
+            rows.append(
+                {
+                    "step": 0,
+                    "kind": "source",
+                    "name": self._steps[0].name,
+                    "input_rows": 0,
+                    "output_rows": prev_working_rows,
+                    "delta_rows": prev_working_rows,
+                    "output_cols": list(source_frame.columns),
+                    "n_output_cols": len(source_frame.columns),
+                }
+            )
+            remaining = enumerate(self._steps[1:], start=1)
+        else:
+            input_frame = intermediates["input"]
+            prev_working_rows = len(input_frame)
+            remaining = enumerate(self._steps, start=0)
+        for index, step in remaining:
+            out = intermediates[step.name]
+            n_out = len(out)
+            n_in = prev_working_rows
+            rows.append(
+                {
+                    "step": index,
+                    "kind": step.kind,
+                    "name": step.name,
+                    "input_rows": n_in,
+                    "output_rows": n_out,
+                    "delta_rows": n_out - n_in if step.kind == "transform" else n_out,
+                    "output_cols": list(out.columns),
+                    "n_output_cols": len(out.columns),
+                }
+            )
+            if step.kind == "transform":
+                prev_working_rows = n_out
+        del working
+        return pd.DataFrame(
+            rows,
+            columns=[
+                "step",
+                "kind",
+                "name",
+                "input_rows",
+                "output_rows",
+                "delta_rows",
+                "output_cols",
+                "n_output_cols",
+            ],
+        )
+
     def _execute(self, dataframe: pd.DataFrame | None, *, capture: bool) -> tuple[
         pd.DataFrame,
         dict[str, pd.DataFrame],

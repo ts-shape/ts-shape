@@ -276,6 +276,62 @@ def test_top_downtime_reasons(sample_downtime_data):
         assert total_mins[i] >= total_mins[i + 1]
 
 
+def test_downtime_pareto_full_breadth_and_vital_few(sample_downtime_data):
+    """downtime_pareto returns every reason with rank + is_vital_few."""
+    tracker = DowntimeEvents(sample_downtime_data)
+    full = tracker.downtime_by_reason(
+        run_state_uuid="machine_state",
+        reason_uuid="downtime_reason",
+        stopped_value="Stopped",
+    )
+    pareto = tracker.downtime_pareto(
+        run_state_uuid="machine_state",
+        reason_uuid="downtime_reason",
+        stopped_value="Stopped",
+    )
+
+    # Every reason is reported (not top-N), with rank and vital-few flag.
+    assert len(pareto) == len(full)
+    assert list(pareto.columns)[0] == "rank"
+    assert list(pareto["rank"]) == list(range(1, len(pareto) + 1))
+    assert pareto["cumulative_pct"].is_monotonic_increasing
+    # The vital-few flag covers at least the 80% threshold by default.
+    assert pareto["is_vital_few"].any()
+    first_non_vital = (~pareto["is_vital_few"]).idxmax() if (~pareto["is_vital_few"]).any() else len(pareto)
+    if first_non_vital > 0 and first_non_vital < len(pareto):
+        assert pareto.iloc[first_non_vital - 1]["cumulative_pct"] >= 80.0
+
+
+def test_downtime_pareto_threshold_shifts_the_split():
+    """A higher pareto_threshold widens the vital few; a lower one shrinks it."""
+    import pandas as pd
+    import ts_shape
+
+    states = ["Running", "Stopped"] * 3 + ["Running"]
+    reasons = ["-", "Jam", "-", "Jam", "-", "Tool", "-"]
+    df = pd.concat(
+        [
+            ts_shape.make_id_signal("state", states, hold=10, freq="1min"),
+            ts_shape.make_id_signal("reason", reasons, hold=10, freq="1min"),
+        ]
+    )
+    tracker = ts_shape.DowntimeEvents(df)
+    p60 = tracker.downtime_pareto("state", "reason", pareto_threshold=60.0)
+    p95 = tracker.downtime_pareto("state", "reason", pareto_threshold=95.0)
+    assert p60["is_vital_few"].sum() <= p95["is_vital_few"].sum()
+
+
+def test_downtime_pareto_empty_data():
+    df_empty = pd.DataFrame(columns=["uuid", "systime", "value_string", "is_delta"])
+    tracker = DowntimeEvents(df_empty)
+    result = tracker.downtime_pareto(
+        run_state_uuid="machine_state", reason_uuid="downtime_reason"
+    )
+    assert result.empty
+    assert "rank" in result.columns
+    assert "is_vital_few" in result.columns
+
+
 def test_availability_trend(sample_downtime_data):
     """Test availability trend calculation."""
     tracker = DowntimeEvents(sample_downtime_data)

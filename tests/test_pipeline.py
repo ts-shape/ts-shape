@@ -284,6 +284,45 @@ def test_empty_input_flows_through(empty_df):
     assert result.events["o"].empty
 
 
+def test_explain_reports_shape_per_step():
+    df = _signal(n_outliers=3)
+    pipe = (
+        Pipeline(name="demo")
+        .transform(IntegerCalc, "scale_column", value_column="value_double", factor=0.1)
+        .detect(
+            OutlierDetectionEvents,
+            "detect_outliers_zscore",
+            name="outliers",
+            value_column="value_double",
+            n_sigma=3.0,
+        )
+    )
+    exp = pipe.explain(df)
+    # One row per step, in order, with the configured names.
+    assert list(exp["name"]) == ["scale_column", "outliers"]
+    assert list(exp["kind"]) == ["transform", "detect"]
+    assert list(exp["step"]) == [0, 1]
+    # A pure column-scaling transform keeps every row.
+    transform = exp.iloc[0]
+    assert transform["input_rows"] == len(df)
+    assert transform["output_rows"] == len(df)
+    assert transform["delta_rows"] == 0
+    # A detect step reads the working frame but produces one row per event.
+    detect = exp.iloc[1]
+    assert detect["input_rows"] == len(df)
+    assert detect["output_rows"] == detect["delta_rows"]
+    assert detect["output_rows"] >= 1
+    assert isinstance(detect["output_cols"], list) and detect["n_output_cols"] == len(
+        detect["output_cols"]
+    )
+
+
+def test_explain_rejects_missing_input_on_sourceless_pipeline():
+    pipe = Pipeline().transform(lambda d: d, name="noop")
+    with pytest.raises(TypeError, match="requires a DataFrame"):
+        pipe.explain()
+
+
 def test_steps_describe_and_repr():
     pipe = (
         Pipeline(name="demo")

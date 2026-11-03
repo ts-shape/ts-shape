@@ -110,6 +110,65 @@ class ProfileReport:
             out = out[out["severity"] == severity]
         return out.reset_index(drop=True)
 
+    def issues_to_event_log(
+        self,
+        *,
+        detector: str = "profile.issues_to_event_log",
+    ) -> "Any":
+        """Emit the profile's issues as a canonical OCEL 2.0 event log.
+
+        Each row of :attr:`issue_table` becomes one point event: the issue's
+        ``severity`` carries over, the signal it is about is the event's
+        ``source_uuid``, and the issue code is the activity. The event
+        timestamp is the signal's ``last`` time (from the profile table), or
+        now when a per-signal time is not available, so events are time-sorted
+        together with real detector output.
+
+        Pass the result through :func:`ts_shape.eventlog.concat` to stack it
+        with detector logs for a single process-mining view.
+
+        Args:
+            detector: Registry key used in ``ts_shape:detector``; the default
+                matches the ``FUNCTION_REGISTRY`` entry
+                ``("profile", "issues_to_event_log")``.
+
+        Returns:
+            A :class:`~ts_shape.eventlog.model.EventLog`. An empty profile with
+            no issues yields the canonical empty event log (same schema).
+        """
+        from ts_shape.eventlog.normalizer import to_event_log
+
+        frame = self._issues_as_point_frame()
+        return to_event_log(frame, detector=detector)
+
+    def _issues_as_point_frame(self) -> pd.DataFrame:
+        """Build a point-shape detector frame from :attr:`issue_table`.
+
+        One row per issue: ``systime`` is the source signal's ``last`` (or now
+        when the row is not in the per-signal table), ``source_uuid`` is the
+        signal the issue is about, ``uuid`` becomes a per-event id (prefixed
+        ``profile:``), ``issue`` is kept as the activity label, and the
+        issue's ``severity`` and ``detail`` ride along.
+        """
+        cols = ["systime", "uuid", "source_uuid", "issue", "severity", "detail"]
+        if self.issue_table.empty:
+            return pd.DataFrame(columns=cols)
+        now = pd.Timestamp.utcnow()
+        last_by_uuid: dict[str, pd.Timestamp] = {}
+        if "uuid" in self.table.columns and "last" in self.table.columns:
+            last_by_uuid = {
+                str(row.uuid): pd.Timestamp(row.last)
+                for row in self.table.itertuples(index=False)
+                if pd.notna(row.last)
+            }
+        out = self.issue_table.copy()
+        out["source_uuid"] = out["uuid"].astype(str)
+        out["systime"] = out["source_uuid"].map(last_by_uuid).fillna(now)
+        out["uuid"] = (
+            "profile:" + out["source_uuid"] + ":" + out["issue"].astype(str)
+        )
+        return out[cols]
+
     def summary(self) -> str:
         """Human-readable overview."""
         n = len(self.table)

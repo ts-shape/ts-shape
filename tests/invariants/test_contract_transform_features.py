@@ -71,6 +71,7 @@ from ts_shape.transform.filter.numeric_filter import DoubleFilter, IntegerFilter
 from ts_shape.transform.filter.string_filter import StringFilter
 from ts_shape.transform.functions.lambda_func import LambdaProcessor
 from ts_shape.transform.harmonization import DataHarmonizer
+from ts_shape.transform.signal_tower import SignalTowerDecoder
 from ts_shape.transform.time_functions.timestamp_converter import TimestampConverter
 from ts_shape.transform.time_functions.timezone_shift import TimezoneShift
 from ts_shape.utils.frames import localize_like
@@ -408,6 +409,23 @@ REGISTRY: dict[str, Case] = {
     "DataHarmonizer.fill_gaps": _harm("fill_gaps", max_gap="5min"),
     "DataHarmonizer.align_asof": _harm("align_asof", "s", "t", tolerance="1min"),
     "DataHarmonizer.merge_multi_signals": _harm("merge_multi_signals", window="5min"),
+    # -- transform.signal_tower -----------------------------------------------
+    "SignalTowerDecoder.decode": Case(
+        lambda df: SignalTowerDecoder(
+            df.assign(uuid="green"),
+            {"green": "running", "yellow": "warning", "red": "alarm"},
+        ).decode(),
+        # ``uuid`` is injected by the lambda, so it is not required of the
+        # test input; ``systime`` and ``value_bool`` are the real inputs.
+        required=("systime", "value_bool"),
+    ),
+    "SignalTowerDecoder.to_long_format": Case(
+        lambda df: SignalTowerDecoder(
+            df.assign(uuid="green"),
+            {"green": "running", "yellow": "warning", "red": "alarm"},
+        ).to_long_format(),
+        required=("systime", "value_bool"),
+    ),
     # -- features.cross_signal ------------------------------------------------
     "CrossSignalAnalytics.granger_causality": _cross(
         "granger_causality", "a", "b", max_lag=2

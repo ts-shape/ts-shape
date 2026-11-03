@@ -163,6 +163,9 @@ if TYPE_CHECKING:
     from ts_shape.events.engineering.startup_events import (
         StartupDetectionEvents as StartupDetectionEvents,
     )
+    from ts_shape.events.engineering.state_transition import (
+        StateTransitionEvents as StateTransitionEvents,
+    )
     from ts_shape.events.engineering.steady_state_detection import (
         SteadyStateDetectionEvents as SteadyStateDetectionEvents,
     )
@@ -501,6 +504,9 @@ if TYPE_CHECKING:
         LambdaProcessor as LambdaProcessor,
     )
     from ts_shape.transform.harmonization import DataHarmonizer as DataHarmonizer
+    from ts_shape.transform.signal_tower import (
+        SignalTowerDecoder as SignalTowerDecoder,
+    )
     from ts_shape.transform.time_functions.timestamp_converter import (
         TimestampConverter as TimestampConverter,
     )
@@ -603,6 +609,7 @@ _LAZY: dict[str, str] = {
     "SetpointChangeEvents": "ts_shape.events.engineering.setpoint_events",
     "SignalComparisonEvents": "ts_shape.events.engineering.signal_comparison",
     "StartupDetectionEvents": "ts_shape.events.engineering.startup_events",
+    "StateTransitionEvents": "ts_shape.events.engineering.state_transition",
     "SteadyStateDetectionEvents": "ts_shape.events.engineering.steady_state_detection",
     "ThresholdMonitoringEvents": "ts_shape.events.engineering.threshold_monitoring",
     "WarmUpCoolDownEvents": "ts_shape.events.engineering.warmup_analysis",
@@ -672,6 +679,7 @@ _LAZY: dict[str, str] = {
     "BooleanFilter": "ts_shape.transform.filter.boolean_filter",
     "CustomFilter": "ts_shape.transform.filter.custom_filter",
     "DataHarmonizer": "ts_shape.transform.harmonization",
+    "SignalTowerDecoder": "ts_shape.transform.signal_tower",
     "DateTimeFilter": "ts_shape.transform.filter.datetime_filter",
     "DoubleFilter": "ts_shape.transform.filter.numeric_filter",
     "IntegerCalc": "ts_shape.transform.calculator.numeric_calc",

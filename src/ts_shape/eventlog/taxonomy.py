@@ -812,6 +812,30 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         I,
         standard_attrs={"ts_shape:lifecycle_state": "phase"},
     ),
+    ("StateTransitionEvents", "transitions"): _r(
+        "engineering.state_transition.{from_state}_to_{to_state}",
+        _E,
+        P,
+        standard_attrs={
+            "ts_shape:outcome": "to_state",
+            "ts_shape:lifecycle_state": "to_state",
+        },
+    ),
+    ("StateTransitionEvents", "transition_matrix"): _r(
+        "engineering.state_transition.matrix",
+        _E,
+        ST,
+        standard_attrs={
+            "ts_shape:method": "transition_matrix",
+            "ts_shape:sample_count": "sample_count",
+        },
+    ),
+    ("StateTransitionEvents", "hold_intervals"): _r(
+        "engineering.state_transition.hold_{state}",
+        _E,
+        I,
+        standard_attrs={"ts_shape:lifecycle_state": "state"},
+    ),
     ("SteadyStateDetectionEvents", "detect_steady_state"): _r(
         "engineering.steady_state.detected",
         _E,
@@ -1200,6 +1224,16 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         S,
         objs=("asset", "shift"),
         standard_attrs={"ts_shape:sample_count": None},
+    ),
+    ("DowntimeEvents", "downtime_pareto"): _r(
+        "production.downtime.pareto",
+        _PR,
+        ST,
+        standard_attrs={
+            "ts_shape:outcome": "reason",
+            "ts_shape:sample_count": "occurrences",
+            "ts_shape:method": "pareto",
+        },
     ),
     ("DowntimeEvents", "top_downtime_reasons"): _r(
         "production.downtime.top_reasons",
@@ -2714,6 +2748,15 @@ FUNCTION_REGISTRY: dict[tuple[str, str], LabelRule] = {
         P,
         objs=(ROW_OBJECT, "asset"),
         standard_attrs={"ts_shape:lifecycle_state": "event"},
+    ),
+    # Data-quality findings from ts_shape.profile() emitted as point events,
+    # one row per issue (its source signal is the row's ``source_uuid``).
+    ("profile", "issues_to_event_log"): _r(
+        "quality.profile.{issue}",
+        _Q,
+        P,
+        severity_field="severity",
+        standard_attrs={"ts_shape:detail": "detail"},
     ),
 }
 

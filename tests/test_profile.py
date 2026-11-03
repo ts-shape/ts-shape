@@ -101,3 +101,23 @@ def test_profile_reports_non_numeric_values():
     row = issues[issues["issue"] == "non-numeric values"]
     assert len(row) == 1
     assert "2 value(s)" in row["detail"].iloc[0]
+
+
+def test_issues_to_event_log_emits_point_events(messy):
+    report = ts_shape.profile(messy)
+    log = report.issues_to_event_log()
+    assert len(log.events) == len(report.issue_table)
+    acts = set(log.events["ocel:activity"])
+    assert "quality.profile.counter resets" in acts
+    assert "quality.profile.duplicate timestamps" in acts
+    # The source_uuid of each event is the signal the issue is about.
+    rel = log.relations
+    assert set(rel["ocel:oid"].astype(str)) >= {"parts", "temp", "dup"}
+    # Severities ride through to ts_shape:severity.
+    assert set(log.events["ts_shape:severity"]) <= {"info", "warn", "critical"}
+
+
+def test_issues_to_event_log_empty_report():
+    df = ts_shape.make_timeseries(["clean"], n_points=20)
+    log = ts_shape.profile(df).issues_to_event_log()
+    assert log.events.empty

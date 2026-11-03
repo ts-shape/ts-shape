@@ -311,6 +311,56 @@ class TestAlarmManagementEvents:
         total = result["alarm_count"].sum()
         assert total > 0
 
+    def test_alarm_frequency_include_initial_false_drops_pre_existing_alarm(self):
+        """A leading True reading is not a new activation when include_initial=False.
+
+        Audit coverage gap: alarm_frequency(include_initial=False) had no
+        direct test; this reproduces the opt-in path.
+        """
+        from datetime import datetime, timedelta
+
+        base = datetime(2024, 1, 15, 8, 0)
+        rows = []
+        # Alarm is already active at t0 (pre-existing from before the window).
+        rows.append(
+            {"systime": base, "uuid": "temp_alarm", "value_bool": True, "is_delta": True}
+        )
+        # It clears, then rises again mid-window — one real activation.
+        rows.append(
+            {
+                "systime": base + timedelta(minutes=5),
+                "uuid": "temp_alarm",
+                "value_bool": False,
+                "is_delta": True,
+            }
+        )
+        rows.append(
+            {
+                "systime": base + timedelta(minutes=20),
+                "uuid": "temp_alarm",
+                "value_bool": True,
+                "is_delta": True,
+            }
+        )
+        rows.append(
+            {
+                "systime": base + timedelta(minutes=25),
+                "uuid": "temp_alarm",
+                "value_bool": False,
+                "is_delta": True,
+            }
+        )
+        df = pd.DataFrame(rows)
+        alarms = AlarmManagementEvents(df, alarm_uuid="temp_alarm")
+
+        default = alarms.alarm_frequency(window="1h")  # include_initial True
+        skipped = alarms.alarm_frequency(window="1h", include_initial=False)
+
+        # Default counts the leading True as a rising edge (two activations total).
+        assert default["alarm_count"].sum() == 2
+        # With include_initial=False only the real mid-window rise is counted.
+        assert skipped["alarm_count"].sum() == 1
+
     def test_alarm_duration_stats(self, alarm_data):
         alarms = AlarmManagementEvents(alarm_data, alarm_uuid="temp_alarm")
         result = alarms.alarm_duration_statistics()
