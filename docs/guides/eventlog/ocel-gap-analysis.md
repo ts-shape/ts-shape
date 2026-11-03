@@ -65,7 +65,11 @@ Legend: ✅ covered · ⚠️ partial / non-conformant edge cases · ❌ missing
 | M13 | Event/object type → table-name map (`event_map_type`, `object_map_type`, injective) | ❌ | Needed for SQLite. Activities such as `production.flow.{x}_summary` and types such as `work_order` need a safe mapping | — |
 | M14 | Semantic: object = real entity | ⚠️ | `OutlierDetectionEvents` links to oid `temp` (a **signal** uuid) typed `asset`. `signal` and `sensor` exist as standard types but are not used for this | Machine-centric OCPM would treat each sensor as its own machine |
 
-### 2.2 Exchange formats (spec §6–11)
+### 2.2 Exchange formats (spec §6–11): out of scope
+
+File formats are not part of the implementation scope. The canonical model is
+made conformant instead; see the [implementation plan](ocel-implementation-plan.md).
+The table is kept for reference.
 
 | # | Format | Write | Read | Notes |
 |---|---|---|---|---|
@@ -95,56 +99,10 @@ Legend: ✅ covered · ⚠️ partial / non-conformant edge cases · ❌ missing
 
 ---
 
-## 3. Recommended roadmap
+## 3. Roadmap
 
-### P0: spec-conformance layer (no new dependencies)
-
-1. **`validate(log, level="ocel")`**: a strict mode that adds the ❌ rules in §2.3.
-   The current `validate` stays as the "canonical ts-shape" level.
-2. **`to_ocel_spec(log, *, interval="attribute"|"start_complete", oid_policy=...)`**
-   returns a normalized `EventLog` that:
-   - makes oids globally unique (default `{type}:{value}` everywhere, including
-     assets; error or warn when two types share an id) (M2, M14);
-   - sets a default qualifier for adapter bindings (e.g. `emitted_by` for asset,
-     `observed_on` for signal) and turns any remaining NULL into `""` (M3);
-   - removes duplicate E2O and O2O rows (M4);
-   - optionally splits interval events into `<activity>.start` /
-     `<activity>.complete` with a shared attribute (M10);
-   - moves time-invariant attributes to object base values (M7).
-3. **Type catalog**: `ocel_types(log) → (event_types, object_types)` with
-   attribute name → OCEL primitive type, from dtypes and `STANDARD_ATTR_TYPES`.
-   The `LabelRule` registry can declare event-type attributes statically, so the
-   catalog does not depend on the data (M5, M6, M13).
-
-### P1: writers
-
-4. `write_ocel(log, path)`, dispatching on extension:
-   - `.ocel.zip` / directory → bundled **Parquet** (default) or CSV (F6)
-   - `.sqlite` → relational (F2)
-   - `.json` / `.json.gz` → JSON (F3, F7)
-   Use stdlib plus optional `pyarrow`. pm4py stays an *interop test* extra only.
-
-### P2: readers + conformance
-
-5. `read_ocel(path) → EventLog` for the same formats (and `.ocel.csv`, F5).
-   Use it to merge **external MES/ERP OCEL extracts** (work orders, material
-   lots, customer orders) with signal-derived machine events on a shared oid.
-   This join between IT and OT is the main manufacturing use case.
-6. Golden round-trip tests on the spec running example and a manufacturing
-   fixture (line → station → batch → serial, coil `made_from`, tool `made_with`).
-   Add a pm4py import smoke test in an optional CI job.
-7. Single-file CSV writer (F5) and XML (F4).
-
-### P3: manufacturing semantics (spec §12 asks for domain-standard types)
-
-8. Publish the ts-shape object types and qualifiers as a controlled vocabulary,
-   aligned to ISA-95 (enterprise/site/area/line/cell, material lot/sublot,
-   work order, personnel, equipment). Derive the equipment-hierarchy O2O
-   (`station part_of line`) from metadata.
-9. Keep the signal ≠ asset distinction (M14): `signal observed_on asset` as O2O,
-   with events linked to the asset.
-10. Incremental / partitioned export (per shift or day) for streaming lines.
-    This goes beyond the spec, but follows the bundled layout per partition.
+See the [implementation plan](ocel-implementation-plan.md). It fixes the
+canonical `EventLog` model in place (no export layer, no file formats).
 
 ---
 

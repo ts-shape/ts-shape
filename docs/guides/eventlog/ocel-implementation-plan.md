@@ -1,268 +1,260 @@
-# OCEL 2.x implementation plan
+# OCEL 2.0 implementation plan: canonical model
 
-Follow-up to the [gap analysis](ocel-gap-analysis.md). Gap ids (M1–M14,
-F1–F8) refer to that page.
+Follow-up to the [gap analysis](ocel-gap-analysis.md). Gap ids (M1–M14)
+refer to that page.
 
-## Guiding decisions
+## Scope
 
-1. **The canonical `EventLog` stays as it is.** ts-shape keys objects by
-   `(oid, type)` (see `concat`, `_restrict_to_events`, `object_changes`), and
-   E2O rows carry `ocel:type`. Changing that would break the detectors, the
-   genealogy code and the analytics. Instead, a **spec export layer** turns a
-   canonical log into a spec-conformant log, and readers turn a spec log back
-   into a canonical one.
-2. **No new required dependencies.** SQLite, JSON, XML, CSV and ZIP use the
-   stdlib. Parquet uses the existing optional `pyarrow` (`parquet` extra).
-   pm4py is used only in an opt-in interop test.
-3. **One normalized intermediate representation (IR)** feeds every writer and
-   comes out of every reader, so the spec rules are implemented once:
-   `OCELSpecLog` = per-type event tables, per-type object tables (base values),
-   per-type change tables, `e2o`, `o2o`, plus a typed attribute catalog.
-4. **Deterministic output.** The same log gives byte-identical files (sorted
-   rows, sorted types, fixed float/time formatting). This matches the
-   deterministic `ocel:eid` philosophy and the §9 "exporter order".
+- **The canonical `EventLog` itself is made OCEL 2.0-conformant.** It is the
+  metamodel of spec §3 and Definition 2, enforced by `validate`. There is no
+  conversion layer and no second representation.
+- **No file formats.** SQLite, JSON, XML, CSV and `.ocel.zip` are out of
+  scope. `to_event_log_ocel` stays the DataFrame hand-off.
+- **Functional correctness comes first.** Every row in `events` must be a real,
+  atomic occurrence on the shop floor. Every object must be a real entity with
+  one identity. Every relation must say what role the object plays.
 
-## Target module layout
+## Target invariants (what `validate` enforces when done)
 
-```
-src/ts_shape/eventlog/ocelspec/
-  __init__.py        # public: to_ocel_spec, from_ocel_spec, write_ocel, read_ocel,
-                     #         validate_ocel, ocel_types, OCELSpecLog, AttributeType
-  types.py           # AttributeType enum, dtype <-> OCEL type mapping, canonical lexical forms
-  catalog.py         # ocel_types(): event/object type catalog (data + LabelRule registry)
-  model.py           # OCELSpecLog dataclass (the IR)
-  normalize.py       # to_ocel_spec / from_ocel_spec (canonical <-> IR)
-  validate.py        # validate_ocel(): spec §6.7 / §9 / §10 rules, error report
-  io_bundle.py       # .ocel.zip / directory, csv + parquet (§10)
-  io_sqlite.py       # .sqlite (§6)
-  io_json.py         # .json / .jsonocel (+ .gz) (§8, §11)
-  io_xml.py          # .xml / .xmlocel (+ .gz) (§7, §11)
-  io_csv.py          # .ocel.csv single file (§9)
-  dispatch.py        # write_ocel / read_ocel by extension
-tests/eventlog/ocelspec/
-  fixtures/p2p.py    # spec running example (§5) built as an OCELSpecLog
-  fixtures/line.py   # manufacturing fixture (line → station → batch → serial, coil, tool)
-  test_*.py
-```
-
-`to_event_log_ocel` (DataFrames, pm4py layout) stays unchanged.
-
----
-
-## Phase 0: spec conformance core (gaps M2–M8, M10, M12, M13)
-
-### PR 1: attribute types and type catalog
-
-- `types.py`
-  - `AttributeType = Literal["string", "time", "integer", "float", "boolean"]`.
-  - `infer_type(series) -> AttributeType`: map pandas dtypes
-    (`string`/`object`→string, `Int*`/`int*`→integer, `float*`→float,
-    `bool`/`boolean`→boolean, `datetime64[*, tz]`→time). For object columns,
-    apply the §9 canonical-lexical rule (int → float → bool → time → string)
-    and never change a value: `"007"` stays a string.
-  - `format_value(v, type)` / `parse_value(text, type)` for the CSV and XML
-    lexical forms. Times are ISO 8601 UTC with `+00:00`; floats use the
-    shortest round-trip repr.
-- `catalog.py`: `ocel_types(log) -> TypeCatalog`
-  - Event types: per `ocel:activity`, the columns that are non-null for at
-    least one event of that activity, each with a single type. Excluded:
-    `ocel:eid`, `ocel:activity`, `ocel:timestamp`. `ts_shape:*` columns are
-    included by default (`include_internal=True`).
-  - Object types: per `ocel:type`, the `ocel:field` values in
-    `object_changes`. The type is unified over all values of that
-    `(type, field)`. Mixed types fall back to string with a
-    `DataQualityWarning`.
-  - Injective, file- and SQL-safe name map (`map_type_name`): identity when
-    already safe, otherwise sanitized with a collision suffix (M13).
-- Tests: dtype matrix; canonical-lexical edge cases from §9 (`007`, `+5`,
-  `1.50`, out-of-range int64); catalog of the P2P fixture equals spec Tables 1/2.
-
-### PR 2: `to_ocel_spec` / `from_ocel_spec` (canonical ↔ IR)
-
-`to_ocel_spec(log, *, oid_policy="error", default_qualifiers=None,
-interval="attribute", static_fields="auto", include_internal=True) -> OCELSpecLog`
-
-| Option | Behaviour | Gap |
-|---|---|---|
-| `oid_policy="error"` | Raise `OCELConformanceError` listing the oids shared by two types | M2 |
-| `oid_policy="prefix"` | Rewrite every oid as `{type}:{oid}` unless it already has that prefix, consistently across E2O, O2O and changes. The reverse map is stored in the IR (`oid_map`) | M2, M14 |
-| `oid_policy="prefix_conflicts"` | Prefix only the colliding oids | M2 |
-| `default_qualifiers` | `{object_type: qualifier}` for NULL E2O qualifiers. Built-in default: `{"asset": "emitted_by", "station": "at_station", "signal": "observed_on"}`, anything else `""`. Never NULL | M3 |
-| E2O / O2O dedupe | Always: E2O on `(eid, oid, qualifier)`, O2O on `(src, tgt, qualifier)`. Drops `ocel:type` from E2O | M4, M12 |
-| `interval="attribute"` | Atomic event at `ocel:timestamp` (end). `ts_shape:start_timestamp` is kept as a `time` attribute | M10 |
-| `interval="start_complete"` | Each interval event becomes `<activity>.start` at the start and `<activity>.complete` at the end. Ids are `<eid>:start` / `<eid>:complete`, linked by the attribute `ts_shape:instance` = original eid, with the same E2O on both | M10 |
-| `static_fields="auto"` | A field with exactly one value per object (or listed in `static_fields=[...]`) becomes a base value in the object table. Everything else stays a timed change. Change rows at the epoch move to base values. `lifecycle` is always timed | M7 |
-| One value per `(oid, field, t)` | Conflicts raise (strict) or keep the last row with a warning | M8 |
-
-`from_ocel_spec(spec, *, restore_oids=True) -> EventLog` is the inverse. It
-puts object types back on E2O from the object table, turns base values into
-epoch-timestamped change rows, and undoes the `oid_map` prefixing. If
-`ts_shape:detector` / `ts_shape:pack` are missing (foreign logs), it fills
-them with `"external"` and with the activity's first dotted segment or
-`"external"`.
-
-Tests:
-- canonical → IR → canonical round-trip on the object-detection demo log
-  (equality modulo the documented normalizations);
-- oid collision under each policy;
-- NULL qualifier defaulting;
-- `start_complete` split: two event types, shared E2O;
-- static/dynamic split: no epoch rows in the change tables.
-
-### PR 3: `validate_ocel(spec_or_log, *, raise_=True) -> list[Violation]`
-
-Implements §6.7 and the §9/§10 validity rules on the IR: unique event ids;
-globally unique object ids; E2O/O2O foreign keys; PK uniqueness; non-null
-fixed columns; one type per attribute scope; attributes only of their own
-type; one value per `(oid, attr, t)`; no epoch rows in change tables; `o2o`
-not used as an activity name (CSV). It returns structured `Violation(rule,
-table, row, message)`, so CI and users get every violation at once. The
-canonical `schema.validate` stays as it is, and `EventLog.validate_ocel()`
-becomes a convenience method.
-
----
-
-## Phase 1: writers (F6, F2, F3, F7)
-
-### PR 4: bundled CSV/Parquet `.ocel.zip` (§10). Priority writer
-
-- `write_ocel_bundle(spec, path, *, storage="parquet"|"csv", compress=True)`.
-  The path is a `.ocel.zip` file, or a directory for the uncompressed layout.
-- File names use UTF-8 percent-encoding (keep `A-Za-z0-9._-`, uppercase `%HH`).
-  `ocel-meta.json` has `ocelVersion: "2.0"`, `bundleFormatVersion: "1.0"`,
-  the type → file maps, attribute types and relation files.
-- Parquet: fixed columns are required string / `TIMESTAMP(UTC, MICROS)`,
-  attribute columns are nullable, and timestamps are never written as strings.
-- Every object type gets a change table, even an empty one (header only or
-  zero rows).
-- `pyarrow` is imported lazily. Without it, `storage="parquet"` raises a clear
-  error that names the `ts-shape[parquet]` extra.
-
-### PR 5: SQLite (§6)
-
-- Tables `event`, `object`, `event_map_type`, `object_map_type`,
-  `event_<map>`, `object_<map>` (base rows at `1970-01-01 00:00:00 UTC`, then
-  change rows with `ocel_changed_field`), `event_object`, `object_object`.
-  PKs and FKs as in §6.7, `PRAGMA foreign_keys=ON`, and inserts in one
-  transaction with `executemany`.
-- Attribute column names are double-quoted (`"ts_shape:severity"` is valid).
-
-### PR 6: JSON (+ gzip) (§8, §11)
-
-- `eventTypes` / `objectTypes` with typed attributes, `objects` (timed
-  attribute values plus O2O `relationships`) and `events` (attributes plus E2O
-  `relationships`). Streams the output with `json.JSONEncoder.iterencode` to
-  keep memory flat. `.json.gz` / `.jsonocel.gz` go through `gzip.open`.
-
-### PR 7: `write_ocel(log_or_spec, path, **opts)` dispatch
-
-- Picks the writer by extension: `.ocel.zip`, `.sqlite` / `.db`, `.json`,
-  `.jsonocel`, `.json.gz`, `.xml`, `.xmlocel`, `.xml.gz` and `.ocel.csv`.
-- Passing an `EventLog` runs `to_ocel_spec(**opts)` and `validate_ocel` first.
-- Also exposed as `EventLog.to_ocel(path, **opts)` and on `Pipeline`
-  (`pipeline.to_ocel(path)`). Docs and changelog entries are part of this PR.
-
----
-
-## Phase 2: readers + conformance (F1–F8 read side)
-
-### PR 8: readers for bundle, SQLite and JSON (+ gzip)
-
-- `read_ocel(path) -> EventLog` (canonical, via `from_ocel_spec`) and
-  `read_ocel_spec(path) -> OCELSpecLog`.
-- Bundle: trust `ocel-meta.json` only, reject absolute or `..` paths, ignore
-  undeclared entries, and keep whitespace exactly as stored.
-- Gzip and ZIP limits: a `max_uncompressed_bytes` cap (default 2 GiB) with
-  streaming decompression (§11 robustness).
-- **IT/OT merge use case:** `concat(read_ocel("mes_export.json"), machine_log)`
-  joins on a shared oid (e.g. `work_order:WO-123`). It is documented with
-  `oid_policy="prefix"` as the convention for ts-shape-produced logs.
-
-### PR 9: golden conformance suite
-
-- `fixtures/p2p.py` builds the spec running example (§5, Tables 4–21).
-- For each format: write → read → `OCELSpecLog` equality. Compare the bundled
-  CSV against the spec's Tables 24–28, and SQLite against Tables 4–21.
-- Manufacturing fixture round-trip through every format, including
-  `start_complete` and the genealogy queries (`where_used` gives the same
-  result before and after the round-trip).
-- Optional pm4py interop job (`pytest -m pm4py`, separate CI matrix entry):
-  `pm4py.read_ocel2_json/sqlite` on our output must load with matching counts.
-
-### PR 10: single-file CSV `.ocel.csv` (§9) and XML (§7)
-
-- CSV: the four row types, reference grammar `id#qualifier{json}` separated
-  by `/`, backslash escaping of `/ # { \`, the exporter order of §9, and type
-  inference as in PR 1.
-- XML: written with `xml.etree.ElementTree.iterparse` / `xmlfile`-style
-  incremental output. Reading uses `defusedxml` if it is installed and
-  otherwise disables external entities.
-
----
-
-## Phase 3: manufacturing semantics (M14, spec §12)
-
-### PR 11: signal vs asset, equipment hierarchy
-
-- Adapter default: a detector's `source_uuid` binding becomes object type
-  `signal`, plus O2O `signal observed_on asset` when metadata provides the
-  asset. This is behind a flag first (`signal_objects=True`). The default flips
-  in the next minor release with a deprecation warning, because it changes
-  `produces_objects` for many rules.
-- `equipment_hierarchy_from_metadata(meta)` → O2O
-  `station part_of line part_of area part_of site` (ISA-95 levels).
-
-### PR 12: controlled vocabulary
-
-- `ts_shape.eventlog.vocabulary`: object types (ISA-95 aligned: equipment,
-  material lot/sublot, work order, personnel, tool, recipe) and the E2O/O2O
-  qualifiers already in use (`identified_by`, `during_batch`, `made_of`,
-  `part_of`, `made_from`, `made_with`, `made_by`, `co_occurs`, plus the new
-  defaults), each with a definition. It is exported into the type catalog
-  and the docs.
-- A registry conformance test makes every `LabelRule.produces_objects` and
-  qualifier part of the vocabulary.
-
-### PR 13: partitioned / incremental export
-
-- `write_ocel(..., partition_by="day"|"shift")` writes one bundle per
-  partition. Objects that span partitions are repeated, with base values taken
-  from the state at the partition start (reusing `filter_by_time`).
-  A `stream.py` hook appends partitions as windows close.
-
----
-
-## Sequencing, effort, acceptance
-
-| PR | Depends on | Effort | Done when |
+| # | Invariant | Spec | Today |
 |---|---|---|---|
-| 1 types/catalog | — | S | P2P catalog equals spec Tables 1/2 |
-| 2 normalize | 1 | M | demo log round-trips; all policy tests green |
-| 3 validate_ocel | 2 | S | every §6.7/§9/§10 rule has a failing and a passing test |
-| 4 bundle | 2, 3 | M | P2P bundle CSV equals spec Tables 24–28; Parquet types per §10 |
-| 5 sqlite | 2, 3 | M | schema equals Fig. 3/4; FK check passes |
-| 6 json(+gz) | 2, 3 | S | P2P JSON equals the §8 example semantically |
-| 7 dispatch/API | 4–6 | S | `log.to_ocel("x.ocel.zip")` documented and in changelog |
-| 8 readers | 4–7 | M | write → read identity for 3 formats |
-| 9 conformance | 8 | S | golden suite + optional pm4py job green |
-| 10 csv/xml | 8 | M | P2P CSV equals spec Listing 1 |
-| 11 signal/asset | 2 | M | flag on: outlier events link signal + asset, no regressions |
-| 12 vocabulary | 11 | S | registry conformance test green |
-| 13 partitions | 7 | M | per-day bundles concat back to the full log |
+| I1 | `ocel:eid` unique | Def. 2, §6.7 | ✅ |
+| I2 | `ocel:oid` **globally unique**; `ocel:type` is a function of the oid | §6.7 PK, §9 | ❌ keyed by `(oid, type)` |
+| I3 | `relations.ocel:type` and `object_changes.ocel:type` equal the type in `objects` (kept as denormalized columns for filtering) | Def. 2 `objtype` | not checked |
+| I4 | E2O is a set: `(eid, oid, qualifier)` unique; qualifier non-null | Def. 2 E2O ⊆ E×U_qual×O | ❌ NULL qualifiers, no PK check |
+| I5 | O2O is a set: `(oid, oid_2, qualifier)` unique; qualifier non-null | Def. 2 O2O | ❌ no PK check |
+| I6 | Events are atomic: one timestamp, no duration semantics | §2 "Events are atomic" | ❌ 76 interval rules |
+| I7 | Events are occurrences: no fabricated timestamps, no window aggregates | §2, Def. 2 `time` | ❌ 62 static rules at 1970-01-01, 145 summary rules |
+| I8 | `oaval` is a partial function: one value per `(oid, field, t)`; static values at t = 0 (epoch) | Def. 2, §4 | ⚠️ only in `detect_objects`; static master data timed at presence start |
+| I9 | One primitive type (string, time, integer, float, boolean) per attribute scope: `(activity, attr)` and `(object type, field)` | §7/§8 attribute types | ❌ |
+| I10 | Every E2O, O2O and change row references an existing event/object | §6.7 FKs | ✅ |
 
-Every PR must pass: `ruff check src tests examples scripts`, `mypy` and
-`pytest`. New public names go into `__all__` and pass
-`tests/test_named_public_functions.py`. Each PR includes a docs page section
-and a `CHANGES.txt` entry.
+---
 
-## Open decisions (defaults proposed)
+## Work packages
 
-1. **Default `oid_policy`**: `"error"` (proposed) or `"prefix"`. `"prefix"`
-   is friendlier, but it changes ids that users may join on.
-2. **Default interval export**: `"attribute"` (proposed, lossless and simple)
-   or `"start_complete"` (better for OCPM performance analysis).
-3. **Default asset qualifier**: `emitted_by` (proposed).
-4. **`ts_shape:*` internal attributes in exports**: included (proposed), with
-   `include_internal=False` to strip them.
-5. **Signal-as-object default flip (PR 11)**: whether it waits for the next
-   minor release (proposed) or stays opt-in permanently.
+The work packages are ordered by dependency. Each one is a PR that tightens
+`validate` by the invariants it delivers, so the whole test suite (≈270
+eventlog tests plus the registry conformance guard) proves the invariant
+across all 333 detector rules.
+
+### WP1: global object identity (I2, I3; gap M2)
+
+**Functional:** an object id names one thing on the shop floor. Batch `4711`
+and lot `4711` are two things, so they need two ids.
+
+**Technical:**
+1. **Type-namespaced ids by default:** `"{type}:{value}"`.
+   - `adapters._to_relations`: every binding, including the default
+     `source_uuid` binding, renders through the template unless the value
+     already starts with `"{type}:"`.
+   - `ObjectSpec.id_template` default changes from `"{value}"` to
+     `"{type}:{value}"`. `object_specs_from_metadata` and `signals.identify`
+     follow.
+   - `to_event_log(objects=…)` with user-provided literals gets the same
+     treatment. Callers who already have unique ids can opt out with
+     `id_template="{value}"`.
+2. **One key:** `oid` replaces `(oid, type)` as the object key in
+   `model._objects_in`, `model._restrict_to_events`, `query._key_index` /
+   `_pairs_in`, `analysis._log_presences`, `concat` (dedupe objects by oid;
+   if one oid arrives with two types, raise `ValueError` naming both) and
+   `schema._unknown_pairs`, which becomes an oid-only FK check.
+3. `validate`: duplicate oid → error (I2); relation or change type ≠ object
+   type → error (I3).
+4. Docstrings: remove "an object id used by two types is two objects"
+   (`concat`) and the `(oid, type)` wording in `model`, `query` and `objects`.
+
+**Migration:** this is a breaking change to oid values. Add a `CHANGES.txt`
+entry and a `docs/migration.md` section with a one-line opt-out per API.
+
+**Tests:** collision raises in `validate` and in `concat`; every registry
+rule's sample output satisfies I2/I3 (extend
+`tests/test_detector_registry_conformance.py`); genealogy queries return the
+same lineage on the demo fixtures with the new ids.
+
+### WP2: qualified relations as sets (I4, I5; gaps M3, M4)
+
+**Functional:** a qualifier states the role an object plays in an event.
+Without one, OCPM cannot tell the machine that *caused* a stop from the
+station where a part *waited*.
+
+**Technical:**
+1. A new module `eventlog/vocabulary.py` holds the controlled qualifier
+   vocabulary, with a definition for each entry. It starts from the
+   qualifiers already in use (`identified_by`, `during_batch`, `made_of`,
+   `part_of`, `made_from`, `made_with`, `made_by`, `co_occurs`) and adds a
+   default E2O role per standard object type:
+
+   | object type | default E2O qualifier |
+   |---|---|
+   | asset | `on_asset` |
+   | station | `at_station` |
+   | signal | `observed_signal` |
+   | sensor | `observed_by` |
+   | shift | `in_shift` |
+   | operator | `by_operator` |
+   | work_order | `for_order` |
+   | batch / lot | `during_batch` / `during_lot` |
+   | serial / part | `identified_by` |
+   | material | `made_of` |
+   | tool | `with_tool` |
+   | recipe | `with_recipe` |
+   | cycle | `in_cycle` |
+
+   `register_object_type(name, default_qualifier=...)` extends it.
+2. `LabelRule` gains `qualifiers: Mapping[str, str]` for rule-specific roles
+   (e.g. a bottleneck summary links `station` as `constraint`). The
+   `qualifiers=` argument of `to_event_log`, `attach_objects` and
+   `link_events_to_objects` overrides it. Resolution order: argument → rule →
+   vocabulary default. The result is never NULL.
+3. Every producer removes duplicate rows on the full PK
+   (`_to_relations`, `_link`, `_infer_o2o`, `concat` already does this).
+4. `validate`: NULL qualifier → error; duplicate PK → error.
+
+**Tests:** every registry rule emits only non-null qualifiers from the
+vocabulary (conformance guard); overriding works at each level; `concat` of a
+log with itself is idempotent on all tables.
+
+### WP3: object attributes over time (I8, I9; gaps M6, M7, M8)
+
+**Functional:** master data (article number, customer part number, material
+grade) is static. Recipe, tool wear, lifecycle and location change over
+time. Def. 2 models both with `oaval(o, oa, t)`, using t = 0 for static
+values.
+
+**Technical:**
+1. `object_changes` stays the single source of truth (long form). Static
+   values get `ocel:timestamp = 1970-01-01T00:00:00Z`, following Def. 2 and
+   §6.4.
+2. `ObjectSpec.static_attributes: Collection[str]` lists the attributes that
+   are recorded at t = 0, once per object. A static attribute that changes
+   value is an error (an object has one article number). The metadata loader
+   and `object_specs_from_metadata` mark master-data columns as static.
+   `lifecycle` and the remaining attributes stay timed.
+3. A new module `eventlog/types.py`:
+   - `AttributeType` holds the five OCEL primitive types;
+   - `attribute_type(series)` maps a pandas dtype to an OCEL type, with the
+     canonical-lexical rule for object columns (`"007"` stays a string);
+   - `object_changes.ocel:value` is typed per `(type, field)` on write. A
+     scope with mixed types is coerced to string with a
+     `DataQualityWarning`.
+4. `describe(log)` (in `introspect.py`) reports the metamodel: event types
+   with their attribute names and types (`eatype`), and object types with
+   their fields, types and whether each is static or timed (`oatype`).
+5. `validate`: duplicate `(oid, field, t)` → error (I8); more than one type
+   per scope → error (I9).
+
+**Tests:** static attributes appear once at the epoch; a conflicting static
+value raises; the type matrix (int/float/bool/time/string, nullable dtypes,
+the `"007"`/`"+5"`/`"1.50"` edge cases); `describe` on the spec's running
+example equals spec Tables 1/2.
+
+### WP4: what is an event (I6, I7; gap M10, plus the rule audit)
+
+This is the largest functional change. Of the 333 registry rules:
+
+| shape | rules | today | OCEL-correct modelling |
+|---|---|---|---|
+| point | 50 | one event at `systime` | ✅ unchanged |
+| interval | 76 | one event at the end; start and duration as attributes | **two atomic events**: `<activity>.start` at the start and `<activity>.end` at the end, sharing `ts_shape:instance`, with the same E2O set on both. Duration becomes derived, not stored. A machine stopping and a machine restarting are two occurrences, and OCPM measures time between events |
+| summary | 145 | one event at the window end carrying a KPI (Cpk, hit rate, constraint stats) | **object attribute changes**: field = KPI name, value = KPI, t = window end, written to `object_changes` of the measured object (asset, signal, station). A KPI describes the object's state; it does not happen. A summary that is a verdict (e.g. "bottleneck at station X") stays an event (rule flag `emits_event=True`) |
+| static | 62 | one event at the fabricated 1970-01-01 timestamp | **no events.** Per-object results become static object attributes (t = 0). Pairwise results (correlation, root cause, lag between two signals) become **O2O** relations (`correlates_with`, `root_cause_of`, `leads`) with rank and score as attributes of the source object. Results with no object are not OCEL data: `to_event_log` returns them unchanged with a `DataQualityWarning`, and they stay available as the detector DataFrame |
+
+**Technical:**
+1. `taxonomy.LabelRule.shape` keeps its four values. `adapters` gains one
+   mapping function per target (event pair, attribute change, O2O) instead
+   of one adapter per shape. `LabelRule.emits_event` and
+   `LabelRule.o2o_qualifier` drive the choice.
+2. Interval consumers move to the event pair:
+   - `link_events_to_objects` builds temporal overlap from the
+     `.start`/`.end` pair (joined on `ts_shape:instance`);
+   - `flat.to_event_log_xes` maps the pair directly to the
+     `lifecycle:transition` values `start` / `complete` (`two_row` becomes
+     the only mode);
+   - `analysis` and `lambda_rules.backtest` use the pair for durations.
+3. `ts_shape:start_timestamp` / `ts_shape:duration_s` are removed from
+   `EVENT_OPTIONAL_COLUMNS`. `STATIC_TIMESTAMP` and the `timestamp=`
+   argument of `to_event_log` are deprecated, then removed.
+4. Each of the 207 summary and static rules gets an explicit decision in the
+   registry (`emits_event`, KPI field names, `o2o_qualifier`). The audit is
+   reviewed pack by pack (production, quality, maintenance, energy,
+   engineering, correlation, supply chain, development), one commit per pack.
+5. `validate`: an event at the epoch → error (I7); `ts_shape:start_timestamp`
+   present → error (I6).
+
+**Tests:** for every interval rule, the start and end events exist, share
+E2O and are ordered; summary KPIs show up as `object_changes` on the right
+object; static correlation rules produce O2O; no event is at the epoch;
+XES export of an interval detector still gives start/complete traces.
+
+### WP5: signal vs asset (gap M14; equipment hierarchy)
+
+**Functional:** a detector reads a **signal** (`source_uuid`, e.g. `temp`).
+The process happens on an **asset** (machine, station, line). Today 245
+rules bind `source_uuid` as `asset`, so every sensor becomes a machine.
+
+**Technical:**
+1. The default binding `source_uuid` → **`signal`** (`signal:<uuid>`).
+   `produces_objects=("asset", …)` in rules now means "link the asset of the
+   signal".
+2. The signal → asset mapping comes from metadata (`loader.metadata`,
+   `context`), or from `to_event_log(asset_of={signal_uuid: asset_id} |
+   callable)`. It produces O2O `signal measured_on asset` and E2O to both
+   (`observed_signal`, `on_asset`). Without a mapping, only the signal is
+   linked, with a one-time `DataQualityWarning`. The signal is never
+   relabelled as an asset.
+3. Equipment hierarchy from metadata, aligned to ISA-95: O2O
+   `asset part_of station part_of line part_of area part_of site`. A new
+   function `equipment_hierarchy(meta) -> EventLog` gives objects plus O2O;
+   `concat` merges it with the event logs.
+
+**Tests:** an outlier detector with a mapping links `signal:temp` and
+`asset:M1` plus O2O; without a mapping, only the signal and a warning;
+`filter_by_object("asset:M1")` returns events of all signals measured on M1;
+the genealogy traversal follows the hierarchy.
+
+### WP6: conformance suite and docs
+
+1. **Spec running example as an in-memory `EventLog`** (§5, Tables 1–21).
+   `validate` passes, `describe` matches Tables 1/2, and the
+   `oaval` lookups at the spec's times match (PO1 quantity at 2022-01-11 and
+   2022-01-13, R3 blocked and released).
+2. **Manufacturing reference log:** a line → station → batch → serial
+   hierarchy with coil `made_from`, tool `made_with`, operator, shift, work
+   order, and a downtime (interval) and Cpk (summary) on the same asset.
+   Every invariant from I1 to I10 is asserted explicitly.
+3. **Registry-wide guard:** every rule's synthetic output goes through
+   `to_event_log`, then `validate`, with I1–I10.
+4. Docs: update `guides/eventlog/index.md`, `objects.md`, `taxonomy.md` and
+   `adapters.md` for the new semantics. Write `docs/migration.md` with
+   before/after for oids, qualifiers, interval pairs and summary/static
+   rules.
+
+---
+
+## Sequencing
+
+| WP | Depends on | Size | Breaking for users |
+|---|---|---|---|
+| WP1 identity | — | M | oid values |
+| WP2 qualifiers | WP1 | S | qualifier values (NULL → role) |
+| WP3 attributes | WP1 | M | static attributes move to t = 0 |
+| WP5 signal/asset | WP1, WP2 | M | asset links of 245 rules |
+| WP4 event semantics | WP2, WP3, WP5 | L | interval / summary / static output |
+| WP6 conformance | each WP adds its part | S | — |
+
+WP4 comes last: its summary → KPI and static → O2O mappings need the typed
+attributes (WP3) and the correct target object (WP5).
+
+Every PR passes `ruff check src tests examples scripts`, `mypy` and
+`pytest`, and adds a `CHANGES.txt` entry and a migration note.
+
+## Decisions to confirm before WP4
+
+1. **Interval events:** two atomic events `.start` / `.end` (proposed), or
+   one event at the start with the end as an attribute.
+2. **Summary rules:** KPI → object attribute changes (proposed), with
+   `emits_event=True` only for verdicts.
+3. **Static rules:** object attributes / O2O, never events (proposed).
+4. **Breaking changes:** released together in one minor version with a
+   migration guide (proposed), or behind a compatibility flag for one release.
