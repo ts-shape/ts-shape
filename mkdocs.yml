@@ -46,6 +46,7 @@ nav:
     - Object signal variants: guides/object-variants.md
     - Labeling and taxonomy: guides/eventlog/taxonomy.md
     - Adapters: guides/eventlog/adapters.md
+    - OCEL 2.x gap analysis: guides/eventlog/ocel-gap-analysis.md
   - Lambda rules: guides/lambda-rules.md
   - Example scripts: examples.md
 - Module reference:
