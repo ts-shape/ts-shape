@@ -60,7 +60,12 @@ def counter_increments(values: pd.Series) -> pd.Series:
     # float64: nullable/pyarrow comparisons with the first reading's missing
     # predecessor give <NA>, which would count the first reading as output.
     numeric = to_numeric_checked(values, what="counter readings").astype("float64")
-    prev = numeric.shift(1)
+    # NaN rows are gaps, not production breaks. Forward-fill ``prev`` so the
+    # next real reading books the production that happened across the gap;
+    # without this a run like ``[100, NaN, 500]`` silently drops the 400 parts
+    # between the first and third readings (every delta becomes NaN, every
+    # increment becomes zero).
+    prev = numeric.ffill().shift(1)
     delta = numeric - prev
     is_reset = delta < 0
     # On a reset the post-reset counter value is the production since the reset.

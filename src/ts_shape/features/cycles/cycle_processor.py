@@ -24,7 +24,7 @@ from ts_shape.utils.deprecation import (
     deprecated_attribute,
     renamed_kwargs,
 )
-from ts_shape.utils.frames import require_columns, to_ns
+from ts_shape.utils.frames import as_datetime, require_columns, to_ns
 
 logger = logging.getLogger(__name__)
 
@@ -93,15 +93,21 @@ class CycleDataProcessor(Base):
         self.cycle_uuid_column = cycle_uuid_column
         self.time_column = time_column
 
-        # Ensure proper datetime format
-        self.dataframe_cycles["cycle_start"] = pd.to_datetime(
-            self.dataframe_cycles["cycle_start"]
+        # Ensure proper datetime format. ``as_datetime`` handles pyarrow /
+        # nullable dtypes, text layouts, and empty columns in one call and
+        # raises a clear ``ValueError`` identifying the column when the input
+        # cannot be read as timestamps.
+        self.dataframe_cycles["cycle_start"] = as_datetime(
+            self.dataframe_cycles["cycle_start"],
+            where="CycleDataProcessor: dataframe_cycles",
         )
-        self.dataframe_cycles["cycle_end"] = pd.to_datetime(
-            self.dataframe_cycles["cycle_end"]
+        self.dataframe_cycles["cycle_end"] = as_datetime(
+            self.dataframe_cycles["cycle_end"],
+            where="CycleDataProcessor: dataframe_cycles",
         )
-        self.dataframe_values[time_column] = pd.to_datetime(
-            self.dataframe_values[time_column]
+        self.dataframe_values[time_column] = as_datetime(
+            self.dataframe_values[time_column],
+            where="CycleDataProcessor: dataframe_values",
         )
 
         aware = [

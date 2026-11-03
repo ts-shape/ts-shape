@@ -65,8 +65,12 @@ def _daily_summary(
     start = pd.to_datetime(df["date"])
     end = start + pd.Timedelta(days=1)
     if tz is not None:
-        start = start.dt.tz_localize(tz, nonexistent="shift_forward", ambiguous=True)
-        end = end.dt.tz_localize(tz, nonexistent="shift_forward", ambiguous=True)
+        # ``ambiguous=False`` means "treat as standard time (winter)", matching
+        # pandas' usual convention for a fall-back shift. Midnight boundaries
+        # are never ambiguous on Europe/Berlin, so this never fires here; the
+        # choice is defensive against users widening the daily window later.
+        start = start.dt.tz_localize(tz, nonexistent="shift_forward", ambiguous=False)
+        end = end.dt.tz_localize(tz, nonexistent="shift_forward", ambiguous=False)
     df[COL_START] = start
     df[COL_END] = end
     df[COL_DURATION_S] = (end - start).dt.total_seconds()

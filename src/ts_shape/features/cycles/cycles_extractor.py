@@ -456,7 +456,11 @@ class CycleExtractor(Base):
         key = f"{self.start_uuid}|{self.end_uuid}|{method}"
         if starts.empty:
             return []
-        ns = starts.astype("datetime64[ns, UTC]") if starts.dt.tz else starts
+        # Convert tz-aware timestamps to UTC explicitly: ``astype("datetime64[ns, UTC]")``
+        # happens to tz-convert in pandas 2.2 but is coupled to internal cast
+        # rules; ``dt.tz_convert("UTC")`` makes the intent (deterministic eid
+        # hashes across time zones) a stable part of the API.
+        ns = starts.dt.tz_convert("UTC") if starts.dt.tz is not None else starts
         stamps = ns.dt.as_unit("ns").astype("int64").tolist()
         return [str(uuid.uuid5(_CYCLE_NAMESPACE, f"{key}|{t}")) for t in stamps]
 

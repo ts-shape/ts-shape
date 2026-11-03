@@ -70,6 +70,23 @@ def test_counter_quantity_handles_non_numeric_gaps():
     assert counter_quantity(values) == 200.0
 
 
+def test_counter_increments_books_production_across_nan_gap():
+    # A missing intermediate reading used to drop every increment to zero
+    # because ``prev.shift(1)`` yielded NaN around the gap. Forward-filling
+    # ``prev`` books the production at the next real reading.
+    inc = counter_increments(pd.Series([100.0, float("nan"), 500.0]))
+    assert list(inc) == [0.0, 0.0, 400.0]
+    assert inc.sum() == 400.0
+
+
+def test_counter_increments_books_across_nan_gap_through_reset():
+    # NaN gap, then a reset: 100 -> 300 -> gap -> reset to 50.
+    inc = counter_increments(pd.Series([100.0, 300.0, float("nan"), 50.0]))
+    # 0 (baseline), +200, gap, reset -> post-reset value 50
+    assert list(inc) == [0.0, 200.0, 0.0, 50.0]
+    assert inc.sum() == 250.0
+
+
 def test_counter_by_group_books_boundary_increments_once():
     import pandas as pd
 

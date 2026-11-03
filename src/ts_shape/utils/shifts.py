@@ -139,14 +139,14 @@ def production_dates(
     """
     bounds = _bounds(shift_definitions)
     times = pd.to_datetime(timestamps)
-    calendar = times.dt.date
-    # A reading belongs to the previous day when its shift is overnight and its
-    # time is before that shift's end (the small hours after midnight).
-    # Subtract one *calendar* day from the local date, not 24 hours: on
+    # Subtract one *calendar* day from the local wall-clock, not 24 hours: on
     # tz-aware data the day after a DST change is 23 or 25 hours away, and
     # ``time - 24h`` would land on the wrong date (e.g. 00:30 on the day
-    # after the spring change -> two days back).
+    # after the spring change -> two days back). Compute both the calendar
+    # date and the shifted date from the same tz-stripped wall-clock so the
+    # two branches cannot disagree near local midnight on tz-aware edges.
     wall = times.dt.tz_localize(None) if times.dt.tz is not None else times
+    calendar = wall.dt.date
     shifted = (wall.dt.normalize() - pd.Timedelta(days=1)).dt.date
     tod = _time_of_day_us(times)
     names = shifts.to_numpy()

@@ -45,6 +45,12 @@ def time_weighted_resample(
         A float Series indexed by window start. Windows without any held
         value are NaN.
     """
+    if not isinstance(series.index, pd.DatetimeIndex):
+        raise TypeError(
+            f"time_weighted_resample requires a DatetimeIndex; got "
+            f"{type(series.index).__name__}. Set the series index to a "
+            f"DatetimeIndex (e.g. series.set_axis(pd.to_datetime(times)))."
+        )
     s = to_numeric_checked(series, what="time-weighted values").dropna().sort_index()
     s = s[~s.index.duplicated(keep="last")]
     if s.empty:

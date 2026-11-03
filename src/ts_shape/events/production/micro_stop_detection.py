@@ -95,12 +95,20 @@ class MicroStopEvents(Base):
         self.interval_end = interval_end
         self.data_end = data_end
 
-        self.series = (
-            self.dataframe[self.dataframe["uuid"] == self.run_state_uuid]
-            .copy()
-            .sort_values(self.time_column)
-        )
-        self.series[self.time_column] = pd.to_datetime(self.series[self.time_column])
+        # An empty frame can arrive without a ``uuid`` column (upstream filters,
+        # a pre-filtered single-signal frame); the ``checked_init`` wrapper
+        # raises for the non-empty case, so index safely here instead of
+        # crashing on ``self.dataframe["uuid"]``.
+        if "uuid" in self.dataframe.columns:
+            self.series = (
+                self.dataframe[self.dataframe["uuid"] == self.run_state_uuid]
+                .copy()
+                .sort_values(self.time_column)
+            )
+        else:
+            self.series = self.dataframe.iloc[0:0].copy()
+        if self.time_column in self.series.columns:
+            self.series[self.time_column] = pd.to_datetime(self.series[self.time_column])
 
     def _intervalize(self) -> pd.DataFrame:
         """Convert boolean state signal to run/idle intervals.
