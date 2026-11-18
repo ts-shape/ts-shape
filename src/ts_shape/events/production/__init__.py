@@ -44,6 +44,19 @@ Daily Production Tracking Classes:
   - detect_slow_cycles: Anomaly detection.
   - cycle_time_trend: Trend analysis.
   - hourly_cycle_time_summary: Hourly summary of cycle times by part.
+  - detect_unusual_cycles: Long and short cycles with robust two-sided bounds.
+
+- CycleProfileEvents: Mapping-free cycle time profiling of one PLC.
+  - cycle_anchor_candidates: Find the cycle event without a mapping.
+  - evaluation_window: Enough coherent cycles per variant?
+  - standard_view: Learned standard sequence of a cycle.
+  - segment_durations: Cycles split into segments (sum = cycle time).
+  - contribution_register: Potential, spread and variance share per segment.
+  - cycle_time_statistics: Robust statistics and class counts per variant.
+  - detect_cycle_influencers: What separates long/short from normal cycles.
+  - cycle_records: One record per cycle at one timestamp.
+  - detect_unusual_cycles: Long and short cycles.
+  - signal_events: The events every signal was turned into.
 
 - ShiftReportEvents: Shift-based performance analysis.
   - shift_production: Production per shift.
@@ -221,6 +234,7 @@ from .changeover import ChangeoverEvents
 
 # Traceability
 from .continuous_process_alignment import ContinuousProcessAlignmentEvents
+from .cycle_profiling import CycleProfileEvents
 from .cycle_time_tracking import (
     CycleTimeEvents,
     CycleTimeTracking,  # deprecated alias
@@ -313,6 +327,7 @@ __all__ = [
     "PartProductionTracking",  # deprecated alias
     "CycleTimeEvents",
     "CycleTimeTracking",  # deprecated alias
+    "CycleProfileEvents",
     "ShiftReportEvents",
     "ShiftReporting",  # deprecated alias
     "DowntimeEvents",

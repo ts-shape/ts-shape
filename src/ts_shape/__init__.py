@@ -28,6 +28,9 @@ if TYPE_CHECKING:
     from ts_shape.context.value_mapping import ValueMapper as ValueMapper
     from ts_shape.datasets import make_id_signal as make_id_signal
     from ts_shape.datasets import make_object_signals as make_object_signals
+    from ts_shape.datasets import make_plc_cycles as make_plc_cycles
+    from ts_shape.cycle_profile import CycleProfileResult as CycleProfileResult
+    from ts_shape.cycle_profile import profile_cycles as profile_cycles
     from ts_shape.datasets import make_timeseries as make_timeseries
     from ts_shape.errors import ColumnNotFoundError as ColumnNotFoundError
     from ts_shape.errors import DataQualityWarning as DataQualityWarning
@@ -204,6 +207,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.continuous_process_alignment import (
         ContinuousProcessAlignmentEvents as ContinuousProcessAlignmentEvents,
+    )
+    from ts_shape.events.production.cycle_profiling import (
+        CycleProfileEvents as CycleProfileEvents,
     )
     from ts_shape.events.production.cycle_time_tracking import (
         CycleTimeEvents as CycleTimeEvents,
@@ -562,6 +568,7 @@ _LAZY: dict[str, str] = {
     "BottleneckDetectionEvents": "ts_shape.events.production.bottleneck_detection",
     "ChangeoverEvents": "ts_shape.events.production.changeover",
     "ContinuousProcessAlignmentEvents": "ts_shape.events.production.continuous_process_alignment",
+    "CycleProfileEvents": "ts_shape.events.production.cycle_profiling",
     "CycleTimeEvents": "ts_shape.events.production.cycle_time_tracking",
     "DowntimeEvents": "ts_shape.events.production.downtime_tracking",
     "DutyCycleEvents": "ts_shape.events.production.duty_cycle",
@@ -662,6 +669,9 @@ _LAZY: dict[str, str] = {
     "SignalSpecs": "ts_shape.signals",
     "make_id_signal": "ts_shape.datasets",
     "make_object_signals": "ts_shape.datasets",
+    "make_plc_cycles": "ts_shape.datasets",
+    "profile_cycles": "ts_shape.cycle_profile",
+    "CycleProfileResult": "ts_shape.cycle_profile",
     "Pipeline": "ts_shape.pipeline",
     "PipelineResult": "ts_shape.pipeline",
     "iter_chunked": "ts_shape.stream",

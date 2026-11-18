@@ -272,3 +272,94 @@ def _is_integral(value: object) -> bool:
     except (TypeError, ValueError):
         return False
     return number.is_integer()
+
+
+def make_plc_cycles(
+    *,
+    n_cycles: int = 300,
+    seed: int = 0,
+    start: str | pd.Timestamp = "2026-01-05 06:00:00",
+    articles: Sequence[str] = ("A", "B"),
+    article_block: int = 60,
+    retry_probability: float = 0.06,
+    abort_probability: float = 0.02,
+    pause_every: int = 100,
+    pause_minutes: float = 15.0,
+    sample_period: str = "1s",
+    heartbeat: bool = True,
+    prefix: str = "plc",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Simulate the raw signals of one cyclic machine PLC, with ground truth.
+
+    A step chain ``10 .. 80`` (about 45 s per cycle) drives the signals a
+    historian records for such a machine, with no mapping or naming
+    convention a profiler could rely on:
+
+    ======================  =====================================================
+    ``<prefix>:step``        step chain (``value_integer``, one row per change)
+    ``<prefix>:clamp_closed``  handshake, True from step 20 to step 70
+    ``<prefix>:robot_ready``   handshake, True in step 30
+    ``<prefix>:camera_done``   pulse at the end of each camera inspection
+    ``<prefix>:camera_nok``    pulse when the camera rejects (then re-inspects)
+    ``<prefix>:part_counter``  part counter, +1 in step 80 (the cycle boundary)
+    ``<prefix>:article``       article (``value_string``), changes in blocks
+    ``<prefix>:pressure``      analog clamp pressure, sampled every ``sample_period``
+    ``<prefix>:heartbeat``     alive bit toggling every ``sample_period``
+    ======================  =====================================================
+
+    Injected disturbances (the ground truth a cycle profiler should find):
+    camera NOK with one or two re-inspections (+12 s each: long cycles),
+    aborted cycles that skip steps 40-70 (short cycles), breaks of about
+    ``pause_minutes`` waiting in step 10 (pauses), every second article 6 s
+    slower in step 40 (a variant) and a conveyor wait of 2.5 s in 40 % of the
+    cycles in step 60 (a bimodal segment).
+
+    Args:
+        n_cycles: Number of complete cycles (counter increment to increment).
+        seed: Random seed; the output is deterministic per seed.
+        start: Timestamp of the first row.
+        articles: Article names, produced in blocks of ``article_block``.
+        article_block: Cycles per article block.
+        retry_probability: Share of cycles with a camera NOK.
+        abort_probability: Share of the other cycles that are aborted.
+        pause_every: A break every this many cycles (0: none).
+        pause_minutes: Typical length of a break.
+        sample_period: Sample period of the pressure and the heartbeat.
+        heartbeat: Whether to add the heartbeat signal.
+        prefix: Prefix of the signal uuids.
+
+    Returns:
+        ``(frame, truth)``. ``frame`` is the long-format frame with the
+        standard columns. ``truth`` has one row per cycle: ``start``,
+        ``end``, ``duration_seconds``, ``kind`` (``normal``, ``long``,
+        ``short`` or ``pause``), ``article``, ``retry_count`` and
+        ``pause_seconds``.
+
+    Raises:
+        ValueError: If ``n_cycles`` is below 1, ``articles`` is empty or
+            ``sample_period`` is not positive.
+
+    Example:
+        >>> import ts_shape
+        >>> frame, truth = ts_shape.make_plc_cycles(n_cycles=120, seed=1)
+        >>> sorted(frame["uuid"].unique())[:3]
+        ['plc:article', 'plc:camera_done', 'plc:camera_nok']
+        >>> truth["kind"].value_counts().sort_index().to_dict()
+        {'long': 2, 'normal': 113, 'pause': 1, 'short': 4}
+    """
+    from ts_shape._plc_cycles import generate
+
+    return generate(
+        n_cycles=n_cycles,
+        seed=seed,
+        start=start,
+        articles=articles,
+        article_block=article_block,
+        retry_probability=retry_probability,
+        abort_probability=abort_probability,
+        pause_every=pause_every,
+        pause_minutes=pause_minutes,
+        sample_period=sample_period,
+        heartbeat=heartbeat,
+        prefix=prefix,
+    )
