@@ -162,3 +162,18 @@ def test_summary_numbers_come_from_the_tables(export):
 def test_cli_needs_a_time_range():
     with pytest.raises(SystemExit):
         main([])
+
+
+def test_cycle_events_place_every_event_in_its_cycle(export):
+    _, _, raw, meta = export
+    result = profile_cycles(raw, meta)
+    ev = result.tables["cycle_events"]
+    rec = result.tables["cycle_records"].set_index("cycle_uuid")
+    assert set(ev["cycle_uuid"]) <= set(rec.index)
+    duration = ev["cycle_uuid"].map(rec["duration_seconds"])
+    assert (ev["offset_seconds"] >= 0).all()
+    assert (ev["offset_seconds"] < duration).all()
+    # the step chain enters step 10 once in every normal cycle
+    normal = ev[ev["cycle_class"] == "normal"]
+    steps = normal[normal["event"] == "/Machine/step=10"].groupby("cycle_uuid").size()
+    assert (steps == 1).mean() > 0.95

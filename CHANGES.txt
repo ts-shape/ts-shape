@@ -15,7 +15,8 @@ feat: CycleProfileEvents (events.production.cycle_profiling) -- profiles the
 feat: ts_shape.cycle_profile -- profile_cycles(timeseries, metadata) on the
   raw frame of AzureBlobParquetLoader and a metadata loader's table (labels
   only, Worker signals dropped); CycleProfileResult.save/load; CLI
-  python -m ts_shape.cycle_profile; Streamlit dashboard in
+  python -m ts_shape.cycle_profile; tables["cycle_events"] places every event
+  in its cycle with offset_seconds / phase_ratio (event heatmaps); Streamlit dashboard in
   examples/cycle_profiling/dashboard.py.
 feat: make_plc_cycles -- synthetic PLC (step chain, handshakes, counter,
   article, pressure, heartbeat) with ground truth of long, short and pause

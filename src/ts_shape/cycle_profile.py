@@ -221,7 +221,9 @@ class CycleProfileResult:
         tables: ``signals``, ``anchors``, ``evaluation_window``,
             ``standard_view``, ``cycle_time_statistics``,
             ``contribution_register``, ``segment_durations``,
-            ``influencers``, ``cycle_records``, ``unusual_cycles``, ``pauses``.
+            ``influencers``, ``cycle_records``, ``unusual_cycles``, ``pauses``,
+            ``cycle_events`` (every event with its cycle and its offset from
+            the cycle start; the input of event heatmaps).
         summary: Plain numbers (counts, seconds, percent), JSON-able.
     """
 
@@ -285,6 +287,64 @@ def _pauses(records: pd.DataFrame) -> pd.DataFrame:
             "variant": pauses["variant"].to_numpy(),
         }
     )
+
+
+def cycle_events(events: pd.DataFrame, records: pd.DataFrame) -> pd.DataFrame:
+    """Every event placed in its cycle, with its offset from the cycle start.
+
+    Args:
+        events: ``CycleProfileEvents.signal_events()``.
+        records: ``CycleProfileEvents.cycle_records()``.
+
+    Returns:
+        ``cycle_uuid``, ``cycle_class``, ``variant``, ``event``,
+        ``source_uuid``, ``offset_seconds`` (from the cycle start) and
+        ``phase_ratio`` (offset / cycle duration), in time order. Events
+        outside every complete cycle are left out.
+
+    Example:
+        >>> import ts_shape
+        >>> from ts_shape.cycle_profile import profile_cycles
+        >>> frame, _ = ts_shape.make_plc_cycles(n_cycles=60, seed=1)
+        >>> ev = profile_cycles(frame).tables["cycle_events"]
+        >>> bool(ev["phase_ratio"].between(0, 1, inclusive="left").all())
+        True
+    """
+    columns = [
+        "cycle_uuid",
+        "cycle_class",
+        "variant",
+        "event",
+        "source_uuid",
+        "offset_seconds",
+        "phase_ratio",
+    ]
+    if events.empty or records.empty:
+        return pd.DataFrame(columns=columns)
+    ns = pd.DatetimeIndex(events["systime"]).as_unit("ns").asi8
+    starts = records["start_ns"].to_numpy(dtype=np.int64)
+    ends = records["end_ns"].to_numpy(dtype=np.int64)
+    order = np.argsort(starts, kind="stable")
+    starts, ends = starts[order], ends[order]
+    pos = np.searchsorted(starts, ns, side="right") - 1
+    inside = pos >= 0
+    inside[inside] &= ns[inside] < ends[pos[inside]]
+    rec = records.iloc[order].reset_index(drop=True)
+    idx = pos[inside]
+    offset = (ns[inside] - starts[idx]) / 1e9
+    duration = (ends[idx] - starts[idx]) / 1e9
+    out = pd.DataFrame(
+        {
+            "cycle_uuid": rec["cycle_uuid"].to_numpy()[idx],
+            "cycle_class": rec["cycle_class"].to_numpy()[idx],
+            "variant": rec["variant"].to_numpy()[idx],
+            "event": events["event"].to_numpy()[inside],
+            "source_uuid": events["source_uuid"].to_numpy()[inside],
+            "offset_seconds": offset,
+            "phase_ratio": offset / duration,
+        }
+    )
+    return out[columns].reset_index(drop=True)
 
 
 def _summary(frame: pd.DataFrame, t: dict[str, pd.DataFrame]) -> dict[str, Any]:
@@ -415,6 +475,9 @@ def profile_cycles(
         "unusual_cycles": profile.detect_unusual_cycles(),
     }
     tables["pauses"] = _pauses(tables["cycle_records"])
+    tables["cycle_events"] = cycle_events(
+        profile.signal_events(), tables["cycle_records"]
+    )
     return CycleProfileResult(tables=tables, summary=_summary(frame, tables))
 
 
