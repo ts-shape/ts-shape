@@ -1,3 +1,20 @@
+# November 18, 2026 (profile quality)
+feat: cycle anchor support needs phase locking (mean resultant length >= 0.7,
+  count 0.8-1.5x); candidates ranked by coverage_ratio first; polled anchors
+  use the poll period as sigma floor.
+feat: contribution_register bootstrap intervals (potential_ci_*_seconds,
+  variance_contribution_ci_*_factor); detect_cycle_influencers p_value,
+  q_value (Benjamini-Hochberg), is_significant; analog features over a
+  comparable window (variant P10 from the cycle start).
+feat: CycleProfileEvents(analog_levels=k | "auto") -- learned analog levels.
+feat: cycle_profile -- recurring_events, sequence_variants, cycle_sequences,
+  process_graph, parts_per_cycle, parallel_lanes, curve_bands/scores/flagged,
+  cycle_time_check tables; summary["confidence"]; case_log (XES columns);
+  benchmark_profiles over BENCHMARK_SCENARIOS.
+feat: make_plc_cycles options parts_per_cycle, reported_cycle_time,
+  alt_sequence_probability, shape_fault_probability, parallel_lane,
+  poll_period (defaults unchanged).
+
 # November 18, 2026
 Mapping-free cycle time profiling.
 feat: CycleProfileEvents (events.production.cycle_profiling) -- profiles the

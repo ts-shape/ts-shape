@@ -288,6 +288,12 @@ def make_plc_cycles(
     sample_period: str = "1s",
     heartbeat: bool = True,
     prefix: str = "plc",
+    parts_per_cycle: int = 1,
+    reported_cycle_time: bool = False,
+    alt_sequence_probability: float = 0.0,
+    shape_fault_probability: float = 0.0,
+    parallel_lane: bool = False,
+    poll_period: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Simulate the raw signals of one cyclic machine PLC, with ground truth.
 
@@ -327,13 +333,31 @@ def make_plc_cycles(
         sample_period: Sample period of the pressure and the heartbeat.
         heartbeat: Whether to add the heartbeat signal.
         prefix: Prefix of the signal uuids.
+        parts_per_cycle: Parts counted per cycle (the counter's step).
+        reported_cycle_time: Add ``<prefix>:last_cycle_time``, the duration
+            of the cycle just ended, published 1 s after the cycle boundary
+            (as many controllers do).
+        alt_sequence_probability: Share of cycles that run step 60 before
+            the camera step 50 (an alternative route).
+        shape_fault_probability: Share of cycles whose clamp pressure only
+            reaches 130 instead of 180 bar (a curve-shape fault).
+        parallel_lane: Add a second, independent machine on the same
+            controller (``<prefix>:lane2_counter``, ``<prefix>:lane2_clamp``)
+            at 1/1.13 of the cycle rate, so its phase drifts.
+        poll_period: Read every signal at this fixed poll (``"13s"``), as a
+            polling OPC UA client does; ``None`` (default) keeps the
+            change-encoded rows.
+
+    The optional disturbances draw random numbers only when enabled, so the
+    default data do not change.
 
     Returns:
         ``(frame, truth)``. ``frame`` is the long-format frame with the
         standard columns. ``truth`` has one row per cycle: ``start``,
         ``end``, ``duration_seconds``, ``kind`` (``normal``, ``long``,
-        ``short`` or ``pause``), ``article``, ``retry_count`` and
-        ``pause_seconds``.
+        ``short`` or ``pause``), ``article``, ``retry_count``,
+        ``pause_seconds``, ``parts``, ``sequence`` (``standard`` /
+        ``swapped``) and ``shape_fault``.
 
     Raises:
         ValueError: If ``n_cycles`` is below 1, ``articles`` is empty or
@@ -362,4 +386,10 @@ def make_plc_cycles(
         sample_period=sample_period,
         heartbeat=heartbeat,
         prefix=prefix,
+        parts_per_cycle=parts_per_cycle,
+        reported_cycle_time=reported_cycle_time,
+        alt_sequence_probability=alt_sequence_probability,
+        shape_fault_probability=shape_fault_probability,
+        parallel_lane=parallel_lane,
+        poll_period=poll_period,
     )

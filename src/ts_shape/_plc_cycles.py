@@ -54,8 +54,16 @@ def generate(
     sample_period: str = "1s",
     heartbeat: bool = True,
     prefix: str = "plc",
+    parts_per_cycle: int = 1,
+    reported_cycle_time: bool = False,
+    alt_sequence_probability: float = 0.0,
+    shape_fault_probability: float = 0.0,
+    parallel_lane: bool = False,
+    poll_period: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Simulate the PLC; see :func:`ts_shape.datasets.make_plc_cycles`."""
+    if parts_per_cycle < 1:
+        raise ValueError("parts_per_cycle must be at least 1")
     if n_cycles < 1:
         raise ValueError("n_cycles must be at least 1")
     if not articles:
@@ -75,7 +83,8 @@ def generate(
     }
     counter_rows: list[tuple[float, int]] = []
     article_rows: list[tuple[float, str]] = []
-    clamp_spans: list[tuple[float, float]] = []
+    clamp_spans: list[tuple[float, float, float]] = []
+    reported_rows: list[tuple[float, float]] = []
     truth: list[dict[str, object]] = []
 
     def pulse(name: str, at: float, width: float = 0.3) -> None:
@@ -101,6 +110,19 @@ def generate(
             retries = 1 if rng.random() < 0.7 else 2
         aborted = (not retries) and (not pause) and rng.random() < abort_probability
         noise = {s: float(rng.lognormal(0.0, 0.04)) for s in STEP_SECONDS}
+        # Optional disturbances draw from the generator only when enabled, so
+        # the default data stay the same.
+        swapped = (
+            alt_sequence_probability > 0
+            and not aborted
+            and bool(rng.random() < alt_sequence_probability)
+        )
+        shape_fault = (
+            shape_fault_probability > 0
+            and not aborted
+            and bool(rng.random() < shape_fault_probability)
+        )
+        level = 130.0 if shape_fault else 180.0
 
         # Step 10: load (a break waits here).
         step_rows.append((t, 10))
@@ -123,35 +145,46 @@ def generate(
             bool_rows["robot_ready"].append((t + 0.5, False))
             extra = SLOW_ARTICLE_SECONDS if index % 2 == 1 else 0.0
             t += (STEP_SECONDS[40] + extra) * noise[40]
-            # Step 50: camera, with re-inspection after a NOK.
-            step_rows.append((t, 50))
-            shot = t + STEP_SECONDS[50] * noise[50] - 0.6
-            for _ in range(retries):
+
+            def camera(t: float) -> float:
+                # Step 50: camera, with re-inspection after a NOK.
+                step_rows.append((t, 50))
+                shot = t + STEP_SECONDS[50] * noise[50] - 0.6
+                for _ in range(retries):
+                    pulse("camera_done", shot)
+                    pulse("camera_nok", shot + 0.1)
+                    shot += RETRY_SECONDS
                 pulse("camera_done", shot)
-                pulse("camera_nok", shot + 0.1)
-                shot += RETRY_SECONDS
-            pulse("camera_done", shot)
-            t += STEP_SECONDS[50] * noise[50] + retries * RETRY_SECONDS
-            # Step 60: process 2, the conveyor is not always ready.
-            step_rows.append((t, 60))
-            conveyor = CONVEYOR_WAIT_SECONDS if rng.random() < 0.4 else 0.0
-            t += STEP_SECONDS[60] * noise[60] + conveyor
+                return t + STEP_SECONDS[50] * noise[50] + retries * RETRY_SECONDS
+
+            def process2(t: float) -> float:
+                # Step 60: process 2, the conveyor is not always ready.
+                step_rows.append((t, 60))
+                conveyor = CONVEYOR_WAIT_SECONDS if rng.random() < 0.4 else 0.0
+                return t + STEP_SECONDS[60] * noise[60] + conveyor
+
+            # An alternative route runs process 2 before the camera.
+            for block in (process2, camera) if swapped else (camera, process2):
+                t = block(t)
             # Step 70: unclamp.
             step_rows.append((t, 70))
             bool_rows["clamp_closed"].append((t + 0.5, False))
-            clamp_spans.append((clamp_on, t + 0.5))
+            clamp_spans.append((clamp_on, t + 0.5, level))
             t += STEP_SECONDS[70] * noise[70]
         else:
             # Aborted: the robot hands back, the clamp opens, unload at once.
             bool_rows["robot_ready"].append((t, False))
             bool_rows["clamp_closed"].append((t + 0.2, False))
-            clamp_spans.append((clamp_on, t + 0.2))
+            clamp_spans.append((clamp_on, t + 0.2, level))
             t += 0.4
         # Step 80: unload; the counter counts the part (cycle boundary).
         step_rows.append((t, 80))
-        counter += 1
+        counter += parts_per_cycle
         counter_rows.append((t + 1.0, counter))
         boundaries.append(t + 1.0)
+        if reported_cycle_time and len(boundaries) >= 2:
+            # The controller publishes the duration of the cycle just ended.
+            reported_rows.append((t + 2.0, round(boundaries[-1] - boundaries[-2], 1)))
         nxt = article_of(p + 1)
         if nxt != index:
             # The next order is loaded before the part is counted.
@@ -167,6 +200,9 @@ def generate(
                 "article": str(articles[index]),
                 "retry_count": retries,
                 "pause_seconds": wait,
+                "parts": parts_per_cycle,
+                "sequence": "swapped" if swapped else "standard",
+                "shape_fault": shape_fault,
             }
         )
         t += STEP_SECONDS[80] * noise[80]
@@ -187,16 +223,25 @@ def generate(
         frames.append(_discrete(t0, f"{prefix}:{name}", initial + rows, "value_bool"))
 
     grid = np.arange(0.0, end_t, period)
-    closed = np.zeros(len(grid), dtype=bool)
-    for on, off in clamp_spans:
-        closed |= (grid >= on) & (grid < off)
-    pressure = np.where(closed, 180.0, 5.0) + rng.normal(0.0, 2.0, len(grid))
+    pressure = np.full(len(grid), 5.0)
+    for on, off, level in clamp_spans:
+        pressure[(grid >= on) & (grid < off)] = level
+    pressure = pressure + rng.normal(0.0, 2.0, len(grid))
     frames.append(_sampled(t0, f"{prefix}:pressure", grid, pressure, "value_double"))
     if heartbeat:
         alive = (np.floor(grid / period).astype(np.int64) % 2) == 0
         frames.append(_sampled(t0, f"{prefix}:heartbeat", grid, alive, "value_bool"))
 
+    if reported_cycle_time and reported_rows:
+        frames.append(
+            _discrete(t0, f"{prefix}:last_cycle_time", reported_rows, "value_double")
+        )
+    if parallel_lane:
+        frames.extend(_lane(t0, f"{prefix}:lane2", end_t, rng))
+
     frame = pd.concat(frames, ignore_index=True)
+    if poll_period is not None:
+        frame = _poll(frame, t0, end_t, pd.to_timedelta(poll_period).total_seconds())
     frame = frame.sort_values(["systime", "uuid"], kind="stable").reset_index(drop=True)
 
     truth_frame = pd.DataFrame(truth)
@@ -215,6 +260,9 @@ def generate(
             "article",
             "retry_count",
             "pause_seconds",
+            "parts",
+            "sequence",
+            "shape_fault",
         ]
     ]
     return frame, truth_frame
@@ -267,3 +315,55 @@ def _sampled(
     frame = _frame(times, uuid, values, column)
     frame["is_delta"] = False
     return frame
+
+
+#: Period of the independent second lane, as a multiple of the nominal cycle.
+LANE_PERIOD_FACTOR = 1.13
+
+
+def _lane(
+    t0: pd.Timestamp, prefix: str, end_t: float, rng: np.random.Generator
+) -> list[pd.DataFrame]:
+    """A second, independent machine on the same controller (a parallel lane).
+
+    It runs at a slightly different rate, so its phase drifts through the
+    main cycle.
+    """
+    nominal = sum(STEP_SECONDS.values()) * LANE_PERIOD_FACTOR
+    t, count = 3.0, 500
+    counter: list[tuple[float, object]] = []
+    clamp: list[tuple[float, object]] = [(0.0, False)]
+    while t < end_t:
+        length = nominal * float(rng.lognormal(0.0, 0.03))
+        clamp.append((t + 0.1 * length, True))
+        clamp.append((t + 0.7 * length, False))
+        count += 1
+        counter.append((t + 0.9 * length, count))
+        t += length
+    return [
+        _discrete(t0, f"{prefix}_counter", counter, "value_integer"),
+        _discrete(t0, f"{prefix}_clamp", clamp, "value_bool"),
+    ]
+
+
+def _poll(
+    frame: pd.DataFrame, t0: pd.Timestamp, end_t: float, period: float
+) -> pd.DataFrame:
+    """Every signal read at one fixed poll, as a polling OPC UA client does."""
+    if period <= 0:
+        raise ValueError("poll_period must be positive")
+    grid = pd.DatetimeIndex(
+        t0 + pd.to_timedelta(np.arange(0.0, end_t, period), unit="s")
+    ).as_unit("ns")
+    parts = []
+    for uuid, rows in frame.groupby("uuid", sort=True):
+        rows = rows.sort_values("systime", kind="stable")
+        rows = rows.assign(systime=pd.DatetimeIndex(rows["systime"]).as_unit("ns"))
+        probe = pd.DataFrame({"systime": grid})
+        polled = pd.merge_asof(probe, rows.drop(columns="uuid"), on="systime")
+        polled = polled[polled["is_delta"].notna()].assign(uuid=uuid, is_delta=False)
+        parts.append(polled)
+    out = pd.concat(parts, ignore_index=True)
+    for column, dtype in (("value_integer", "Int64"), ("value_bool", "boolean")):
+        out[column] = out[column].astype(dtype)
+    return out[["systime", "uuid", *_COLUMNS, "is_delta"]]
