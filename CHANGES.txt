@@ -1,3 +1,27 @@
+# November 18, 2026
+Mapping-free cycle time profiling.
+feat: CycleProfileEvents (events.production.cycle_profiling) -- profiles the
+  raw signals of one PLC without a role mapping: signals become events by
+  their inferred kind, the cycle anchor is discovered (support ranking; a
+  heartbeat never wins), variants found by eta squared, cycles classified
+  robustly per variant (pause / long / short / normal), standard view,
+  segments that add up to the cycle, contribution register (potential =
+  median - P10, spread, skew, bimodality, variance contribution summing to
+  1), influencers (Mann-Whitney AUC), one record per cycle at one timestamp.
+  Methods: signal_events, cycle_anchor_candidates, evaluation_window,
+  standard_view, segment_durations, contribution_register,
+  cycle_time_statistics, detect_cycle_influencers, cycle_records,
+  detect_unusual_cycles. See docs/modules/production/cycle-profiling.md.
+feat: make_plc_cycles -- synthetic PLC (step chain, handshakes, counter,
+  article, pressure, heartbeat) with ground truth of long, short and pause
+  cycles.
+feat: CycleTimeEvents.cycle_time_statistics adds p10_seconds, p90_seconds,
+  mad_seconds; CycleTimeEvents.detect_unusual_cycles (robust two-sided
+  bounds on the log cycle time).
+change: CycleTimeEvents.cycle_time_trend -- the stable band is relative,
+  stable_band_ratio=0.01 of the part median (was a fixed +-0.5 s), so a
+  5 s and a 300 s cycle are judged alike.
+
 # October 26, 2026 (round 25)
 Change flags, cycles, usage links.
 feat: eventlog.objects: ObjectSpec.delta_column (default "is_delta") -- on a

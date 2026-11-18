@@ -281,6 +281,15 @@ INIT_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "ProductionScheduleAdherenceEvents": {"schedule": lambda df: _schedule(df)},
     "EnvironmentalCompensationEvents": {"env_uuid": CONT2},
+    # CycleProfileEvents profiles a whole PLC: by default every signal of the
+    # frame takes part (that is the point: no mapping). An added signal can
+    # then join the profile (as an event source, an anchor candidate or an
+    # influencer feature), which the extra_uuid check would read as a change.
+    # Naming the plant signals pins the profile to them, as a user restricts
+    # it to the signals of one PLC.
+    "CycleProfileEvents": {
+        "signal_uuids": [CONT, CONT2, STATE, COUNTER, SETPOINT, TEXT]
+    },
 }
 
 #: Method arguments that are themselves data (built from the input frame).

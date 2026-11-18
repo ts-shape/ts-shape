@@ -246,7 +246,12 @@ class CycleTimeEvents(Base):
             - avg_seconds: Average cycle time
             - max_seconds: Maximum cycle time
             - std_seconds: Standard deviation
-            - median_seconds: Median cycle time (robust target)
+            - median_seconds: Median cycle time
+            - p10_seconds: 10th percentile, the best demonstrated cycle time
+              (a target taken from the data, not from master data)
+            - p90_seconds: 90th percentile
+            - mad_seconds: Median absolute deviation from the median (robust
+              spread; unscaled)
 
             Canonical twin columns: ``cycle_count`` (after ``count``); it
             holds the same values as the deprecated column right before it,
@@ -280,6 +285,9 @@ class CycleTimeEvents(Base):
                     "max_seconds",
                     "std_seconds",
                     "median_seconds",
+                    "p10_seconds",
+                    "p90_seconds",
+                    "mad_seconds",
                 ]
             )
 
@@ -293,6 +301,9 @@ class CycleTimeEvents(Base):
                     ("max_seconds", "max"),
                     ("std_seconds", "std"),
                     ("median_seconds", "median"),
+                    ("p10_seconds", lambda x: x.quantile(0.1)),
+                    ("p90_seconds", lambda x: x.quantile(0.9)),
+                    ("mad_seconds", lambda x: (x - x.median()).abs().median()),
                 ]
             )
             .reset_index()
@@ -382,6 +393,106 @@ class CycleTimeEvents(Base):
         # Return only slow cycles
         return cycle_data[cycle_data["is_slow"]].reset_index(drop=True)
 
+    def detect_unusual_cycles(
+        self,
+        part_id_uuid: str,
+        cycle_trigger_uuid: str,
+        *,
+        n_sigma: float = 3.0,
+        value_column_part: str = "value_string",
+        value_column_trigger: str = "value_bool",
+        max_cycle_gap: str | None = None,
+    ) -> pd.DataFrame:
+        """Find cycles that are unusually long *or* short, per part.
+
+        Unlike :meth:`detect_slow_cycles` (a fixed factor on the slow side
+        only) the bounds are statistical and two-sided: a cycle is unusual
+        when its log cycle time lies more than ``n_sigma`` robust sigmas
+        (scaled median absolute deviation, at least 1 %) from the part's
+        median log cycle time. Working on the log makes the bounds relative,
+        so they transfer between a 5 s and a 300 s cycle. For pauses kept as
+        their own class and a profile without signal mapping see
+        :class:`~ts_shape.events.production.cycle_profiling.CycleProfileEvents`.
+
+        Args:
+            part_id_uuid: UUID for part number signal
+            cycle_trigger_uuid: UUID for cycle completion trigger
+            n_sigma: Robust sigmas beyond which a cycle is unusual.
+            value_column_part: Column containing part numbers
+            value_column_trigger: Column containing cycle triggers
+            max_cycle_gap: Optional cap forwarded to
+                :meth:`cycle_time_by_part`.
+
+        Returns:
+            DataFrame with the unusual cycles:
+            - systime, uuid, source_uuid, part_number, cycle_time_seconds
+            - median_seconds: The part's median cycle time
+            - lower_limit_seconds / upper_limit_seconds: The robust bounds
+            - z_score: Robust z-score of the log cycle time
+            - cycle_class: ``"short"`` or ``"long"``
+            - direction: ``"below"`` or ``"above"`` the robust band
+
+        Example:
+            >>> import pandas as pd, ts_shape
+            >>> t = pd.Timestamp("2025-01-01") + pd.to_timedelta(
+            ...     [0, 60, 121, 180, 242, 300, 330, 391, 450, 600], unit="s")
+            >>> df = pd.concat([
+            ...     pd.DataFrame({"systime": t, "uuid": "done", "value_integer": range(10)}),
+            ...     pd.DataFrame({"systime": t[:1], "uuid": "part", "value_string": ["A"]})])
+            >>> out = ts_shape.CycleTimeEvents(df).detect_unusual_cycles(
+            ...     "part", "done", value_column_trigger="value_integer")
+            >>> out[["cycle_time_seconds", "cycle_class"]]
+               cycle_time_seconds cycle_class
+            0                30.0       short
+            1               150.0        long
+        """
+        columns = [
+            "systime",
+            "uuid",
+            "source_uuid",
+            "part_number",
+            "cycle_time_seconds",
+            "median_seconds",
+            "lower_limit_seconds",
+            "upper_limit_seconds",
+            "z_score",
+            "cycle_class",
+            "direction",
+        ]
+        if n_sigma <= 0:
+            raise ValueError("n_sigma must be positive")
+        cycle_data = self.cycle_time_by_part(
+            part_id_uuid,
+            cycle_trigger_uuid,
+            value_column_part=value_column_part,
+            value_column_trigger=value_column_trigger,
+            max_cycle_gap=max_cycle_gap,
+        )
+        cycle_data = cycle_data[cycle_data["cycle_time_seconds"] > 0]
+        if cycle_data.empty:
+            return pd.DataFrame(columns=columns)
+        log_t = np.log(cycle_data["cycle_time_seconds"].astype(float))
+        groups = log_t.groupby(cycle_data["part_number"])
+        center = groups.transform("median")
+        mad = (
+            (log_t - center)
+            .abs()
+            .groupby(cycle_data["part_number"])
+            .transform("median")
+        )
+        sigma = np.maximum(1.4826 * mad, 0.01)
+        z = (log_t - center) / sigma
+        out = cycle_data.assign(
+            median_seconds=np.exp(center),
+            lower_limit_seconds=np.exp(center - n_sigma * sigma),
+            upper_limit_seconds=np.exp(center + n_sigma * sigma),
+            z_score=z,
+            cycle_class=np.where(z > 0, "long", "short"),
+            direction=np.where(z > 0, "above", "below"),
+        )
+        out = out[z.abs() > n_sigma]
+        return out[columns].reset_index(drop=True)
+
     @twin_columns({"moving_avg": "moving_avg_seconds"})
     def cycle_time_trend(
         self,
@@ -393,6 +504,7 @@ class CycleTimeEvents(Base):
         value_column_part: str = "value_string",
         value_column_trigger: str = "value_bool",
         max_cycle_gap: str | None = None,
+        stable_band_ratio: float = 0.01,
     ) -> pd.DataFrame:
         """Analyze cycle time trends for a specific part.
 
@@ -407,6 +519,11 @@ class CycleTimeEvents(Base):
                 :meth:`cycle_time_by_part`: intervals between consecutive
                 completions longer than this are dropped as inter-cycle
                 downtime. Default None keeps every interval.
+            stable_band_ratio: A change of the moving average within this
+                fraction of the part's median cycle time is ``stable``
+                (default 0.01 = 1 %). The band scales with the cycle, so the
+                same setting fits a 5 s and a 300 s cycle; earlier versions
+                used a fixed band of +-0.5 s.
 
         Returns:
             DataFrame with trend data:
@@ -460,10 +577,17 @@ class CycleTimeEvents(Base):
         part_cycles["trend_slope"] = part_cycles["moving_avg"].diff()
 
         # Classify trend (improving = getting faster)
-        part_cycles["trend"] = pd.cut(
-            part_cycles["trend_slope"],
-            bins=[-np.inf, -0.5, 0.5, np.inf],
-            labels=["improving", "stable", "degrading"],
+        if stable_band_ratio < 0:
+            raise ValueError("stable_band_ratio must not be negative")
+        band = stable_band_ratio * float(part_cycles["cycle_time_seconds"].median())
+        slope = part_cycles["trend_slope"]
+        part_cycles["trend"] = pd.Categorical(
+            np.select(
+                [slope < -band, slope > band, slope.notna()],
+                ["improving", "degrading", "stable"],
+                default=None,
+            ),
+            categories=["improving", "stable", "degrading"],
         )
 
         return part_cycles[["systime", "cycle_time_seconds", "moving_avg", "trend"]]

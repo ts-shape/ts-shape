@@ -144,6 +144,9 @@ if TYPE_CHECKING:
     from ts_shape.events.production.continuous_process_alignment import (
         ContinuousProcessAlignmentEvents as ContinuousProcessAlignmentEvents,
     )
+    from ts_shape.events.production.cycle_profiling import (
+        CycleProfileEvents as CycleProfileEvents,
+    )
     from ts_shape.events.production.cycle_time_tracking import (
         CycleTimeEvents as CycleTimeEvents,
     )
