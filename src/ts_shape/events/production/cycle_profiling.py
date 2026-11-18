@@ -58,6 +58,14 @@ VARIANT_MAX_CHANGE_RATIO = 0.2
 VARIANT_MIN_ETA_SQUARED = 0.2
 #: Event counts within this fraction of each other "repeat in step".
 SUPPORT_TOLERANCE = 0.10
+#: A partner of an anchor candidate has this many events per candidate event
+#: (re-tries allowed) ...
+SUPPORT_MIN_RATIO, SUPPORT_MAX_RATIO = 0.8, 1.5
+#: ... and is phase-locked to it (mean resultant length of its phases).
+SUPPORT_MIN_LOCKING = 0.7
+#: An anchor candidate covers at least this share of the best candidate's
+#: coverage (span of its regular intervals over the recording).
+MIN_RELATIVE_COVERAGE = 0.5
 #: Scale of the median absolute deviation to a normal sigma.
 MAD_SCALE = 1.4826
 #: Smallest robust sigma of log(duration) (1 %): perfectly regular cycles
@@ -72,6 +80,14 @@ MIN_SPREAD_SECONDS = 1e-3
 #: clock (heartbeat, sampling toggle): its count per cycle only measures the
 #: cycle duration and is no influencer feature.
 MAX_EVENTS_PER_CYCLE = 2.0
+#: Bootstrap resamples for the confidence intervals of the register (fixed
+#: seed: the same data give the same intervals).
+BOOTSTRAP_RESAMPLES = 200
+BOOTSTRAP_SEED = 20261118
+#: False discovery rate under which an influencer is significant.
+INFLUENCER_FDR = 0.05
+#: Largest number of learned levels of an analog signal (analog_levels="auto").
+MAX_ANALOG_LEVELS = 4
 #: Decimals of the interval CV that count when ranking anchor candidates.
 CV_DECIMALS = 2
 #: Hysteresis of an analog level, as fractions of its P10..P90 range.
@@ -88,6 +104,7 @@ _ANCHOR_COLUMNS = [
     "is_counter",
     "median_interval_seconds",
     "interval_cv_factor",
+    "coverage_ratio",
     "is_anchor",
 ]
 _WINDOW_COLUMNS = [
@@ -150,8 +167,12 @@ _REGISTER_COLUMNS = [
     "is_bimodal",
     "median_share_ratio",
     "potential_seconds",
+    "potential_ci_low_seconds",
+    "potential_ci_high_seconds",
     "potential_rank",
     "variance_contribution_factor",
+    "variance_contribution_ci_low_factor",
+    "variance_contribution_ci_high_factor",
 ]
 _STATISTICS_COLUMNS = [
     "variant",
@@ -187,6 +208,9 @@ _INFLUENCER_COLUMNS = [
     "normal_median",
     "group_cycle_count",
     "normal_cycle_count",
+    "p_value",
+    "q_value",
+    "is_significant",
 ]
 _RECORD_COLUMNS = [
     "systime",
@@ -252,6 +276,120 @@ def _bimodality(values: np.ndarray) -> tuple[float, float]:
     return skew, float(coefficient)
 
 
+def _analog_levels(values: np.ndarray, levels: int | str) -> np.ndarray:
+    """Sorted centres of the operating levels of an analog signal (1-D k-means).
+
+    ``levels="auto"`` tries 2 to :data:`MAX_ANALOG_LEVELS` levels and keeps a
+    further level only while it cuts the within-level sum of squares by more
+    than half. Deterministic: quantile start, fixed iterations.
+    """
+    x = np.sort(values[np.isfinite(values)])
+    if len(x) < 4 or x[-1] == x[0]:
+        return np.array([])
+    if len(x) > 20000:
+        x = x[np.linspace(0, len(x) - 1, 20000).astype(int)]
+
+    def fit(k: int) -> tuple[np.ndarray, float]:
+        centers = np.quantile(x, (np.arange(k) + 0.5) / k)
+        for _ in range(50):
+            edges = 0.5 * (centers[1:] + centers[:-1])
+            idx = np.searchsorted(edges, x)
+            new = np.array(
+                [
+                    x[idx == j].mean() if (idx == j).any() else centers[j]
+                    for j in range(k)
+                ]
+            )
+            if np.allclose(new, centers):
+                break
+            centers = new
+        edges = 0.5 * (centers[1:] + centers[:-1])
+        idx = np.searchsorted(edges, x)
+        return np.sort(centers), float(((x - centers[idx]) ** 2).sum())
+
+    if levels != "auto":
+        return fit(int(levels))[0]
+    best, sse = fit(2)
+    for k in range(3, MAX_ANALOG_LEVELS + 1):
+        centers, new_sse = fit(k)
+        if new_sse > 0.5 * sse:
+            break
+        best, sse = centers, new_sse
+    return best
+
+
+def _phase_locking(anchor_ns: np.ndarray, partner_ns: np.ndarray) -> float:
+    """How firmly ``partner`` events sit at one point of the anchor's intervals.
+
+    Mean resultant length of the partner's phases within the intervals
+    between consecutive anchor events (1: always at the same point, 0:
+    anywhere). Intervals longer than three times the median (pauses) are
+    left out.
+    """
+    if len(anchor_ns) < 3 or len(partner_ns) == 0:
+        return 0.0
+    gaps = np.diff(anchor_ns).astype(float)
+    pos = np.searchsorted(anchor_ns, partner_ns, side="right") - 1
+    ok = (pos >= 0) & (pos < len(gaps))
+    if not ok.any():
+        return 0.0
+    gap = gaps[pos[ok]]
+    keep = gap <= 3.0 * float(np.median(gaps))
+    phase = (partner_ns[ok][keep] - anchor_ns[pos[ok]][keep]) / gap[keep]
+    if len(phase) == 0:
+        return 0.0
+    angle = 2 * np.pi * phase
+    return float(np.hypot(np.cos(angle).mean(), np.sin(angle).mean()))
+
+
+def _bh_qvalues(p: np.ndarray) -> np.ndarray:
+    """Benjamini-Hochberg adjusted p-values (q-values), NaN kept."""
+    q = np.full(len(p), np.nan)
+    ok = np.isfinite(p)
+    m = int(ok.sum())
+    if m == 0:
+        return q
+    order = np.argsort(p[ok])
+    ranked = p[ok][order] * m / np.arange(1, m + 1)
+    adjusted = np.minimum.accumulate(ranked[::-1])[::-1].clip(max=1.0)
+    out = np.empty(m)
+    out[order] = adjusted
+    q[ok] = out
+    return q
+
+
+def _bootstrap_register(matrix: np.ndarray) -> tuple[np.ndarray, ...]:
+    """90 % bootstrap intervals (over cycles) of potential and variance share.
+
+    ``matrix`` is cycles x segments. Returns potential low / high and
+    variance-contribution low / high per segment; NaN with fewer than 10
+    cycles.
+    """
+    n, k = matrix.shape
+    nan = np.full(k, np.nan)
+    if n < 10:
+        return nan, nan, nan, nan
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
+    pot = np.empty((BOOTSTRAP_RESAMPLES, k))
+    share = np.empty((BOOTSTRAP_RESAMPLES, k))
+    for b in range(BOOTSTRAP_RESAMPLES):
+        sample = matrix[rng.integers(0, n, n)]
+        q10, q50 = np.quantile(sample, [0.1, 0.5], axis=0)
+        pot[b] = q50 - q10
+        total = sample.sum(axis=1)
+        var_t = total.var(ddof=1)
+        centered = sample - sample.mean(axis=0)
+        cov = (centered * (total - total.mean())[:, None]).sum(axis=0) / (n - 1)
+        share[b] = cov / var_t if var_t > 0 else np.nan
+    lo, hi = 5, 95
+    return (
+        np.percentile(pot, lo, axis=0),
+        np.percentile(pot, hi, axis=0),
+        np.nanpercentile(share, lo, axis=0),
+        np.nanpercentile(share, hi, axis=0),
+    )
+
+
 def _from_ns(ns: np.ndarray, tz: Any) -> pd.Series:
     """Int64 nanoseconds back to timestamps in the input's timezone."""
     times = pd.to_datetime(pd.Series(np.asarray(ns, dtype=np.int64)), unit="ns")
@@ -307,6 +445,7 @@ class CycleProfileEvents(Base):
         n_sigma: float = 3.0,
         pause_factor: float = 3.0,
         time_resolution: str | float | None = None,
+        analog_levels: int | str = 2,
         time_column: str = "systime",
         uuid_column: str = "uuid",
         event_uuid: str = "prod:cycle_profile",
@@ -341,6 +480,14 @@ class CycleProfileEvents(Base):
                 *milestone* that counts at its earliest event. The default
                 ``None`` uses the median sample period of the view's sampled
                 signals (0 for change-encoded signals).
+            analog_levels: How an analog signal becomes events. ``2``
+                (default): one hysteresis band between 40 % and 60 % of its
+                P10..P90 range (``uuid>``, ``uuid<``). An integer from 3 or
+                ``"auto"``: the signal's operating levels are learned (1-D
+                k-means; ``"auto"`` picks 2 to 4 levels by the drop of the
+                within-level spread) and entering a level is an event
+                (``uuid≈<level>``), with hysteresis of a quarter of the gap
+                to the neighbouring level.
             time_column: Timestamp column.
             uuid_column: Signal identifier column.
             event_uuid: ``uuid`` of the point and interval outputs.
@@ -369,6 +516,12 @@ class CycleProfileEvents(Base):
         self.n_sigma = float(n_sigma)
         self.pause_factor = float(pause_factor)
         self.time_resolution = time_resolution
+        if not (
+            analog_levels == "auto"
+            or (isinstance(analog_levels, int) and analog_levels >= 2)
+        ):
+            raise ValueError("analog_levels must be 'auto' or an integer of at least 2")
+        self.analog_levels = analog_levels
         self._cache: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
@@ -460,6 +613,9 @@ class CycleProfileEvents(Base):
             change = np.r_[False, values[1:] > values[:-1]]
             labels = np.full(len(values), f"{uuid}{INCREMENT}", dtype=object)
             kind = "counter"
+        elif self.analog_levels != 2:
+            values = g["v"].to_numpy(dtype=float)
+            return self._level_events(times, values, uuid)
         else:
             values = g["v"].to_numpy(dtype=float)
             p10, p90 = np.quantile(values, [0.1, 0.9])
@@ -488,6 +644,43 @@ class CycleProfileEvents(Base):
             }
         )
 
+    def _level_events(
+        self, times: pd.Series, values: np.ndarray, uuid: str
+    ) -> pd.DataFrame:
+        """Entries into the learned operating levels of an analog signal."""
+        centers = _analog_levels(values, self.analog_levels)
+        if len(centers) < 2:
+            return pd.DataFrame()
+        gaps = np.diff(centers)
+        state = np.full(len(values), -1)
+        current = int(np.argmin(np.abs(centers - values[0])))
+        for i, v in enumerate(values):
+            nearest = int(np.argmin(np.abs(centers - v)))
+            if nearest != current:
+                # hysteresis: a quarter of the gap past the midpoint
+                lo, hi = sorted((nearest, current))
+                margin = 0.25 * gaps[lo] if hi - lo == 1 else 0.0
+                mid = 0.5 * (centers[lo] + centers[hi])
+                beyond = v > mid + margin if nearest > current else v < mid - margin
+                if beyond:
+                    current = nearest
+            state[i] = current
+        change = np.r_[False, state[1:] != state[:-1]]
+        if not change.any():
+            return pd.DataFrame()
+        labels = np.array(
+            [f"{uuid}≈{float(centers[k]):.3g}" for k in state],
+            dtype=object,
+        )
+        return pd.DataFrame(
+            {
+                "systime": times[change].reset_index(drop=True),
+                "source_uuid": uuid,
+                "event": labels[change],
+                "signal_kind": "continuous",
+            }
+        )
+
     def _anchor_table(self) -> pd.DataFrame:
         """Ranked anchor candidates (US-1, DQ-1)."""
         if "anchors" in self._cache:
@@ -510,37 +703,70 @@ class CycleProfileEvents(Base):
             return table
         counts = table["event_count"].to_numpy(dtype=float)
         sources = table["source_uuid"].to_numpy(dtype=object)
-        near = (
-            np.abs(counts[None, :] - counts[:, None])
-            <= SUPPORT_TOLERANCE * counts[:, None]
-        )
+        # A partner repeats about as often as the candidate (re-tries allowed)
+        # and is phase-locked to it: its events fall at the same point of the
+        # candidate's intervals. A heartbeat repeats too often; an independent
+        # machine on the same controller (a parallel lane) drifts.
+        ratio = counts[None, :] / counts[:, None]
+        near = (ratio >= SUPPORT_MIN_RATIO) & (ratio <= SUPPORT_MAX_RATIO)
         other = sources[None, :] != sources[:, None]
+        times = {
+            label: np.unique(ns)
+            for label, ns in events.groupby("event")["ns"].apply(np.asarray).items()
+            if label in set(table["event"])
+        }
+        labels = table["event"].to_numpy(dtype=object)
         support = []
         for i in range(len(table)):
-            partners = sources[near[i] & other[i]]
-            support.append(len(set(partners.tolist())))
+            anchor_ns = times[labels[i]]
+            locked: set[str] = set()
+            for j in np.flatnonzero(near[i] & other[i]):
+                if sources[j] in locked:
+                    continue
+                if _phase_locking(anchor_ns, times[labels[j]]) >= SUPPORT_MIN_LOCKING:
+                    locked.add(str(sources[j]))
+            support.append(len(locked))
         table["support_count"] = support
         table["is_counter"] = table["signal_kind"] == "counter"
-        medians, cvs = [], []
+        medians, cvs, coverage = [], [], []
+        span = max(float(events["ns"].max() - events["ns"].min()) / 1e9, 1e-9)
         for label in table["event"]:
             ns = events.loc[events["event"] == label, "ns"].to_numpy()
             intervals = np.diff(np.unique(ns)) / 1e9
-            medians.append(float(np.median(intervals)) if len(intervals) else np.nan)
+            median = float(np.median(intervals)) if len(intervals) else np.nan
+            medians.append(median)
             cvs.append(_robust_cv(intervals))
+            regular = (
+                intervals[intervals <= 3.0 * median] if len(intervals) else intervals
+            )
+            coverage.append(float(regular.sum()) / span if len(regular) else 0.0)
         table["median_interval_seconds"] = medians
         table["interval_cv_factor"] = cvs
+        table["coverage_ratio"] = np.clip(coverage, 0.0, 1.0)
         # Regularity breaks ties at CV_RESOLUTION; finer differences are noise,
         # so the event that misses fewer cycles (more events) wins next: a
         # shift counter that skips its reset loses to the part counter.
         table["_cv"] = table["interval_cv_factor"].round(CV_DECIMALS)
+        # Only events that cycle through most of the recording compete: a
+        # burst of a rare event can have locked partners within its few
+        # intervals but explains little of the data.
+        best = float(table["coverage_ratio"].max()) if len(table) else 0.0
+        table["_covers"] = table["coverage_ratio"] >= MIN_RELATIVE_COVERAGE * best
         table = (
             table.sort_values(
-                ["support_count", "is_counter", "_cv", "event_count", "event"],
-                ascending=[False, False, True, False, True],
+                [
+                    "_covers",
+                    "support_count",
+                    "is_counter",
+                    "_cv",
+                    "event_count",
+                    "event",
+                ],
+                ascending=[False, False, False, True, False, True],
                 kind="stable",
                 na_position="last",
             )
-            .drop(columns="_cv")
+            .drop(columns=["_cv", "_covers"])
             .reset_index(drop=True)
         )
         table.insert(0, "rank", np.arange(1, len(table) + 1))
@@ -698,7 +924,14 @@ class CycleProfileEvents(Base):
                 pause |= d > max_d
             base = np.log(d[~pause]) if (~pause).any() else np.log(d)
             m = float(np.median(base))
-            s = max(MAD_SCALE * float(np.median(np.abs(base - m))), MIN_LOG_SIGMA)
+            # A cycle is known to one sample of its cycle signal at each end:
+            # the sigma floor covers that quantization (polled signals).
+            quantum = self._anchor_period() / max(float(np.exp(m)), 1e-9)
+            s = max(
+                MAD_SCALE * float(np.median(np.abs(base - m))),
+                MIN_LOG_SIGMA,
+                quantum,
+            )
             z = (np.log(d) - m) / s
             short = z < -self.n_sigma
             if min_d is not None:
@@ -717,6 +950,27 @@ class CycleProfileEvents(Base):
                 "median": float(np.median(d[~pause] if (~pause).any() else d)),
             }
         self._cache["limits"] = limits
+
+    def _anchor_period(self) -> float:
+        """Sample period (s) of the anchor's signal when it is polled, else 0.
+
+        A polled signal has many more readings than changes (at least
+        three per anchor event); a change-encoded counter that changes once
+        per cycle is not polled, however regular it is.
+        """
+        anchor = self._anchor()
+        if anchor is None:
+            return 0.0
+        events, _ = self._events()
+        signals = self._signals()
+        rows = signals.loc[
+            signals[self.uuid_column].astype(str) == anchor[1], self.time_column
+        ]
+        changes = int((events["event"] == anchor[0]).sum())
+        if changes == 0 or len(rows) < 3 * changes:
+            return 0.0
+        gaps = np.diff(np.unique(to_ns(rows))) / 1e9
+        return float(np.median(gaps)) if len(gaps) else 0.0
 
     def _cycle_events(self) -> pd.DataFrame:
         """Events with the cycle they fall in (anchor events left out)."""
@@ -940,7 +1194,8 @@ class CycleProfileEvents(Base):
             deviating = int(deviation.reindex(members.index).fillna(False).sum())
             medians = pivot.median(axis=0)
             median_sum = float(medians.sum())
-            for position in pivot.columns:
+            ci = _bootstrap_register(pivot.to_numpy(dtype=float))
+            for col, position in enumerate(pivot.columns):
                 x = pivot[position].to_numpy(dtype=float)
                 p10, median, p90 = np.quantile(x, [0.1, 0.5, 0.9])
                 skew, coefficient = _bimodality(x)
@@ -977,9 +1232,13 @@ class CycleProfileEvents(Base):
                             float(median) / median_sum if median_sum > 0 else np.nan
                         ),
                         "potential_seconds": float(median - p10),
+                        "potential_ci_low_seconds": ci[0][col],
+                        "potential_ci_high_seconds": ci[1][col],
                         "variance_contribution_factor": (
                             cov / var_t if var_t and var_t > 0 else np.nan
                         ),
+                        "variance_contribution_ci_low_factor": ci[2][col],
+                        "variance_contribution_ci_high_factor": ci[3][col],
                     }
                 )
         if not rows:
@@ -1040,10 +1299,17 @@ class CycleProfileEvents(Base):
         DQ-1 (one start event; its recurrence is the end).
 
         Every event that occurs at least three times is ranked by
+        coverage first: only events whose regular intervals (gaps of at
+        most three times their median) cover at least half as much of the
+        recording as the best candidate compete (``coverage_ratio``); then
 
         1. ``support_count``: the number of *other* signals with an event
-           whose count is within 10 % of this one's -- a cycle event repeats
-           in step with the rest of the machine, a heartbeat does not;
+           that repeats 0.8 to 1.5 times per candidate event and is
+           phase-locked to it (its events fall at the same point of the
+           candidate's intervals, mean resultant length >= 0.7) -- a cycle
+           event repeats in step with the rest of the machine; a heartbeat
+           repeats too often and an independent machine on the same
+           controller drifts;
         2. ``is_counter``: a part counter is the natural cycle boundary;
         3. ``interval_cv_factor``: robust coefficient of variation of the
            intervals (median absolute deviation / median), ascending;
@@ -1056,7 +1322,7 @@ class CycleProfileEvents(Base):
             Static table: ``rank``, ``event``, ``source_uuid``,
             ``signal_kind``, ``event_count``, ``support_count``,
             ``is_counter``, ``median_interval_seconds``,
-            ``interval_cv_factor``, ``is_anchor``.
+            ``interval_cv_factor``, ``coverage_ratio``, ``is_anchor``.
 
         Example:
             >>> import ts_shape
@@ -1301,8 +1567,9 @@ class CycleProfileEvents(Base):
         A cycle is a ``pause`` at ``pause_factor`` times the median or more
         (or above ``max_duration``); otherwise ``long`` / ``short`` beyond
         ``n_sigma`` robust sigmas of log(duration) (median and scaled median
-        absolute deviation, floor 1 %), or below ``min_duration``; else
-        ``normal``. Statistics other than the counts leave pauses out.
+        absolute deviation; floor 1 %, and at least one sample period of a
+        polled cycle signal relative to the median), or below
+        ``min_duration``; else ``normal``. Statistics other than the counts leave pauses out.
 
         Returns:
             Static table, one row per variant: ``variant``, ``cycle_count``
@@ -1379,6 +1646,14 @@ class CycleProfileEvents(Base):
         ``importance_ratio`` = |AUC - 0.5| x 2 (0: no separation, 1:
         complete), ``direction`` says whether the group is ``higher`` or
         ``lower``. Each comparison needs at least two cycles on both sides.
+        ``p_value`` is the two-sided Mann-Whitney p-value, ``q_value`` the
+        Benjamini-Hochberg adjusted value over every feature tested in the
+        comparison, and ``is_significant`` is ``q_value < 0.05``.
+
+        Analog means and maxima are taken over the same window in every
+        cycle (from the cycle start for the variant's best demonstrated cycle
+        time, P10), so a longer cycle does not lower its mean just by waiting
+        longer.
 
         Args:
             top_n: Features kept per comparison.
@@ -1387,7 +1662,8 @@ class CycleProfileEvents(Base):
             Static table: ``comparison``, ``rank``, ``feature``,
             ``source_uuid``, ``feature_kind``, ``importance_ratio``,
             ``auc_ratio``, ``direction``, ``group_median``,
-            ``normal_median``, ``group_cycle_count``, ``normal_cycle_count``.
+            ``normal_median``, ``group_cycle_count``, ``normal_cycle_count``,
+            ``p_value``, ``q_value``, ``is_significant``.
 
         Example:
             >>> import ts_shape
@@ -1421,7 +1697,17 @@ class CycleProfileEvents(Base):
             auc = u / (n1 * n0)
             importance = np.abs(auc - 0.5) * 2.0
             constant = sub.min(axis=0) == sub.max(axis=0)
-            keep = usable & ~constant & (importance > 0)
+            tested = usable & ~constant
+            p_values = np.full(sub.shape[1], np.nan)
+            if tested.any():
+                p_values[tested] = sps.mannwhitneyu(
+                    sub[is_group][:, tested],
+                    sub[~is_group][:, tested],
+                    axis=0,
+                    method="asymptotic",
+                ).pvalue
+            q_values = _bh_qvalues(p_values)
+            keep = tested & (importance > 0)
             order = sorted(
                 np.flatnonzero(keep),
                 key=lambda j: (-importance[j], features.columns[j]),
@@ -1442,6 +1728,9 @@ class CycleProfileEvents(Base):
                         "normal_median": float(np.median(sub[~is_group, j])),
                         "group_cycle_count": n1,
                         "normal_cycle_count": n0,
+                        "p_value": float(p_values[j]),
+                        "q_value": float(q_values[j]),
+                        "is_significant": bool(q_values[j] < INFLUENCER_FDR),
                     }
                 )
         if not rows:
@@ -1478,6 +1767,18 @@ class CycleProfileEvents(Base):
         signals = self._signals()
         starts = cycles["start_ns"].to_numpy(dtype=np.int64)
         ends = cycles["end_ns"].to_numpy(dtype=np.int64)
+        # Comparable window for analog features: from the cycle start for the
+        # variant's best demonstrated cycle time (P10 of non-pause cycles).
+        body = cycles[cycles["cycle_class"] != "pause"]
+        p10 = body.groupby("variant")["duration_seconds"].quantile(0.1)
+        window = cycles["variant"].map(p10).fillna(cycles["duration_seconds"])
+        window_end = starts + (
+            np.minimum(
+                window.to_numpy(dtype=float),
+                cycles["duration_seconds"].to_numpy(dtype=float),
+            )
+            * 1e9
+        ).astype(np.int64)
         for uuid, spec in sorted(specs.items()):
             rows = signals[signals[self.uuid_column].astype(str) == uuid]
             if spec.value_column not in rows.columns:
@@ -1489,7 +1790,7 @@ class CycleProfileEvents(Base):
                 ).to_numpy(dtype=float)
                 pos = np.searchsorted(starts, ns, side="right") - 1
                 ok = (pos >= 0) & ~np.isnan(values)
-                ok[ok] &= ns[ok] < ends[pos[ok]]
+                ok[ok] &= ns[ok] < np.minimum(ends, window_end)[pos[ok]]
                 if not ok.any():
                     continue
                 agg = (
