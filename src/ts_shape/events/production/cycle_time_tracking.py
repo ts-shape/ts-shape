@@ -247,11 +247,11 @@ class CycleTimeEvents(Base):
             - max_seconds: Maximum cycle time
             - std_seconds: Standard deviation
             - median_seconds: Median cycle time
-            - p10_seconds: 10th percentile, the best demonstrated cycle time
-              (a target taken from the data, not from master data)
+            - p10_seconds: 10th percentile, the best demonstrated cycle
+                time (a target taken from the data, not from master data)
             - p90_seconds: 90th percentile
-            - mad_seconds: Median absolute deviation from the median (robust
-              spread; unscaled)
+            - mad_seconds: Median absolute deviation from the median
+                (robust spread; unscaled)
 
             Canonical twin columns: ``cycle_count`` (after ``count``); it
             holds the same values as the deprecated column right before it,
@@ -581,13 +581,13 @@ class CycleTimeEvents(Base):
             raise ValueError("stable_band_ratio must not be negative")
         band = stable_band_ratio * float(part_cycles["cycle_time_seconds"].median())
         slope = part_cycles["trend_slope"]
+        # A missing slope (the first cycle) stays missing.
+        labels = pd.Series(None, index=slope.index, dtype=object)
+        labels[slope.notna()] = "stable"
+        labels[slope < -band] = "improving"
+        labels[slope > band] = "degrading"
         part_cycles["trend"] = pd.Categorical(
-            np.select(
-                [slope < -band, slope > band, slope.notna()],
-                ["improving", "degrading", "stable"],
-                default=None,
-            ),
-            categories=["improving", "stable", "degrading"],
+            labels, categories=["improving", "stable", "degrading"]
         )
 
         return part_cycles[["systime", "cycle_time_seconds", "moving_avg", "trend"]]

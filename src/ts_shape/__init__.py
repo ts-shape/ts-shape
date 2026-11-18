@@ -26,11 +26,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ts_shape.catalog import list_detectors as list_detectors
     from ts_shape.context.value_mapping import ValueMapper as ValueMapper
+    from ts_shape.cycle_profile import CycleProfileResult as CycleProfileResult
+    from ts_shape.cycle_profile import profile_cycles as profile_cycles
     from ts_shape.datasets import make_id_signal as make_id_signal
     from ts_shape.datasets import make_object_signals as make_object_signals
     from ts_shape.datasets import make_plc_cycles as make_plc_cycles
-    from ts_shape.cycle_profile import CycleProfileResult as CycleProfileResult
-    from ts_shape.cycle_profile import profile_cycles as profile_cycles
     from ts_shape.datasets import make_timeseries as make_timeseries
     from ts_shape.errors import ColumnNotFoundError as ColumnNotFoundError
     from ts_shape.errors import DataQualityWarning as DataQualityWarning

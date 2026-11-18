@@ -342,8 +342,8 @@ def make_plc_cycles(
     Example:
         >>> import ts_shape
         >>> frame, truth = ts_shape.make_plc_cycles(n_cycles=120, seed=1)
-        >>> sorted(frame["uuid"].unique())[:3]
-        ['plc:article', 'plc:camera_done', 'plc:camera_nok']
+        >>> frame["uuid"].nunique(), "plc:part_counter" in set(frame["uuid"])
+        (9, True)
         >>> truth["kind"].value_counts().sort_index().to_dict()
         {'long': 2, 'normal': 113, 'pause': 1, 'short': 4}
     """
