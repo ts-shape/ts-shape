@@ -29,6 +29,8 @@ if TYPE_CHECKING:
     from ts_shape.datasets import make_id_signal as make_id_signal
     from ts_shape.datasets import make_object_signals as make_object_signals
     from ts_shape.datasets import make_plc_cycles as make_plc_cycles
+    from ts_shape.cycle_profile import CycleProfileResult as CycleProfileResult
+    from ts_shape.cycle_profile import profile_cycles as profile_cycles
     from ts_shape.datasets import make_timeseries as make_timeseries
     from ts_shape.errors import ColumnNotFoundError as ColumnNotFoundError
     from ts_shape.errors import DataQualityWarning as DataQualityWarning
@@ -668,6 +670,8 @@ _LAZY: dict[str, str] = {
     "make_id_signal": "ts_shape.datasets",
     "make_object_signals": "ts_shape.datasets",
     "make_plc_cycles": "ts_shape.datasets",
+    "profile_cycles": "ts_shape.cycle_profile",
+    "CycleProfileResult": "ts_shape.cycle_profile",
     "Pipeline": "ts_shape.pipeline",
     "PipelineResult": "ts_shape.pipeline",
     "iter_chunked": "ts_shape.stream",

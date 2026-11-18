@@ -72,6 +72,8 @@ MIN_SPREAD_SECONDS = 1e-3
 #: clock (heartbeat, sampling toggle): its count per cycle only measures the
 #: cycle duration and is no influencer feature.
 MAX_EVENTS_PER_CYCLE = 2.0
+#: Decimals of the interval CV that count when ranking anchor candidates.
+CV_DECIMALS = 2
 #: Hysteresis of an analog level, as fractions of its P10..P90 range.
 HYSTERESIS_HIGH, HYSTERESIS_LOW = 0.6, 0.4
 
@@ -101,10 +103,12 @@ _WINDOW_COLUMNS = [
     "anchor_event",
     "anchor_uuid",
     "variant_uuid",
+    "time_resolution_seconds",
 ]
 _VIEW_COLUMNS = [
     "variant",
     "position",
+    "milestone",
     "event",
     "source_uuid",
     "presence_ratio",
@@ -302,6 +306,7 @@ class CycleProfileEvents(Base):
         presence_ratio: float = 0.9,
         n_sigma: float = 3.0,
         pause_factor: float = 3.0,
+        time_resolution: str | float | None = None,
         time_column: str = "systime",
         uuid_column: str = "uuid",
         event_uuid: str = "prod:cycle_profile",
@@ -329,6 +334,13 @@ class CycleProfileEvents(Base):
                 ``long`` or ``short``.
             pause_factor: A cycle of at least this many times the variant's
                 median duration is a ``pause`` (DQ-2).
+            time_resolution: How far apart (offset string or seconds) two
+                events must be to be told apart. Polled signals (an OPC UA
+                client reading every 10 s) put events of one poll in random
+                order; standard-view events closer than this become one
+                *milestone* that counts at its earliest event. The default
+                ``None`` uses the median sample period of the view's sampled
+                signals (0 for change-encoded signals).
             time_column: Timestamp column.
             uuid_column: Signal identifier column.
             event_uuid: ``uuid`` of the point and interval outputs.
@@ -356,6 +368,7 @@ class CycleProfileEvents(Base):
         self.presence_ratio = float(presence_ratio)
         self.n_sigma = float(n_sigma)
         self.pause_factor = float(pause_factor)
+        self.time_resolution = time_resolution
         self._cache: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
@@ -516,12 +529,20 @@ class CycleProfileEvents(Base):
             cvs.append(_robust_cv(intervals))
         table["median_interval_seconds"] = medians
         table["interval_cv_factor"] = cvs
-        table = table.sort_values(
-            ["support_count", "is_counter", "interval_cv_factor", "event"],
-            ascending=[False, False, True, True],
-            kind="stable",
-            na_position="last",
-        ).reset_index(drop=True)
+        # Regularity breaks ties at CV_RESOLUTION; finer differences are noise,
+        # so the event that misses fewer cycles (more events) wins next: a
+        # shift counter that skips its reset loses to the part counter.
+        table["_cv"] = table["interval_cv_factor"].round(CV_DECIMALS)
+        table = (
+            table.sort_values(
+                ["support_count", "is_counter", "_cv", "event_count", "event"],
+                ascending=[False, False, True, False, True],
+                kind="stable",
+                na_position="last",
+            )
+            .drop(columns="_cv")
+            .reset_index(drop=True)
+        )
         table.insert(0, "rank", np.arange(1, len(table) + 1))
         eligible = table["median_interval_seconds"] > 0
         if self.anchor_uuid is not None:
@@ -761,6 +782,14 @@ class CycleProfileEvents(Base):
             agg["source_uuid"] = agg["event"].map(source)
             agg["variant"] = str(variant)
             agg["position"] = np.arange(1, len(agg) + 1)
+            resolution = self._resolution(agg["source_uuid"])
+            milestone, first_offset, groups = [], None, 0
+            for offset in agg["median_offset_seconds"].to_numpy(dtype=float):
+                if first_offset is None or offset - first_offset >= resolution:
+                    groups += 1
+                    first_offset = offset
+                milestone.append(groups)
+            agg["milestone"] = milestone
             agg["cycle_count"] = n
             rows.append(agg[_VIEW_COLUMNS])
         views = (
@@ -770,6 +799,23 @@ class CycleProfileEvents(Base):
         )
         self._cache["views"] = views
         return views
+
+    def _resolution(self, sources: pd.Series) -> float:
+        """Seconds within which events cannot be ordered (see __init__)."""
+        given = _seconds(self.time_resolution)
+        if given is not None:
+            resolution = max(given, 0.0)
+        else:
+            _, specs = self._events()
+            periods = []
+            for uuid in sources:
+                spec = specs.get(str(uuid))
+                sampled = spec is not None and spec.encoding == "sampled"
+                period = spec.nominal_period if sampled and spec is not None else None
+                periods.append(period.total_seconds() if period is not None else 0.0)
+            resolution = float(np.median(periods)) if periods else 0.0
+        self._cache["resolution"] = max(resolution, self._cache.get("resolution", 0.0))
+        return resolution
 
     def _segment_table(self) -> pd.DataFrame:
         """Segments of every in-sequence cycle (internal: ns and indices)."""
@@ -801,8 +847,19 @@ class CycleProfileEvents(Base):
                 continue
             order = view["event"].tolist()
             sub = ce[ce["cycle"].isin(members.index) & ce["event"].isin(order)]
-            first = sub.groupby(["cycle", "event"])["ns"].min().unstack("event")
-            first = first.reindex(index=members.index, columns=order)
+            per_event = sub.groupby(["cycle", "event"])["ns"].min().unstack("event")
+            per_event = per_event.reindex(index=members.index, columns=order)
+            # A milestone counts at its earliest event; it is missing when
+            # one of its events is.
+            groups = view.groupby("milestone", sort=True)["event"].agg(list)
+            first = pd.DataFrame(
+                {
+                    events[0]: per_event[events].min(axis=1, skipna=False)
+                    for events in groups
+                },
+                index=members.index,
+            )
+            order = list(first.columns)
             matrix = first.to_numpy(dtype=float)
             bounds = np.column_stack(
                 [
@@ -869,6 +926,7 @@ class CycleProfileEvents(Base):
         )
         rows: list[dict[str, Any]] = []
         base = seg[seg["cycle_class"] != "pause"]
+        resolution = float(self._cache.get("resolution", 0.0))
         for variant, part in base.groupby("variant", sort=True):
             pivot = part.pivot(
                 index="cycle", columns="position", values="duration_seconds"
@@ -907,10 +965,13 @@ class CycleProfileEvents(Base):
                         ),
                         "skewness": skew,
                         "bimodality_coefficient": coefficient,
-                        "is_bimodal": (
-                            bool(coefficient > BIMODALITY_THRESHOLD)
-                            if not np.isnan(coefficient)
-                            else False
+                        # Two values one poll apart are quantization, not
+                        # two modes: a mode needs a spread of more than two
+                        # time-resolution steps.
+                        "is_bimodal": bool(
+                            not np.isnan(coefficient)
+                            and coefficient > BIMODALITY_THRESHOLD
+                            and float(p90 - p10) > 2.0 * resolution
                         ),
                         "median_share_ratio": (
                             float(median) / median_sum if median_sum > 0 else np.nan
@@ -1026,8 +1087,9 @@ class CycleProfileEvents(Base):
             ``cycle_count`` (non-pause), ``pause_count``,
             ``longest_coherent_cycle_count``, ``evaluable``, ``reason``
             (``ok``, ``too_few_cycles: optimize organizationally first`` or
-            ``no_cycle_anchor``), ``anchor_event``, ``anchor_uuid`` and
-            ``variant_uuid``. Without an anchor, one ``all`` row covers the
+            ``no_cycle_anchor``), ``anchor_event``, ``anchor_uuid``,
+            ``variant_uuid`` and ``time_resolution_seconds`` (events closer
+            than this are not ordered; see ``time_resolution``). Without an anchor, one ``all`` row covers the
             data.
 
         Example:
@@ -1066,6 +1128,7 @@ class CycleProfileEvents(Base):
                     "anchor_event": [None if anchor is None else anchor[0]],
                     "anchor_uuid": [None if anchor is None else anchor[1]],
                     "variant_uuid": [variant_uuid],
+                    "time_resolution_seconds": [np.nan],
                 }
             )[_WINDOW_COLUMNS]
         rows = []
@@ -1105,7 +1168,9 @@ class CycleProfileEvents(Base):
                     "variant_uuid": variant_uuid,
                 }
             )
+        self._views()
         out = pd.DataFrame(rows)
+        out["time_resolution_seconds"] = self._cache.get("resolution", 0.0)
         out["start"] = _from_ns(out["start_ns"].to_numpy(), tz)
         out["end"] = _from_ns(out["end_ns"].to_numpy(), tz)
         out["duration_seconds"] = (out["end_ns"] - out["start_ns"]) / 1e9
@@ -1122,8 +1187,10 @@ class CycleProfileEvents(Base):
         ordered by the median phase (0 at the anchor, 1 at the next one).
 
         Returns:
-            Static table: ``variant``, ``position``, ``event``,
-            ``source_uuid``, ``presence_ratio``, ``median_phase_ratio``,
+            Static table: ``variant``, ``position``, ``milestone`` (events
+            within ``time_resolution`` of each other share one; segments run
+            between milestones), ``event``, ``source_uuid``,
+            ``presence_ratio``, ``median_phase_ratio``,
             ``median_offset_seconds``, ``cycle_count``.
 
         Example:
@@ -1197,7 +1264,8 @@ class CycleProfileEvents(Base):
           ``spread_seconds`` (P90 - P10), ``mad_seconds`` (median absolute
           deviation), ``mean_seconds``, ``std_seconds``;
         - ``skewness`` and Sarle's ``bimodality_coefficient``
-          (``is_bimodal`` above 5/9: the segment has two typical durations);
+          (``is_bimodal`` above 5/9 and a spread of more than two
+          time-resolution steps: the segment has two typical durations);
         - ``median_share_ratio``: the segment's share of the summed medians;
         - ``potential_seconds`` = median - P10, the time the segment loses
           against its own best demonstrated performance, and its

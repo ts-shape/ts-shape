@@ -28,6 +28,40 @@ profile.detect_cycle_influencers()  # why long / short cycles happen
 profile.cycle_records()             # one record per cycle, one timestamp
 ```
 
+## From the loaders: two inputs, no mapping
+
+`ts_shape.profile_cycles(timeseries, metadata=None)` takes exactly what the ts-shape loaders return:
+
+- `timeseries`: the raw frame of `AzureBlobParquetLoader` (`load_by_time_range` or `load_files_by_time_range_and_uuids`; `systime` as Unix nanoseconds is fine);
+- `metadata` (optional): the datapoint table of a metadata loader (`MetadataJsonLoader(...).to_df()`), used for **labels only** (node path, else display name, else label).
+
+Signals matching `Worker` are dropped by default (personal data). The result holds every table and a summary of plain numbers; `save()` writes CSV + `summary.json`.
+
+<!-- no-run -->
+```python
+from ts_shape import profile_cycles
+from ts_shape.loader.metadata.metadata_json_loader import MetadataJsonLoader
+from ts_shape.loader.timeseries.azure_blob_loader import AzureBlobParquetLoader
+
+loader = AzureBlobParquetLoader(sas_url=SAS_URL, prefix="<plc folder>/")
+metadata = MetadataJsonLoader.from_file("datapoints.json").to_df()
+raw = loader.load_files_by_time_range_and_uuids(start, end, list(metadata.index))
+result = profile_cycles(raw, metadata)
+result.save("profile/")
+```
+
+Command line (credentials from `--sas-url` / `AZURE_STORAGE_SAS_URL` or `AZURE_STORAGE_CONNECTION_STRING`):
+
+```bash
+python -m ts_shape.cycle_profile --container <name> --prefix <plc folder>/ --start 2026-11-17T00:00Z --end 2026-11-17T23:59:59Z --metadata-json datapoints.json --out profile/
+```
+
+Dashboard (numbers and tables of one result; sources: result folder, Azure, simulated PLC):
+
+```bash
+streamlit run examples/cycle_profiling/dashboard.py
+```
+
 ## Pipeline
 
 | Step | What happens | Method |
@@ -37,11 +71,26 @@ profile.cycle_records()             # one record per cycle, one timestamp
 | 3. Variant | A text or integer-state signal with ≥ 2 values that changes in ≤ 20 % of the cycles; its value at cycle start. The candidate with the highest η² of log(duration) wins if η² ≥ 0.2 (computed on the bulk of the cycles, without pauses and outliers). | `evaluation_window` (`variant_uuid`) |
 | 4. Classes | Per variant on log(duration), median *m* and scaled MAD *s* (floor 1 %): `pause` at ≥ `pause_factor` × median (or above `max_duration`), `long` at z > `n_sigma`, `short` at z < −`n_sigma` (or below `min_duration`), else `normal`. | `cycle_time_statistics`, `cycle_records` |
 | 5. Readiness | Non-pause cycles are stitched; a variant is evaluable with ≥ `min_cycles` (50) of them. | `evaluation_window` |
-| 6. Standard view | Events that occur exactly once in ≥ `presence_ratio` (90 %) of a variant's non-pause cycles, ordered by median phase. | `standard_view` |
+| 6. Standard view | Events that occur exactly once in ≥ `presence_ratio` (90 %) of a variant's non-pause cycles, ordered by median phase. Events closer than the *time resolution* form one milestone (see Polled signals). | `standard_view` |
 | 7. Segments | Anchor → first view event → … → last view event → next anchor, so the segments add up exactly to the cycle. A view event counts at its first occurrence; a missing or out-of-order view event makes a *sequence deviation* (no segments, counted in the register). | `segment_durations` |
 | 8. Register | Per variant × segment: median, P10, P90, spread, MAD, mean, std, skewness, Sarle's bimodality coefficient (`is_bimodal` above 5/9), share of the median cycle, potential = median − P10 with its rank, variance contribution = Cov(segment, cycle) / Var(cycle). | `contribution_register` |
 | 9. Influencers | Per cycle: count of every event, mean and max of every analog signal, state of every boolean at cycle start. `long_vs_normal` and `short_vs_normal` are scored with the Mann-Whitney AUC: importance = \|AUC − 0.5\| × 2. Events that fire more than twice per cycle on average (a heartbeat) only measure the duration and are left out. | `detect_cycle_influencers` |
 | 10. Records | One point per cycle at its end: `start_ns`, `end_ns`, duration, class, variant, deviation from the variant median, the segment that lost the most time. | `cycle_records`, `detect_unusual_cycles` |
+
+## Polled signals
+
+First real run (Desma 2K press 356, one day, 124 signals polled every 13 s): the anchor is found without configuration (injection counter), the derived cycle durations match the press's own reported cycle time to a median of 4 s, the 6 breaks are kept as pauses, and 97 % of the cycle time variance lies in the segment from end of dosing to the next shot.
+
+
+
+Many OPC UA clients poll instead of subscribing (the Desma pilot reads every signal every 13 s). Events of one poll then arrive in random order, and every duration is known only to about one poll. The profile handles this:
+
+- `time_resolution` (default: the median sample period of the standard view's sampled signals, 0 for change-encoded data) is reported as `time_resolution_seconds` in `evaluation_window`.
+- Standard-view events within one resolution form a **milestone** (`standard_view.milestone`) that counts at its earliest event; segments run between milestones, so poll jitter does not turn every cycle into a sequence deviation.
+- `is_bimodal` needs a spread of more than two resolution steps: two values one poll apart are quantization, not two modes.
+- A potential below the resolution is polling noise. For segment work, subscribe to the step and state signals on change.
+
+The anchor ranking breaks ties on the interval CV at two decimals and then prefers the event with more occurrences: a shift counter that resets (and so skips an increment) loses to the part counter.
 
 ## Reading the register
 

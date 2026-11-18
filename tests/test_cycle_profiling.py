@@ -310,8 +310,7 @@ def test_ll1_signal_kinds_are_inferred(profile):
     assert kinds["plc:camera_nok"] == "bool"
 
 
-def test_ll1_results_per_variant(profile, plc):
-    _, truth = plc
+def test_ll1_results_per_variant(profile):
     window = profile.evaluation_window()
     assert window["variant_uuid"].iloc[0] == "plc:article"
     assert set(window["variant"]) == {"all", "A", "B"}
@@ -475,3 +474,76 @@ def test_invalid_parameters_raise(plc):
         CycleProfileEvents(frame, presence_ratio=0.0)
     with pytest.raises(ValueError):
         CycleProfileEvents(frame).detect_cycle_influencers(top_n=0)
+
+
+# ----------------------------------------------------------------------------
+# Polled signals (found on the Desma pilot: an OPC UA client polling every 13 s)
+# ----------------------------------------------------------------------------
+
+
+def _polled(frame: pd.DataFrame, period: str) -> pd.DataFrame:
+    """Every signal read at the same fixed poll, like a polling OPC UA client."""
+    grid = pd.date_range(frame["systime"].min(), frame["systime"].max(), freq=period)
+    parts = []
+    for uuid, rows in frame.groupby("uuid"):
+        rows = rows.sort_values("systime")
+        polled = pd.merge_asof(
+            pd.DataFrame({"systime": grid}), rows.drop(columns="uuid"), on="systime"
+        )
+        parts.append(polled.dropna(subset=["is_delta"]).assign(uuid=uuid))
+    return pd.concat(parts, ignore_index=True)
+
+
+@pytest.fixture(scope="module")
+def polled_profile() -> CycleProfileEvents:
+    frame, _ = ts_shape.make_plc_cycles(
+        n_cycles=150, seed=4, pause_every=0, heartbeat=False, sample_period="1s"
+    )
+    return CycleProfileEvents(_polled(frame, "3s"))
+
+
+def test_polled_signals_get_a_time_resolution(polled_profile):
+    window = polled_profile.evaluation_window()
+    assert window["time_resolution_seconds"].iloc[0] == pytest.approx(3.0)
+    view = polled_profile.standard_view()
+    # Events of one poll share a milestone, so there are fewer milestones
+    # than events and their order does not depend on poll jitter.
+    assert view["milestone"].max() < len(
+        view[view["variant"] == view["variant"].iloc[0]]
+    )
+
+
+def test_polled_signals_keep_most_cycles_in_sequence(polled_profile):
+    rec = polled_profile.cycle_records()
+    assert (~rec["sequence_deviation"]).mean() > 0.8
+    reg = polled_profile.contribution_register()
+    np.testing.assert_allclose(
+        reg.groupby("variant")["variance_contribution_factor"].sum(), 1.0, atol=1e-9
+    )
+
+
+def test_quantized_segments_are_not_called_bimodal(polled_profile):
+    reg = polled_profile.contribution_register()
+    assert not (reg["is_bimodal"] & (reg["spread_seconds"] <= 2 * 3.0)).any()
+
+
+def test_explicit_time_resolution(plc):
+    frame, _ = plc
+    view = CycleProfileEvents(frame, time_resolution="5s").standard_view()
+    assert view["milestone"].max() < len(view) / 2
+
+
+def test_anchor_prefers_the_counter_that_misses_no_cycle(plc):
+    """A shift counter that resets loses increments; the part counter wins."""
+    frame, _ = plc
+    counter = frame[frame["uuid"] == "plc:part_counter"].copy()
+    shift = counter.assign(uuid="plc:shift_counter")
+    values = shift["value_integer"].astype("int64").to_numpy()
+    values = values - values[0]
+    resets = len(values) // 3
+    values[resets:] -= values[resets]  # one reset: that increment is lost
+    shift["value_integer"] = pd.array(values, dtype="Int64")
+    table = CycleProfileEvents(
+        pd.concat([frame, shift], ignore_index=True)
+    ).cycle_anchor_candidates()
+    assert table.loc[table["is_anchor"], "event"].item() == "plc:part_counter+1"
