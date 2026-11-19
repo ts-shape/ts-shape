@@ -104,8 +104,8 @@ class TestCalibrationCurve:
         assert len(result) == 3  # 3 coefficients for quadratic
 
     def test_insufficient_points(self):
-        result = CalibrationValidationEvents.calibration_curve({10.0: [10.0]})
-        assert len(result) == 0
+        with pytest.raises(ValueError, match="at least 2"):
+            CalibrationValidationEvents.calibration_curve({10.0: [10.0]})
 
 
 class TestDetectRecalibrationNeed:

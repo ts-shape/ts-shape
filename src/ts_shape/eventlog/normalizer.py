@@ -141,8 +141,9 @@ def to_event_log(
     rule = taxonomy.get(class_name, method_name)
     if rule is None:
         raise KeyError(
-            f"no taxonomy entry for {detector!r}. "
-            "Add a LabelRule to ts_shape.eventlog.taxonomy.REGISTRY."
+            f"no taxonomy entry for {detector!r}. Add a LabelRule to "
+            "ts_shape.eventlog.taxonomy.REGISTRY (a lambda rule: use "
+            "register_lambda_rule(spec), or LambdaDetector(spec).to_event_log)."
         )
 
     override = adapters.get_override(class_name, method_name)

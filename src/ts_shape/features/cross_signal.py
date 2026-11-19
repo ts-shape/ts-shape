@@ -39,6 +39,37 @@ def _numeric_object(series: pd.Series) -> pd.Series | None:
     return to_numeric_checked(series, what=f"column {series.name!r}")
 
 
+_LONG_VALUES = ("value_double", "value_integer", "value_bool")
+
+
+def _is_long(frame: pd.DataFrame) -> bool:
+    """Whether ``frame`` is long format (``uuid`` and ``value_*`` columns)."""
+    return "uuid" in frame.columns and any(c in frame.columns for c in _LONG_VALUES)
+
+
+def _wide_from_long(frame: pd.DataFrame, time_column: str) -> pd.DataFrame:
+    """One column per uuid, each value held until the signal's next reading."""
+    from ts_shape.signals.infer import most_populated_value_column
+
+    columns: dict[str, pd.Series] = {}
+    for uuid, group in frame.groupby("uuid", sort=True, observed=True):
+        value_column = most_populated_value_column(
+            group[[c for c in _LONG_VALUES if c in group.columns]]
+        )
+        if value_column is None:
+            continue
+        times = pd.to_datetime(group[time_column])
+        values = pd.to_numeric(group[value_column], errors="coerce").astype(float)
+        series = pd.Series(values.to_numpy(), index=pd.DatetimeIndex(times))
+        series = series[~series.index.duplicated(keep="last")].sort_index()
+        columns[str(uuid)] = series
+    if not columns:
+        return pd.DataFrame({time_column: pd.Series(dtype="datetime64[ns]")})
+    wide = pd.concat(columns, axis=1).sort_index().ffill()
+    wide.index.name = time_column
+    return wide.reset_index()
+
+
 class CrossSignalAnalytics:
     """Cross-Signal Analytics for multi-signal timeseries.
 
@@ -73,10 +104,20 @@ class CrossSignalAnalytics:
             time_column: Time column; when present, rows are sorted by it and
                 it becomes the index.
 
+        A long-format frame (``uuid`` plus ``value_*`` columns, as the
+        rest of the library uses) is accepted too: it is turned into one
+        column per uuid, each signal's numeric values taken from its most
+        populated value column and held (forward-filled) until its next
+        reading.
+
         Raises:
             ValueError: If fewer than 2 numeric signal columns are found.
         """
-        df = dataframe.copy()
+        df = (
+            _wide_from_long(dataframe, time_column)
+            if _is_long(dataframe)
+            else dataframe.copy()
+        )
         if time_column in df.columns:
             df[time_column] = as_datetime(df[time_column], where="CrossSignalAnalytics")
             df = df.sort_values(time_column, kind="stable").set_index(time_column)

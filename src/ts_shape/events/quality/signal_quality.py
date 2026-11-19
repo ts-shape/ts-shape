@@ -21,6 +21,7 @@ from ts_shape.utils.deprecation import (
 from ts_shape.utils.frames import window_offset
 from ts_shape.utils.intervals import interval_end_times
 from ts_shape.utils.runs import run_agg, true_runs
+from ts_shape.utils.validate import check_order
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +264,12 @@ class SignalQualityEvents(Base):
             ``duration`` is a Timedelta; ``duration_seconds`` is the same
             span in float seconds.
         """
+        check_order(
+            min_value,
+            max_value,
+            names=("min_value", "max_value"),
+            where="SignalQualityEvents.detect_out_of_range",
+        )
         cols = [
             "start",
             "end",

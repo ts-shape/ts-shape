@@ -13,6 +13,7 @@ from ts_shape.events._output import (
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.runs import total_seconds, true_runs
+from ts_shape.utils.validate import check_non_negative
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,9 @@ class WarmUpCoolDownEvents(Base):
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             start_value, end_value, rise, duration_seconds, avg_rate.
         """
+        check_non_negative(
+            min_rise, name="min_rise", where="WarmUpCoolDownEvents.detect_warmup"
+        )
         cols = [
             "start",
             "end",
@@ -238,6 +242,9 @@ class WarmUpCoolDownEvents(Base):
             DataFrame with columns: start, end, uuid, source_uuid, is_delta,
             start_value, end_value, fall, duration_seconds, avg_rate.
         """
+        check_non_negative(
+            min_fall, name="min_fall", where="WarmUpCoolDownEvents.detect_cooldown"
+        )
         cols = [
             "start",
             "end",

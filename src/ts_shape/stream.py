@@ -60,6 +60,7 @@ Sources
 from __future__ import annotations
 
 import inspect
+import reprlib
 import warnings
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -881,7 +882,7 @@ def _listing(name: str) -> str:
 
 
 def _not_chunkable(target: Any, method: str | None, reason: str) -> NotChunkableError:
-    name = getattr(target, "__name__", repr(target))
+    name = getattr(target, "__name__", None) or reprlib.repr(target)
     label = f"{name}.{method}" if method else name
     listing = _listing(name) if method else "none"
     call = f"{name}(df, ...).{method}(...)" if method else f"{name}(df, ...)"
@@ -1169,6 +1170,14 @@ def _plan(
 ) -> _Plan:
     from ts_shape.eventlog.taxonomy import REGISTRY
 
+    if isinstance(target, (pd.DataFrame, pd.Series)) or (
+        not isinstance(target, type) and not callable(target)
+    ):
+        raise TypeError(
+            "run_chunked(source, target, method, ...): target must be a detector "
+            f"class, got a {type(target).__name__}; are source and target "
+            "swapped?"
+        )
     if method is None or not isinstance(target, type):
         raise _not_chunkable(
             target,

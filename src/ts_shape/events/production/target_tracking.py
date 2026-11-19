@@ -17,6 +17,7 @@ from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+from ts_shape.utils.validate import check_known_names
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
@@ -120,6 +121,13 @@ class TargetEvents(Base):
             - date, shift, actual, target, variance, achievement_pct, status
             - resets (only when ``handle_resets=True``)
         """
+        check_known_names(
+            targets,
+            self.shift_definitions,
+            kind="shift",
+            where="TargetEvents.compare_to_target",
+            error=True,
+        )
         base_columns = [
             "date",
             "shift",

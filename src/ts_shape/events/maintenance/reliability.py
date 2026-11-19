@@ -53,6 +53,7 @@ from ts_shape.utils.deprecation import (
     keyword_only,
     renamed_kwargs,
 )
+from ts_shape.utils.validate import check_non_negative
 
 logger = logging.getLogger(__name__)
 
@@ -437,7 +438,11 @@ class ReliabilityEvents(Base):
         if fit.empty:
             return pd.DataFrame(columns=_CURVE_COLS)
         beta, eta = float(fit["beta"].iloc[0]), float(fit["eta_hours"].iloc[0])
-        t = np.asarray(list(hours), dtype=float)
+        t = np.atleast_1d(np.asarray(hours, dtype=float))
+        where = "ReliabilityEvents.reliability_at"
+        if (t < 0).any() or not np.isfinite(t).all():
+            raise ValueError(f"{where}: hours must be finite and >= 0, got {hours!r}")
+        check_non_negative(age_hours, name="age_hours", where=where)
 
         def surv(x: np.ndarray | float) -> np.ndarray:
             return np.exp(-((np.asarray(x) / eta) ** beta))

@@ -8,6 +8,7 @@ from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import labeled_window_summary
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel, keyword_only
+from ts_shape.utils.validate import check_choice, check_keys, check_non_negative
 
 # Divisors for Type B uncertainty distributions (GUM standard)
 _DIVISORS = {
@@ -15,6 +16,18 @@ _DIVISORS = {
     "triangular": np.sqrt(6),
     "normal": 2.0,  # default coverage factor k=2
     "u-shaped": np.sqrt(2),
+}
+#: Other spellings of the distributions in ``_DIVISORS``.
+_DISTRIBUTION_ALIASES = {
+    "gaussian": "normal",
+    "normal": "normal",
+    "uniform": "rectangular",
+    "rectangular": "rectangular",
+    "triangular": "triangular",
+    "u-shaped": "u-shaped",
+    "u_shaped": "u-shaped",
+    "ushaped": "u-shaped",
+    "arcsine": "u-shaped",
 }
 
 
@@ -141,8 +154,10 @@ class MeasurementUncertaintyEvents(Base):
             sources: List of dicts, each with:
                 - 'source': str (name, e.g. 'calibration', 'resolution')
                 - 'half_width': float (half-width of distribution)
-                - 'distribution': str ('rectangular', 'triangular',
-                  'normal', 'u-shaped')
+                - 'distribution': str ('rectangular' (default; also
+                  'uniform'), 'triangular', 'normal' (also 'gaussian'),
+                  'u-shaped' (also 'arcsine')). Any other name, or an
+                  unknown key, raises ``ValueError``.
 
         Returns:
             DataFrame with columns: source, distribution, half_width,
@@ -154,9 +169,32 @@ class MeasurementUncertaintyEvents(Base):
 
         events: list[dict[str, Any]] = []
         for s in sources:
-            dist = s.get("distribution", "rectangular")
-            divisor = _DIVISORS.get(dist, _DIVISORS["rectangular"])
+            check_keys(
+                s,
+                ("source", "half_width", "distribution"),
+                where="MeasurementUncertaintyEvents.type_b_uncertainty",
+            )
+            for key in ("source", "half_width"):
+                if key not in s:
+                    raise ValueError(
+                        "MeasurementUncertaintyEvents.type_b_uncertainty: each "
+                        f"source needs {key!r}; got {sorted(s)}"
+                    )
+            given = str(s.get("distribution", "rectangular"))
+            dist = _DISTRIBUTION_ALIASES.get(given.strip().lower(), given)
+            check_choice(
+                dist,
+                [*_DIVISORS, *_DISTRIBUTION_ALIASES],
+                name="distribution",
+                where="MeasurementUncertaintyEvents.type_b_uncertainty",
+            )
+            divisor = _DIVISORS[dist]
             half_width = float(s["half_width"])
+            check_non_negative(
+                half_width,
+                name="half_width",
+                where="MeasurementUncertaintyEvents.type_b_uncertainty",
+            )
             u_b = half_width / divisor
 
             events.append(

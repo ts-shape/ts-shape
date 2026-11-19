@@ -194,13 +194,13 @@ class TestConstructorValidation:
                 "value_double": [1.0],
             }
         )
-        with pytest.raises(ValueError, match="env_uuid"):
+        with pytest.raises(TypeError, match="env_uuid"):
             EnvironmentalCompensationEvents(df, "s1")
 
 
 class TestContract:
     def test_env_value_alone_raises(self, temp_correlated_df):
-        with pytest.raises(ValueError, match="env_uuid is required"):
+        with pytest.raises(TypeError, match="env_uuid"):
             EnvironmentalCompensationEvents(
                 temp_correlated_df, "sensor_1", env_value=20.0
             )
