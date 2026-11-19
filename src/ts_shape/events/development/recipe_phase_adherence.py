@@ -24,8 +24,20 @@ from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel
 from ts_shape.utils.intervals import state_intervals
+from ts_shape.utils.validate import check_keys, check_known_names, check_order
 
 logger = logging.getLogger(__name__)
+
+
+#: Criterion keys a phase spec understands.
+_RANGE_CRITERIA = (
+    "duration_seconds",
+    "duration_s",
+    "hold_value",
+    "peak_value",
+    "trough_value",
+)
+_CRITERIA = (*_RANGE_CRITERIA, "ramp_rate_max")
 
 
 class RecipePhaseAdherenceEvents(Base):
@@ -84,6 +96,21 @@ class RecipePhaseAdherenceEvents(Base):
         self.spec = dict(spec)
         legacy = []
         for phase, criteria in self.spec.items():
+            where = f"RecipePhaseAdherenceEvents: spec for phase {phase!r}"
+            if not isinstance(criteria, dict):
+                raise ValueError(
+                    f"{where} must be a dict of criteria, got {criteria!r}"
+                )
+            check_keys(criteria, _CRITERIA, where=where, what="criterion")
+            for key in _RANGE_CRITERIA:
+                bounds = criteria.get(key)
+                if isinstance(bounds, (tuple, list)) and len(bounds) == 2:
+                    check_order(
+                        bounds[0],
+                        bounds[1],
+                        names=("min", "max"),
+                        where=f"{where} {key}",
+                    )
             if "duration_s" in criteria and "duration_seconds" in criteria:
                 raise ValueError(
                     f"Recipe spec for phase {phase!r} gives both 'duration_seconds' "
@@ -199,6 +226,13 @@ class RecipePhaseAdherenceEvents(Base):
         intervals = self._phase_intervals(interval_end=interval_end, data_end=data_end)
         if intervals.empty:
             return pd.DataFrame(columns=cols)
+        check_known_names(
+            self.spec,
+            set(intervals["phase"].astype(str)),
+            kind="spec phase(s)",
+            where="RecipePhaseAdherenceEvents.evaluate",
+            consequence="they never occur in the phase signal and are not checked",
+        )
 
         # Pre-extract the value series sorted by time.
         vals = (

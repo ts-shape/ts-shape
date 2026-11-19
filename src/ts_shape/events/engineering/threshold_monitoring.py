@@ -14,6 +14,7 @@ from ts_shape.events._windows import add_window_bounds, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only, renamed_kwargs
 from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
+from ts_shape.utils.validate import check_choice
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,10 @@ class ThresholdMonitoringEvents(Base):
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, duration (Timedelta), level, peak_value.
         """
+        where = "ThresholdMonitoringEvents.multi_level_threshold"
+        check_choice(direction, ("above", "below"), name="direction", where=where)
+        if not levels:
+            raise ValueError(f"{where}: levels is empty; give {{name: threshold}}")
         cols = ["start", "end", "duration", "level", "peak_value"]
         if self.signal.empty:
             return empty_event_df("interval", cols)

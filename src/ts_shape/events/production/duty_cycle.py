@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -7,11 +8,16 @@ import pandas as pd
 from ts_shape.events._output import empty_event_df, twin_columns
 from ts_shape.events._windows import floor_local, window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
+from ts_shape.utils.coerce import run_bool
 from ts_shape.utils.deprecation import deprecated_method, keyword_only
 from ts_shape.utils.frames import localize_like
 from ts_shape.utils.intervals import state_intervals
-from ts_shape.utils.time_accounting import floor_periods
+from ts_shape.utils.time_accounting import (
+    EXCLUDED,
+    floor_periods,
+    reading_intervals,
+    time_by_period,
+)
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
@@ -20,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 #: State code of a row whose on/off value is missing (unknown time).
 _UNKNOWN = -1
+#: Interval state of time after a sample with a missing value.
+_UNKNOWN_STATE = "unknown"
 
 
 class DutyCycleEvents(Base):
@@ -48,6 +56,8 @@ class DutyCycleEvents(Base):
         time_column: str = "systime",
         interval_end: str = "next_change",
         data_end: pd.Timestamp | None = None,
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
         """Initialize the duty-cycle analyzer.
 
@@ -72,11 +82,21 @@ class DutyCycleEvents(Base):
                 (time-weighted) and :meth:`cycle_count` then also report the
                 windows up to ``data_end``. A naive value or text on tz-aware
                 data is local time of the data's timezone.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic, or
+                ``{"RUN"}``); every other known value is not running.
+                ``None`` (default) uses ``value_range`` or reads the signal
+                as a bool, with a ``DataQualityWarning`` when it is not one.
+            value_range: ``(lower, upper)`` inclusive bounds; a value inside
+                counts as running (either bound may be ``None``). Used when
+                ``run_states`` is ``None``.
         """
         super().__init__(dataframe, time_column=time_column)
         self.signal_uuid = signal_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
+        self.run_states = None if run_states is None else frozenset(run_states)
+        self.value_range = value_range
         self.time_column = time_column
         self.interval_end = interval_end
         self.data_end = data_end
@@ -149,9 +169,18 @@ class DutyCycleEvents(Base):
         """``True`` where the on/off value is present."""
         return values.notna()
 
+    def _on(self, values: pd.Series) -> pd.Series:
+        """The on/off signal as ``bool`` (see :func:`ts_shape.utils.coerce.run_mask`)."""
+        return run_bool(
+            values,
+            run_states=self.run_states,
+            value_range=self.value_range,
+            what=f"DutyCycleEvents: on/off signal {self.signal_uuid!r}",
+        )
+
     def _state_codes(self, values: pd.Series) -> pd.Series:
         """``1`` on, ``0`` off, ``-1`` unknown (missing value), as ``int64``."""
-        codes = bool_or_false(values).astype("int64")
+        codes = self._on(values).astype("int64")
         return codes.where(self._known(values), _UNKNOWN)
 
     def _data_end(self) -> pd.Timestamp | None:
@@ -204,7 +233,11 @@ class DutyCycleEvents(Base):
     @keyword_only(1)
     @twin_columns({"on_time": "on_time_seconds", "off_time": "off_time_seconds"})
     def duty_cycle_by_window(
-        self, window: str = "1h", *, time_weighted: bool = True
+        self,
+        window: str = "1h",
+        *,
+        time_weighted: bool = True,
+        max_gap: Any = "auto",
     ) -> pd.DataFrame:
         """Percentage of time the signal is True per window.
 
@@ -217,6 +250,17 @@ class DutyCycleEvents(Base):
                 in the window. When False, the duty cycle is the mean of the
                 boolean samples in the window, which equals the time share only
                 under uniform sampling (``On@09:00, Off@09:59`` reads 50 %).
+            max_gap: Time-weighted only. A gap between two samples longer
+                than this (``"15min"``, ``Timedelta``) is a logging gap: its
+                time is ``unknown_seconds``, neither on nor off. ``"auto"``
+                (default) uses the signal's inferred ``max_gap`` (five times
+                the sampling period of a sampled signal; no cap for a
+                change-encoded one, whose long gaps are real holds -- pass a
+                value when the export has holes). ``None`` applies no cap.
+
+        Each interval between two samples is split at the window
+        boundaries, so ``on_time + off_time + unknown_seconds`` never
+        exceeds the window's length (time-weighted).
 
         Samples with a missing value are unknown time: in neither ``on_time``
         nor ``off_time`` (time-weighted) or not averaged (sample mean), and
@@ -228,15 +272,17 @@ class DutyCycleEvents(Base):
         Returns:
             DataFrame with columns: start, end (start + window),
             duration_seconds, uuid, source_uuid, on_time, on_time_seconds,
-            off_time, off_time_seconds, duty_cycle_pct. On and off time are in
-            seconds.
+            off_time, off_time_seconds, duty_cycle_pct, unknown_seconds. On
+            and off time are in seconds; ``unknown_seconds`` is the time in
+            the window with a missing value or inside a gap longer than
+            ``max_gap`` (time-weighted; 0 for the sample mean).
 
             Canonical twin columns: ``on_time_seconds`` (after ``on_time``),
             ``off_time_seconds`` (after ``off_time``); each holds the same
             values as the deprecated column right before it, which is removed
             in the next major release.
         """
-        cols = ["start", "on_time", "off_time", "duty_cycle_pct"]
+        cols = ["start", "on_time", "off_time", "duty_cycle_pct", "unknown_seconds"]
         if self.series.empty:
             return self._with_window(pd.DataFrame(columns=cols), window)
 
@@ -244,33 +290,37 @@ class DutyCycleEvents(Base):
         s[self.time_column] = pd.to_datetime(s[self.time_column])
         s = s.sort_values(self.time_column)
         known = self._known(s[self.value_column])
-        s["state"] = bool_or_false(s[self.value_column]).astype(float).where(known)
+        s["state"] = self._on(s[self.value_column]).astype(float).where(known)
 
         events: list[dict[str, Any]] = []
         if time_weighted:
             s = self._hold_to_data_end(s[[self.time_column, "state"]], window)
-            s["dur"] = (
-                s[self.time_column].shift(-1) - s[self.time_column]
-            ).dt.total_seconds()
-            s = s[s["dur"].notna()]
-            if s.empty:
+            if len(s) < 2:
                 return self._with_window(pd.DataFrame(columns=cols), window)
-            s["win"] = floor_local(s[self.time_column], window)
-            s["on_dur"] = s["state"].fillna(0.0) * s["dur"]
-            s["known_dur"] = s["dur"].where(s["state"].notna(), 0.0)
-            grouped = s.groupby("win").agg(
-                on=("on_dur", "sum"), total=("known_dur", "sum")
+            labels = s["state"].map({1.0: "on", 0.0: "off"}).fillna(_UNKNOWN_STATE)
+            intervals = reading_intervals(
+                s[self.time_column], labels, max_gap=self._max_gap(max_gap)
             )
-            for ts, row in grouped.iterrows():
-                total = row["total"]
-                on_time = row["on"]
+            times = s[self.time_column]
+            periods = floor_periods(times.iloc[0], times.iloc[-1], window)
+            table = time_by_period(
+                intervals,
+                periods,
+                keys=["period"],
+                states=["on", "off", _UNKNOWN_STATE, EXCLUDED],
+            )
+            for start, on_time, off_time, unknown, gap in table[
+                ["start", "on", "off", _UNKNOWN_STATE, EXCLUDED]
+            ].itertuples(index=False, name=None):
+                total = on_time + off_time
                 pct = (on_time / total) if total > 0 else float("nan")
                 events.append(
                     {
-                        "start": ts,
-                        "on_time": on_time,
-                        "off_time": total - on_time,
+                        "start": start,
+                        "on_time": float(on_time),
+                        "off_time": float(off_time),
                         "duty_cycle_pct": pct * 100,
+                        "unknown_seconds": float(unknown + gap),
                     }
                 )
         else:
@@ -289,10 +339,21 @@ class DutyCycleEvents(Base):
                         "on_time": on_time,
                         "off_time": off_time,
                         "duty_cycle_pct": pct * 100,
+                        "unknown_seconds": 0.0,
                     }
                 )
 
         return self._with_window(pd.DataFrame(events, columns=cols), window)
+
+    def _max_gap(self, max_gap: Any) -> Any:
+        """``max_gap``, with ``"auto"`` resolved from the signal's inferred spec."""
+        if not (isinstance(max_gap, str) and max_gap == "auto"):
+            return max_gap
+        if len(self.series) < 3:
+            return None
+        from ts_shape.signals.infer import infer_spec
+
+        return infer_spec(self.series, self.signal_uuid, self.time_column).max_gap
 
     def _hold_to_data_end(self, s: pd.DataFrame, window: str) -> pd.DataFrame:
         """``s`` with the last state held until ``data_end``.
@@ -345,7 +406,7 @@ class DutyCycleEvents(Base):
 
         s = self.series[[self.time_column, self.value_column]].copy()
         s = s[self._known(s[self.value_column]).to_numpy()]
-        s["state"] = bool_or_false(s[self.value_column])
+        s["state"] = self._on(s[self.value_column])
         s["transition"] = s["state"] != s["state"].shift()
         s["to_on"] = s["transition"] & s["state"]
         s["to_off"] = s["transition"] & ~s["state"]

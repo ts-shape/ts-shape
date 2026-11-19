@@ -1,10 +1,16 @@
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._windows import labeled_window_summary, window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_method, keyword_only
+from ts_shape.utils.deprecation import (
+    caller_stacklevel,
+    deprecated_method,
+    keyword_only,
+)
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
@@ -37,7 +43,7 @@ class EnvironmentalCompensationEvents(Base):
         dataframe: pd.DataFrame,
         signal_uuid: str,
         *,
-        env_uuid: str | None = None,
+        env_uuid: str,
         env_value: float | None = None,
         value_column: str = "value_double",
         event_uuid: str = "quality:env_compensation",
@@ -142,6 +148,8 @@ class EnvironmentalCompensationEvents(Base):
             group = group.dropna()
             if len(group) < 5:
                 continue
+            if group["env"].nunique() < 2 or group["signal"].nunique() < 2:
+                continue  # a constant input has no correlation
 
             r, p = stats.pearsonr(group["signal"], group["env"])
 
@@ -195,9 +203,13 @@ class EnvironmentalCompensationEvents(Base):
             return labeled_window_summary([], cols, window)
 
         events: list[dict[str, Any]] = []
+        constant: list[Any] = []
         for ts, group in aligned.resample(window):
             group = group.dropna()
             if len(group) < 5:
+                continue
+            if group["env"].nunique() < 2:
+                constant.append(ts)  # no variation: sensitivity undefined
                 continue
 
             slope, intercept, r_value, _, _ = stats.linregress(
@@ -212,6 +224,15 @@ class EnvironmentalCompensationEvents(Base):
                     "r_squared": float(r_value**2),
                     "unit_change_per_degree": float(slope),
                 }
+            )
+        if constant:
+            warnings.warn(
+                f"EnvironmentalCompensationEvents.sensitivity: the environment "
+                f"signal {self.env_uuid!r} is constant in {len(constant)} window(s) "
+                f"(first {constant[0]}); its sensitivity is undefined there and "
+                "they are left out.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
             )
 
         return labeled_window_summary(events, cols, window)
@@ -258,6 +279,13 @@ class EnvironmentalCompensationEvents(Base):
         if coefficient is None:
             if len(aligned) < 5:
                 return pd.DataFrame(columns=cols)
+            if aligned["env"].nunique() < 2:
+                raise ValueError(
+                    "EnvironmentalCompensationEvents.compensated_signal: the "
+                    f"environment signal {self.env_uuid!r} is constant, so no "
+                    "coefficient can be estimated from the data; pass "
+                    "coefficient=..."
+                )
             slope, _, _, _, _ = stats.linregress(aligned["env"], aligned["signal"])
             coefficient = float(slope)
 

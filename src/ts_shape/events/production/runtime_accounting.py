@@ -17,6 +17,7 @@ counts): here the focus is *absolute* run time and an hour-meter reading.
 
 import logging
 import warnings
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
@@ -24,6 +25,7 @@ import pandas as pd
 from ts_shape.events._output import empty_event_df, finalize_summary_df
 from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
+from ts_shape.utils.coerce import run_bool
 from ts_shape.utils.deprecation import (
     REMOVAL,
     caller_stacklevel,
@@ -63,6 +65,8 @@ class RuntimeAccountingEvents(Base):
         event_uuid: str = "prod:runtime",
         value_column: str = "value_bool",
         time_column: str = "systime",
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
         """Initialize the runtime-accounting analyzer.
 
@@ -72,11 +76,21 @@ class RuntimeAccountingEvents(Base):
             event_uuid: UUID to tag derived events with.
             value_column: Column holding the boolean run state.
             time_column: Name of the timestamp column.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic, or
+                ``{"RUN"}``); every other known value is not running.
+                ``None`` (default) uses ``value_range`` or reads the signal
+                as a bool, with a ``DataQualityWarning`` when it is not one.
+            value_range: ``(lower, upper)`` inclusive bounds; a value inside
+                counts as running (either bound may be ``None``). Used when
+                ``run_states`` is ``None``.
         """
         super().__init__(dataframe, time_column=time_column)
         self.run_state_uuid = run_state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
+        self.run_states = None if run_states is None else frozenset(run_states)
+        self.value_range = value_range
         self.time_column = time_column
         self._validate_uuid(self.dataframe, run_state_uuid)
 
@@ -114,7 +128,12 @@ class RuntimeAccountingEvents(Base):
         if sig.empty:
             return pd.DataFrame(columns=cols)
         sig[self.time_column] = pd.to_datetime(sig[self.time_column])
-        sig["state"] = sig[self.value_column].fillna(False).astype(bool)
+        sig["state"] = run_bool(
+            sig[self.value_column],
+            run_states=self.run_states,
+            value_range=self.value_range,
+            what=f"RuntimeAccountingEvents: run signal {self.run_state_uuid!r}",
+        )
         sig["dur"] = (
             sig[self.time_column].shift(-1) - sig[self.time_column]
         ).dt.total_seconds()
@@ -220,7 +239,7 @@ class RuntimeAccountingEvents(Base):
             "run_seconds": run_seconds,
             "run_hours": run_seconds / 3600.0,
             "idle_seconds": idle_seconds,
-            "start_count": int(len(runs)),
+            "start_count": len(runs),
             "longest_run_seconds": (
                 float(runs["duration_seconds"].max()) if not runs.empty else 0.0
             ),

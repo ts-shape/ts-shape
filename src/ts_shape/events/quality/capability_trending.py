@@ -16,6 +16,7 @@ from ts_shape.events.quality.statistical_process_control import (
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 from ts_shape.utils.frames import window_offset
+from ts_shape.utils.validate import check_order
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +83,14 @@ class CapabilityTrendingEvents(Base):
             dataframe: Long-format timeseries frame (one row per sample, ``uuid``
                 identifies the signal).
             signal_uuid: UUID of the signal to analyze.
-            upper_spec: Fixed upper specification limit. Give this or
-                ``upper_spec_uuid``.
-            lower_spec: Fixed lower specification limit. Give this or
-                ``lower_spec_uuid``.
-            upper_spec_uuid: UUID of a signal holding the upper limit.
-            lower_spec_uuid: UUID of a signal holding the lower limit.
+            upper_spec: Fixed upper specification limit. Required unless
+                ``upper_spec_uuid`` is given.
+            lower_spec: Fixed lower specification limit. Required unless
+                ``lower_spec_uuid`` is given. Must be below ``upper_spec``.
+            upper_spec_uuid: UUID of a signal holding the upper limit
+                (required unless ``upper_spec`` is given).
+            lower_spec_uuid: UUID of a signal holding the lower limit
+                (required unless ``lower_spec`` is given).
             value_column: Column holding the signal values.
             event_uuid: UUID stamped on emitted events.
             time_column: Timestamp column.
@@ -124,6 +127,13 @@ class CapabilityTrendingEvents(Base):
             raise ValueError(
                 "Either lower_spec (float) or lower_spec_uuid must be provided"
             )
+        check_order(
+            self.lower_spec_fixed,
+            self.upper_spec_fixed,
+            names=("lower_spec", "upper_spec"),
+            where="CapabilityTrendingEvents",
+            strict=True,
+        )
 
         # Extract signal data
         self.signal = (

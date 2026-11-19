@@ -239,11 +239,25 @@ def test_asset_health_partial_misconfiguration_warns_once():
 
 
 def test_asset_health_all_misconfigured_warns_once_per_signal():
-    """Both signals in value_integer: an empty index, one warning each."""
+    """Both signals in value_integer: the default column follows the data.
+
+    With the default ``value_column`` both signals are read from
+    value_integer (one warning naming the argument); with an explicit
+    value_double the index is empty and each signal warns once.
+    """
     df = _vib_temp()
     df["value_integer"] = df["value_integer"].fillna(df["value_double"])
     df["value_double"] = np.nan
-    det = AssetHealthIndexEvents(df, "press", {"vib": "bearing", "temp": "thermal"})
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        det = AssetHealthIndexEvents(df, "press", {"vib": "bearing", "temp": "thermal"})
+        out = det.health_index(window="10min", baseline_window="30min")
+    assert not out.empty
+    assert any("which is used" in m for m in _data_quality(rec))
+
+    det = AssetHealthIndexEvents(
+        df, "press", {"vib": "bearing", "temp": "thermal"}, value_column="value_double"
+    )
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
         out = det.health_index(window="10min", baseline_window="30min")

@@ -15,7 +15,8 @@ at registration time, ``to_event_log`` finds it without any new code path.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import contextlib
+from collections.abc import Iterator, Mapping
 
 import pandas as pd
 
@@ -25,6 +26,42 @@ from ..model import EventLog
 from ..normalizer import to_event_log
 from .evaluator import evaluate
 from .spec import RuleSpec
+
+
+@contextlib.contextmanager
+def _label_rule(spec: RuleSpec) -> Iterator[None]:
+    """Make ``spec``'s label rule known to the taxonomy for one call.
+
+    A registered rule is used as it is; otherwise a :class:`LabelRule` built
+    from ``spec`` is added and removed again afterwards.
+    """
+    from ..archetypes import ARCHETYPE_BY_METHOD
+    from ..taxonomy import REGISTRY, LabelRule
+
+    key = (spec.class_name, spec.method_name)
+    if key in REGISTRY:
+        yield
+        return
+    REGISTRY[key] = LabelRule(
+        template=spec.template,
+        pack=spec.pack,
+        shape=spec.shape,
+        produces_objects=spec.produces_objects,
+        severity_field=spec.severity_field,
+        value_field=spec.value_field,
+        standard_attrs=dict(spec.standard_attrs),
+    )
+    had_archetype = key in ARCHETYPE_BY_METHOD
+    previous = ARCHETYPE_BY_METHOD.get(key)
+    ARCHETYPE_BY_METHOD[key] = spec.archetype
+    try:
+        yield
+    finally:
+        REGISTRY.pop(key, None)
+        if had_archetype:
+            ARCHETYPE_BY_METHOD[key] = str(previous)
+        else:
+            ARCHETYPE_BY_METHOD.pop(key, None)
 
 
 class LambdaDetector:
@@ -71,16 +108,21 @@ class LambdaDetector:
             qualifiers: Optional mapping of object type to the relation
                 qualifier written for that type. None leaves qualifiers empty.
 
+        A rule that is not registered (built directly from a :class:`RuleSpec`
+        rather than with :func:`register_lambda_rule`) is labelled from its
+        own spec for this call; the global taxonomy is left as it is.
+
         Returns:
             The canonical :class:`~ts_shape.eventlog.model.EventLog`.
         """
         frame = self.evaluate(dataframe)
-        return to_event_log(
-            frame,
-            detector=self.detector_name,
-            objects=objects,
-            qualifiers=qualifiers,
-        )
+        with _label_rule(self.spec):
+            return to_event_log(
+                frame,
+                detector=self.detector_name,
+                objects=objects,
+                qualifiers=qualifiers,
+            )
 
     def __repr__(self) -> str:
         return f"LambdaDetector({self.detector_name!r}, shape={self.spec.shape!r})"

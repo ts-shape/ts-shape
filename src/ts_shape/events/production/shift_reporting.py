@@ -17,6 +17,7 @@ from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import deprecated_class, keyword_only
 from ts_shape.utils.shifts import assign_shift, production_dates
+from ts_shape.utils.validate import check_known_names
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
@@ -367,6 +368,13 @@ class ShiftReportEvents(Base):
             0  shift_1     150     150         0            100.0
             1  shift_2     160     200       -40             80.0
         """
+        check_known_names(
+            targets,
+            self.shift_definitions,
+            kind="shift",
+            where="ShiftReportEvents.shift_targets",
+            error=True,
+        )
         shift_prod = self.shift_production(
             counter_uuid, value_column_counter=value_column_counter, date=date
         )

@@ -23,6 +23,7 @@ from ts_shape.events._windows import add_day_window, data_tz, window_bounds
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.normalize import id_text
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
@@ -110,19 +111,18 @@ class PartProductionEvents(Base):
         counter_subset = counter_data[
             [self.time_column, value_column_counter, "uuid"]
         ].copy()
-        part_subset = part_data[[self.time_column, value_column_part]].copy()
+        # Named before the merge: the part and counter may share a column
+        # (a numeric part number in value_integer next to the counter).
+        part_subset = pd.DataFrame(
+            {
+                self.time_column: part_data[self.time_column].to_numpy(),
+                "part_number": id_text(part_data[value_column_part]).to_numpy(),
+            }
+        )
 
         merged = pd.merge_asof(
             counter_subset, part_subset, on=self.time_column, direction="backward"
         )
-
-        # Rename part column
-        if value_column_part in merged.columns:
-            merged = merged.rename(columns={value_column_part: "part_number"})
-        else:
-            # Handle case where merge added suffix
-            merged = merged.rename(columns={f"{value_column_part}_y": "part_number"})
-
         merged = merged.dropna(subset=["part_number"])
         return merged
 

@@ -47,6 +47,14 @@ SigmaMethod = Literal["moving_range", "std"]
 _SIGMA_METHODS = ("moving_range", "std")
 
 
+#: A moving-range sigma below this share of the reference standard deviation
+#: is reported as collapsed (held, repeated values).
+SIGMA_COLLAPSE_RATIO = 0.1
+#: A share of points beyond 3 sigma above which the limits are reported as
+#: not describing the process (0.27 % in control).
+BEYOND_3SIGMA_SHARE_WARN = 0.25
+
+
 def _check_sigma_method(sigma_method: str) -> None:
     if sigma_method not in _SIGMA_METHODS:
         raise ValueError(
@@ -222,6 +230,22 @@ class StatisticalProcessControlEvents(Base):
                 DataQualityWarning,
                 stacklevel=caller_stacklevel(),
             )
+        elif self.sigma_method == "moving_range":
+            spread = float(df.std(ddof=1)) if len(df.dropna()) > 1 else float("nan")
+            if spread > 0 and sigma < SIGMA_COLLAPSE_RATIO * spread:
+                # Held (repeated) values make most moving ranges 0: MR-bar
+                # collapses while the reference still varies.
+                warnings.warn(
+                    f"Control limits for uuid {self.tolerance_uuid!r}: the "
+                    f"moving-range sigma ({sigma:.4g}) is below "
+                    f"{SIGMA_COLLAPSE_RATIO:g} x the reference standard "
+                    f"deviation ({spread:.4g}), typical of a sensor that repeats "
+                    "held values; nearly every point will violate. Use "
+                    "sigma_method='std' or a reference without repeated "
+                    "values.",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
+                )
 
         control_limits = {
             "mean": mean,
@@ -720,6 +744,18 @@ class StatisticalProcessControlEvents(Base):
                         "severity": rule_severity[rule],
                     }
                 )
+
+        beyond = int(self._rule_mask("rule_1", values, limits).sum())
+        if len(df) >= 20 and beyond > BEYOND_3SIGMA_SHARE_WARN * len(df):
+            # In control, 0.27 % of the points lie beyond 3 sigma.
+            warnings.warn(
+                f"StatisticalProcessControlEvents: {beyond} of {len(df)} points "
+                f"of {self.actual_uuid!r} lie beyond 3 sigma; the control limits "
+                "do not describe this process (check the reference period, its "
+                "sigma and sigma_method).",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
 
         # Create violations DataFrame
         if violations:

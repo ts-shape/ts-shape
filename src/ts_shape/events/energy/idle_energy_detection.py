@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Collection
 from typing import Any
 
 import numpy as np
@@ -6,7 +7,7 @@ import pandas as pd
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
+from ts_shape.utils.coerce import run_bool, run_mask
 from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.shifts import assign_shift
 from ts_shape.utils.time_weighted import time_weighted_resample
@@ -81,6 +82,8 @@ class IdleEnergyDetectionEvents(Base):
         window: str = "1h",
         idle_threshold: float = 0.1,
         time_weighted: bool = True,
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> pd.DataFrame:
         """Aggregate energy consumed during idle periods per time window.
 
@@ -103,6 +106,15 @@ class IdleEnergyDetectionEvents(Base):
                 energy window. ``False`` averages state *samples* and keeps only
                 windows that contain a state row; that is only right for a
                 densely, uniformly sampled state signal.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic); every other
+                known value is not running. ``None`` (default) uses
+                ``value_range`` or reads the signal as a bool, with a
+                ``DataQualityWarning`` when it is not one (see
+                :func:`ts_shape.utils.coerce.run_mask`).
+            value_range: ``(lower, upper)`` inclusive bounds; a run-signal
+                value inside counts as running. Used when ``run_states`` is
+                ``None``.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,
@@ -135,7 +147,12 @@ class IdleEnergyDetectionEvents(Base):
         if time_weighted:
             state_agg = (
                 time_weighted_resample(
-                    state[value_column_state].astype("boolean").astype(float),
+                    run_mask(
+                        state[value_column_state],
+                        run_states=run_states,
+                        value_range=value_range,
+                        what=f"IdleEnergyDetectionEvents: run signal {run_state_uuid!r}",
+                    ).astype(float),
                     window,
                     data_end=energy.index.max(),
                 )
@@ -145,7 +162,12 @@ class IdleEnergyDetectionEvents(Base):
             out = energy_agg.join(state_agg, how="left").reset_index()
         else:
             state_agg = (
-                bool_or_false(state[value_column_state])
+                run_bool(
+                    state[value_column_state],
+                    run_states=run_states,
+                    value_range=value_range,
+                    warn=False,
+                )
                 .astype(float)
                 .resample(window)
                 .mean()
@@ -181,6 +203,8 @@ class IdleEnergyDetectionEvents(Base):
         value_column_state: str = "value_bool",
         shift_definitions: dict[str, tuple[str, str]] | None = None,
         idle_threshold: float | None = None,
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> pd.DataFrame:
         """Aggregate idle energy waste per shift across all dates.
 
@@ -200,6 +224,15 @@ class IdleEnergyDetectionEvents(Base):
                 fully idle. Default None: no threshold, the idle fraction is
                 always ``1 - running ratio``; 0.1 matches
                 :meth:`idle_energy_by_window`.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic); every other
+                known value is not running. ``None`` (default) uses
+                ``value_range`` or reads the signal as a bool, with a
+                ``DataQualityWarning`` when it is not one (see
+                :func:`ts_shape.utils.coerce.run_mask`).
+            value_range: ``(lower, upper)`` inclusive bounds; a run-signal
+                value inside counts as running. Used when ``run_states`` is
+                ``None``.
 
         Returns:
             DataFrame: shift, total_energy, idle_energy, waste_fraction
@@ -218,7 +251,12 @@ class IdleEnergyDetectionEvents(Base):
             energy.groupby("_shift")[value_column_energy].sum().rename("total_energy")
         )
         running_by_shift = (
-            bool_or_false(state[value_column_state])
+            run_bool(
+                state[value_column_state],
+                run_states=run_states,
+                value_range=value_range,
+                what=f"IdleEnergyDetectionEvents: run signal {run_state_uuid!r}",
+            )
             .astype(float)
             .groupby(state["_shift"])
             .mean()
@@ -254,6 +292,8 @@ class IdleEnergyDetectionEvents(Base):
         window: str = "1D",
         trend_window: int = 7,
         idle_threshold: float = 0.1,
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> pd.DataFrame:
         """Rolling trend of idle energy waste over time.
 
@@ -266,6 +306,15 @@ class IdleEnergyDetectionEvents(Base):
             trend_window: Number of windows for rolling average.
             idle_threshold: Running ratio (0-1) below which a window counts
                 as fully idle (see :meth:`idle_energy_by_window`).
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic); every other
+                known value is not running. ``None`` (default) uses
+                ``value_range`` or reads the signal as a bool, with a
+                ``DataQualityWarning`` when it is not one (see
+                :func:`ts_shape.utils.coerce.run_mask`).
+            value_range: ``(lower, upper)`` inclusive bounds; a run-signal
+                value inside counts as running. Used when ``run_states`` is
+                ``None``.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,
@@ -276,6 +325,8 @@ class IdleEnergyDetectionEvents(Base):
             run_state_uuid,
             value_column_energy=value_column_energy,
             value_column_state=value_column_state,
+            run_states=run_states,
+            value_range=value_range,
             window=window,
             idle_threshold=idle_threshold,
         )

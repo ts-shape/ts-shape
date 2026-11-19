@@ -19,9 +19,16 @@ its signal arguments are checked the same way, whichever pack it is in:
   ``value_integer``) emits a :class:`~ts_shape.errors.DataQualityWarning`
   naming the column to pass (:func:`warn_if_values_elsewhere`). It is checked
   after the constructor on the signal rows the detector already selected,
-  and after a method call that returned an empty frame.
+  and after a method call that returned an empty frame;
+* a value-column argument the caller left at its default, whose signal has
+  no values in that column while exactly one other ``value_*`` column holds
+  them, is replaced by that column before the call
+  (:func:`resolve_value_columns`), with a
+  :class:`~ts_shape.errors.DataQualityWarning` naming the argument to pass.
+  A ``specs=`` argument (:class:`~ts_shape.signals.spec.SignalSpecs`) is
+  followed first. Columns the caller passed are never changed.
 
-The checks never change a result.
+Apart from the value-column resolution, the checks never change a result.
 """
 
 from __future__ import annotations
@@ -38,6 +45,9 @@ import pandas as pd
 from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
 from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.normalize import unique_text
+
+#: Arguments whose mapping keys are signal uuids.
+_SIGNAL_MAPPINGS = {"emission_factors"}
 
 #: Arguments that name the output, not an input signal.
 _NOT_SIGNALS = {"event_uuid", "uuid_column"}
@@ -72,6 +82,9 @@ def _mark_checked(wrapper: Callable[..., Any]) -> None:
 
 def _signal_values(name: str, value: Any) -> list[str]:
     """Signal uuids an argument names (``*_uuid(s)``; ``signals=`` mapping keys)."""
+    if name in _SIGNAL_MAPPINGS and isinstance(value, Mapping):
+        # ``emission_factors={uuid: factor}`` (CarbonIntensityEvents).
+        return [str(k) for k in value]
     if name == "signals" and isinstance(value, Mapping):
         # ``signals={uuid: spec}`` (AssetHealthIndexEvents,
         # StartupDetectionEvents.detect_startup_multi_signal).
@@ -493,6 +506,236 @@ def _with_severity_level(obj: Any, method: str, result: Any) -> Any:
     return add_severity_level(result, overrides)
 
 
+# ---------------------------------------------------------------------------
+# Value columns left at their default: follow the data
+# ---------------------------------------------------------------------------
+
+# ``(frame ref, uuid column, length, presence)``: per uuid, which value
+# columns hold at least one value (one pass over the frame, kept per frame).
+_PRESENCE = "_ts_shape_value_presence"
+
+
+def _value_arguments(
+    named: Mapping[str, Any], defaults: Mapping[str, Any]
+) -> dict[str, list[str]]:
+    """``{value-column argument: [uuids]}`` for the arguments left at default.
+
+    Pairs arguments the way :func:`_value_pairs` does: ``value_column_<role>``
+    goes with the uuid arguments whose name contains ``<role>`` (the longest
+    role wins), plain ``value_column`` with every other uuid argument.
+    """
+    columns = {
+        n: v
+        for n, v in _value_columns_of(named).items()
+        if n in defaults and defaults[n] == v
+    }
+    if not columns:
+        return {}
+    every = _value_columns_of(named)
+    roles = [n[len("value_column_") :] for n in every if n != "value_column"]
+    found: dict[str, list[str]] = {}
+    for name, value in named.items():
+        uuids = _uuid_arguments(name, value) if isinstance(name, str) else []
+        if not uuids:
+            continue
+        matching = [r for r in roles if r and r in name]
+        argument = (
+            f"value_column_{max(matching, key=len)}" if matching else "value_column"
+        )
+        if argument in columns:
+            found.setdefault(argument, []).extend(uuids)
+    return found
+
+
+def _presence(obj: Any, frame: pd.DataFrame, column: str) -> pd.DataFrame | None:
+    """Per uuid, whether each ``value_*`` column holds a value (cached per frame)."""
+    values = [c for c in VALUE_COLUMNS if c in frame.columns]
+    if not values or column not in frame.columns or frame.empty:
+        return None
+    cached = getattr(obj, _PRESENCE, None)
+    if cached is not None:
+        ref, cached_column, length, table = cached
+        if ref() is frame and cached_column == column and length == len(frame):
+            return table
+    keys = frame[column]
+    if isinstance(keys.dtype, pd.CategoricalDtype):
+        keys = keys.astype(object)
+    table = frame[values].notna().groupby(keys.astype(str).to_numpy()).any()
+    try:
+        object.__setattr__(
+            obj, _PRESENCE, (weakref.ref(frame), column, len(frame), table)
+        )
+    except (AttributeError, TypeError):
+        pass
+    return table
+
+
+def _spec_column(specs: Any, uuid: str) -> str | None:
+    """``specs[uuid].value_column`` when ``specs`` is a SignalSpecs that has it."""
+    try:
+        spec = specs[uuid]
+    except (KeyError, TypeError, IndexError):
+        return None
+    column = getattr(spec, "value_column", None)
+    return column if column in VALUE_COLUMNS else None
+
+
+def _best_column(
+    presence: pd.DataFrame, uuid: str, frame: pd.DataFrame, column: str
+) -> str | None:
+    """The most populated value column of ``uuid`` (ties: VALUE_COLUMNS order)."""
+    if uuid not in presence.index:
+        return None
+    held = [str(c) for c in presence.columns if bool(presence.at[uuid, c])]
+    if len(held) == 1:
+        return held[0]
+    if not held:
+        return None
+    from ts_shape.signals.infer import most_populated_value_column
+
+    rows = frame.loc[(frame[column].astype(str) == uuid).to_numpy(), held]
+    return most_populated_value_column(rows)
+
+
+def resolve_value_columns(
+    obj: Any,
+    fn: Callable[..., Any],
+    args: tuple,
+    kwargs: dict,
+    frame: Any,
+    uuid_column: str = "uuid",
+) -> dict:
+    """``kwargs`` with value-column defaults replaced where the data says so.
+
+    For each ``value_column`` / ``value_column_<role>`` argument the caller
+    did not pass, the signals it is read for (the uuid arguments it pairs
+    with, see :func:`_value_pairs`) are looked up in ``frame``. When none of
+    them has a value in the default column and all of them hold their
+    values in the same other ``value_*`` column, that column is passed
+    instead and a :class:`~ts_shape.errors.DataQualityWarning` says so. A
+    ``specs=`` argument (``SignalSpecs``) decides first: its
+    ``value_column`` is used when it differs from the default. A detector
+    that reads a boolean run signal in place of an empty ``value_string``
+    by itself lists those arguments in ``_bool_state_fallback``; they are
+    left as they are.
+
+    Args:
+        obj: The detector.
+        fn: The wrapped method (or constructor).
+        args: Its positional arguments (without ``obj``).
+        kwargs: Its keyword arguments.
+        frame: The frame the signals are looked up in.
+        uuid_column: The frame's uuid column.
+
+    Returns:
+        The keyword arguments to call ``fn`` with (``kwargs`` itself when
+        nothing changes).
+    """
+    if not isinstance(frame, pd.DataFrame) or frame.empty:
+        return kwargs
+    try:
+        signature = inspect.signature(fn)
+        given = signature.bind_partial(obj, *args, **kwargs).arguments
+    except (TypeError, ValueError):
+        return kwargs
+    defaults = {
+        n: p.default
+        for n, p in signature.parameters.items()
+        if n not in given and p.default is not inspect.Parameter.empty
+    }
+    named = {**defaults, **given}
+    wanted = _value_arguments(named, defaults)
+    if not wanted:
+        return kwargs
+    specs = named.get("specs")
+    presence: pd.DataFrame | None = None
+    changed = dict(kwargs)
+    for argument, uuids in wanted.items():
+        default = defaults[argument]
+        targets: set[str] = set()
+        for uuid in dict.fromkeys(uuids):
+            target = _spec_column(specs, uuid) if specs is not None else None
+            if target is None:
+                if presence is None:
+                    presence = _presence(obj, frame, uuid_column)
+                    if presence is None:
+                        return kwargs
+                if uuid not in presence.index:
+                    continue  # unknown signal: check_signals warns about it
+                if bool(presence.at[uuid, default]) if default in presence else False:
+                    target = default
+                else:
+                    target = _best_column(presence, uuid, frame, uuid_column)
+            if target is None:
+                continue
+            targets.add(target)
+        if len(targets) != 1:
+            continue
+        (target,) = targets
+        if target == default:
+            continue
+        if (
+            default == "value_string"
+            and target == "value_bool"
+            and argument in getattr(type(obj), "_bool_state_fallback", ())
+        ):
+            continue  # the method reads a boolean run signal by itself
+        changed[argument] = target
+        shown = ", ".join(repr(u) for u in dict.fromkeys(uuids))
+        warnings.warn(
+            f"{type(obj).__name__}: signal {shown} has no values in {default} "
+            f"(the default of {argument}); its values are in {target}, which is "
+            f"used — pass {argument}={target!r} to silence this",
+            DataQualityWarning,
+            stacklevel=caller_stacklevel(),
+        )
+        done, _ = _value_state(obj)
+        for uuid in uuids:
+            done.add((uuid, default))
+            done.add((uuid, target))
+    return changed if changed != kwargs else kwargs
+
+
+#: Words in an argument name that mark an identifier signal (part number,
+#: order, batch ...): such a signal holding only blank text is reported.
+_ID_WORDS = ("id_uuid", "part", "order", "batch", "serial", "recipe", "lot")
+
+
+def check_blank_ids(
+    obj: Any, fn: Callable[..., Any], args: tuple, kwargs: dict
+) -> None:
+    """Warn when an identifier signal holds only empty text.
+
+    An order or part-number signal that delivers only ``""`` (an empty PLC
+    string) is present, so no "not found" warning fires, but every result
+    keyed by it is empty.
+    """
+    frame, column = _frame_uuids(obj)
+    if frame is None or frame.empty or column not in frame.columns:
+        return
+    if "value_string" not in frame.columns:
+        return
+    try:
+        bound = inspect.signature(fn).bind_partial(obj, *args, **kwargs)
+    except TypeError:
+        return
+    for name, value in bound.arguments.items():
+        if not any(word in name for word in _ID_WORDS):
+            continue
+        for uuid in _signal_values(name, value):
+            rows = frame.loc[(frame[column] == uuid).to_numpy(), "value_string"]
+            text = rows.dropna()
+            if text.empty or not text.astype(str).str.strip().eq("").all():
+                continue
+            warnings.warn(
+                f"{type(obj).__name__}: identifier signal {name}={uuid!r} holds "
+                f"only empty text in its {len(text)} value(s); every result "
+                "keyed by it will be empty.",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
+
+
 def checked(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Wrap a detector method with :func:`check_signals` (outermost call only)."""
 
@@ -500,7 +743,10 @@ def checked(fn: Callable[..., Any]) -> Callable[..., Any]:
     def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
         if getattr(self, _CHECKING, False):  # a detector method calling another
             return fn(self, *args, **kwargs)
+        frame, column = _frame_uuids(self)
+        kwargs = resolve_value_columns(self, fn, args, kwargs, frame, column)
         check_signals(self, fn, args, kwargs)
+        check_blank_ids(self, fn, args, kwargs)
         object.__setattr__(self, _CHECKING, True)
         try:
             result = fn(self, *args, **kwargs)
@@ -532,6 +778,15 @@ def checked_init(fn: Callable[..., Any]) -> Callable[..., Any]:
             bound = inspect.signature(fn).bind_partial(self, *args, **kwargs)
         except TypeError:
             bound = None
+        if bound is not None and (
+            type(self).__init__ is wrapper or not getattr(self, _CHECKING, False)
+        ):
+            source = bound.arguments.get("dataframe")
+            uuid_column = bound.arguments.get("uuid_column", "uuid")
+            if isinstance(uuid_column, str):
+                kwargs = resolve_value_columns(
+                    self, fn, args, kwargs, source, uuid_column
+                )
         if bound is not None:
             frame = bound.arguments.get("dataframe")
             column = bound.arguments.get("uuid_column", "uuid")
@@ -596,7 +851,7 @@ def _request_signal_rows(
 
 def _complete(name: str, value: Any, named: list[str]) -> bool:
     """Whether ``named`` (from :func:`_signal_values`) is every signal of ``value``."""
-    if name == "signals":
+    if name == "signals" or name in _SIGNAL_MAPPINGS:
         return isinstance(value, Mapping) and all(isinstance(k, str) for k in value)
     if name in _NOT_SIGNALS or not (name.endswith("_uuid") or name.endswith("_uuids")):
         return True  # not a signal argument

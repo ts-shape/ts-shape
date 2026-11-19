@@ -8,8 +8,8 @@ Essential module for daily downtime analysis:
 """
 
 import logging
-from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from collections.abc import Collection, Mapping
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -109,6 +109,10 @@ class DowntimeEvents(Base):
         0  2025-01-01  shift_1              20.0              66.1
     """
 
+    #: State arguments that fall back to a boolean run signal (``value_bool``)
+    #: when the state rows hold no text (see ``events._compat.state_mask``).
+    _bool_state_fallback = frozenset({"value_column", "value_column_state"})
+
     def __init__(
         self,
         dataframe: pd.DataFrame,
@@ -143,7 +147,7 @@ class DowntimeEvents(Base):
         self,
         run_state_uuid: str,
         *,
-        running_value: str | bool = "Running",
+        running_value: str | bool | Collection[Any] = "Running",
         value_column: str = "value_string",
         max_gap: str | None = None,
         production_day: bool = True,
@@ -161,7 +165,9 @@ class DowntimeEvents(Base):
             running_value: Value that indicates machine is running. A bool
                 matches a boolean run signal (``value_bool`` by default); a
                 boolean run signal is also used, with True as running, when
-                the state rows carry no ``value_column`` value.
+                the state rows carry no ``value_column`` value. A set,
+                list or tuple of values (e.g. ``{2}`` for a mode signal where 2
+                is automatic) matches any of them.
             value_column: Column containing state values
             max_gap: Optional cap (e.g. "15min"). A duration between two
                 consecutive readings longer than this is treated as a logging
@@ -281,7 +287,7 @@ class DowntimeEvents(Base):
         run_state_uuid: str,
         reason_uuid: str,
         *,
-        stopped_value: str | bool = "Stopped",
+        stopped_value: str | bool | Collection[Any] = "Stopped",
         value_column_state: str = "value_string",
         value_column_reason: str = "value_string",
     ) -> pd.DataFrame:
@@ -293,7 +299,9 @@ class DowntimeEvents(Base):
             stopped_value: Value indicating machine is stopped. A bool
                 matches a boolean run signal (``value_bool`` by default); a
                 boolean run signal is also used, with False as stopped, when
-                the state rows carry no ``value_column_state`` value.
+                the state rows carry no ``value_column_state`` value. A set,
+                list or tuple of values (e.g. ``{2}`` for a mode signal where 2
+                is automatic) matches any of them.
             value_column_state: Column containing state values
             value_column_reason: Column containing reason codes
 
@@ -410,7 +418,7 @@ class DowntimeEvents(Base):
         reason_uuid: str,
         *,
         top_n: int = 5,
-        stopped_value: str | bool = "Stopped",
+        stopped_value: str | bool | Collection[Any] = "Stopped",
         value_column_state: str = "value_string",
         value_column_reason: str = "value_string",
     ) -> pd.DataFrame:
@@ -420,8 +428,9 @@ class DowntimeEvents(Base):
             run_state_uuid: UUID for machine state signal
             reason_uuid: UUID for downtime reason signal
             top_n: Number of top reasons to return
-            stopped_value: Value indicating machine is stopped (a string, or
-                a bool for a boolean run signal; see :meth:`downtime_by_reason`)
+            stopped_value: Value indicating machine is stopped (a string, a
+                bool for a boolean run signal, or a set of values; see
+                :meth:`downtime_by_reason`)
             value_column_state: Column containing state values
             value_column_reason: Column containing reason codes
 
@@ -468,7 +477,7 @@ class DowntimeEvents(Base):
         self,
         run_state_uuid: str,
         *,
-        running_value: str | bool = "Running",
+        running_value: str | bool | Collection[Any] = "Running",
         value_column: str = "value_string",
         window: str = "1D",
         max_gap: str | None = None,
@@ -483,7 +492,7 @@ class DowntimeEvents(Base):
         Args:
             run_state_uuid: UUID for machine state signal
             running_value: Value that indicates machine is running (a string,
-                or a bool for a boolean run signal; see
+                a bool for a boolean run signal, or a set of values; see
                 :meth:`downtime_by_shift`)
             value_column: Column containing state values
             window: Time window for aggregation (e.g., '1D', '1W')

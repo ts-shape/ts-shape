@@ -16,8 +16,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.errors import ColumnNotFoundError
-from ts_shape.utils.coerce import bool_or_false
+from ts_shape.errors import ColumnNotFoundError, DataQualityWarning
+from ts_shape.utils.coerce import bool_or_false, run_mask
 from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel
 
 __all__ = ["warn_dict_return", "state_mask", "uses_bool_state", "summary_bounds"]
@@ -47,11 +47,31 @@ def uses_bool_state(data: pd.DataFrame, value_column: str, value: Any) -> bool:
     That is the case when ``value`` itself is a bool, or when the state rows
     carry no value in ``value_column`` but do carry ``value_bool``.
     """
-    if isinstance(value, (bool, np.bool_)):
+    if isinstance(value, (bool, np.bool_)) or value_column == _BOOL_COLUMN:
         return True
     if _BOOL_COLUMN not in data.columns or not data[_BOOL_COLUMN].notna().any():
         return False
     return value_column not in data.columns or not data[value_column].notna().any()
+
+
+def _is_state_set(value: Any) -> bool:
+    """Whether ``value`` lists several state values (a set, list or tuple)."""
+    return isinstance(value, (set, frozenset, list, tuple))
+
+
+def _warn_unmatched_state(values: pd.Series, value: Any, matched: pd.Series) -> None:
+    """Warn when a state value never occurs in a signal that has values."""
+    known = values.dropna()
+    if known.empty or bool(matched.any()):
+        return
+    shown = sorted(map(str, pd.unique(known.to_numpy())))[:6]
+    warnings.warn(
+        f"the state value {value!r} never occurs in the state signal (its values "
+        f"are {shown}); every row counts as not matching. Pass the value(s) "
+        "that occur, e.g. running_value={...} for a mode signal.",
+        DataQualityWarning,
+        stacklevel=caller_stacklevel(),
+    )
 
 
 def state_mask(
@@ -86,8 +106,15 @@ def state_mask(
             f"the data has no {value_column!r} column for the state signal. "
             f"Columns: {list(data.columns)}"
         )
+    if _is_state_set(value):
+        if value_column not in data.columns:
+            return pd.Series(False, index=data.index)
+        mask = run_mask(data[value_column], run_states=list(value), warn=False)
+        return mask.fillna(False).astype(bool)
     if not uses_bool_state(data, value_column, value):
-        return data[value_column] == value
+        matched = data[value_column] == value
+        _warn_unmatched_state(data[value_column], value, matched)
+        return matched
     if isinstance(value, (bool, np.bool_)):
         column = _BOOL_COLUMN if value_column == _STRING_COLUMN else value_column
         target = bool(value)

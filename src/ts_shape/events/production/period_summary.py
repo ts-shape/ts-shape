@@ -26,6 +26,7 @@ from ts_shape.utils.deprecation import (
     keyword_only,
     renamed_kwargs,
 )
+from ts_shape.utils.validate import check_order
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
@@ -980,6 +981,16 @@ class PeriodSummaryEvents(Base):
         p1_end = pd.to_datetime(period_a[1]).date()
         p2_start = pd.to_datetime(period_b[0]).date()
         p2_end = pd.to_datetime(period_b[1]).date()
+        for name, (lo, hi) in (
+            ("period_a", (p1_start, p1_end)),
+            ("period_b", (p2_start, p2_end)),
+        ):
+            check_order(
+                lo,
+                hi,
+                names=(f"{name} start", f"{name} end"),
+                where="PeriodSummaryEvents.compare_periods",
+            )
 
         p1_data = daily[(daily["date"] >= p1_start) & (daily["date"] <= p1_end)]
         p2_data = daily[(daily["date"] >= p2_start) & (daily["date"] <= p2_end)]

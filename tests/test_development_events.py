@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events.development import (
     CriticalParameterRankingEvents,
     DesignOfExperimentsEvents,
@@ -198,11 +199,12 @@ class TestDesignSpaceEvents:
         with pytest.raises(ValueError):
             DesignSpaceEvents(pd.DataFrame(), cpp_uuids=["only:one"])
 
-    def test_detect_excursions_before_fit_raises(self):
+    def test_detect_excursions_before_fit_fits_the_default_box(self):
         qual = self._qualification_df()
         det = DesignSpaceEvents(qual, cpp_uuids=["cpp:temp", "cpp:ph"])
-        with pytest.raises(RuntimeError):
+        with pytest.warns(DataQualityWarning, match="default box"):
             det.detect_excursions(qual)
+        assert det._box is not None
 
 
 # ===========================================================================

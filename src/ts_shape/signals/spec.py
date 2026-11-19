@@ -228,22 +228,48 @@ class SignalSpecs(Mapping[str, SignalSpec]):
     def __repr__(self) -> str:
         return f"SignalSpecs({len(self)} signals)"
 
-    def override(self, changes: Mapping[str, Mapping[str, Any]]) -> SignalSpecs:
+    def override(
+        self, changes: Mapping[str, Mapping[str, Any]], *, add: bool = False
+    ) -> SignalSpecs:
         """Return new specs with per-uuid field overrides applied.
 
-        A uuid not yet present is added with the given fields.
+        A uuid not yet present is added with the given fields. Unless
+        ``add=True`` says that is intended, that emits a
+        ``DataQualityWarning`` naming the closest known uuid (a misspelt
+        uuid would otherwise add a spec nothing reads).
 
         Args:
             changes: Mapping of uuid to ``{field: value}``; the fields replace those of
                 the existing spec (see `SignalSpec.with_`).
+            add: Adding a spec for a uuid that has none is intended (no
+                warning). Specs that are still empty accept any uuid.
 
         Returns:
             New :class:`SignalSpecs`.
 
         Raises:
             ValueError: For unknown field names or invalid values.
+
+        Warns:
+            DataQualityWarning: For a uuid without a spec, unless ``add=True``.
         """
         merged = dict(self._specs)
+        if merged and not add:
+            unknown = [u for u in changes if u not in merged]
+            if unknown:
+                import warnings
+
+                from ts_shape.errors import DataQualityWarning
+                from ts_shape.utils.deprecation import caller_stacklevel
+                from ts_shape.utils.validate import suggest
+
+                warnings.warn(
+                    f"SignalSpecs.override: no spec for uuid {unknown[0]!r}"
+                    f"{suggest(unknown[0], merged)}; a new spec is added (pass "
+                    "add=True when that is intended)",
+                    DataQualityWarning,
+                    stacklevel=caller_stacklevel(),
+                )
         for uuid, fields in changes.items():
             base = merged.get(uuid, SignalSpec(uuid=uuid))
             merged[uuid] = base.with_(**dict(fields))

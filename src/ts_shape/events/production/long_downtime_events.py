@@ -1,10 +1,11 @@
 import logging
+from collections.abc import Collection
 from typing import Any
 
 import pandas as pd
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
+from ts_shape.utils.coerce import run_bool
 from ts_shape.utils.deprecation import (
     deprecated_attribute,
     keyword_only,
@@ -44,6 +45,7 @@ class LongDowntimeEvents(Base):
         value_column: str = "value_bool",
         time_column: str = "systime",
         value_range: tuple[float | None, float | None] | None = None,
+        run_states: Collection[Any] | None = None,
     ) -> None:
         """Initialize the long downtime detector.
 
@@ -58,11 +60,17 @@ class LongDowntimeEvents(Base):
             value_range: ``(lower, upper)`` inclusive bounds; a value inside counts as
                 running (either bound may be ``None``). ``None`` (default) casts the
                 value to bool.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic, or
+                ``{"RUN"}``); every other known value is not running.
+                ``None`` (default) uses ``value_range`` or reads the signal
+                as a bool, with a ``DataQualityWarning`` when it is not one.
         """
         super().__init__(dataframe, time_column=time_column)
         self.run_state_uuid = run_state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
+        self.run_states = None if run_states is None else frozenset(run_states)
         self.time_column = time_column
         self.value_range = value_range
         if (
@@ -87,15 +95,12 @@ class LongDowntimeEvents(Base):
         Uses value_range when set (inclusive on both ends); otherwise casts to bool.
         True = running, False = down/idle.
         """
-        if self.value_range is not None:
-            lower, upper = self.value_range
-            mask = pd.Series(True, index=col.index)
-            if lower is not None:
-                mask &= col >= lower
-            if upper is not None:
-                mask &= col <= upper
-            return mask
-        return bool_or_false(col)
+        return run_bool(
+            col,
+            run_states=self.run_states,
+            value_range=self.value_range,
+            what=f"LongDowntimeEvents: run signal {self.run_state_uuid!r}",
+        )
 
     @keyword_only(1)
     def detect_long_downtime(

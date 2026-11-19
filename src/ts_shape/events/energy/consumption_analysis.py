@@ -91,6 +91,12 @@ class EnergyConsumptionEvents(Base):
     ) -> pd.DataFrame:
         """Convert a raw energy DataFrame to the standard ts-shape schema.
 
+        Not the library-wide normalization
+        (:func:`ts_shape.utils.normalize.normalize_signal_frame`): this reads
+        a *raw* two-column export (``time`` / ``value`` by default) and
+        returns the long ``systime`` / ``uuid`` / ``value_double`` frame the
+        detectors take. A frame that is already long format needs no call.
+
         Handles two input formats:
 
         - Two-column CSV: (time, value) — ``series_id`` is assigned as uuid.

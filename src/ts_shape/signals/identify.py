@@ -8,8 +8,10 @@ classifies the type of each one. The result is a separate
 or what :func:`~ts_shape.signals.infer_spec` returns.
 
 Only the data counts as evidence: the values and how they behave over time.
-The uuid, labels, descriptions and other metadata are never read. The one
-exception is an explicit ``hints={uuid: object_type}``, which pins the type.
+The uuid, descriptions and other metadata are never read. The exceptions are
+an explicit ``hints={uuid: object_type}``, which pins the type, and optional
+``labels={uuid: label}``, which can only veto an identifier whose name says
+it is a time, a quantity or a measurement (:data:`LABEL_VETOES`).
 
 Shared id semantics (the same as the id-consuming detectors and
 :mod:`ts_shape.eventlog.objects`): a value is held until the next value; a
@@ -5047,6 +5049,56 @@ def _empty_table() -> pd.DataFrame:
     return table
 
 
+#: Label words (case-insensitive regular expressions) that veto an
+#: identifier: ``(role given instead, pattern, why)``.
+LABEL_VETOES: tuple[tuple[str, str, str], ...] = (
+    (
+        "counter",
+        r"quantit|counter|count\b|z[aä]hler|st[uü]ck|gutteil|schlechtteil"
+        r"|\bok\b|\bnok\b|\bgood\b|\bbad\b|\bparts?\b|menge",
+        "names a quantity",
+    ),
+    (
+        "measurement",
+        r"time|zeit|minute|hour|stunde|\bday\b|\btag\b|weekday|wochentag"
+        r"|second|sekunde|\bmonth\b|\byear\b|duration|dauer|clock"
+        r"|operating.?hour|betriebsstunde",
+        "names a time or clock value",
+    ),
+    (
+        "measurement",
+        r"power|energy|energie|leistung|\bkwh?\b|consumption|verbrauch"
+        r"|temperat|pressure|druck|cushion|polster|speed|drehzahl|weight|gewicht",
+        "names a physical measurement",
+    ),
+)
+
+
+def _apply_label_vetoes(
+    signals: list[Any], labels: Mapping[str, str] | None, hints: Mapping[str, str]
+) -> None:
+    """Turn identifiers whose label says otherwise into counters/measurements."""
+    if not labels:
+        return
+    compiled = [
+        (role, re.compile(pattern, re.IGNORECASE), why)
+        for role, pattern, why in LABEL_VETOES
+    ]
+    for sig in signals:
+        if sig.role != "identifier" or sig.uuid in hints:
+            continue
+        label = labels.get(sig.uuid)
+        if not label:
+            continue
+        for role, pattern, why in compiled:
+            if pattern.search(str(label)):
+                sig.screen_evidence.append(
+                    f"label {label!r} {why}: {role}, not an identifier"
+                )
+                sig.role = role
+                break
+
+
 def identify_objects(
     dataframe: pd.DataFrame,
     *,
@@ -5057,6 +5109,7 @@ def identify_objects(
     time_column: str = "systime",
     uuid_column: str = "uuid",
     delta_column: str | None = "is_delta",
+    labels: Mapping[str, str] | None = None,
 ) -> ObjectReport:
     """Screen every signal for object identifiers and classify their type.
 
@@ -5086,6 +5139,13 @@ def identify_objects(
             that can place an input on a line), and one id-like value set as a delta and re-sent at a keep-alive
             cadence is an identifier held over the recording (see *is_delta*
             in the module docstring).
+        labels: Optional ``{uuid: label}`` (datapoint names). Labels never
+            make a signal an identifier; they only veto one the values
+            suggest when the name says otherwise (:data:`LABEL_VETOES`): a
+            time or clock field (``Cycletime``, ``MINUTE``, ``WEEKDAY``), a
+            quantity (``Production Quantity``, ``Injection counter``,
+            ``Gutteile``) or a physical measurement is not an identifier.
+            Without labels the result depends on the values only.
 
     Returns:
         :class:`ObjectReport` with one row per signal; ``parent_uuid`` and
@@ -5138,6 +5198,7 @@ def identify_objects(
         )
         for key, rows in _iter_signal_groups(frame, uuid_column, time_column)
     ]
+    _apply_label_vetoes(signals, labels, hints)
     for sig in signals:
         if sig.uuid in hints and sig.role != "identifier":
             if sig.metrics.get("distinct_count", 0):

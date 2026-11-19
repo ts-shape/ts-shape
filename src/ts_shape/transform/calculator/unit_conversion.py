@@ -50,7 +50,35 @@ _ALIASES = {
     "°F": "degF",
     "°K": "kelvin",
     "°R": "degR",
+    "grdC": "degC",
+    "Grad C": "degC",
+    # Plant export spellings (datapoint workbooks).
+    "min1": "1/minute",
+    "min-1": "1/minute",
+    "1/min": "1/minute",
+    "U/min": "1/minute",
+    "rpm": "1/minute",
+    "Kw": "kW",
+    "KW": "kW",
+    "Kwh": "kWh",
+    "KWh": "kWh",
+    "KWH": "kWh",
+    "kVA": "kilovolt * ampere",
+    "sec": "second",
+    "Sek": "second",
+    "Std": "hour",
+    "h": "hour",
 }
+
+
+def register_unit_alias(alias: str, unit: str) -> None:
+    """Accept ``alias`` (a plant's unit spelling) as ``unit`` (a pint unit).
+
+    Args:
+        alias: The spelling found in the data or metadata (e.g. ``"min1"``).
+        unit: The pint unit it means (e.g. ``"1/minute"``).
+    """
+    _ALIASES[alias.strip()] = unit
 
 
 def _require_pint() -> "pint.UnitRegistry":
@@ -61,7 +89,7 @@ def _require_pint() -> "pint.UnitRegistry":
 
 
 def _normalize(unit: str) -> str:
-    """Map a temperature shorthand to pint's name; pass everything else through."""
+    """Map a shorthand or plant spelling to pint's name; pass the rest through."""
     return _ALIASES.get(unit.strip(), unit.strip())
 
 

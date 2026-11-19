@@ -15,13 +15,15 @@ scipy convex hull (tight, captures correlation between factors).
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.deprecation import caller_stacklevel, keyword_only
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +134,17 @@ class DesignSpaceEvents(Base):
         self._hull_points = None
         return self
 
+    def _fit_default_box(self, method: str) -> None:
+        """Fit the default box when nothing was fitted yet (with a warning)."""
+        warnings.warn(
+            f"DesignSpaceEvents.{method}: no design space fitted yet; fitted the "
+            "default box (fit_box(quantiles=(0.05, 0.95))). Call fit_box() or "
+            "fit_hull() first to choose.",
+            DataQualityWarning,
+            stacklevel=caller_stacklevel(),
+        )
+        self.fit_box()
+
     def fit_hull(self) -> DesignSpaceEvents:
         """Fit a convex hull around the qualification data.
 
@@ -141,6 +154,10 @@ class DesignSpaceEvents(Base):
 
         Returns:
             ``self`` for chaining.
+
+        Raises:
+            ValueError: Too few points, or points that span no volume (a
+                constant parameter, collinear points).
         """
         from scipy.spatial import ConvexHull  # local import: optional scipy path
 
@@ -150,8 +167,28 @@ class DesignSpaceEvents(Base):
                 f"points in {len(self.cpp_uuids)} dimensions; "
                 f"got {len(self._qualification)}."
             )
+        from scipy.spatial import QhullError
+
         pts = self._qualification.to_numpy(dtype=float)
-        self._hull = ConvexHull(pts)
+        try:
+            self._hull = ConvexHull(pts)
+        except QhullError:
+            flat = [
+                c
+                for c in self._qualification.columns
+                if self._qualification[c].nunique(dropna=True) <= 1
+            ]
+            detail = (
+                f"the parameter(s) {flat} are constant"
+                if flat
+                else "the points lie on a line or plane"
+            )
+            raise ValueError(
+                f"DesignSpaceEvents.fit_hull: no hull can be fitted: {detail} "
+                f"in the {len(pts)} qualification points, so they span no "
+                f"{len(self.cpp_uuids)}-dimensional volume. Use fit_box() "
+                "instead, or drop the constant parameters."
+            ) from None
         self._hull_points = pts
         self._box = None
         return self
@@ -199,7 +236,7 @@ class DesignSpaceEvents(Base):
         """
         cols = ["start", "end", "duration_seconds", "uuid", "excursion_mode"]
         if self._box is None and self._hull is None:
-            raise RuntimeError("Call fit_box() or fit_hull() before detect_excursions.")
+            self._fit_default_box("detect_excursions")
         wide = self._wide_frame(operation_df)
         if wide.empty:
             return pd.DataFrame(columns=cols)
@@ -261,10 +298,13 @@ class DesignSpaceEvents(Base):
             ``signed_margin``, ``closest_axis``.
         """
         cols = ["systime", "uuid", "signed_margin", "closest_axis"]
-        if self._box is None:
+        if self._box is None and self._hull is not None:
             raise RuntimeError(
                 "boundary_proximity requires fit_box(); hull mode is not supported."
             )
+        if self._box is None:
+            self._fit_default_box("boundary_proximity")
+        assert self._box is not None
         wide = self._wide_frame(operation_df)
         if wide.empty:
             return pd.DataFrame(columns=cols)

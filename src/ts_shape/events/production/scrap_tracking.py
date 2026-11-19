@@ -25,6 +25,7 @@ from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments, counter_quantity
 from ts_shape.utils.deprecation import deprecated_class
 from ts_shape.utils.shifts import assign_shift, production_dates
+from ts_shape.utils.validate import check_known_names
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
@@ -304,6 +305,11 @@ class ScrapEvents(Base):
             - resets: Number of counter resets for the part (only when
                 ``handle_resets=True``)
         """
+        if not material_costs:
+            raise ValueError(
+                "ScrapEvents.scrap_cost: material_costs is empty; give the cost "
+                "per unit of each part number"
+            )
         columns = ["part_number", "scrap_quantity", "cost_per_unit", "total_cost"]
         if handle_resets:
             columns.append("resets")
@@ -344,8 +350,16 @@ class ScrapEvents(Base):
         totals = counter_totals(
             merged, "scrap_val", ["part_number"], handle_resets=handle_resets
         ).rename(columns={"quantity": "scrap_quantity"})
+        costs = {str(k): v for k, v in material_costs.items()}
+        check_known_names(
+            totals["part_number"].astype(str),
+            costs,
+            kind="part number(s) without a cost",
+            where="ScrapEvents.scrap_cost",
+            consequence="their scrap is costed at 0",
+        )
         totals["cost_per_unit"] = [
-            material_costs.get(p, 0.0) for p in totals["part_number"]
+            costs.get(str(p), 0.0) for p in totals["part_number"]
         ]
         totals["total_cost"] = totals["scrap_quantity"] * totals["cost_per_unit"]
 

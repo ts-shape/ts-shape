@@ -13,6 +13,7 @@ Two modes of operation:
 
 import logging
 import warnings
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import pandas as pd
@@ -35,6 +36,7 @@ from ts_shape.utils.time_accounting import (
     shift_periods,
     time_by_period,
 )
+from ts_shape.utils.validate import check_keys
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
@@ -110,6 +112,10 @@ class ShiftHandoverEvents(Base):
         "severity",
         "severity_level",
     ]
+
+    #: State arguments that fall back to a boolean run signal (``value_bool``)
+    #: when the state rows hold no text (see ``events._compat.state_mask``).
+    _bool_state_fallback = frozenset({"value_column", "value_column_state"})
 
     def __init__(
         self,
@@ -207,7 +213,7 @@ class ShiftHandoverEvents(Base):
     def _availability_by_shift(
         self,
         run_state_uuid: str,
-        running_value: str | bool,
+        running_value: str | bool | Collection[Any],
         value_column: str,
         *,
         production_day: bool = True,
@@ -441,7 +447,7 @@ class ShiftHandoverEvents(Base):
         targets: dict[str, float] | None = None,
         quality_target_pct: float = 98.0,
         availability_target_pct: float = 90.0,
-        running_value: str | bool = "Running",
+        running_value: str | bool | Collection[Any] = "Running",
         value_column_counter: str = "value_integer",
         value_column_state: str = "value_string",
         report_date: str | None = None,
@@ -464,7 +470,9 @@ class ShiftHandoverEvents(Base):
             running_value: Value indicating machine is running. A bool
                 matches a boolean run signal (``value_bool`` by default); a
                 boolean run signal is also used, with True as running, when
-                the state rows carry no ``value_column_state`` value.
+                the state rows carry no ``value_column_state`` value. A set,
+                list or tuple of values (e.g. ``{2}`` for a mode signal)
+                matches any of them.
             value_column_counter: Column for counter values.
             value_column_state: Column for state values.
             report_date: Specific date (YYYY-MM-DD). If None, uses latest date.
@@ -619,7 +627,7 @@ class ShiftHandoverEvents(Base):
         report_df: pd.DataFrame | None = ...,
         thresholds: dict[str, float] | None = ...,
         targets: dict[str, float] | None = ...,
-        running_value: str | bool = ...,
+        running_value: str | bool | Collection[Any] = ...,
         value_column_counter: str = ...,
         value_column_state: str = ...,
         report_date: str | None = ...,
@@ -637,7 +645,7 @@ class ShiftHandoverEvents(Base):
         report_df: pd.DataFrame | None = ...,
         thresholds: dict[str, float] | None = ...,
         targets: dict[str, float] | None = ...,
-        running_value: str | bool = ...,
+        running_value: str | bool | Collection[Any] = ...,
         value_column_counter: str = ...,
         value_column_state: str = ...,
         report_date: str | None = ...,
@@ -656,7 +664,7 @@ class ShiftHandoverEvents(Base):
         report_df: pd.DataFrame | None = None,
         thresholds: dict[str, float] | None = None,
         targets: dict[str, float] | None = None,
-        running_value: str | bool = "Running",
+        running_value: str | bool | Collection[Any] = "Running",
         value_column_counter: str = "value_integer",
         value_column_state: str = "value_string",
         report_date: str | None = None,
@@ -682,7 +690,8 @@ class ShiftHandoverEvents(Base):
             thresholds: Minimum acceptable values for each metric.
                 Defaults to production_achievement_pct=95, quality_pct=98, availability_pct=90.
             targets: Per-shift production targets.
-            running_value: Value indicating machine is running.
+            running_value: Value indicating machine is running (a string, a
+                bool, or a set of values that mean running).
             value_column_counter: Column for counter values.
             value_column_state: Column for state values.
             report_date: Specific date (YYYY-MM-DD).
@@ -714,6 +723,16 @@ class ShiftHandoverEvents(Base):
             "quality_pct": 98.0,
             "availability_pct": 90.0,
         }
+        check_keys(
+            thresholds,
+            (
+                [str(c) for c in report_df.columns]
+                if report_df is not None
+                else ("production_achievement_pct", "quality_pct", "availability_pct")
+            ),
+            where="ShiftHandoverEvents.highlight_issues",
+            what="threshold metric",
+        )
 
         if report_df is not None:
             report = report_df

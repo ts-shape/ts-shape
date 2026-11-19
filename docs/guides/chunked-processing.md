@@ -153,6 +153,30 @@ from_db = run_chunked(source, MachineStateEvents, "detect_run_idle",
 pd.testing.assert_frame_equal(from_db, chunked)
 ```
 
+- **A local folder or a `.zip` export.** `ParquetLoader` reads a folder of
+  `YYYY/MM/DD/HH/<uuid>.parquet` files or the zip of such a folder in place,
+  and `ParquetLoader.stream_by_time_range` yields one frame per `chunk`.
+  `compact=True` shrinks each slice with `ts_shape.compact_frame` (`uuid` as a
+  category, nullable dtypes, the always-empty `plctime`, `sequence_number` and
+  `value_bytes` dropped): on a real export a 6-hour slice went from 1,032 MB to
+  287 MB. A month of a large line (hundreds of signals) is tens of GB even
+  compact, so process it chunked:
+
+<!-- no-run -->
+
+```python
+from ts_shape import ParquetLoader, RuntimeAccountingEvents, run_chunked
+
+runtime = run_chunked(
+    ParquetLoader.stream_by_time_range(
+        "exports/line1-datapoints.zip", "2026-10-01", "2026-11-01",
+        chunk="6h", compact=True,
+    ),
+    RuntimeAccountingEvents, "runtime_by_window",
+    run_state_uuid="line1:mode", run_states={2}, window="1D",
+)
+```
+
 Slices are aligned to the wall clock of the data's time zone (`chunk="1D"` cuts
 at local midnight; a DST day lasts 23 or 25 hours). Naive timestamps work the
 same way. `chunk` can be any fixed length (`"12h"`, `"2D"`) or a calendar
@@ -317,12 +341,13 @@ from ts_shape.stream import CONDITIONAL
 print(CONDITIONAL["DataGapAnalysisEvents.detect_gaps"].argument)
 try:
     run_chunked(days(), DataGapAnalysisEvents, "detect_gaps",
-                signal_uuid="press:run")
+                signal_uuid="press:run", value_column="value_bool")
 except NotChunkableError as exc:
     print(exc)
 
 gaps = run_chunked(days(), DataGapAnalysisEvents, "detect_gaps",
-                   signal_uuid="press:run", min_gap="2min")
+                   signal_uuid="press:run", value_column="value_bool",
+                   min_gap="2min")
 ```
 
 ## Limitations

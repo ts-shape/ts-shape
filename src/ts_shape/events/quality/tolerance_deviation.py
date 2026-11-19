@@ -525,6 +525,14 @@ class ToleranceDeviationEvents(Base):
             and self.lower_tolerance_uuid is not None
         )
         if two_sided:
+            swapped = int((upper < lower).sum())
+            if swapped:
+                raise ValueError(
+                    f"ToleranceDeviationEvents: the upper limit "
+                    f"({self.upper_tolerance_uuid!r}) is below the lower limit "
+                    f"({self.lower_tolerance_uuid!r}) on {swapped} row(s); are "
+                    "upper_tolerance_uuid and lower_tolerance_uuid swapped?"
+                )
             df["tolerance_range"] = upper - lower
         else:
             df["tolerance_range"] = upper.fillna(lower).abs()

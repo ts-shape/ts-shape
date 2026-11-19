@@ -202,7 +202,10 @@ class CalibrationValidationEvents(Base):
             "max_residual",
         ]
         if not calibration_points or len(calibration_points) < 2:
-            return pd.DataFrame(columns=cols)
+            raise ValueError(
+                "CalibrationValidationEvents.calibration_curve: a curve needs at "
+                f"least 2 reference points, got {len(calibration_points or {})}"
+            )
 
         refs = sorted(calibration_points.keys())
         means = [float(np.mean(calibration_points[r])) for r in refs]

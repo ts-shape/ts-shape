@@ -8,20 +8,77 @@ Simple, practical module for cycle time analysis:
 """
 
 import logging
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
-from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.coerce import run_bool
+from ts_shape.utils.deprecation import caller_stacklevel, deprecated_class
 
 if TYPE_CHECKING:
     from typing_extensions import deprecated
 
 logger = logging.getLogger(__name__)
+
+
+def _is_pulse(values: pd.Series) -> bool:
+    """Whether ``values`` is a 0/1 pulse (numbers that are only 0 and 1)."""
+    known = pd.to_numeric(values, errors="coerce").dropna()
+    if known.empty or len(known) < len(values.dropna()):
+        return False
+    return set(known.unique().tolist()) <= {0.0, 1.0}
+
+
+#: Share of pulses seen in a single sample above which a polled trigger is
+#: taken to miss pulses.
+SINGLE_SAMPLE_PULSE_SHARE = 0.8
+#: Share of regular sample intervals that marks a polled (sampled) signal.
+POLLED_REGULAR_SHARE = 0.6
+
+
+def _warn_missed_pulses(times: pd.Series, trigger: pd.Series, uuid: str) -> bool:
+    """Warn when a polled cycle trigger is likely to miss its pulses.
+
+    A trigger read by polling every ``P`` seconds sees a pulse shorter than
+    ``P`` only when a poll happens to fall on it. When the signal is polled
+    (regular sample intervals) and most pulses are seen in exactly one
+    sample, many pulses fall between the polls: every missed pulse merges
+    two or more cycles into one, so the cycle times are too long.
+    """
+    from ts_shape.signals.infer import _interval_stats
+
+    if len(trigger) < 4:
+        return False
+    on = trigger.to_numpy(dtype=bool)
+    starts = on & ~np.concatenate(([False], on[:-1]))
+    pulses = int(starts.sum())
+    if pulses < 3:
+        return False
+    run_id = np.cumsum(starts)[on]
+    lengths = np.bincount(run_id)[1:]
+    single = float((lengths == 1).mean()) if len(lengths) else 0.0
+    period, _, regular = _interval_stats(pd.to_datetime(times).reset_index(drop=True))
+    if period is None or regular < POLLED_REGULAR_SHARE:
+        return False  # change-encoded: one row per edge is normal
+    if single < SINGLE_SAMPLE_PULSE_SHARE:
+        return False
+    warnings.warn(
+        f"CycleTimeEvents: cycle trigger {uuid!r} is polled every "
+        f"{period.total_seconds():g} s and {int((lengths == 1).sum())} of "
+        f"{len(lengths)} pulses were seen in a single sample: pulses shorter "
+        "than the polling interval are missed, and each missed pulse merges "
+        "cycles, so the cycle times are too long. Use a cycle or part counter "
+        "(or a change-encoded trigger) instead.",
+        DataQualityWarning,
+        stacklevel=caller_stacklevel(),
+    )
+    return True
 
 
 class CycleTimeEvents(Base):
@@ -124,11 +181,13 @@ class CycleTimeEvents(Base):
         cycles[self.time_column] = pd.to_datetime(cycles[self.time_column])
 
         # Detect rising edges (cycle completion)
-        if value_column_trigger == "value_bool":
-            # Cast first: on an object column of Python bools, ``~True`` is -2
-            # (truthy), which made every True sample a "rising edge".
-            trigger = cycles[value_column_trigger].astype("boolean").fillna(False)
-            trigger = trigger.astype(bool)
+        if value_column_trigger == "value_bool" or _is_pulse(
+            cycles[value_column_trigger]
+        ):
+            # A bool or a 0/1 pulse: a cycle ends on each rising edge (a 0/1
+            # pulse in value_integer is not counted on both edges).
+            trigger = run_bool(cycles[value_column_trigger], warn=False)
+            _warn_missed_pulses(cycles[self.time_column], trigger, cycle_trigger_uuid)
             prev = trigger.shift(fill_value=False)
             cycle_ends = cycles[trigger & ~prev]
             times = cycle_ends[self.time_column].reset_index(drop=True)

@@ -18,7 +18,7 @@ values over several ``value_*`` columns.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +27,7 @@ import pandas as pd
 from ts_shape.signals.infer import _iter_signal_groups, infer_spec
 from ts_shape.signals.spec import SignalSpec, SignalSpecs
 from ts_shape.utils.counters import count_resets
+from ts_shape.utils.personal import PERSONAL_DATA_PATTERNS, personal_pattern
 
 __all__ = ["profile", "ProfileReport"]
 
@@ -35,6 +36,27 @@ _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
 
 #: A continuous signal constant for this many nominal periods is "stuck".
 STUCK_PERIODS = 20
+#: ... and for at least this many seconds (a fast signal held for a few
+#: seconds is not stuck).
+STUCK_MIN_SECONDS = 600.0
+#: Pseudo uuid of the issues that concern the whole asset (every signal).
+ASSET = "(asset)"
+#: A gap in which no signal logs anything is an asset-level hole when it is
+#: longer than this (and than every sampled signal's max_gap).
+ASSET_HOLE_MIN = pd.Timedelta(minutes=30)
+#: Share of the sampled signals that must share one period for a "shared
+#: polling clock" note (at least three signals).
+SHARED_CLOCK_SHARE = 0.8
+
+
+def _duration_text(seconds: float) -> str:
+    """``"4 s"``, ``"12 min"`` or ``"1.50 h"``."""
+    if seconds < 120:
+        return f"{seconds:.0f} s"
+    if seconds < 7200:
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds / 3600:.2f} h"
+
 
 PROFILE_COLUMNS = [
     "uuid",
@@ -151,10 +173,13 @@ def _longest_constant_seconds(values: pd.Series, times: pd.Series) -> float:
     return float(spans.max().total_seconds()) if len(spans) else 0.0
 
 
-def _profile_signal(
-    raw: pd.DataFrame, spec: SignalSpec, time_column: str
-) -> tuple[dict[str, Any], list[tuple[str, str, str]]]:
+def _profile_signal(raw: pd.DataFrame, spec: SignalSpec, time_column: str) -> tuple[
+    dict[str, Any],
+    list[tuple[str, str, str]],
+    list[tuple[pd.Timestamp, pd.Timestamp]],
+]:
     issues: list[tuple[str, str, str]] = []
+    gap_spans: list[tuple[pd.Timestamp, pd.Timestamp]] = []
     times_raw = raw[time_column]
     if not pd.api.types.is_datetime64_any_dtype(times_raw):
         # (to_datetime of a datetime column is a no-op, but scans it first)
@@ -180,6 +205,8 @@ def _profile_signal(
         gaps = diffs[diffs > spec.max_gap]
         gap_count = len(gaps)
         gap_seconds = float(gaps.dt.total_seconds().sum())
+        ends = times.loc[gaps.index]
+        gap_spans = [(e - d, e) for e, d in zip(ends, gaps, strict=True)]
     longest_gap = float(diffs.max().total_seconds()) if not diffs.empty else 0.0
 
     resets = 0
@@ -269,8 +296,9 @@ def _profile_signal(
             (
                 "warning",
                 "logging gaps",
-                f"{gap_count} gap(s) > {spec.max_gap}, {gap_seconds / 3600:.2f} h total, "
-                f"longest {longest_gap / 3600:.2f} h",
+                f"{gap_count} gap(s) > {spec.max_gap}, "
+                f"{_duration_text(gap_seconds)} total, "
+                f"longest {_duration_text(longest_gap)}",
             )
         )
     if resets:
@@ -295,13 +323,13 @@ def _profile_signal(
         spec.kind == "continuous"
         and spec.nominal_period is not None
         and longest_constant >= STUCK_PERIODS * spec.nominal_period.total_seconds()
-        and longest_constant > 0
+        and longest_constant >= STUCK_MIN_SECONDS
     ):
         issues.append(
             (
                 "warning",
                 "possibly stuck",
-                f"constant for {longest_constant / 3600:.2f} h "
+                f"constant for {_duration_text(longest_constant)} "
                 f"(>= {STUCK_PERIODS} sampling periods)",
             )
         )
@@ -309,7 +337,65 @@ def _profile_signal(
         issues.append(
             ("info", "float counter", "cumulative float register (e.g. kWh meter)")
         )
-    return row, issues
+    return row, issues, gap_spans
+
+
+def _asset_holes(
+    times: list[pd.Series], specs: Mapping[str, SignalSpec]
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+    """Gaps in which no signal logged anything (the whole asset was silent)."""
+    if not times:
+        return []
+    every = pd.concat(times, ignore_index=True).dropna()
+    if every.empty:
+        return []
+    every = every.drop_duplicates().sort_values().reset_index(drop=True)
+    limit = ASSET_HOLE_MIN
+    for spec in specs.values():
+        if spec.max_gap is not None and spec.max_gap > limit:
+            limit = spec.max_gap
+    diffs = every.diff()
+    holes = diffs[diffs > limit]
+    return [(every.loc[i] - d, every.loc[i]) for i, d in holes.items()]
+
+
+def _inside(
+    spans: list[tuple[pd.Timestamp, pd.Timestamp]],
+    holes: list[tuple[pd.Timestamp, pd.Timestamp]],
+    slack: pd.Timedelta,
+) -> bool:
+    """Whether every span lies within one of the holes (give or take ``slack``)."""
+    return all(
+        any(a >= h0 - slack and b <= h1 + slack for h0, h1 in holes) for a, b in spans
+    )
+
+
+def _shared_clock(specs: Mapping[str, SignalSpec]) -> tuple[float, int, int] | None:
+    """``(period seconds, signals on it, sampled signals)`` of a shared clock."""
+    periods = [
+        s.nominal_period.total_seconds()
+        for s in specs.values()
+        if s.encoding == "sampled" and s.nominal_period is not None
+    ]
+    if len(periods) < 3:
+        return None
+    median = float(pd.Series(periods).median())
+    if median <= 0:
+        return None
+    on_it = sum(abs(p - median) <= 0.05 * median for p in periods)
+    if on_it < 3 or on_it < SHARED_CLOCK_SHARE * len(periods):
+        return None
+    return median, on_it, len(periods)
+
+
+def _labels(metadata: Any) -> pd.Series:
+    """``uuid -> label`` of a metadata table or loader (empty without one)."""
+    if metadata is None:
+        return pd.Series(dtype=object)
+    from ts_shape.cycle_profile import signal_labels
+
+    table = metadata.to_df() if hasattr(metadata, "to_df") else metadata
+    return signal_labels(table)
 
 
 def profile(
@@ -318,6 +404,8 @@ def profile(
     *,
     uuid_column: str = "uuid",
     time_column: str = "systime",
+    metadata: Any = None,
+    exclude: Sequence[str] = PERSONAL_DATA_PATTERNS,
 ) -> ProfileReport:
     """Profile every signal in a long-format frame.
 
@@ -331,6 +419,19 @@ def profile(
             ``{uuid: {field: value}}`` overrides applied on top of inference.
         uuid_column: Column identifying the signal.
         time_column: Timestamp column.
+        metadata: Optional datapoint metadata (a table with ``uuid`` and a
+            label column, or a :class:`~ts_shape.MetadataJsonLoader`). The
+            report's table then gains a ``label`` column, and signals whose
+            label matches ``exclude`` are left out (personal data).
+        exclude: Regular expressions (case-insensitive) of labels to leave
+            out when ``metadata`` is given; default: personal data
+            (:data:`ts_shape.utils.personal.PERSONAL_DATA_PATTERNS`). Empty
+            keeps every signal.
+
+    Signals the whole asset is silent in at once are reported once, as a
+    ``"data hole"`` issue with uuid ``"(asset)"``, instead of as a
+    ``"logging gaps"`` warning per signal; a polling period most sampled
+    signals share is a ``"shared polling clock"`` note.
 
     Returns:
         :class:`ProfileReport` with ``specs``, a per-signal ``table`` and the
@@ -351,9 +452,20 @@ def profile(
     else:
         overrides = {}
 
+    labels = _labels(metadata)
+    if not labels.empty and exclude:
+        pattern = personal_pattern(tuple(exclude))
+        hidden = {u for u, label in labels.items() if pattern.search(str(label))}
+        if hidden:
+            keys = dataframe[uuid_column].astype(str)
+            dataframe = dataframe[~keys.isin(hidden).to_numpy()]
     inferred: dict[str, SignalSpec] = {}
     rows: list[dict[str, Any]] = []
     issues: list[dict[str, str]] = []
+    signal_issues: list[
+        tuple[str, list[tuple[str, str, str]], list[tuple[Any, Any]]]
+    ] = []
+    all_times: list[pd.Series] = []
     for key, raw in _iter_signal_groups(dataframe, uuid_column, time_column):
         if specs is not None and key in specs:
             spec = specs[key]
@@ -363,13 +475,58 @@ def profile(
             if key in overrides:
                 spec = spec.with_(**overrides[key])
         inferred[key] = spec
-        row, found = _profile_signal(raw, spec, time_column)
+        row, found, spans = _profile_signal(raw, spec, time_column)
         rows.append(row)
+        signal_issues.append((key, found, spans))
+        times = raw[time_column]
+        if not pd.api.types.is_datetime64_any_dtype(times):
+            times = pd.to_datetime(times, errors="coerce")
+        all_times.append(times)
+
+    # A hole in which no signal logged anything is one asset-level issue,
+    # not one "logging gaps" warning per signal.
+    holes = _asset_holes(all_times, inferred)
+    for start, end in holes:
+        issues.append(
+            {
+                "uuid": ASSET,
+                "severity": "warning",
+                "issue": "data hole",
+                "detail": (
+                    f"no signal logged anything from {start} to {end} "
+                    f"({_duration_text((end - start).total_seconds())}); the "
+                    "machine, its PLC or the edge device was probably off"
+                ),
+            }
+        )
+    for key, found, spans in signal_issues:
+        spec = inferred[key]
+        slack = spec.max_gap if spec.max_gap is not None else pd.Timedelta(0)
+        explained = bool(holes) and bool(spans) and _inside(spans, holes, slack)
         issues.extend(
-            {"uuid": key, "severity": s, "issue": i, "detail": d} for s, i, d in found
+            {"uuid": key, "severity": s, "issue": i, "detail": d}
+            for s, i, d in found
+            if not (explained and i == "logging gaps")
+        )
+    clock = _shared_clock(inferred)
+    if clock is not None:
+        period, on_it, sampled = clock
+        issues.append(
+            {
+                "uuid": ASSET,
+                "severity": "info",
+                "issue": "shared polling clock",
+                "detail": (
+                    f"{on_it} of {sampled} sampled signals are polled every "
+                    f"{period:g} s (one acquisition clock): an event is seen up "
+                    "to one period late"
+                ),
+            }
         )
 
     table = pd.DataFrame(rows, columns=PROFILE_COLUMNS)
+    if not labels.empty:
+        table["label"] = table["uuid"].astype(str).map(labels)
     issue_table = pd.DataFrame(issues, columns=ISSUE_COLUMNS)
     if not issue_table.empty:
         issue_table = issue_table.sort_values(

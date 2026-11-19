@@ -34,6 +34,7 @@ from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.deprecation import caller_stacklevel
 
 __all__ = [
+    "id_text",
     "normalize_signal_frame",
     "NUMERIC_VALUE_COLUMNS",
     "text_keys",
@@ -104,6 +105,32 @@ def _text_is_exact(series: pd.Series, values: list[object]) -> bool:
     such columns take the row-wise path.
     """
     return series.dtype != object or all(isinstance(v, str) for v in values)
+
+
+def id_text(values: pd.Series) -> pd.Series:
+    """Identifier values (part numbers, order ids) as text.
+
+    A numeric identifier reads as written: ``1234`` and ``1234.0`` both
+    become ``"1234"`` (a float with a fraction keeps it). Text is kept as it
+    is, missing values stay missing (``None``), so a dictionary keyed by the
+    text of a part number finds it whatever column the signal is in.
+    """
+
+    def one(value: object) -> object:
+        if _is_missing(value):
+            return None
+        if isinstance(value, (bool, np.bool_)):
+            return str(value)
+        if isinstance(value, (int, np.integer)):
+            return str(int(value))
+        if isinstance(value, (float, np.floating)):
+            number = float(value)
+            return str(int(number)) if number.is_integer() else repr(number)
+        return str(value)
+
+    return pd.Series(
+        [one(v) for v in values], index=values.index, name=values.name, dtype=object
+    )
 
 
 def unique_text(series: pd.Series) -> set[str]:

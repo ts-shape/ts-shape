@@ -88,11 +88,17 @@ from typing import Any
 import pandas as pd
 
 from ts_shape.utils.base import _copy_on_write
+from ts_shape.utils.validate import suggest
 
 logger = logging.getLogger(__name__)
 
 _Executor = Callable[[pd.DataFrame, pd.DataFrame], pd.DataFrame]
 _SENTINELS = frozenset({"$input", "$prev"})
+
+
+def _public_methods(target: Any) -> list[str]:
+    """The public method names of ``target`` (for a did-you-mean)."""
+    return [n for n in dir(target) if not n.startswith("_")]
 
 
 def _param_names(func: Any) -> set[str]:
@@ -352,7 +358,10 @@ def _resolve(
     try:
         static_attr = inspect.getattr_static(target, method)
     except AttributeError:
-        raise AttributeError(f"{target.__name__!r} has no method {method!r}") from None
+        raise AttributeError(
+            f"{target.__name__!r} has no method {method!r}"
+            f"{suggest(method, _public_methods(target))}"
+        ) from None
 
     # -- classmethod / staticmethod: call on the class ---------------------
     if isinstance(static_attr, (classmethod, staticmethod)):
@@ -437,7 +446,10 @@ def _resolve_source(
     try:
         static_attr = inspect.getattr_static(target, method)
     except AttributeError:
-        raise AttributeError(f"{target.__name__!r} has no method {method!r}") from None
+        raise AttributeError(
+            f"{target.__name__!r} has no method {method!r}"
+            f"{suggest(method, _public_methods(target))}"
+        ) from None
 
     # -- classmethod / staticmethod: call on the class ---------------------
     if isinstance(static_attr, (classmethod, staticmethod)):

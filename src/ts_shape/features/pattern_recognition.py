@@ -324,8 +324,9 @@ class PatternRecognition(Base):
                 a better-ranked pair, so later motifs are not the first one
                 shifted by a sample or two.
             time_column: Column containing timestamps.
-            signal_uuid: Signal to analyze when the frame holds several uuids
-                (formerly ``uuid``).
+            signal_uuid: Signal to analyze. Required when the frame holds
+                several uuids (``ValueError`` otherwise); optional for a
+                single-signal frame (formerly ``uuid``).
 
         Returns:
             DataFrame with motif_rank, index_a, index_b, distance, time_a, time_b
@@ -413,8 +414,9 @@ class PatternRecognition(Base):
             top_k: Number of discords to return.
             exclusion_zone: Indices to exclude around matches. Defaults to window_size // 2.
             time_column: Column containing timestamps.
-            signal_uuid: Signal to analyze when the frame holds several uuids
-                (formerly ``uuid``).
+            signal_uuid: Signal to analyze. Required when the frame holds
+                several uuids (``ValueError`` otherwise); optional for a
+                single-signal frame (formerly ``uuid``).
 
         Returns:
             DataFrame with discord_rank, start_index, distance, start_time (the
@@ -653,8 +655,9 @@ class PatternRecognition(Base):
             top_k: Number of matches to return.
             normalize: Whether to z-normalize before comparison.
             time_column: Column containing timestamps.
-            signal_uuid: Signal to analyze when the frame holds several uuids
-                (formerly ``uuid``).
+            signal_uuid: Signal to analyze. Required when the frame holds
+                several uuids (``ValueError`` otherwise); optional for a
+                single-signal frame (formerly ``uuid``).
 
         Returns:
             DataFrame with rank, start_index, dtw_distance, start_time (the

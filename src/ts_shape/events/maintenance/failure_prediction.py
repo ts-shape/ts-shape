@@ -10,6 +10,7 @@ from ts_shape.events.maintenance._rolling import (
 )
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import keyword_only
+from ts_shape.utils.validate import check_choice
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,12 @@ class FailurePredictionEvents(Base):
             threshold is reached or passed, and None when no failure is
             projected (flat trend, or a trend moving away from the threshold).
         """
+        if not degradation_rate or not np.isfinite(degradation_rate):
+            raise ValueError(
+                "FailurePredictionEvents.remaining_useful_life: degradation_rate "
+                f"must be a non-zero finite rate per second, got {degradation_rate!r}"
+                " (its sign gives the direction towards failure)"
+            )
         cols = [
             "systime",
             "uuid",
@@ -156,6 +163,8 @@ class FailurePredictionEvents(Base):
         warning_threshold: float,
         critical_threshold: float,
         window: str = "1h",
+        *,
+        direction: str | None = None,
     ) -> pd.DataFrame:
         """
         Track frequency of threshold exceedances in rolling windows and
@@ -165,12 +174,36 @@ class FailurePredictionEvents(Base):
             warning_threshold: Warning level (absolute value comparison).
             critical_threshold: Critical level (absolute value comparison).
             window: Rolling window size.
+            direction: ``"rising"`` (failure at high values) or ``"falling"``
+                (at low values). Given, a critical level that is not beyond
+                the warning level raises ``ValueError`` (swapped levels).
+                ``None`` (default) infers it from the order of the two levels
+                (critical >= warning: rising).
 
         Returns:
             DataFrame with columns: start, end, duration_seconds, uuid,
             source_uuid, is_delta, warning_count, critical_count,
             escalation_detected. ``end`` is ``start`` plus ``window``.
         """
+        if direction is not None:
+            check_choice(
+                direction,
+                ("rising", "falling"),
+                name="direction",
+                where="FailurePredictionEvents.detect_exceedance_pattern",
+            )
+            wrong = (
+                critical_threshold < warning_threshold
+                if direction == "rising"
+                else critical_threshold > warning_threshold
+            )
+            if wrong:
+                raise ValueError(
+                    "FailurePredictionEvents.detect_exceedance_pattern: for a "
+                    f"{direction} signal the critical level must lie beyond the "
+                    f"warning level, got warning={warning_threshold!r}, "
+                    f"critical={critical_threshold!r}; are they swapped?"
+                )
         cols = [
             "start",
             "end",
