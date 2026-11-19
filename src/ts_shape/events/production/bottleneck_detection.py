@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Collection
 from typing import Any, Literal, overload
 
 import pandas as pd
@@ -6,7 +7,7 @@ import pandas as pd
 from ts_shape.events._compat import warn_dict_return
 from ts_shape.events._windows import floor_local
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
+from ts_shape.utils.coerce import run_bool
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.frames import window_offset
 
@@ -33,6 +34,8 @@ class BottleneckDetectionEvents(Base):
         time_column: str = "systime",
         event_uuid: str = "prod:bottleneck",
         value_column: str = "value_bool",
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
         """Initialize the bottleneck detector.
 
@@ -42,11 +45,21 @@ class BottleneckDetectionEvents(Base):
             time_column: Timestamp column.
             event_uuid: UUID stamped on emitted events.
             value_column: Column holding the run state (truthy = running).
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic, or
+                ``{"RUN"}``); every other known value is not running.
+                ``None`` (default) uses ``value_range`` or reads the signal
+                as a bool, with a ``DataQualityWarning`` when it is not one.
+            value_range: ``(lower, upper)`` inclusive bounds; a value inside
+                counts as running (either bound may be ``None``). Used when
+                ``run_states`` is ``None``.
         """
         super().__init__(dataframe, time_column=time_column)
         self.time_column = time_column
         self.event_uuid = event_uuid
         self.value_column = value_column
+        self.run_states = None if run_states is None else frozenset(run_states)
+        self.value_range = value_range
 
     @keyword_only(2)
     def station_utilization(
@@ -84,7 +97,12 @@ class BottleneckDetectionEvents(Base):
                 continue
             station[self.time_column] = pd.to_datetime(station[self.time_column])
             station = station.sort_values(self.time_column)
-            station["state"] = bool_or_false(station[self.value_column]).astype(float)
+            station["state"] = run_bool(
+                station[self.value_column],
+                run_states=self.run_states,
+                value_range=self.value_range,
+                what=f"BottleneckDetectionEvents: run signal {uid!r}",
+            ).astype(float)
 
             if time_weighted:
                 # Weight each sample by the gap to the next sample, bucketed by

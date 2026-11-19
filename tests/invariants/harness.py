@@ -214,6 +214,8 @@ _UUID_HINTS = (
         (
             "counter",
             "count",
+            "rework",
+            "routing",
             "part",
             "scrap",
             "reject",

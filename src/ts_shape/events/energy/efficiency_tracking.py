@@ -1,11 +1,13 @@
 import logging
+from collections.abc import Collection
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from ts_shape.events._windows import with_window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false, to_numeric_checked
+from ts_shape.utils.coerce import run_bool, run_mask, to_numeric_checked
 from ts_shape.utils.counters import counter_increments, counter_per_window
 from ts_shape.utils.deprecation import renamed_kwargs
 from ts_shape.utils.shifts import assign_shift
@@ -88,6 +90,12 @@ class EnergyEfficiencyEvents(Base):
         uuid_column: str | None = None,
     ) -> pd.DataFrame:
         """Convert a raw energy DataFrame to the standard ts-shape schema.
+
+        Not the library-wide normalization
+        (:func:`ts_shape.utils.normalize.normalize_signal_frame`): this reads
+        a *raw* two-column export (``time`` / ``value`` by default) and
+        returns the long ``systime`` / ``uuid`` / ``value_double`` frame the
+        detectors take. A frame that is already long format needs no call.
 
         Args:
             dataframe: Raw DataFrame.
@@ -266,6 +274,8 @@ class EnergyEfficiencyEvents(Base):
         window: str = "15min",
         idle_threshold: float = 0.0,
         time_weighted: bool = True,
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> pd.DataFrame:
         """Detect energy consumed during idle periods (waste).
 
@@ -284,6 +294,15 @@ class EnergyEfficiencyEvents(Base):
                 energy window. ``False`` averages state *samples* and keeps only
                 windows that contain a state row; that is only right for a
                 densely, uniformly sampled state signal.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic); every other
+                known value is not running. ``None`` (default) uses
+                ``value_range`` or reads the signal as a bool, with a
+                ``DataQualityWarning`` when it is not one (see
+                :func:`ts_shape.utils.coerce.run_mask`).
+            value_range: ``(lower, upper)`` inclusive bounds; a run-signal
+                value inside counts as running. Used when ``run_states`` is
+                ``None``.
 
         Returns:
             DataFrame: start, end, duration_seconds, uuid, source_uuid,
@@ -336,7 +355,12 @@ class EnergyEfficiencyEvents(Base):
         if time_weighted:
             state_agg = (
                 time_weighted_resample(
-                    state[value_column_state].astype("boolean").astype(float),
+                    run_mask(
+                        state[value_column_state],
+                        run_states=run_states,
+                        value_range=value_range,
+                        what=f"EnergyEfficiencyEvents: run signal {run_state_uuid!r}",
+                    ).astype(float),
                     window,
                     data_end=energy.index.max(),
                 )
@@ -346,7 +370,12 @@ class EnergyEfficiencyEvents(Base):
             merged = energy_agg.join(state_agg, how="left").reset_index()
         else:
             state_agg = (
-                bool_or_false(state[value_column_state])
+                run_bool(
+                    state[value_column_state],
+                    run_states=run_states,
+                    value_range=value_range,
+                    warn=False,
+                )
                 .astype(float)
                 .resample(window)
                 .mean()

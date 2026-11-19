@@ -7,7 +7,7 @@ import pandas as pd
 from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.coerce import run_bool, to_numeric_checked
 from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import caller_stacklevel
 
@@ -184,7 +184,7 @@ class LineThroughputEvents(Base):
         s[self.time_column] = pd.to_datetime(s[self.time_column])
         if value_column == "value_bool":
             # Cast first: ``~`` on an object column of Python bools is -2/-1.
-            state = s[value_column].astype("boolean").fillna(False).astype(bool)
+            state = run_bool(s[value_column], warn=False)
             edges = s[state & ~state.shift(fill_value=False)]
             times = edges[self.time_column].reset_index(drop=True)
         elif pd.api.types.is_numeric_dtype(s[value_column]):
@@ -501,7 +501,7 @@ class LineThroughputEvents(Base):
         # Detect cycle boundaries
         if value_column == "value_bool":
             # Cast first: ``~`` on an object column of Python bools is -2/-1.
-            state = s[value_column].astype("boolean").fillna(False).astype(bool)
+            state = run_bool(s[value_column], warn=False)
             edges = s[state & ~state.shift(fill_value=False)]
             times = edges[self.time_column].reset_index(drop=True)
         elif pd.api.types.is_numeric_dtype(s[value_column]):

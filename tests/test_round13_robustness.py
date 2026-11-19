@@ -3,7 +3,8 @@
 * ``state_intervals`` reads a naive / text ``data_end`` on tz-aware data as
   local time of the data (every MicroStopEvents method, DutyCycleEvents).
 * A missing run/on state is unknown time, not idle / off.
-* A signal whose values are in another ``value_*`` column warns once.
+* A signal whose values are in another ``value_*`` column warns once; a
+  value column left at its default follows the data.
 * A ``value_column`` the data does not have raises (PerformanceLossEvents,
   ``state_mask``).
 * Variance / sigma ratios are NaN, never ``inf``.
@@ -152,7 +153,10 @@ def test_duty_cycle_cycle_count_all_missing_is_empty() -> None:
     df = _long("m", t, value_double=[1.0, 2.0, 3.0])  # value_bool all NaN
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DataQualityWarning)
-        out = DutyCycleEvents(df, "m").cycle_count(window="1h")
+        # An explicit value column with no values: nothing to count.
+        out = DutyCycleEvents(df, "m", value_column="value_bool").cycle_count(
+            window="1h"
+        )
     assert out.empty
     assert "total_transitions" in out.columns
 
@@ -208,32 +212,46 @@ def _counter_in_double() -> pd.DataFrame:
     return _long("c", t, value_double=np.arange(120.0))
 
 
-def test_process_window_warns_for_state_in_value_integer() -> None:
+def test_process_window_uses_the_populated_column() -> None:
     with pytest.warns(DataQualityWarning) as record:
         out = ProcessWindowEvents(_state_in_integer(), "st").windowed_statistics(
             window="1h"
         )
-    assert out.empty  # unchanged: nothing in value_double
+    assert not out.empty  # read from value_integer
     assert _ours(record) == [
-        "ProcessWindowEvents: signal 'st' has no values in value_double; its "
-        "values are in value_integer — pass value_column='value_integer'"
+        "ProcessWindowEvents: signal 'st' has no values in value_double (the "
+        "default of value_column); its values are in value_integer, which is "
+        "used — pass value_column='value_integer' to silence this"
     ]
 
 
-def test_line_throughput_warns_for_counter_in_value_double() -> None:
+def test_line_throughput_uses_counter_in_value_double() -> None:
     with pytest.warns(DataQualityWarning) as record:
         out = ts_shape.LineThroughputEvents(_counter_in_double()).count_parts("c")
-    assert out.empty
+    assert out["count"].sum() == 119
     (message,) = _ours(record)
     assert "'c' has no values in value_integer" in message
     assert "pass value_column='value_double'" in message
 
 
-def test_machine_state_warns_for_state_in_value_integer() -> None:
+def test_explicit_empty_column_still_warns_and_is_kept() -> None:
     with pytest.warns(DataQualityWarning) as record:
-        MachineStateEvents(_state_in_integer(), "st").detect_run_idle()
+        out = ts_shape.LineThroughputEvents(_counter_in_double()).count_parts(
+            "c", value_column="value_integer"
+        )
+    assert out.empty  # the caller's column is never replaced
     (message,) = _ours(record)
-    assert "in value_bool; its values are in value_integer" in message
+    assert "pass value_column='value_double'" in message
+
+
+def test_machine_state_uses_state_in_value_integer() -> None:
+    with pytest.warns(DataQualityWarning) as record:
+        out = MachineStateEvents(_state_in_integer(), "st").detect_run_idle()
+    assert set(out["state"]) == {"run", "idle"}
+    (message,) = _ours(record)
+    assert "in value_bool (the default of value_column); its values are in " in (
+        message
+    )
 
 
 def test_correct_value_column_does_not_warn() -> None:
@@ -250,8 +268,8 @@ def test_warning_once_per_signal_and_column() -> None:
     lt = ts_shape.LineThroughputEvents(_counter_in_double())
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
-        lt.count_parts("c")
-        lt.count_parts("c", window="1h")
+        lt.count_parts("c", value_column="value_integer")
+        lt.count_parts("c", window="1h", value_column="value_integer")
     assert len(_ours(record)) == 1
 
 
@@ -279,8 +297,9 @@ def test_performance_loss_unknown_value_column_raises() -> None:
     perf = PerformanceLossEvents(df)
     with pytest.raises(ColumnNotFoundError, match="value_integr"):
         perf.performance_by_shift("c", 30.0, value_column="value_integr")
-    with pytest.raises(ColumnNotFoundError):
-        perf.performance_by_shift("c", 30.0)  # default value_integer is absent
+    with pytest.warns(DataQualityWarning, match="its values are in value_double"):
+        # The default value_integer is absent: the values' column is used.
+        assert perf.performance_by_shift("c", 30.0)["actual_parts"].sum() > 0
     out = perf.performance_by_shift("c", 30.0, value_column="value_double")
     assert out["actual_parts"].sum() > 0
 

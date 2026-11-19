@@ -10,8 +10,9 @@ Industry-standard metric for manufacturing productivity:
 
 import logging
 import warnings
+from collections.abc import Collection
 from math import nan
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -24,7 +25,7 @@ from ts_shape.events._output import (
 )
 from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
+from ts_shape.utils.coerce import run_bool
 from ts_shape.utils.deprecation import (
     caller_stacklevel,
     deprecated_class,
@@ -82,7 +83,7 @@ def _day_periods(times: pd.Series) -> pd.DataFrame:
     return days
 
 
-def _warn_above_100(metric: str, rows: list[dict]) -> None:
+def _warn_above_100(metric: str, rows: list[dict], hint: str | None = None) -> None:
     """Warn about days whose ``<metric>_pct`` exceeds 100 %.
 
     A ratio above 100 % means the inputs disagree (an ideal cycle time that is
@@ -93,11 +94,13 @@ def _warn_above_100(metric: str, rows: list[dict]) -> None:
     over = [r["date"] for r in rows if r[key] > 100.0 + _PCT_TOLERANCE]
     if over:
         days = ", ".join(str(d) for d in over)
+        check = hint or (
+            "check the ideal cycle time, the planned time and that the state "
+            "and counter signals cover the same time"
+        )
         warnings.warn(
             f"OEEEvents: {key} above 100 % in the day window(s) starting {days}; "
-            "the inputs disagree (check the ideal cycle time, the planned time "
-            "and that the state and counter signals cover the same time). The "
-            "value is reported unclipped.",
+            f"the inputs disagree ({check}). The value is reported unclipped.",
             DataQualityWarning,
             stacklevel=caller_stacklevel(),
         )
@@ -175,6 +178,8 @@ class OEEEvents(Base):
         *,
         value_column: str = "value_bool",
         max_gap: str | None = None,
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> pd.DataFrame:
         """Calculate availability percentage from run/idle intervals.
 
@@ -201,6 +206,15 @@ class OEEEvents(Base):
                 None (the planned time is derived from the data). ``None``
                 (default) applies no cap: every interval between readings,
                 however long, counts toward the preceding state.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic); every other
+                known value is not running. ``None`` (default) uses
+                ``value_range`` or reads the signal as a bool, with a
+                ``DataQualityWarning`` when it is not one (see
+                :func:`ts_shape.utils.coerce.run_mask`).
+            value_range: ``(lower, upper)`` inclusive bounds; a run-signal
+                value inside counts as running. Used when ``run_states`` is
+                ``None``.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -228,7 +242,12 @@ class OEEEvents(Base):
 
         state_data[self.time_column] = pd.to_datetime(state_data[self.time_column])
         times = state_data[self.time_column]
-        state = bool_or_false(state_data[value_column])
+        state = run_bool(
+            state_data[value_column],
+            run_states=run_states,
+            value_range=value_range,
+            what=f"OEEEvents: run signal {run_state_uuid!r}",
+        )
 
         # Each reading's state holds until the next reading (gaps longer than
         # max_gap are "no data"); the intervals are split at midnight, so a
@@ -253,8 +272,9 @@ class OEEEvents(Base):
             else:
                 planned_seconds = run_seconds + idle_seconds
 
+            # No planned time: availability is undefined, not 0 %.
             availability = (
-                (run_seconds / planned_seconds * 100.0) if planned_seconds > 0 else 0.0
+                (run_seconds / planned_seconds * 100.0) if planned_seconds > 0 else nan
             )
 
             results.append(
@@ -306,14 +326,19 @@ class OEEEvents(Base):
         value_column_state: str = "value_bool",
         handle_resets: bool = True,
         max_gap: str | None = None,
+        parts_per_cycle: float = 1.0,
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> pd.DataFrame:
         """Calculate performance percentage (actual vs ideal throughput).
 
-        Performance = (actual_parts * ideal_cycle_time) / run_time
-        (ISO 22400-2: PQ x pICT / APT). If *run_state_uuid* is None, the time
+        Performance = (actual_parts * ideal_cycle_time) / (run_time *
+        parts_per_cycle) (ISO 22400-2: PQ x pICT / APT, with the ideal time
+        per part = ideal cycle time / parts per cycle). If *run_state_uuid* is None, the time
         the counter readings cover each day is used as run time. With a
         state signal, a day it does not cover has unknown run time:
         ``run_seconds``, ``ideal_parts`` and ``performance_pct`` are NaN.
+        A day without run time has an undefined performance (NaN), not 0 %.
         A value above 100 % means the inputs disagree; it is kept (not
         clipped) and reported with a
         :class:`~ts_shape.errors.DataQualityWarning` naming the day.
@@ -341,6 +366,19 @@ class OEEEvents(Base):
                 when ``run_state_uuid`` is given, so a logging gap does not
                 inflate the run time used as the performance denominator.
                 ``None`` (default) applies no cap.
+            parts_per_cycle: Parts one machine cycle makes (cavities of a
+                mould, parts per shot). ``ideal_cycle_time`` is per cycle; the
+                ideal part count is ``run_time / ideal_cycle_time *
+                parts_per_cycle``. Default 1.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic); every other
+                known value is not running. ``None`` (default) uses
+                ``value_range`` or reads the signal as a bool, with a
+                ``DataQualityWarning`` when it is not one (see
+                :func:`ts_shape.utils.coerce.run_mask`).
+            value_range: ``(lower, upper)`` inclusive bounds; a run-signal
+                value inside counts as running. Used when ``run_states`` is
+                ``None``.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -351,6 +389,16 @@ class OEEEvents(Base):
             - performance_pct
             - resets (only when ``handle_resets=True``)
         """
+        if not ideal_cycle_time > 0:
+            raise ValueError(
+                f"OEEEvents.performance: ideal_cycle_time must be > 0 seconds, "
+                f"got {ideal_cycle_time!r}"
+            )
+        if not parts_per_cycle > 0:
+            raise ValueError(
+                f"OEEEvents.performance: parts_per_cycle must be > 0, "
+                f"got {parts_per_cycle!r}"
+            )
         perf_extra = ["actual_parts", "ideal_parts", "run_seconds", "performance_pct"]
         if handle_resets:
             perf_extra.append("resets")
@@ -371,7 +419,11 @@ class OEEEvents(Base):
         run_per_day: dict = {}
         if run_state_uuid is not None:
             avail_df = self.availability(
-                run_state_uuid, value_column=value_column_state, max_gap=max_gap
+                run_state_uuid,
+                value_column=value_column_state,
+                max_gap=max_gap,
+                run_states=run_states,
+                value_range=value_range,
             )
             for start, run_s in zip(
                 avail_df[COL_START], avail_df["run_seconds"], strict=True
@@ -401,12 +453,13 @@ class OEEEvents(Base):
             if pd.isna(run_seconds):
                 ideal_parts = nan
                 performance = nan
-            elif run_seconds > 0 and ideal_cycle_time > 0:
-                ideal_parts = run_seconds / ideal_cycle_time
+            elif run_seconds > 0:
+                ideal_parts = run_seconds / ideal_cycle_time * parts_per_cycle
                 performance = (actual_parts / ideal_parts) * 100.0
             else:
+                # No run time: performance is undefined, not 0 %.
                 ideal_parts = 0.0
-                performance = 0.0
+                performance = nan
 
             row = {
                 "date": date,
@@ -419,7 +472,15 @@ class OEEEvents(Base):
                 row["resets"] = int(n_resets)
             results.append(row)
 
-        _warn_above_100("performance", results)
+        _warn_above_100(
+            "performance",
+            results,
+            hint=(
+                f"check ideal_cycle_time ({ideal_cycle_time} s per cycle) and "
+                f"parts_per_cycle ({parts_per_cycle}): a mould or press that "
+                "makes several parts per cycle needs parts_per_cycle"
+            ),
+        )
         return _daily_summary(results, perf_extra, tz=self._tz)
 
     def _counter_by_day(
@@ -493,7 +554,7 @@ class OEEEvents(Base):
             - total_parts
             - reject_parts
             - good_parts
-            - quality_pct
+            - quality_pct (NaN on a day without parts: undefined, not 0 %)
             - resets (only when ``handle_resets=True``)
         """
         qual_extra = ["total_parts", "reject_parts", "good_parts", "quality_pct"]
@@ -538,14 +599,15 @@ class OEEEvents(Base):
         ].itertuples(index=False):
             reject_parts = reject_by_day.get(date, 0.0)
             good_parts = max(0.0, total_parts - reject_parts)
-            quality = (good_parts / total_parts * 100.0) if total_parts > 0 else 0.0
+            # No parts: quality is undefined (NaN), not 0 %.
+            quality = (good_parts / total_parts * 100.0) if total_parts > 0 else nan
 
             row = {
                 "date": date,
                 "total_parts": float(total_parts),
                 "reject_parts": float(reject_parts),
                 "good_parts": float(good_parts),
-                "quality_pct": min(quality, 100.0),
+                "quality_pct": min(quality, 100.0) if quality == quality else nan,
             }
             if handle_resets:
                 row["resets"] = int(n_resets) + int(reject_resets_by_day.get(date, 0))
@@ -588,6 +650,12 @@ class OEEEvents(Base):
         planned_time_hours: float | None = None,
         handle_resets: bool = True,
         max_gap: str | None = None,
+        parts_per_cycle: float = 1.0,
+        value_column: str = "value_integer",
+        value_column_counter: str = "value_integer",
+        value_column_state: str = "value_bool",
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> pd.DataFrame:
         """Calculate daily OEE = Availability * Performance * Quality.
 
@@ -612,6 +680,25 @@ class OEEEvents(Base):
                 performance). ``None`` (default) applies no cap: every
                 interval between readings, however long, counts toward the
                 preceding state.
+            parts_per_cycle: Parts per machine cycle, forwarded to
+                :meth:`performance`. Default 1.
+            value_column: Column holding the total / reject counters
+                (quality).
+            value_column_counter: Column holding the part counter
+                (performance).
+            value_column_state: Column holding the run signal.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic); every other
+                known value is not running. ``None`` (default) uses
+                ``value_range`` or reads the signal as a bool, with a
+                ``DataQualityWarning`` when it is not one (see
+                :func:`ts_shape.utils.coerce.run_mask`).
+            value_range: ``(lower, upper)`` inclusive bounds; a run-signal
+                value inside counts as running. Used when ``run_states`` is
+                ``None``.
+
+        A component that is undefined on a day (no run time, no parts) is
+        NaN, and so is ``oee_pct``; a day with 0 % availability has 0 % OEE.
 
         Returns:
             Summary-shape DataFrame with columns:
@@ -651,18 +738,33 @@ class OEEEvents(Base):
         if handle_resets:
             basis.append("resets")
         avail_df = self.availability(
-            run_state_uuid, planned_time_hours=planned_time_hours, max_gap=max_gap
+            run_state_uuid,
+            planned_time_hours=planned_time_hours,
+            value_column=value_column_state,
+            max_gap=max_gap,
+            run_states=run_states,
+            value_range=value_range,
         )
         perf_df = self.performance(
             counter_uuid,
             ideal_cycle_time,
             run_state_uuid=run_state_uuid,
+            value_column=value_column_counter,
+            value_column_state=value_column_state,
             handle_resets=handle_resets,
             max_gap=max_gap,
+            parts_per_cycle=parts_per_cycle,
+            run_states=run_states,
+            value_range=value_range,
         )
 
         if total_uuid is not None and reject_uuid is not None:
-            qual_df = self.quality(total_uuid, reject_uuid, handle_resets=handle_resets)
+            qual_df = self.quality(
+                total_uuid,
+                reject_uuid,
+                value_column=value_column,
+                handle_resets=handle_resets,
+            )
         else:
             qual_df = None
 
@@ -680,7 +782,7 @@ class OEEEvents(Base):
             )
             merged = merged.merge(perf_part, on=key_cols, how="outer")
         else:
-            merged["performance_pct"] = 0.0
+            merged["performance_pct"] = nan
             for col in perf_basis:
                 merged[col] = 0.0
             merged["_perf_resets"] = 0
@@ -700,8 +802,12 @@ class OEEEvents(Base):
 
         # A day the state signal does not cover has unknown availability and
         # run time (so unknown performance and OEE), not 0 %.
+        # A component that is undefined that day (no run time, no parts) or
+        # missing from its frame stays NaN; only the counts default to 0.
         no_state = merged["availability_pct"].isna()
-        merged = merged.fillna(0.0)
+        counts = [c for c in basis if c in merged.columns]
+        counts += [c for c in ("_perf_resets", "_qual_resets") if c in merged.columns]
+        merged[counts] = merged[counts].fillna(0.0)
         unknown = ["availability_pct", "run_seconds", "planned_seconds"]
         unknown += ["performance_pct", "ideal_parts"]
         merged.loc[no_state, unknown] = float("nan")
@@ -720,6 +826,8 @@ class OEEEvents(Base):
             * merged["quality_pct"]
             / 10000.0  # three percentages multiplied: /100 /100
         )
+        # Planned but never running: the loss is all availability, OEE is 0.
+        merged.loc[(merged["availability_pct"] == 0).to_numpy(), "oee_pct"] = 0.0
 
         return (
             merged[key_cols + oee_extra + basis]

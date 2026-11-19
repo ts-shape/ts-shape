@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Collection
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -6,7 +8,7 @@ import pandas as pd
 from ts_shape.events._output import twin_columns
 from ts_shape.events._windows import window_bounds
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
+from ts_shape.utils.coerce import run_bool
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 from ts_shape.utils.runs import total_seconds
@@ -66,6 +68,8 @@ class MicroStopEvents(Base):
         time_column: str = "systime",
         interval_end: str = "next_change",
         data_end: pd.Timestamp | None = None,
+        run_states: Collection[Any] | None = None,
+        value_range: tuple[float | None, float | None] | None = None,
     ) -> None:
         """Initialize the micro-stop detector.
 
@@ -86,11 +90,21 @@ class MicroStopEvents(Base):
                 no lost time is reported.
             data_end: Optional bound for the final, still-open interval when
                 ``interval_end="next_change"``.
+            run_states: Values of the run signal that mean running (e.g.
+                ``{2}`` for a mode signal where 2 is automatic, or
+                ``{"RUN"}``); every other known value is not running.
+                ``None`` (default) uses ``value_range`` or reads the signal
+                as a bool, with a ``DataQualityWarning`` when it is not one.
+            value_range: ``(lower, upper)`` inclusive bounds; a value inside
+                counts as running (either bound may be ``None``). Used when
+                ``run_states`` is ``None``.
         """
         super().__init__(dataframe, time_column=time_column)
         self.run_state_uuid = run_state_uuid
         self.event_uuid = event_uuid
         self.value_column = value_column
+        self.run_states = None if run_states is None else frozenset(run_states)
+        self.value_range = value_range
         self.time_column = time_column
         self.interval_end = interval_end
         self.data_end = data_end
@@ -113,7 +127,12 @@ class MicroStopEvents(Base):
             return pd.DataFrame(columns=cols)
 
         s = self.series[[self.time_column, self.value_column]].copy()
-        s["state"] = bool_or_false(s[self.value_column])
+        s["state"] = run_bool(
+            s[self.value_column],
+            run_states=self.run_states,
+            value_range=self.value_range,
+            what=f"MicroStopEvents: run signal {self.run_state_uuid!r}",
+        )
         intervals = state_intervals(
             s,
             time_column=self.time_column,

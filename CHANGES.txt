@@ -1,3 +1,102 @@
+# November 19, 2026 (field test: configuration checks)
+Wrong configurations fail loudly or warn with a reason.
+feat: utils.validate -- check_keys (did-you-mean), check_order,
+  check_levels_ordered, check_choice, check_known_names, check_positive,
+  check_non_negative, suggest.
+fix: ValueError instead of a silently computed result for: an unknown
+  recipe criterion key or min > max (RecipePhaseAdherenceEvents); an unknown
+  distribution or source key (MeasurementUncertaintyEvents.
+  type_b_uncertainty; "gaussian", "uniform", "arcsine" are accepted
+  spellings); unknown shift names (TargetEvents.compare_to_target,
+  ShiftReportEvents.shift_targets); an empty cost table (ScrapEvents.
+  scrap_cost); swapped limits (ToleranceDeviationEvents, CapabilityTrending
+  Events, SignalQualityEvents.detect_out_of_range); a direction other than
+  above/below or empty levels (ThresholdMonitoringEvents.multi_level_
+  threshold); degradation_rate 0 and equal warning / critical thresholds
+  (FailurePredictionEvents); negative min_rise / min_fall (WarmUpCoolDown
+  Events), negative hours (ReliabilityEvents.reliability_at, which now also
+  takes a scalar); a period that ends before it starts (PeriodSummaryEvents.
+  compare_periods, ParquetLoader); a negative emission factor or a scope
+  other than 1/2 (CarbonIntensityEvents); fewer than two calibration points
+  (CalibrationValidationEvents.calibration_curve); a malformed line_config
+  (ContinuousProcessAlignmentEvents, now documented in __init__); an unknown
+  threshold metric (ShiftHandoverEvents.highlight_issues).
+fix: DataQualityWarning for: recipe phases that never occur; parts without
+  a cost (costed at 0); emission-factor uuids not in the data; an
+  identifier signal (part, order, batch, recipe ...) holding only empty
+  text.
+feat: CarbonIntensityEvents signal_kind ("auto" default, "interval",
+  "meter", "power"): a power reading is integrated over time and a
+  cumulative meter read as increments, instead of summing the samples.
+  Behaviour change: "auto" reads a counter as a meter and a continuous
+  signal sampled faster than once a minute as power (with a warning).
+fix: StatisticalProcessControlEvents warns when the moving-range sigma is
+  below 0.1 x the reference standard deviation (held values) and when more
+  than 25 % of the points lie beyond 3 sigma.
+fix: DesignSpaceEvents.fit_hull raises a ValueError naming the constant
+  parameters instead of scipy's QhullError; detect_excursions /
+  boundary_proximity fit the default box (with a warning) instead of
+  depending on call order.
+fix: EnvironmentalCompensationEvents: a constant environment window is left
+  out of sensitivity() with a warning; compensated_signal() raises a clear
+  ValueError; detect_correlation skips constant windows. env_uuid is a
+  required keyword argument.
+fix: SignalSpecs.override raises KeyError for a uuid without a spec (pass
+  add=True to add one). MetadataJsonLoader.get_by_label raises for a
+  duplicate label; new get_all_by_label and duplicate_labels.
+fix: run_chunked with source and target swapped raises a short TypeError
+  (no frame repr); Pipeline suggests the closest method name.
+feat: LambdaDetector.to_event_log labels an unregistered rule from its own
+  RuleSpec without changing the global taxonomy.
+feat: CrossSignalAnalytics accepts long-format frames.
+docs: the energy normalize() methods say they read raw time/value exports.
+
+# November 19, 2026 (field test: core KPIs)
+Findings of the 0.0.88 field test on five plant exports.
+fix: a value column left at its default (value_column, value_column_<role>)
+  whose signal has no values there while exactly one other value_* column
+  holds them is replaced by that column before the call, with a
+  DataQualityWarning naming the argument to pass (all detectors; a specs=
+  SignalSpecs is followed first). A counter in value_double is now counted
+  instead of returning 0 / an empty frame. Columns passed by the caller are
+  never replaced. Behaviour change: results that used to be empty are now
+  computed.
+feat: utils.coerce.run_mask / run_bool -- one run-signal convention:
+  run_states={...} (values that mean running, ints match floats) or
+  value_range=(low, high); a signal that is not a bool or 0/1 warns without a
+  mapping. New run_states / value_range on OEEEvents (availability,
+  performance, oee), RuntimeAccountingEvents, MicroStopEvents,
+  DutyCycleEvents, BottleneckDetectionEvents, LongDowntimeEvents (run_states),
+  IdleEnergyDetectionEvents and EnergyEfficiencyEvents.idle_energy_waste;
+  MachineStateEvents uses the same helper and now also warns for a mode
+  number with more than the levels 0/1. Idle-energy methods no longer raise
+  "Need to pass bool-like values" on a mode or text state.
+feat: DowntimeEvents / ShiftHandoverEvents running_value / stopped_value
+  accept a set of values (e.g. {2}); a text value that never occurs in a
+  signal with values warns.
+fix: PartProductionEvents (all methods) and QualityEvents.quality_by_part
+  with a numeric part number (part and counter in the same column) no longer
+  raise KeyError; part_number is text ("4711", not 4711.0) via the new
+  utils.normalize.id_text.
+fix: CycleTimeEvents counts a 0/1 pulse in any column on its rising edges
+  (no longer on both edges), and warns when a polled trigger sees most
+  pulses in a single sample (pulses shorter than the polling interval are
+  missed and cycles merge).
+feat: OEEEvents.performance / oee parts_per_cycle (ideal parts = run time /
+  ideal cycle time x parts per cycle); the above-100 % warning names it.
+  ideal_cycle_time and parts_per_cycle must be > 0.
+fix: OEEEvents: a day without parts has quality_pct NaN (undefined), a day
+  without run time performance_pct NaN, zero planned time availability_pct
+  NaN -- not 0 %. oee() no longer fills missing components with 0; oee_pct
+  is NaN when a component is undefined and 0 when availability is 0. oee()
+  gains value_column (quality counters), value_column_counter and
+  value_column_state, forwarded to the components.
+fix: DutyCycleEvents.duty_cycle_by_window (time-weighted) splits each
+  interval at the window boundaries (on + off time never exceed the window)
+  and gains max_gap ("auto": the signal's inferred max_gap) and an
+  unknown_seconds column: time inside a gap or after a missing value is
+  neither on nor off.
+
 # November 18, 2026 (profile quality)
 feat: cycle anchor support needs phase locking (mean resultant length >= 0.7,
   count 0.8-1.5x); candidates ranked by coverage_ratio first; polled anchors

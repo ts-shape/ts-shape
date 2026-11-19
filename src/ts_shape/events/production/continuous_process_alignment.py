@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd
 
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import to_numeric_checked
+from ts_shape.utils.coerce import run_bool, to_numeric_checked
 from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import (
     REMOVAL,
@@ -16,6 +17,7 @@ from ts_shape.utils.deprecation import (
     keyword_only,
     renamed_kwargs,
 )
+from ts_shape.utils.validate import check_keys
 
 _SPEED_FACTORS: dict[str, float] = {
     "m/min": 1.0 / 60.0,
@@ -101,6 +103,29 @@ class ContinuousProcessAlignmentEvents(Base):
         speed_unit: str = "m/min",
         min_speed: float = 0.01,
     ) -> None:
+        """Set up the line layout and the speed signal.
+
+        Args:
+            dataframe: Long-format frame holding the speed, station and cut
+                signals.
+            speed_uuid: UUID of the line-speed signal.
+            line_config: The stations along the line, one dict each:
+                ``{"name": "extruder", "offset": 0.0, "uuids": ["t1", "t2"]}``.
+                ``name`` labels the station, ``offset`` is its distance in
+                metres from the reference point (0) along the material flow,
+                and ``uuids`` lists the signals measured there. The offsets
+                are physical: they come from the line drawing, not from the
+                data. An unknown key, a missing key, a non-list ``uuids`` or
+                a uuid listed twice raises ``ValueError``.
+            ref_uuid: Deprecated; has no effect.
+            cut_uuid: Optional UUID whose values carry the cut piece length.
+            time_column: Name of the timestamp column.
+            uuid_column: Name of the UUID column.
+            value_column: Value column of the speed signal and default station
+                value column.
+            speed_unit: Unit of the speed signal (``"m/min"``, ``"m/s"``, ...).
+            min_speed: Speeds below this count as standstill.
+        """
         super().__init__(dataframe, time_column)
 
         self.speed_uuid = speed_uuid
@@ -126,10 +151,36 @@ class ContinuousProcessAlignmentEvents(Base):
 
         # Build flat lookup: uuid -> (component_name, offset_m)
         self._uuid_meta: dict[str, tuple] = {}
-        for component in line_config:
+        where = "ContinuousProcessAlignmentEvents: line_config"
+        for i, component in enumerate(line_config):
+            if not isinstance(component, Mapping):
+                raise ValueError(f"{where}[{i}] must be a dict, got {component!r}")
+            check_keys(component, ("name", "offset", "uuids"), where=f"{where}[{i}]")
+            missing = [k for k in ("name", "offset", "uuids") if k not in component]
+            if missing:
+                raise ValueError(
+                    f"{where}[{i}] needs {missing}; each component is "
+                    "{'name': str, 'offset': metres, 'uuids': [signal uuids]}"
+                )
             name = component["name"]
-            offset = float(component["offset"])
-            for uid in component.get("uuids", []):
+            try:
+                offset = float(component["offset"])
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"{where}[{i}] offset must be a number of metres, got "
+                    f"{component['offset']!r}"
+                ) from None
+            uuids = component["uuids"]
+            if isinstance(uuids, str) or not isinstance(uuids, (list, tuple, set)):
+                raise ValueError(
+                    f"{where}[{i}] uuids must be a list of signal uuids, got {uuids!r}"
+                )
+            for uid in uuids:
+                if uid in self._uuid_meta:
+                    raise ValueError(
+                        f"{where}: uuid {uid!r} is listed in both "
+                        f"{self._uuid_meta[uid][0]!r} and {name!r}"
+                    )
                 self._uuid_meta[uid] = (name, offset)
 
         self._all_station_uuids: list[str] = list(self._uuid_meta.keys())
@@ -368,11 +419,8 @@ class ContinuousProcessAlignmentEvents(Base):
                     "value_bool" in counter_df.columns
                     and counter_df["value_bool"].notna().any()
                 ):
-                    fired = (
-                        counter_df["value_bool"]
-                        .astype("boolean")
-                        .fillna(False)
-                        .to_numpy(dtype=bool)
+                    fired = run_bool(counter_df["value_bool"], warn=False).to_numpy(
+                        dtype=bool
                     )
                     cut_times = counter_df[tcol][fired]
                     cut_counts = np.ones(int(fired.sum()), dtype=np.int64)

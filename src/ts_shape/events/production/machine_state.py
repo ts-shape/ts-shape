@@ -1,18 +1,16 @@
 import logging
-import warnings
 from collections.abc import Collection, Mapping
 from typing import Any, Literal, overload
 
 import numpy as np
 import pandas as pd
 
-from ts_shape.errors import DataQualityWarning
 from ts_shape.events._compat import summary_bounds, warn_dict_return
 from ts_shape.events._output import twin_columns
 from ts_shape.signals.primitives import intervals as spec_intervals
 from ts_shape.signals.spec import SignalSpec
 from ts_shape.utils.base import Base
-from ts_shape.utils.coerce import bool_or_false
+from ts_shape.utils.coerce import run_mask
 from ts_shape.utils.deprecation import keyword_only
 from ts_shape.utils.intervals import state_intervals
 from ts_shape.utils.runs import total_seconds
@@ -117,26 +115,19 @@ class MachineStateEvents(Base):
         self._compute_state_groups()
 
     def _warn_text_states(self) -> None:
-        """Warn when text states would be read by the bool cast."""
+        """Warn when the run signal is not a bool and has no mapping.
+
+        Text states, or a mode number with more than the levels 0/1, are
+        misread by the bool cast (see :func:`ts_shape.utils.coerce.run_mask`).
+        """
         if self.run_states is not None or self.value_range is not None:
             return
         if self.value_column not in self.series.columns:
             return
-        values = self.series[self.value_column].dropna()
-        if values.empty or pd.api.types.is_bool_dtype(values):
-            return
-        if pd.api.types.is_numeric_dtype(values):
-            return
-        if not values.map(lambda v: isinstance(v, str)).any():
-            return
-        sample = sorted(map(str, values.unique()[:5]))
-        warnings.warn(
-            f"MachineStateEvents: signal {self.run_state_uuid!r} holds text "
-            f"states in {self.value_column!r} (e.g. {sample}); without a "
-            "mapping every non-empty text counts as running. Pass "
-            "run_states={...} with the values that mean running.",
-            DataQualityWarning,
-            stacklevel=3,
+        run_mask(
+            self.series[self.value_column],
+            what=f"MachineStateEvents: signal {self.run_state_uuid!r} "
+            f"({self.value_column})",
         )
 
     def _as_state(self, col: pd.Series) -> pd.Series:
@@ -146,24 +137,12 @@ class MachineStateEvents(Base):
         (inclusive on both ends); otherwise casts to bool. A missing value (``None``, ``NaN``, ``pd.NA``) is unknown, not
         idle: it is ``pd.NA`` in the returned nullable ``boolean`` Series.
         """
-        known = col.notna()
-        if self.run_states is not None:
-            state = col.isin(self.run_states).to_numpy(dtype=bool)
-            return (
-                pd.Series(state, index=col.index).astype("boolean").where(known, pd.NA)
-            )
-        if self.value_range is not None:
-            lower, upper = self.value_range
-            values = pd.to_numeric(col, errors="coerce")
-            mask = pd.Series(True, index=col.index)
-            if lower is not None:
-                mask &= (values >= lower).fillna(False).astype(bool)
-            if upper is not None:
-                mask &= (values <= upper).fillna(False).astype(bool)
-            state = mask
-        else:
-            state = bool_or_false(col)
-        return state.astype("boolean").where(known, pd.NA)
+        return run_mask(
+            col,
+            run_states=self.run_states,
+            value_range=self.value_range,
+            warn=False,
+        )
 
     def _state_codes(self, col: pd.Series) -> pd.Series:
         """``1`` run, ``0`` idle, ``-1`` unknown (missing value), as ``int64``."""

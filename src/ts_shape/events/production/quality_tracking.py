@@ -22,6 +22,7 @@ from ts_shape.events.production._counter_groups import counter_totals
 from ts_shape.utils.base import Base
 from ts_shape.utils.counters import counter_increments
 from ts_shape.utils.deprecation import deprecated_class
+from ts_shape.utils.normalize import id_text
 from ts_shape.utils.shifts import assign_shift, production_dates
 from ts_shape.utils.time_accounting import counter_by_period, shift_periods
 
@@ -393,6 +394,17 @@ class QualityEvents(Base):
 
         results = []
 
+        # The part number, named before merging: the part signal may share
+        # the counter's column (a numeric part number in value_integer).
+        part_subset = pd.DataFrame(
+            {
+                self.time_column: pd.to_datetime(
+                    part_data[self.time_column]
+                ).to_numpy(),
+                "part_number": id_text(part_data[value_column_part]).to_numpy(),
+            }
+        ).sort_values(self.time_column)
+
         # Process OK parts by part number
         ok_by_part = {}
         resets_by_part: dict[str, int] = {}
@@ -401,13 +413,10 @@ class QualityEvents(Base):
 
             # Merge with part data
             ok_subset = ok_data[[self.time_column, value_column_counter]].copy()
-            part_subset = part_data[[self.time_column, value_column_part]].copy()
 
             merged_ok = pd.merge_asof(
                 ok_subset, part_subset, on=self.time_column, direction="backward"
             )
-
-            merged_ok = merged_ok.rename(columns={value_column_part: "part_number"})
             merged_ok = merged_ok.dropna(subset=["part_number"])
 
             if handle_resets:
@@ -440,13 +449,10 @@ class QualityEvents(Base):
 
             # Merge with part data
             nok_subset = nok_data[[self.time_column, value_column_counter]].copy()
-            part_subset = part_data[[self.time_column, value_column_part]].copy()
 
             merged_nok = pd.merge_asof(
                 nok_subset, part_subset, on=self.time_column, direction="backward"
             )
-
-            merged_nok = merged_nok.rename(columns={value_column_part: "part_number"})
             merged_nok = merged_nok.dropna(subset=["part_number"])
 
             if handle_resets:

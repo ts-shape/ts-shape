@@ -317,12 +317,13 @@ from ts_shape.stream import CONDITIONAL
 print(CONDITIONAL["DataGapAnalysisEvents.detect_gaps"].argument)
 try:
     run_chunked(days(), DataGapAnalysisEvents, "detect_gaps",
-                signal_uuid="press:run")
+                signal_uuid="press:run", value_column="value_bool")
 except NotChunkableError as exc:
     print(exc)
 
 gaps = run_chunked(days(), DataGapAnalysisEvents, "detect_gaps",
-                   signal_uuid="press:run", min_gap="2min")
+                   signal_uuid="press:run", value_column="value_bool",
+                   min_gap="2min")
 ```
 
 ## Limitations
