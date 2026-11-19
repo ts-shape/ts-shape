@@ -59,16 +59,24 @@ def _is_state_set(value: Any) -> bool:
     return isinstance(value, (set, frozenset, list, tuple))
 
 
-def _warn_unmatched_state(values: pd.Series, value: Any, matched: pd.Series) -> None:
-    """Warn when a state value never occurs in a signal that has values."""
+def _warn_unmatched_state(values: pd.Series, value: Any) -> None:
+    """Warn when a text state value is compared with a numeric state signal.
+
+    That is a mapping problem (a mode signal such as 1/2/5 read with
+    ``"Running"``), not a state that just did not occur in the window, which
+    is normal and not reported.
+    """
     known = values.dropna()
-    if known.empty or bool(matched.any()):
+    if known.empty or not isinstance(value, str):
         return
+    numbers = pd.to_numeric(known, errors="coerce")
+    if not numbers.notna().all():
+        return  # a text state signal: a value that does not occur is fine
     shown = sorted(map(str, pd.unique(known.to_numpy())))[:6]
     warnings.warn(
-        f"the state value {value!r} never occurs in the state signal (its values "
-        f"are {shown}); every row counts as not matching. Pass the value(s) "
-        "that occur, e.g. running_value={...} for a mode signal.",
+        f"the text state value {value!r} is compared with a numeric state signal "
+        f"(values {shown}), so it never matches. Pass the numbers that mean the "
+        "state as a set, e.g. running_value={2} or stopped_value={1, 5}.",
         DataQualityWarning,
         stacklevel=caller_stacklevel(),
     )
@@ -107,14 +115,24 @@ def state_mask(
             f"Columns: {list(data.columns)}"
         )
     if _is_state_set(value):
-        if value_column not in data.columns:
+        values = list(value)
+        bools = [v for v in values if isinstance(v, (bool, np.bool_))]
+        texts = [v for v in values if not isinstance(v, (bool, np.bool_))]
+        if texts and not uses_bool_state(data, value_column, texts[0]):
+            if value_column not in data.columns:
+                return pd.Series(False, index=data.index)
+            mask = run_mask(data[value_column], run_states=values, warn=False)
+            return mask.fillna(False).astype(bool)
+        # A set on a boolean run signal: like a scalar (a bool in the set is
+        # matched directly, text falls back to bool_value).
+        targets = {bool(v) for v in bools} if bools else {bool_value}
+        if _BOOL_COLUMN not in data.columns:
             return pd.Series(False, index=data.index)
-        mask = run_mask(data[value_column], run_states=list(value), warn=False)
-        return mask.fillna(False).astype(bool)
+        raw = data[_BOOL_COLUMN]
+        return raw.notna() & bool_or_false(raw).isin(targets)
     if not uses_bool_state(data, value_column, value):
-        matched = data[value_column] == value
-        _warn_unmatched_state(data[value_column], value, matched)
-        return matched
+        _warn_unmatched_state(data[value_column], value)
+        return data[value_column] == value
     if isinstance(value, (bool, np.bool_)):
         column = _BOOL_COLUMN if value_column == _STRING_COLUMN else value_column
         target = bool(value)

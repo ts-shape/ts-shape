@@ -73,8 +73,11 @@ def _interval_stats(times: pd.Series) -> tuple[pd.Timedelta | None, float, float
 #: Rates (value units per second) of a running PLC timer: seconds,
 #: tenths, hundredths, milliseconds.
 TIMER_RATES = (1.0, 10.0, 100.0, 1000.0)
-#: A running timer resets (falls back) at least this many times.
+#: A running timer resets (falls back) at least this many times ...
 TIMER_MIN_RESETS = 3
+#: ... and at least once per this many rising readings (a cycle timer
+#: restarts every cycle; a counter that resets once a shift does not).
+TIMER_MAX_RISES_PER_RESET = 1000
 #: A rising signal whose rate is within this share of a timer rate, with a
 #: coefficient of variation below :data:`TIMER_MAX_CV`, is a running timer.
 TIMER_RATE_TOLERANCE = 0.15
@@ -99,8 +102,11 @@ def _running_timer(values: pd.Series, times: pd.Series | None) -> str | None:
     rising = (dv > 0) & (dt > 0)
     if rising.sum() < 4 or rising.mean() < 0.5:
         return None
-    if int((dv < 0).sum()) < TIMER_MIN_RESETS:
-        return None  # a clock that never restarts is not a cycle timer
+    resets = int((dv < 0).sum())
+    if resets < TIMER_MIN_RESETS or resets * TIMER_MAX_RISES_PER_RESET < rising.sum():
+        # A clock that rarely restarts (a counter reset once a shift) is
+        # not a cycle timer.
+        return None
     rate = dv[rising] / dt[rising]
     median = float(np.median(rate))
     if median <= 0:

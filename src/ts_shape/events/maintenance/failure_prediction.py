@@ -79,11 +79,10 @@ class FailurePredictionEvents(Base):
             threshold is reached or passed, and None when no failure is
             projected (flat trend, or a trend moving away from the threshold).
         """
-        if not degradation_rate or not np.isfinite(degradation_rate):
+        if not np.isfinite(degradation_rate):
             raise ValueError(
                 "FailurePredictionEvents.remaining_useful_life: degradation_rate "
-                f"must be a non-zero finite rate per second, got {degradation_rate!r}"
-                " (its sign gives the direction towards failure)"
+                f"must be a finite rate per second, got {degradation_rate!r}"
             )
         cols = [
             "systime",

@@ -181,7 +181,8 @@ def test_threshold_and_failure_prediction_inputs() -> None:
         thr.multi_level_threshold({})
     fp = ts_shape.FailurePredictionEvents(_wave(), "temp")
     with pytest.raises(ValueError, match="degradation_rate"):
-        fp.remaining_useful_life(degradation_rate=0, failure_threshold=80)
+        fp.remaining_useful_life(degradation_rate=float("nan"), failure_threshold=80)
+    assert len(fp.remaining_useful_life(degradation_rate=0, failure_threshold=80))
     with pytest.raises(ValueError, match="swapped"):
         fp.detect_exceedance_pattern(
             warning_threshold=60, critical_threshold=55, direction="rising"
@@ -220,23 +221,62 @@ def test_carbon_power_reading_is_integrated() -> None:
     t = pd.date_range("2026-10-01", periods=2 * 3600 // 3, freq="3s")
     noise = np.random.default_rng(0).normal(0.0, 1.0, len(t))
     df = _signal("kva", 100.0 + noise - noise.mean(), times=t)
-    with pytest.warns(DataQualityWarning, match="power reading"):
-        out = ts_shape.CarbonIntensityEvents(df, {"kva": 0.5}).emissions_by_window(
-            window="1h"
-        )
+    carbon = ts_shape.CarbonIntensityEvents(df, {"kva": 0.5})
+    out = carbon.emissions_by_window(window="1h", signal_kind="power")
     # 100 kW for 2 h (one sample interval short) = ~200 kWh -> ~100 kg.
     assert out["kgco2e"].sum() == pytest.approx(100.0, rel=0.01)
-    summed = ts_shape.CarbonIntensityEvents(df, {"kva": 0.5}).emissions_by_window(
-        window="1h", signal_kind="interval"
-    )
+    # The default sums the readings, and says the source looks like power.
+    with pytest.warns(DataQualityWarning, match="signal_kind='power'"):
+        summed = carbon.emissions_by_window(window="1h")
     assert summed["kgco2e"].sum() == pytest.approx(len(t) * 50.0, rel=0.01)
+    with pytest.warns(DataQualityWarning, match="'auto' reads it as 'power'"):
+        auto = carbon.emissions_by_window(window="1h", signal_kind="auto")
+    assert auto["kgco2e"].sum() == pytest.approx(100.0, rel=0.01)
+
+
+@pytest.mark.parametrize("freq", ["1min", "change"])
+def test_carbon_minute_and_change_logged_power_warn(freq: str) -> None:
+    t = pd.date_range("2026-10-01", periods=24 * 60, freq="1min")
+    level = 10.0 + 0.5 * np.sin(np.arange(len(t)) / 30.0)
+    df = _signal("kw", level, times=t)
+    if freq == "change":
+        # Logged on change: one row when the rounded level changes.
+        df["value_double"] = df["value_double"].round(1)
+        keep = df["value_double"].ne(df["value_double"].shift())
+        df = df[keep.to_numpy()].reset_index(drop=True)
+    carbon = ts_shape.CarbonIntensityEvents(df, {"kw": 1.0})
+    with pytest.warns(DataQualityWarning, match="signal_kind='power'"):
+        carbon.emissions_by_window()
+    out = carbon.emissions_by_window(signal_kind="power")
+    assert out["kgco2e"].sum() == pytest.approx(240.0, rel=0.03)
+
+
+def test_carbon_power_is_not_held_across_an_outage() -> None:
+    t = pd.date_range("2026-10-01", periods=72, freq="1min").append(
+        pd.DatetimeIndex(["2026-10-04 00:00"])
+    )
+    noise = np.random.default_rng(4).normal(0.0, 0.5, len(t))
+    df = _signal("kw", 10.0 + noise, times=t)
+    out = ts_shape.CarbonIntensityEvents(df, {"kw": 1.0}).emissions_by_window(
+        signal_kind="power"
+    )
+    assert out["kgco2e"].sum() == pytest.approx(10.0 * 71 / 60, rel=0.1)
 
 
 def test_carbon_meter_reading_uses_increments() -> None:
     t = pd.date_range("2026-10-01", periods=48, freq="30min")
     df = _signal("meter", 1000.0 + np.arange(48) * 5.0, times=t)
-    with pytest.warns(DataQualityWarning, match="cumulative meter"):
-        out = ts_shape.CarbonIntensityEvents(df, {"meter": 1.0}).emissions_by_window()
+    with pytest.warns(DataQualityWarning, match="signal_kind='meter'"):
+        ts_shape.CarbonIntensityEvents(df, {"meter": 1.0}).emissions_by_window()
+    out = ts_shape.CarbonIntensityEvents(df, {"meter": 1.0}).emissions_by_window(
+        signal_kind="meter"
+    )
+    assert out["kgco2e"].sum() == pytest.approx(47 * 5.0)
+    holey = df.copy()
+    holey.loc[[10, 30], "value_double"] = np.nan  # NaN readings lose nothing
+    out = ts_shape.CarbonIntensityEvents(holey, {"meter": 1.0}).emissions_by_window(
+        signal_kind="meter"
+    )
     assert out["kgco2e"].sum() == pytest.approx(47 * 5.0)
 
 
@@ -356,3 +396,61 @@ def test_run_chunked_swapped_arguments() -> None:
 def test_cross_signal_accepts_long_format() -> None:
     df = pd.concat([_wave("a"), _wave("b")], ignore_index=True)
     assert ts_shape.CrossSignalAnalytics(df).signals == ["a", "b"]
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups
+# ---------------------------------------------------------------------------
+
+
+def test_scrap_cost_matches_float_part_numbers() -> None:
+    df = pd.concat(
+        [
+            _signal("scrap", np.arange(len(T)) // 100.0),
+            _signal("part", np.full(len(T), 1001.0), "value_integer"),
+        ],
+        ignore_index=True,
+    )
+    df["value_integer"] = df["value_integer"].astype("float64")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DataQualityWarning)
+        out = ts_shape.ScrapEvents(df).scrap_cost(
+            "scrap", "part", {1001: 2.5}, value_column_part="value_integer"
+        )
+    assert out["cost_per_unit"].tolist() == [2.5]
+    assert out["total_cost"].sum() > 0
+
+
+def test_stepping_tolerance_limits_only_warn() -> None:
+    lower = pd.concat(
+        [
+            _signal("lower", 0.0, times=T[:1]),
+            _signal("lower", 50.0, times=T[300:301]),
+        ]
+    )
+    upper = pd.concat(
+        [
+            _signal("upper", 40.0, times=T[:1]),
+            _signal("upper", 90.0, times=T[302:303]),  # steps 2 min later
+        ]
+    )
+    df = pd.concat([_wave("actual"), lower, upper], ignore_index=True)
+    det = ts_shape.ToleranceDeviationEvents(
+        df,
+        "value_double",
+        "value_double",
+        actual_uuid="actual",
+        upper_tolerance_uuid="upper",
+        lower_tolerance_uuid="lower",
+        event_uuid="dev",
+    )
+    with pytest.warns(DataQualityWarning, match="change at different times"):
+        det.detect_deviations()
+
+
+def test_highlight_issues_custom_report_with_default_thresholds() -> None:
+    report = pd.DataFrame({"shift": ["shift_1"], "quality_pct": [90.0]})
+    det = ts_shape.ShiftHandoverEvents(_counter())
+    det.highlight_issues(report_df=report)  # default thresholds are not checked
+    with pytest.raises(ValueError, match="threshold metric"):
+        det.highlight_issues(report_df=report, thresholds={"qualty_pct": 95.0})

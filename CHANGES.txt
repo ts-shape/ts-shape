@@ -1,3 +1,35 @@
+# November 19, 2026 (field test: review follow-ups)
+fix: ScrapEvents.scrap_cost matches float part numbers (1001.0) to cost keys
+  (1001) again.
+fix: ToleranceDeviationEvents raises for swapped limits only when most
+  measurements see upper < lower; limits that step at different times warn.
+fix: run_mask reads text "0"/"1"/"true"/"false"/"on"/"off" as bools.
+fix: DutyCycleEvents: the data_end hold is known time, not unknown.
+fix: OEEEvents.oee: a running day without counter rows has 0 parts and
+  0 % performance (not NaN).
+fix: FailurePredictionEvents.remaining_useful_life accepts
+  degradation_rate=0 again (direction from the data).
+fix: compact_frame keeps the uuid and value_* columns and leaves
+  non-numeric value_integer text as it is.
+fix: identify_objects label vetoes never apply to a label that names an id
+  ("Part number", "RFID Tag ID", "Werkstück-Nr"); fewer veto words.
+fix: personal-data patterns treat _ - . and digits as word boundaries
+  (User_ID, Username) and no longer match AnalogInput, Benutzeroberfläche,
+  "User defined" or "Bediener-Taste"; the number of excluded signals is
+  reported.
+fix: a counter that resets once a shift is not typed as a running timer.
+fix: CycleTimeEvents does not warn about missed pulses for a trigger logged
+  on change; state_mask warns only for a text state compared with a
+  numeric signal, and a set of states on a boolean run signal works like a
+  single state.
+fix: profile() bounds asset holes by sampled signals only; metadata extra
+  fields no longer rename config columns, flags accept on/enabled/aktiv;
+  read_workbook skips empty leading rows and reads date cells; zip exports
+  skip __MACOSX members and are opened once per call; the blank-id check
+  runs once per signal; highlight_issues checks only the thresholds given;
+  recipe phases compare as text; custom value_column_<role> columns keep
+  their role.
+
 # November 19, 2026 (field test: metadata, profiling, loading)
 feat: MetadataJsonLoader.from_workbook (an .xlsx datapoint list, read with
   the standard library -- loader.metadata.workbook.read_workbook) and
@@ -63,11 +95,12 @@ fix: DataQualityWarning for: recipe phases that never occur; parts without
   a cost (costed at 0); emission-factor uuids not in the data; an
   identifier signal (part, order, batch, recipe ...) holding only empty
   text.
-feat: CarbonIntensityEvents signal_kind ("auto" default, "interval",
-  "meter", "power"): a power reading is integrated over time and a
-  cumulative meter read as increments, instead of summing the samples.
-  Behaviour change: "auto" reads a counter as a meter and a continuous
-  signal sampled faster than once a minute as power (with a warning).
+feat: CarbonIntensityEvents signal_kind ("interval" default, "meter",
+  "power", "auto"): a power reading is integrated over time (not held
+  across a logging outage) and a cumulative meter read as increments. The
+  default still sums the readings, and warns when a source looks like a
+  meter or a power reading (sampled at most once a minute or logged on
+  change), naming the signal_kind to pass.
 fix: StatisticalProcessControlEvents warns when the moving-range sigma is
   below 0.1 x the reference standard deviation (held values) and when more
   than 25 % of the points lie beyond 3 sigma.

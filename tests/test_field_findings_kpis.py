@@ -150,7 +150,7 @@ def test_every_run_detector_takes_run_states() -> None:
 
 
 def test_downtime_with_text_value_on_a_mode_signal_warns() -> None:
-    with pytest.warns(DataQualityWarning, match="never occurs"):
+    with pytest.warns(DataQualityWarning, match="numeric state signal"):
         DowntimeEvents(_press()).downtime_by_shift("mode")
 
 
@@ -337,3 +337,88 @@ def test_duty_cycle_hole_in_sampled_signal_is_unknown() -> None:
 
 def test_ts_shape_exports_still_import() -> None:
     assert ts_shape.OEEEvents is OEEEvents
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups
+# ---------------------------------------------------------------------------
+
+
+def test_text_zero_one_run_signal() -> None:
+    values = pd.Series(["0", "1", "0", None], dtype=object)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DataQualityWarning)
+        assert run_mask(values).tolist() == [False, True, False, pd.NA]
+        assert run_mask(pd.Series(["false", "TRUE"])).tolist() == [False, True]
+
+
+def test_duty_cycle_data_end_hold_is_known_time() -> None:
+    t = pd.date_range("2026-10-01 08:00", "2026-10-01 08:59", freq="1min")
+    on = pd.array(np.arange(len(t)) % 2 == 0, dtype="boolean")
+    df = _long("m", t, "value_bool", on)
+    out = DutyCycleEvents(
+        df, "m", data_end=pd.Timestamp("2026-10-01 12:00")
+    ).duty_cycle_by_window(window="1h")
+    assert len(out) == 4
+    assert (out["unknown_seconds"] == 0).all()
+    assert (out["on_time"] + out["off_time"] == 3600).all()
+
+
+def test_oee_running_day_without_counter_rows_is_zero_performance() -> None:
+    t = pd.date_range("2026-10-05", periods=2 * 24 * 60, freq="1min")
+    run = (t.hour >= 8) & (t.hour < 16)
+    counter_times = t[: 24 * 60 : 10]
+    df = pd.concat(
+        [
+            _long("run", t, "value_bool", pd.array(run, dtype="boolean")),
+            _long(
+                "parts",
+                counter_times,
+                "value_integer",
+                pd.array(np.arange(len(counter_times)), dtype="Int64"),
+            ),
+        ],
+        ignore_index=True,
+    )
+    out = OEEEvents(df).oee("run", "parts", 60.0)
+    assert out["performance_pct"].iloc[1] == 0.0
+    assert out["oee_pct"].iloc[1] == 0.0
+    assert out["ideal_parts"].iloc[1] > 0
+
+
+def test_change_encoded_square_wave_does_not_warn() -> None:
+    t = pd.date_range("2026-10-02", periods=20, freq="30s")
+    df = pd.concat(
+        [
+            _long("cycle", t, "value_bool", pd.array(np.arange(20) % 2 == 0)),
+            _long("part", t[:1], "value_string", ["A"]),
+        ],
+        ignore_index=True,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DataQualityWarning)
+        out = CycleTimeEvents(df).cycle_time_by_part("part", "cycle")
+    assert out["cycle_time_seconds"].median() == 60.0
+
+
+def test_state_that_does_not_occur_is_not_reported() -> None:
+    t = pd.date_range("2026-10-02", periods=60, freq="1min")
+    df = pd.concat(
+        [
+            _long("state", t, "value_string", ["Running"] * 60),
+            _long("reason", t[:1], "value_string", ["none"]),
+        ],
+        ignore_index=True,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DataQualityWarning)
+        DowntimeEvents(df).downtime_by_reason("state", "reason")
+
+
+def test_set_running_value_on_a_bool_signal() -> None:
+    t = pd.date_range("2026-10-02", periods=120, freq="1min")
+    run = pd.array(np.arange(120) < 60, dtype="boolean")
+    df = _long("run", t, "value_bool", run)
+    scalar = DowntimeEvents(df).downtime_by_shift("run")
+    as_set = DowntimeEvents(df).downtime_by_shift("run", running_value={"Running"})
+    assert as_set["uptime_minutes"].sum() == scalar["uptime_minutes"].sum() > 0

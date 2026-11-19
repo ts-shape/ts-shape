@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,8 +38,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events.production.cycle_profiling import CycleProfileEvents
 from ts_shape.signals.infer import infer_specs
+from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.personal import PERSONAL_DATA_PATTERNS, personal_pattern
 
 if TYPE_CHECKING:
@@ -108,6 +111,17 @@ def signal_labels(metadata: pd.DataFrame | None) -> pd.Series:
     return labels[~labels.index.duplicated(keep="first")]
 
 
+def _note_excluded(count: int) -> None:
+    """Say how many signals the personal-data exclusion left out (no names)."""
+    if count:
+        warnings.warn(
+            f"{count} signal(s) left out: their label matches a personal-data "
+            "pattern (exclude=...; pass exclude=() to keep every signal).",
+            DataQualityWarning,
+            stacklevel=caller_stacklevel(),
+        )
+
+
 def prepare_signals(
     timeseries: pd.DataFrame,
     metadata: pd.DataFrame | None = None,
@@ -175,7 +189,9 @@ def prepare_signals(
         frame["uuid"] = frame["uuid"].map(labels).fillna(frame["uuid"])
     if exclude:
         pattern = personal_pattern(tuple(exclude))
-        frame = frame[~frame["uuid"].map(lambda u: bool(pattern.search(u)))]
+        hidden = frame["uuid"].map(lambda u: bool(pattern.search(u)))
+        _note_excluded(int(frame.loc[hidden, "uuid"].nunique()))
+        frame = frame[~hidden]
     frame = frame.sort_values(["systime", "uuid"], kind="stable")
     return frame.reset_index(drop=True)
 

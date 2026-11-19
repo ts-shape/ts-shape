@@ -22,23 +22,30 @@ from collections.abc import Iterable, Sequence
 
 __all__ = ["PERSONAL_DATA_PATTERNS", "is_personal", "personal_pattern"]
 
+# Words such as "User defined" or "Bediener-Taste" (operator button) name a
+# machine function, not a person, and are not matched.
+# A word boundary that treats "_", "-", "." and digits as separators
+# ("User_ID", "Current_User"), unlike ``\b``.
+_L = r"(?<![a-zäöüß])"
+_R = r"(?![a-zäöüß])"
+
 #: Regular expressions (case-insensitive) of signal labels with personal data.
 PERSONAL_DATA_PATTERNS: tuple[str, ...] = (
-    r"worker",
-    r"operator",
-    r"personnel",
-    r"employee",
-    r"\buser\b",
-    r"log[-_ ]?in",
-    r"badge",
-    r"werker",
-    r"bediener",
+    rf"{_L}worker",
+    rf"{_L}operator(?:s|name|id)?{_R}",
+    rf"{_L}personnel{_R}",
+    rf"{_L}employee",
+    rf"{_L}user(?:s|name|id)?{_R}(?![-_ ]*(?:defined|def{_R}|programm|button|panel))",
+    rf"{_L}log[-_ ]?in(?:name)?{_R}",
+    rf"{_L}badge",
+    rf"{_L}werker",
+    rf"{_L}bediener(?:in|name|nummer|nr)?{_R}(?![-_ ]*(?:taste|panel|feld|seite))",
     r"bedienpersonal",
-    r"mitarbeiter",
-    r"personal[-_ ]?(?:nr|nummer|number|id)?\b",
-    r"benutzer",
-    r"anmeldung",
-    r"ausweis",
+    rf"{_L}mitarbeiter",
+    rf"{_L}personal(?:[-_ .]?(?:nr|nummer|number|no|id|name))?{_R}",
+    rf"{_L}benutzer(?:name|id|kennung)?{_R}",
+    rf"{_L}anmeldung{_R}",
+    rf"{_L}ausweis",
 )
 
 

@@ -24,6 +24,7 @@ from ts_shape.errors import DataQualityWarning
 from ts_shape.utils.base import Base
 from ts_shape.utils.deprecation import REMOVAL, caller_stacklevel
 from ts_shape.utils.intervals import state_intervals
+from ts_shape.utils.normalize import id_text
 from ts_shape.utils.validate import check_keys, check_known_names, check_order
 
 logger = logging.getLogger(__name__)
@@ -227,8 +228,8 @@ class RecipePhaseAdherenceEvents(Base):
         if intervals.empty:
             return pd.DataFrame(columns=cols)
         check_known_names(
-            self.spec,
-            set(intervals["phase"].astype(str)),
+            id_text(pd.Series(list(self.spec), dtype=object)),
+            set(id_text(intervals["phase"].astype(object)).dropna()),
             kind="spec phase(s)",
             where="RecipePhaseAdherenceEvents.evaluate",
             consequence="they never occur in the phase signal and are not checked",

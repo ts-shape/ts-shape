@@ -100,7 +100,7 @@ def read_workbook(path: str | Path, sheet: int | str = 0) -> pd.DataFrame:
                 value = shared[int(v.text)]
             elif kind == "b":
                 value = v.text == "1"
-            elif kind in ("str", "e"):
+            elif kind in ("str", "e", "d"):
                 value = v.text
             else:
                 number = float(v.text)
@@ -109,6 +109,7 @@ def read_workbook(path: str | Path, sheet: int | str = 0) -> pd.DataFrame:
                 continue
             values[_column_index(cell.get("r") or "A")] = value
         rows.append(values)
+    rows = [r for r in rows if r]  # styled but empty rows carry no cells
     if not rows:
         return pd.DataFrame()
     header = rows[0]

@@ -41,7 +41,7 @@ def _folder_bounds(
 class _ZipMember:
     """A parquet file inside a zip export (path-like for the loader)."""
 
-    def __init__(self, archive: Path, name: str) -> None:
+    def __init__(self, archive: "_ZipArchive", name: str) -> None:
         self.archive = archive
         self.name = name
         parts = PurePosixPath(name).parts
@@ -54,23 +54,44 @@ class _ZipMember:
         return self._rel
 
     def read(self) -> pd.DataFrame:
-        with zipfile.ZipFile(self.archive) as archive:
-            return pd.read_parquet(io.BytesIO(archive.read(self.name)))
+        return pd.read_parquet(io.BytesIO(self.archive.read(self.name)))
 
     def __repr__(self) -> str:
-        return f"{self.archive}!{self.name}"
+        return f"{self.archive.path}!{self.name}"
 
 
 class _ZipArchive:
-    """A zip export of ``YYYY/MM/DD/HH/<uuid>.parquet`` files."""
+    """A zip export of ``YYYY/MM/DD/HH/<uuid>.parquet`` files.
+
+    The archive is opened once and kept open while the object lives, so
+    reading many members does not re-parse its directory each time.
+    """
 
     def __init__(self, path: Path) -> None:
         self.path = path
+        self._zip: zipfile.ZipFile | None = None
+
+    def _open(self) -> zipfile.ZipFile:
+        if self._zip is None:
+            self._zip = zipfile.ZipFile(self.path)
+        return self._zip
+
+    def read(self, name: str) -> bytes:
+        return self._open().read(name)
 
     def members(self) -> list[_ZipMember]:
-        with zipfile.ZipFile(self.path) as archive:
-            names = [n for n in archive.namelist() if n.endswith(".parquet")]
-        return [_ZipMember(self.path, n) for n in sorted(names)]
+        names = [
+            n
+            for n in self._open().namelist()
+            if n.endswith(".parquet")
+            and not n.startswith("__MACOSX/")
+            and not PurePosixPath(n).name.startswith("._")
+        ]
+        return [_ZipMember(self, n) for n in sorted(names)]
+
+    def __del__(self) -> None:
+        if self._zip is not None:
+            self._zip.close()
 
     def __str__(self) -> str:
         return str(self.path)
