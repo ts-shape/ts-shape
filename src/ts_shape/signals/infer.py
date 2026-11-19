@@ -70,7 +70,54 @@ def _interval_stats(times: pd.Series) -> tuple[pd.Timedelta | None, float, float
     return pd.Timedelta(seconds=median), cv, regular
 
 
-def _is_counter(values: pd.Series) -> tuple[bool, str]:
+#: Rates (value units per second) of a running PLC timer: seconds,
+#: tenths, hundredths, milliseconds.
+TIMER_RATES = (1.0, 10.0, 100.0, 1000.0)
+#: A running timer resets (falls back) at least this many times.
+TIMER_MIN_RESETS = 3
+#: A rising signal whose rate is within this share of a timer rate, with a
+#: coefficient of variation below :data:`TIMER_MAX_CV`, is a running timer.
+TIMER_RATE_TOLERANCE = 0.15
+TIMER_MAX_CV = 0.2
+
+
+def _running_timer(values: pd.Series, times: pd.Series | None) -> str | None:
+    """Why ``values`` is a running timer (a clock that resets), or None.
+
+    A cycle or cure timer (``tiCycle``) rises by the elapsed time at every
+    reading and falls back at each reset (at least
+    :data:`TIMER_MIN_RESETS` times): its rate is one of :data:`TIMER_RATES`
+    with little variation. A part counter rises by parts, not by seconds,
+    and resets rarely.
+    """
+    if times is None or len(values) < 5:
+        return None
+    t = pd.to_datetime(times).to_numpy(dtype="datetime64[ns]").astype("int64")
+    v = values.to_numpy(dtype=float)
+    dv = np.diff(v)
+    dt = np.diff(t) / 1e9
+    rising = (dv > 0) & (dt > 0)
+    if rising.sum() < 4 or rising.mean() < 0.5:
+        return None
+    if int((dv < 0).sum()) < TIMER_MIN_RESETS:
+        return None  # a clock that never restarts is not a cycle timer
+    rate = dv[rising] / dt[rising]
+    median = float(np.median(rate))
+    if median <= 0:
+        return None
+    cv = float(np.std(rate) / np.mean(rate)) if np.mean(rate) > 0 else np.inf
+    if cv > TIMER_MAX_CV:
+        return None
+    for unit in TIMER_RATES:
+        if abs(median / unit - 1.0) <= TIMER_RATE_TOLERANCE:
+            return (
+                f"running timer: rises {median:.3g} per second (a clock) and "
+                "resets; not a counter"
+            )
+    return None
+
+
+def _is_counter(values: pd.Series, times: pd.Series | None = None) -> tuple[bool, str]:
     """Whether ``values`` look like a cumulative counter, and why.
 
     A counter never decreases except at a reset (a fall to under half the
@@ -80,7 +127,9 @@ def _is_counter(values: pd.Series) -> tuple[bool, str]:
     distinct values (an on/off state) is never a counter. A slow series
     (increasing at under 20 % of the readings) of at most
     :data:`STATE_MAX_CARDINALITY` integer levels is ambiguous with a step
-    state and is left to the state rule.
+    state and is left to the state rule. With ``times`` (aligned with
+    ``values``), a running timer -- rising at a clock rate and resetting --
+    is not a counter either.
     """
     diffs = values.diff().dropna()
     if len(diffs) < 3:
@@ -105,6 +154,9 @@ def _is_counter(values: pd.Series) -> tuple[bool, str]:
                 f"slow rise over {values.nunique()} integer levels: ambiguous "
                 f"with a step state"
             )
+    timer = _running_timer(values, times)
+    if timer is not None:
+        return False, timer
     reason = "monotonic non-decreasing"
     if len(drops):
         reason += f" with {len(drops)} reset(s)"
@@ -268,7 +320,7 @@ def infer_spec(
         notes["kind"] = f"{value_column} carries discrete values"
     elif len(values) >= 3:
         numeric = pd.to_numeric(values, errors="coerce").dropna()
-        is_counter, why = _is_counter(numeric)
+        is_counter, why = _is_counter(numeric, g.loc[numeric.index, time_column])
         integral = bool(np.all(np.isclose(numeric, np.round(numeric))))
         if is_counter:
             kind = "counter"

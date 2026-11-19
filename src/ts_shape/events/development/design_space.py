@@ -304,6 +304,7 @@ class DesignSpaceEvents(Base):
             )
         if self._box is None:
             self._fit_default_box("boundary_proximity")
+        assert self._box is not None
         wide = self._wide_frame(operation_df)
         if wide.empty:
             return pd.DataFrame(columns=cols)

@@ -602,6 +602,8 @@ EXEMPT: dict[str, str] = {
     "TimezoneShift.list_available_timezones": "takes no frame",
     "UnitConverter.convert_value": "converts a scalar, takes no frame",
     "UnitConverter.conversion_factor": "takes two unit names, no frame",
+    "register_unit_alias": "registers a unit spelling, takes no frame",
+    "apply_scaling": "needs datapoint metadata (tests/test_field_findings_metadata.py)",
 }
 
 KEYS = sorted(REGISTRY)

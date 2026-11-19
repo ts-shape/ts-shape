@@ -491,6 +491,7 @@ if TYPE_CHECKING:
     from ts_shape.transform.calculator.power_integration import (
         PowerIntegrator as PowerIntegrator,
     )
+    from ts_shape.transform.calculator.scaling import apply_scaling as apply_scaling
     from ts_shape.transform.calculator.unit_conversion import (
         UnitConverter as UnitConverter,
     )
@@ -513,6 +514,7 @@ if TYPE_CHECKING:
     from ts_shape.transform.time_functions.timezone_shift import (
         TimezoneShift as TimezoneShift,
     )
+    from ts_shape.utils.frames import compact_frame as compact_frame
 
 # Library best practice: add NullHandler so that consuming applications
 # control logging output.  See https://docs.python.org/3/howto/logging.html
@@ -693,6 +695,8 @@ _LAZY: dict[str, str] = {
     "TimestampConverter": "ts_shape.transform.time_functions.timestamp_converter",
     "TimezoneShift": "ts_shape.transform.time_functions.timezone_shift",
     "UnitConverter": "ts_shape.transform.calculator.unit_conversion",
+    "apply_scaling": "ts_shape.transform.calculator.scaling",
+    "compact_frame": "ts_shape.utils.frames",
     # -- features -------------------------------------------------------
     "BooleanStatistics": "ts_shape.features.stats.boolean_stats",
     "CrossSignalAnalytics": "ts_shape.features.cross_signal",

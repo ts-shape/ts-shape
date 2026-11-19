@@ -12,6 +12,18 @@ from ts_shape.utils.deprecation import caller_stacklevel
 logger = logging.getLogger(__name__)
 
 
+def _truthy(value: Any) -> Any:
+    """A flag cell as bool (``True``, ``1``, ``"true"``, ``"yes"``); NA if empty."""
+    if value is None or (isinstance(value, float) and value != value):
+        return pd.NA
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if not text:
+            return pd.NA
+        return text in ("1", "true", "yes", "y", "x", "ja", "wahr")
+    return bool(value)
+
+
 class MetadataJsonLoader:
     """
     Load metadata JSON of shape:
@@ -78,6 +90,102 @@ class MetadataJsonLoader:
             MetadataJsonLoader instance.
         """
         return cls(json.loads(json_str), strict=strict)
+
+    @classmethod
+    def from_flat_frame(cls, frame: pd.DataFrame, *, strict: bool = False) -> Self:
+        """Create a loader from a flat datapoint table.
+
+        The table has ``uuid``, ``label`` and the configuration as
+        ``config.<key>`` (or ``config.<key>[type]``) columns -- the layout of
+        a plant's datapoint workbook. The ``config.*`` columns are nested
+        back into ``config``; other columns (``is_enabled``,
+        ``scaling_factor`` ...) stay at the top level.
+
+        Args:
+            frame: The flat table.
+            strict: Validation behavior (see the constructor); default
+                ``False``, as workbooks often lack a label on some rows.
+
+        Returns:
+            MetadataJsonLoader instance.
+        """
+        from ts_shape.loader.metadata.workbook import nested_records
+
+        return cls(nested_records(frame), strict=strict)
+
+    @classmethod
+    def from_workbook(
+        cls, filepath: str, *, sheet: int | str = 0, strict: bool = False
+    ) -> Self:
+        """Create a loader from a datapoint workbook (``.xlsx``).
+
+        Reads the sheet with the standard library only
+        (:func:`ts_shape.loader.metadata.workbook.read_workbook`) and nests
+        its ``config.*`` columns (see :meth:`from_flat_frame`).
+
+        Args:
+            filepath: Path to the workbook.
+            sheet: Sheet position (0 = first) or name.
+            strict: Validation behavior (see the constructor).
+
+        Returns:
+            MetadataJsonLoader instance.
+        """
+        from ts_shape.loader.metadata.workbook import read_workbook
+
+        return cls.from_flat_frame(read_workbook(filepath, sheet), strict=strict)
+
+    def _column(self, *names: str) -> pd.Series | None:
+        """The first of ``names`` (or ``config.<name>``) the table has."""
+        for name in names:
+            for column in (name, f"config.{name}"):
+                if column in self.df.columns:
+                    return self.df[column]
+        return None
+
+    def delivering(self) -> pd.DataFrame:
+        """Datapoints that are enabled and not archived.
+
+        A workbook's ``is_enabled`` alone does not tell which datapoints
+        deliver data: an archived datapoint can still be enabled. Missing
+        flags count as enabled / not archived.
+
+        Returns:
+            The rows of :meth:`to_df` that are enabled and not archived.
+        """
+        keep = pd.Series(True, index=self.df.index)
+        enabled = self._column("is_enabled", "enabled")
+        archived = self._column("is_archived", "archived")
+        if enabled is not None:
+            keep &= enabled.map(_truthy).fillna(True).astype(bool)
+        if archived is not None:
+            keep &= ~archived.map(_truthy).fillna(False).astype(bool)
+        return self.df[keep].copy()
+
+    def units(self) -> pd.Series:
+        """``uuid -> unit`` text of the datapoints that name a unit."""
+        unit = self._column("unit", "engineering_unit", "eu")
+        if unit is None:
+            return pd.Series(dtype=object)
+        unit = unit.dropna().astype(str).str.strip()
+        return unit[unit != ""]
+
+    def scaling(self) -> pd.DataFrame:
+        """``scaling_factor`` and ``scaling_offset`` per uuid (1 and 0 if unset)."""
+        factor = self._column("scaling_factor")
+        offset = self._column("scaling_offset")
+        out = pd.DataFrame(index=self.df.index)
+        out["scaling_factor"] = (
+            pd.to_numeric(factor, errors="coerce").fillna(1.0)
+            if factor is not None
+            else 1.0
+        )
+        out["scaling_offset"] = (
+            pd.to_numeric(offset, errors="coerce").fillna(0.0)
+            if offset is not None
+            else 0.0
+        )
+        return out
 
     def _to_dataframe(self) -> pd.DataFrame:
         """
@@ -265,8 +373,9 @@ class MetadataJsonLoader:
     @staticmethod
     def _normalize_record(rec: dict[str, Any]) -> dict[str, Any]:
         """
-        Ensure a single record has the shape {uuid, label, config},
-        coercing 'config' to a dictionary where possible.
+        Ensure a single record has the shape {uuid, label, config, ...},
+        coercing 'config' to a dictionary where possible; other top-level
+        fields are kept.
 
         Args:
             rec: Input record.
@@ -290,9 +399,13 @@ class MetadataJsonLoader:
                     cfg = parsed if isinstance(parsed, dict) else {"value": parsed}
             else:
                 cfg = {"value": cfg}
+        extra = {k: v for k, v in rec.items() if k not in ("uuid", "label", "config")}
+        # Other top-level fields of a record (is_enabled, scaling_factor ...)
+        # are kept as columns next to the flattened config.
         return {
             "uuid": rec.get("uuid"),
             "label": rec.get("label"),
+            **extra,
             "config": cfg,
         }
 
@@ -342,16 +455,60 @@ class MetadataJsonLoader:
 
     def get_by_label(self, label: str) -> dict[str, Any] | None:
         """
-        Retrieve the first row matching a label as a dictionary.
+        Retrieve the row matching a label as a dictionary.
 
         Args:
             label: Label value to search for.
 
         Returns:
             Row as a dict, or None if not found.
+
+        Raises:
+            ValueError: When several datapoints carry the label (a label
+                alone does not identify a signal then); the message lists
+                their uuids. Use :meth:`get_all_by_label` or
+                :meth:`get_by_uuid`.
         """
         row = self.df[self.df["label"] == label]
+        if len(row) > 1:
+            uuids = [str(u) for u in row.index]
+            raise ValueError(
+                f"MetadataJsonLoader.get_by_label: label {label!r} is used by "
+                f"{len(row)} datapoints {uuids}; use get_all_by_label() or "
+                "get_by_uuid()"
+            )
         return None if row.empty else row.iloc[0].to_dict()
+
+    def get_all_by_label(self, label: str) -> list[dict[str, Any]]:
+        """Every row matching a label, as dictionaries (with ``uuid``).
+
+        Args:
+            label: Label value to search for.
+
+        Returns:
+            One dict per matching datapoint; empty when none matches.
+        """
+        rows = self.df[self.df["label"] == label]
+        return [{"uuid": str(uuid), **row.to_dict()} for uuid, row in rows.iterrows()]
+
+    def duplicate_labels(self) -> pd.DataFrame:
+        """Labels used by more than one datapoint.
+
+        Returns:
+            DataFrame with ``label``, ``count`` and ``uuids`` (a list), sorted
+            by label; empty when every label is unique.
+        """
+        labels = self.df["label"] if "label" in self.df.columns else pd.Series()
+        labels = labels.dropna()
+        counts = labels.value_counts()
+        dup = sorted(counts[counts > 1].index, key=str)
+        return pd.DataFrame(
+            {
+                "label": dup,
+                "count": [int(counts[d]) for d in dup],
+                "uuids": [[str(u) for u in labels.index[labels == d]] for d in dup],
+            }
+        )
 
     def join_with(self, other_df: pd.DataFrame, how: str = "inner") -> pd.DataFrame:
         """

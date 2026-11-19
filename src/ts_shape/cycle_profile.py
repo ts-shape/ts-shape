@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +39,7 @@ import pandas as pd
 
 from ts_shape.events.production.cycle_profiling import CycleProfileEvents
 from ts_shape.signals.infer import infer_specs
+from ts_shape.utils.personal import PERSONAL_DATA_PATTERNS, personal_pattern
 
 if TYPE_CHECKING:
     from ts_shape.loader.timeseries.azure_blob_loader import AzureBlobParquetLoader
@@ -64,8 +64,9 @@ LABEL_FIELDS: tuple[str, ...] = (
     "config.displayName[string]",
     "label",
 )
-#: Signals dropped by default: personal data must not reach a report.
-DEFAULT_EXCLUDE: tuple[str, ...] = ("Worker",)
+#: Signals dropped by default: personal data must not reach a report
+#: (case-insensitive, German and English; see :mod:`ts_shape.utils.personal`).
+DEFAULT_EXCLUDE: tuple[str, ...] = PERSONAL_DATA_PATTERNS
 _VALUE_COLUMNS = ("value_integer", "value_double", "value_string", "value_bool")
 
 
@@ -124,8 +125,11 @@ def prepare_signals(
     Args:
         timeseries: Raw frame of a ts-shape timeseries loader.
         metadata: Optional metadata table (see :func:`signal_labels`).
-        exclude: Regular expressions of signals to drop (default:
-            ``Worker``, personal data). Empty keeps every signal.
+        exclude: Regular expressions of signals to drop, matched
+            case-insensitively against the label (default: personal data,
+            :data:`ts_shape.utils.personal.PERSONAL_DATA_PATTERNS` --
+            worker, operator, Bedienpersonal, Mitarbeiter, login ...). Empty
+            keeps every signal.
 
     Returns:
         ``systime``, ``uuid``, ``is_delta`` (when present) and the
@@ -161,9 +165,16 @@ def prepare_signals(
     frame["uuid"] = frame["uuid"].astype(str)
     labels = signal_labels(metadata)
     if not labels.empty:
+        labels = labels.astype(str)
+        shared = labels.duplicated(keep=False)
+        if shared.any():
+            # Two datapoints with one label are two signals, not one.
+            labels = labels.where(
+                ~shared, labels + " [" + labels.index.astype(str) + "]"
+            )
         frame["uuid"] = frame["uuid"].map(labels).fillna(frame["uuid"])
     if exclude:
-        pattern = re.compile("|".join(f"(?:{p})" for p in exclude))
+        pattern = personal_pattern(tuple(exclude))
         frame = frame[~frame["uuid"].map(lambda u: bool(pattern.search(u)))]
     frame = frame.sort_values(["systime", "uuid"], kind="stable")
     return frame.reset_index(drop=True)
@@ -1145,6 +1156,30 @@ def _confidence(t: dict[str, pd.DataFrame]) -> dict[str, Any]:
     }
 
 
+def _top_row(table: pd.DataFrame, column: str) -> pd.Series | None:
+    """The row with the largest ``column`` value, or None when it has none.
+
+    ``idxmax`` raises on an all-NaN column (pandas 3), which is what a
+    variant with one cycle or identical totals gives for the variance
+    contribution.
+    """
+    if table.empty or column not in table.columns:
+        return None
+    values = pd.to_numeric(table[column], errors="coerce")
+    if not values.notna().any():
+        return None
+    return table.loc[values.idxmax()]
+
+
+def _per_hour(seconds: Any) -> float:
+    """``3600 / seconds``; NaN for a missing, zero or negative duration."""
+    try:
+        value = float(seconds)
+    except (TypeError, ValueError):
+        return float("nan")
+    return 3600.0 / value if np.isfinite(value) and value > 0 else float("nan")
+
+
 def _summary(frame: pd.DataFrame, t: dict[str, pd.DataFrame]) -> dict[str, Any]:
     window = t["evaluation_window"]
     records = t["cycle_records"]
@@ -1156,10 +1191,8 @@ def _summary(frame: pd.DataFrame, t: dict[str, pd.DataFrame]) -> dict[str, Any]:
     variants = []
     for row in stats.itertuples():
         reg = register[register["variant"] == row.variant]
-        top_potential = reg.loc[reg["potential_seconds"].idxmax()] if len(reg) else None
-        top_variance = (
-            reg.loc[reg["variance_contribution_factor"].idxmax()] if len(reg) else None
-        )
+        top_potential = _top_row(reg, "potential_seconds")
+        top_variance = _top_row(reg, "variance_contribution_factor")
         gain = (
             (row.median_seconds / row.target_seconds - 1.0) * 100.0
             if row.target_seconds and row.target_seconds > 0
@@ -1179,8 +1212,8 @@ def _summary(frame: pd.DataFrame, t: dict[str, pd.DataFrame]) -> dict[str, Any]:
                 "lower_limit_seconds": _num(row.lower_limit_seconds),
                 "upper_limit_seconds": _num(row.upper_limit_seconds),
                 "throughput_gain_pct": _num(gain),
-                "cycles_per_hour_median": _num(3600.0 / row.median_seconds),
-                "cycles_per_hour_target": _num(3600.0 / row.target_seconds),
+                "cycles_per_hour_median": _num(_per_hour(row.median_seconds)),
+                "cycles_per_hour_target": _num(_per_hour(row.target_seconds)),
                 "top_potential_segment": (
                     None if top_potential is None else top_potential["segment"]
                 ),

@@ -66,6 +66,12 @@ SUPPORT_MIN_LOCKING = 0.7
 #: An anchor candidate covers at least this share of the best candidate's
 #: coverage (span of its regular intervals over the recording).
 MIN_RELATIVE_COVERAGE = 0.5
+#: A view whose time resolution is at least this share of the median cycle
+#: cannot resolve its cycles (``evaluable`` is False).
+RESOLUTION_MAX_SHARE = 0.25
+#: Share of timestamp gaps that must be multiples of one period for the
+#: timestamps to count as a polling grid.
+GRID_SHARE = 0.9
 #: Scale of the median absolute deviation to a normal sigma.
 MAD_SCALE = 1.4826
 #: Smallest robust sigma of log(duration) (1 %): perfectly regular cycles
@@ -396,6 +402,30 @@ def _from_ns(ns: np.ndarray, tz: Any) -> pd.Series:
     if tz is not None:
         times = times.dt.tz_localize("UTC").dt.tz_convert(tz)
     return times
+
+
+def _grid_period(t_ns: np.ndarray) -> float:
+    """The polling grid the timestamps lie on, in seconds (0 when none).
+
+    The distinct timestamps of a poller lie on multiples of its period even
+    when only changes are kept. The period is the smallest common gap: when
+    at least :data:`GRID_SHARE` of the gaps are within 5 % of a whole
+    multiple of it (and it is at least one second), it is the grid.
+    """
+    t = np.unique(np.asarray(t_ns, dtype=np.int64))
+    if len(t) < 5:
+        return 0.0
+    gaps = np.diff(t).astype(np.float64)
+    gaps = gaps[gaps > 0]
+    if len(gaps) < 4:
+        return 0.0
+    base = float(np.percentile(gaps, 10))
+    if base < 1e9:
+        return 0.0
+    ratio = gaps / base
+    multiple = np.abs(ratio - np.round(ratio)) <= 0.05 * np.maximum(np.round(ratio), 1)
+    share = float((multiple & (np.round(ratio) >= 1)).mean())
+    return base / 1e9 if share >= GRID_SHARE else 0.0
 
 
 class CycleProfileEvents(Base):
@@ -1436,7 +1466,34 @@ class CycleProfileEvents(Base):
             )
         self._views()
         out = pd.DataFrame(rows)
-        out["time_resolution_seconds"] = self._cache.get("resolution", 0.0)
+        resolution = float(self._cache.get("resolution", 0.0) or 0.0)
+        if not resolution > 0 and self.time_resolution is None:
+            # Change-encoded rows recorded by a poller still lie on its grid:
+            # events cannot be ordered within one poll period.
+            resolution = _grid_period(to_ns(self._signals()[self.time_column]))
+            self._cache["resolution"] = resolution
+        out["time_resolution_seconds"] = resolution
+        median_cycle = (
+            float(
+                np.median(
+                    (cycles["end_ns"] - cycles["start_ns"]).to_numpy()[~pause] / 1e9
+                )
+            )
+            if (~pause).any()
+            else np.nan
+        )
+        too_coarse = (
+            resolution > 0
+            and np.isfinite(median_cycle)
+            and resolution >= RESOLUTION_MAX_SHARE * median_cycle
+        )
+        if too_coarse:
+            out["evaluable"] = False
+            out["reason"] = (
+                f"anchor_below_resolution: the signals are seen every "
+                f"{resolution:g} s, at least {RESOLUTION_MAX_SHARE:g} of the "
+                f"median cycle ({median_cycle:g} s); cycles cannot be resolved"
+            )
         out["start"] = _from_ns(out["start_ns"].to_numpy(), tz)
         out["end"] = _from_ns(out["end_ns"].to_numpy(), tz)
         out["duration_seconds"] = (out["end_ns"] - out["start_ns"]) / 1e9

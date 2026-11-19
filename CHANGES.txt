@@ -1,3 +1,41 @@
+# November 19, 2026 (field test: metadata, profiling, loading)
+feat: MetadataJsonLoader.from_workbook (an .xlsx datapoint list, read with
+  the standard library -- loader.metadata.workbook.read_workbook) and
+  from_flat_frame (config.* columns nested back into config; other
+  top-level fields such as is_enabled kept); delivering() (enabled and not
+  archived), units(), scaling(). Records keep their extra top-level fields.
+feat: apply_scaling(dataframe, metadata) -- opt-in raw x factor + offset for
+  numeric datapoints; a scaling on text / bool datapoints warns and is not
+  applied (the library never scales on its own).
+feat: UnitConverter understands plant spellings (min1, 1/min, rpm, Kw, KWh,
+  kVA, grdC ...) and register_unit_alias().
+feat: profile(metadata=..., exclude=...) adds a label column and leaves out
+  personal-data signals by label; identify_objects(labels=...) vetoes an
+  identifier whose label names a time / clock value, a quantity or a
+  measurement (LABEL_VETOES); values stay the evidence.
+fix: counter typing rejects a running timer (rises at a clock rate --
+  seconds, ms, ... -- and resets), so tiCycle-like timers are continuous.
+fix: personal-data exclusion (utils.personal.PERSONAL_DATA_PATTERNS) is
+  case-insensitive and covers German and English labels (Bedienpersonal,
+  Mitarbeiter, Werker, operator, login ...); prepare_signals keeps two
+  datapoints that share a label apart ("label [uuid]") instead of merging
+  them.
+fix: profile(): "possibly stuck" needs at least 10 minutes and reports the
+  duration in s / min / h; a hole in which no signal logged anything is one
+  "data hole" issue (uuid "(asset)") instead of a logging-gaps warning per
+  signal; a polling period most sampled signals share is reported as a
+  "shared polling clock" note.
+feat: ParquetLoader reads a .zip export in place; stream_by_time_range(...,
+  chunk, signal_uuids, compact) yields slices for run_chunked; new
+  compact_frame() (uuid as category, nullable dtypes, empty columns
+  dropped); an end before the start raises.
+fix: cycle profile: _summary no longer raises "Encountered all NA values"
+  on a variant without a variance contribution (one cycle, identical
+  totals); time_resolution_seconds falls back to the polling grid of
+  change-encoded rows instead of 0; a view whose resolution is at least a
+  quarter of the median cycle is not evaluable (reason
+  "anchor_below_resolution").
+
 # November 19, 2026 (field test: configuration checks)
 Wrong configurations fail loudly or warn with a reason.
 feat: utils.validate -- check_keys (did-you-mean), check_order,
