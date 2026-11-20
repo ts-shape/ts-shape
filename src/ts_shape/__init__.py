@@ -271,6 +271,7 @@ if TYPE_CHECKING:
     from ts_shape.events.production.part_tracking import (
         PartProductionTracking as PartProductionTracking,
     )
+    from ts_shape.events.production.pareto import ParetoEvents as ParetoEvents
     from ts_shape.events.production.performance_loss import (
         PerformanceLossEvents as PerformanceLossEvents,
     )
@@ -587,6 +588,7 @@ _LAZY: dict[str, str] = {
     "OperatorPerformanceEvents": "ts_shape.events.production.operator_performance",
     "ValueTraceabilityEvents": "ts_shape.events.production.order_traceability",
     "OrderTraceabilityEvents": "ts_shape.events.production.order_traceability",  # deprecated alias of ValueTraceabilityEvents
+    "ParetoEvents": "ts_shape.events.production.pareto",
     "PartProductionEvents": "ts_shape.events.production.part_tracking",
     "PerformanceLossEvents": "ts_shape.events.production.performance_loss",
     "PeriodSummaryEvents": "ts_shape.events.production.period_summary",
