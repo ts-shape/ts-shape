@@ -207,6 +207,7 @@ if TYPE_CHECKING:
     from ts_shape.events.production.part_tracking import (
         PartProductionTracking as PartProductionTracking,
     )
+    from ts_shape.events.production.pareto import ParetoEvents as ParetoEvents
     from ts_shape.events.production.performance_loss import (
         PerformanceLossEvents as PerformanceLossEvents,
     )

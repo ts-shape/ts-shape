@@ -87,7 +87,7 @@ def test_calculate_multiple_and_custom():
     combo = TimeGroupedStatistics.calculate_statistics(
         df, "systime", "value_double", "h", ["mean", "sum", "range"]
     )
-    assert set(["mean", "sum", "range"]).issubset(combo.columns)
+    assert {"mean", "sum", "range"}.issubset(combo.columns)
 
     custom = TimeGroupedStatistics.calculate_custom_func(
         df, "systime", "value_double", "h", lambda s: (s.max() - s.min())
@@ -111,3 +111,110 @@ def test_calculate_statistics_per_uuid_by_default():
         df, "systime", "value_double", "10min", "mean"
     )
     assert out["mean"].equals(one["mean"])
+
+
+# ---- flat=True: long-format return --------------------------------------
+# The historical MultiIndex / DatetimeIndex shape breaks the library's
+# long-format contract (``uuid`` / ``window_start`` should live in columns,
+# not in the index); flat=True fixes that without changing the default.
+
+
+def test_flat_pooled_returns_long_format():
+    df = make_df()
+    out = TimeGroupedStatistics.calculate_statistic(
+        df, "systime", "value_double", "h", "mean", flat=True
+    )
+    assert isinstance(out, pd.DataFrame)
+    assert isinstance(out.index, pd.RangeIndex)
+    assert list(out.columns) == ["window_start", "mean"]
+    assert pd.api.types.is_datetime64_any_dtype(out["window_start"])
+    assert out["mean"].iloc[0] == 1.5
+    assert out["mean"].iloc[1] == 4.0
+
+
+def test_flat_per_uuid_adds_uuid_column():
+    df = pd.concat(
+        [make_df().assign(uuid="a"), make_df().assign(value_double=100.0, uuid="b")],
+        ignore_index=True,
+    )
+    out = TimeGroupedStatistics.calculate_statistic(
+        df, "systime", "value_double", "h", "mean", flat=True
+    )
+    assert list(out.columns)[:2] == ["uuid", "window_start"]
+    assert set(out["uuid"]) == {"a", "b"}
+    assert pd.api.types.is_datetime64_any_dtype(out["window_start"])
+    # ``.loc`` on uuid/window_start works without index gymnastics.
+    row = out[
+        (out["uuid"] == "b") & (out["window_start"] == pd.Timestamp("2023-01-01"))
+    ]
+    assert row["mean"].iloc[0] == 100.0
+
+
+def test_flat_empty_frame_returns_typed_columns():
+    df = make_df().iloc[:0]
+    out = TimeGroupedStatistics.calculate_statistic(
+        df, "systime", "value_double", "h", "mean", flat=True
+    )
+    assert list(out.columns) == ["window_start", "mean"]
+    assert len(out) == 0
+    assert pd.api.types.is_datetime64_any_dtype(out["window_start"])
+
+
+def test_flat_statistics_combines_methods():
+    df = make_df()
+    out = TimeGroupedStatistics.calculate_statistics(
+        df, "systime", "value_double", "h", ["mean", "sum", "range"], flat=True
+    )
+    assert list(out.columns) == ["window_start", "mean", "sum", "range"]
+    assert len(out) == 2
+    assert out["sum"].iloc[0] == 3.0
+    assert out["range"].iloc[0] == 1.0
+
+
+def test_flat_statistics_per_uuid_keeps_uuid_column():
+    df = pd.concat(
+        [make_df().assign(uuid="a"), make_df().assign(value_double=100.0, uuid="b")],
+        ignore_index=True,
+    )
+    out = TimeGroupedStatistics.calculate_statistics(
+        df, "systime", "value_double", "h", ["mean", "max"], flat=True
+    )
+    assert list(out.columns) == ["uuid", "window_start", "mean", "max"]
+    assert set(out["uuid"]) == {"a", "b"}
+
+
+def test_flat_custom_func():
+    df = make_df()
+    out = TimeGroupedStatistics.calculate_custom_func(
+        df, "systime", "value_double", "h", lambda s: (s.max() - s.min()), flat=True
+    )
+    assert list(out.columns) == ["window_start", "custom"]
+    assert out["custom"].iloc[0] == 1.0
+
+
+def test_flat_diff_handles_resets():
+    # Flat form must agree with the indexed form value-for-value.
+    df = pd.DataFrame(
+        {
+            "systime": pd.date_range("2023-01-01", periods=4, freq="15min"),
+            "value_double": [100.0, 300.0, 0.0, 150.0],
+        }
+    )
+    flat = TimeGroupedStatistics.calculate_statistic(
+        df, "systime", "value_double", "h", "diff", flat=True
+    )
+    indexed = TimeGroupedStatistics.calculate_statistic(
+        df, "systime", "value_double", "h", "diff"
+    )
+    assert list(flat["difference"]) == list(indexed["difference"])
+
+
+def test_flat_preserves_tz_from_tz_aware_input():
+    df = make_df().assign(
+        systime=lambda d: d["systime"].dt.tz_localize("Europe/Berlin")
+    )
+    out = TimeGroupedStatistics.calculate_statistic(
+        df, "systime", "value_double", "h", "mean", flat=True
+    )
+    assert out["window_start"].dt.tz is not None
+    assert str(out["window_start"].dt.tz) == "Europe/Berlin"
