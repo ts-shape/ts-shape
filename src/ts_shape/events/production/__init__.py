@@ -66,6 +66,20 @@ Daily Production Tracking Classes:
   - resolution_seconds: Time resolution of the cycle view.
   - evaluation_reason: Reason of the all-variants row.
 
+- ScrapProfileEvents: Mapping-free scrap Pareto without reason codes.
+  - nok_records: One record per cycle with a bad part.
+  - scrap_pareto: Contexts where bad parts are over-represented.
+  - counter_roles: Total, good and bad counters learned from the data.
+  - evaluation_window: Enough bad parts to trust the profile?
+  - summary: Headline numbers.
+
+- OrderProfileEvents: Mapping-free order profiling: speed, scrap, attainment.
+  - order_records: One record per production order.
+  - order_register: Lost time of orders per variant.
+  - counter_roles: Total, good and bad counters learned from the data.
+  - evaluation_window: Enough orders to trust the profile?
+  - summary: Headline numbers.
+
 - StartupProfileEvents: Mapping-free start-up profiling after stops and changeovers.
   - startup_records: One record per start-up.
   - startup_signals: Which signals are last back in their running band.
@@ -296,6 +310,7 @@ from .operator_performance import (
     OperatorPerformanceEvents,
     OperatorPerformanceTracking,  # deprecated alias
 )
+from .order_profiling import OrderProfileEvents, ScrapProfileEvents
 from .order_traceability import OrderTraceabilityEvents, ValueTraceabilityEvents
 
 # Daily Production Tracking Classes
@@ -347,6 +362,8 @@ from .target_tracking import (
 )
 
 __all__ = [
+    "ScrapProfileEvents",
+    "OrderProfileEvents",
     "StartupProfileEvents",
     "ChangeoverProfileEvents",
     "StopProfileEvents",

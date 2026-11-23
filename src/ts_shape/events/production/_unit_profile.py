@@ -44,6 +44,7 @@ from ts_shape.events.production.cycle_profiling import (
     _bh_qvalues,
 )
 from ts_shape.utils.base import Base
+from ts_shape.utils.frames import to_ns
 
 __all__ = [
     "EVALUATION_COLUMNS",
@@ -494,3 +495,78 @@ class _UnitProfiler(Base):
         tz = self._tz()
         out = out.tz_convert(tz) if tz is not None else out.tz_localize(None)
         return pd.Series(out)
+
+
+def per_cycle_values(
+    frame: pd.DataFrame,
+    cycles: pd.DataFrame,
+    uuid: str,
+    *,
+    value_column: str,
+    uuid_column: str = "uuid",
+    time_column: str = "systime",
+) -> tuple[np.ndarray, np.ndarray]:
+    """``(cycle position, value)`` of every reading of ``uuid`` inside a cycle.
+
+    A reading belongs to the cycle ``[start, end)`` it falls in; readings
+    outside every cycle are left out.
+    """
+    rows = frame[frame[uuid_column].astype(str) == uuid]
+    if rows.empty or cycles.empty:
+        return np.zeros(0, dtype=np.int64), np.zeros(0)
+    ns = np.asarray(to_ns(rows[time_column]), dtype=np.int64)
+    values = pd.to_numeric(rows[value_column], errors="coerce").to_numpy(dtype=float)
+    starts = cycles["start_ns"].to_numpy(dtype=np.int64)
+    ends = cycles["end_ns"].to_numpy(dtype=np.int64)
+    pos = np.searchsorted(starts, ns, side="right") - 1
+    ok = (pos >= 0) & np.isfinite(values)
+    ok[ok] &= ns[ok] < ends[pos[ok]]
+    return pos[ok], values[ok]
+
+
+def cycle_signal_stats(
+    frame: pd.DataFrame,
+    cycles: pd.DataFrame,
+    specs: dict[str, Any],
+    *,
+    uuid_column: str = "uuid",
+    time_column: str = "systime",
+) -> pd.DataFrame:
+    """Per cycle and continuous signal: ``<uuid>:mean`` and ``<uuid>:max``.
+
+    Returns:
+        One row per cycle (index aligned with ``cycles``), two columns per
+        continuous signal; NaN for a cycle without a reading.
+    """
+    out = pd.DataFrame(index=cycles.index)
+    for uuid, spec in specs.items():
+        if spec.kind != "continuous":
+            continue
+        pos, values = per_cycle_values(
+            frame,
+            cycles,
+            uuid,
+            value_column=spec.value_column,
+            uuid_column=uuid_column,
+            time_column=time_column,
+        )
+        if len(pos) == 0:
+            continue
+        grouped = pd.Series(values).groupby(pos)
+        index = cycles.index[np.unique(pos)]
+        out[f"{uuid}:mean"] = pd.Series(grouped.mean().to_numpy(), index=index)
+        out[f"{uuid}:max"] = pd.Series(grouped.max().to_numpy(), index=index)
+    return out
+
+
+def robust_z(values: pd.Series) -> pd.Series:
+    """Robust z (median, scaled MAD) of ``values``; 0 for a constant series."""
+    v = pd.to_numeric(values, errors="coerce")
+    median = v.median()
+    mad = MAD_SCALE * (v - median).abs().median()
+    if not np.isfinite(mad) or mad <= 0:
+        spread = v.std()
+        if not np.isfinite(spread) or spread <= 0:
+            return pd.Series(0.0, index=v.index)
+        mad = spread
+    return (v - median) / mad

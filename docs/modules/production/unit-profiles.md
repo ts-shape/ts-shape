@@ -13,6 +13,8 @@ run them through the same steps:
 | `StopProfileEvents` | a stop / micro-stop | Why does the machine stop, which cause costs the most? |
 | `ChangeoverProfileEvents` | a variant change | Which changeover step to shorten first (SMED)? |
 | `StartupProfileEvents` | the restart after a stop | How long until normal running, what holds it back? |
+| `OrderProfileEvents` | a production order | Which orders run slow or scrap the most? |
+| `ScrapProfileEvents` | a cycle with a bad part | What precedes a bad part (scrap Pareto without reason codes)? |
 
 Every profiler takes `cycle_profile=` to reuse one computed
 `CycleProfileEvents`, has an `evaluation_window()` that says whether it can be
@@ -85,4 +87,33 @@ changeovers = ChangeoverProfileEvents(frame)
 steps = changeovers.changeover_view()
 startups = StartupProfileEvents(frame)
 slowest = startups.startup_signals()
+```
+
+## Orders and scrap
+
+Which counter is the total, the good and the bad count is learned, not named:
+`good + bad = total` must hold per cycle (`counter_roles()`); equal counters
+are aliases, a counter with fractional increments is energy-like. A count
+reported at a cycle boundary belongs to the cycle that just ended.
+
+The order signal is an identifier held over many cycles
+(`identify_objects`), else the variant signal. Per order: cycles, run and stop
+time, speed against the variant's best (P10) cycle, good and bad parts and,
+with a `plan` (`order_id`, `planned_quantity`), the attainment.
+
+Every cycle with a bad part is a NOK unit. Its context -- a stop in the cycle,
+after a stop or a changeover, a long or short cycle, an analog per-cycle
+deviation, a curve-shape anomaly of the cycle profile, and every rare discrete
+event in the cycle -- is compared with the context of good cycles. The result
+is a scrap Pareto without reason codes:
+
+```python
+from ts_shape import OrderProfileEvents, ScrapProfileEvents
+
+frame, truth = ts_shape.make_plc_cycles(
+    n_cycles=600, seed=4, order_size=40, scrap_probability=0.02,
+    rampup_cycles=4, stop_causes=2, stop_probability=0.05,
+)
+orders = OrderProfileEvents(frame).order_records()
+pareto = ScrapProfileEvents(frame).scrap_pareto()
 ```

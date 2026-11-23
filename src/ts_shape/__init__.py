@@ -266,6 +266,12 @@ if TYPE_CHECKING:
     from ts_shape.events.production.operator_performance import (
         OperatorPerformanceTracking as OperatorPerformanceTracking,
     )
+    from ts_shape.events.production.order_profiling import (
+        OrderProfileEvents as OrderProfileEvents,
+    )
+    from ts_shape.events.production.order_profiling import (
+        ScrapProfileEvents as ScrapProfileEvents,
+    )
     from ts_shape.events.production.order_traceability import (
         OrderTraceabilityEvents as OrderTraceabilityEvents,
     )
@@ -584,6 +590,8 @@ _LAZY: dict[str, str] = {
     "StopProfileEvents": "ts_shape.events.production.stop_profiling",
     "ChangeoverProfileEvents": "ts_shape.events.production.changeover_profiling",
     "StartupProfileEvents": "ts_shape.events.production.changeover_profiling",
+    "OrderProfileEvents": "ts_shape.events.production.order_profiling",
+    "ScrapProfileEvents": "ts_shape.events.production.order_profiling",
     "CycleProfileEvents": "ts_shape.events.production.cycle_profiling",
     "CycleTimeEvents": "ts_shape.events.production.cycle_time_tracking",
     "DowntimeEvents": "ts_shape.events.production.downtime_tracking",

@@ -201,6 +201,12 @@ if TYPE_CHECKING:
     from ts_shape.events.production.operator_performance import (
         OperatorPerformanceTracking as OperatorPerformanceTracking,
     )
+    from ts_shape.events.production.order_profiling import (
+        OrderProfileEvents as OrderProfileEvents,
+    )
+    from ts_shape.events.production.order_profiling import (
+        ScrapProfileEvents as ScrapProfileEvents,
+    )
     from ts_shape.events.production.order_traceability import (
         OrderTraceabilityEvents as OrderTraceabilityEvents,
     )

@@ -82,12 +82,52 @@ def _startups(
     )
 
 
+def _orders(
+    frame: pd.DataFrame,
+    profile: CycleProfileEvents,
+    *,
+    plan: pd.DataFrame | None = None,
+    **_: Any,
+) -> ProfileResult:
+    from ts_shape.events.production.order_profiling import OrderProfileEvents
+
+    det = OrderProfileEvents(frame, cycle_profile=profile, plan=plan)
+    return ProfileResult(
+        tables={
+            "order_records": det.order_records(),
+            "order_register": det.order_register(),
+            "counter_roles": det.counter_roles(),
+            "evaluation_window": det.evaluation_window(),
+        },
+        summary=det.summary(),
+        kind="orders",
+    )
+
+
+def _scrap(frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any) -> ProfileResult:
+    from ts_shape.events.production.order_profiling import ScrapProfileEvents
+
+    det = ScrapProfileEvents(frame, cycle_profile=profile)
+    return ProfileResult(
+        tables={
+            "nok_records": det.nok_records(),
+            "scrap_pareto": det.scrap_pareto(),
+            "counter_roles": det.counter_roles(),
+            "evaluation_window": det.evaluation_window(),
+        },
+        summary=det.summary(),
+        kind="scrap",
+    )
+
+
 #: Profiler name -> runner ``(frame, cycle profile, **options) -> ProfileResult``,
 #: in dependency order.
 PROFILERS: dict[str, Callable[..., ProfileResult]] = {
     "stops": _stops,
     "changeovers": _changeovers,
     "startups": _startups,
+    "orders": _orders,
+    "scrap": _scrap,
 }
 #: The profilers :func:`profile_units` runs by default (all of them).
 DEFAULT_PROFILERS: tuple[str, ...] = tuple(PROFILERS)

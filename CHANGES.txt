@@ -1,3 +1,18 @@
+# November 23, 2026 (unit profilers: orders and scrap)
+feat: order_profiling.counter_roles -- total / good / bad counters from the
+  per-cycle identity good + bad = total (lag up to 3 cycles), aliases,
+  energy-like counters; counts at a cycle boundary belong to the ending
+  cycle.
+feat: OrderProfileEvents -- the order signal found with identify_objects
+  (an identifier held over many cycles, else the variant); per order run
+  and stop time, speed vs the variant's best, good / scrap counts and
+  attainment against an optional plan; order_register per variant.
+feat: ScrapProfileEvents -- NOK cycles from the learned bad counter and a
+  scrap Pareto of their context (stop, after stop / changeover, long /
+  short cycle, analog deviation, curve-shape anomaly, rare events) by
+  enrichment against good cycles.
+feat: profile_units runs "orders" (with plan=) and "scrap".
+
 # November 23, 2026 (unit profilers: run losses)
 Mapping-free profilers built like the cycle profiler, on its cycles.
 feat: StopProfileEvents -- stops (pause cycles, micro-stops = long cycles;

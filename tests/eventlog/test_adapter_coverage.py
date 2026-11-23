@@ -50,6 +50,8 @@ def _walk_detector_methods() -> Iterator[tuple[str, str]]:
         for cname, cls in inspect.getmembers(mod, inspect.isclass):
             if cls.__module__ != m.name or "__deprecated_alias_of__" in vars(cls):
                 continue  # deprecated class aliases resolve to the real class
+            if cname.startswith("_"):
+                continue  # private bases: their subclasses carry the entries
             for mname, fn in inspect.getmembers(cls, predicate=inspect.isfunction):
                 if mname.startswith("_") or mname in _BASE_METHODS:
                     continue

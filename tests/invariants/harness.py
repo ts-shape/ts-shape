@@ -272,6 +272,8 @@ UNIT_PROFILERS = (
     "StopProfileEvents",
     "ChangeoverProfileEvents",
     "StartupProfileEvents",
+    "OrderProfileEvents",
+    "ScrapProfileEvents",
 )
 
 INIT_OVERRIDES: dict[str, dict[str, Any]] = {
