@@ -31,13 +31,13 @@ import json
 import os
 import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape._profile_result import ProfileResult
 from ts_shape.errors import DataQualityWarning
 from ts_shape.events.production.cycle_profiling import CycleProfileEvents
 from ts_shape.signals.infer import infer_specs
@@ -241,7 +241,8 @@ def signal_inventory(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 @dataclass
-class CycleProfileResult:
+@dataclass
+class CycleProfileResult(ProfileResult):
     """Every table of one profile run and a summary of plain numbers.
 
     Attributes:
@@ -256,46 +257,10 @@ class CycleProfileResult:
             ``curve_bands``, ``curve_scores``, ``curve_flagged`` and
             ``cycle_time_check`` (see the functions of the same name).
         summary: Plain numbers (counts, seconds, percent), JSON-able.
+        kind: ``"cycles"``.
     """
 
-    tables: dict[str, pd.DataFrame]
-    summary: dict[str, Any] = field(default_factory=dict)
-
-    def save(self, directory: str | Path) -> list[Path]:
-        """Write ``summary.json`` and one CSV per table into ``directory``.
-
-        Args:
-            directory: Target folder; created when missing.
-
-        Returns:
-            The written files.
-        """
-        out = Path(directory)
-        out.mkdir(parents=True, exist_ok=True)
-        written = [out / "summary.json"]
-        written[0].write_text(
-            json.dumps(self.summary, indent=1, allow_nan=False), encoding="utf-8"
-        )
-        for name, table in self.tables.items():
-            path = out / f"{name}.csv"
-            table.to_csv(path, index=False)
-            written.append(path)
-        return written
-
-    @classmethod
-    def load(cls, directory: str | Path) -> CycleProfileResult:
-        """Read a result written by :meth:`save` (for dashboards).
-
-        Args:
-            directory: Folder written by :meth:`save`.
-
-        Returns:
-            The result with its summary and tables.
-        """
-        path = Path(directory)
-        summary = json.loads((path / "summary.json").read_text(encoding="utf-8"))
-        tables = {p.stem: pd.read_csv(p) for p in sorted(path.glob("*.csv"))}
-        return cls(tables=tables, summary=summary)
+    kind: str = "cycles"
 
 
 def _num(value: Any) -> float | None:
@@ -1310,6 +1275,26 @@ def profile_cycles(
     """
     frame = prepare_signals(timeseries, metadata, exclude=exclude)
     profile = CycleProfileEvents(frame, **profile_options)
+    return cycle_tables(frame, profile, top_n=top_n)
+
+
+def cycle_tables(
+    frame: pd.DataFrame, profile: CycleProfileEvents, *, top_n: int = 10
+) -> CycleProfileResult:
+    """Every table of :func:`profile_cycles` from a prepared frame and profile.
+
+    Lets :func:`ts_shape.unit_profiles.profile_units` reuse one computed
+    :class:`~ts_shape.CycleProfileEvents` for the cycle tables and the unit
+    profilers.
+
+    Args:
+        frame: The output of :func:`prepare_signals`.
+        profile: The cycle profile of ``frame``.
+        top_n: Influencers kept per comparison.
+
+    Returns:
+        The :class:`CycleProfileResult`.
+    """
     tables = {
         "signals": signal_inventory(frame),
         "anchors": profile.cycle_anchor_candidates(),

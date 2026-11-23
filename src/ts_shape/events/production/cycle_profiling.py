@@ -449,6 +449,14 @@ class CycleProfileEvents(Base):
       from normal ones.
     - cycle_records: One record per cycle, every field at the same timestamp.
     - detect_unusual_cycles: The long and short cycle records.
+    - units: The classified cycles (for unit profilers).
+    - events_frame: Every discrete event (for unit profilers).
+    - signal_specs: Inferred spec per signal.
+    - variant_limits: Classification limits per variant.
+    - cycle_anchor: The anchor event and its signal.
+    - variant_signal: The variant signal.
+    - resolution_seconds: Time resolution of the cycle view.
+    - evaluation_reason: Reason of the all-variants row.
 
     Example:
         >>> import ts_shape
@@ -2002,6 +2010,81 @@ class CycleProfileEvents(Base):
     # ------------------------------------------------------------------
     # Empty outputs
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Read-only access for the unit profilers (events.production.*_profiling)
+    # ------------------------------------------------------------------
+
+    def units(self) -> pd.DataFrame:
+        """The classified cycles: one row per complete cycle.
+
+        Columns: ``cycle_uuid``, ``start_ns``, ``end_ns``, ``duration_seconds``,
+        ``variant``, ``cycle_class`` (``pause`` / ``long`` / ``short`` /
+        ``normal``) and ``z`` (robust z of the log duration). Used by the unit
+        profilers (stops, changeovers, start-ups, orders ...) to cut their
+        own units from the cycles.
+
+        Returns:
+            A copy of the cycle table (empty without a cycle anchor).
+        """
+        return self._cycles().copy()
+
+    def events_frame(self) -> pd.DataFrame:
+        """Every discrete event of every signal (see :meth:`signal_events`).
+
+        Columns: ``systime``, ``source_uuid``, ``event``, ``signal_kind``,
+        ``ns`` (integer nanoseconds), sorted by time.
+
+        Returns:
+            A copy of the event table.
+        """
+        events, _ = self._events()
+        return events.copy()
+
+    def signal_specs(self) -> dict[str, Any]:
+        """The inferred :class:`~ts_shape.signals.spec.SignalSpec` per signal.
+
+        Returns:
+            ``{uuid: SignalSpec}`` (a copy of the mapping).
+        """
+        _, specs = self._events()
+        return dict(specs)
+
+    def variant_limits(self) -> dict[str, dict[str, float]]:
+        """Classification limits per variant (``lower``, ``upper``, ``pause``, ``median`` seconds).
+
+        Returns:
+            ``{variant: {...}}`` (empty without cycles).
+        """
+        self._cycles()
+        return {k: dict(v) for k, v in self._cache.get("limits", {}).items()}
+
+    def cycle_anchor(self) -> tuple[str, str] | None:
+        """``(event label, source uuid)`` of the cycle anchor, or None."""
+        return self._anchor()
+
+    def variant_signal(self) -> str | None:
+        """The uuid of the signal that defines the product variant, or None."""
+        self._cycles()
+        value = self._cache.get("variant_uuid")
+        return None if value is None else str(value)
+
+    def resolution_seconds(self) -> float:
+        """Seconds within which events cannot be ordered (as in :meth:`evaluation_window`)."""
+        window = self.evaluation_window()
+        if window.empty:
+            return 0.0
+        value = float(window["time_resolution_seconds"].iloc[0])
+        return value if np.isfinite(value) else 0.0
+
+    def evaluation_reason(self) -> str:
+        """The ``reason`` of the ``all`` row of :meth:`evaluation_window`."""
+        window = self.evaluation_window()
+        if window.empty:
+            return "no_cycle_anchor"
+        rows = window[window["variant"] == ALL]
+        row = rows.iloc[0] if len(rows) else window.iloc[0]
+        return str(row["reason"])
 
     def _time_dtype(self) -> Any:
         if self.time_column in self.dataframe.columns:

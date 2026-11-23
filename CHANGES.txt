@@ -1,3 +1,32 @@
+# November 23, 2026 (unit profilers: run losses)
+Mapping-free profilers built like the cycle profiler, on its cycles.
+feat: StopProfileEvents -- stops (pause cycles, micro-stops = long cycles;
+  on a line without a cycle the off-periods of a discovered run signal),
+  their causes learned by enrichment of the events before each stop
+  (first-out signature, held state, or unexplained; analog consequences
+  and stop markers excluded), data holes as unknown time; stop_records,
+  stop_signatures (lost time, MTTR, MTBF, potential), signature_evidence,
+  evaluation_window, summary.
+feat: ChangeoverProfileEvents -- variant changes split into changeover and
+  ramp-up, the learned standard step sequence (changing ids folded into
+  one step), segment register with potential, external_possible hint,
+  from -> to matrix.
+feat: StartupProfileEvents -- restarts after pauses and changeovers, lost
+  time, running bands of every analog signal and which one is last back
+  in its band.
+feat: ts_shape.unit_profiles.profile_units runs the cycle profile once and
+  every unit profiler on it; results in ProfileResult /
+  UnitProfilesResult (save / load, one folder per profiler).
+  CycleProfileResult is now a ProfileResult; cycle_profile.cycle_tables
+  builds the cycle tables from a prepared frame and profile.
+feat: CycleProfileEvents read-only accessors for the unit profilers: units,
+  events_frame, signal_specs, variant_limits, cycle_anchor, variant_signal,
+  resolution_seconds, evaluation_reason.
+feat: make_plc_cycles options stop_causes / stop_probability,
+  changeover_steps, rampup_cycles (mould temperature), handshake_partner,
+  order_size / scrap_probability, setting_changes, energy and curve_faults
+  (default data unchanged), with truth columns; new make_line_stops.
+
 # November 19, 2026 (field test: review follow-ups)
 fix: ScrapEvents.scrap_cost matches float part numbers (1001.0) to cost keys
   (1001) again.

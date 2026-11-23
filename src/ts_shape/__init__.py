@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ts_shape.cycle_profile import CycleProfileResult as CycleProfileResult
     from ts_shape.cycle_profile import profile_cycles as profile_cycles
     from ts_shape.datasets import make_id_signal as make_id_signal
+    from ts_shape.datasets import make_line_stops as make_line_stops
     from ts_shape.datasets import make_object_signals as make_object_signals
     from ts_shape.datasets import make_plc_cycles as make_plc_cycles
     from ts_shape.datasets import make_timeseries as make_timeseries
@@ -205,6 +206,12 @@ if TYPE_CHECKING:
     from ts_shape.events.production.changeover import (
         ChangeoverEvents as ChangeoverEvents,
     )
+    from ts_shape.events.production.changeover_profiling import (
+        ChangeoverProfileEvents as ChangeoverProfileEvents,
+    )
+    from ts_shape.events.production.changeover_profiling import (
+        StartupProfileEvents as StartupProfileEvents,
+    )
     from ts_shape.events.production.continuous_process_alignment import (
         ContinuousProcessAlignmentEvents as ContinuousProcessAlignmentEvents,
     )
@@ -319,6 +326,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.shift_reporting import (
         ShiftReporting as ShiftReporting,
+    )
+    from ts_shape.events.production.stop_profiling import (
+        StopProfileEvents as StopProfileEvents,
     )
     from ts_shape.events.production.target_tracking import TargetEvents as TargetEvents
     from ts_shape.events.production.target_tracking import (
@@ -514,6 +524,7 @@ if TYPE_CHECKING:
     from ts_shape.transform.time_functions.timezone_shift import (
         TimezoneShift as TimezoneShift,
     )
+    from ts_shape.unit_profiles import profile_units as profile_units
     from ts_shape.utils.frames import compact_frame as compact_frame
 
 # Library best practice: add NullHandler so that consuming applications
@@ -570,6 +581,9 @@ _LAZY: dict[str, str] = {
     "BottleneckDetectionEvents": "ts_shape.events.production.bottleneck_detection",
     "ChangeoverEvents": "ts_shape.events.production.changeover",
     "ContinuousProcessAlignmentEvents": "ts_shape.events.production.continuous_process_alignment",
+    "StopProfileEvents": "ts_shape.events.production.stop_profiling",
+    "ChangeoverProfileEvents": "ts_shape.events.production.changeover_profiling",
+    "StartupProfileEvents": "ts_shape.events.production.changeover_profiling",
     "CycleProfileEvents": "ts_shape.events.production.cycle_profiling",
     "CycleTimeEvents": "ts_shape.events.production.cycle_time_tracking",
     "DowntimeEvents": "ts_shape.events.production.downtime_tracking",
@@ -660,6 +674,7 @@ _LAZY: dict[str, str] = {
     # -- top-level utilities --------------------------------------------
     "list_detectors": "ts_shape.catalog",
     "make_timeseries": "ts_shape.datasets",
+    "profile_units": "ts_shape.unit_profiles",
     "profile": "ts_shape.profiling",
     "ProfileReport": "ts_shape.profiling",
     "infer_specs": "ts_shape.signals",
@@ -671,6 +686,7 @@ _LAZY: dict[str, str] = {
     "SignalSpecs": "ts_shape.signals",
     "make_id_signal": "ts_shape.datasets",
     "make_object_signals": "ts_shape.datasets",
+    "make_line_stops": "ts_shape.datasets",
     "make_plc_cycles": "ts_shape.datasets",
     "profile_cycles": "ts_shape.cycle_profile",
     "CycleProfileResult": "ts_shape.cycle_profile",

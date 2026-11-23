@@ -267,6 +267,13 @@ def _uuid_for(name: str) -> str:
 
 #: Constructor arguments the harness cannot infer from names alone (one of
 #: several optional parameters must be given).
+#: Mapping-free unit profilers (stops, changeovers ...) built on the cycle profile.
+UNIT_PROFILERS = (
+    "StopProfileEvents",
+    "ChangeoverProfileEvents",
+    "StartupProfileEvents",
+)
+
 INIT_OVERRIDES: dict[str, dict[str, Any]] = {
     "OutlierDetectionEvents": {"signal_uuids": [CONT]},
     "CapabilityTrendingEvents": {"upper_spec": 60.0, "lower_spec": 40.0},
@@ -291,6 +298,11 @@ INIT_OVERRIDES: dict[str, dict[str, Any]] = {
     # it to the signals of one PLC.
     "CycleProfileEvents": {
         "signal_uuids": [CONT, CONT2, STATE, COUNTER, SETPOINT, TEXT]
+    },
+    # The unit profilers build on the cycle profile: pinned the same way.
+    **{
+        name: {"signal_uuids": [CONT, CONT2, STATE, COUNTER, SETPOINT, TEXT]}
+        for name in UNIT_PROFILERS
     },
 }
 

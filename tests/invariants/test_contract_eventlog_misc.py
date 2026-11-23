@@ -331,6 +331,7 @@ EXEMPT: dict[str, str] = {
     "datasets.make_id_signal": "generator without a frame input",
     "datasets.make_object_signals": "generator without a frame input",
     "datasets.make_plc_cycles": "generator without a frame input",
+    "datasets.make_line_stops": "generator without a frame input",
 }
 
 

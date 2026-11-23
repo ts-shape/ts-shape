@@ -141,6 +141,12 @@ if TYPE_CHECKING:
     from ts_shape.events.production.changeover import (
         ChangeoverEvents as ChangeoverEvents,
     )
+    from ts_shape.events.production.changeover_profiling import (
+        ChangeoverProfileEvents as ChangeoverProfileEvents,
+    )
+    from ts_shape.events.production.changeover_profiling import (
+        StartupProfileEvents as StartupProfileEvents,
+    )
     from ts_shape.events.production.continuous_process_alignment import (
         ContinuousProcessAlignmentEvents as ContinuousProcessAlignmentEvents,
     )
@@ -255,6 +261,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.shift_reporting import (
         ShiftReporting as ShiftReporting,
+    )
+    from ts_shape.events.production.stop_profiling import (
+        StopProfileEvents as StopProfileEvents,
     )
     from ts_shape.events.production.target_tracking import TargetEvents as TargetEvents
     from ts_shape.events.production.target_tracking import (

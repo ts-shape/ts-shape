@@ -57,6 +57,36 @@ Daily Production Tracking Classes:
   - cycle_records: One record per cycle at one timestamp.
   - detect_unusual_cycles: Long and short cycles.
   - signal_events: The events every signal was turned into.
+  - units: The classified cycles (for unit profilers).
+  - events_frame: Every discrete event (for unit profilers).
+  - signal_specs: Inferred spec per signal.
+  - variant_limits: Classification limits per variant.
+  - cycle_anchor: The anchor event and its signal.
+  - variant_signal: The variant signal.
+  - resolution_seconds: Time resolution of the cycle view.
+  - evaluation_reason: Reason of the all-variants row.
+
+- StartupProfileEvents: Mapping-free start-up profiling after stops and changeovers.
+  - startup_records: One record per start-up.
+  - startup_signals: Which signals are last back in their running band.
+  - startup_register: Start-up time and potential per trigger.
+  - evaluation_window: Enough start-ups to trust the profile?
+  - summary: Headline numbers.
+
+- ChangeoverProfileEvents: Mapping-free changeover (SMED) profiling.
+  - changeover_records: One record per changeover.
+  - changeover_view: The learned standard step sequence.
+  - changeover_register: Potential per changeover segment.
+  - changeover_matrix: Changeover times per from -> to variant.
+  - evaluation_window: Enough changeovers to trust the profile?
+  - summary: Headline numbers.
+
+- StopProfileEvents: Mapping-free stop profiling: causes and lost time.
+  - stop_records: One record per stop with its signature.
+  - stop_signatures: Lost time, MTTR and potential per stop signature.
+  - signature_evidence: Why an event counts as a stop signature.
+  - evaluation_window: Enough stops to trust the profile?
+  - summary: Headline numbers.
 
 - ShiftReportEvents: Shift-based performance analysis.
   - shift_production: Production per shift.
@@ -231,6 +261,7 @@ from .alarm_management import AlarmManagementEvents
 from .batch_tracking import BatchTrackingEvents
 from .bottleneck_detection import BottleneckDetectionEvents
 from .changeover import ChangeoverEvents
+from .changeover_profiling import ChangeoverProfileEvents, StartupProfileEvents
 
 # Traceability
 from .continuous_process_alignment import ContinuousProcessAlignmentEvents
@@ -309,12 +340,16 @@ from .shift_reporting import (
     ShiftReportEvents,
     ShiftReporting,  # deprecated alias
 )
+from .stop_profiling import StopProfileEvents
 from .target_tracking import (
     TargetEvents,
     TargetTracking,  # deprecated alias
 )
 
 __all__ = [
+    "StartupProfileEvents",
+    "ChangeoverProfileEvents",
+    "StopProfileEvents",
     "OperatingStateEvents",
     # Event Detection
     "MachineStateEvents",

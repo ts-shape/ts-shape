@@ -294,6 +294,16 @@ def make_plc_cycles(
     shape_fault_probability: float = 0.0,
     parallel_lane: bool = False,
     poll_period: str | None = None,
+    stop_causes: int = 0,
+    stop_probability: float = 0.0,
+    changeover_steps: bool = False,
+    rampup_cycles: int = 0,
+    handshake_partner: bool = False,
+    order_size: int = 0,
+    scrap_probability: float = 0.0,
+    setting_changes: Sequence[tuple[int, float]] = (),
+    energy: bool = False,
+    curve_faults: dict[str, float] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Simulate the raw signals of one cyclic machine PLC, with ground truth.
 
@@ -347,6 +357,36 @@ def make_plc_cycles(
         poll_period: Read every signal at this fixed poll (``"13s"``), as a
             polling OPC UA client does; ``None`` (default) keeps the
             change-encoded rows.
+        stop_causes: Number of stop causes (0-4) injected at the start of a
+            cycle with ``stop_probability``: a jam (``alarm_1`` rises just
+            before, about 2 min), material low (``alarm_2``, about 5 min), a
+            manual fix (``mode`` 2 and ``door_open`` held, about 3 min) and an
+            unknown cause that leaves no trace (about 1.5 min).
+        stop_probability: Share of cycles that start with a stop.
+        changeover_steps: At an article change, run a changeover in step 10
+            of the first new cycle: ``setup_mode`` held, ``unlock_tool`` and
+            ``lock_tool`` pulses and a new ``fixture_id``; in about 30 % of the
+            changeovers the fixture is prepared while the old article still
+            runs (an external step).
+        rampup_cycles: After a pause, stop or changeover, this many cycles
+            run step 40 slower (up to +60 %), and ``mold_temp`` (sampled)
+            cools during the stop and heats up again.
+        handshake_partner: Run a four-phase handshake with the conveyor in
+            step 60 (``req_conveyor`` / ``ack_conveyor``); the acknowledge
+            delay includes the conveyor wait.
+        order_size: Cycles per production order (``order_no``, text; 0: no
+            order signal).
+        scrap_probability: Share of bad parts: ``good_counter`` and
+            ``bad_counter`` add up to the part counter; the rate is 5x in a
+            ramp-up, 10x on a curve fault and 3x after an alarm stop.
+        setting_changes: ``(cycle, percent)`` changes of a held
+            ``speed_override`` (100 at the start); step 40 runs at
+            100/percent of its duration.
+        energy: Add ``energy_kwh``, a cumulative meter (30 kW while
+            producing, 4 kW in stops).
+        curve_faults: ``{fault: probability}`` pressure-curve faults:
+            ``low_plateau`` (130 instead of 180 bar), ``late_rise`` (+2 s),
+            ``spike_in_hold`` (260 bar for 1 s).
 
     The optional disturbances draw random numbers only when enabled, so the
     default data do not change.
@@ -357,7 +397,10 @@ def make_plc_cycles(
         ``end``, ``duration_seconds``, ``kind`` (``normal``, ``long``,
         ``short`` or ``pause``), ``article``, ``retry_count``,
         ``pause_seconds``, ``parts``, ``sequence`` (``standard`` /
-        ``swapped``) and ``shape_fault``.
+        ``swapped``) and ``shape_fault``; with the options above also
+        ``stop_cause``, ``stop_seconds``, ``changeover_seconds``, ``startup``,
+        ``nok``, ``order_id``, ``setting_value``, ``curve_fault`` and
+        ``handshake_wait_seconds``.
 
     Raises:
         ValueError: If ``n_cycles`` is below 1, ``articles`` is empty or
@@ -392,4 +435,62 @@ def make_plc_cycles(
         shape_fault_probability=shape_fault_probability,
         parallel_lane=parallel_lane,
         poll_period=poll_period,
+        stop_causes=stop_causes,
+        stop_probability=stop_probability,
+        changeover_steps=changeover_steps,
+        rampup_cycles=rampup_cycles,
+        handshake_partner=handshake_partner,
+        order_size=order_size,
+        scrap_probability=scrap_probability,
+        setting_changes=setting_changes,
+        energy=energy,
+        curve_faults=curve_faults,
+    )
+
+
+def make_line_stops(
+    *,
+    duration: str = "48h",
+    seed: int = 0,
+    start: str | pd.Timestamp = "2026-01-05 06:00:00",
+    mean_run_minutes: float = 90.0,
+    count_period: str = "10s",
+    prefix: str = "line",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Simulate a continuous line (no machine cycle) that stops now and then.
+
+    The line counts produced units every ``count_period`` while it runs
+    (``<prefix>:produced_count``) and holds ``<prefix>:running``. It stops
+    after an exponential run time for one of three causes: a web break
+    (``<prefix>:alarm_break`` rises just before, about 12 min), die pressure
+    (``<prefix>:alarm_pressure``, about 25 min) or an unknown cause without a
+    trace (about 6 min). All signals are logged on change.
+
+    Args:
+        duration: Length of the recording.
+        seed: Random seed; the output is deterministic per seed.
+        start: Timestamp of the first row.
+        mean_run_minutes: Mean run time between two stops.
+        count_period: The counter counts one unit per this period.
+        prefix: Prefix of the signal uuids.
+
+    Returns:
+        ``(frame, truth)``: the long-format frame, and one row per stop with
+        ``start``, ``end``, ``cause`` and ``duration_seconds``.
+
+    Example:
+        >>> import ts_shape
+        >>> frame, truth = ts_shape.make_line_stops(duration="24h", seed=1)
+        >>> sorted(truth["cause"].unique())
+        ['die_pressure', 'unknown', 'web_break']
+    """
+    from ts_shape._line_stops import generate
+
+    return generate(
+        duration=duration,
+        seed=seed,
+        start=start,
+        mean_run_minutes=mean_run_minutes,
+        count_period=count_period,
+        prefix=prefix,
     )
