@@ -494,3 +494,59 @@ def make_line_stops(
         count_period=count_period,
         prefix=prefix,
     )
+
+
+def make_control_loops(
+    *,
+    loops: Sequence[str] = ("good", "oscillating", "sluggish"),
+    duration: str = "8h",
+    seed: int = 0,
+    start: str | pd.Timestamp = "2026-01-05 06:00:00",
+    sample_period: str = "2s",
+    mean_step_minutes: float = 20.0,
+    distractors: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Simulate PI control loops with setpoint steps, and look-alike signals.
+
+    Each loop is a first-order plant with dead time under a PI controller
+    tuned ``good`` (lambda tuning), ``oscillating`` (gain far too high) or
+    ``sluggish`` (gain far too low). Loop ``i`` writes ``plc:tic10<i>_sp``,
+    ``_pv`` and ``_op`` (output in %, 0..100). The setpoint steps by 5..20
+    units after an exponential hold (at least 5 min). With ``distractors``,
+    a held setting nobody follows (``plc:line_speed_set``), a drifting
+    ``plc:ambient_temp`` and a randomly moving ``plc:bypass_valve`` are
+    added. All signals are sampled every ``sample_period``.
+
+    Args:
+        loops: Tuning quality of each loop: ``good``, ``oscillating`` or
+            ``sluggish``.
+        duration: Length of the recording.
+        seed: Random seed; the output is deterministic per seed.
+        start: Timestamp of the first row.
+        sample_period: Sampling period of every signal.
+        mean_step_minutes: Mean hold of a setpoint (plus 5 min).
+        distractors: Add the look-alike signals.
+
+    Returns:
+        ``(frame, truth)``: the long-format frame, and one row per loop
+        with ``loop``, ``quality``, ``setpoint_uuid``, ``actual_uuid``,
+        ``output_uuid``, ``kp``, ``ti_seconds``, ``plant_gain``,
+        ``plant_tau_seconds``, ``dead_time_seconds`` and ``step_count``.
+
+    Example:
+        >>> import ts_shape
+        >>> frame, truth = ts_shape.make_control_loops(duration="1h", seed=1)
+        >>> list(truth["quality"])
+        ['good', 'oscillating', 'sluggish']
+    """
+    from ts_shape._control_loops import generate
+
+    return generate(
+        loops=loops,
+        duration=duration,
+        seed=seed,
+        start=start,
+        sample_period=sample_period,
+        mean_step_minutes=mean_step_minutes,
+        distractors=distractors,
+    )

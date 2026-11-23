@@ -120,6 +120,66 @@ def _scrap(frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any) -> Profil
     )
 
 
+def _tables(det: Any, kind: str, methods: Sequence[str]) -> ProfileResult:
+    return ProfileResult(
+        tables={m: getattr(det, m)() for m in methods},
+        summary=det.summary(),
+        kind=kind,
+    )
+
+
+def _handshakes(
+    frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any
+) -> ProfileResult:
+    from ts_shape.events.production.handshake_profiling import HandshakeProfileEvents
+
+    det = HandshakeProfileEvents(frame, cycle_profile=profile)
+    return _tables(
+        det,
+        "handshakes",
+        ("handshake_pairs", "handshake_register", "evaluation_window"),
+    )
+
+
+def _curves(
+    frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any
+) -> ProfileResult:
+    from ts_shape.events.production.curve_signature import CurveSignatureEvents
+
+    det = CurveSignatureEvents(frame, cycle_profile=profile)
+    return _tables(
+        det,
+        "curves",
+        ("curve_golden", "curve_cycle_scores", "curve_patterns", "evaluation_window"),
+    )
+
+
+def _settings(
+    frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any
+) -> ProfileResult:
+    from ts_shape.events.production.setting_impact import SettingImpactEvents
+
+    det = SettingImpactEvents(frame, cycle_profile=profile)
+    return _tables(
+        det,
+        "settings",
+        ("setting_changes", "setting_impact", "setting_register", "evaluation_window"),
+    )
+
+
+def _loops(frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any) -> ProfileResult:
+    from ts_shape.events.engineering.control_loop_profiling import (
+        ControlLoopProfileEvents,
+    )
+
+    det = ControlLoopProfileEvents(frame)
+    return _tables(
+        det,
+        "loops",
+        ("loop_pairs", "loop_steps", "loop_register", "evaluation_window"),
+    )
+
+
 #: Profiler name -> runner ``(frame, cycle profile, **options) -> ProfileResult``,
 #: in dependency order.
 PROFILERS: dict[str, Callable[..., ProfileResult]] = {
@@ -128,6 +188,10 @@ PROFILERS: dict[str, Callable[..., ProfileResult]] = {
     "startups": _startups,
     "orders": _orders,
     "scrap": _scrap,
+    "handshakes": _handshakes,
+    "curves": _curves,
+    "settings": _settings,
+    "loops": _loops,
 }
 #: The profilers :func:`profile_units` runs by default (all of them).
 DEFAULT_PROFILERS: tuple[str, ...] = tuple(PROFILERS)

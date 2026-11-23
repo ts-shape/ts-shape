@@ -72,6 +72,9 @@ if TYPE_CHECKING:
     from ts_shape.events.engineering.control_loop_health import (
         ControlLoopHealthEvents as ControlLoopHealthEvents,
     )
+    from ts_shape.events.engineering.control_loop_profiling import (
+        ControlLoopProfileEvents as ControlLoopProfileEvents,
+    )
     from ts_shape.events.engineering.disturbance_recovery import (
         DisturbanceRecoveryEvents as DisturbanceRecoveryEvents,
     )
@@ -150,6 +153,9 @@ if TYPE_CHECKING:
     from ts_shape.events.production.continuous_process_alignment import (
         ContinuousProcessAlignmentEvents as ContinuousProcessAlignmentEvents,
     )
+    from ts_shape.events.production.curve_signature import (
+        CurveSignatureEvents as CurveSignatureEvents,
+    )
     from ts_shape.events.production.cycle_profiling import (
         CycleProfileEvents as CycleProfileEvents,
     )
@@ -171,6 +177,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.flow_metrics import (
         FlowMetricsEvents as FlowMetricsEvents,
+    )
+    from ts_shape.events.production.handshake_profiling import (
+        HandshakeProfileEvents as HandshakeProfileEvents,
     )
     from ts_shape.events.production.line_balancing import (
         LineBalancingEvents as LineBalancingEvents,
@@ -250,6 +259,9 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.scrap_tracking import ScrapEvents as ScrapEvents
     from ts_shape.events.production.scrap_tracking import ScrapTracking as ScrapTracking
+    from ts_shape.events.production.setting_impact import (
+        SettingImpactEvents as SettingImpactEvents,
+    )
     from ts_shape.events.production.setup_time_tracking import (
         SetupTimeEvents as SetupTimeEvents,
     )

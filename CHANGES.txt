@@ -1,3 +1,22 @@
+# November 23, 2026 (unit profilers: handshakes, curves, settings)
+feat: HandshakeProfileEvents -- request/answer pairs learned from edges
+  (four- / two-phase), fixed timers vs waits on the partner, a wait
+  register with potential and cycle-time share.
+feat: CurveSignatureEvents -- golden curves per variant and analog signal,
+  time-warped between the standard cycle's milestones; per-cycle deviation
+  score, phase and direction; in-run anomalies clustered per signal into
+  fault patterns, warm-up runs after a restart kept apart.
+feat: SettingImpactEvents -- held settings found mapping-free; before/after
+  tests of every change on cycle time, segments, scrap and energy within
+  the running variant, confounders and confidence; a Theil-Sen register.
+feat: profile_units runs "handshakes", "curves" and "settings".
+feat: ControlLoopProfileEvents -- control loops found without names
+  (setpoint = stepping signal, process value = the follower, output = the
+  signal reacting at once), step metrics, IAE and saturation, diagnosis
+  oscillating / sluggish / ok and a health rank; profile_units "loops".
+feat: make_control_loops -- PI loops on first-order plants with dead time
+  (good / oscillating / sluggish tuning) and look-alike distractors.
+
 # November 23, 2026 (unit profilers: orders and scrap)
 feat: order_profiling.counter_roles -- total / good / bad counters from the
   per-cycle identity good + bad = total (lag up to 3 cycles), aliases,

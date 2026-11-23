@@ -66,6 +66,27 @@ Daily Production Tracking Classes:
   - resolution_seconds: Time resolution of the cycle view.
   - evaluation_reason: Reason of the all-variants row.
 
+- SettingImpactEvents: Before/after effect of changes of held settings.
+  - setting_changes: Every change of a held setting.
+  - setting_impact: Before/after tests per change and metric.
+  - setting_register: Sensitivity and best value per setting.
+  - evaluation_window: Whether the tests can be trusted.
+  - summary: Headline numbers.
+
+- CurveSignatureEvents: Golden curves and named fault patterns of analog signals per cycle.
+  - curve_golden: Golden curve band per variant and signal.
+  - curve_cycle_scores: Deviation score, phase and pattern per cycle.
+  - curve_patterns: Clustered fault patterns with lost time.
+  - evaluation_window: Evaluability per variant and signal.
+  - summary: Headline numbers.
+
+- HandshakeProfileEvents: Mapping-free request/answer pairs and the waits on partners.
+  - handshake_pairs: Discovered request/answer pairs, two- or four-phase.
+  - handshake_records: One wait interval per request.
+  - handshake_register: Wait per pair with potential and cycle-time share.
+  - evaluation_window: Evaluability per pair.
+  - summary: Headline numbers.
+
 - ScrapProfileEvents: Mapping-free scrap Pareto without reason codes.
   - nok_records: One record per cycle with a bad part.
   - scrap_pareto: Contexts where bad parts are over-represented.
@@ -279,6 +300,7 @@ from .changeover_profiling import ChangeoverProfileEvents, StartupProfileEvents
 
 # Traceability
 from .continuous_process_alignment import ContinuousProcessAlignmentEvents
+from .curve_signature import CurveSignatureEvents
 from .cycle_profiling import CycleProfileEvents
 from .cycle_time_tracking import (
     CycleTimeEvents,
@@ -291,6 +313,7 @@ from .downtime_tracking import (
 from .duty_cycle import DutyCycleEvents
 from .flow_constraints import FlowConstraintEvents
 from .flow_metrics import FlowMetricsEvents
+from .handshake_profiling import HandshakeProfileEvents
 from .line_balancing import LineBalancingEvents
 from .line_throughput import LineThroughputEvents
 from .long_downtime_events import LongDowntimeEvents
@@ -343,6 +366,7 @@ from .scrap_tracking import (
     ScrapEvents,
     ScrapTracking,  # deprecated alias
 )
+from .setting_impact import SettingImpactEvents
 from .setup_time_tracking import (
     SetupTimeEvents,
     SetupTimeTracking,  # deprecated alias
@@ -362,6 +386,9 @@ from .target_tracking import (
 )
 
 __all__ = [
+    "SettingImpactEvents",
+    "CurveSignatureEvents",
+    "HandshakeProfileEvents",
     "ScrapProfileEvents",
     "OrderProfileEvents",
     "StartupProfileEvents",

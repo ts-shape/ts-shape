@@ -274,7 +274,11 @@ UNIT_PROFILERS = (
     "StartupProfileEvents",
     "OrderProfileEvents",
     "ScrapProfileEvents",
+    "HandshakeProfileEvents",
+    "CurveSignatureEvents",
+    "SettingImpactEvents",
 )
+
 
 INIT_OVERRIDES: dict[str, dict[str, Any]] = {
     "OutlierDetectionEvents": {"signal_uuids": [CONT]},

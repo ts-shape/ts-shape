@@ -15,6 +15,10 @@ run them through the same steps:
 | `StartupProfileEvents` | the restart after a stop | How long until normal running, what holds it back? |
 | `OrderProfileEvents` | a production order | Which orders run slow or scrap the most? |
 | `ScrapProfileEvents` | a cycle with a bad part | What precedes a bad part (scrap Pareto without reason codes)? |
+| `HandshakeProfileEvents` | a request → answer wait | How long does the machine wait on its partners? |
+| `CurveSignatureEvents` | the curve of an analog signal in one cycle | Which curve shapes deviate, and what do they cost? |
+| `SettingImpactEvents` | a change of a held setting | Did that parameter change help? |
+| `ControlLoopProfileEvents` | a control loop (setpoint step) | Which loops oscillate or are sluggish? |
 
 Every profiler takes `cycle_profile=` to reuse one computed
 `CycleProfileEvents`, has an `evaluation_window()` that says whether it can be
@@ -116,4 +120,87 @@ frame, truth = ts_shape.make_plc_cycles(
 )
 orders = OrderProfileEvents(frame).order_records()
 pareto = ScrapProfileEvents(frame).scrap_pareto()
+```
+
+## Handshakes
+
+Request/answer pairs are found from the signals' edges alone: two boolean
+signals of different sources whose edges follow each other (≥ 95 % both ways)
+with a delay well below the request interval. A four-phase pair (request ↑,
+answer ↑, request ↓, answer ↓) is told from a two-phase one. A wait with a
+fixed delay is a timer (`waits_on = fixed`); a wait that varies is a wait on
+the partner (`waits_on = partner`). `handshake_register()` ranks the waits by
+potential and shows their share of, and correlation with, the cycle time.
+
+```python
+from ts_shape import HandshakeProfileEvents
+
+frame, truth = ts_shape.make_plc_cycles(n_cycles=300, seed=2, handshake_partner=True)
+pairs = HandshakeProfileEvents(frame).handshake_pairs()
+```
+
+## Curve signatures
+
+Per variant and analog signal a golden curve (median and P10–P90 band) is
+learned over the cycle, time-warped between the discrete milestones of the
+standard cycle so that a slower step does not read as a fault. Each cycle gets
+a deviation score (mean plus peak residual), its deviating phase and
+direction. Anomalous cycles are clustered into fault patterns
+(`curve_patterns()`, per signal over all variants, at least 3 cycles) with
+their long-cycle share and lost time. A run of off-band cycles right after a
+pause or variant change is a warm-up (`after_restart`, counted in the summary
+as `warmup_cycle_count`), not a fault pattern.
+
+```python
+from ts_shape import CurveSignatureEvents
+
+frame, truth = ts_shape.make_plc_cycles(
+    n_cycles=400, seed=5, articles=("A",),
+    curve_faults={"low_plateau": 0.04, "late_rise": 0.04},
+)
+patterns = CurveSignatureEvents(frame).curve_patterns()
+```
+
+## Setting changes
+
+A held setting is a numeric signal that changes rarely and holds its value for
+many cycles. Every change is a before/after test on the cycle time, every
+segment of the standard cycle, the bad-part rate and the energy per cycle
+(Hodges–Lehmann shift, Cliff's delta, Mann–Whitney with BH q-values). Only
+cycles of the variant running at the change are compared. Confounders
+(another setting change, a variant change or a pause at the change, a trend
+before it) lower the confidence. A setting that only changes with the variant
+is a recipe parameter and is not tested. `setting_register()` gives the
+sensitivity (Theil–Sen) and the best value seen.
+
+!!! note
+    On a machine without a separate article signal the cycle profiler may
+    take a held setting for the variant signal; it is then not tested here.
+
+```python
+from ts_shape import SettingImpactEvents
+
+frame, truth = ts_shape.make_plc_cycles(
+    n_cycles=400, seed=1, setting_changes=[(150, 120.0), (280, 90.0)], energy=True,
+)
+impact = SettingImpactEvents(frame).setting_impact()
+```
+
+## Control loops
+
+`ControlLoopProfileEvents` (in `ts_shape.events.engineering`) needs no machine
+cycle. Setpoints are piecewise-constant signals that step now and then; each
+is paired one-to-one with the continuous signal that follows its steps and
+tracks it. A signal that reacts *at once* to a setpoint step is the
+controller output (the process value reacts only after its dead time). Every
+loop is measured with `SetpointChangeEvents` (settling, overshoot,
+oscillation per step) and `ControlLoopHealthEvents` (IAE, output saturation),
+diagnosed `oscillating`, `sluggish` or `ok`, and ranked by health (rank 1 =
+worst).
+
+```python
+from ts_shape import ControlLoopProfileEvents
+
+frame, truth = ts_shape.make_control_loops(seed=1)
+register = ControlLoopProfileEvents(frame).loop_register()
 ```
