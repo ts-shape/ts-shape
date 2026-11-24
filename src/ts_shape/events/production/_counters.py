@@ -30,8 +30,11 @@ __all__ = ["counter_roles"]
 COUNTER_SUM_SHARE = 0.98
 #: Lags (in cycles) tried between the counters of an identity.
 COUNTER_MAX_LAG_CYCLES = 3
-#: Two counters equal in this share of the cycles are aliases.
+#: Two counters equal in this share of the cycles in which either moves are
+#: aliases ...
 COUNTER_ALIAS_SHARE = 0.98
+#: ... judged on at least this many such cycles.
+ALIAS_MIN_MOVES = 5
 
 _ROLE_COLUMNS = [
     "uuid",
@@ -84,8 +87,10 @@ def counter_roles(increments: pd.DataFrame) -> pd.DataFrame:
     Returns:
         One row per counter: ``uuid``, ``role`` (``total``, ``good``,
         ``bad``, ``alias``, ``energy_like`` or ``counter``),
-        ``rate_per_cycle``, ``total_uuid`` (the total it adds up to),
-        ``lag_cycles``, ``identity_share_ratio`` and ``confidence``
+        ``rate_per_cycle``, ``total_uuid`` (the total it adds up to, or the
+        counter it is an alias of), ``lag_cycles`` (the counter aligned with
+        the total is ``increments.shift(lag_cycles)``: -1 when it reports
+        one cycle late), ``identity_share_ratio`` and ``confidence``
         (``high`` for an identity, ``low`` otherwise).
     """
     if increments.empty or increments.shape[1] == 0:
@@ -101,14 +106,12 @@ def counter_roles(increments: pd.DataFrame) -> pd.DataFrame:
         if len(v) and not np.allclose(v, np.round(v)):
             roles[u]["role"] = "energy_like"
     counters = [u for u in data.columns if roles[u]["role"] == "counter"]
-    for a, b in itertools.combinations(counters, 2):
-        share = float(np.mean(np.isclose(data[a], data[b])))
-        if share >= COUNTER_ALIAS_SHARE and rate[a] > 0:
-            roles[b].update(role="alias", total_uuid=a, share=share)
-    counters = [u for u in counters if roles[u]["role"] == "counter"]
+    moving = [u for u in counters if rate[u] > 0]
+    # The identity first: with little scrap the good count equals the total
+    # in most cycles, and an alias test run first would swallow it.
     best: tuple[float, str, str, str, int] | None = None
-    for total in counters:
-        for a, b in itertools.combinations([c for c in counters if c != total], 2):
+    for total in moving:
+        for a, b in itertools.combinations([c for c in moving if c != total], 2):
             for lag in range(-COUNTER_MAX_LAG_CYCLES, COUNTER_MAX_LAG_CYCLES + 1):
                 summed = data[a] + data[b].shift(lag).fillna(0.0)
                 share = float(np.mean(np.isclose(summed, data[total])))
@@ -118,8 +121,27 @@ def counter_roles(increments: pd.DataFrame) -> pd.DataFrame:
         share, total, a, b, lag = best
         good, bad = (a, b) if rate[a] >= rate[b] else (b, a)
         roles[total].update(role="total", share=share)
-        roles[good].update(role="good", total_uuid=total, share=share)
-        roles[bad].update(role="bad", total_uuid=total, share=share, lag_cycles=lag)
+        # ``lag`` aligns ``b`` with the total (``b.shift(lag)``); ``a`` is aligned.
+        roles[good].update(
+            role="good",
+            total_uuid=total,
+            share=share,
+            lag_cycles=lag if good == b else 0,
+        )
+        roles[bad].update(
+            role="bad", total_uuid=total, share=share, lag_cycles=lag if bad == b else 0
+        )
+    # Aliases: the same count, judged on the cycles in which either moves (two
+    # rarely moving counters are not equal because both are mostly zero).
+    for a, b in itertools.combinations(counters, 2):
+        if roles[b]["role"] != "counter":
+            continue
+        moved = (data[a] != 0) | (data[b] != 0)
+        if int(moved.sum()) < ALIAS_MIN_MOVES:
+            continue
+        share = float(np.mean(np.isclose(data.loc[moved, a], data.loc[moved, b])))
+        if share >= COUNTER_ALIAS_SHARE:
+            roles[b].update(role="alias", total_uuid=a, share=share)
     rows = [
         {
             "uuid": u,
@@ -148,6 +170,13 @@ class _CounterMixin(_UnitProfiler):
     def _roles(self) -> pd.DataFrame:
         return counter_roles(self._increments())
 
+    def _aligned(self, uuid: str) -> pd.Series:
+        """``uuid``'s increments per cycle, aligned with the total (lag)."""
+        inc = self._increments()[uuid].reset_index(drop=True)
+        roles = self._roles().set_index("uuid")
+        lag = int(roles.at[uuid, "lag_cycles"]) if uuid in roles.index else 0
+        return inc.shift(lag).fillna(0.0) if lag else inc
+
     def _role(self, role: str) -> str | None:
         roles = self._roles()
         match = roles[roles["role"] == role]
@@ -158,9 +187,9 @@ class _CounterMixin(_UnitProfiler):
         inc = self._increments()
         bad_uuid, good_uuid = self._role("bad"), self._role("good")
         n = len(inc)
-        bad = inc[bad_uuid] if bad_uuid else pd.Series(0.0, index=range(n))
+        bad = self._aligned(bad_uuid) if bad_uuid else pd.Series(0.0, index=range(n))
         if good_uuid:
-            good = inc[good_uuid]
+            good = self._aligned(good_uuid)
         else:
             anchor = self._profile().cycle_anchor()
             source = anchor[1] if anchor else None

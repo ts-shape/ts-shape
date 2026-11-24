@@ -127,3 +127,36 @@ def test_no_bad_counter() -> None:
     assert scrap.nok_records().empty and scrap.scrap_pareto().empty
     orders = OrderProfileEvents(frame)
     assert orders.evaluation_window()["order_source"].iloc[0] in {"variant", "none"}
+
+
+def test_counter_roles_with_little_scrap_and_a_late_bad_count() -> None:
+    rng = np.random.default_rng(0)
+    n = 400
+    bad = (rng.random(n) < 0.01).astype(float)
+    total = np.ones(n)
+    table = pd.DataFrame(
+        {
+            "total": total,
+            "good": total - bad,
+            "bad": np.r_[0.0, bad[:-1]],  # reported one cycle late
+            "rework": (rng.random(n) < 0.01).astype(float),  # rare, unrelated
+            "copy": total,
+        }
+    )
+    roles = counter_roles(table).set_index("uuid")
+    # With 1 % scrap good == total in 99 % of the cycles: still not an alias.
+    assert roles.at["good", "role"] == "good" and roles.at["total", "role"] == "total"
+    assert roles.at["bad", "role"] == "bad"
+    # Two rarely moving counters are not equal just because both are mostly 0.
+    assert roles.at["rework", "role"] == "counter"
+    assert roles.at["copy", "role"] == "alias"
+    lag = int(roles.at["bad", "lag_cycles"])
+    aligned = table["bad"].shift(lag).fillna(0.0).to_numpy()
+    assert np.array_equal(aligned, bad)
+
+
+def test_plan_with_duplicate_order_ids() -> None:
+    frame, _ = ts_shape.make_plc_cycles(n_cycles=60, seed=1, order_size=20)
+    plan = pd.DataFrame({"order_id": ["A", "A"], "planned_quantity": [1, 2]})
+    with pytest.raises(ValueError, match="more than once"):
+        OrderProfileEvents(frame, plan=plan)

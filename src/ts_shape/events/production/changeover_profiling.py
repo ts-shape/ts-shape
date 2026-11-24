@@ -29,15 +29,18 @@ Start-ups
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.errors import DataQualityWarning
 from ts_shape.events.production._unit_profile import (
     _UnitProfiler,
     cycle_signal_stats,
     enrichment,
+    free_windows,
     memo,
     potential_register,
     window_labels,
@@ -48,6 +51,8 @@ __all__ = ["ChangeoverProfileEvents", "StartupProfileEvents"]
 
 #: A step event is this many times more frequent in changeovers than in running.
 CHANGEOVER_MIN_LIFT = 3.0
+#: Baseline windows (production time, changeover length) per changeover.
+BASELINE_WINDOWS_PER_CHANGEOVER = 10
 #: A text signal with more distinct values than this is a changing id
 #: (fixture number, order number): its changes count as one step label.
 ID_MAX_VALUES = 4
@@ -57,6 +62,9 @@ RAMP_MAX_Z = 1.5
 BAND_MIN_RELATIVE = 0.01
 #: Cycles after a trigger in which a signal's settling is looked for.
 MAX_STARTUP_CYCLES = 30
+#: A signal needs a per-cycle mean in at least this share of the steady
+#: cycles; a sparser one is left out (with a warning).
+MIN_MEAN_COVERAGE = 0.5
 #: How far before a changeover a step counts as done while producing
 #: (median cycles).
 EXTERNAL_LOOKBACK_CYCLES = 10.0
@@ -107,10 +115,17 @@ def _step_labels(events: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _normal_runs(classes: np.ndarray, z: np.ndarray, start: int, length: int) -> int:
-    """Index of the first cycle from ``start`` that begins ``length`` normal cycles."""
+def _normal_runs(
+    classes: np.ndarray,
+    z: np.ndarray,
+    start: int,
+    length: int,
+    stop: int | None = None,
+) -> int:
+    """Index of the first cycle from ``start`` that begins ``length`` normal
+    cycles, all before ``stop`` (default: the end); -1 when there is none."""
     run = 0
-    for i in range(start, len(classes)):
+    for i in range(start, len(classes) if stop is None else min(stop, len(classes))):
         ok = classes[i] == "normal" and np.isfinite(z[i]) and abs(z[i]) <= RAMP_MAX_Z
         run = run + 1 if ok else 0
         if run == length:
@@ -197,17 +212,38 @@ class ChangeoverProfileEvents(_UnitProfiler):
             classes = cycles["cycle_class"].to_numpy(dtype=object)
             z = cycles["z"].to_numpy(dtype=float)
             restarts = self._restarts()
-            changes = restarts.loc[restarts["trigger"] == "changeover", "position"]
-            for i in changes.to_numpy(dtype=np.int64):
+            changes = restarts.loc[
+                restarts["trigger"] == "changeover", "position"
+            ].to_numpy(dtype=np.int64)
+            bounds = np.r_[0, changes, len(cycles)]
+            for k, i in enumerate(changes.tolist()):
+                block_start, block_end = int(bounds[k]), int(bounds[k + 2])
+                # The old variant's last normal cycle, within its own block.
                 last_a = i - 1
-                while last_a >= 0 and classes[last_a] != "normal":
+                while last_a >= block_start and classes[last_a] != "normal":
                     last_a -= 1
-                first_b = _normal_runs(classes, z, int(i), self.ramp_cycles)
-                if last_a < 0 or first_b < 0:
+                if last_a < block_start:
                     continue
+                # Normal running of the new variant, within its own block; a
+                # block too short for it ends the changeover at the next one.
+                first_b = _normal_runs(
+                    classes, z, int(i), self.ramp_cycles, stop=block_end
+                )
                 start = int(cycles.at[last_a, "end_ns"])
                 change_end = int(cycles.at[i, "end_ns"])
-                end = int(cycles.at[first_b, "start_ns"])
+                if first_b >= 0:
+                    end = int(cycles.at[first_b, "start_ns"])
+                else:
+                    if block_end >= len(cycles):
+                        continue  # the recording ends during the ramp-up
+                    # Never steady before the next changeover: this one ends
+                    # with the block's last normal cycle, where that one starts.
+                    normal_b = [
+                        j for j in range(i, block_end) if classes[j] == "normal"
+                    ]
+                    last_b = normal_b[-1] if normal_b else block_end - 1
+                    end = int(cycles.at[last_b, "end_ns"])
+                    first_b = last_b + 1
                 end = max(end, change_end)
                 rows.append(
                     {
@@ -249,7 +285,22 @@ class ChangeoverProfileEvents(_UnitProfiler):
             return result
         normal = cycles[cycles["cycle_class"] == "normal"]
         unit_sets = window_labels(events, units["start_ns"], units["change_end_ns"])
-        base_sets = window_labels(events, normal["start_ns"], normal["end_ns"])
+        # Baseline: production time outside the changeovers, in windows as
+        # long as a typical changeover (a whole changeover against a single
+        # cycle would make any slow periodic event look like a step).
+        length = int(np.median(units["change_end_ns"] - units["start_ns"]))
+        span = (int(cycles["start_ns"].min()), int(cycles["end_ns"].max()))
+        busy = list(zip(units["start_ns"], units["end_ns"], strict=True))
+        base_sets = window_labels(
+            events,
+            *free_windows(
+                length,
+                BASELINE_WINDOWS_PER_CHANGEOVER * len(units),
+                span=span,
+                busy=busy,
+                seed=0,
+            ),
+        )
         evidence = enrichment(
             unit_sets,
             base_sets,
@@ -576,16 +627,21 @@ class StartupProfileEvents(_UnitProfiler):
             variant = cycles["variant"].astype(str).to_numpy()
             limits = self._profile().variant_limits()
             restarts = self._restarts()
-            restarts = restarts[restarts["position"] < len(cycles) - 1]
-            for i, trigger in zip(
-                restarts["position"].to_numpy(dtype=np.int64),
-                restarts["trigger"],
-                strict=True,
+            positions = restarts["position"].to_numpy(dtype=np.int64)
+            following = np.r_[positions[1:], len(cycles)][: len(positions)]
+            for i, nxt, trigger in zip(
+                positions.tolist(), following.tolist(), restarts["trigger"], strict=True
             ):
+                if i >= len(cycles) - 1 or nxt == i + 1:
+                    continue  # another restart right away: that one starts up
                 changeover = trigger == "changeover"
-                first = _normal_runs(classes, z, i + 1, self.ramp_cycles)
+                # Start-ups do not overlap: the next pause or changeover ends
+                # this one (its cycles are not counted twice).
+                first = _normal_runs(classes, z, i + 1, self.ramp_cycles, stop=nxt)
                 if first < 0:
-                    continue
+                    if nxt >= len(cycles):
+                        continue  # the recording ends during the start-up
+                    first = nxt
                 inside = cycles.iloc[i + 1 : first]
                 median = limits.get(variant[i + 1], {}).get("median", np.nan)
                 lost = float((inside["duration_seconds"] - median).clip(lower=0).sum())
@@ -593,6 +649,7 @@ class StartupProfileEvents(_UnitProfiler):
                     {
                         "unit_uuid": f"startup-{cycles.at[i, 'cycle_uuid']}",
                         "trigger_index": i,
+                        "next_restart_index": nxt,
                         "start_ns": int(cycles.at[i, "end_ns"]),
                         "end_ns": int(cycles.at[first, "start_ns"]),
                         "trigger": "changeover" if changeover else "pause",
@@ -606,6 +663,7 @@ class StartupProfileEvents(_UnitProfiler):
             columns=[
                 "unit_uuid",
                 "trigger_index",
+                "next_restart_index",
                 "start_ns",
                 "end_ns",
                 "trigger",
@@ -638,9 +696,15 @@ class StartupProfileEvents(_UnitProfiler):
                 excluded[i : i + MAX_STARTUP_CYCLES + 1] = True
             steady = (cycles["cycle_class"] == "normal").to_numpy() & ~excluded
             lo_q, hi_q = self.band_quantiles
+            sparse = []
             for uuid in means.columns:
                 ref = means.loc[steady, uuid].dropna()
                 if len(ref) < 10:
+                    continue
+                if len(ref) < MIN_MEAN_COVERAGE * int(steady.sum()):
+                    # Read less often than once per cycle: a cycle without a
+                    # reading would read as "not yet back in the band".
+                    sparse.append(uuid)
                     continue
                 lo, hi = ref.quantile(lo_q), ref.quantile(hi_q)
                 # A very steady signal still needs a band it can reach.
@@ -651,7 +715,12 @@ class StartupProfileEvents(_UnitProfiler):
                 inside = means[uuid].between(lo, hi).to_numpy()
                 for unit in startups.itertuples(index=False):
                     first = unit.trigger_index + 1
-                    last = min(first + MAX_STARTUP_CYCLES, len(cycles))
+                    # A signal settles before the next stop or changeover.
+                    last = min(
+                        first + MAX_STARTUP_CYCLES,
+                        unit.next_restart_index,
+                        len(cycles),
+                    )
                     settle = None
                     for k in range(first, last - self.ramp_cycles + 1):
                         if inside[k : k + self.ramp_cycles].all():
@@ -671,6 +740,13 @@ class StartupProfileEvents(_UnitProfiler):
                             "band_high": float(hi),
                         }
                     )
+            if sparse:
+                warnings.warn(
+                    "StartupProfileEvents: left out signal(s) read less often than "
+                    f"once per cycle: {sparse[:5]}",
+                    DataQualityWarning,
+                    stacklevel=3,
+                )
         return pd.DataFrame(
             rows,
             columns=["unit_uuid", "signal", "settle_seconds", "band_low", "band_high"],
@@ -685,14 +761,18 @@ class StartupProfileEvents(_UnitProfiler):
             ``duration_seconds``, ``trigger`` (``pause`` / ``changeover``),
             ``variant``, ``startup_cycle_count``, ``lost_seconds`` (cycle
             time beyond the variant median) and ``last_signal`` (the analog
-            signal that was last back in its running band).
+            signal that was last back in its running band, or one that was
+            not back before the next stop at all). A start-up ends at the
+            next stop or changeover at the latest; start-ups do not overlap.
         """
         startups = self._startups()
         settling = self._settling()
         last = {}
-        if len(settling):
-            valid = settling.dropna(subset=["settle_seconds"])
-            for unit, part in valid.groupby("unit_uuid"):
+        for unit, part in settling.groupby("unit_uuid"):
+            never = part[part["settle_seconds"].isna()]
+            if len(never):  # not back in its band at all: the real blocker
+                last[unit] = str(never["signal"].sort_values().iloc[0])
+            else:
                 last[unit] = str(part.loc[part["settle_seconds"].idxmax(), "signal"])
         anchor = self._profile().cycle_anchor()
         return self._point_records(

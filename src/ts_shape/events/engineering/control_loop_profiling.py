@@ -3,7 +3,9 @@
 :class:`ControlLoopProfileEvents` needs no machine cycle and no names. It
 reads the numeric signals of one controller and:
 
-* **finds setpoints**: piecewise-constant signals that step now and then;
+* **finds setpoints**: signals that hold their value for minutes between
+  steps (judged on their own readings, so polled and on-change logging
+  both work);
 * **pairs** each setpoint with the continuous signal that follows its steps
   (moves in the step's direction by a good part of it) and tracks it the
   rest of the time; the pairing is one-to-one, best score first;
@@ -46,10 +48,13 @@ from ts_shape.events.production._unit_profile import (
 
 __all__ = ["ControlLoopProfileEvents"]
 
-#: A setpoint changes in at most this share of grid points.
-SP_MAX_CHANGE_SHARE = 0.02
+#: A setpoint holds its value at least this long between changes (median);
+#: a continuous signal changes sooner.
+SP_MIN_HOLD_SECONDS = 60.0
 #: Most grid points of the common time grid.
 GRID_MAX_POINTS = 50_000
+#: A signal sets the grid period only with at least this many readings.
+GRID_MIN_READINGS = 50
 #: A followed step moves the process value by at least this share of it.
 FOLLOW_MIN_SHARE = 0.2
 #: Pairing thresholds: step-follow ratio and tracking ratio.
@@ -151,13 +156,15 @@ class ControlLoopProfileEvents(_ProfilerBase):
             series[uuid] = (t, v)
             d = np.diff(t)
             d = d[d > 0]
-            if len(d):
+            if len(d) >= GRID_MIN_READINGS:
                 steps.append(float(np.median(d)) / 1e9)
         if not series:
             return empty
         t_min = min(int(t[0]) for t, _ in series.values())
         t_max = max(int(t[-1]) for t, _ in series.values())
-        period = float(np.median(steps)) if steps else 1.0
+        # The grid follows the most often read signal: with on-change logging
+        # the setpoints are read rarely, the process values and outputs often.
+        period = float(np.min(steps)) if steps else 1.0
         period = max(period, (t_max - t_min) / 1e9 / GRID_MAX_POINTS, 0.1)
         grid = np.arange(t_min, t_max + 1, int(period * 1e9), dtype=np.int64)
         held = {}
@@ -169,20 +176,33 @@ class ControlLoopProfileEvents(_ProfilerBase):
     def _resolution(self) -> float:
         return self._grid()[2]
 
+    @memo
     def _roles(self) -> tuple[list[str], list[str]]:
-        """Setpoint candidates and continuous signals."""
-        grid, held, _ = self._grid()
+        """Setpoint candidates and continuous signals.
+
+        Judged on each signal's own readings, not on the common grid: a
+        setpoint holds its value for minutes between changes, a process value
+        changes within seconds -- whether it is polled (every reading a new
+        noisy value) or logged on change with a deadband (every reading a
+        change).
+        """
+        _, held, _ = self._grid()
+        signals = self._signals()
         setpoints, continuous = [], []
-        for uuid, g in held.items():
-            ok = np.isfinite(g)
-            if ok.sum() < 10:
+        for uuid in held:
+            v = signals.numeric(uuid, self.value_column)
+            ok = np.isfinite(v)
+            t, v = signals.ns(uuid)[ok], v[ok]
+            if len(v) < 3:
                 continue
-            v = g[ok]
-            changes = int(np.count_nonzero(np.diff(v)))
-            share = changes / max(len(v) - 1, 1)
-            if 2 <= changes and share <= SP_MAX_CHANGE_SHARE and len(np.unique(v)) >= 2:
+            change = np.flatnonzero(v[1:] != v[:-1]) + 1
+            if len(change) < 2:
+                continue
+            holds = np.diff(np.r_[t[0], t[change]]) / 1e9
+            hold = float(np.median(holds))
+            if hold >= SP_MIN_HOLD_SECONDS and len(np.unique(v)) >= 2:
                 setpoints.append(uuid)
-            elif share > SP_MAX_CHANGE_SHARE * 5:
+            elif hold < SP_MIN_HOLD_SECONDS and len(change) >= 10:
                 continuous.append(uuid)
         return setpoints, continuous
 
@@ -192,7 +212,10 @@ class ControlLoopProfileEvents(_ProfilerBase):
 
     @staticmethod
     def _step_index(sp: np.ndarray) -> np.ndarray:
-        return np.flatnonzero(np.r_[False, np.diff(sp) != 0] & np.isfinite(sp))
+        """Grid positions where the setpoint steps (from one value to another;
+        its first reading after a gap is not a step)."""
+        prev = np.r_[np.nan, sp[:-1]]
+        return np.flatnonzero(np.isfinite(sp) & np.isfinite(prev) & (sp != prev))
 
     @staticmethod
     def _late_median(x: np.ndarray, lo: int, hi: int) -> float:
@@ -284,7 +307,9 @@ class ControlLoopProfileEvents(_ProfilerBase):
                     "pair_score": score,
                 }
             )
-        free = [c for c in continuous if c not in used]
+        # Any signal not used yet may be an output: one logged with a deadband
+        # changes slowly between steps yet reacts at once to each of them.
+        free = [c for c in held if c not in used]
         for row in rows:
             op, consistency = None, 0.0
             for uuid in free:

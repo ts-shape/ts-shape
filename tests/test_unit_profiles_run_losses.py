@@ -252,3 +252,53 @@ def test_cycle_profile_result_is_a_profile_result() -> None:
     result = profile_cycles(frame)
     assert isinstance(result, CycleProfileResult) and isinstance(result, ProfileResult)
     assert result.kind == "cycles"
+
+
+def test_changeovers_and_startups_do_not_overlap() -> None:
+    frame, _ = ts_shape.make_plc_cycles(
+        n_cycles=500,
+        seed=6,
+        article_block=6,  # blocks too short for a full ramp-up
+        changeover_steps=True,
+        stop_causes=2,
+        stop_probability=0.15,
+        rampup_cycles=4,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        profile = CycleProfileEvents(frame)
+        for records in (
+            ChangeoverProfileEvents(frame, cycle_profile=profile).changeover_records(),
+            StartupProfileEvents(frame, cycle_profile=profile).startup_records(),
+        ):
+            assert len(records) > 3
+            ordered = records.sort_values("start_ns")
+            gaps = (
+                ordered["start_ns"].to_numpy()[1:] - ordered["end_ns"].to_numpy()[:-1]
+            )
+            assert (gaps >= 0).all()
+
+
+def test_stop_signature_evidence_comes_from_its_own_test() -> None:
+    frame, _ = ts_shape.make_plc_cycles(
+        n_cycles=500, seed=4, stop_causes=4, stop_probability=0.06
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        stops = StopProfileEvents(frame)
+        register = stops.stop_signatures()
+        evidence = stops.signature_evidence()
+    window = {"first_out": "before", "held_state": "during"}
+    checked = 0
+    for row in register.itertuples(index=False):
+        if row.signature_kind not in window:
+            continue
+        match = evidence[
+            (evidence["window"] == window[row.signature_kind])
+            & (evidence["label"] == row.signature)
+        ]
+        assert row.lift_factor == pytest.approx(float(match["lift_factor"].iloc[0]))
+        checked += 1
+    assert checked >= 2
+    assert register["potential_rank"].tolist() == list(range(1, len(register) + 1))
+    assert register["potential_seconds"].is_monotonic_decreasing

@@ -48,6 +48,8 @@ PATTERN_MIN_CYCLES = 3
 RESTART_CYCLES = 3
 #: Cut height of the clustering, in median nearest-neighbour distances.
 PATTERN_CUT = 1.5
+#: At most this many anomalous cycles per signal are clustered directly.
+CLUSTER_MAX_CYCLES = 500
 #: A cycle needs this many readings of a signal to have a curve.
 CURVE_MIN_SAMPLES = 8
 #: The score adds this percentile of a cycle's |residual| (divided by
@@ -70,23 +72,61 @@ def _curve(ns: np.ndarray, values: np.ndarray, grid: np.ndarray) -> np.ndarray:
 def _shift_tolerant(
     matrix: np.ndarray, median: np.ndarray, shift: int = 1
 ) -> np.ndarray:
-    """``matrix - median`` with the smallest |difference| within ``shift`` points."""
+    """``matrix - median`` with the smallest |difference| within ``shift`` points.
+
+    The median curve is moved by up to ``shift`` grid points either way; at
+    the ends it is held (its first / last value), not wrapped around.
+    """
     best = matrix - median
-    for k in range(1, shift + 1):
-        for moved in (np.roll(median, k), np.roll(median, -k)):
-            if k:
-                moved = moved.copy()
+    n = len(median)
+    for k in range(1, min(shift, n - 1) + 1):
+        later = np.r_[np.full(k, median[0]), median[:-k]]
+        earlier = np.r_[median[k:], np.full(k, median[-1])]
+        for moved in (later, earlier):
             diff = matrix - moved
             better = np.abs(diff) < np.abs(best)
             best = np.where(better, diff, best)
-    # The ends do not wrap around.
-    edge = matrix - median
-    best[:, :shift] = np.where(
-        np.abs(edge[:, :shift]) < np.abs(best[:, :shift]),
-        edge[:, :shift],
-        best[:, :shift],
-    )
     return np.asarray(best, dtype=float)
+
+
+def _cluster_shapes(small: np.ndarray) -> np.ndarray:
+    """Cluster labels of downsampled residual shapes (average linkage).
+
+    At most :data:`CLUSTER_MAX_CYCLES` shapes are clustered (an evenly
+    spaced sample); the others join the cluster of their nearest clustered
+    shape when it is within the cut distance, else stay alone. Memory stays
+    bounded on long recordings with many anomalous cycles.
+    """
+    n = len(small)
+    if n > CLUSTER_MAX_CYCLES:
+        core = np.linspace(0, n - 1, CLUSTER_MAX_CYCLES).round().astype(int)
+    else:
+        core = np.arange(n)
+    ref = small[core]
+    dist = np.sqrt(((ref[:, None, :] - ref[None, :, :]) ** 2).sum(axis=2))
+    np.fill_diagonal(dist, np.inf)
+    nn = float(np.median(dist.min(axis=1))) if len(ref) > 1 else 0.0
+    np.fill_diagonal(dist, 0.0)
+    if not np.isfinite(nn) or nn <= 0:
+        core_labels = np.ones(len(ref), dtype=int)
+    else:
+        condensed = dist[np.triu_indices(len(ref), k=1)]
+        tree = hierarchy.linkage(condensed, method="average")
+        core_labels = hierarchy.fcluster(tree, PATTERN_CUT * nn, criterion="distance")
+    labels = np.zeros(n, dtype=int)
+    labels[core] = core_labels
+    rest = np.setdiff1d(np.arange(n), core)
+    if len(rest):
+        next_label = int(core_labels.max()) + 1
+        for i in rest:
+            d = np.sqrt(((ref - small[i]) ** 2).sum(axis=1))
+            j = int(np.argmin(d))
+            if nn > 0 and d[j] <= PATTERN_CUT * nn:
+                labels[i] = core_labels[j]
+            else:
+                labels[i] = next_label
+                next_label += 1
+    return labels
 
 
 class CurveSignatureEvents(_UnitProfiler):
@@ -248,6 +288,7 @@ class CurveSignatureEvents(_UnitProfiler):
         residuals: dict[tuple[str, str], tuple[np.ndarray, np.ndarray]] = {}
         evaluation: list[dict[str, Any]] = []
         use = cycles[cycles["cycle_class"] != "pause"]
+        knots_of: dict[str, list[tuple[float, np.ndarray]]] = {}
         for uuid in self._signals_used():
             ns = signals.ns(uuid)
             values = signals.numeric(uuid, specs[uuid].value_column)
@@ -258,7 +299,9 @@ class CurveSignatureEvents(_UnitProfiler):
                     continue
                 span = float(normal["duration_seconds"].quantile(0.1))
                 offsets = np.linspace(0.0, span, CURVE_POINTS, endpoint=False)
-                knots = self._milestones(variant)
+                if variant not in knots_of:
+                    knots_of[variant] = self._milestones(variant)
+                knots = knots_of[variant]
                 curves, kept, counts = [], [], []
                 for c in part.itertuples(index=False):
                     if c.cycle_class == "short":
@@ -314,7 +357,7 @@ class CurveSignatureEvents(_UnitProfiler):
                     np.nanmedian(np.abs(score[is_normal] - s_med))
                 )
                 limit = max(s_med + self.n_sigma * max(s_mad, 1e-9), 2.0 * s_med)
-                anomaly = score > limit
+                anomaly = np.isfinite(score) & (score > limit)
                 phases = self._phases(variant, span)
                 starts = np.array([p[0] for p in phases])
                 phase_of = np.searchsorted(starts, offsets, side="right") - 1
@@ -340,8 +383,18 @@ class CurveSignatureEvents(_UnitProfiler):
                         )
                         for j in range(len(phases))
                     ]
-                    j = int(np.nanargmax(per_phase)) if per_phase else 0
-                    sign = np.nanmean(resid[k, phase_of == j]) if per_phase else 0.0
+                    finite = np.isfinite(per_phase)
+                    j = (
+                        int(np.nanargmax(np.where(finite, per_phase, -np.inf)))
+                        if finite.any()
+                        else 0
+                    )
+                    sign = (
+                        float(np.nanmean(resid[k, phase_of == j]))
+                        if finite.any()
+                        else 0.0
+                    )
+                    sign = sign if np.isfinite(sign) else 0.0
                     score_rows.append(
                         {
                             "cycle_uuid": str(c.cycle_uuid),
@@ -410,18 +463,7 @@ class CurveSignatureEvents(_UnitProfiler):
             # Downsample to a few points, so a shape matters, not its noise.
             blocks = np.array_split(np.arange(vectors.shape[1]), PATTERN_POINTS)
             small = np.column_stack([vectors[:, b].mean(axis=1) for b in blocks])
-            dist = np.sqrt(((small[:, None, :] - small[None, :, :]) ** 2).sum(axis=2))
-            np.fill_diagonal(dist, np.inf)
-            nn = float(np.median(dist.min(axis=1)))
-            np.fill_diagonal(dist, 0.0)
-            if not np.isfinite(nn) or nn <= 0:
-                labels = np.ones(len(small), dtype=int)
-            else:
-                condensed = dist[np.triu_indices(len(small), k=1)]
-                tree = hierarchy.linkage(condensed, method="average")
-                labels = hierarchy.fcluster(
-                    tree, PATTERN_CUT * nn, criterion="distance"
-                )
+            labels = _cluster_shapes(small)
             for label in np.unique(labels):
                 members = anomalous.index[labels == label]
                 if len(members) >= PATTERN_MIN_CYCLES:
@@ -574,7 +616,7 @@ class CurveSignatureEvents(_UnitProfiler):
                 }
             )
         out = pd.DataFrame(rows).sort_values(
-            ["cycle_count", "lost_seconds"], ascending=[False, False], kind="stable"
+            ["lost_seconds", "cycle_count"], ascending=[False, False], kind="stable"
         )
         out["potential_rank"] = np.arange(1, len(out) + 1)
         return out[columns].reset_index(drop=True)

@@ -183,6 +183,12 @@ class OrderProfileEvents(_CounterMixin):
                 raise ValueError(
                     f"OrderProfileEvents: plan needs the columns {sorted(missing)}"
                 )
+            dupes = plan["order_id"].astype(str)
+            dupes = sorted(set(dupes[dupes.duplicated()]))
+            if dupes:
+                raise ValueError(
+                    f"OrderProfileEvents: plan lists order_id more than once: {dupes[:5]}"
+                )
         self.plan = plan
         self.order_uuid = order_uuid
         self.min_orders = int(min_orders)
@@ -469,9 +475,8 @@ class ScrapProfileEvents(_CounterMixin):
             return pd.Series(0.0, index=range(len(inc))), None, 0
         roles = self._roles().set_index("uuid")
         lag = int(roles.at[uuid, "lag_cycles"]) if uuid in roles.index else 0
-        bad = inc[uuid].reset_index(drop=True)
-        # The bad count reported ``lag`` cycles late belongs to the earlier cycle.
-        return bad.shift(-lag).fillna(0.0) if lag else bad, uuid, lag
+        # A bad count reported late belongs to the cycle it was made in.
+        return self._aligned(uuid), uuid, lag
 
     @memo
     def _contexts(self) -> list[set[str]]:

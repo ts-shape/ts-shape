@@ -64,8 +64,13 @@ SUPPORT_MIN_RATIO, SUPPORT_MAX_RATIO = 0.8, 1.5
 #: ... and is phase-locked to it (mean resultant length of its phases).
 SUPPORT_MIN_LOCKING = 0.7
 #: An anchor candidate covers at least this share of the best candidate's
-#: coverage (span of its regular intervals over the recording).
-MIN_RELATIVE_COVERAGE = 0.5
+#: coverage (span of its regular intervals over the recording). A quarter:
+#: a machine down half the time (stops, changeovers) still has its cycle
+#: compete against a slow event that spans the whole recording.
+MIN_RELATIVE_COVERAGE = 0.25
+#: Among variant candidates explaining at least this share of the best
+#: candidate's adjusted eta squared, the one with the fewest values wins.
+VARIANT_ETA_TOLERANCE = 0.9
 #: A view whose time resolution is at least this share of the median cycle
 #: cannot resolve its cycles (``evaluable`` is False).
 RESOLUTION_MAX_SHARE = 0.25
@@ -893,7 +898,7 @@ class CycleProfileEvents(Base):
         )
         preliminary = core & (np.abs(log_d - center) <= self.n_sigma * sigma)
         signals = self._signals()
-        best: tuple[float, str, pd.Series] | None = None
+        found: list[tuple[float, int, str, pd.Series]] = []
         for uuid, spec in sorted(specs.items()):
             if anchor is not None and uuid == anchor[1]:
                 continue
@@ -939,11 +944,29 @@ class CycleProfileEvents(Base):
                 (groups.size() * (groups.mean() - log_d[preliminary].mean()) ** 2).sum()
             )
             eta = between / total
-            if eta >= VARIANT_MIN_ETA_SQUARED and (best is None or eta > best[0]):
-                best = (eta, uuid, pd.Series(labels, index=cycles.index, dtype=object))
-        if best is None:
+            if eta >= VARIANT_MIN_ETA_SQUARED:
+                # Adjusted for the number of groups (as adjusted R squared):
+                # a finer grouping always explains a little more by chance.
+                n, k = int(preliminary.sum()), int(groups.ngroups)
+                adjusted = 1.0 - (1.0 - eta) * (n - 1) / max(n - k, 1)
+                found.append(
+                    (
+                        adjusted,
+                        int(groups.ngroups),
+                        uuid,
+                        pd.Series(labels, index=cycles.index, dtype=object),
+                    )
+                )
+        if not found:
             return default, None
-        return best[2], best[1]
+        # A finer signal (a fixture or order id that changes with every
+        # article block) explains at least as much as the article: ranked by
+        # the adjusted eta squared, and the simplest signal that explains
+        # almost as much as the best is the variant.
+        top = max(f[0] for f in found)
+        near = [f for f in found if f[0] >= VARIANT_ETA_TOLERANCE * top]
+        eta, _groups, uuid, labels = min(near, key=lambda f: (f[1], -f[0], f[2]))
+        return labels, uuid
 
     def _classify(self, cycles: pd.DataFrame) -> None:
         """Class and robust z of every cycle, per variant (DQ-2, US-2)."""

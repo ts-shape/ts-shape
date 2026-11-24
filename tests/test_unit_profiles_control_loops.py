@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 import ts_shape
@@ -43,3 +44,33 @@ def test_too_few_steps_and_no_loops() -> None:
     assert det.evaluation_window()["reason"].iloc[0].startswith("no_candidate")
     with pytest.raises(ValueError, match="unknown loop quality"):
         ts_shape.make_control_loops(loops=("bad",))
+
+
+def _on_change(frame, deadband: float = 0.3):
+    """Keep a reading only when it moved by more than ``deadband`` (setpoints
+    and held settings: on every change)."""
+    parts = []
+    for uuid, part in frame.groupby("uuid", sort=False):
+        band = 0.0 if uuid.endswith(("_sp", "_set")) else deadband
+        values = part["value_double"].to_numpy()
+        keep, last = [], None
+        for v in values:
+            take = last is None or abs(v - last) > band
+            keep.append(take)
+            if take:
+                last = v
+        parts.append(part[keep])
+    return pd.concat(parts).sort_values("systime").reset_index(drop=True)
+
+
+@pytest.mark.parametrize("seed", [1, 9])
+def test_loops_logged_on_change(seed: int) -> None:
+    frame, truth = ts_shape.make_control_loops(seed=seed)
+    frame = _on_change(frame)
+    register = (
+        ControlLoopProfileEvents(frame).loop_register().set_index("setpoint_uuid")
+    )
+    for row in truth.itertuples(index=False):
+        assert register.loc[row.setpoint_uuid, "actual_uuid"] == row.actual_uuid
+        assert register.loc[row.setpoint_uuid, "output_uuid"] == row.output_uuid
+        assert register.loc[row.setpoint_uuid, "diagnosis"] == EXPECTED[row.quality]

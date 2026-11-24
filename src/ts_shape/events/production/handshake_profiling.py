@@ -16,6 +16,10 @@ ack_conveyor↑``. Per pair:
   a fixed sequence in the same program);
 * with cycles: the share of the cycle the wait takes and how much of the
   cycle time variance it explains.
+
+An answer logged at the same timestamp as its request is not counted: on
+polled data a handshake faster than the poll cannot be told from two
+signals written in the same scan, and its wait cannot be measured.
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ from ts_shape.events.production._unit_profile import (
 )
 from ts_shape.events.production.cycle_profiling import (
     MAX_EVENTS_PER_CYCLE,
+    RESOLUTION_MAX_SHARE,
     CycleProfileEvents,
 )
 
@@ -53,9 +58,8 @@ HANDSHAKE_MAX_DELAY_SHARE = 0.25
 COUNT_RATIO = (0.8, 1.25)
 #: At most this many candidate edge labels (the most frequent).
 HANDSHAKE_MAX_LABELS = 200
-#: The resolution must be below half the median wait: ``evaluation_reason``
-#: tests ``resolution < 0.25 x median``, so the wait is scaled by this.
-RESOLUTION_SHARE_FACTOR = 0.25 / 0.5
+#: A wait is resolved when the time resolution is below this share of it.
+WAIT_RESOLUTION_SHARE = 0.5
 #: The answer is the next edge of another signal after the request in at
 #: least this share of the occurrences (direct succession; a step later in
 #: the sequence is not an answer).
@@ -428,8 +432,10 @@ class HandshakeProfileEvents(_UnitProfiler):
                 int(r.occurrence_count),
                 self.min_occurrences,
                 resolution=resolution,
-                # A wait is resolved when the resolution is below half of it.
-                median_seconds=2.0 * RESOLUTION_SHARE_FACTOR * r.median_delay_seconds,
+                # ``evaluation_reason`` needs resolution < RESOLUTION_MAX_SHARE x
+                # median; scaled so that it reads resolution < share x wait.
+                median_seconds=(WAIT_RESOLUTION_SHARE / RESOLUTION_MAX_SHARE)
+                * r.median_delay_seconds,
             )
             rows.append(
                 {

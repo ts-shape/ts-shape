@@ -30,6 +30,7 @@ import argparse
 import json
 import os
 import warnings
+import weakref
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -196,6 +197,41 @@ def prepare_signals(
     return frame.reset_index(drop=True)
 
 
+#: id(frame) -> (weak reference, row count, uuid -> positional rows).
+_ROWS_CACHE: dict[int, tuple[Any, int, dict[Any, np.ndarray]]] = {}
+
+
+def _rows_by_signal(frame: pd.DataFrame) -> dict[Any, np.ndarray]:
+    """Positional rows of every signal, grouped once per frame.
+
+    The report helpers read one signal at a time; filtering the whole frame
+    per signal costs a full scan each (minutes on a multi-million-row
+    export). The grouping is kept per frame object (weakly referenced,
+    checked against the row count).
+    """
+    key = id(frame)
+    hit = _ROWS_CACHE.get(key)
+    if hit is not None and hit[0]() is frame and hit[1] == len(frame):
+        return hit[2]
+    rows = (
+        {k: np.asarray(v) for k, v in frame.groupby("uuid", sort=False).indices.items()}
+        if "uuid" in frame.columns and len(frame)
+        else {}
+    )
+    if len(_ROWS_CACHE) > 8:
+        _ROWS_CACHE.clear()
+    _ROWS_CACHE[key] = (weakref.ref(frame), len(frame), rows)
+    return rows
+
+
+def _signal_part(frame: pd.DataFrame, signal: Any) -> pd.DataFrame:
+    """The rows of ``signal`` (as ``frame[frame["uuid"] == signal]``)."""
+    rows = _rows_by_signal(frame).get(signal)
+    if rows is None:
+        return frame.iloc[0:0]
+    return frame.iloc[rows]
+
+
 def signal_inventory(frame: pd.DataFrame) -> pd.DataFrame:
     """Kind, encoding and sample period of every signal (kickoff check LL-1)."""
     columns = [
@@ -213,7 +249,7 @@ def signal_inventory(frame: pd.DataFrame) -> pd.DataFrame:
     rows = []
     counts = frame.groupby("uuid").size()
     for uuid, spec in infer_specs(frame).items():
-        part = frame[frame["uuid"] == uuid]
+        part = _signal_part(frame, uuid)
         values = (
             part[spec.value_column].dropna()
             if spec.value_column in part
@@ -629,7 +665,7 @@ def process_graph(
 
 def _lookup(frame: pd.DataFrame, signal: str, value_column: str) -> pd.DataFrame:
     """Time-sorted ``ns`` / ``v`` of one numeric signal (duplicates: last)."""
-    part = frame.loc[frame["uuid"] == signal, ["systime", value_column]]
+    part = _signal_part(frame, signal)[["systime", value_column]]
     out = pd.DataFrame(
         {
             "ns": pd.DatetimeIndex(part["systime"]).as_unit("ns").asi8,
@@ -856,9 +892,7 @@ def curve_profiles(
     n_cycles = max(len(records), 1)
 
     def changes_per_cycle(signal: str, value_column: str) -> float:
-        v = pd.to_numeric(
-            frame.loc[frame["uuid"] == signal, value_column], errors="coerce"
-        )
+        v = pd.to_numeric(_signal_part(frame, signal)[value_column], errors="coerce")
         return float((v.diff().fillna(0) != 0).sum()) / n_cycles
 
     analog = analog[

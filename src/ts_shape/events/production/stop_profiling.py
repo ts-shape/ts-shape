@@ -40,6 +40,7 @@ from ts_shape.events.production._unit_profile import (
     enrichment,
     evaluation_frame,
     first_label,
+    free_windows,
     memo,
     overlaps_any,
     potential_register,
@@ -67,6 +68,9 @@ STOP_MARKER_SHARE = 0.9
 STOP_POST_GRACE_SECONDS = 2.0
 #: Baseline windows in normal running per stop.
 BASELINE_WINDOWS_PER_STOP = 5
+#: A held state is looked for in the first this many seconds of a stop (at
+#: least the pre-window), against running windows of the same length.
+HELD_WINDOW_SECONDS = 120.0
 #: A gap with no row of any signal longer than this many median cycles (at
 #: least :data:`HOLE_MIN_SECONDS`) is a data hole: unknown time.
 HOLE_CYCLES = 10.0
@@ -340,7 +344,18 @@ class StopProfileEvents(_UnitProfiler):
         pre_end = stops["stop_start_ns"].to_numpy() + int(STOP_POST_GRACE_SECONDS * 1e9)
         events = self._candidate_events(cycles)
         unit_sets = window_labels(events, pre_start, pre_end)
-        base_start, base_end = self._baseline_windows(normal, len(stops), pre)
+        # Baseline windows: as long as the pre-windows, outside every stop
+        # (and data hole) -- normal running, not the start of another stop.
+        busy = [
+            *zip(stops["stop_start_ns"] - int(pre * 1e9), stops["end_ns"], strict=True),
+            *holes,
+        ]
+        span = self._span()
+        n_base = BASELINE_WINDOWS_PER_STOP * len(stops)
+        pre_len = int((pre + STOP_POST_GRACE_SECONDS) * 1e9)
+        base_start, base_end = free_windows(
+            pre_len, n_base, span=span, busy=busy, seed=SEED
+        )
         base_sets = window_labels(events, base_start, base_end)
         real = ~stops["in_hole"].to_numpy()
         evidence = enrichment(
@@ -360,10 +375,15 @@ class StopProfileEvents(_UnitProfiler):
         # States enriched *during* stops (door open, manual mode). Analog
         # crossings during a stop are its consequence (cooling), not a cause.
         discrete = events[events["signal_kind"] != ANALOG_KIND]
-        during = window_labels(discrete, stops["stop_start_ns"], stops["end_ns"])
+        # The same window length in stops and in running (a long stop would
+        # otherwise collect any steady event): the first HELD_WINDOW of it.
+        held_len = int(max(HELD_WINDOW_SECONDS, pre) * 1e9)
+        held_end = np.minimum(stops["end_ns"], stops["stop_start_ns"] + held_len)
+        during = window_labels(discrete, stops["stop_start_ns"], held_end)
+        held_base = free_windows(held_len, n_base, span=span, busy=busy, seed=SEED + 1)
         held = enrichment(
             [s for s, keep in zip(during, real, strict=True) if keep],
-            window_labels(discrete, base_start, base_end + (base_end - base_start)),
+            window_labels(discrete, *held_base),
             min_units=SIGNATURE_MIN_STOPS,
             min_lift=SIGNATURE_MIN_LIFT,
         )
@@ -373,9 +393,7 @@ class StopProfileEvents(_UnitProfiler):
             if len(held)
             else []
         )
-        held_first = first_label(
-            events, stops["stop_start_ns"], stops["end_ns"], held_labels
-        )
+        held_first = first_label(events, stops["stop_start_ns"], held_end, held_labels)
 
         signature, kind = [], []
         for f, h, hole in zip(first, held_first, stops["in_hole"], strict=True):
@@ -420,33 +438,6 @@ class StopProfileEvents(_UnitProfiler):
             keep = counts[counts <= MAX_EVENTS_PER_CYCLE * n].index
             events = events[events["event"].isin(set(keep))]
         return events
-
-    def _baseline_windows(
-        self, normal: pd.DataFrame, n_stops: int, pre: float
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Windows of the pre-window length inside normal running."""
-        length = int((pre + STOP_POST_GRACE_SECONDS) * 1e9)
-        if normal is None or len(normal) == 0:
-            # Without cycles: windows at random times of the recording.
-            ns = self._signals().all_ns
-            if len(ns) == 0:
-                return np.zeros(0, np.int64), np.zeros(0, np.int64)
-            rng = np.random.default_rng(SEED)
-            starts = rng.integers(
-                int(np.amin(ns)),
-                max(int(np.amax(ns)) - length, int(np.amin(ns)) + 1),
-                size=BASELINE_WINDOWS_PER_STOP * max(n_stops, 1),
-            )
-            return starts, starts + length
-        rng = np.random.default_rng(SEED)
-        size = BASELINE_WINDOWS_PER_STOP * max(n_stops, 1)
-        pick = rng.integers(0, len(normal), size=size)
-        rows = normal.iloc[pick]
-        start = rows["start_ns"].to_numpy(dtype=np.int64)
-        end = rows["end_ns"].to_numpy(dtype=np.int64)
-        room = np.maximum(end - start - length, 0)
-        offset = (rng.random(size) * room).astype(np.int64)
-        return start + offset, start + offset + length
 
     # ------------------------------------------------------------------
     # Public API
@@ -507,8 +498,8 @@ class StopProfileEvents(_UnitProfiler):
         reg = potential_register(real, keys=["signature"], value="seconds")
         total_lost = float(real["lost_seconds"].sum()) or np.nan
         span_ns = self._span_ns()
-        evidence = pd.concat([result["evidence"], result["held"]], ignore_index=True)
-        evidence = evidence.drop_duplicates("label") if len(evidence) else evidence
+        # Each signature's evidence comes from the test that made it one.
+        tests = {"first_out": result["evidence"], "held_state": result["held"]}
         rows = []
         for row in reg.itertuples(index=False):
             part = real[real["signature"] == row.signature]
@@ -516,15 +507,13 @@ class StopProfileEvents(_UnitProfiler):
             mtbf = (
                 float(np.median(np.diff(starts)) / 1e9) if len(starts) > 1 else np.nan
             )
-            ev = (
-                evidence[evidence["label"] == row.signature]
-                if len(evidence)
-                else evidence
-            )
+            kind = str(part["signature_kind"].iloc[0])
+            table = tests.get(kind, pd.DataFrame())
+            ev = table[table["label"] == row.signature] if len(table) else table
             rows.append(
                 {
                     "signature": row.signature,
-                    "signature_kind": str(part["signature_kind"].iloc[0]),
+                    "signature_kind": kind,
                     "stop_count": int(row.unit_count),
                     "lost_seconds": float(part["lost_seconds"].sum()),
                     "lost_share_ratio": float(part["lost_seconds"].sum()) / total_lost,
@@ -543,7 +532,7 @@ class StopProfileEvents(_UnitProfiler):
                 }
             )
         out = pd.DataFrame(rows).sort_values(
-            "lost_seconds", ascending=False, kind="stable"
+            ["potential_seconds", "lost_seconds"], ascending=False, kind="stable"
         )
         out["potential_rank"] = np.arange(1, len(out) + 1)
         return out[_SIGNATURE_COLUMNS].reset_index(drop=True)
@@ -587,8 +576,10 @@ class StopProfileEvents(_UnitProfiler):
         Returns:
             One row: ``scope`` (``all``), ``unit_count`` (stops outside data
             holes), ``evaluable``, ``reason`` (``ok``, ``too_few_units``,
-            ``below_resolution``, ``no_candidate_signal: run state`` without
-            an anchor and a run signal, or ``upstream_not_evaluable``),
+            ``below_resolution`` (judged on the stops' own durations, so a
+            cycle signal too coarse for cycle times still marks minutes-long
+            stops) or ``no_candidate_signal: run state`` without an anchor
+            and a run signal),
             ``time_resolution_seconds``, ``source`` (``cycles`` or the run
             signal), ``explained_share_ratio`` (lost time with a signature)
             and ``unknown_seconds`` (stops inside data holes).
@@ -657,7 +648,9 @@ class StopProfileEvents(_UnitProfiler):
         """
         window = self.evaluation_window().iloc[0]
         register = self.stop_signatures()
-        explained = register[register["signature"] != UNEXPLAINED]
+        explained = register[register["signature"] != UNEXPLAINED].sort_values(
+            "lost_seconds", ascending=False, kind="stable"
+        )
         top = explained.iloc[0] if len(explained) else None
         share = window["explained_share_ratio"]
         return {
@@ -672,6 +665,10 @@ class StopProfileEvents(_UnitProfiler):
             ),
         }
 
-    def _span_ns(self) -> int:
+    def _span(self) -> tuple[int, int]:
         ns = self._signals().all_ns
-        return int(np.amax(ns) - np.amin(ns)) if len(ns) else 0
+        return (int(np.amin(ns)), int(np.amax(ns))) if len(ns) else (0, 0)
+
+    def _span_ns(self) -> int:
+        first, last = self._span()
+        return last - first

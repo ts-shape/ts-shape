@@ -39,10 +39,10 @@ from ts_shape.events.production.cycle_profiling import CycleProfileEvents
 
 __all__ = ["SettingImpactEvents"]
 
-#: A setting changes at most this often per cycle ...
-SETTING_MAX_CHANGES_PER_CYCLE = 0.02
-#: ... and holds its value for at least this many cycles (median).
+#: A setting holds its value for at least this many cycles (median) ...
 SETTING_MIN_HOLD_CYCLES = 10
+#: ... so it changes at most this often per cycle.
+SETTING_MAX_CHANGES_PER_CYCLE = 1.0 / SETTING_MIN_HOLD_CYCLES
 #: A change within this many cycles of a variant change comes with it.
 WITH_VARIANT_CYCLES = 1
 #: Raw span (in windows) searched for cycles of the variant at the change.
@@ -191,7 +191,7 @@ class SettingImpactEvents(_CounterMixin):
         roles = self._roles()
         for uuid, role in zip(roles["uuid"], roles["role"], strict=True):
             if role == "bad":
-                out["bad_parts"] = increments[uuid].to_numpy(dtype=float)
+                out["bad_parts"] = self._aligned(uuid).to_numpy(dtype=float)
             elif role == "energy_like":
                 out[f"energy {uuid}"] = increments[uuid].to_numpy(dtype=float)
         return out
@@ -222,6 +222,7 @@ class SettingImpactEvents(_CounterMixin):
         if changes.empty or metrics.empty:
             return pd.DataFrame(columns=columns)
         starts = metrics["start_ns"].to_numpy(dtype=np.int64)
+        ends = metrics["end_ns"].to_numpy(dtype=np.int64)
         variant = metrics["variant"].astype(str).to_numpy()
         variant_change_ns = metrics["start_ns"].to_numpy()[
             np.r_[False, variant[1:] != variant[:-1]]
@@ -256,7 +257,9 @@ class SettingImpactEvents(_CounterMixin):
                     hi, int(np.searchsorted(starts, next_change.min(), side="left"))
                 )
             current = variant[min(i, len(variant) - 1)]
-            before = metrics.iloc[lo:i]
+            # The cycle the change falls in ran with both values: neither side.
+            before_end = i - 1 if i > 0 and ch.change_ns < ends[i - 1] else i
+            before = metrics.iloc[lo:before_end]
             before = before[before["variant"].astype(str) == current].tail(
                 self.window_cycles
             )
@@ -276,7 +279,7 @@ class SettingImpactEvents(_CounterMixin):
                 )
             )
             confounders = []
-            window = metrics.iloc[lo:hi]
+            compared = pd.concat([before, after])
             if near_variant:
                 confounders.append("variant change")
             near = metrics.iloc[
@@ -284,15 +287,16 @@ class SettingImpactEvents(_CounterMixin):
             ]
             if (near["cycle_class"] == "pause").any():
                 confounders.append("pause")
+            # Another setting changed while the compared cycles ran.
             others = changes[
                 (changes["setting"] != ch.setting)
                 & (
                     changes["change_ns"]
-                    >= (window["start_ns"].min() if len(window) else 0)
+                    >= (compared["start_ns"].min() if len(compared) else ch.change_ns)
                 )
                 & (
                     changes["change_ns"]
-                    <= (window["end_ns"].max() if len(window) else 0)
+                    <= (compared["end_ns"].max() if len(compared) else ch.change_ns)
                 )
             ]
             if len(others):
@@ -322,6 +326,9 @@ class SettingImpactEvents(_CounterMixin):
                     }
                 )
         out = pd.DataFrame(rows)
+        # A recipe parameter is listed, not tested: its effect cannot be told
+        # from the variant's, and it would dilute the other tests.
+        out.loc[out["recipe_parameter"].astype(bool), "p_value"] = np.nan
         p = out["p_value"].to_numpy(dtype=float)
         q = np.full(len(p), np.nan)
         ok = np.isfinite(p)

@@ -73,6 +73,7 @@ __all__ = [
     "enrichment",
     "evaluation_frame",
     "assign_to_cycles",
+    "free_windows",
     "bh_qvalues",
     "cycles_since",
     "potential_register",
@@ -511,6 +512,56 @@ def assign_to_cycles(
     else:
         inside[inside] &= t[inside] <= e[pos[inside]]
     return pos, inside
+
+
+def free_windows(
+    length_ns: int,
+    count: int,
+    *,
+    span: tuple[int, int],
+    busy: Sequence[tuple[int, int]],
+    seed: int = 0,
+    max_rounds: int = 20,
+) -> tuple[np.ndarray, np.ndarray]:
+    """``count`` windows of ``length_ns`` at random times that avoid ``busy``.
+
+    Baseline windows for an enrichment test: as long as the unit windows
+    they are compared with, and outside every unit (a stop is not "normal
+    running"). Fewer are returned when the free time is too short.
+
+    Args:
+        length_ns: Window length.
+        count: Windows wanted.
+        span: ``(first, last)`` time of the recording.
+        busy: Intervals to avoid (any order, may overlap).
+        seed: Random seed (the result is deterministic).
+        max_rounds: Draws of ``count`` candidates at most.
+    """
+    t0, t1 = int(span[0]), int(span[1]) - int(length_ns)
+    if count <= 0 or t1 <= t0:
+        return np.zeros(0, np.int64), np.zeros(0, np.int64)
+    merged: list[list[int]] = []
+    for a, b in sorted((int(a), int(b)) for a, b in busy):
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    b_start = np.array([m[0] for m in merged], dtype=np.int64)
+    b_end = np.array([m[1] for m in merged], dtype=np.int64)
+    rng = np.random.default_rng(seed)
+    kept: list[np.ndarray] = []
+    have = 0
+    for _ in range(max_rounds):
+        cand = rng.integers(t0, t1, size=count, dtype=np.int64)
+        j = np.searchsorted(b_start, cand + length_ns, side="left") - 1
+        overlap = (j >= 0) & (b_end[np.clip(j, 0, None)] > cand)
+        free = cand[~overlap]
+        kept.append(free)
+        have += len(free)
+        if have >= count:
+            break
+    starts = np.concatenate(kept)[:count] if kept else np.zeros(0, np.int64)
+    return starts, starts + int(length_ns)
 
 
 def restart_points(cycles: pd.DataFrame) -> pd.DataFrame:

@@ -129,3 +129,69 @@ def test_profile_units_runs_new_profilers(tmp_path) -> None:
     result.save(tmp_path)
     loaded = type(result).load(tmp_path)
     assert set(loaded.results) == set(result.results)
+
+
+def test_curve_signal_that_starts_mid_recording() -> None:
+    frame, truth = ts_shape.make_plc_cycles(
+        n_cycles=300, seed=5, articles=("A",), curve_faults={"low_plateau": 0.05}
+    )
+    late = truth["start"].iloc[60]
+    frame = frame[~((frame["uuid"] == "plc:pressure") & (frame["systime"] < late))]
+    summary = _quiet(CurveSignatureEvents, frame).summary()
+    assert summary["evaluable"] and summary["pattern_count"] >= 1
+
+
+def test_setting_changed_with_another_setting() -> None:
+    frame, truth = ts_shape.make_plc_cycles(
+        n_cycles=400, seed=1, setting_changes=[(150, 120.0)]
+    )
+    change = frame.loc[
+        (frame["uuid"] == "plc:speed_override") & (frame["value_double"] == 120.0),
+        "systime",
+    ].iloc[0]
+    other = pd.DataFrame(
+        {
+            "systime": [frame["systime"].min(), change],
+            "uuid": "plc:temperature_set",
+            "value_double": [200.0, 210.0],
+        }
+    )
+    frame = pd.concat([frame, other], ignore_index=True)
+    impact = _quiet(SettingImpactEvents, frame).setting_impact()
+    cycle = impact[impact["metric"] == "cycle_seconds"]
+    assert set(cycle["setting"]) == {"plc:speed_override", "plc:temperature_set"}
+    assert cycle["confounders"].str.contains("other setting").all()
+    assert (cycle["confidence"] != "high").all()
+
+
+def test_setting_recipe_parameter_is_not_tested() -> None:
+    frame, truth = ts_shape.make_plc_cycles(n_cycles=400, seed=2, article_block=50)
+    # A setting that changes exactly with the article: a recipe parameter.
+    starts = truth.loc[
+        truth["article"] != truth["article"].shift(), ["start", "article"]
+    ]
+    values = starts["article"].map(
+        {a: 100.0 + 10 * i for i, a in enumerate(sorted(starts["article"].unique()))}
+    )
+    recipe = pd.DataFrame(
+        {"systime": starts["start"], "uuid": "plc:recipe_speed", "value_double": values}
+    )
+    impact = _quiet(
+        SettingImpactEvents, pd.concat([frame, recipe], ignore_index=True)
+    ).setting_impact()
+    rows = impact[impact["setting"] == "plc:recipe_speed"]
+    assert len(rows) and rows["recipe_parameter"].all()
+    assert rows["q_value"].isna().all() and (rows["confidence"] == "low").all()
+
+
+def test_handshake_wait_resolution_rule(monkeypatch) -> None:
+    frame, _ = ts_shape.make_plc_cycles(n_cycles=200, seed=2, handshake_partner=True)
+    det = _quiet(HandshakeProfileEvents, frame)
+    pair = "plc:req_conveyor↑ → plc:ack_conveyor↑"
+    wait = float(
+        det.handshake_pairs().set_index("pair").at[pair, "median_delay_seconds"]
+    )
+    for resolution, ok in ((0.45 * wait, True), (0.55 * wait, False)):
+        monkeypatch.setattr(det, "_resolution", lambda r=resolution: r)
+        window = det.evaluation_window().set_index("scope")
+        assert bool(window.at[pair, "evaluable"]) is ok, resolution

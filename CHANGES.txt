@@ -11,6 +11,51 @@ feat: the profilers' event-log rules and archetypes are declared once in
   eventlog/profiler_rules.py (evaluation_window rule shared).
 feat: profile_units saves handshake_records (it was left out).
 fix: signature_evidence row order no longer changes between runs.
+fix: counter roles -- the good + bad = total identity is searched before
+  aliases (with little scrap the good count equals the total in most
+  cycles and was taken for an alias, so no bad counter was ever found);
+  two rarely moving counters are no longer aliases; the lag belongs to the
+  counter it was found on and is applied in the right direction (a bad
+  count reported late lands on its cycle); settings use the aligned count.
+fix: OrderProfileEvents raises on duplicate order_ids in the plan.
+fix: changeovers end within the new variant's block, start-ups end at the
+  next stop or changeover (no overlap, no double-counted lost time); a
+  recording without any restart no longer crashes the start-up profiler;
+  last_signal names a signal that never settled; a signal read less than
+  once per cycle is left out with a DataQualityWarning.
+fix: stop and changeover evidence uses baseline windows of the same length
+  as the units, outside every stop / changeover (a long window collected
+  any steady event); held states are tested on the first 120 s of a stop;
+  each signature reports the evidence of the test that made it one;
+  potential_rank ranks by potential as documented.
+fix: handshake waits are resolved when the resolution is below half the
+  wait (the rule was twice too strict).
+fix: curve signatures -- no crash on a signal that starts mid-recording,
+  the shift-tolerant residual no longer wraps around (spike recall up),
+  milestones computed once per variant, clustering bounded to 500 cycles
+  per signal, patterns ranked by lost time.
+fix: setting impact -- the cycle the change falls in belongs to neither
+  side; "other setting" looks at the compared cycles; recipe parameters
+  are listed, not tested (left out of the BH correction); a held setting
+  needs a 10-cycle median hold (the extra 50-cycle rule is gone).
+fix: control loops -- setpoints and process values are told apart on their
+  own readings (hold time), so on-change logging works (0 of 15 simulated
+  plants before, 15 of 15 now); the grid follows the most often read
+  signal; any unused signal can be the output; a setpoint's first reading
+  is not a step.
+fix: cycle profile -- the anchor coverage gate is a quarter (was half) of
+  the best candidate: with many stops and changeovers the part counter lost
+  to a changeover signal; the variant is chosen by the adjusted eta squared
+  and, within 90 % of the best, the fewest values (a fixture id changing
+  with every block no longer wins over the article).
+perf: signal_inventory, curve_profiles and the report helpers group the
+  frame once instead of filtering it per signal. All nine unit profilers
+  on a 3.1 M-row, 240-signal export (cycle profile reused): 218 s before
+  this round, 12 s now (scrap 101 s -> 5 s, start-ups 44 s -> 1 s,
+  settings 43 s -> 1 s).
+test: shared profiler tests (empty frame, tz-aware vs naive, coarse
+  polling, registry, save/load contents, a failing profiler), one
+  regression test per fix and a scale test (-m scale, ~2 M rows).
 
 # November 23, 2026 (unit profilers: handshakes, curves, settings)
 feat: HandshakeProfileEvents -- request/answer pairs learned from edges
