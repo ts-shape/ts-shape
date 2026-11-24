@@ -16,6 +16,11 @@ docs: site style -- brand orange from the logo (darker in light mode for
   is /overview/), self-hosted Inter / JetBrains Mono, matched One Light /
   One Dark code themes, lighter tables, hideable auto-collapsing sidebar,
   last-updated dates.
+docs: API reference pages -- kind badges (class / method / classmethod /
+  property ...) with a link to the source lines, signatures marked as
+  such, Parameters / Returns / Raises labels, inline types as code
+  links, doctest examples fenced as code (they rendered as quotes), and
+  undocumented members left out as before. Body text is 15px.
 build: the docs extra is griffe2md + black; mkdocs, mkdocs-material,
   mkdocs-gen-files, mkdocs-literate-nav and mkdocstrings are dropped.
 
