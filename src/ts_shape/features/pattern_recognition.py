@@ -155,7 +155,7 @@ class PatternRecognition(Base):
         rolling_std = s.rolling(window=m).std(ddof=0).to_numpy()[m - 1 :]
 
         q_mean = query.mean()
-        q_std = query.std(ddof=0)
+        q_std = float(query.std(ddof=0))
 
         # Avoid division by zero
         rolling_std = np.where(rolling_std < 1e-10, 1e-10, rolling_std)

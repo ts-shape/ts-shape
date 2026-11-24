@@ -1,7 +1,12 @@
 # Installation
 
-ts-shape needs Python 3.11 or later. The core install depends only on pandas,
-numpy and scipy.
+ts-shape needs Python 3.13 or later and is tested on 3.13, 3.14 and 3.15. The
+core install depends only on pandas, numpy and scipy.
+
+Supported Python versions follow the scientific Python ecosystem's
+[SPEC 0](https://scientific-python.org/specs/spec-0000/): a Python version is
+supported for three years after its release. On an older Python (3.11 or
+3.12), pip installs the last ts-shape release that supported it.
 
 ```bash
 pip install ts-shape

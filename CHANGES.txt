@@ -1,3 +1,18 @@
+# November 24, 2026 (Python 3.13 to 3.15)
+python: ts-shape now needs Python 3.13 or later and is tested on 3.13,
+  3.14 and 3.15; Python 3.11 and 3.12 are dropped (their SPEC 0 support
+  window has ended; pip keeps installing the last release that supports
+  them). The dependency floors move to the first releases with Python 3.13
+  wheels: numpy 2.1, scipy 1.14.1, pandas 2.2.3; extras pyarrow 18.0,
+  scikit-learn 1.5.2, PyYAML 6.0.2, psycopg2-binary 2.9.10.
+ci: the test matrix is Python 3.13, 3.14 and 3.15; lint, docs, the
+  minimum-dependency run and the package build run on 3.13. A new
+  non-blocking job tests the Python 3.16 preview against the
+  scientific-python nightly wheels of numpy, scipy and pandas.
+internal: deprecation markers use warnings.deprecated (Python 3.13)
+  instead of typing_extensions; text files are read and written as UTF-8
+  explicitly; black, ruff and mypy target Python 3.13.
+
 # November 24, 2026 (docs: green, version dropdown)
 docs: the landing page leads with five real-world examples instead of a
   big logo, one per domain, each set in an everyday plant situation with

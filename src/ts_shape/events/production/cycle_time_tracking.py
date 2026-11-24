@@ -22,7 +22,7 @@ from ts_shape.utils.coerce import run_bool
 from ts_shape.utils.deprecation import caller_stacklevel, deprecated_class
 
 if TYPE_CHECKING:
-    from typing_extensions import deprecated
+    from warnings import deprecated
 
 logger = logging.getLogger(__name__)
 

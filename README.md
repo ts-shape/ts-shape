@@ -21,7 +21,8 @@ process mining.
 pip install ts-shape
 ```
 
-Python 3.11 or later. The core depends only on pandas, numpy and scipy.
+Python 3.13 or later (tested on 3.13, 3.14 and 3.15). The core depends only on
+pandas, numpy and scipy.
 Loader backends and a few detectors need extras:
 
 | Extra | Installs | Needed for |

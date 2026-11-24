@@ -104,6 +104,10 @@ Renames go through deprecation, never straight to removal:
 4. Every deprecation gets an entry in [Migration and deprecations](migration.md)
    with the old and the new spelling. The full current list is generated from
    the code: [Deprecated names](deprecations.md).
+5. Supported Python versions follow
+   [SPEC 0](https://scientific-python.org/specs/spec-0000/) (three years after
+   a Python release). Dropping a Python version is not a rename: pip keeps
+   installing the last ts-shape release that supports the older Python.
 
 ## Wording
 

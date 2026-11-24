@@ -17,7 +17,7 @@ from ts_shape.utils.deprecation import deprecated_method
 from ts_shape.utils.runs import run_bounds, total_seconds
 
 if TYPE_CHECKING:
-    from typing_extensions import deprecated
+    from warnings import deprecated
 
 logger = logging.getLogger(__name__)
 

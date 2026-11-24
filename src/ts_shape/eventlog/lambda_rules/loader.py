@@ -236,7 +236,7 @@ def load_yaml(path: str | Path) -> list[LambdaDetector]:
         import yaml
     except ImportError as exc:  # pragma: no cover - import error path
         raise missing_optional("pyyaml", "yaml") from exc
-    raw = yaml.safe_load(Path(path).read_text())
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if not isinstance(raw, Mapping) or "rules" not in raw:
         raise ValueError(f"YAML file {path!s} must define a top-level 'rules:' list")
     return load_dicts(raw["rules"])

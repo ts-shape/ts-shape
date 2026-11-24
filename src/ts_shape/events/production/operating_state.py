@@ -10,7 +10,7 @@ from ts_shape.utils.deprecation import deprecated_method, keyword_only
 from ts_shape.utils.intervals import INTERVAL_END_MODES, interval_end_times
 
 if TYPE_CHECKING:
-    from typing_extensions import deprecated
+    from warnings import deprecated
 
 logger = logging.getLogger(__name__)
 
