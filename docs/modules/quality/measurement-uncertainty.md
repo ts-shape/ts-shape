@@ -1,3 +1,7 @@
+---
+tags: [measurement-systems, gum]
+---
+
 # MeasurementUncertaintyEvents
 
 Measurement uncertainty per the GUM (ISO/IEC Guide 98-3): Type A from the scatter of repeated readings per window, Type B from sources you supply (calibration certificate, resolution, temperature), combined and expanded uncertainty, and the uncertainty budget.
@@ -30,6 +34,20 @@ budget = mu.uncertainty_budget(window="8h", type_b_sources=sources)
 | `type_b_uncertainty(sources)` (static) | per source: `source`, `distribution`, `half_width`, `divisor`, `type_b_uncertainty` |
 | `combined_uncertainty(window='8h', type_b_sources=None, coverage_factor=2.0)` | per window: `type_a`, `type_b_combined`, `combined_uncertainty`, `expanded_uncertainty`, `coverage_factor` |
 | `uncertainty_budget(window='8h', type_b_sources=None)` | per source: `source`, `uncertainty`, `contribution_pct` |
+
+## Formulas
+
+$$
+u_A = \frac{s}{\sqrt n}, \qquad
+u_{B,i} = \frac{a_i}{d_i}\;\; (d = \sqrt3,\ \sqrt6,\ 2,\ \sqrt2)
+$$
+
+$$
+u_c = \sqrt{u_A^2 + \sum_i u_{B,i}^2}, \qquad
+U = k\,u_c
+$$
+
+where $$a_i$$ is a source's half-width and $$d_i$$ the divisor of its distribution (rectangular, triangular, normal, U-shaped).
 
 ## Notes
 

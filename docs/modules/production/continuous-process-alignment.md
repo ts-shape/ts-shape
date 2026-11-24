@@ -1,3 +1,7 @@
+---
+tags: [continuous-processes, traceability]
+---
+
 # ContinuousProcessAlignmentEvents
 
 Puts readings from stations along a continuous line (extrusion, rolling, film, paper,

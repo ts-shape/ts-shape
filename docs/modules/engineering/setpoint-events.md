@@ -1,3 +1,7 @@
+---
+tags: [process-control]
+---
+
 # SetpointChangeEvents
 
 Setpoint steps and ramps, and the response of the actual value after each change: settling time, rise time, overshoot and undershoot, decay rate and oscillation frequency.
@@ -37,6 +41,14 @@ print(sc.control_quality_metrics("temp_pv", tol=0.5, lookahead="15min").T)
 | `decay_rate(actual_uuid, lookahead='10min')` | `decay_rate_lambda`, `fit_quality_r2` |
 | `oscillation_frequency(actual_uuid, window='10min', deadband=0.0)` | `oscillation_freq_hz`, `period_seconds` |
 | `control_quality_metrics(actual_uuid, tol=0.0, settle_pct=None, deadband=None)` | all of the above per change |
+
+## Formulas
+
+`decay_rate` fits the control error after a setpoint step to an exponential decay:
+
+$$
+e(t) = A\, e^{-\lambda t}
+$$
 
 ## Notes
 

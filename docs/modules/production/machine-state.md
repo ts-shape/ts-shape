@@ -1,3 +1,7 @@
+---
+tags: [machine-state, downtime, data-quality]
+---
+
 # MachineStateEvents
 
 Run and idle intervals, transitions, rapid toggling and state-data quality from a boolean run signal (True = running).

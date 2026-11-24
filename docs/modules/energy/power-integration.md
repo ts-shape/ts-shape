@@ -1,3 +1,7 @@
+---
+tags: [energy]
+---
+
 # PowerIntegrator
 
 Integrates an instantaneous active-power signal (kW, e.g. `*.Total_Active_Power-kW`) into energy (kWh) per window, weighting each sample by how long it was valid. Use it when instantaneous power is all you have; if the meter also has a cumulative kWh register, the counter difference per window is billing-accurate and needs no integration.

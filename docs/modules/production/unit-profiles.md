@@ -1,3 +1,7 @@
+---
+tags: [cycle-time, machine-state, process-control]
+---
+
 # Unit profilers (mapping-free)
 
 The [cycle profiler](cycle-profiling.md) answers *where does the cycle time

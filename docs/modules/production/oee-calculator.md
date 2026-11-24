@@ -1,3 +1,7 @@
+---
+tags: [oee, downtime, iso-22400]
+---
+
 # OEEEvents
 
 Daily OEE = Availability × Performance × Quality from a boolean run signal, a part counter with an ideal cycle time, and optional total/reject counters.
@@ -33,6 +37,27 @@ print(daily[["start", "availability_pct", "performance_pct", "quality_pct", "oee
 | `performance(counter_uuid, ideal_cycle_time, run_state_uuid=None)` | `actual_parts`, `ideal_parts`, `run_seconds`, `performance_pct` (+ `resets`) |
 | `quality(total_uuid, reject_uuid)` | `total_parts`, `reject_parts`, `good_parts`, `quality_pct` (+ `resets`) |
 | `oee(run_state_uuid, counter_uuid, ideal_cycle_time, total_uuid=None, reject_uuid=None, planned_time_hours=None)` | `availability_pct`, `performance_pct`, `quality_pct`, `oee_pct`, then the basis: `run_seconds`, `planned_seconds`, `excluded_seconds`, `actual_parts`, `ideal_parts`, `total_parts`, `reject_parts`, `good_parts`, `resets` |
+
+## Formulas
+
+$$
+OEE = A \times P \times Q
+$$
+
+$$
+A = \frac{\text{run time}}{\text{planned time}}, \qquad
+P = \frac{\text{actual parts} \times \text{ideal cycle time}}{\text{run time}}, \qquad
+Q = \frac{\text{good parts}}{\text{total parts}}
+$$
+
+Each factor removes one kind of loss from the planned time:
+
+```mermaid
+flowchart TB
+    PT["Planned time"] -->|"− downtime<br/>(availability)"| RT["Run time"]
+    RT -->|"− speed loss, micro-stops<br/>(performance)"| NT["Net run time<br/>actual parts × ideal cycle time"]
+    NT -->|"− scrap, rework<br/>(quality)"| VT["Value-adding time<br/>good parts × ideal cycle time"]
+```
 
 ## Notes
 

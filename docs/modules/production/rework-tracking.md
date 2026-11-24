@@ -1,3 +1,7 @@
+---
+tags: [scrap-and-rework]
+---
+
 # ReworkEvents
 
 Rework counts per shift, per reason and over time, the rework rate against total production, and rework cost per part number, from a cumulative rework counter.

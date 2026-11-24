@@ -1,3 +1,7 @@
+---
+tags: [throughput, cycle-time]
+---
+
 # LineBalancingEvents
 
 Station cycle times, line balance efficiency, balance delay, smoothness index, the bottleneck station and a Yamazumi table, from one cycle-completion trigger (boolean) per station.

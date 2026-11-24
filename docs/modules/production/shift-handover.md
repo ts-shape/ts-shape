@@ -1,3 +1,7 @@
+---
+tags: [shift-reporting, targets]
+---
+
 # ShiftHandoverEvents
 
 A shift handover report (production against target, quality, availability, downtime; one row per shift) and the list of metrics below threshold, from raw signals or from shift tables computed by other modules.

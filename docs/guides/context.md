@@ -1,3 +1,7 @@
+---
+tags: [data-pipelines, traceability]
+---
+
 # Context and enrichment
 
 Raw signals carry a `uuid` and a value. Reports and detectors usually need more:

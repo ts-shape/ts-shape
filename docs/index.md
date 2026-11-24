@@ -1,3 +1,8 @@
+---
+slug: /overview
+description: "Overview of ts-shape: install, a first example from raw signals to an event log, and where to go next."
+---
+
 # ts-shape
 
 [![PyPI](https://img.shields.io/pypi/v/ts-shape.svg)](https://pypi.org/project/ts-shape/)

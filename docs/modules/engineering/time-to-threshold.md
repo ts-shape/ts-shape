@@ -1,3 +1,7 @@
+---
+tags: [forecasting, predictive-maintenance, alarms-and-thresholds]
+---
+
 # TimeToThresholdEvents
 
 Forecasts when a trending signal (e.g. filter differential pressure, wear) will cross a threshold, by fitting a straight line to the recent data.

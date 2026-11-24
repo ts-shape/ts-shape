@@ -1,3 +1,7 @@
+---
+tags: [cycle-time, machine-state, process-mining, xes]
+---
+
 # CycleProfileEvents
 
 Mapping-free cycle time profiling of one PLC. Give it every raw signal of a machine controller; it finds the cycle by itself, learns the standard sequence of a cycle, splits each cycle into segments and answers two questions per product variant:

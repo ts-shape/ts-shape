@@ -1,3 +1,7 @@
+---
+tags: [energy, iso-50001]
+---
+
 # EnergyPerformanceIndicatorEvents
 
 The energy performance indicator (EnPI, ISO 50001) of a line: energy per produced unit per window, compared with a rolling or a regression baseline (ISO 50006), and compared across meters or areas.

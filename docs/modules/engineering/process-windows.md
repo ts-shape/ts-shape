@@ -1,3 +1,7 @@
+---
+tags: [process-stability, drift]
+---
+
 # ProcessWindowEvents
 
 Descriptive statistics of a signal per time window, and the windows whose mean or spread changed against the previous window or stands out from all windows.

@@ -1,3 +1,7 @@
+---
+tags: [condition-monitoring, predictive-maintenance, iso-20816]
+---
+
 # VibrationAnalysisEvents
 
 Rolling RMS above a healthy baseline, growth of peak-to-peak amplitude, and bearing health indicators (RMS, peak, crest factor, kurtosis) per window, from a vibration signal.

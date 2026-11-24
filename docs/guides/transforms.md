@@ -1,3 +1,7 @@
+---
+tags: [data-pipelines]
+---
+
 # Transforms and statistics
 
 Filters, time conversions, calculations and harmonization take a long-format

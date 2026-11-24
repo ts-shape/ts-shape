@@ -1,3 +1,7 @@
+---
+tags: [measurement-systems, correlation]
+---
+
 # EnvironmentalCompensationEvents
 
 How much an environmental condition (temperature, humidity, pressure) moves an inline measurement: correlation and sensitivity per window, a compensated signal referred to a nominal condition, and the windows where the environment left the valid range.

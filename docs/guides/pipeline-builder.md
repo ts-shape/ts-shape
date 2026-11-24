@@ -1,3 +1,7 @@
+---
+tags: [data-pipelines]
+---
+
 # Pipelines
 
 `ts_shape.Pipeline` chains transforms and detectors into one definition that
@@ -35,6 +39,15 @@ The pipeline is linear. You declare the role of each step:
 | `.source(...)` | optional, first step only: loads the first DataFrame |
 | `.transform(...)` | the output replaces the working DataFrame |
 | `.detect(...)` | the output is stored in `result.events[name]`; the working DataFrame is unchanged |
+
+```mermaid
+flowchart TB
+    IN(["pipe.run(df)"]) --> T["transform steps<br/>(each replaces the working frame)"]
+    T --> D1["detect"] --> D2["detect<br/>(the working frame passes through)"]
+    D2 -->|"result.data"| R[("result")]
+    D1 -.->|"result.events[name]"| R
+    D2 -.->|"result.events[name]"| R
+```
 
 Step names are unique: a second step with an explicit name that is taken
 raises `ValueError`, while a transform without `name=` gets a `_2`, `_3`

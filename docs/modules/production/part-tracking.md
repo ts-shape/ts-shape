@@ -1,3 +1,7 @@
+---
+tags: [throughput, shift-reporting]
+---
+
 # PartProductionEvents
 
 Quantities per part number per window, per day and in total, from a part-number string signal and a production counter (`value_integer`).

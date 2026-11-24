@@ -1,3 +1,7 @@
+---
+tags: [energy]
+---
+
 # EnergyConsumptionEvents
 
 Energy consumption per window, peak-demand windows, deviation from a rolling baseline, and energy per produced unit, from a meter signal of kWh deltas.

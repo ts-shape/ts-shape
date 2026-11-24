@@ -1,3 +1,7 @@
+---
+tags: [data-quality, measurement-systems]
+---
+
 # SamplingResolutionEvents
 
 Checks whether a signal's sampling is fine enough for the process: quantization (too few distinct values), effective vs theoretical resolution, aliasing risk against the Nyquist frequency, and sampling jitter.

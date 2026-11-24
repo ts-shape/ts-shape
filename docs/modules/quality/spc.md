@@ -1,3 +1,7 @@
+---
+tags: [spc, montgomery-sqc, nelson-rules]
+---
+
 # StatisticalProcessControlEvents
 
 Shewhart control-chart rules (the eight Nelson tests, including the Western Electric zone rules), dynamic control limits and CUSUM shift detection. Control limits come from reference rows of one signal (`tolerance_uuid`); the rules are checked on the rows of another (`actual_uuid`).
@@ -34,6 +38,33 @@ shifts = spc.detect_cusum_shifts(k=0.5, h=5.0)
 | `detect_cusum_shifts(target=None, k=0.5, h=5.0)` | `systime`, value, `cusum_high`, `cusum_low`, `shift_direction`, `severity` |
 | `interpret_violations(violations_df)` | adds `interpretation`, `meaning`, `recommendation` |
 | `rule_1(df, limits)` … `rule_8(df, limits)` | the violating rows with a boolean rule column; the input is not modified |
+
+## Formulas
+
+Short-term sigma from the reference rows (individuals chart, $$d_2 = 1.128$$):
+
+$$
+\hat\sigma = \frac{\overline{MR}}{d_2}, \qquad \overline{MR} = \frac{1}{n-1}\sum_{i=2}^{n} \lvert x_i - x_{i-1} \rvert, \qquad \text{limits} = \mu_0 \pm k\,\hat\sigma
+$$
+
+EWMA chart with smoothing $$\lambda$$ and width $$L$$:
+
+$$
+\begin{aligned}
+z_i &= \lambda x_i + (1-\lambda)\,z_{i-1}, \qquad z_0 = \mu_0 \\
+\text{limits}_i &= \mu_0 \pm L\,\hat\sigma \sqrt{\frac{\lambda}{2-\lambda}\left[1-(1-\lambda)^{2i}\right]}
+\end{aligned}
+$$
+
+Tabular CUSUM with reference value $$k$$ and decision interval $$h$$ (both in units of $$\hat\sigma$$):
+
+$$
+\begin{aligned}
+C_i^+ &= \max\!\left(0,\; x_i - \mu_0 - k\hat\sigma + C_{i-1}^+\right) \\
+C_i^- &= \max\!\left(0,\; \mu_0 - k\hat\sigma - x_i + C_{i-1}^-\right) \\
+&\text{signal when } C_i^+ > h\hat\sigma \text{ or } C_i^- > h\hat\sigma
+\end{aligned}
+$$
 
 ## Notes
 

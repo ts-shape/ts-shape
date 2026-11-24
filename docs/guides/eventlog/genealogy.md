@@ -1,3 +1,7 @@
+---
+tags: [process-mining, traceability, ocel]
+---
+
 # Genealogy
 
 Traceability asks two questions of the object relations in an

@@ -1,3 +1,7 @@
+---
+tags: [throughput, littles-law]
+---
+
 # FlowMetricsEvents
 
 Work in process, throughput and lead time between an entry and an exit signal (two boolean signals such as light barriers or part-present bits), checked against Little's Law (`WIP = throughput × lead time`).
@@ -31,6 +35,17 @@ print(summary[["start", "wip_mean", "throughput_per_hour", "consistency_factor"]
 | `throughput(window='1h')` | per window: `units_out`, `throughput_per_hour` |
 | `lead_time()` | one row per unit: `systime` (exit time), `lead_time_seconds`, `unit_index` |
 | `flow_summary(value_add_seconds=None, window='1h')` | per window: `wip_mean`, `throughput_per_hour`, `lead_time_mean_seconds`, `littles_law_lead_time_seconds`, `consistency_factor` (+ `process_cycle_efficiency_pct`) |
+
+## Formulas
+
+$$
+WIP = TH \times LT \quad\Longrightarrow\quad LT_{\text{Little}} = \frac{WIP}{TH}
+$$
+
+$$
+\text{consistency factor} = \frac{\overline{LT}_{\text{measured}}}{LT_{\text{Little}}}, \qquad
+PCE = \frac{t_{\text{value-add}}}{\overline{LT}} \times 100
+$$
 
 ## Notes
 

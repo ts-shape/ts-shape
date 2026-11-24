@@ -1,3 +1,7 @@
+---
+tags: [batch-processes]
+---
+
 # RecipePhaseAdherenceEvents
 
 Checks every phase of a batch (heat-up, hold, cool-down, …) against a recipe spec for duration, hold value, peak, trough and ramp rate, with pass/fail and the failed criteria per phase occurrence. Input is a phase-name signal and one process value.

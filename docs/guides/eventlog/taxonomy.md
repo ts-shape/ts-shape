@@ -1,3 +1,7 @@
+---
+tags: [process-mining, ocel, xes]
+---
+
 # Labeling and taxonomy
 
 The rules that fill `ocel:activity` and the standard attributes of every event.

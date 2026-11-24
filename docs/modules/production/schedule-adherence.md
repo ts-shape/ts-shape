@@ -1,3 +1,7 @@
+---
+tags: [targets]
+---
+
 # ProductionScheduleAdherenceEvents
 
 Planned against actual production for each scheduled period (shift, work order), the rate needed to recover a period that is behind, alerts for periods outside the deviation bands, and a roll-up across the schedule.

@@ -1,3 +1,7 @@
+---
+tags: [machine-learning]
+---
+
 # Features for ML
 
 How to turn long-format signals into inputs for a model or a comparison:

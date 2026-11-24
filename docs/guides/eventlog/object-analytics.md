@@ -1,3 +1,7 @@
+---
+tags: [process-mining, traceability, ocel]
+---
+
 # Object analytics
 
 [Object detection](objects.md) tells you when each serial, carrier or batch was

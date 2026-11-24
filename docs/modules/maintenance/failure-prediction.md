@@ -1,3 +1,7 @@
+---
+tags: [predictive-maintenance, forecasting]
+---
+
 # FailurePredictionEvents
 
 Remaining useful life by linear extrapolation of the recent trend to a failure threshold, escalating warning/critical exceedances per window, and time to a threshold from the current rate of change.

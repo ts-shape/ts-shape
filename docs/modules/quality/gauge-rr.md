@@ -1,3 +1,7 @@
+---
+tags: [measurement-systems, aiag]
+---
+
 # GaugeRepeatabilityEvents
 
 Gauge R&R (measurement system analysis) for an inline sensor from repeated measurements of reference parts: equipment variation (repeatability), appraiser variation (reproducibility), %GRR, ndc and bias against reference values.

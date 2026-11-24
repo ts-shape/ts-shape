@@ -1,3 +1,7 @@
+---
+tags: [alarms-and-thresholds]
+---
+
 # ThresholdMonitoringEvents
 
 Intervals above (or below) named threshold levels, alarm intervals with hysteresis, time above a threshold per window, and the exceedance trend.

@@ -1,3 +1,7 @@
+---
+tags: [data-quality]
+---
+
 # Signal semantics and profiling
 
 Most wrong numbers in industrial time-series analysis come from misreading

@@ -1,3 +1,7 @@
+---
+tags: [measurement-systems]
+---
+
 # CalibrationValidationEvents
 
 Checks whether an inline sensor still reads true: linearity and a fitted calibration curve from a multi-point check, and per-window bias, drift and stability against a reference value or a reference sensor.

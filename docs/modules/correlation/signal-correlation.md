@@ -1,3 +1,7 @@
+---
+tags: [correlation]
+---
+
 # SignalCorrelationEvents
 
 Rolling Pearson correlation between two signals, periods where a normally strong correlation breaks down, and the time lag at which they correlate best.

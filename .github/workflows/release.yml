@@ -171,12 +171,18 @@ jobs:
   build-docs:
     name: Build Documentation
     runs-on: ubuntu-latest
-    needs: ci
+    # After the release tag exists, so this release becomes a docs version.
+    # Still runs when no release was made (Release-Bump: none) or publishing
+    # failed: the docs only need CI to pass.
+    needs: [ci, tag-release]
+    if: ${{ always() && needs.ci.result == 'success' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          # Full history and every tag: docs versions are built from tags.
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -200,11 +206,18 @@ jobs:
           cache: 'npm'
           cache-dependency-path: website/package-lock.json
 
+      - name: Install site dependencies
+        working-directory: website
+        run: npm ci
+
+      # The newest release of each minor line (X.Y) becomes a docs version:
+      # newest at the root, older lines at /X.Y/, unreleased main at /next/.
+      - name: Snapshot docs versions from release tags
+        run: python .github/scripts/docs_versions.py
+
       - name: Build Docusaurus site
         working-directory: website
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
@@ -215,6 +228,8 @@ jobs:
     name: Deploy Documentation
     runs-on: ubuntu-latest
     needs: build-docs
+    # Explicit: a skipped tag-release upstream would otherwise skip this job.
+    if: ${{ always() && needs.build-docs.result == 'success' }}
     permissions:
       pages: write
       id-token: write  # deploy-pages authenticates with OIDC

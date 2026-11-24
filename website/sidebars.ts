@@ -3,6 +3,7 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   getStarted: [
+    {type: "doc", id: "index", label: "Overview"},
     {type: "doc", id: "user_guide/installation", label: "Installation"},
     {type: "doc", id: "user_guide/quick_start", label: "Quick start"}
   ],
@@ -46,6 +47,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Quality",
+      link: {type: "generated-index", slug: "/modules/quality/", description: "Outliers, control charts, capability, drift, gauge R&R and measurement uncertainty."},
       items: [
         {type: "doc", id: "modules/quality/outlier-detection", label: "Outlier Detection"},
         {type: "doc", id: "modules/quality/spc", label: "Statistical Process Control"},
@@ -69,10 +71,12 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Production",
+      link: {type: "generated-index", slug: "/modules/production/", description: "Machine and line states, cycle times, downtime, OEE, traceability and reporting."},
       items: [
         {
           type: "category",
       label: "Event Detection",
+      link: {type: "generated-index", slug: "/modules/production/event-detection/", description: "Machine and operating states, throughput, changeovers and flow constraints."},
           items: [
             {type: "doc", id: "modules/production/machine-state", label: "Machine State"},
             {type: "doc", id: "modules/production/operating-state", label: "Operating State"},
@@ -85,6 +89,7 @@ const sidebars: SidebarsConfig = {
         {
           type: "category",
       label: "Daily Tracking",
+      link: {type: "generated-index", slug: "/modules/production/daily-tracking/", description: "Parts, cycle times, unit profiles, downtime, quality and shift reports."},
           items: [
             {type: "doc", id: "modules/production/part-tracking", label: "Part Tracking"},
             {type: "doc", id: "modules/production/cycle-time", label: "Cycle Time"},
@@ -98,6 +103,7 @@ const sidebars: SidebarsConfig = {
         {
           type: "category",
       label: "OEE & Advanced",
+      link: {type: "generated-index", slug: "/modules/production/oee-and-advanced/", description: "OEE, alarms, batches, bottlenecks, micro-stops, line balancing and flow metrics."},
           items: [
             {type: "doc", id: "modules/production/oee-calculator", label: "OEE Calculator"},
             {type: "doc", id: "modules/production/alarm-management", label: "Alarm Management"},
@@ -114,6 +120,7 @@ const sidebars: SidebarsConfig = {
         {
           type: "category",
       label: "Traceability",
+      link: {type: "generated-index", slug: "/modules/production/traceability/", description: "Follow values, orders and parts through routings and processes."},
           items: [
             {type: "doc", id: "modules/production/order-traceability", label: "Value Traceability"},
             {type: "doc", id: "modules/production/routing-traceability", label: "Routing Traceability"},
@@ -123,6 +130,7 @@ const sidebars: SidebarsConfig = {
         {
           type: "category",
       label: "Setup & Operators",
+      link: {type: "generated-index", slug: "/modules/production/setup-and-operators/", description: "Setup times (SMED), operator performance and rework."},
           items: [
             {type: "doc", id: "modules/production/setup-time", label: "Setup Time (SMED)"},
             {type: "doc", id: "modules/production/operator-performance", label: "Operator Performance"},
@@ -132,6 +140,7 @@ const sidebars: SidebarsConfig = {
         {
           type: "category",
       label: "Performance & Reporting",
+      link: {type: "generated-index", slug: "/modules/production/performance-and-reporting/", description: "Performance loss, scrap, targets, schedule adherence and period summaries."},
           items: [
             {type: "doc", id: "modules/production/performance-loss", label: "Performance Loss"},
             {type: "doc", id: "modules/production/scrap-tracking", label: "Scrap Tracking"},
@@ -146,6 +155,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Engineering",
+      link: {type: "generated-index", slug: "/modules/engineering/", description: "Setpoints, start-ups, thresholds, steady state, process windows and control loops."},
       items: [
         {type: "doc", id: "modules/engineering/setpoint-events", label: "Setpoint Events"},
         {type: "doc", id: "modules/engineering/startup-detection", label: "Startup Detection"},
@@ -166,6 +176,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Maintenance",
+      link: {type: "generated-index", slug: "/modules/maintenance/", description: "Degradation, failure prediction, reliability (MTBF / MTTR / Weibull), vibration and asset health."},
       items: [
         {type: "doc", id: "modules/maintenance/degradation-detection", label: "Degradation Detection"},
         {type: "doc", id: "modules/maintenance/failure-prediction", label: "Failure Prediction"},
@@ -177,6 +188,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Energy",
+      link: {type: "generated-index", slug: "/modules/energy/", description: "Power integration, consumption, efficiency, EnPI, idle energy and carbon intensity."},
       items: [
         {type: "doc", id: "modules/energy/power-integration", label: "Power Integration"},
         {type: "doc", id: "modules/energy/consumption-analysis", label: "Consumption Analysis"},
@@ -189,6 +201,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Correlation",
+      link: {type: "generated-index", slug: "/modules/correlation/", description: "Correlations between signals, anomalies and root causes."},
       items: [
         {type: "doc", id: "modules/correlation/signal-correlation", label: "Signal Correlation"},
         {type: "doc", id: "modules/correlation/anomaly-correlation", label: "Anomaly Correlation"},
@@ -198,6 +211,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Supply Chain",
+      link: {type: "generated-index", slug: "/modules/supply-chain/", description: "Inventory, demand patterns and lead times."},
       items: [
         {type: "doc", id: "modules/supplychain/inventory-monitoring", label: "Inventory Monitoring"},
         {type: "doc", id: "modules/supplychain/demand-patterns", label: "Demand Patterns"},
@@ -207,6 +221,7 @@ const sidebars: SidebarsConfig = {
     {
       type: "category",
       label: "Development",
+      link: {type: "generated-index", slug: "/modules/development/", description: "Design of experiments, design space, golden batches, recipe phases and parameter ranking."},
       items: [
         {type: "doc", id: "modules/development/design-of-experiments", label: "Design of Experiments"},
         {type: "doc", id: "modules/development/design-space", label: "Design Space"},

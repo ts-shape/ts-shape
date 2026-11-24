@@ -1,3 +1,7 @@
+---
+tags: [anomaly-detection, drift]
+---
+
 # AnomalyClassificationEvents
 
 Finds anomalous windows in a numeric signal and labels them spike, drift, oscillation, flatline or level shift; each type also has its own detector.

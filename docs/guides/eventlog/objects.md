@@ -1,3 +1,7 @@
+---
+tags: [process-mining, traceability, batch-processes, ocel]
+---
+
 # Object detection
 
 Event detectors answer *what happened*. Object detection answers *to which thing*:

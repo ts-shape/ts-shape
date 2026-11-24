@@ -1,3 +1,7 @@
+---
+tags: [process-stability]
+---
+
 # ProcessStabilityIndexEvents
 
 One 0-100 stability score per window (e.g. per shift) for a signal, built from four 0-25 sub-scores for spread, bias, excursions and jitter; plus its trend, the worst windows and the gap to the best window.

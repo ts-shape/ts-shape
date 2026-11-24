@@ -1,3 +1,7 @@
+---
+tags: [downtime]
+---
+
 # LongDowntimeEvents
 
 Downtimes longer than a threshold (default 3 h) in a run/stop signal, and the production counted between consecutive long stops. Use it for weekends, planned shutdowns and multi-hour breakdowns; for short stops see [MicroStopEvents](micro-stops.md), for downtime by reason [DowntimeEvents](downtime.md).

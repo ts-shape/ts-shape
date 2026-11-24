@@ -1,3 +1,7 @@
+---
+tags: [continuous-processes, energy]
+---
+
 # MaterialBalanceEvents
 
 Mass, energy or flow balance per window: sum of input signals against sum of output signals, the imbalance trend, sustained imbalance events, and each signal's share of the totals.

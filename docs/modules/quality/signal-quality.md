@@ -1,3 +1,7 @@
+---
+tags: [data-quality]
+---
+
 # SignalQualityEvents
 
 Data-quality checks for one numeric signal: gaps against an expected sampling interval, sampling regularity, values outside a physical range, and completeness per window. For gap summaries, coverage and interpolation candidates see [DataGapAnalysisEvents](data-gap-analysis.md).

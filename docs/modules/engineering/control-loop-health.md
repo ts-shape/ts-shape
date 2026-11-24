@@ -1,3 +1,7 @@
+---
+tags: [process-control]
+---
+
 # ControlLoopHealthEvents
 
 Health of a control loop from its setpoint and actual value (and optionally the controller output), independent of setpoint changes: error integrals per window, oscillation of the control error, output saturation, and a per-shift grade.

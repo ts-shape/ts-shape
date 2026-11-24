@@ -2,6 +2,11 @@
 
 One page per detector class: what it computes, a short runnable example, the methods with their key output columns, and the behavior worth knowing. Every page links to the matching guide and to the [API reference](../reference/index.md), which lists all parameters.
 
+To find detectors across packs by question (OEE, drift, traceability, process
+control, ...) or by the standard they implement (ISO 22400, AIAG, GUM, ...),
+browse the [topics and standards](/tags/). Every page lists its tags at the
+bottom.
+
 | Pack | Covers | Start at |
 |---|---|---|
 | Production | machine state (also inferred from current or power), downtime, OEE, throughput, cycle times, changeovers, alarms, batches, traceability, shift and period reports, schedule adherence | [MachineStateEvents](production/machine-state.md) |

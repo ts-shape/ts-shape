@@ -1,3 +1,7 @@
+---
+tags: [energy, sustainability]
+---
+
 # CarbonIntensityEvents
 
 CO2-equivalent emissions from energy and fuel meters with configurable emission factors: emissions per source and window, Scope 1 (fuel) and Scope 2 (electricity) totals, carbon intensity per produced unit, and the factors used, for an audit trail (CSRD, ISO 14064).

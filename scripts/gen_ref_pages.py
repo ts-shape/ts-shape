@@ -50,6 +50,10 @@ CONFIG = {
     "show_object_full_path": False,
     "show_submodules": False,
     "inherited_members": False,
+    # Like mkdocstrings: undocumented members are left out.
+    "show_if_no_docstring": False,
+    # Summary tables for classes (on module pages) and methods (on classes).
+    "summary": {"classes": True, "functions": True},
 }
 
 LINK_RE = re.compile(r"\[([^\]]*)\]\(#([A-Za-z_][\w.]*)\)")
@@ -78,26 +82,128 @@ def page_path(parts: tuple[str, ...], is_pkg: bool) -> Path:
 
 
 HEADING_RE = re.compile(r"^(#{2,6}) `([A-Za-z_]\w*)`\s*$")
+SECTION_RE = re.compile(r"^\*\*([A-Z][A-Za-z ]*):\*\*$")
+CODE_RE = re.compile(r"<code>(.*?)</code>")
+MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
 
 
-def add_anchors(body: str, module_path: str, anchors: set[str]) -> str:
-    """Give each object heading an explicit ``{#full.path}`` anchor.
+def kind_of(obj: Object) -> str:
+    """Badge text for an object: class, method, function, property, ..."""
+    labels = set(getattr(obj, "labels", ()) or ())
+    if obj.is_class:
+        return "class"
+    if obj.is_function:
+        for label in ("property", "classmethod", "staticmethod"):
+            if label in labels:
+                return label
+        return (
+            "method" if obj.parent is not None and obj.parent.is_class else "function"
+        )
+    if "property" in labels:
+        return "property"
+    return "attribute"
 
-    griffe2md nests members one heading level per object level, starting at
-    ``CONFIG["heading_level"]`` for the module's direct members.
+
+def meta_line(obj: Object | None) -> str:
+    """Kind badge and a link to the object's source lines."""
+    if obj is None:
+        return ""
+    kind = kind_of(obj)
+    parts = [f'<span class="api-kind api-kind--{kind}">{kind}</span>']
+    if obj.lineno and obj.filepath and not isinstance(obj.filepath, list):
+        rel = Path(obj.filepath).resolve().relative_to(ROOT).as_posix()
+        lines = f"L{obj.lineno}"
+        if obj.endlineno and obj.endlineno != obj.lineno:
+            lines += f"-L{obj.endlineno}"
+        parts.append(
+            f'<a class="api-source" href="{REPO_BLOB}/{rel}#{lines}">source</a>'
+        )
+    return f'<div class="api-meta">{"".join(parts)}</div>'
+
+
+def decorate(body: str, module: Object, anchors: set[str]) -> str:
+    """Post-process griffe2md output for the docs site.
+
+    - Each object heading gets an explicit ``{#full.path}`` anchor (griffe2md
+      nests members one heading level per object level, starting at
+      ``CONFIG["heading_level"]``) and a kind badge with a source link.
+    - ``**Parameters:**`` style labels become ``api-section`` labels.
+    - Doctest examples (``>>>``) are fenced as Python code; unfenced they
+      would render as nested blockquotes.
     """
     stack: list[str] = []
-    lines = []
+    out: list[str] = []
+    in_fence = False
+    in_doctest = False
     for line in body.splitlines():
+        if in_doctest:
+            if line.strip():
+                out.append(line)
+                continue
+            out.append("```")
+            in_doctest = False
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        if in_fence:
+            out.append(line)
+            continue
+        if line.startswith(">>> "):
+            out.extend(["```python", line])
+            in_doctest = True
+            continue
         m = HEADING_RE.match(line)
         if m:
             depth = len(m.group(1)) - CONFIG["heading_level"]
             stack = stack[:depth] + [m.group(2)]
-            path = ".".join([module_path, *stack])
+            path = ".".join([module.path, *stack])
             anchors.add(path)
-            line = f"{line.rstrip()} {{#{path}}}"
-        lines.append(line)
-    return "\n".join(lines)
+            try:
+                obj = module[".".join(stack)]
+            except (KeyError, ValueError):
+                obj = None
+            out.append(f"{line.rstrip()} {{#{path}}}")
+            meta = meta_line(obj)
+            if meta:
+                out.extend(["", meta])
+            continue
+        m = SECTION_RE.match(line)
+        if m:
+            out.append(f'<div class="api-section">{m.group(1)}</div>')
+            continue
+        out.append(line)
+    if in_doctest:
+        out.append("```")
+    return "\n".join(out)
+
+
+def plain_code(body: str) -> str:
+    r"""Turn griffe2md's ``<code>`` spans into Markdown code spans and links.
+
+    Docusaurus renders a raw ``<code>`` element as a code block, so
+    ``<code>[Base](url)</code>`` becomes ``[`Base`](url)`` and
+    ``<code>str \| None</code>`` becomes ```str \| None``` (the escaped pipe
+    keeps table cells intact).
+    """
+
+    def convert(m: re.Match) -> str:
+        inner, pieces, pos = m.group(1), [], 0
+        for link in MD_LINK_RE.finditer(inner):
+            if inner[pos : link.start()].strip():
+                pieces.append(f"`{inner[pos:link.start()].strip()}`")
+            pieces.append(f"[`{link.group(1)}`]({link.group(2)})")
+            pos = link.end()
+        if inner[pos:].strip():
+            pieces.append(f"`{inner[pos:].strip()}`")
+        return " ".join(pieces)
+
+    out, in_fence = [], False
+    for line in body.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        out.append(line if in_fence else CODE_RE.sub(convert, line))
+    return "\n".join(out)
 
 
 def render(module: Object, anchors: set[str]) -> str:
@@ -105,10 +211,12 @@ def render(module: Object, anchors: set[str]) -> str:
         name
         for name, member in module.members.items()
         if not name.startswith("_") and not member.is_alias and not member.is_module
+        # Like mkdocstrings: undocumented members are left out.
+        and member.has_docstrings
     ]
     context = prepare_context(module, {**CONFIG, "members": members})
     body = prepare_env().get_template("module.md.jinja").render(**context)
-    return add_anchors(body, module.path, anchors)
+    return decorate(body, module, anchors)
 
 
 def resolve(target: str, page: Path, owner: dict[str, Path]) -> str | None:
@@ -154,7 +262,7 @@ def main() -> None:
             href = resolve(m.group(2), page, owner)
             return f"[{m.group(1)}]({href})" if href else m.group(1)
 
-        body = LINK_RE.sub(relink, body)
+        body = plain_code(LINK_RE.sub(relink, body))
         ident = ".".join(parts)
         front = {
             "title": ident,

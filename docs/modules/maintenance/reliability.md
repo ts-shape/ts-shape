@@ -1,3 +1,7 @@
+---
+tags: [predictive-maintenance, downtime, iso-22400, weibull]
+---
+
 # ReliabilityEvents
 
 MTBF, MTTR, inherent availability and failure rate (overall or per calendar window), and a Weibull life model, from a signal that says whether an asset is failed or under repair (a fault bit, a breakdown status code, a maintenance mode).
@@ -32,6 +36,27 @@ survival = rel.reliability_at([100], age_hours=200)  # 100 more hours after 200 
 | `mtbf_mttr(window=None, tz=None)` | one row, or one per calendar window (e.g. `window="MS"`): `operating_hours`, `repair_hours`, `no_data_hours`, `failures`, `mtbf_hours`, `mtbf_iso22400_hours`, `mttr_hours`, `availability_pct`, `failure_rate_per_hour` |
 | `weibull_fit(include_initial=False)` | one row: `beta`, `eta_hours`, `mttf_hours`, `b10_hours`, `failure_count`, `censored_count`, `failure_pattern` |
 | `reliability_at(hours, age_hours=0.0)` | per horizon: `reliability`, `failure_probability`, `hazard_per_hour` |
+
+## Formulas
+
+With operating time $$T_{op}$$, repair time $$T_{rep}$$ and $$n_f$$ failures:
+
+$$
+MTBF = \frac{T_{op}}{n_f}, \qquad
+MTBF_{\text{ISO 22400}} = \frac{T_{op}}{n_f + 1}
+$$
+
+$$
+MTTR = \frac{T_{rep}}{n_f}, \qquad
+A_i = \frac{T_{op}}{T_{op} + T_{rep}}
+$$
+
+Two-parameter Weibull with shape $$\beta$$ and scale $$\eta$$ (fitted by maximum likelihood):
+
+$$
+R(t) = \exp\!\left[-\left(\frac{t}{\eta}\right)^{\beta}\right], \qquad
+h(t) = \frac{\beta}{\eta}\left(\frac{t}{\eta}\right)^{\beta-1}
+$$
 
 ## Notes
 

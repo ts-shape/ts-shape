@@ -1,3 +1,7 @@
+---
+tags: [drift, data-quality]
+---
+
 # ValueDistributionEvents
 
 Distribution changes of a numeric signal: the dominant mode per window and when it moves, a bimodality check, normality per window, and percentile bands over time.

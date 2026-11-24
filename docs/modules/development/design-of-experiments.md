@@ -1,3 +1,7 @@
+---
+tags: [process-development]
+---
+
 # DesignOfExperimentsEvents
 
 Recovers the runs of a DOE campaign from historian data, where factor signals (setpoints) were stepped through a few levels, and estimates the main effect of each factor level on a response signal. No regression model is fitted, so it works for whatever design was run: one-factor-at-a-time, full or fractional factorial, Latin square.

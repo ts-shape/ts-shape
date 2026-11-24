@@ -1,3 +1,7 @@
+---
+tags: [throughput, machine-state]
+---
+
 # FlowConstraintEvents
 
 Blocked and starved intervals between an upstream and a downstream station, from the two stations' boolean run signals.

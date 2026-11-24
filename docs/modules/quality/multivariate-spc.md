@@ -1,3 +1,7 @@
+---
+tags: [spc, anomaly-detection, montgomery-sqc]
+---
+
 # MultivariateSPCEvents
 
 Hotelling T² control chart for correlated variables. It catches faults that break the relationship between variables while each stays inside its own limits, e.g. temperature +1σ and pressure −1σ at correlation 0.95 give T² ≈ 40 against a limit of about 12.
@@ -33,6 +37,19 @@ All arguments are keyword-only.
 | `hotelling_t2(reference_period=None, alpha=0.0027)` | per aligned observation: `t2`, `ucl`, `phase` (`I` = reference, `II` = monitored), `out_of_control` |
 | `contributions(reference_period=None, alpha=0.0027, only_out_of_control=True)` | per observation and variable: `contribution` (sums to T²), `contribution_pct`, `z_score` |
 | `detect_out_of_control(reference_period=None, alpha=0.0027, min_samples=1)` | runs of alarms: `start`, `end`, `max_t2`, `sample_count`, `top_contributor` |
+
+## Formulas
+
+Hotelling $$T^2$$ of an observation $$\mathbf x$$ against the reference mean $$\bar{\mathbf x}$$ and covariance $$S$$, with $$m$$ reference observations and $$p$$ variables:
+
+$$
+T^2 = (\mathbf x - \bar{\mathbf x})^\top S^{-1} (\mathbf x - \bar{\mathbf x})
+$$
+
+$$
+UCL_{\text{Phase II}} = \frac{p\,(m+1)(m-1)}{m\,(m-p)}\, F_{1-\alpha;\,p,\,m-p}, \qquad
+UCL_{\text{Phase I}} = \frac{(m-1)^2}{m}\, B_{1-\alpha;\,p/2,\,(m-p-1)/2}
+$$
 
 ## Notes
 

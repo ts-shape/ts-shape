@@ -1,3 +1,7 @@
+---
+tags: [downtime, oee, shift-reporting, iso-22400]
+---
+
 # DowntimeEvents
 
 Downtime and availability per shift, per reason code and over time, from a machine-state signal and an optional reason-code signal.

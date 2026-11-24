@@ -1,0 +1,139 @@
+# Tags for docs pages, by the standard or method a page implements.
+# Pages list them in front matter (`tags: [iso-22400]`); a tag that is not
+# declared here fails the build (onInlineTags: 'throw').
+
+iso-22400:
+  label: ISO 22400
+  description: KPIs for manufacturing operations management (OEE, availability, MTBF, MTTR).
+iso-50001:
+  label: ISO 50001 / 50006
+  description: Energy management and energy performance indicators (EnPI) with baselines.
+iso-20816:
+  label: ISO 10816 / 20816
+  description: Evaluation of machine vibration by measurements on non-rotating parts.
+isa-18-2:
+  label: ISA-18.2
+  description: Management of alarm systems for the process industries (alarm rates, floods, chattering).
+aiag:
+  label: AIAG SPC / MSA
+  description: AIAG reference manuals for statistical process control, capability and measurement system analysis.
+montgomery-sqc:
+  label: Montgomery SQC
+  description: Control charts and capability as in Montgomery, Introduction to Statistical Quality Control.
+nelson-rules:
+  label: Nelson rules
+  description: Nelson (1984) / Western Electric run rules for control charts.
+gum:
+  label: GUM (JCGM 100)
+  description: Guide to the expression of uncertainty in measurement.
+weibull:
+  label: Weibull
+  description: Weibull life-data analysis for reliability.
+littles-law:
+  label: Little's law
+  description: WIP = throughput x lead time for flow metrics.
+ocel:
+  label: OCEL 2.0
+  description: Object-centric event logs for process mining.
+xes:
+  label: XES (IEEE 1849)
+  description: The eXtensible Event Stream format for process mining.
+
+# ---------- Topics ----------
+
+oee:
+  label: OEE
+  description: Overall equipment effectiveness and its availability, performance and quality factors.
+downtime:
+  label: Downtime and availability
+  description: Stops, idle time, micro-stops, long downtimes and availability.
+machine-state:
+  label: Machine states
+  description: Run / idle / blocked / starved states, transitions and operating modes from PLC signals.
+cycle-time:
+  label: Cycle time
+  description: Cycle times, cycle profiling, takt and speed losses.
+throughput:
+  label: Throughput and flow
+  description: Parts per window, WIP, lead time, blocking, starving and bottlenecks along a line.
+shift-reporting:
+  label: Shift and period reporting
+  description: Per-shift, daily, weekly and monthly figures, handovers and comparisons.
+targets:
+  label: Targets and schedules
+  description: Actual against target or plan, schedule adherence and operator performance.
+scrap-and-rework:
+  label: Scrap, rework and yield
+  description: NOK counts, first-pass yield, scrap, rework and defect Paretos.
+spc:
+  label: SPC and control charts
+  description: Control limits, run rules, EWMA, CUSUM and multivariate charts.
+capability:
+  label: Process capability
+  description: Cp, Cpk, Pp, Ppk, specification limits and tolerance deviations.
+anomaly-detection:
+  label: Anomaly detection
+  description: Outliers, spikes, change points and anomalous windows.
+drift:
+  label: Drift and trends
+  description: Slow drifts, level shifts, degradation trends and distribution changes.
+measurement-systems:
+  label: Measurement systems
+  description: Gauge R&R, calibration, sensor validation, uncertainty and sampling resolution.
+data-quality:
+  label: Data quality
+  description: Gaps, sampling regularity, flatlines and signal semantics before analysis.
+traceability:
+  label: Traceability
+  description: Following serials, orders and batches through stations, routings and genealogy.
+process-mining:
+  label: Process mining
+  description: Event logs, objects and activities for process-mining tools.
+batch-processes:
+  label: Batch processes
+  description: Batches, recipes, phases and golden-batch comparison.
+changeover:
+  label: Changeover and setup
+  description: Product changes, setup times (SMED) and start-up after a change.
+process-control:
+  label: Process control
+  description: Setpoint response, control-loop health, disturbances and steady state.
+process-stability:
+  label: Process stability
+  description: Operating ranges, process windows, stability scores and warm-up behaviour.
+alarms-and-thresholds:
+  label: Alarms and thresholds
+  description: Threshold crossings, alarm floods, chattering and time to a limit.
+predictive-maintenance:
+  label: Predictive maintenance
+  description: Remaining useful life, failure prediction, health indices and reliability.
+condition-monitoring:
+  label: Condition monitoring
+  description: Vibration, bearing indicators and condition signals of assets.
+energy:
+  label: Energy
+  description: Power, consumption, efficiency, idle energy and energy per part.
+sustainability:
+  label: Carbon and sustainability
+  description: CO2e emissions and carbon intensity per source and per part.
+correlation:
+  label: Correlation and root cause
+  description: Relations between signals, anomaly cascades and candidate causes of events.
+forecasting:
+  label: Forecasting
+  description: Extrapolating trends to a threshold, a stock-out or a capability limit.
+supply-chain:
+  label: Supply chain
+  description: Inventory, demand and lead times.
+process-development:
+  label: Process development
+  description: Design of experiments, design space and critical parameters.
+continuous-processes:
+  label: Continuous processes
+  description: Extrusion, rolling, film and other continuous lines, material and energy balances.
+machine-learning:
+  label: Machine learning
+  description: Feature tables, cycle and segment features as model inputs.
+data-pipelines:
+  label: Data pipelines
+  description: Loading, transforming, pipelines, declarative rules and processing data larger than memory.

@@ -1,3 +1,7 @@
+---
+tags: [traceability, process-mining, ocel]
+---
+
 # Object identification
 
 [Object detection](eventlog/objects.md) needs to know which signals carry ids and of

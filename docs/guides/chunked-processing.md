@@ -1,3 +1,7 @@
+---
+tags: [data-pipelines]
+---
+
 # Chunked processing
 
 Some datasets do not fit in memory: a year of 1 Hz data from a few hundred
