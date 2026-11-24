@@ -2,7 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
     "Renovate config for ts-shape.",
-    "Updates pyproject.toml (pep621), GitHub Actions and pre-commit hook revs."
+    "Updates pyproject.toml (pep621), the docs site (npm, website/package.json), GitHub Actions and pre-commit hook revs."
   ],
   "extends": [
     "config:recommended",
@@ -28,7 +28,8 @@
   "enabledManagers": [
     "pep621",
     "github-actions",
-    "pre-commit"
+    "pre-commit",
+    "npm"
   ],
   "pre-commit": {
     "enabled": true
@@ -62,6 +63,13 @@
       "labels": ["dev-tools"],
       "schedule": ["before 9am on the first day of the month"],
       "automerge": true
+    },
+    {
+      "description": "Group the docs site (Docusaurus and friends in website/package.json) on a monthly schedule",
+      "matchManagers": ["npm"],
+      "groupName": "docs site",
+      "labels": ["dependencies", "docs"],
+      "schedule": ["before 9am on the first day of the month"]
     },
     {
       "description": "Automerge minor and patch updates",

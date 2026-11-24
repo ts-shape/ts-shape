@@ -29,12 +29,28 @@ use `typing.cast` with a comment saying why. Converting with `float()` or
 
 ## Docs
 
+The site is built with [Docusaurus](https://docusaurus.io) (Node 20 or
+later) from the Markdown under `docs/`; the project lives in `website/`.
+`scripts/gen_ref_pages.py` renders the API reference
+(`docs/reference/ts_shape/`) from the docstrings with griffe2md and writes
+`docs/changelog.md` and `docs/license.md` from `CHANGES.txt` and
+`LICENSE.txt`. Those files are generated and git-ignored; run the script
+again after changing a docstring.
+
 ```bash
 pip install -e ".[docs]"
-mkdocs serve
-DISABLE_MKDOCS_2_WARNING=true mkdocs build --strict   # what CI runs
-pytest tests/docs                                     # code blocks bind against real signatures
+python scripts/gen_ref_pages.py
+cd website
+npm ci
+npm start           # live preview on http://localhost:3000/ts-shape/
+npm run build       # what CI runs; fails on broken links and anchors
+cd ..
+pytest tests/docs   # code blocks bind against real signatures
 ```
+
+Pages are plain Markdown (CommonMark, not MDX). Admonitions use
+`:::note` ... `:::`. The navigation is `website/sidebars.ts`; a new page
+must be added there.
 
 ## Build
 
@@ -53,7 +69,7 @@ Two GitHub Actions workflows:
 
 - `.github/workflows/ci.yml` runs on every pull request commit (once; there is
   no separate push trigger) and can be started by hand. It lints (black, ruff,
-  mypy), builds the docs with `mkdocs build --strict`, runs the tests on
+  mypy), generates the API reference and builds the Docusaurus site (broken links fail), runs the tests on
   Python 3.11 to 3.14 and once with every core dependency pinned to its
   declared minimum (`min-deps`), and builds the package (`twine check
   --strict`, no `0.0.0` version, the wheel imports). A non-blocking `scan` job

@@ -1,3 +1,19 @@
+# November 24, 2026 (docs: Docusaurus)
+docs: the site is built with Docusaurus (website/) instead of MkDocs
+  Material, which is in maintenance mode and does not work with MkDocs 2.
+  Pages stay plain Markdown in docs/ with the same URLs; the navigation
+  is website/sidebars.ts; search is local (no external service).
+docs: scripts/gen_ref_pages.py renders the API reference from the
+  docstrings with griffe2md (Google style, members in source order,
+  __init__ merged into the class); every object keeps its
+  #ts_shape.module.Object anchor and cross-references link across pages.
+  It also writes changelog.md and license.md. All are git-ignored.
+ci: the docs job and the Pages build run the generator, then
+  npm ci && npm run build (broken links and anchors fail the build); the
+  Pages artifact is website/build. Renovate updates website/package.json.
+build: the docs extra is griffe2md + black; mkdocs, mkdocs-material,
+  mkdocs-gen-files, mkdocs-literate-nav and mkdocstrings are dropped.
+
 # November 24, 2026 (unit profilers: modular)
 refactor: one profiler base (_ProfilerBase / _UnitProfiler) with shared
   records, verdicts, caching and a one-pass SignalIndex; restart points,

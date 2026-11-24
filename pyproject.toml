@@ -79,12 +79,12 @@ yaml = [
 all = [
     "ts_shape[parquet,s3,azure,api,sql,postgres,yaml,ml,units]",
 ]
+# Python side of the docs build: scripts/gen_ref_pages.py renders the API
+# reference from the docstrings. The site itself is built with Docusaurus
+# (Node), see website/.
 docs = [
-    "mkdocs>=1.5",
-    "mkdocs-material>=9.0",
-    "mkdocs-literate-nav",
-    "mkdocs-gen-files",
-    "mkdocstrings[python]>=0.24",
+    "griffe2md>=1.5",
+    # griffe2md formats signatures with black when it is installed.
     "black==26.3.1",
 ]
 dev = [

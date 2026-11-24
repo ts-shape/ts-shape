@@ -190,15 +190,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install ".[docs]"
 
-      - name: Build MkDocs documentation
-        env:
-          DISABLE_MKDOCS_2_WARNING: 'true'
-        run: mkdocs build --strict
+      - name: Generate API reference pages
+        run: python scripts/gen_ref_pages.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Build Docusaurus site
+        working-directory: website
+        run: |
+          npm ci
+          npm run build
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
-          path: 'site'
+          path: 'website/build'
 
   deploy-docs:
     name: Deploy Documentation

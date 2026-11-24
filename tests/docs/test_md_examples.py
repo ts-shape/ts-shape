@@ -55,7 +55,13 @@ def _blocks(text: str) -> list[tuple[int, str]]:
     return found
 
 
-PAGES = sorted(p for p in DOCS.rglob("*.md") if _blocks(p.read_text(encoding="utf-8")))
+# docs/reference/ts_shape is generated from the docstrings (scripts/gen_ref_pages.py).
+GENERATED = DOCS / "reference" / "ts_shape"
+PAGES = sorted(
+    p
+    for p in DOCS.rglob("*.md")
+    if GENERATED not in p.parents and _blocks(p.read_text(encoding="utf-8"))
+)
 
 
 @pytest.fixture(autouse=True)
