@@ -288,13 +288,13 @@ if TYPE_CHECKING:
     from ts_shape.events.production.order_traceability import (
         ValueTraceabilityEvents as ValueTraceabilityEvents,
     )
+    from ts_shape.events.production.pareto import ParetoEvents as ParetoEvents
     from ts_shape.events.production.part_tracking import (
         PartProductionEvents as PartProductionEvents,
     )
     from ts_shape.events.production.part_tracking import (
         PartProductionTracking as PartProductionTracking,
     )
-    from ts_shape.events.production.pareto import ParetoEvents as ParetoEvents
     from ts_shape.events.production.performance_loss import (
         PerformanceLossEvents as PerformanceLossEvents,
     )
