@@ -56,7 +56,7 @@ function Hero(): ReactNode {
     <header className={styles.hero}>
       <div className={`container ${styles.heroInner}`}>
         <div className={styles.heroText}>
-          <p className={styles.eyebrow}>Python · pandas · open source</p>
+          <p className={styles.eyebrow}>Timeseries · Manufacturing · {'Continuous\u00a0Improvement'}</p>
           <h1 className={styles.title}>
             Answers from your machine data, <span>not just plots.</span>
           </h1>
