@@ -97,7 +97,9 @@ const config: Config = {
           // Every version's "Edit this page" opens the page on main: docs fixes
           // land there and ship with the next release.
           editUrl: ({docPath}) => `${repo}/edit/main/docs/${docPath}`,
-          ...(versioned ? {lastVersion: latestVersion, versions: versionOptions} : {}),
+          ...(versioned
+            ? {lastVersion: latestVersion, versions: versionOptions}
+            : {versions: {current: {label: 'Next'}}}),
           exclude: ['assets/**'],
           showLastUpdateTime: true,
           // Tags are declared in docs/tags.yml; an unknown tag fails the build.
@@ -173,7 +175,11 @@ const config: Config = {
 
   themeConfig: {
     image: 'img/social-card.png',
+    // Light and dark mode: follows the system setting until the reader picks
+    // one with the switch in the navbar.
     colorMode: {
+      defaultMode: 'light',
+      disableSwitch: false,
       respectPrefersColorScheme: true,
     },
     docs: {
@@ -198,15 +204,17 @@ const config: Config = {
         {type: 'docSidebar', sidebarId: 'modules', position: 'left', label: 'Modules'},
         {type: 'docSidebar', sidebarId: 'api', position: 'left', label: 'API'},
         {type: 'docSidebar', sidebarId: 'project', position: 'left', label: 'Project'},
-        ...(versioned
-          ? [
-              {
-                type: 'docsVersionDropdown' as const,
-                position: 'right' as const,
-                dropdownItemsAfter: [{to: '/changelog/', label: 'Changelog'}],
-              },
-            ]
-          : []),
+        // Always shown: the released versions (newest first) and Next, or only
+        // Next in unversioned builds (pull requests, local).
+        {
+          type: 'docsVersionDropdown',
+          position: 'right',
+          className: 'navbar-version-dropdown',
+          dropdownItemsAfter: [
+            {to: '/changelog/', label: 'Changelog'},
+            {href: `${repo}/releases`, label: 'All releases'},
+          ],
+        },
         {
           href: repo,
           position: 'right',

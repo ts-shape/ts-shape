@@ -1,3 +1,13 @@
+# November 24, 2026 (docs: green, version dropdown)
+docs: the site's main colour is green (green-700 in light mode, readable
+  on white; green-400 in dark mode); the logo's chart line, the social
+  card and the favicons of the site follow. API kind badges: classes
+  green, properties and attributes teal.
+docs: the version dropdown is always in the top bar (a pill next to the
+  GitHub icon): released versions newest first, Next, the changelog and
+  all GitHub releases; in pull-request and local builds it shows Next.
+  The light/dark switch stays (system, light, dark).
+
 # November 24, 2026 (deprecation policy and report)
 docs: deprecation policy (naming.md): deprecated names are removed only in
   1.0, after at least 3 months and one minor release of warnings, with a
