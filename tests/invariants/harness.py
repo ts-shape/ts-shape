@@ -267,17 +267,15 @@ def _uuid_for(name: str) -> str:
 
 #: Constructor arguments the harness cannot infer from names alone (one of
 #: several optional parameters must be given).
-#: Mapping-free unit profilers (stops, changeovers ...) built on the cycle profile.
-UNIT_PROFILERS = (
-    "StopProfileEvents",
-    "ChangeoverProfileEvents",
-    "StartupProfileEvents",
-    "OrderProfileEvents",
-    "ScrapProfileEvents",
-    "HandshakeProfileEvents",
-    "CurveSignatureEvents",
-    "SettingImpactEvents",
-)
+#: Mapping-free unit profilers (stops, changeovers, loops ...): every class
+#: that declares ``PROFILE_KIND`` (see ts_shape.unit_profiles.PROFILERS).
+def _unit_profilers() -> tuple[str, ...]:
+    from ts_shape.unit_profiles import PROFILERS
+
+    return tuple(sorted(cls.__name__ for cls in PROFILERS.values()))
+
+
+UNIT_PROFILERS = _unit_profilers()
 
 
 INIT_OVERRIDES: dict[str, dict[str, Any]] = {
@@ -305,7 +303,7 @@ INIT_OVERRIDES: dict[str, dict[str, Any]] = {
     "CycleProfileEvents": {
         "signal_uuids": [CONT, CONT2, STATE, COUNTER, SETPOINT, TEXT]
     },
-    # The unit profilers build on the cycle profile: pinned the same way.
+    # The unit profilers (most build on the cycle profile): pinned the same way.
     **{
         name: {"signal_uuids": [CONT, CONT2, STATE, COUNTER, SETPOINT, TEXT]}
         for name in UNIT_PROFILERS

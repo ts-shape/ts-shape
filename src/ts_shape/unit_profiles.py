@@ -8,193 +8,87 @@ setting changes and control loops. Each profiler's tables and summary land
 in one :class:`~ts_shape._profile_result.ProfileResult`; the
 :class:`~ts_shape._profile_result.UnitProfilesResult` collects them and says,
 per profiler, whether it is evaluable and why not.
+
+The profilers are not listed here: every class that declares
+``PROFILE_KIND`` (see :class:`~ts_shape.events.production._unit_profile.
+_ProfilerBase`) is found, with the tables it names in ``PROFILE_TABLES``.
 """
 
 from __future__ import annotations
 
+import importlib
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 import pandas as pd
 
 from ts_shape._profile_result import ProfileResult, UnitProfilesResult
 from ts_shape.cycle_profile import DEFAULT_EXCLUDE, cycle_tables, prepare_signals
+from ts_shape.events.production._unit_profile import _ProfilerBase
 from ts_shape.events.production.cycle_profiling import CycleProfileEvents
 
-__all__ = ["DEFAULT_PROFILERS", "PROFILERS", "profile_units"]
+__all__ = [
+    "DEFAULT_PROFILERS",
+    "PROFILERS",
+    "UnitProfilesResult",
+    "profile_units",
+    "run_profiler",
+]
 
 logger = logging.getLogger(__name__)
 
+#: Packages whose import registers the profiler classes.
+_PROFILER_PACKAGES = ("ts_shape.events.production", "ts_shape.events.engineering")
 
-def _stops(frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any) -> ProfileResult:
-    from ts_shape.events.production.stop_profiling import StopProfileEvents
 
-    det = StopProfileEvents(frame, cycle_profile=profile)
-    return ProfileResult(
-        tables={
-            "stop_records": det.stop_records(),
-            "stop_signatures": det.stop_signatures(),
-            "signature_evidence": det.signature_evidence(),
-            "evaluation_window": det.evaluation_window(),
-        },
-        summary=det.summary(),
-        kind="stops",
+def _profiler_classes() -> dict[str, type[_ProfilerBase]]:
+    """Profiler kind -> class, in run order (``PROFILE_ORDER``)."""
+    for package in _PROFILER_PACKAGES:
+        importlib.import_module(package)
+    from ts_shape.events.production._unit_profile import PROFILER_CLASSES
+
+    return dict(
+        sorted(PROFILER_CLASSES.items(), key=lambda kv: (kv[1].PROFILE_ORDER, kv[0]))
     )
 
 
-def _changeovers(
-    frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any
-) -> ProfileResult:
-    from ts_shape.events.production.changeover_profiling import (
-        ChangeoverProfileEvents,
-    )
-
-    det = ChangeoverProfileEvents(frame, cycle_profile=profile)
-    return ProfileResult(
-        tables={
-            "changeover_records": det.changeover_records(),
-            "changeover_view": det.changeover_view(),
-            "changeover_register": det.changeover_register(),
-            "changeover_matrix": det.changeover_matrix(),
-            "evaluation_window": det.evaluation_window(),
-        },
-        summary=det.summary(),
-        kind="changeovers",
-    )
-
-
-def _startups(
-    frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any
-) -> ProfileResult:
-    from ts_shape.events.production.changeover_profiling import StartupProfileEvents
-
-    det = StartupProfileEvents(frame, cycle_profile=profile)
-    return ProfileResult(
-        tables={
-            "startup_records": det.startup_records(),
-            "startup_signals": det.startup_signals(),
-            "startup_register": det.startup_register(),
-            "evaluation_window": det.evaluation_window(),
-        },
-        summary=det.summary(),
-        kind="startups",
-    )
-
-
-def _orders(
-    frame: pd.DataFrame,
-    profile: CycleProfileEvents,
-    *,
-    plan: pd.DataFrame | None = None,
-    **_: Any,
-) -> ProfileResult:
-    from ts_shape.events.production.order_profiling import OrderProfileEvents
-
-    det = OrderProfileEvents(frame, cycle_profile=profile, plan=plan)
-    return ProfileResult(
-        tables={
-            "order_records": det.order_records(),
-            "order_register": det.order_register(),
-            "counter_roles": det.counter_roles(),
-            "evaluation_window": det.evaluation_window(),
-        },
-        summary=det.summary(),
-        kind="orders",
-    )
-
-
-def _scrap(frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any) -> ProfileResult:
-    from ts_shape.events.production.order_profiling import ScrapProfileEvents
-
-    det = ScrapProfileEvents(frame, cycle_profile=profile)
-    return ProfileResult(
-        tables={
-            "nok_records": det.nok_records(),
-            "scrap_pareto": det.scrap_pareto(),
-            "counter_roles": det.counter_roles(),
-            "evaluation_window": det.evaluation_window(),
-        },
-        summary=det.summary(),
-        kind="scrap",
-    )
-
-
-def _tables(det: Any, kind: str, methods: Sequence[str]) -> ProfileResult:
-    return ProfileResult(
-        tables={m: getattr(det, m)() for m in methods},
-        summary=det.summary(),
-        kind=kind,
-    )
-
-
-def _handshakes(
-    frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any
-) -> ProfileResult:
-    from ts_shape.events.production.handshake_profiling import HandshakeProfileEvents
-
-    det = HandshakeProfileEvents(frame, cycle_profile=profile)
-    return _tables(
-        det,
-        "handshakes",
-        ("handshake_pairs", "handshake_register", "evaluation_window"),
-    )
-
-
-def _curves(
-    frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any
-) -> ProfileResult:
-    from ts_shape.events.production.curve_signature import CurveSignatureEvents
-
-    det = CurveSignatureEvents(frame, cycle_profile=profile)
-    return _tables(
-        det,
-        "curves",
-        ("curve_golden", "curve_cycle_scores", "curve_patterns", "evaluation_window"),
-    )
-
-
-def _settings(
-    frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any
-) -> ProfileResult:
-    from ts_shape.events.production.setting_impact import SettingImpactEvents
-
-    det = SettingImpactEvents(frame, cycle_profile=profile)
-    return _tables(
-        det,
-        "settings",
-        ("setting_changes", "setting_impact", "setting_register", "evaluation_window"),
-    )
-
-
-def _loops(frame: pd.DataFrame, profile: CycleProfileEvents, **_: Any) -> ProfileResult:
-    from ts_shape.events.engineering.control_loop_profiling import (
-        ControlLoopProfileEvents,
-    )
-
-    det = ControlLoopProfileEvents(frame)
-    return _tables(
-        det,
-        "loops",
-        ("loop_pairs", "loop_steps", "loop_register", "evaluation_window"),
-    )
-
-
-#: Profiler name -> runner ``(frame, cycle profile, **options) -> ProfileResult``,
-#: in dependency order.
-PROFILERS: dict[str, Callable[..., ProfileResult]] = {
-    "stops": _stops,
-    "changeovers": _changeovers,
-    "startups": _startups,
-    "orders": _orders,
-    "scrap": _scrap,
-    "handshakes": _handshakes,
-    "curves": _curves,
-    "settings": _settings,
-    "loops": _loops,
-}
+#: Profiler name -> class, in dependency order (filled from the classes).
+PROFILERS: dict[str, type[_ProfilerBase]] = _profiler_classes()
 #: The profilers :func:`profile_units` runs by default (all of them).
 DEFAULT_PROFILERS: tuple[str, ...] = tuple(PROFILERS)
+
+
+def run_profiler(
+    cls: type[_ProfilerBase],
+    frame: pd.DataFrame,
+    profile: CycleProfileEvents | None = None,
+    **options: Any,
+) -> ProfileResult:
+    """Run one profiler class and collect its declared tables and summary.
+
+    Args:
+        cls: A profiler class (it declares ``PROFILE_KIND`` and
+            ``PROFILE_TABLES``).
+        frame: Prepared long-format signals.
+        profile: The cycle profile to reuse (passed when the class needs
+            cycles).
+        **options: Options; those the class names in ``PROFILE_OPTIONS`` are
+            passed to its constructor, the rest are ignored.
+
+    Returns:
+        :class:`~ts_shape._profile_result.ProfileResult` of ``kind``
+        ``PROFILE_KIND``.
+    """
+    kwargs = {k: v for k, v in options.items() if k in cls.PROFILE_OPTIONS}
+    if cls.NEEDS_CYCLES and profile is not None:
+        kwargs["cycle_profile"] = profile
+    det: Any = cls(frame, **kwargs)
+    return ProfileResult(
+        tables={name: getattr(det, name)() for name in cls.profile_tables()},
+        summary=det.summary(),
+        kind=str(cls.PROFILE_KIND),
+    )
 
 
 def profile_units(
@@ -261,7 +155,7 @@ def profile_units(
         if name not in profilers:
             continue
         try:
-            result = PROFILERS[name](frame, profile, plan=plan, results=results)
+            result = run_profiler(PROFILERS[name], frame, profile, plan=plan)
         except Exception as exc:  # noqa: BLE001 - one profiler must not stop the rest
             logger.warning("profile_units: %s failed: %s", name, exc)
             result = ProfileResult(

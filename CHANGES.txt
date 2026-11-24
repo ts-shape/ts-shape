@@ -1,3 +1,17 @@
+# November 24, 2026 (unit profilers: modular)
+refactor: one profiler base (_ProfilerBase / _UnitProfiler) with shared
+  records, verdicts, caching and a one-pass SignalIndex; restart points,
+  cycle assignment, robust scale and counter roles are shared helpers.
+  Every table and summary stays identical on the simulated machines.
+feat: profilers declare PROFILE_KIND / PROFILE_TABLES / PROFILE_OPTIONS /
+  PROFILE_ORDER / NEEDS_CYCLES; profile_units.PROFILERS is built from the
+  classes (run_profiler runs one); the invariants harness covers every
+  profiler, the control loops included.
+feat: the profilers' event-log rules and archetypes are declared once in
+  eventlog/profiler_rules.py (evaluation_window rule shared).
+feat: profile_units saves handshake_records (it was left out).
+fix: signature_evidence row order no longer changes between runs.
+
 # November 23, 2026 (unit profilers: handshakes, curves, settings)
 feat: HandshakeProfileEvents -- request/answer pairs learned from edges
   (four- / two-phase), fixed timers vs waits on the partner, a wait

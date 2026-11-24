@@ -204,3 +204,27 @@ from ts_shape import ControlLoopProfileEvents
 frame, truth = ts_shape.make_control_loops(seed=1)
 register = ControlLoopProfileEvents(frame).loop_register()
 ```
+
+## Adding a profiler
+
+A profiler is one class. It subclasses `_UnitProfiler` (units cut from the
+cycle profile) or `_ProfilerBase` (no cycles needed, like the control loops)
+from `ts_shape.events.production._unit_profile` and declares in its class
+body:
+
+<!-- no-run -->
+```python
+class ToolWearProfileEvents(_UnitProfiler):
+    PROFILE_KIND = "tool_wear"            # its name in profile_units
+    PROFILE_TABLES = ("wear_records", "wear_register")
+    PROFILE_ORDER = 45                    # after orders, before scrap
+    PROFILE_OPTIONS = ()                  # profile_units keyword arguments it takes
+```
+
+`profile_units` then finds it, runs it in order and saves its tables plus
+`evaluation_window`. The base gives `_point_records` (the shared record
+columns), `_evaluation_row` (the shared `REASON_*` rules), `_summary_head`,
+`memo` caching and `_signals()` (every signal's readings, read once). Its
+event-log rules go into `ts_shape.eventlog.profiler_rules.PROFILER_RULES`
+(`evaluation_window` is added automatically); exports and the package
+docstring list are the remaining hand-written places.

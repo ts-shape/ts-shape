@@ -487,34 +487,6 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:outcome": "health_grade",
         },
     ),
-    ("ControlLoopProfileEvents", "loop_pairs"): _r(
-        "engineering.control_loop_profile.pairs",
-        _E,
-        ST,
-        standard_attrs={"ts_shape:method": "step_follow_pairing"},
-    ),
-    ("ControlLoopProfileEvents", "loop_steps"): _r(
-        "engineering.control_loop_profile.step_response",
-        _E,
-        S,
-        value_field="t_settle_seconds",
-        standard_attrs={"ts_shape:sample_count": None},
-    ),
-    ("ControlLoopProfileEvents", "loop_register"): _r(
-        "engineering.control_loop_profile.register",
-        _E,
-        ST,
-        standard_attrs={
-            "ts_shape:method": "percentile_rank_health",
-            "ts_shape:sample_count": "step_count",
-        },
-    ),
-    ("ControlLoopProfileEvents", "evaluation_window"): _r(
-        "engineering.control_loop_profile.evaluation_window",
-        _E,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
     ("ControlLoopHealthEvents", "output_saturation"): _r(
         "engineering.control_loop.output_saturation",
         _E,
@@ -1254,143 +1226,6 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
             "ts_shape:outcome": "cycle_class",
         },
     ),
-    ("HandshakeProfileEvents", "handshake_pairs"): _r(
-        "production.handshake_profile.pairs",
-        _PR,
-        ST,
-        standard_attrs={
-            "ts_shape:method": "edge_succession",
-            "ts_shape:sample_count": "occurrence_count",
-        },
-    ),
-    ("HandshakeProfileEvents", "handshake_records"): _r(
-        "production.handshake_profile.wait",
-        _PR,
-        P,
-        value_field="duration_seconds",
-        standard_attrs={"ts_shape:outcome": "pair"},
-    ),
-    ("HandshakeProfileEvents", "handshake_register"): _r(
-        "production.handshake_profile.register",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("HandshakeProfileEvents", "evaluation_window"): _r(
-        "production.handshake_profile.evaluation_window",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("CurveSignatureEvents", "curve_golden"): _r(
-        "production.curve_signature.golden_curve",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:method": "milestone_warped_band"},
-    ),
-    ("CurveSignatureEvents", "curve_cycle_scores"): _r(
-        "production.curve_signature.cycle_score",
-        _PR,
-        P,
-        objs=("asset", "cycle"),
-        object_columns={"cycle": "cycle_uuid"},
-        value_field="deviation_score",
-        standard_attrs={"ts_shape:outcome": "pattern_id"},
-    ),
-    ("CurveSignatureEvents", "curve_patterns"): _r(
-        "production.curve_signature.patterns",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "cycle_count"},
-    ),
-    ("CurveSignatureEvents", "evaluation_window"): _r(
-        "production.curve_signature.evaluation_window",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("SettingImpactEvents", "setting_changes"): _r(
-        "production.setting_impact.change",
-        _PR,
-        P,
-        value_field="after_value",
-        standard_attrs={"ts_shape:outcome": "recipe_parameter"},
-    ),
-    ("SettingImpactEvents", "setting_impact"): _r(
-        "production.setting_impact.before_after",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "after_count"},
-    ),
-    ("SettingImpactEvents", "setting_register"): _r(
-        "production.setting_impact.register",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "change_count"},
-    ),
-    ("SettingImpactEvents", "evaluation_window"): _r(
-        "production.setting_impact.evaluation_window",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("OrderProfileEvents", "order_records"): _r(
-        "production.order_profile.order",
-        _PR,
-        P,
-        objs=("asset", "order"),
-        object_columns={"order": "unit_uuid"},
-        value_field="loss_seconds",
-        standard_attrs={"ts_shape:outcome": "variant"},
-    ),
-    ("OrderProfileEvents", "order_register"): _r(
-        "production.order_profile.register",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("OrderProfileEvents", "counter_roles"): _r(
-        "production.order_profile.counter_roles",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:method": "sum_identity"},
-    ),
-    ("OrderProfileEvents", "evaluation_window"): _r(
-        "production.order_profile.evaluation_window",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("ScrapProfileEvents", "nok_records"): _r(
-        "production.scrap_profile.nok_cycle",
-        _PR,
-        P,
-        objs=("asset", "cycle"),
-        object_columns={"cycle": "unit_uuid"},
-        value_field="bad_count",
-        standard_attrs={"ts_shape:outcome": "assigned_context"},
-    ),
-    ("ScrapProfileEvents", "scrap_pareto"): _r(
-        "production.scrap_profile.pareto",
-        _PR,
-        ST,
-        standard_attrs={
-            "ts_shape:method": "fisher_enrichment",
-            "ts_shape:sample_count": "nok_count",
-        },
-    ),
-    ("ScrapProfileEvents", "counter_roles"): _r(
-        "production.scrap_profile.counter_roles",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:method": "sum_identity"},
-    ),
-    ("ScrapProfileEvents", "evaluation_window"): _r(
-        "production.scrap_profile.evaluation_window",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
     ("CycleProfileEvents", "units"): _r(
         "production.cycle_profile.unit",
         _PR,
@@ -1405,96 +1240,6 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         _PR,
         ST,
         standard_attrs={"ts_shape:method": "inferred_kind"},
-    ),
-    ("StopProfileEvents", "stop_records"): _r(
-        "production.stop_profile.stop",
-        _PR,
-        P,
-        objs=("asset", "stop"),
-        object_columns={"stop": "unit_uuid"},
-        value_field="lost_seconds",
-        standard_attrs={"ts_shape:outcome": "signature"},
-    ),
-    ("StopProfileEvents", "stop_signatures"): _r(
-        "production.stop_profile.signature_register",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "stop_count"},
-    ),
-    ("StopProfileEvents", "signature_evidence"): _r(
-        "production.stop_profile.signature_evidence",
-        _PR,
-        ST,
-        standard_attrs={
-            "ts_shape:method": "fisher_enrichment",
-            "ts_shape:sample_count": "unit_count",
-        },
-    ),
-    ("StopProfileEvents", "evaluation_window"): _r(
-        "production.stop_profile.evaluation_window",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("ChangeoverProfileEvents", "changeover_records"): _r(
-        "production.changeover_profile.changeover",
-        _PR,
-        P,
-        objs=("asset", "changeover"),
-        object_columns={"changeover": "unit_uuid"},
-        value_field="duration_seconds",
-        standard_attrs={"ts_shape:outcome": "to_variant"},
-    ),
-    ("ChangeoverProfileEvents", "changeover_view"): _r(
-        "production.changeover_profile.standard_steps",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:method": "presence_ratio"},
-    ),
-    ("ChangeoverProfileEvents", "changeover_register"): _r(
-        "production.changeover_profile.register",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("ChangeoverProfileEvents", "changeover_matrix"): _r(
-        "production.changeover_profile.matrix",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "changeover_count"},
-    ),
-    ("ChangeoverProfileEvents", "evaluation_window"): _r(
-        "production.changeover_profile.evaluation_window",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("StartupProfileEvents", "startup_records"): _r(
-        "production.startup_profile.startup",
-        _PR,
-        P,
-        objs=("asset", "startup"),
-        object_columns={"startup": "unit_uuid"},
-        value_field="duration_seconds",
-        standard_attrs={"ts_shape:outcome": "trigger"},
-    ),
-    ("StartupProfileEvents", "startup_signals"): _r(
-        "production.startup_profile.signals",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "startup_count"},
-    ),
-    ("StartupProfileEvents", "startup_register"): _r(
-        "production.startup_profile.register",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
-    ),
-    ("StartupProfileEvents", "evaluation_window"): _r(
-        "production.startup_profile.evaluation_window",
-        _PR,
-        ST,
-        standard_attrs={"ts_shape:sample_count": "unit_count"},
     ),
     ("CycleTimeEvents", "detect_unusual_cycles"): _r(
         "production.cycle_time.unusual",
@@ -3063,6 +2808,20 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         standard_attrs={"ts_shape:sample_count": "order_count"},
     ),
 }
+
+
+def _profiler_label_rules() -> dict[tuple[str, str], LabelRule]:
+    """The unit profilers' rules from :mod:`ts_shape.eventlog.profiler_rules`."""
+    from ts_shape.eventlog.profiler_rules import profiler_rule_specs
+
+    out = {}
+    for key, spec in profiler_rule_specs().items():
+        kw = {k: v for k, v in spec.items() if k not in ("name", "archetype", "objs")}
+        out[key] = _r(objs=spec.get("objs", ASSET), **kw)
+    return out
+
+
+REGISTRY.update(_profiler_label_rules())
 
 
 #: Label rules of event-log *functions* that return event frames (not

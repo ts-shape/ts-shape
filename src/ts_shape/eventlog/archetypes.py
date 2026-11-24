@@ -80,10 +80,6 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("ControlLoopHealthEvents", "error_integrals"): "aggregate",
     ("ControlLoopHealthEvents", "loop_health_summary"): "aggregate",
     ("ControlLoopHealthEvents", "output_saturation"): "interval",
-    ("ControlLoopProfileEvents", "loop_pairs"): "static",
-    ("ControlLoopProfileEvents", "loop_steps"): "aggregate",
-    ("ControlLoopProfileEvents", "loop_register"): "aggregate",
-    ("ControlLoopProfileEvents", "evaluation_window"): "aggregate",
     ("DisturbanceRecoveryEvents", "before_after_comparison"): "aggregate",
     ("DisturbanceRecoveryEvents", "detect_disturbances"): "threshold",
     ("DisturbanceRecoveryEvents", "disturbance_frequency"): "aggregate",
@@ -183,41 +179,8 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("CycleProfileEvents", "detect_cycle_influencers"): "static",
     ("CycleProfileEvents", "cycle_records"): "outcome",
     ("CycleProfileEvents", "detect_unusual_cycles"): "threshold",
-    ("HandshakeProfileEvents", "handshake_pairs"): "static",
-    ("HandshakeProfileEvents", "handshake_records"): "outcome",
-    ("HandshakeProfileEvents", "handshake_register"): "aggregate",
-    ("HandshakeProfileEvents", "evaluation_window"): "aggregate",
-    ("CurveSignatureEvents", "curve_golden"): "static",
-    ("CurveSignatureEvents", "curve_cycle_scores"): "outcome",
-    ("CurveSignatureEvents", "curve_patterns"): "aggregate",
-    ("CurveSignatureEvents", "evaluation_window"): "aggregate",
-    ("SettingImpactEvents", "setting_changes"): "outcome",
-    ("SettingImpactEvents", "setting_impact"): "aggregate",
-    ("SettingImpactEvents", "setting_register"): "aggregate",
-    ("SettingImpactEvents", "evaluation_window"): "aggregate",
-    ("OrderProfileEvents", "order_records"): "outcome",
-    ("OrderProfileEvents", "order_register"): "aggregate",
-    ("OrderProfileEvents", "counter_roles"): "static",
-    ("OrderProfileEvents", "evaluation_window"): "aggregate",
-    ("ScrapProfileEvents", "nok_records"): "outcome",
-    ("ScrapProfileEvents", "scrap_pareto"): "static",
-    ("ScrapProfileEvents", "counter_roles"): "static",
-    ("ScrapProfileEvents", "evaluation_window"): "aggregate",
     ("CycleProfileEvents", "units"): "static",
     ("CycleProfileEvents", "events_frame"): "static",
-    ("StopProfileEvents", "stop_records"): "outcome",
-    ("StopProfileEvents", "stop_signatures"): "aggregate",
-    ("StopProfileEvents", "signature_evidence"): "static",
-    ("StopProfileEvents", "evaluation_window"): "aggregate",
-    ("ChangeoverProfileEvents", "changeover_records"): "outcome",
-    ("ChangeoverProfileEvents", "changeover_view"): "static",
-    ("ChangeoverProfileEvents", "changeover_register"): "aggregate",
-    ("ChangeoverProfileEvents", "changeover_matrix"): "aggregate",
-    ("ChangeoverProfileEvents", "evaluation_window"): "aggregate",
-    ("StartupProfileEvents", "startup_records"): "outcome",
-    ("StartupProfileEvents", "startup_signals"): "aggregate",
-    ("StartupProfileEvents", "startup_register"): "aggregate",
-    ("StartupProfileEvents", "evaluation_window"): "aggregate",
     ("CycleTimeEvents", "detect_unusual_cycles"): "threshold",
     ("CycleTimeEvents", "cycle_time_by_part"): "aggregate",
     ("CycleTimeEvents", "cycle_time_statistics"): "aggregate",
@@ -422,3 +385,13 @@ ARCHETYPE_BY_METHOD: dict[tuple[str, str], str] = {
     ("LeadTimeAnalysisEvents", "detect_lead_time_anomalies"): "threshold",
     ("LeadTimeAnalysisEvents", "lead_time_statistics"): "aggregate",
 }
+
+
+def _profiler_archetypes() -> dict[tuple[str, str], str]:
+    """The unit profilers' archetypes from :mod:`ts_shape.eventlog.profiler_rules`."""
+    from ts_shape.eventlog.profiler_rules import profiler_rule_specs
+
+    return {key: spec["archetype"] for key, spec in profiler_rule_specs().items()}
+
+
+ARCHETYPE_BY_METHOD.update(_profiler_archetypes())
