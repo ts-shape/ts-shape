@@ -33,6 +33,12 @@ docs: 32 topic tags (oee, downtime, drift, traceability, process-control,
   predictive-maintenance, ...) next to the standards; every module and
   guide page has at least one, so each page links on average 10 related
   pages through its tags (was 1). /tags/ is "Topics and standards".
+docs: versioned docs. On every release the docs job snapshots the newest
+  release of each minor line from its git tag (.github/scripts/
+  docs_versions.py): newest at the root, older lines at /X.Y/, unreleased
+  main at /next/, with a version dropdown. Nothing is committed; versions
+  start with the first release that ships the script. The docs job now runs
+  after the release tag is pushed.
 build: the docs extra is griffe2md + black; mkdocs, mkdocs-material,
   mkdocs-gen-files, mkdocs-literate-nav and mkdocstrings are dropped.
 

@@ -66,6 +66,37 @@ must be added there.
   Markdown, for AI assistants) and a redirect from the old
   `/reference/SUMMARY/` URL.
 
+### Docs versions
+
+The published site has one docs version per release line: the newest
+release of each minor version (`0.0`, `0.1`, ...) is a version, labelled with
+its exact release (`0.0.92`). The newest release is served at the root,
+older lines at `/0.0/` with an "unmaintained" banner, and the unreleased
+docs of `main` at `/next/`. A version dropdown in the navbar switches
+between them.
+
+Nothing is committed for this. The release workflow's docs job, after the
+release tag is pushed, runs `.github/scripts/docs_versions.py`: for each
+selected tag it checks the tag out in a temporary worktree, renders that
+tag's API reference with the tag's own `scripts/gen_ref_pages.py`, and lets
+`docusaurus docs:version` copy the docs into `website/versioned_docs/`.
+Versions start with the first release that ships this script. Pull-request
+CI and `npm start` build the unversioned site.
+
+To build the versioned site locally (needs the release tags,
+`git fetch --tags`):
+
+```bash
+python scripts/gen_ref_pages.py
+cd website && npm ci && cd ..
+python .github/scripts/docs_versions.py
+cd website && npm run build && npm run serve
+```
+
+The snapshot files (`website/versioned_docs/`, `website/versioned_sidebars/`,
+`website/versions.json`, `website/versions-meta.json`) are git-ignored;
+delete them to go back to the unversioned site.
+
 ## Build
 
 ```bash
