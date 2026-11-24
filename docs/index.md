@@ -1,3 +1,7 @@
+---
+slug: /overview
+---
+
 # ts-shape
 
 [![PyPI](https://img.shields.io/pypi/v/ts-shape.svg)](https://pypi.org/project/ts-shape/)

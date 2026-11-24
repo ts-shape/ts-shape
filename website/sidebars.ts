@@ -3,6 +3,7 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   getStarted: [
+    {type: "doc", id: "index", label: "Overview"},
     {type: "doc", id: "user_guide/installation", label: "Installation"},
     {type: "doc", id: "user_guide/quick_start", label: "Quick start"}
   ],

@@ -1,0 +1,151 @@
+.hero {
+  padding: 5rem 0 4rem;
+  text-align: center;
+  border-bottom: 1px solid var(--ts-border);
+  background:
+    radial-gradient(60rem 22rem at 50% -6rem, rgba(251, 141, 73, 0.16), transparent 70%),
+    var(--ifm-background-color);
+}
+
+.heroLogo {
+  width: min(342px, 80vw);
+  height: auto;
+}
+
+.tagline {
+  max-width: 44rem;
+  margin: 1.5rem auto 2rem;
+  font-size: 1.25rem;
+  line-height: 1.5;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.install {
+  max-width: 22rem;
+  margin: 0 auto 1.75rem;
+  text-align: left;
+}
+
+.install :global(.theme-code-block) {
+  margin-bottom: 0;
+}
+
+.buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.section {
+  padding: 4rem 0;
+}
+
+.section + .section {
+  border-top: 1px solid var(--ts-border);
+  background: var(--ts-surface);
+}
+
+.sectionTitle {
+  font-size: 1.75rem;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.75rem;
+}
+
+.sectionLead {
+  max-width: 46rem;
+  color: var(--ifm-color-emphasis-700);
+  margin-bottom: 2rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem 1.35rem;
+  border: 1px solid var(--ts-border);
+  border-radius: 0.75rem;
+  background: var(--ifm-background-surface-color);
+  color: var(--ifm-font-color-base);
+  transition:
+    border-color 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.card:hover {
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+  border-color: var(--ifm-color-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+}
+
+.card h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.4rem;
+}
+
+.card p {
+  flex: 1;
+  margin-bottom: 0.75rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.95rem;
+}
+
+.cardMore {
+  color: var(--ifm-color-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.example {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+}
+
+.exampleText {
+  max-width: 46rem;
+}
+
+.exampleText ul {
+  padding-left: 1.2rem;
+}
+
+.exampleCode :global(.theme-code-block) {
+  margin-bottom: 0;
+}
+
+@media (max-width: 996px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .hero {
+    padding: 3rem 0 2.5rem;
+  }
+
+  .tagline {
+    font-size: 1.05rem;
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .buttons :global(.button) {
+    width: 100%;
+  }
+
+  .section {
+    padding: 2.5rem 0;
+  }
+}

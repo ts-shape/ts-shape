@@ -1,32 +1,180 @@
-/* Teal primary in light mode and lime accent in dark mode, as on the former site. */
+/*
+ * ts-shape docs theme.
+ * Brand orange from the logo (#FB8D49); a darker orange in light mode keeps
+ * link text readable on white (WCAG AA).
+ */
+
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
 
 :root {
-  --ifm-color-primary: #009485;
-  --ifm-color-primary-dark: #008578;
-  --ifm-color-primary-darker: #007e71;
-  --ifm-color-primary-darkest: #00675d;
-  --ifm-color-primary-light: #00a392;
-  --ifm-color-primary-lighter: #00aa99;
-  --ifm-color-primary-lightest: #00c1ad;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-color-primary: #c2410c;
+  --ifm-color-primary-dark: #af3b0b;
+  --ifm-color-primary-darker: #a5370a;
+  --ifm-color-primary-darkest: #882e08;
+  --ifm-color-primary-light: #d5470d;
+  --ifm-color-primary-lighter: #df4a0e;
+  --ifm-color-primary-lightest: #f05a1d;
+
+  --ifm-font-family-base: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto,
+    sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  --ifm-line-height-base: 1.65;
+  --ifm-heading-font-weight: 650;
+  --ifm-h1-font-size: 2.2rem;
+  --ifm-h2-font-size: 1.6rem;
+  --ifm-h3-font-size: 1.25rem;
+  --ifm-code-font-size: 88%;
+  --ifm-code-border-radius: 0.375rem;
+  --ifm-pre-line-height: 1.55;
+
+  --ts-border: #e5e7eb;
+  --ts-surface: #f8f9fb;
+  --ts-inline-code-bg: #f3f4f6;
+
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.06);
 }
 
 [data-theme='dark'] {
-  --ifm-color-primary: #b2d235;
-  --ifm-color-primary-dark: #a3c22a;
-  --ifm-color-primary-darker: #9ab728;
-  --ifm-color-primary-darkest: #7f9721;
-  --ifm-color-primary-light: #bcd851;
-  --ifm-color-primary-lighter: #c1db5c;
-  --ifm-color-primary-lightest: #d0e485;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-color-primary: #fb8d49;
+  --ifm-color-primary-dark: #fa782a;
+  --ifm-color-primary-darker: #fa6e1a;
+  --ifm-color-primary-darkest: #e05405;
+  --ifm-color-primary-light: #fca268;
+  --ifm-color-primary-lighter: #fcac78;
+  --ifm-color-primary-lightest: #fdcaa8;
+
+  --ifm-background-color: #15171c;
+  --ifm-background-surface-color: #1b1e24;
+  --ifm-navbar-background-color: #15171c;
+  --ifm-footer-background-color: #101216;
+
+  --ts-border: #2b2f37;
+  --ts-surface: #1b1e24;
+  --ts-inline-code-bg: #22262d;
+
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.08);
 }
 
-/* Wide API tables scroll instead of overflowing. */
+/* ---------- Typography ---------- */
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+.markdown {
+  --ifm-h1-vertical-rhythm-bottom: 0.9;
+}
+
+/* Comfortable line length for prose; tables and code use the full column. */
+.markdown > p,
+.markdown > ul,
+.markdown > ol,
+.markdown > blockquote {
+  max-width: 78ch;
+}
+
+.markdown h1 {
+  letter-spacing: -0.02em;
+}
+
+.markdown h2 {
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--ts-border);
+  letter-spacing: -0.01em;
+}
+
+.markdown h3 {
+  margin-top: 2rem;
+}
+
+/* ---------- Code ---------- */
+
+.markdown :not(pre) > code,
+table code {
+  background: var(--ts-inline-code-bg);
+  border: 1px solid var(--ts-border);
+  padding: 0.1em 0.35em;
+  vertical-align: baseline;
+}
+
+.markdown a code {
+  color: inherit;
+}
+
+.theme-code-block {
+  border: 1px solid var(--ts-border);
+  border-radius: 0.5rem;
+  box-shadow: none;
+}
+
+/* ---------- Tables ---------- */
+
 .markdown table {
   display: block;
+  width: max-content;
+  max-width: 100%;
   overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.markdown table thead tr {
+  background: var(--ts-surface);
+  border-bottom: 2px solid var(--ts-border);
+}
+
+.markdown table tr {
+  border-top: 1px solid var(--ts-border);
+}
+
+.markdown table tr:nth-child(2n) {
+  background: transparent;
+}
+
+.markdown table th,
+.markdown table td {
+  border: none;
+  padding: 0.5rem 0.85rem;
+  vertical-align: top;
+}
+
+.markdown table th {
+  font-weight: 600;
+  text-align: left;
+}
+
+.markdown table td code {
+  white-space: nowrap;
+}
+
+/* ---------- Admonitions ---------- */
+
+.theme-admonition.alert {
+  border: 1px solid var(--ts-border);
+  border-left-width: 4px;
+  border-radius: 0.5rem;
+  box-shadow: none;
+}
+
+.theme-admonition-note {
+  border-left-color: var(--ifm-color-primary) !important;
+  background: var(--ts-surface);
+}
+
+/* ---------- Navigation ---------- */
+
+.navbar {
+  border-bottom: 1px solid var(--ts-border);
+  box-shadow: none;
+}
+
+.navbar__link {
+  font-weight: 500;
 }
 
 .navbar__item {
@@ -36,14 +184,89 @@
 /* GitHub icon in the navbar (no text label). */
 .header-github-link::before {
   content: '';
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: flex;
   background-color: var(--ifm-navbar-link-color);
   mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12'/%3E%3C/svg%3E");
   mask-repeat: no-repeat;
+  mask-size: contain;
 }
 
 .header-github-link:hover::before {
   background-color: var(--ifm-navbar-link-hover-color);
+}
+
+/* Sidebar */
+.theme-doc-sidebar-container {
+  border-right-color: var(--ts-border) !important;
+}
+
+.menu {
+  font-size: 0.92rem;
+}
+
+.menu__list-item-collapsible > .menu__link,
+.menu__caret {
+  font-weight: 600;
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  font-weight: 600;
+  background: var(--ifm-menu-color-background-active);
+  box-shadow: inset 3px 0 0 var(--ifm-color-primary);
+  border-radius: 0 0.25rem 0.25rem 0;
+}
+
+/* Table of contents */
+.table-of-contents__link--active {
+  font-weight: 600;
+}
+
+.table-of-contents {
+  font-size: 0.85rem;
+}
+
+/* Breadcrumbs */
+.breadcrumbs__link {
+  font-size: 0.8rem;
+  padding: 0.15rem 0.6rem;
+}
+
+/* Footer */
+.footer {
+  border-top: 1px solid var(--ts-border);
+}
+
+/* API reference: object names in headings and the TOC are code, but should
+   read as headings, not as chips. */
+.markdown h1 code,
+.markdown h2 code,
+.markdown h3 code,
+.markdown h4 code,
+.table-of-contents code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.92em;
+  font-weight: 600;
+}
+
+.markdown h3 code {
+  color: var(--ifm-color-primary);
+}
+
+.table-of-contents code {
+  font-weight: inherit;
+  font-size: 0.95em;
+}
+
+/* Footer in the site's own neutral dark. */
+.footer--dark {
+  --ifm-footer-background-color: #15171c;
+  --ifm-footer-link-color: #c9ccd3;
+}
+
+[data-theme='dark'] .footer--dark {
+  --ifm-footer-background-color: #101216;
 }

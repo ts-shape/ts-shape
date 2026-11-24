@@ -11,6 +11,11 @@ docs: scripts/gen_ref_pages.py renders the API reference from the
 ci: the docs job and the Pages build run the generator, then
   npm ci && npm run build (broken links and anchors fail the build); the
   Pages artifact is website/build. Renovate updates website/package.json.
+docs: site style -- brand orange from the logo (darker in light mode for
+  readable links), a light-mode logo, a landing page (the former doc home
+  is /overview/), self-hosted Inter / JetBrains Mono, matched One Light /
+  One Dark code themes, lighter tables, hideable auto-collapsing sidebar,
+  last-updated dates.
 build: the docs extra is griffe2md + black; mkdocs, mkdocs-material,
   mkdocs-gen-files, mkdocs-literate-nav and mkdocstrings are dropped.
 

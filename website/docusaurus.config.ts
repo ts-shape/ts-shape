@@ -49,6 +49,7 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl: `${repo}/edit/main/docs/`,
           exclude: ['assets/**'],
+          showLastUpdateTime: true,
         },
         blog: false,
         theme: {
@@ -72,15 +73,24 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/ts-shape.png',
+    image: 'img/social-card.png',
     colorMode: {
       respectPrefersColorScheme: true,
     },
+    docs: {
+      sidebar: {
+        hideable: true,
+        autoCollapseCategories: true,
+      },
+    },
     navbar: {
-      title: 'ts-shape',
+      hideOnScroll: true,
       logo: {
         alt: 'ts-shape',
-        src: 'img/ts-shape.png',
+        src: 'img/logo-light.png',
+        srcDark: 'img/logo-dark.png',
+        width: 114,
+        height: 32,
       },
       items: [
         {type: 'docSidebar', sidebarId: 'getStarted', position: 'left', label: 'Get started'},
@@ -103,6 +113,7 @@ const config: Config = {
         {
           title: 'Docs',
           items: [
+            {label: 'Overview', to: '/overview/'},
             {label: 'Quick start', to: '/user_guide/quick_start/'},
             {label: 'Module reference', to: '/modules/'},
             {label: 'API reference', to: '/reference/'},
@@ -131,8 +142,8 @@ const config: Config = {
       maxHeadingLevel: 3,
     },
     prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      theme: prismThemes.oneLight,
+      darkTheme: prismThemes.oneDark,
       additionalLanguages: ['python', 'bash', 'yaml', 'toml', 'json'],
     },
   } satisfies Preset.ThemeConfig,
