@@ -33,7 +33,7 @@ const versionMeta = readJson<Record<string, {label: string; tag: string}>>(
 const latestVersion = releasedVersions[0];
 const versioned = latestVersion !== undefined;
 const versionOptions: Record<string, VersionOptions> = Object.fromEntries([
-  ['current', {label: 'Next (unreleased)', path: 'next', banner: 'unreleased'}],
+  ['current', {label: 'Next', path: 'next', banner: 'unreleased'}],
   ...releasedVersions.map((name) => [
     name,
     {
@@ -94,12 +94,9 @@ const config: Config = {
           path: process.env.DOCS_PATH ?? '../docs',
           routeBasePath: '/',
           sidebarPath: process.env.SIDEBARS_PATH ?? './sidebars.ts',
-          // Unreleased docs are edited on main; a released version links to
-          // its source at the release tag.
-          editUrl: ({version, docPath}) =>
-            version === 'current'
-              ? `${repo}/edit/main/docs/${docPath}`
-              : `${repo}/blob/${versionMeta[version]?.tag ?? 'main'}/docs/${docPath}`,
+          // Every version's "Edit this page" opens the page on main: docs fixes
+          // land there and ship with the next release.
+          editUrl: ({docPath}) => `${repo}/edit/main/docs/${docPath}`,
           ...(versioned ? {lastVersion: latestVersion, versions: versionOptions} : {}),
           exclude: ['assets/**'],
           showLastUpdateTime: true,
