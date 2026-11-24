@@ -114,6 +114,8 @@ def test_pack_docstring_lists_importable_classes(pack):
         if cls is None:
             problems.append(f"{name} is listed but not importable from the pack")
             continue
+        if not inspect.isclass(cls):  # a constant such as PROFILERS
+            continue
         for meth in _METHOD_ENTRY.findall(block):
             if not hasattr(cls, meth):
                 problems.append(f"{name}.{meth} is listed but does not exist")
@@ -126,6 +128,7 @@ def test_pack_docstring_lists_importable_classes(pack):
         n
         for n in getattr(pack, "__all__", [])
         if n[:1].isupper()
+        and inspect.isclass(getattr(pack, n, None))
         and id(getattr(pack, n, None)) not in listed_objs
         and not hasattr(getattr(pack, n, None), "__deprecated_alias_of__")
     }
