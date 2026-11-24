@@ -71,13 +71,6 @@ Classes:
   - output_saturation: Valve pegged at limits.
   - loop_health_summary: Shift-level report card.
 
-- ControlLoopProfileEvents: Mapping-free control loops: find setpoint/PV/output, rank loop health.
-  - loop_pairs: Setpoint, process value and output of every loop found.
-  - loop_steps: Response metrics of every setpoint step.
-  - loop_register: Health, diagnosis and rank per loop.
-  - evaluation_window: Enough steps to trust each loop?
-  - summary: Headline numbers.
-
 - DisturbanceRecoveryEvents: Detect external upsets and measure recovery.
   - detect_disturbances: Intervals where signal deviates from baseline.
   - recovery_time: Time until signal returns to baseline after disturbance.
@@ -110,7 +103,6 @@ Classes:
 # mypy: disable-error-code="deprecated"
 
 from .control_loop_health import ControlLoopHealthEvents  # re-export
-from .control_loop_profiling import ControlLoopProfileEvents
 from .disturbance_recovery import DisturbanceRecoveryEvents  # re-export
 from .material_balance import MaterialBalanceEvents  # re-export
 from .operating_range import OperatingRangeEvents  # re-export
@@ -129,7 +121,6 @@ from .time_to_threshold import TimeToThresholdEvents  # re-export
 from .warmup_analysis import WarmUpCoolDownEvents  # re-export
 
 __all__ = [
-    "ControlLoopProfileEvents",
     "ControlLoopHealthEvents",
     "DisturbanceRecoveryEvents",
     "MaterialBalanceEvents",
@@ -146,3 +137,14 @@ __all__ = [
     "TimeToThresholdEvents",
     "WarmUpCoolDownEvents",
 ]
+
+
+# ControlLoopProfileEvents moved to ts_shape.events.profiling (November 2026);
+# the old name still resolves here, with a DeprecationWarning.
+_MOVED = {"ControlLoopProfileEvents": "ts_shape.events.profiling.control_loops"}
+
+
+def __getattr__(name: str) -> object:
+    from ts_shape.utils.deprecation import moved_attribute
+
+    return moved_attribute(__name__, name, _MOVED)

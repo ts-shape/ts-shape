@@ -16,7 +16,7 @@ mapping or machine context:
 :func:`profile_cycles` runs :class:`~ts_shape.CycleProfileEvents` on them and
 returns every table plus a summary of plain numbers. From the command line::
 
-    python -m ts_shape.cycle_profile --container <name> --prefix <path/> \\
+    python -m ts_shape.events.profiling --container <name> --prefix <path/> \\
         --start 2026-11-17T00:00Z --end 2026-11-17T23:59:59Z \\
         --metadata-json datapoints.json --out profile/
 
@@ -38,9 +38,9 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
-from ts_shape._profile_result import ProfileResult
 from ts_shape.errors import DataQualityWarning
-from ts_shape.events.production.cycle_profiling import CycleProfileEvents
+from ts_shape.events.profiling.cycles import CycleProfileEvents
+from ts_shape.events.profiling.result import ProfileResult
 from ts_shape.signals.infer import infer_specs
 from ts_shape.utils.deprecation import caller_stacklevel
 from ts_shape.utils.personal import PERSONAL_DATA_PATTERNS, personal_pattern
@@ -86,7 +86,7 @@ def signal_labels(metadata: pd.DataFrame | None) -> pd.Series:
 
     Example:
         >>> import pandas as pd
-        >>> from ts_shape.cycle_profile import signal_labels
+        >>> from ts_shape.events.profiling.runner import signal_labels
         >>> meta = pd.DataFrame({"uuid": ["a1", "b2"], "label": ["x", None],
         ...                      "config.nodePath": ["/Press/Counter", None]})
         >>> signal_labels(meta).to_dict()
@@ -152,7 +152,7 @@ def prepare_signals(
 
     Example:
         >>> import pandas as pd
-        >>> from ts_shape.cycle_profile import prepare_signals
+        >>> from ts_shape.events.profiling.runner import prepare_signals
         >>> raw = pd.DataFrame({"uuid": ["a1", "a1"],
         ...     "systime": [1794873604342112633, 1794873616342894346],
         ...     "value_double": [1.0, 2.0], "value_bool": [None, None],
@@ -336,7 +336,7 @@ def cycle_events(events: pd.DataFrame, records: pd.DataFrame) -> pd.DataFrame:
 
     Example:
         >>> import ts_shape
-        >>> from ts_shape.cycle_profile import profile_cycles
+        >>> from ts_shape.events.profiling.runner import profile_cycles
         >>> frame, _ = ts_shape.make_plc_cycles(n_cycles=60, seed=1)
         >>> ev = profile_cycles(frame).tables["cycle_events"]
         >>> bool(ev["phase_ratio"].between(0, 1, inclusive="left").all())
@@ -431,7 +431,7 @@ def recurring_events(
 
     Example:
         >>> import ts_shape
-        >>> from ts_shape.cycle_profile import profile_cycles, recurring_events
+        >>> from ts_shape.events.profiling.runner import profile_cycles, recurring_events
         >>> frame, _ = ts_shape.make_plc_cycles(n_cycles=80, seed=1)
         >>> t = profile_cycles(frame).tables
         >>> recurring_events(t["cycle_events"], t["cycle_records"], "plc:part_counter+1")["event"].iloc[0]
@@ -1069,7 +1069,7 @@ def case_log(
 
     Example:
         >>> import ts_shape
-        >>> from ts_shape.cycle_profile import case_log, profile_cycles
+        >>> from ts_shape.events.profiling.runner import case_log, profile_cycles
         >>> frame, _ = ts_shape.make_plc_cycles(n_cycles=60, seed=1)
         >>> t = profile_cycles(frame).tables
         >>> tuple(case_log(t["cycle_events"], t["cycle_records"]).columns[:3])
@@ -1301,7 +1301,7 @@ def profile_cycles(
 
     Example:
         >>> import ts_shape
-        >>> from ts_shape.cycle_profile import profile_cycles
+        >>> from ts_shape.events.profiling.runner import profile_cycles
         >>> frame, _ = ts_shape.make_plc_cycles(n_cycles=120, seed=1)
         >>> result = profile_cycles(frame)
         >>> result.summary["anchor_event"], result.summary["cycle_count"]
@@ -1317,7 +1317,7 @@ def cycle_tables(
 ) -> CycleProfileResult:
     """Every table of :func:`profile_cycles` from a prepared frame and profile.
 
-    Lets :func:`ts_shape.unit_profiles.profile_units` reuse one computed
+    Lets :func:`ts_shape.events.profiling.units.profile_units` reuse one computed
     :class:`~ts_shape.CycleProfileEvents` for the cycle tables and the unit
     profilers.
 
@@ -1410,7 +1410,7 @@ def load_azure_timeseries(
 def main(argv: Sequence[str] | None = None) -> int:
     """Command line: load from Azure, profile, write the result."""
     parser = argparse.ArgumentParser(
-        prog="python -m ts_shape.cycle_profile",
+        prog="python -m ts_shape.events.profiling",
         description="Cycle time profiling of one PLC from Azure Blob parquet files.",
     )
     parser.add_argument("--container", help="container name (not with --sas-url)")
@@ -1510,7 +1510,7 @@ def benchmark_profiles(
         ``shape_recall_ratio``.
 
     Example:
-        >>> from ts_shape.cycle_profile import benchmark_profiles
+        >>> from ts_shape.events.profiling.runner import benchmark_profiles
         >>> b = benchmark_profiles({"base": {}}, n_cycles=120)
         >>> bool(b["anchor_ok"].all()), float(b["cycle_match_ratio"].min())
         (True, 1.0)

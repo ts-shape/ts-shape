@@ -29,7 +29,7 @@ joins the two.
 
 What a signal *is* (a counter that resets, a change-encoded state, a sampled
 measurement) changes how it must be aggregated. [Signal semantics and
-profiling](guides/signals.md) describes how to declare this once as a
+data checks](guides/signals.md) describes how to declare this once as a
 `SignalSpec` and let detectors follow it.
 
 ## Layers
@@ -63,7 +63,8 @@ definition ([Pipelines](guides/pipeline-builder.md)).
 
 Detectors are grouped into packs under `ts_shape.events`: `quality`,
 `production`, `engineering`, `maintenance`, `energy`, `correlation`,
-`supplychain` and `development`. Each detector is a class named `...Events`
+`supplychain`, `development`, and `profiling` (mapping-free machine
+profiles from raw PLC signals). Each detector is a class named `...Events`
 that inherits from `ts_shape.utils.base.Base`. The base class:
 
 - copies the input frame, converts the time column to datetime and sorts by it;

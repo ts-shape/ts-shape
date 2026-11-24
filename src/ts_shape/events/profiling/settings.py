@@ -9,7 +9,7 @@ before/after experiment:
 * metrics: cycle time (non-pause cycles), every segment of the cycle
   profile's standard cycle, the bad-part rate and the energy per cycle when
   the counters for them are found
-  (:func:`~ts_shape.events.production.order_profiling.counter_roles`);
+  (:func:`~ts_shape.events.profiling.orders.counter_roles`);
 * effect: shift (Hodges-Lehmann), Cliff's delta and a Mann-Whitney p-value,
   Benjamini-Hochberg q-values over all tests;
 * windows: only cycles of the variant running at the change are compared
@@ -33,9 +33,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sps
 
-from ts_shape.events.production._counters import _CounterMixin
-from ts_shape.events.production._unit_profile import bh_qvalues, effect_size, memo
-from ts_shape.events.production.cycle_profiling import CycleProfileEvents
+from ts_shape.events.profiling._base import bh_qvalues, effect_size, memo
+from ts_shape.events.profiling._counters import _CounterMixin
+from ts_shape.events.profiling.cycles import CycleProfileEvents
 
 __all__ = ["SettingImpactEvents"]
 

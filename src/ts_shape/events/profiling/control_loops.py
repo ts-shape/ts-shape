@@ -36,7 +36,7 @@ import pandas as pd
 
 from ts_shape.events.engineering.control_loop_health import ControlLoopHealthEvents
 from ts_shape.events.engineering.setpoint_events import SetpointChangeEvents
-from ts_shape.events.production._unit_profile import (
+from ts_shape.events.profiling._base import (
     MAD_SCALE,
     REASON_BELOW_RESOLUTION,
     REASON_OK,

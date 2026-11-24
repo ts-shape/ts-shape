@@ -25,15 +25,15 @@ from ts_shape import (
     OutlierDetectionEvents,
     Pipeline,
     PipelineResult,
-    ProfileReport,
+    SignalReport,
     SignalSpecs,
     TsShapeWarning,
     ValueMapper,
+    check_signals,
     concat,
     infer_specs,
     list_detectors,
     make_timeseries,
-    profile,
     to_event_log,
 )
 from ts_shape.context import ValueMapper as ContextValueMapper
@@ -59,7 +59,7 @@ def main() -> None:
     )
     df = pd.concat([temp, running], ignore_index=True)
 
-    report: ProfileReport = profile(df)
+    report: SignalReport = check_signals(df)
     summary: str = report.summary()
     specs: SignalSpecs = infer_specs(df)
 

@@ -71,6 +71,10 @@ def public_modules() -> list[tuple[tuple[str, ...], Path, bool]]:
             continue
         if any(p.startswith("_") for p in parts):
             continue
+        # Modules that moved keep a forwarding shim at the old path; it has
+        # no API of its own, so it gets no page.
+        if "moved_module(" in path.read_text(encoding="utf-8"):
+            continue
         out.append((parts, path, is_pkg))
     return out
 

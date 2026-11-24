@@ -9,9 +9,9 @@ architecture rather than in individual detectors.
 
 ## W1: signal semantics core (started)
 
-`SignalSpec`, `infer_specs`, `profile()` and the spec-driven primitives in
+`SignalSpec`, `infer_specs`, `check_signals()` and the spec-driven primitives in
 `ts_shape.signals`. Detectors call the primitives instead of re-deriving
-signal semantics. See [Signal semantics and profiling](guides/signals.md).
+signal semantics. See [Signal semantics and data checks](guides/signals.md).
 
 ## Consistency audit (done, October 2026)
 
@@ -97,7 +97,7 @@ removed.
 
 ## W5: understanding
 
-- `profile()` as the entry point.
+- `check_signals()` as the entry point.
 - A question-first cookbook ("Why did OEE drop?", "Which station is the
   bottleneck?", "Is my gauge capable?") on a bundled, realistic plant dataset.
 - A generated detector reference: assumptions, input signal kinds and output
@@ -106,7 +106,7 @@ removed.
 ## W6: ecosystem
 
 - Grafana and TimescaleDB recipes.
-- A command line (`ts-shape profile data.parquet`).
+- A command line (`ts-shape check-signals data.parquet`).
 - Done: deprecation policy. Renamed names keep working with a warning and are
   removed only in a major release.
 

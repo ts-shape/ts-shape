@@ -36,7 +36,7 @@ runs every profiler on top of it:
 
 ```python
 import ts_shape
-from ts_shape.unit_profiles import profile_units
+from ts_shape.events.profiling.units import profile_units
 
 frame, truth = ts_shape.make_plc_cycles(
     n_cycles=400, seed=3, stop_causes=4, stop_probability=0.08,
@@ -216,7 +216,7 @@ register = ControlLoopProfileEvents(frame).loop_register()
 
 A profiler is one class. It subclasses `_UnitProfiler` (units cut from the
 cycle profile) or `_ProfilerBase` (no cycles needed, like the control loops)
-from `ts_shape.events.production._unit_profile` and declares in its class
+from `ts_shape.events.profiling._base` and declares in its class
 body:
 
 <!-- no-run -->

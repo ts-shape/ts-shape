@@ -14,20 +14,20 @@ import pandas as pd
 import pytest
 
 import ts_shape
-from ts_shape._profile_result import ProfileResult, UnitProfilesResult
-from ts_shape.events.production._unit_profile import (
+from ts_shape.events.profiling._base import (
     effect_size,
     enrichment,
     potential_register,
     window_labels,
 )
-from ts_shape.events.production.changeover_profiling import (
+from ts_shape.events.profiling.changeovers import (
     ChangeoverProfileEvents,
     StartupProfileEvents,
 )
-from ts_shape.events.production.cycle_profiling import CycleProfileEvents
-from ts_shape.events.production.stop_profiling import StopProfileEvents
-from ts_shape.unit_profiles import profile_units
+from ts_shape.events.profiling.cycles import CycleProfileEvents
+from ts_shape.events.profiling.result import ProfileResult, UnitProfilesResult
+from ts_shape.events.profiling.stops import StopProfileEvents
+from ts_shape.events.profiling.units import profile_units
 
 pytestmark = pytest.mark.filterwarnings("ignore::ts_shape.errors.DataQualityWarning")
 
@@ -246,7 +246,7 @@ def test_profile_units_and_save_load(tmp_path, changeover_plant) -> None:
 
 
 def test_cycle_profile_result_is_a_profile_result() -> None:
-    from ts_shape.cycle_profile import CycleProfileResult, profile_cycles
+    from ts_shape.events.profiling.runner import CycleProfileResult, profile_cycles
 
     frame, _ = ts_shape.make_plc_cycles(n_cycles=120, seed=1)
     result = profile_cycles(frame)

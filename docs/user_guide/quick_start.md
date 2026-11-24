@@ -26,11 +26,11 @@ df = pd.concat([temp, running], ignore_index=True)
 
 ## 2. Profile it
 
-`profile` reports what each signal is (continuous, counter, state, event) and
+`check_signals` reports what each signal is (continuous, counter, state, event) and
 what is wrong with it: gaps, duplicate timestamps, counter resets, stuck values.
 
 ```python
-report = ts_shape.profile(df)
+report = ts_shape.check_signals(df)
 print(report.summary())
 report.to_frame()      # one row per signal
 ```

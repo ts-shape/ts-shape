@@ -91,6 +91,7 @@ PACKS = [
                 "supplychain",
                 "correlation",
                 "development",
+                "profiling",
             )
         )
     )

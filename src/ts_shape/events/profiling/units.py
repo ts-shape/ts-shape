@@ -1,16 +1,16 @@
 """Run the cycle profile and the mapping-free unit profilers in one go.
 
 :func:`profile_units` prepares the signals of one PLC once
-(:func:`ts_shape.cycle_profile.prepare_signals`), computes the cycle profile
+(:func:`ts_shape.events.profiling.runner.prepare_signals`), computes the cycle profile
 once, and runs every requested unit profiler on top of it -- stops,
 changeovers, start-ups, orders, scrap, handshakes, curve signatures,
 setting changes and control loops. Each profiler's tables and summary land
-in one :class:`~ts_shape._profile_result.ProfileResult`; the
-:class:`~ts_shape._profile_result.UnitProfilesResult` collects them and says,
+in one :class:`~ts_shape.events.profiling.result.ProfileResult`; the
+:class:`~ts_shape.events.profiling.result.UnitProfilesResult` collects them and says,
 per profiler, whether it is evaluable and why not.
 
 The profilers are not listed here: every class that declares
-``PROFILE_KIND`` (see :class:`~ts_shape.events.production._unit_profile.
+``PROFILE_KIND`` (see :class:`~ts_shape.events.profiling._base.
 _ProfilerBase`) is found, with the tables it names in ``PROFILE_TABLES``.
 """
 
@@ -23,10 +23,14 @@ from typing import Any
 
 import pandas as pd
 
-from ts_shape._profile_result import ProfileResult, UnitProfilesResult
-from ts_shape.cycle_profile import DEFAULT_EXCLUDE, cycle_tables, prepare_signals
-from ts_shape.events.production._unit_profile import _ProfilerBase
-from ts_shape.events.production.cycle_profiling import CycleProfileEvents
+from ts_shape.events.profiling._base import _ProfilerBase
+from ts_shape.events.profiling.cycles import CycleProfileEvents
+from ts_shape.events.profiling.result import ProfileResult, UnitProfilesResult
+from ts_shape.events.profiling.runner import (
+    DEFAULT_EXCLUDE,
+    cycle_tables,
+    prepare_signals,
+)
 
 __all__ = [
     "DEFAULT_PROFILERS",
@@ -38,15 +42,27 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-#: Packages whose import registers the profiler classes.
-_PROFILER_PACKAGES = ("ts_shape.events.production", "ts_shape.events.engineering")
+#: Modules whose import registers the profiler classes (every class that
+#: declares ``PROFILE_KIND`` registers itself in ``_base.PROFILER_CLASSES``).
+_PROFILER_MODULES = tuple(
+    f"ts_shape.events.profiling.{name}"
+    for name in (
+        "changeovers",
+        "control_loops",
+        "curves",
+        "handshakes",
+        "orders",
+        "settings",
+        "stops",
+    )
+)
 
 
 def _profiler_classes() -> dict[str, type[_ProfilerBase]]:
     """Profiler kind -> class, in run order (``PROFILE_ORDER``)."""
-    for package in _PROFILER_PACKAGES:
-        importlib.import_module(package)
-    from ts_shape.events.production._unit_profile import PROFILER_CLASSES
+    for module in _PROFILER_MODULES:
+        importlib.import_module(module)
+    from ts_shape.events.profiling._base import PROFILER_CLASSES
 
     return dict(
         sorted(PROFILER_CLASSES.items(), key=lambda kv: (kv[1].PROFILE_ORDER, kv[0]))
@@ -77,7 +93,7 @@ def run_profiler(
             passed to its constructor, the rest are ignored.
 
     Returns:
-        :class:`~ts_shape._profile_result.ProfileResult` of ``kind``
+        :class:`~ts_shape.events.profiling.result.ProfileResult` of ``kind``
         ``PROFILE_KIND``.
     """
     kwargs = {k: v for k, v in options.items() if k in cls.PROFILE_OPTIONS}
@@ -114,13 +130,13 @@ def profile_units(
         plan: Optional production plan for the order profiler
             (``order_id``, ``planned_quantity``).
         exclude: Signals to drop (personal data; see
-            :func:`~ts_shape.cycle_profile.prepare_signals`).
+            :func:`~ts_shape.events.profiling.runner.prepare_signals`).
         top_n: Influencers kept per comparison (cycle profile).
         **cycle_options: Passed to :class:`~ts_shape.CycleProfileEvents`.
 
     Returns:
-        :class:`~ts_shape._profile_result.UnitProfilesResult` with
-        ``results["cycles"]`` (the :func:`~ts_shape.cycle_profile.profile_cycles`
+        :class:`~ts_shape.events.profiling.result.UnitProfilesResult` with
+        ``results["cycles"]`` (the :func:`~ts_shape.events.profiling.runner.profile_cycles`
         tables) and one result per profiler; ``summary`` holds each
         profiler's headline numbers.
 
@@ -129,7 +145,7 @@ def profile_units(
 
     Example:
         >>> import ts_shape
-        >>> from ts_shape.unit_profiles import profile_units
+        >>> from ts_shape.events.profiling.units import profile_units
         >>> frame, _ = ts_shape.make_plc_cycles(
         ...     n_cycles=300, seed=3, stop_causes=4, stop_probability=0.08)
         >>> result = profile_units(frame, profilers=["stops"])

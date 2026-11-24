@@ -9,8 +9,8 @@ import pandas as pd
 import pytest
 
 import ts_shape
-from ts_shape.events.production.cycle_profiling import CycleProfileEvents
-from ts_shape.events.production.order_profiling import (
+from ts_shape.events.profiling.cycles import CycleProfileEvents
+from ts_shape.events.profiling.orders import (
     OrderProfileEvents,
     ScrapProfileEvents,
     counter_roles,

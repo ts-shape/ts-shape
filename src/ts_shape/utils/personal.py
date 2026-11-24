@@ -11,7 +11,7 @@ its uuid when it has none); German and English words are covered:
   Anmeldung, Ausweis.
 
 :func:`is_personal` checks one label; :data:`PERSONAL_DATA_PATTERNS` is the
-default ``exclude`` of :func:`ts_shape.cycle_profile.prepare_signals` and
+default ``exclude`` of :func:`ts_shape.events.profiling.runner.prepare_signals` and
 :func:`ts_shape.profile`.
 """
 

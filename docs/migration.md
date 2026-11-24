@@ -6,6 +6,54 @@ future major release. To find every deprecated name your code still uses, run
 your tests with `-W error::DeprecationWarning`. The dated record is the
 [Changelog](changelog.md).
 
+## November 2026: profilers in one pack, `profile` is `check_signals`
+
+No result changes; only where things live and one name. Every old import
+keeps working and warns with the new place.
+
+**The machine profilers are one pack, `ts_shape.events.profiling`.** They
+were spread over the package root, `events.production` and
+`events.engineering`. `from ts_shape import CycleProfileEvents` (and every
+other top-level import) is unchanged.
+
+| Old module | New module |
+|---|---|
+| `ts_shape.cycle_profile` (`profile_cycles`, `CycleProfileResult`, CLI) | `ts_shape.events.profiling.runner` |
+| `ts_shape.unit_profiles` (`profile_units`, `run_profiler`, `PROFILERS`) | `ts_shape.events.profiling.units` |
+| `ts_shape.events.production.cycle_profiling` | `ts_shape.events.profiling.cycles` |
+| `ts_shape.events.production.stop_profiling` | `ts_shape.events.profiling.stops` |
+| `ts_shape.events.production.changeover_profiling` | `ts_shape.events.profiling.changeovers` |
+| `ts_shape.events.production.handshake_profiling` | `ts_shape.events.profiling.handshakes` |
+| `ts_shape.events.production.order_profiling` | `ts_shape.events.profiling.orders` |
+| `ts_shape.events.production.curve_signature` | `ts_shape.events.profiling.curves` |
+| `ts_shape.events.production.setting_impact` | `ts_shape.events.profiling.settings` |
+| `ts_shape.events.engineering.control_loop_profiling` | `ts_shape.events.profiling.control_loops` |
+
+- `ts_shape.events.production.CycleProfileEvents` (and the other profiler
+  classes) and `ts_shape.events.engineering.ControlLoopProfileEvents` still
+  resolve, with a warning; use `ts_shape.events.profiling` (or `ts_shape`).
+- The command line is `python -m ts_shape.events.profiling`;
+  `python -m ts_shape.cycle_profile` still runs, with a warning.
+- `list_detectors()` reports the profilers under the category
+  `events.profiling`. The event log is unchanged: their events keep
+  `ts_shape:pack` `production` (control loops: `engineering`).
+- The docs pages moved to Module reference › Profiling; the old URLs
+  redirect.
+
+**`ts_shape.profile()` is `ts_shape.check_signals()`**, and `ProfileReport`
+is `SignalReport`. The name read like the cycle and unit profilers, which
+are unrelated: it checks any long-format frame (signal kinds, gaps, counter
+resets, duplicates). It lives in `ts_shape.signals.report` (also
+`from ts_shape.signals import check_signals`); `ts_shape.profiling` still
+forwards, with a warning. `summary()` now starts with
+`ts-shape signal check:` instead of `ts-shape profile:`.
+
+| Old | New |
+|---|---|
+| `ts_shape.profile(df)` | `ts_shape.check_signals(df)` |
+| `ProfileReport` | `SignalReport` |
+| `from ts_shape.profiling import ...` | `from ts_shape.signals.report import ...` |
+
 ## October 2026, round 25: change flags, cycles, usage links
 
 Results change for `object_intervals` / `detect_objects` only on signals

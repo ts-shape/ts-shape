@@ -2,7 +2,7 @@
 
 Extract events from shaped timeseries across quality, maintenance,
 production, engineering, energy, correlation, supply chain and development
-domains.
+domains, and profile a machine from its raw PLC signals.
 
 Subpackages:
 - quality: Outlier detection, SPC, tolerance deviation
@@ -14,6 +14,9 @@ Subpackages:
 - correlation: Signal correlation, anomaly correlation
 - development: Design of experiments, design space, golden batch, recipe
   phase adherence, critical parameter ranking
+- profiling: Mapping-free machine profiles from raw PLC signals (cycles,
+  stops, changeovers, start-ups, handshakes, orders, scrap, curves,
+  settings, control loops)
 
 Every detector class is also importable from this package (and from
 ``ts_shape``), e.g. ``from ts_shape.events import OutlierDetectionEvents``.
@@ -71,9 +74,6 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.engineering.control_loop_health import (
         ControlLoopHealthEvents as ControlLoopHealthEvents,
-    )
-    from ts_shape.events.engineering.control_loop_profiling import (
-        ControlLoopProfileEvents as ControlLoopProfileEvents,
     )
     from ts_shape.events.engineering.disturbance_recovery import (
         DisturbanceRecoveryEvents as DisturbanceRecoveryEvents,
@@ -144,20 +144,8 @@ if TYPE_CHECKING:
     from ts_shape.events.production.changeover import (
         ChangeoverEvents as ChangeoverEvents,
     )
-    from ts_shape.events.production.changeover_profiling import (
-        ChangeoverProfileEvents as ChangeoverProfileEvents,
-    )
-    from ts_shape.events.production.changeover_profiling import (
-        StartupProfileEvents as StartupProfileEvents,
-    )
     from ts_shape.events.production.continuous_process_alignment import (
         ContinuousProcessAlignmentEvents as ContinuousProcessAlignmentEvents,
-    )
-    from ts_shape.events.production.curve_signature import (
-        CurveSignatureEvents as CurveSignatureEvents,
-    )
-    from ts_shape.events.production.cycle_profiling import (
-        CycleProfileEvents as CycleProfileEvents,
     )
     from ts_shape.events.production.cycle_time_tracking import (
         CycleTimeEvents as CycleTimeEvents,
@@ -177,9 +165,6 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.flow_metrics import (
         FlowMetricsEvents as FlowMetricsEvents,
-    )
-    from ts_shape.events.production.handshake_profiling import (
-        HandshakeProfileEvents as HandshakeProfileEvents,
     )
     from ts_shape.events.production.line_balancing import (
         LineBalancingEvents as LineBalancingEvents,
@@ -209,12 +194,6 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.operator_performance import (
         OperatorPerformanceTracking as OperatorPerformanceTracking,
-    )
-    from ts_shape.events.production.order_profiling import (
-        OrderProfileEvents as OrderProfileEvents,
-    )
-    from ts_shape.events.production.order_profiling import (
-        ScrapProfileEvents as ScrapProfileEvents,
     )
     from ts_shape.events.production.order_traceability import (
         OrderTraceabilityEvents as OrderTraceabilityEvents,
@@ -260,9 +239,6 @@ if TYPE_CHECKING:
     )
     from ts_shape.events.production.scrap_tracking import ScrapEvents as ScrapEvents
     from ts_shape.events.production.scrap_tracking import ScrapTracking as ScrapTracking
-    from ts_shape.events.production.setting_impact import (
-        SettingImpactEvents as SettingImpactEvents,
-    )
     from ts_shape.events.production.setup_time_tracking import (
         SetupTimeEvents as SetupTimeEvents,
     )
@@ -281,13 +257,45 @@ if TYPE_CHECKING:
     from ts_shape.events.production.shift_reporting import (
         ShiftReporting as ShiftReporting,
     )
-    from ts_shape.events.production.stop_profiling import (
-        StopProfileEvents as StopProfileEvents,
-    )
     from ts_shape.events.production.target_tracking import TargetEvents as TargetEvents
     from ts_shape.events.production.target_tracking import (
         TargetTracking as TargetTracking,
     )
+    from ts_shape.events.profiling.changeovers import (
+        ChangeoverProfileEvents as ChangeoverProfileEvents,
+    )
+    from ts_shape.events.profiling.changeovers import (
+        StartupProfileEvents as StartupProfileEvents,
+    )
+    from ts_shape.events.profiling.control_loops import (
+        ControlLoopProfileEvents as ControlLoopProfileEvents,
+    )
+    from ts_shape.events.profiling.curves import (
+        CurveSignatureEvents as CurveSignatureEvents,
+    )
+    from ts_shape.events.profiling.cycles import (
+        CycleProfileEvents as CycleProfileEvents,
+    )
+    from ts_shape.events.profiling.handshakes import (
+        HandshakeProfileEvents as HandshakeProfileEvents,
+    )
+    from ts_shape.events.profiling.orders import (
+        OrderProfileEvents as OrderProfileEvents,
+    )
+    from ts_shape.events.profiling.orders import (
+        ScrapProfileEvents as ScrapProfileEvents,
+    )
+    from ts_shape.events.profiling.runner import (
+        CycleProfileResult as CycleProfileResult,
+    )
+    from ts_shape.events.profiling.runner import profile_cycles as profile_cycles
+    from ts_shape.events.profiling.settings import (
+        SettingImpactEvents as SettingImpactEvents,
+    )
+    from ts_shape.events.profiling.stops import (
+        StopProfileEvents as StopProfileEvents,
+    )
+    from ts_shape.events.profiling.units import profile_units as profile_units
     from ts_shape.events.quality.anomaly_classification import (
         AnomalyClassificationEvents as AnomalyClassificationEvents,
     )

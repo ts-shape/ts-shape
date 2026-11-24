@@ -1,4 +1,4 @@
-"""ts_shape.cycle_profile: the two loader outputs in, a profile out.
+"""ts_shape.events.profiling.runner: the two loader outputs in, a profile out.
 
 The timeseries goes through ``AzureBlobParquetLoader`` unchanged (only its
 container client is replaced by an in-memory one); the metadata through
@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 import ts_shape
-from ts_shape.cycle_profile import (
+from ts_shape.events.profiling.runner import (
     CycleProfileResult,
     load_azure_timeseries,
     main,

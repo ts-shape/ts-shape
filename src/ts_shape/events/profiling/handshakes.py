@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sps
 
-from ts_shape.events.production._unit_profile import (
+from ts_shape.events.profiling._base import (
     FALL,
     REASON_OK,
     RISE,
@@ -42,7 +42,7 @@ from ts_shape.events.production._unit_profile import (
     memo,
     potential_register,
 )
-from ts_shape.events.production.cycle_profiling import (
+from ts_shape.events.profiling.cycles import (
     MAX_EVENTS_PER_CYCLE,
     RESOLUTION_MAX_SHARE,
     CycleProfileEvents,
@@ -363,7 +363,7 @@ class HandshakeProfileEvents(_UnitProfiler):
         """What each handshake wait costs, linked to the cycle.
 
         Returns:
-            :func:`~ts_shape.events.production._unit_profile.potential_register`
+            :func:`~ts_shape.events.profiling._base.potential_register`
             of the waits per ``pair`` plus ``pair_kind``, ``waits_on``,
             ``cycle_share_ratio`` (median wait / median cycle),
             ``cycle_spearman_factor`` (rank correlation of the wait with the

@@ -3,7 +3,7 @@
 :class:`ProfileResult` holds every table of one profiler run plus a summary
 of plain numbers (JSON-able); :class:`UnitProfilesResult` holds the results
 of several profilers run on the same signals (see
-:func:`ts_shape.unit_profiles.profile_units`).
+:func:`ts_shape.events.profiling.units.profile_units`).
 """
 
 from __future__ import annotations

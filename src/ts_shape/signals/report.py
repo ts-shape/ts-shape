@@ -4,7 +4,7 @@ Start every analysis here::
 
     import ts_shape
 
-    report = ts_shape.profile(df)
+    report = ts_shape.check_signals(df)
     print(report.summary())     # what each signal is, and what is wrong with it
     report.issues()             # actionable list, most severe first
     report.specs                # SignalSpecs to pass on to detectors
@@ -29,10 +29,14 @@ from ts_shape.errors import DataQualityWarning
 from ts_shape.signals.infer import _iter_signal_groups, infer_spec
 from ts_shape.signals.spec import SignalSpec, SignalSpecs
 from ts_shape.utils.counters import count_resets
-from ts_shape.utils.deprecation import caller_stacklevel
+from ts_shape.utils.deprecation import (
+    caller_stacklevel,
+    deprecated_class,
+    deprecated_function,
+)
 from ts_shape.utils.personal import PERSONAL_DATA_PATTERNS, personal_pattern
 
-__all__ = ["profile", "ProfileReport"]
+__all__ = ["check_signals", "SignalReport"]
 
 _VALUE_COLUMNS = ("value_double", "value_integer", "value_bool", "value_string")
 _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
@@ -89,8 +93,8 @@ ISSUE_COLUMNS = ["uuid", "severity", "issue", "detail"]
 
 
 @dataclass(frozen=True)
-class ProfileReport:
-    """Result of :func:`profile`.
+class SignalReport:
+    """Result of :func:`check_signals`.
 
     Attributes:
         specs: Inferred (and overridden) :class:`~ts_shape.signals.SignalSpecs`.
@@ -100,9 +104,9 @@ class ProfileReport:
 
     Example:
         >>> import ts_shape
-        >>> report = ts_shape.profile(ts_shape.make_timeseries(["temp", "pressure"], n_points=100))
+        >>> report = ts_shape.check_signals(ts_shape.make_timeseries(["temp", "pressure"], n_points=100))
         >>> print(report.summary())
-        ts-shape profile: 2 signal(s)
+        ts-shape signal check: 2 signal(s)
           kinds: 2 continuous
           issues: none
         >>> report.to_frame()[["uuid", "kind", "encoding", "rows"]]
@@ -138,7 +142,7 @@ class ProfileReport:
     def summary(self) -> str:
         """Human-readable overview."""
         n = len(self.table)
-        lines = [f"ts-shape profile: {n} signal(s)"]
+        lines = [f"ts-shape signal check: {n} signal(s)"]
         if n:
             kinds = self.table["kind"].value_counts().to_dict()
             lines.append(
@@ -401,13 +405,13 @@ def _labels(metadata: Any) -> pd.Series:
     """``uuid -> label`` of a metadata table or loader (empty without one)."""
     if metadata is None:
         return pd.Series(dtype=object)
-    from ts_shape.cycle_profile import signal_labels
+    from ts_shape.events.profiling.runner import signal_labels
 
     table = metadata.to_df() if hasattr(metadata, "to_df") else metadata
     return signal_labels(table)
 
 
-def profile(
+def check_signals(
     dataframe: pd.DataFrame,
     specs: SignalSpecs | Mapping[str, Mapping[str, Any]] | None = None,
     *,
@@ -415,7 +419,7 @@ def profile(
     time_column: str = "systime",
     metadata: Any = None,
     exclude: Sequence[str] = PERSONAL_DATA_PATTERNS,
-) -> ProfileReport:
+) -> SignalReport:
     """Profile every signal in a long-format frame.
 
     Nullable, pyarrow and string dtypes are converted to NumPy dtypes first;
@@ -443,7 +447,7 @@ def profile(
     signals share is a ``"shared polling clock"`` note.
 
     Returns:
-        :class:`ProfileReport` with ``specs``, a per-signal ``table`` and the
+        :class:`SignalReport` with ``specs``, a per-signal ``table`` and the
         ``issues()`` list.
 
     Raises:
@@ -468,7 +472,7 @@ def profile(
         hidden &= set(dataframe[uuid_column].astype(str).unique())
         if hidden:
             warnings.warn(
-                f"profile: {len(hidden)} signal(s) left out: their label matches "
+                f"check_signals: {len(hidden)} signal(s) left out: their label matches "
                 "a personal-data pattern (pass exclude=() to keep every signal).",
                 DataQualityWarning,
                 stacklevel=caller_stacklevel(),
@@ -549,6 +553,12 @@ def profile(
             ["severity", "uuid"],
             key=lambda c: c.map(_SEVERITY_ORDER) if c.name == "severity" else c,
         ).reset_index(drop=True)
-    return ProfileReport(
+    return SignalReport(
         specs=SignalSpecs(inferred), table=table, issue_table=issue_table
     )
+
+
+# Renamed in November 2026 ("profile" read like the cycle and unit profilers,
+# which are unrelated). The old names keep working, with a DeprecationWarning.
+profile = deprecated_function(check_signals, "profile")
+ProfileReport = deprecated_class(SignalReport, "ProfileReport")

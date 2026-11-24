@@ -1,6 +1,6 @@
 """Shared building blocks of the mapping-free unit profilers.
 
-The cycle profiler (:class:`~ts_shape.events.production.cycle_profiling.
+The cycle profiler (:class:`~ts_shape.events.profiling.cycles.
 CycleProfileEvents`) answers one question from the raw signals of a PLC:
 where does the cycle time go? The unit profilers ask the same kind of
 question about other *units of analysis* -- a stop, a changeover, a start-up,
@@ -33,7 +33,7 @@ This module holds what they share:
   profiler declares ``PROFILE_KIND``, ``PROFILE_TABLES`` (and
   ``PROFILE_OPTIONS``, ``PROFILE_ORDER``, ``NEEDS_CYCLES``) in its class body
   and is then registered in :data:`PROFILER_CLASSES`, which
-  :func:`ts_shape.unit_profiles.profile_units` runs.
+  :func:`ts_shape.events.profiling.units.profile_units` runs.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sps
 
-from ts_shape.events.production.cycle_profiling import (  # noqa: F401 (labels)
+from ts_shape.events.profiling.cycles import (  # noqa: F401 (labels)
     FALL,
     INCREMENT,
     MAD_SCALE,
@@ -692,7 +692,7 @@ class _ProfilerBase(Base):
 
     A profiler declares in its own class body (not inherited):
 
-    * ``PROFILE_KIND`` -- its name in :func:`~ts_shape.unit_profiles.
+    * ``PROFILE_KIND`` -- its name in :func:`~ts_shape.events.profiling.units.
       profile_units` (``"stops"``); setting it registers the class in
       :data:`PROFILER_CLASSES`;
     * ``PROFILE_TABLES`` -- its public table methods (``evaluation_window``
@@ -742,7 +742,7 @@ class _ProfilerBase(Base):
 
     @classmethod
     def profile_tables(cls) -> tuple[str, ...]:
-        """The table methods :func:`~ts_shape.unit_profiles.profile_units` saves."""
+        """The table methods :func:`~ts_shape.events.profiling.units.profile_units` saves."""
         tables = tuple(cls.PROFILE_TABLES)
         return (
             tables if "evaluation_window" in tables else (*tables, "evaluation_window")
@@ -896,7 +896,7 @@ class _UnitProfiler(_ProfilerBase):
     """A profiler of units cut from the cycle profile.
 
     It either reuses a computed
-    :class:`~ts_shape.events.production.cycle_profiling.CycleProfileEvents`
+    :class:`~ts_shape.events.profiling.cycles.CycleProfileEvents`
     (``cycle_profile=``) or builds one from its own frame with
     ``cycle_options``; it reads it only through its public accessors.
     """

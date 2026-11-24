@@ -473,7 +473,7 @@ class CycleTimeEvents(Base):
         median log cycle time. Working on the log makes the bounds relative,
         so they transfer between a 5 s and a 300 s cycle. For pauses kept as
         their own class and a profile without signal mapping see
-        :class:`~ts_shape.events.production.cycle_profiling.CycleProfileEvents`.
+        :class:`~ts_shape.events.profiling.cycles.CycleProfileEvents`.
 
         Args:
             part_id_uuid: UUID for part number signal

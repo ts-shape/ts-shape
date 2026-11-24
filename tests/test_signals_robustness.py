@@ -148,7 +148,7 @@ def test_override_with_unknown_field_raises_value_error():
         SignalSpecs({"x": SignalSpec("x")}).override({"x": {"bogus": 1}})
     df = ts_shape.make_timeseries(["x"], n_points=10)
     with pytest.raises(ValueError, match="bogus"):
-        ts_shape.profile(df, specs={"x": {"bogus": 1}})
+        ts_shape.check_signals(df, specs={"x": {"bogus": 1}})
 
 
 # ---------- inference / profile --------------------------------------------
@@ -171,17 +171,17 @@ def test_infer_specs_warns_on_uuid_type_clash_and_nan_uuid():
 
 
 def test_profile_of_id_signal_and_pyarrow_values():
-    report = ts_shape.profile(ts_shape.make_id_signal())
+    report = ts_shape.check_signals(ts_shape.make_id_signal())
     assert report.table["kind"].iloc[0] == "state"
     df = ts_shape.make_timeseries(["a"], n_points=20)
     df["value_double"] = df["value_double"].astype("double[pyarrow]")
-    assert len(ts_shape.profile(df).table) == 1
+    assert len(ts_shape.check_signals(df).table) == 1
 
 
 def test_profile_with_duplicate_index_labels():
     df = ts_shape.make_timeseries(["a", "b"], n_points=5)
     df.index = [0] * len(df)
-    assert len(ts_shape.profile(df).table) == 2
+    assert len(ts_shape.check_signals(df).table) == 2
 
 
 def test_profile_mixed_offset_times_are_utc_with_warning():
@@ -193,19 +193,19 @@ def test_profile_mixed_offset_times_are_utc_with_warning():
         }
     )
     with pytest.warns(DataQualityWarning, match="UTC"):
-        report = ts_shape.profile(df)
+        report = ts_shape.check_signals(df)
     assert str(report.table["first"].iloc[0].tz) == "UTC"
 
 
 def test_profile_missing_columns_raise():
     with pytest.raises(ColumnNotFoundError):
-        ts_shape.profile(pd.DataFrame())
+        ts_shape.check_signals(pd.DataFrame())
     with pytest.raises(ColumnNotFoundError, match="uuid"):
-        ts_shape.profile(pd.DataFrame({"systime": [], "value_double": []}))
+        ts_shape.check_signals(pd.DataFrame({"systime": [], "value_double": []}))
 
 
 def test_profile_does_not_mutate_input():
     df = ts_shape.make_id_signal()
     before = df.copy()
-    ts_shape.profile(df)
+    ts_shape.check_signals(df)
     pd.testing.assert_frame_equal(df, before)

@@ -1,7 +1,7 @@
 """Mapping-free order and scrap profiling.
 
 On top of the cycle profile of one PLC
-(:class:`~ts_shape.events.production.cycle_profiling.CycleProfileEvents`):
+(:class:`~ts_shape.events.profiling.cycles.CycleProfileEvents`):
 
 :func:`counter_roles`
     Which counter is the total, the good and the bad count -- learned from
@@ -32,14 +32,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events.production._counters import (
-    COUNTER_ALIAS_SHARE,
-    COUNTER_MAX_LAG_CYCLES,
-    COUNTER_SUM_SHARE,
-    _CounterMixin,
-    counter_roles,
-)
-from ts_shape.events.production._unit_profile import (
+from ts_shape.events.profiling._base import (
     assign_to_cycles,
     cycle_signal_stats,
     cycles_since,
@@ -48,7 +41,14 @@ from ts_shape.events.production._unit_profile import (
     potential_register,
     robust_center_scale,
 )
-from ts_shape.events.production.cycle_profiling import CycleProfileEvents
+from ts_shape.events.profiling._counters import (
+    COUNTER_ALIAS_SHARE,
+    COUNTER_MAX_LAG_CYCLES,
+    COUNTER_SUM_SHARE,
+    _CounterMixin,
+    counter_roles,
+)
+from ts_shape.events.profiling.cycles import CycleProfileEvents
 
 __all__ = [
     "COUNTER_ALIAS_SHARE",
@@ -342,7 +342,7 @@ class OrderProfileEvents(_CounterMixin):
         """Roles of the counters (total, good, bad ...) learned from the data.
 
         Returns:
-            See :func:`~ts_shape.events.production._counters.counter_roles`.
+            See :func:`~ts_shape.events.profiling._counters.counter_roles`.
         """
         return self._roles().copy()
 
@@ -350,7 +350,7 @@ class OrderProfileEvents(_CounterMixin):
         """Orders ranked by lost time, per variant.
 
         Returns:
-            :func:`~ts_shape.events.production._unit_profile.potential_register`
+            :func:`~ts_shape.events.profiling._base.potential_register`
             of the orders' ``loss_seconds`` per ``variant``, plus
             ``scrap_count`` and ``worst_order`` (the order with the most loss).
         """
@@ -549,7 +549,7 @@ class ScrapProfileEvents(_CounterMixin):
 
     def _curve_anomalies(self, cycles: pd.DataFrame) -> list[tuple[int, str]]:
         """``(cycle position, signal)`` of every curve-shape anomaly."""
-        from ts_shape.cycle_profile import curve_profiles, signal_inventory
+        from ts_shape.events.profiling.runner import curve_profiles, signal_inventory
 
         try:
             records = self._profile().cycle_records()
@@ -609,7 +609,7 @@ class ScrapProfileEvents(_CounterMixin):
         """Roles of the counters (total, good, bad ...) learned from the data.
 
         Returns:
-            See :func:`~ts_shape.events.production._counters.counter_roles`.
+            See :func:`~ts_shape.events.profiling._counters.counter_roles`.
         """
         return self._roles().copy()
 

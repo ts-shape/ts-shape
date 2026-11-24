@@ -4,7 +4,7 @@
 first?* and :class:`StartupProfileEvents` *how long until the machine runs
 normally again after a stop, and what holds it back?* -- both from the raw
 signals of one PLC, on top of its cycle profile
-(:class:`~ts_shape.events.production.cycle_profiling.CycleProfileEvents`).
+(:class:`~ts_shape.events.profiling.cycles.CycleProfileEvents`).
 
 Changeovers
     A changeover is a change of the product variant the cycle profile found
@@ -36,7 +36,7 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.errors import DataQualityWarning
-from ts_shape.events.production._unit_profile import (
+from ts_shape.events.profiling._base import (
     _UnitProfiler,
     cycle_signal_stats,
     enrichment,
@@ -45,7 +45,7 @@ from ts_shape.events.production._unit_profile import (
     potential_register,
     window_labels,
 )
-from ts_shape.events.production.cycle_profiling import CycleProfileEvents
+from ts_shape.events.profiling.cycles import CycleProfileEvents
 
 __all__ = ["ChangeoverProfileEvents", "StartupProfileEvents"]
 
@@ -843,7 +843,7 @@ class StartupProfileEvents(_UnitProfiler):
         """Lost time of start-ups per trigger, ranked by potential.
 
         Returns:
-            :func:`~ts_shape.events.production._unit_profile.potential_register`
+            :func:`~ts_shape.events.profiling._base.potential_register`
             of the start-up durations per ``trigger``, plus ``lost_seconds``
             (cycle time beyond the median, summed).
         """

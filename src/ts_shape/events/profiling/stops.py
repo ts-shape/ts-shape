@@ -4,7 +4,7 @@
 or alarm mapping -- and answers *which stop causes cost the most time?*
 
 1. **Units.** With a cycle anchor (see
-   :class:`~ts_shape.events.production.cycle_profiling.CycleProfileEvents`)
+   :class:`~ts_shape.events.profiling.cycles.CycleProfileEvents`)
    every ``pause`` cycle is a *stop* and every ``long`` cycle a *micro-stop*;
    the lost time is the duration beyond the variant's median cycle and the
    stop is taken to start where the cycle should have ended. Without an
@@ -31,7 +31,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events.production._unit_profile import (
+from ts_shape.events.profiling._base import (
     INCREMENT,
     REASON_NO_ANCHOR,
     REASON_NO_CANDIDATE,
@@ -47,7 +47,7 @@ from ts_shape.events.production._unit_profile import (
     silent_gaps,
     window_labels,
 )
-from ts_shape.events.production.cycle_profiling import (
+from ts_shape.events.profiling.cycles import (
     MAX_EVENTS_PER_CYCLE,
     CycleProfileEvents,
 )
@@ -541,7 +541,7 @@ class StopProfileEvents(_UnitProfiler):
         """Why each event counts as a stop signature (or not).
 
         Returns:
-            :func:`~ts_shape.events.production._unit_profile.enrichment` of
+            :func:`~ts_shape.events.profiling._base.enrichment` of
             the pre-stop windows (``window="before"``) and of the stop
             intervals (``window="during"``) against normal running:
             ``window``, ``label``, ``unit_count``, ``unit_presence_ratio``,

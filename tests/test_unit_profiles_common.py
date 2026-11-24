@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 import ts_shape
-from ts_shape.events.production._unit_profile import (
+from ts_shape.events.profiling._base import (
     SignalIndex,
     assign_to_cycles,
     cycles_since,
@@ -20,7 +20,7 @@ from ts_shape.events.production._unit_profile import (
     restart_points,
     robust_center_scale,
 )
-from ts_shape.unit_profiles import PROFILERS, UnitProfilesResult, run_profiler
+from ts_shape.events.profiling.units import PROFILERS, UnitProfilesResult, run_profiler
 
 pytestmark = pytest.mark.filterwarnings("ignore::ts_shape.errors.DataQualityWarning")
 

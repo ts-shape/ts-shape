@@ -26,14 +26,14 @@ import numpy as np
 import pandas as pd
 from scipy.cluster import hierarchy
 
-from ts_shape.events.production._unit_profile import (
+from ts_shape.events.profiling._base import (
     MAD_SCALE,
     _UnitProfiler,
     evaluation_frame,
     evaluation_reason,
     memo,
 )
-from ts_shape.events.production.cycle_profiling import CycleProfileEvents
+from ts_shape.events.profiling.cycles import CycleProfileEvents
 
 __all__ = ["CurveSignatureEvents"]
 

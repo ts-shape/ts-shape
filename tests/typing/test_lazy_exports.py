@@ -19,15 +19,30 @@ import ts_shape
 SRC = Path(ts_shape.__file__).resolve().parent
 
 
+def _lazy_map_names(tree: ast.Module) -> set[str]:
+    """Names assigned at module level (``_LAZY = ...``, ``_CLASSES: ... = ...``)."""
+    names = set()
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        if isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        names |= {t.id for t in targets if isinstance(t, ast.Name)}
+    return names
+
+
 def _lazy_packages() -> list[str]:
-    """Every ts_shape package whose ``__init__`` defines ``__getattr__``."""
+    """Every ts_shape package that exports lazily: ``__getattr__`` over a map.
+
+    A package whose ``__getattr__`` only forwards names that moved elsewhere
+    (``_MOVED``, with a deprecation warning) exports nothing lazily.
+    """
     names = []
     for init in sorted(SRC.rglob("__init__.py")):
         tree = ast.parse(init.read_text(encoding="utf-8"))
         if any(
             isinstance(node, ast.FunctionDef) and node.name == "__getattr__"
             for node in tree.body
-        ):
+        ) and _lazy_map_names(tree) & {"_LAZY", "_CLASSES"}:
             rel = init.parent.relative_to(SRC.parent)
             names.append(".".join(rel.parts))
     return names

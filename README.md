@@ -48,9 +48,9 @@ import pandas as pd
 from ts_shape import (
     MachineStateEvents,
     OutlierDetectionEvents,
+    check_signals,
     concat,
     make_timeseries,
-    profile,
     to_event_log,
 )
 
@@ -59,7 +59,7 @@ temp = make_timeseries(["oven:temp"], n_points=1440, freq="1min", n_outliers=4)
 running = make_timeseries(["oven:running"], n_points=1440, freq="1min", value_column="value_bool")
 df = pd.concat([temp, running], ignore_index=True)
 
-print(profile(df).summary())   # signal kinds, gaps, counter resets, duplicates
+print(check_signals(df).summary())   # signal kinds, gaps, counter resets, duplicates
 
 outliers = OutlierDetectionEvents(temp, value_column="value_double").detect_outliers_zscore(n_sigma=4.0)
 intervals = MachineStateEvents(df, run_state_uuid="oven:running").detect_run_idle(min_duration="5min")

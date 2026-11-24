@@ -17,3 +17,4 @@ bottom.
 | Correlation | rolling and lagged signal correlation, coincident anomalies and cascades, root-cause ranking for detected events | [SignalCorrelationEvents](correlation/signal-correlation.md) |
 | Supply chain | inventory levels and stockouts, lead times, demand patterns | [InventoryMonitoringEvents](supplychain/inventory-monitoring.md) |
 | Development | critical parameters, DOE runs and effects, design space, golden batch, recipe phases | [DesignOfExperimentsEvents](development/design-of-experiments.md) |
+| Profiling | mapping-free profiles of a machine from its raw PLC signals: the cycle and its classes, stops, changeovers and start-ups, handshakes, orders and scrap, curve signatures, setting changes, control loops | [CycleProfileEvents](profiling/cycle-profiling.md) |

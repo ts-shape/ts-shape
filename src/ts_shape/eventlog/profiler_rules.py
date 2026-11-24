@@ -1,6 +1,6 @@
 """Event-log rules of the mapping-free unit profilers, in one place.
 
-Every profiler (:mod:`ts_shape.events.production._unit_profile`) has the
+Every profiler (:mod:`ts_shape.events.profiling._base`) has the
 same kinds of tables: point records per unit, registers, evidence tables and
 an ``evaluation_window``. This module declares them compactly; the taxonomy
 (:data:`ts_shape.eventlog.taxonomy.REGISTRY`) and the archetype map

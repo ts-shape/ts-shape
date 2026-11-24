@@ -1,6 +1,6 @@
 """Input contract of the public functions outside the detectors.
 
-Every public callable of ``ts_shape.signals``, ``ts_shape.profiling``,
+Every public callable of ``ts_shape.signals``, ``ts_shape.signals.report``,
 ``ts_shape.pipeline``, ``ts_shape.eventlog`` (the offline parts), the context
 helpers and ``ts_shape.datasets`` is registered in :data:`CASES` with a
 minimal call on the standard long-format frame, or in :data:`EXEMPT` with the
@@ -36,9 +36,9 @@ import ts_shape.eventlog as eventlog
 import ts_shape.loader.combine.integrator as integrator
 import ts_shape.loader.context.context_enricher as context_enricher
 import ts_shape.pipeline as pipeline
-import ts_shape.profiling as profiling
 import ts_shape.signals as signals
 import ts_shape.signals.primitives as primitives
+import ts_shape.signals.report as report
 from invariants import harness as H
 from ts_shape.errors import ColumnNotFoundError
 from ts_shape.signals import SignalSpec
@@ -46,7 +46,7 @@ from ts_shape.signals import SignalSpec
 MODULES = {
     "signals": signals,
     "signals.primitives": primitives,
-    "profiling": profiling,
+    "report": report,
     "pipeline": pipeline,
     "eventlog": eventlog,
     "context": value_mapping,
@@ -187,8 +187,9 @@ CASES: dict[str, Case] = {
     "signals.primitives.align": Case(
         lambda df: primitives.align(df, SignalSpec(CONT), df, SignalSpec(H.CONT2))
     ),
-    # -- profiling / pipeline ---------------------------------------------
-    "profiling.profile": Case(lambda df: profiling.profile(df).table),
+    # -- signal check / pipeline ---------------------------------------------
+    "report.check_signals": Case(lambda df: report.check_signals(df).table),
+    "signals.check_signals": Case(lambda df: signals.check_signals(df).table),
     "signals.identify_objects": Case(
         lambda df: signals.identify_objects(df, min_samples=1).table
     ),
@@ -294,7 +295,8 @@ EXEMPT: dict[str, str] = {
     "signals.SignalSpecs": "value object, validated in test_signals_robustness",
     "signals.primitives.windows": "takes time bounds, not a frame; see test_bounds",
     "signals.primitives.shift_windows": "takes time bounds, not a frame; see test_bounds",
-    "profiling.ProfileReport": "result container of profile()",
+    "report.SignalReport": "result container of check_signals()",
+    "signals.SignalReport": "result container of check_signals()",
     "signals.ObjectReport": "result container of identify_objects()",
     "signals.register_identifier_type": "registry; see test_identify_objects",
     "signals.register_identifier_pattern": "registry; see test_identify_objects",
