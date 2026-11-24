@@ -59,3 +59,18 @@ def test_rejects_versions_that_do_not_move_forward_or_exist():
 
 def test_trailer_must_start_a_line():
     assert nv.next_version(TAGS, ["mentions Release-Bump: major inline"]) == "0.0.63"
+
+
+def test_a_version_on_pypi_without_a_tag_is_not_reused():
+    # Published to PyPI, then the tag step failed: the next run must move on.
+    tags = ["0.0.93", "0.0.94"]
+    published = ["0.0.93", "0.0.94", "0.0.95"]
+    assert nv.next_version(tags, ["Fix"], published=published) == "0.0.96"
+    with pytest.raises(ValueError, match="not higher"):
+        nv.next_version(tags, ["x\n\nRelease-As: 0.0.95"], published=["0.0.95"])
+    # PyPI unreachable: the tags alone decide, as before.
+    assert nv.next_version(tags, ["Fix"], published=[]) == "0.0.95"
+
+
+def test_pypi_versions_fall_back_to_empty_when_unreachable():
+    assert nv.pypi_versions("http://127.0.0.1:9/nothing", timeout=0.5) == []

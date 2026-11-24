@@ -1,7 +1,10 @@
 """Decide the next release version for the release workflow.
 
-The version is the latest ``X.Y.Z`` tag plus a bump. Commits since that tag
-choose the bump with git trailers (the most recent trailer wins)::
+The version is the last release plus a bump. The last release is the highest
+``X.Y.Z`` among the git tags and the versions already on PyPI: a run that
+published but failed to tag (it happened in November 2026) must not make the
+next run upload the same version again, which PyPI refuses. Commits since the
+latest tag choose the bump with git trailers (the most recent trailer wins)::
 
     Release-Bump: patch | minor | major | none
     Release-As: 0.1.0
@@ -13,16 +16,19 @@ Manual runs pass ``INPUT_BUMP`` (auto, patch, minor, major) and
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
 import sys
+import urllib.request
 
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 TRAILER_RE = re.compile(
     r"^(Release-Bump|Release-As):[ \t]*(\S+)[ \t]*$", re.IGNORECASE | re.MULTILINE
 )
 BUMPS = ("patch", "minor", "major", "none")
+PYPI_JSON = "https://pypi.org/pypi/ts-shape/json"
 
 
 def parse(version: str) -> tuple[int, int, int]:
@@ -72,9 +78,15 @@ def next_version(
     messages: list[str],
     input_bump: str = "auto",
     input_version: str = "",
+    published: list[str] | None = None,
 ) -> str | None:
-    """The version to release, or ``None`` when the release is skipped."""
-    current = latest_tag(tags)
+    """The version to release, or ``None`` when the release is skipped.
+
+    ``published`` are the versions already on PyPI; the last release is the
+    highest of them and the tags.
+    """
+    published = published or []
+    current = max(latest_tag(tags), latest_tag(published), key=parse)
     if input_version:
         kind, exact = "exact", input_version.strip()
     elif input_bump and input_bump != "auto":
@@ -91,6 +103,19 @@ def next_version(
     return new
 
 
+def pypi_versions(url: str = PYPI_JSON, timeout: float = 10.0) -> list[str]:
+    """Versions of ts-shape on PyPI; empty (with a warning) when unreachable."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310
+            return list(json.load(response).get("releases", {}))
+    except (OSError, ValueError) as exc:
+        print(
+            f"warning: could not read PyPI versions ({exc}); using tags only",
+            file=sys.stderr,
+        )
+        return []
+
+
 def _git(*args: str) -> str:
     return subprocess.run(
         ["git", *args], check=True, capture_output=True, text=True
@@ -99,6 +124,7 @@ def _git(*args: str) -> str:
 
 def main() -> int:
     tags = _git("tag", "--list").split()
+    published = pypi_versions()
     current = latest_tag(tags)
     span = "HEAD" if current == "0.0.0" else f"{current}..HEAD"
     messages = [m for m in _git("log", "--format=%B%x00", span).split("\x00") if m]
@@ -107,8 +133,13 @@ def main() -> int:
         messages,
         os.environ.get("INPUT_BUMP", "auto"),
         os.environ.get("INPUT_VERSION", ""),
+        published,
     )
-    print(f"Last release {current}; next {new or '(skipped)'}", file=sys.stderr)
+    print(
+        f"Last tag {current}, last on PyPI {latest_tag(published)}; "
+        f"next {new or '(skipped)'}",
+        file=sys.stderr,
+    )
     print(f"version={new or ''}")
     print(f"release={'true' if new else 'false'}")
     return 0
