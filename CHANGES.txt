@@ -1,3 +1,32 @@
+# November 24, 2026 (deprecation policy and report)
+docs: deprecation policy (naming.md): deprecated names are removed only in
+  1.0, after at least 3 months and one minor release of warnings, with a
+  release candidate (FutureWarning, no twin columns) at least 4 weeks
+  before. Nothing is removed now.
+docs: "Deprecated names" page, generated from the code on every docs
+  build (scripts/deprecation_report.py): 628 entries today (aliases,
+  renamed keywords, keyword-only arguments, attributes, twin columns,
+  moved modules and names). keyword_only records its parameters for it.
+fix: dir(ts_shape) and tab completion no longer show importlib, logging,
+  version, NullHandler, PackageNotFoundError and TYPE_CHECKING.
+
+# November 24, 2026 (profilers: one pack; check_signals)
+refactor: the machine profilers are one pack, ts_shape.events.profiling
+  (cycles, stops, changeovers, handshakes, orders, curves, settings,
+  control_loops; runner = profile_cycles + CLI, units = profile_units,
+  result, _base). They were in the package root (cycle_profile,
+  unit_profiles, _profile_result), events.production and
+  events.engineering. Old module paths and the old pack attributes forward
+  with a DeprecationWarning (utils.deprecation.moved_module /
+  moved_attribute); top-level imports are unchanged; event-log output is
+  unchanged. CLI: python -m ts_shape.events.profiling.
+refactor: ts_shape.profile() -> ts_shape.check_signals(), ProfileReport ->
+  SignalReport, module ts_shape.profiling -> ts_shape.signals.report (also
+  exported from ts_shape.signals). The old names are deprecated aliases;
+  summary() starts with "ts-shape signal check:".
+docs: Module reference > Profiling (old URLs redirect); the guide is
+  "Signal semantics and data checks".
+
 # November 24, 2026 (docs: Docusaurus)
 docs: the site is built with Docusaurus (website/) instead of MkDocs
   Material, which is in maintenance mode and does not work with MkDocs 2.

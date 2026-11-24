@@ -7,7 +7,7 @@ Run::
 
 Sources (sidebar):
 
-- **Result folder**: a folder written by ``python -m ts_shape.cycle_profile``
+- **Result folder**: a folder written by ``python -m ts_shape.events.profiling``
   (or ``CycleProfileResult.save``).
 - **Azure Blob**: raw parquet files read with ``AzureBlobParquetLoader`` as it
   is, plus an optional metadata JSON (``MetadataJsonLoader``) for labels.
@@ -15,7 +15,7 @@ Sources (sidebar):
   ``AZURE_STORAGE_CONNECTION_STRING``.
 - **Simulated PLC**: ``ts_shape.make_plc_cycles`` to try the page.
 
-Everything shown is a value of :func:`ts_shape.cycle_profile.profile_cycles`.
+Everything shown is a value of :func:`ts_shape.events.profiling.runner.profile_cycles`.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import pandas as pd
 import streamlit as st
 
 import ts_shape
-from ts_shape.cycle_profile import (
+from ts_shape.events.profiling.runner import (
     CycleProfileResult,
     load_azure_timeseries,
     profile_cycles,

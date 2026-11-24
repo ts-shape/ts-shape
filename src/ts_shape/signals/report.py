@@ -1,0 +1,564 @@
+"""One-call data-quality and semantics report for long-format time series.
+
+Start every analysis here::
+
+    import ts_shape
+
+    report = ts_shape.check_signals(df)
+    print(report.summary())     # what each signal is, and what is wrong with it
+    report.issues()             # actionable list, most severe first
+    report.specs                # SignalSpecs to pass on to detectors
+
+The report infers each signal's semantics (see :mod:`ts_shape.signals`) and
+checks the things that silently corrupt industrial analytics: logging gaps,
+counter resets, duplicate or out-of-order timestamps, unparseable times,
+missing or non-numeric values, signals stuck at one value, and uuids that spread their
+values over several ``value_*`` columns.
+"""
+
+from __future__ import annotations
+
+import warnings
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
+
+import pandas as pd
+
+from ts_shape.errors import DataQualityWarning
+from ts_shape.signals.infer import _iter_signal_groups, infer_spec
+from ts_shape.signals.spec import SignalSpec, SignalSpecs
+from ts_shape.utils.counters import count_resets
+from ts_shape.utils.deprecation import (
+    caller_stacklevel,
+    deprecated_class,
+    deprecated_function,
+)
+from ts_shape.utils.personal import PERSONAL_DATA_PATTERNS, personal_pattern
+
+__all__ = ["check_signals", "SignalReport"]
+
+_VALUE_COLUMNS = ("value_double", "value_integer", "value_bool", "value_string")
+_SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
+
+#: A continuous signal constant for this many nominal periods is "stuck".
+STUCK_PERIODS = 20
+#: ... and for at least this many seconds (a fast signal held for a few
+#: seconds is not stuck).
+STUCK_MIN_SECONDS = 600.0
+#: Pseudo uuid of the issues that concern the whole asset (every signal).
+ASSET = "(asset)"
+#: A gap in which no signal logs anything is an asset-level hole when it is
+#: longer than this (and than every sampled signal's max_gap).
+ASSET_HOLE_MIN = pd.Timedelta(minutes=30)
+#: Share of the sampled signals that must share one period for a "shared
+#: polling clock" note (at least three signals).
+SHARED_CLOCK_SHARE = 0.8
+
+
+def _duration_text(seconds: float) -> str:
+    """``"4 s"``, ``"12 min"`` or ``"1.50 h"``."""
+    if seconds < 120:
+        return f"{seconds:.0f} s"
+    if seconds < 7200:
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds / 3600:.2f} h"
+
+
+PROFILE_COLUMNS = [
+    "uuid",
+    "kind",
+    "encoding",
+    "value_column",
+    "rows",
+    "first",
+    "last",
+    "nominal_period",
+    "max_gap",
+    "gap_count",
+    "gap_seconds",
+    "longest_gap_seconds",
+    "resets",
+    "duplicates",
+    "out_of_order",
+    "nat_timestamps",
+    "missing_values",
+    "value_columns_used",
+    "longest_constant_seconds",
+    "min",
+    "max",
+    "tz",
+]
+ISSUE_COLUMNS = ["uuid", "severity", "issue", "detail"]
+
+
+@dataclass(frozen=True)
+class SignalReport:
+    """Result of :func:`check_signals`.
+
+    Attributes:
+        specs: Inferred (and overridden) :class:`~ts_shape.signals.SignalSpecs`.
+        table: One row per signal with the measured characteristics.
+        issue_table: One row per finding (``uuid``, ``severity``, ``issue``,
+            ``detail``), most severe first.
+
+    Example:
+        >>> import ts_shape
+        >>> report = ts_shape.check_signals(ts_shape.make_timeseries(["temp", "pressure"], n_points=100))
+        >>> print(report.summary())
+        ts-shape signal check: 2 signal(s)
+          kinds: 2 continuous
+          issues: none
+        >>> report.to_frame()[["uuid", "kind", "encoding", "rows"]]
+               uuid        kind encoding  rows
+        0  pressure  continuous  sampled   100
+        1      temp  continuous  sampled   100
+    """
+
+    specs: SignalSpecs
+    table: pd.DataFrame
+    issue_table: pd.DataFrame
+
+    def to_frame(self) -> pd.DataFrame:
+        """The per-signal table."""
+        return self.table.copy()
+
+    def issues(self, severity: str | None = None) -> pd.DataFrame:
+        """Findings, optionally filtered to one severity.
+
+        Args:
+            severity: ``"error"``, ``"warning"`` or ``"info"`` to keep only that
+                severity. None returns every finding.
+
+        Returns:
+            DataFrame with columns ``uuid``, ``severity``, ``issue`` and ``detail``,
+                most severe first.
+        """
+        out = self.issue_table
+        if severity is not None:
+            out = out[out["severity"] == severity]
+        return out.reset_index(drop=True)
+
+    def summary(self) -> str:
+        """Human-readable overview."""
+        n = len(self.table)
+        lines = [f"ts-shape signal check: {n} signal(s)"]
+        if n:
+            kinds = self.table["kind"].value_counts().to_dict()
+            lines.append(
+                "  kinds: " + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items()))
+            )
+        counts = self.issue_table["severity"].value_counts().to_dict()
+        lines.append(
+            "  issues: "
+            + (
+                ", ".join(f"{counts.get(s, 0)} {s}" for s in _SEVERITY_ORDER)
+                if counts
+                else "none"
+            )
+        )
+        for _, row in self.issue_table.head(20).iterrows():
+            lines.append(
+                f"  [{row['severity']}] {row['uuid']}: {row['issue']} -- {row['detail']}"
+            )
+        if len(self.issue_table) > 20:
+            lines.append(f"  ... {len(self.issue_table) - 20} more (see .issues())")
+        return "\n".join(lines)
+
+    def __repr__(self) -> str:
+        return self.summary()
+
+
+def _longest_constant_seconds(values: pd.Series, times: pd.Series) -> float:
+    if len(values) < 2:
+        return 0.0
+    run = (values != values.shift()).cumsum().to_numpy()
+    # Span of each run of equal values: its last time minus its first
+    # (cythonized group first/last; ``times`` has no NaT here).
+    grouped = times.reset_index(drop=True).groupby(run, sort=False)
+    spans = grouped.last() - grouped.first()
+    return float(spans.max().total_seconds()) if len(spans) else 0.0
+
+
+def _profile_signal(raw: pd.DataFrame, spec: SignalSpec, time_column: str) -> tuple[
+    dict[str, Any],
+    list[tuple[str, str, str]],
+    list[tuple[pd.Timestamp, pd.Timestamp]],
+]:
+    issues: list[tuple[str, str, str]] = []
+    gap_spans: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+    times_raw = raw[time_column]
+    if not pd.api.types.is_datetime64_any_dtype(times_raw):
+        # (to_datetime of a datetime column is a no-op, but scans it first)
+        times_raw = pd.to_datetime(times_raw, errors="coerce")
+    nat = int(times_raw.isna().sum())
+    ordered = times_raw.dropna()
+    out_of_order = int((ordered.diff() < pd.Timedelta(0)).sum())
+
+    g = raw.assign(**{time_column: times_raw}).dropna(subset=[time_column])
+    g = g.sort_values(time_column, kind="stable")
+    times = g[time_column]
+    duplicates = int(times.duplicated().sum())
+    used = [c for c in _VALUE_COLUMNS if c in g.columns and g[c].notna().any()]
+    values = g[spec.value_column] if spec.value_column in g.columns else pd.Series()
+    missing = int(values.isna().sum())
+    present = values.dropna()
+    present_times = times.loc[present.index]
+
+    diffs = times.diff().dropna()
+    gap_count = 0
+    gap_seconds = 0.0
+    if spec.max_gap is not None and not diffs.empty:
+        gaps = diffs[diffs > spec.max_gap]
+        gap_count = len(gaps)
+        gap_seconds = float(gaps.dt.total_seconds().sum())
+        ends = times.loc[gaps.index]
+        gap_spans = [(e - d, e) for e, d in zip(ends, gaps, strict=True)]
+    longest_gap = float(diffs.max().total_seconds()) if not diffs.empty else 0.0
+
+    resets = 0
+    non_numeric = 0
+    vmin = vmax = None
+    if spec.value_column in ("value_double", "value_integer") and not present.empty:
+        numeric = pd.to_numeric(present, errors="coerce")
+        # ``present`` has no nulls, so every NaN here is a value that is not
+        # numeric; it is reported as an issue below rather than dropped.
+        non_numeric = int(numeric.isna().sum())
+        vmin, vmax = float(numeric.min()), float(numeric.max())
+        if spec.kind == "counter":
+            resets = count_resets(numeric)
+    longest_constant = _longest_constant_seconds(present, present_times)
+
+    row = {
+        "uuid": spec.uuid,
+        "kind": spec.kind,
+        "encoding": spec.encoding,
+        "value_column": spec.value_column,
+        "rows": len(raw),
+        "first": times.iloc[0] if len(times) else pd.NaT,
+        "last": times.iloc[-1] if len(times) else pd.NaT,
+        "nominal_period": spec.nominal_period,
+        "max_gap": spec.max_gap,
+        "gap_count": gap_count,
+        "gap_seconds": gap_seconds,
+        "longest_gap_seconds": longest_gap,
+        "resets": resets,
+        "duplicates": duplicates,
+        "out_of_order": out_of_order,
+        "nat_timestamps": nat,
+        "missing_values": missing,
+        "value_columns_used": ",".join(used),
+        "longest_constant_seconds": longest_constant,
+        "min": vmin,
+        "max": vmax,
+        "tz": spec.tz,
+    }
+
+    if nat:
+        issues.append(
+            ("error", "unparseable timestamps", f"{nat} row(s) with NaT systime")
+        )
+    if len(present) == 0:
+        issues.append(("error", "no values", f"{spec.value_column} is empty"))
+    if non_numeric:
+        issues.append(
+            (
+                "error",
+                "non-numeric values",
+                f"{non_numeric} value(s) in {spec.value_column} are not numeric",
+            )
+        )
+    if duplicates:
+        issues.append(
+            (
+                "warning",
+                "duplicate timestamps",
+                f"{duplicates} repeated systime value(s)",
+            )
+        )
+    if out_of_order:
+        issues.append(
+            (
+                "info",
+                "rows out of time order",
+                f"{out_of_order} backward step(s); ts-shape sorts, but check the source",
+            )
+        )
+    if len(used) > 1:
+        issues.append(
+            ("warning", "mixed value columns", f"values spread over {', '.join(used)}")
+        )
+    if missing:
+        share = missing / max(len(values), 1)
+        sev = "warning" if share > 0.05 else "info"
+        issues.append(
+            (
+                sev,
+                "missing values",
+                f"{missing} NaN in {spec.value_column} ({share:.1%})",
+            )
+        )
+    if gap_count:
+        issues.append(
+            (
+                "warning",
+                "logging gaps",
+                f"{gap_count} gap(s) > {spec.max_gap}, "
+                f"{_duration_text(gap_seconds)} total, "
+                f"longest {_duration_text(longest_gap)}",
+            )
+        )
+    if resets:
+        issues.append(
+            (
+                "info",
+                "counter resets",
+                f"{resets} reset(s): use reset-aware quantities (handle_resets / "
+                "ts_shape.signals.primitives.increments)",
+            )
+        )
+    if spec.encoding == "change_encoded":
+        issues.append(
+            (
+                "info",
+                "change-encoded",
+                "one row per change: durations must close at the next change "
+                "(interval_end='next_change'); set max_gap to the outage threshold",
+            )
+        )
+    if (
+        spec.kind == "continuous"
+        and spec.nominal_period is not None
+        and longest_constant >= STUCK_PERIODS * spec.nominal_period.total_seconds()
+        and longest_constant >= STUCK_MIN_SECONDS
+    ):
+        issues.append(
+            (
+                "warning",
+                "possibly stuck",
+                f"constant for {_duration_text(longest_constant)} "
+                f"(>= {STUCK_PERIODS} sampling periods)",
+            )
+        )
+    if spec.kind == "counter" and spec.value_column == "value_double":
+        issues.append(
+            ("info", "float counter", "cumulative float register (e.g. kWh meter)")
+        )
+    return row, issues, gap_spans
+
+
+def _asset_holes(
+    times: list[pd.Series], specs: Mapping[str, SignalSpec]
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+    """Gaps in which no signal logged anything (the whole asset was silent)."""
+    if not times:
+        return []
+    every = pd.concat(times, ignore_index=True).dropna()
+    if every.empty:
+        return []
+    every = every.drop_duplicates().sort_values().reset_index(drop=True)
+    limit = ASSET_HOLE_MIN
+    for spec in specs.values():
+        # Only sampled signals bound the hole: an event signal's long gaps
+        # are its normal silence.
+        if (
+            spec.encoding == "sampled"
+            and spec.max_gap is not None
+            and spec.max_gap > limit
+        ):
+            limit = spec.max_gap
+    diffs = every.diff()
+    holes = diffs[diffs > limit]
+    return [(every.loc[i] - d, every.loc[i]) for i, d in holes.items()]
+
+
+def _inside(
+    spans: list[tuple[pd.Timestamp, pd.Timestamp]],
+    holes: list[tuple[pd.Timestamp, pd.Timestamp]],
+    slack: pd.Timedelta,
+) -> bool:
+    """Whether every span lies within one of the holes (give or take ``slack``)."""
+    return all(
+        any(a >= h0 - slack and b <= h1 + slack for h0, h1 in holes) for a, b in spans
+    )
+
+
+def _shared_clock(specs: Mapping[str, SignalSpec]) -> tuple[float, int, int] | None:
+    """``(period seconds, signals on it, sampled signals)`` of a shared clock."""
+    periods = [
+        s.nominal_period.total_seconds()
+        for s in specs.values()
+        if s.encoding == "sampled" and s.nominal_period is not None
+    ]
+    if len(periods) < 3:
+        return None
+    median = float(pd.Series(periods).median())
+    if median <= 0:
+        return None
+    on_it = sum(abs(p - median) <= 0.05 * median for p in periods)
+    if on_it < 3 or on_it < SHARED_CLOCK_SHARE * len(periods):
+        return None
+    return median, on_it, len(periods)
+
+
+def _labels(metadata: Any) -> pd.Series:
+    """``uuid -> label`` of a metadata table or loader (empty without one)."""
+    if metadata is None:
+        return pd.Series(dtype=object)
+    from ts_shape.events.profiling.runner import signal_labels
+
+    table = metadata.to_df() if hasattr(metadata, "to_df") else metadata
+    return signal_labels(table)
+
+
+def check_signals(
+    dataframe: pd.DataFrame,
+    specs: SignalSpecs | Mapping[str, Mapping[str, Any]] | None = None,
+    *,
+    uuid_column: str = "uuid",
+    time_column: str = "systime",
+    metadata: Any = None,
+    exclude: Sequence[str] = PERSONAL_DATA_PATTERNS,
+) -> SignalReport:
+    """Profile every signal in a long-format frame.
+
+    Nullable, pyarrow and string dtypes are converted to NumPy dtypes first;
+    a time column that mixes UTC offsets is converted to UTC with a
+    :class:`~ts_shape.errors.DataQualityWarning`. The input is not changed.
+
+    Args:
+        dataframe: Long-format data (``systime``, ``uuid``, ``value_*``).
+        specs: Known semantics. Either complete :class:`SignalSpecs`, or
+            ``{uuid: {field: value}}`` overrides applied on top of inference.
+        uuid_column: Column identifying the signal.
+        time_column: Timestamp column.
+        metadata: Optional datapoint metadata (a table with ``uuid`` and a
+            label column, or a :class:`~ts_shape.MetadataJsonLoader`). The
+            report's table then gains a ``label`` column, and signals whose
+            label matches ``exclude`` are left out (personal data).
+        exclude: Regular expressions (case-insensitive) of labels to leave
+            out when ``metadata`` is given; default: personal data
+            (:data:`ts_shape.utils.personal.PERSONAL_DATA_PATTERNS`). Empty
+            keeps every signal.
+
+    Signals the whole asset is silent in at once are reported once, as a
+    ``"data hole"`` issue with uuid ``"(asset)"``, instead of as a
+    ``"logging gaps"`` warning per signal; a polling period most sampled
+    signals share is a ``"shared polling clock"`` note.
+
+    Returns:
+        :class:`SignalReport` with ``specs``, a per-signal ``table`` and the
+        ``issues()`` list.
+
+    Raises:
+        ColumnNotFoundError: When ``uuid_column`` or ``time_column`` is
+            missing (also for ``pd.DataFrame()``).
+        ValueError: When ``specs`` overrides name unknown fields or invalid
+            values.
+    """
+    if not isinstance(specs, SignalSpecs):
+        overrides = {str(k): dict(v) for k, v in dict(specs or {}).items()}
+        for key, fields in overrides.items():
+            # Same validation as SignalSpec.from_dict: unknown fields raise.
+            SignalSpec.from_dict({**fields, "uuid": key})
+        specs = None
+    else:
+        overrides = {}
+
+    labels = _labels(metadata)
+    if not labels.empty and exclude:
+        pattern = personal_pattern(tuple(exclude))
+        hidden = {u for u, label in labels.items() if pattern.search(str(label))}
+        hidden &= set(dataframe[uuid_column].astype(str).unique())
+        if hidden:
+            warnings.warn(
+                f"check_signals: {len(hidden)} signal(s) left out: their label matches "
+                "a personal-data pattern (pass exclude=() to keep every signal).",
+                DataQualityWarning,
+                stacklevel=caller_stacklevel(),
+            )
+            keys = dataframe[uuid_column].astype(str)
+            dataframe = dataframe[~keys.isin(hidden).to_numpy()]
+    inferred: dict[str, SignalSpec] = {}
+    rows: list[dict[str, Any]] = []
+    issues: list[dict[str, str]] = []
+    signal_issues: list[
+        tuple[str, list[tuple[str, str, str]], list[tuple[Any, Any]]]
+    ] = []
+    all_times: list[pd.Series] = []
+    for key, raw in _iter_signal_groups(dataframe, uuid_column, time_column):
+        if specs is not None and key in specs:
+            spec = specs[key]
+        else:
+            parsed = raw.dropna(subset=[time_column])
+            spec = infer_spec(parsed, key, time_column)
+            if key in overrides:
+                spec = spec.with_(**overrides[key])
+        inferred[key] = spec
+        row, found, spans = _profile_signal(raw, spec, time_column)
+        rows.append(row)
+        signal_issues.append((key, found, spans))
+        times = raw[time_column]
+        if not pd.api.types.is_datetime64_any_dtype(times):
+            times = pd.to_datetime(times, errors="coerce")
+        all_times.append(times)
+
+    # A hole in which no signal logged anything is one asset-level issue,
+    # not one "logging gaps" warning per signal.
+    holes = _asset_holes(all_times, inferred)
+    for start, end in holes:
+        issues.append(
+            {
+                "uuid": ASSET,
+                "severity": "warning",
+                "issue": "data hole",
+                "detail": (
+                    f"no signal logged anything from {start} to {end} "
+                    f"({_duration_text((end - start).total_seconds())}); the "
+                    "machine, its PLC or the edge device was probably off"
+                ),
+            }
+        )
+    for key, found, spans in signal_issues:
+        spec = inferred[key]
+        slack = spec.max_gap if spec.max_gap is not None else pd.Timedelta(0)
+        explained = bool(holes) and bool(spans) and _inside(spans, holes, slack)
+        issues.extend(
+            {"uuid": key, "severity": s, "issue": i, "detail": d}
+            for s, i, d in found
+            if not (explained and i == "logging gaps")
+        )
+    clock = _shared_clock(inferred)
+    if clock is not None:
+        period, on_it, sampled = clock
+        issues.append(
+            {
+                "uuid": ASSET,
+                "severity": "info",
+                "issue": "shared polling clock",
+                "detail": (
+                    f"{on_it} of {sampled} sampled signals are polled every "
+                    f"{period:g} s (one acquisition clock): an event is seen up "
+                    "to one period late"
+                ),
+            }
+        )
+
+    table = pd.DataFrame(rows, columns=PROFILE_COLUMNS)
+    if not labels.empty:
+        table["label"] = table["uuid"].astype(str).map(labels)
+    issue_table = pd.DataFrame(issues, columns=ISSUE_COLUMNS)
+    if not issue_table.empty:
+        issue_table = issue_table.sort_values(
+            ["severity", "uuid"],
+            key=lambda c: c.map(_SEVERITY_ORDER) if c.name == "severity" else c,
+        ).reset_index(drop=True)
+    return SignalReport(
+        specs=SignalSpecs(inferred), table=table, issue_table=issue_table
+    )
+
+
+# Renamed in November 2026 ("profile" read like the cycle and unit profilers,
+# which are unrelated). The old names keep working, with a DeprecationWarning.
+profile = deprecated_function(check_signals, "profile")
+ProfileReport = deprecated_class(SignalReport, "ProfileReport")

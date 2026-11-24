@@ -13,6 +13,7 @@ rendered with griffe2md. Every object heading gets an explicit
 point at the page that documents the target; references to objects outside
 ts-shape (pandas, builtins) become plain text.
 
+``docs/deprecations.md`` lists every deprecated name (scripts/deprecation_report.py).
 ``docs/changelog.md`` and ``docs/license.md`` are written from ``CHANGES.txt``
 and ``LICENSE.txt``. All generated files are git-ignored.
 """
@@ -70,6 +71,10 @@ def public_modules() -> list[tuple[tuple[str, ...], Path, bool]]:
         elif parts[-1] == "__main__":
             continue
         if any(p.startswith("_") for p in parts):
+            continue
+        # Modules that moved keep a forwarding shim at the old path; it has
+        # no API of its own, so it gets no page.
+        if "moved_module(" in path.read_text(encoding="utf-8"):
             continue
         out.append((parts, path, is_pkg))
     return out
@@ -298,6 +303,12 @@ def main() -> None:
         )
 
     print(f"Wrote {len(rendered)} API reference pages to {REF.relative_to(ROOT)}")
+
+    # Every deprecated name, read from the code (docs/deprecations.md).
+    import deprecation_report
+
+    report = deprecation_report.write(DOCS / "deprecations.md")
+    print(f"Wrote docs/deprecations.md ({report.total()} deprecated names)")
 
 
 if __name__ == "__main__":

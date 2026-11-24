@@ -8,7 +8,7 @@ Dashboard: ``streamlit run examples/cycle_profiling/dashboard.py``.
 import pandas as pd
 
 import ts_shape
-from ts_shape.cycle_profile import profile_cycles
+from ts_shape.events.profiling.runner import profile_cycles
 
 pd.set_option("display.width", 200)
 pd.set_option("display.max_columns", 20)

@@ -11,7 +11,7 @@ Mapping-free cycle time profiling of one PLC. Give it every raw signal of a mach
 
 No role mapping, no master or planning data: signal names are used for labels only.
 
-`ts_shape.events.production.cycle_profiling` · [Cycle time by part](cycle-time.md) · [API reference](../../reference/ts_shape/events/production/cycle_profiling.md)
+`ts_shape.events.profiling.cycles` · [Cycle time by part](../production/cycle-time.md) · [API reference](../../reference/ts_shape/events/profiling/cycles.md)
 
 ## Example
 
@@ -57,7 +57,7 @@ result.save("profile/")
 Command line (credentials from `--sas-url` / `AZURE_STORAGE_SAS_URL` or `AZURE_STORAGE_CONNECTION_STRING`):
 
 ```bash
-python -m ts_shape.cycle_profile --container <name> --prefix <plc folder>/ --start 2026-11-17T00:00Z --end 2026-11-17T23:59:59Z --metadata-json datapoints.json --out profile/
+python -m ts_shape.events.profiling --container <name> --prefix <plc folder>/ --start 2026-11-17T00:00Z --end 2026-11-17T23:59:59Z --metadata-json datapoints.json --out profile/
 ```
 
 Dashboard (numbers and tables of one result; sources: result folder, Azure, simulated PLC):
@@ -82,7 +82,7 @@ streamlit run examples/cycle_profiling/dashboard.py
 | 9. Influencers | Per cycle: count of every event, mean and max of every analog signal, state of every boolean at cycle start. `long_vs_normal` and `short_vs_normal` are scored with the Mann-Whitney AUC: importance = \|AUC − 0.5\| × 2. Events that fire more than twice per cycle on average (a heartbeat) only measure the duration and are left out. Analog means and maxima are taken over the same window in every cycle (from the start for the variant's P10), so a cycle that only waits longer does not change them. Every feature gets a Mann-Whitney `p_value`, Benjamini-Hochberg `q_value` over all tested features and `is_significant` (q < 0.05). | `detect_cycle_influencers` |
 | 10. Records | One point per cycle at its end: `start_ns`, `end_ns`, duration, class, variant, deviation from the variant median, the segment that lost the most time. | `cycle_records`, `detect_unusual_cycles` |
 
-`ts_shape.cycle_profile.profile_cycles` adds the structure of the cycle on top:
+`ts_shape.events.profiling.runner.profile_cycles` adds the structure of the cycle on top:
 
 | Table | What it holds |
 |---|---|
@@ -95,7 +95,7 @@ streamlit run examples/cycle_profiling/dashboard.py
 | `curve_bands`, `curve_scores`, `curve_flagged` | per analog signal the shape over the cycle on 64 phase points: median band, shift-tolerant deviation (±2 points) and a discord score (distance to the nearest other cycle); a cycle is flagged above a robust bound and an absolute floor |
 | `cycle_time_check` | when the controller reports its own cycle time (found by name-free matching of a value signal to the cycle durations, units s/ms/min): agreement per cycle |
 
-`ts_shape.cycle_profile.case_log` turns `cycle_events` and `cycle_records` into XES-style columns (`case:concept:name`, `concept:name`, `time:timestamp`, …) for pm4py and other process-mining tools.
+`ts_shape.events.profiling.runner.case_log` turns `cycle_events` and `cycle_records` into XES-style columns (`case:concept:name`, `concept:name`, `time:timestamp`, …) for pm4py and other process-mining tools.
 
 `summary["confidence"]` collects the self-checks: anchor support, full-sequence share, cycle-time signal agreement, main route share, parts per cycle, independent lanes, shape anomalies, significant influencers.
 

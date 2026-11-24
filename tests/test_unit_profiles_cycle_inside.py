@@ -8,9 +8,9 @@ import pandas as pd
 import pytest
 
 import ts_shape
-from ts_shape.events.production.curve_signature import CurveSignatureEvents
-from ts_shape.events.production.handshake_profiling import HandshakeProfileEvents
-from ts_shape.events.production.setting_impact import SettingImpactEvents
+from ts_shape.events.profiling.curves import CurveSignatureEvents
+from ts_shape.events.profiling.handshakes import HandshakeProfileEvents
+from ts_shape.events.profiling.settings import SettingImpactEvents
 
 pytestmark = pytest.mark.filterwarnings("ignore::ts_shape.errors.DataQualityWarning")
 

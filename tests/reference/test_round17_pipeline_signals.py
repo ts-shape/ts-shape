@@ -22,9 +22,9 @@ from ts_shape import Pipeline
 from ts_shape.events.production.long_downtime_events import LongDowntimeEvents
 from ts_shape.events.production.machine_state import MachineStateEvents
 from ts_shape.events.production.period_summary import PeriodSummaryEvents
-from ts_shape.profiling import profile
 from ts_shape.signals import infer_spec
 from ts_shape.signals.primitives import intervals, signal_series, windows
+from ts_shape.signals.report import check_signals
 from ts_shape.signals.spec import SignalSpec
 
 T0 = pd.Timestamp("2024-01-01")
@@ -256,7 +256,7 @@ def test_one_long_gap_keeps_a_signal_sampled():
     spec = infer_spec(df, "x")
     assert spec.encoding == "sampled"
     assert spec.max_gap == pd.Timedelta("5min")
-    row = profile(df).to_frame().iloc[0]
+    row = check_signals(df).to_frame().iloc[0]
     assert row["gap_count"] == 1
     assert row["gap_seconds"] == 1860.0
 

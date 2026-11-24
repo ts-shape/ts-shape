@@ -48,7 +48,7 @@ const EXAMPLE = `import ts_shape
 # Synthetic data in the standard long format; use a loader or pandas for your own
 df = ts_shape.make_timeseries(["press:temp"], n_points=2000, n_outliers=5)
 
-print(ts_shape.profile(df).summary())   # signal kinds, gaps, resets, duplicates
+print(ts_shape.check_signals(df).summary())   # signal kinds, gaps, resets, duplicates
 
 outliers = ts_shape.OutlierDetectionEvents(df, value_column="value_double")
 events = outliers.detect_outliers_zscore(n_sigma=4.0)

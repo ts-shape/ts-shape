@@ -9,9 +9,9 @@ architecture rather than in individual detectors.
 
 ## W1: signal semantics core (started)
 
-`SignalSpec`, `infer_specs`, `profile()` and the spec-driven primitives in
+`SignalSpec`, `infer_specs`, `check_signals()` and the spec-driven primitives in
 `ts_shape.signals`. Detectors call the primitives instead of re-deriving
-signal semantics. See [Signal semantics and profiling](guides/signals.md).
+signal semantics. See [Signal semantics and data checks](guides/signals.md).
 
 ## Consistency audit (done, October 2026)
 
@@ -38,8 +38,11 @@ Open, all additive (new accepted forms, nothing removed):
 - **Durations in one form.** `OEEEvents` takes `ideal_cycle_time` in float
   seconds, `takt_time` takes an offset string. Accept both everywhere.
 
-In a future major release the deprecated aliases (warning since 0.0.63) are
-removed.
+The deprecated names (warning since 0.0.63) are removed in 1.0, following
+the [deprecation policy](naming.md#deprecation-policy): at least 3 months
+and one minor release of warnings, then a release candidate with
+`FutureWarning` and no twin columns. The current list: [Deprecated
+names](deprecations.md).
 
 ## W2: 1.0, correct by default, one API, one output
 
@@ -97,7 +100,7 @@ removed.
 
 ## W5: understanding
 
-- `profile()` as the entry point.
+- `check_signals()` as the entry point.
 - A question-first cookbook ("Why did OEE drop?", "Which station is the
   bottleneck?", "Is my gauge capable?") on a bundled, realistic plant dataset.
 - A generated detector reference: assumptions, input signal kinds and output
@@ -106,7 +109,7 @@ removed.
 ## W6: ecosystem
 
 - Grafana and TimescaleDB recipes.
-- A command line (`ts-shape profile data.parquet`).
+- A command line (`ts-shape check-signals data.parquet`).
 - Done: deprecation policy. Renamed names keep working with a warning and are
   removed only in a major release.
 

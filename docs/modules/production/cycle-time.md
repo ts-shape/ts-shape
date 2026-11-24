@@ -47,4 +47,4 @@ All methods take `part_id_uuid` and `cycle_trigger_uuid`.
 - The slow-cycle threshold is relative to each part's median, so mixed part numbers need no per-part limits.
 - `detect_slow_cycles` uses a fixed factor and looks at slow cycles only; `detect_unusual_cycles` finds short and long cycles with statistical, scale-free bounds.
 - The trend band is relative to the part's median (`stable_band_ratio`), so the same setting fits a 5 s and a 300 s cycle. Before, it was a fixed ±0.5 s.
-- These methods need the cycle trigger and part signals named. To profile a PLC without naming any signal (cycle found automatically, pauses kept as their own class, segments, contribution register, influencers) use [CycleProfileEvents](cycle-profiling.md).
+- These methods need the cycle trigger and part signals named. To profile a PLC without naming any signal (cycle found automatically, pauses kept as their own class, segments, contribution register, influencers) use [CycleProfileEvents](../profiling/cycle-profiling.md).

@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 import ts_shape
-from ts_shape.events.engineering.control_loop_profiling import ControlLoopProfileEvents
+from ts_shape.events.profiling.control_loops import ControlLoopProfileEvents
 
 EXPECTED = {"good": "ok", "oscillating": "oscillating", "sluggish": "sluggish"}
 

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ts_shape.profiling import _longest_constant_seconds
+from ts_shape.signals.report import _longest_constant_seconds
 
 
 def _reference(values: pd.Series, times: pd.Series) -> float:

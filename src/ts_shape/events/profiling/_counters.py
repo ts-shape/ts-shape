@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ts_shape.events.production._unit_profile import (
+from ts_shape.events.profiling._base import (
     SignalIndex,
     _UnitProfiler,
     assign_to_cycles,

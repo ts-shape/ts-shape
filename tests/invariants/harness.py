@@ -268,9 +268,9 @@ def _uuid_for(name: str) -> str:
 #: Constructor arguments the harness cannot infer from names alone (one of
 #: several optional parameters must be given).
 #: Mapping-free unit profilers (stops, changeovers, loops ...): every class
-#: that declares ``PROFILE_KIND`` (see ts_shape.unit_profiles.PROFILERS).
+#: that declares ``PROFILE_KIND`` (see ts_shape.events.profiling.units.PROFILERS).
 def _unit_profilers() -> tuple[str, ...]:
-    from ts_shape.unit_profiles import PROFILERS
+    from ts_shape.events.profiling.units import PROFILERS
 
     return tuple(sorted(cls.__name__ for cls in PROFILERS.values()))
 

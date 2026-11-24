@@ -1,7 +1,7 @@
 """Quality of the cycle profile: benchmark against ground truth and the
 statistics, structure, shape and self-check additions.
 
-The benchmark scenarios of :data:`ts_shape.cycle_profile.BENCHMARK_SCENARIOS`
+The benchmark scenarios of :data:`ts_shape.events.profiling.runner.BENCHMARK_SCENARIOS`
 cover the cases the profile must handle without configuration: polled
 signals, several parts per cycle, an alternative route, curve-shape faults,
 a second independent machine on the same controller and a controller that
@@ -16,16 +16,16 @@ import pytest
 
 import ts_shape
 from ts_shape import CycleProfileEvents
-from ts_shape.cycle_profile import (
+from ts_shape.events.profiling.cycles import (
+    _analog_levels,
+    _bh_qvalues,
+    _phase_locking,
+)
+from ts_shape.events.profiling.runner import (
     BENCHMARK_SCENARIOS,
     benchmark_profiles,
     case_log,
     profile_cycles,
-)
-from ts_shape.events.production.cycle_profiling import (
-    _analog_levels,
-    _bh_qvalues,
-    _phase_locking,
 )
 from ts_shape.utils.frames import to_ns
 

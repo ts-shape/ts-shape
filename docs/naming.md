@@ -87,6 +87,24 @@ Every detector returns a `pandas.DataFrame` in one of four shapes (`ts_shape.eve
 
 The uuid and column checks are applied to every detector in `ts_shape.events` by its base class, so they behave the same in every pack. Transforms, features, signals, the event log and the context helpers use the same checks (`ts_shape.utils.frames`), and contract tests run every public function on empty, tz-aware, nullable and pyarrow input. They report the call you made, not the detector's internal calls. A missing *value* column (`value_column`, `value_column_<role>`, ...) raises `ColumnNotFoundError` naming the column when the method looks it up.
 
+## Deprecation policy
+
+Renames go through deprecation, never straight to removal:
+
+1. The old spelling keeps working and warns. Every helper in
+   `ts_shape.utils.deprecation` emits a `DeprecationWarning` that names the
+   replacement and points at the caller's line. A renamed output column keeps
+   its old spelling as a twin (no warning is possible for a column).
+2. Deprecated names are removed only in a major release, the next one being
+   1.0. A deprecation lives at least **3 months** and through at least **one
+   minor release** before it can be removed.
+3. Before 1.0, a release candidate switches the warnings to `FutureWarning`
+   (shown by default everywhere, notebooks included) and leaves the twin
+   columns out by default, at least **4 weeks** before the release.
+4. Every deprecation gets an entry in [Migration and deprecations](migration.md)
+   with the old and the new spelling. The full current list is generated from
+   the code: [Deprecated names](deprecations.md).
+
 ## Wording
 
 American spelling (analyze, normalize, behavior). Use:

@@ -23,6 +23,7 @@ from ts_shape.signals.identify import (
     register_identifier_type,
 )
 from ts_shape.signals.infer import infer_spec, infer_specs
+from ts_shape.signals.report import SignalReport, check_signals
 from ts_shape.signals.spec import ENCODINGS, KINDS, SignalSpec, SignalSpecs
 
 __all__ = [
@@ -30,8 +31,10 @@ __all__ = [
     "IDENTIFIER_TYPES",
     "KINDS",
     "ObjectReport",
+    "SignalReport",
     "SignalSpec",
     "SignalSpecs",
+    "check_signals",
     "identify_objects",
     "infer_spec",
     "infer_specs",

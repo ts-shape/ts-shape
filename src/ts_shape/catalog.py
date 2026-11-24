@@ -26,6 +26,7 @@ _DEPRECATED_CLASS_ALIASES = frozenset(
         "PartProductionTracking",
         "PerformanceLossTracking",
         "PeriodSummary",
+        "ProfileReport",
         "ProcessStabilityIndex",
         "QualityTracking",
         "ReworkTracking",

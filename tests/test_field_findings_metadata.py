@@ -11,12 +11,12 @@ import pandas as pd
 import pytest
 
 import ts_shape
-from ts_shape.cycle_profile import _per_hour, _top_row, prepare_signals
 from ts_shape.errors import DataQualityWarning
-from ts_shape.events.production.cycle_profiling import (
+from ts_shape.events.profiling.cycles import (
     CycleProfileEvents,
     _grid_period,
 )
+from ts_shape.events.profiling.runner import _per_hour, _top_row, prepare_signals
 from ts_shape.signals.identify import identify_objects
 from ts_shape.utils.personal import is_personal
 
@@ -116,7 +116,7 @@ def test_not_personal(label: str) -> None:
 def test_profile_with_metadata_labels_and_excludes_personal_data() -> None:
     df = ts_shape.make_timeseries(["a", "b"], n_points=50)
     meta = pd.DataFrame({"uuid": ["a", "b"], "label": ["Temp", "Bedienpersonal"]})
-    report = ts_shape.profile(df, metadata=meta)
+    report = ts_shape.check_signals(df, metadata=meta)
     assert report.table[["uuid", "label"]].values.tolist() == [["a", "Temp"]]
 
 
@@ -176,7 +176,7 @@ def _with_hole() -> pd.DataFrame:
 
 
 def test_asset_hole_is_one_issue() -> None:
-    issues = ts_shape.profile(_with_hole()).issues()
+    issues = ts_shape.check_signals(_with_hole()).issues()
     holes = issues[issues["issue"] == "data hole"]
     assert len(holes) == 1 and holes["uuid"].iloc[0] == "(asset)"
     assert not (issues["issue"] == "logging gaps").any()
@@ -188,7 +188,7 @@ def test_short_constant_run_is_not_stuck() -> None:
     t = pd.date_range("2026-10-01", periods=2000, freq="64ms")
     values = np.random.default_rng(2).normal(0, 1, len(t))
     values[100:170] = 1.0  # constant for ~4.5 s
-    issues = ts_shape.profile(_long("fast", t, values)).issues()
+    issues = ts_shape.check_signals(_long("fast", t, values)).issues()
     assert not (issues["issue"] == "possibly stuck").any()
 
 

@@ -134,9 +134,14 @@ const config: Config = {
     [
       '@docusaurus/plugin-client-redirects',
       {
-        // The only URL of the former MkDocs site that no longer exists
-        // (checked by comparing both builds' pages).
-        redirects: [{from: '/reference/SUMMARY', to: '/reference/'}],
+        // Pages that moved; old links keep working. /reference/SUMMARY/ is the
+        // only URL of the former MkDocs site that no longer exists.
+        redirects: [
+          {from: '/reference/SUMMARY', to: '/reference/'},
+          // The profilers moved from Production to their own pack (Nov 2026).
+          {from: '/modules/production/cycle-profiling', to: '/modules/profiling/cycle-profiling/'},
+          {from: '/modules/production/unit-profiles', to: '/modules/profiling/unit-profiles/'},
+        ],
       },
     ],
     [

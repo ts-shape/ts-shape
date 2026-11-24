@@ -9,7 +9,7 @@ const sidebars: SidebarsConfig = {
   ],
   concepts: [
     {type: "doc", id: "concept", label: "Data model and layers"},
-    {type: "doc", id: "guides/signals", label: "Signal semantics and profiling"},
+    {type: "doc", id: "guides/signals", label: "Signal semantics and data checks"},
     {type: "doc", id: "naming", label: "Naming and output conventions"}
   ],
   guides: [
@@ -89,12 +89,10 @@ const sidebars: SidebarsConfig = {
         {
           type: "category",
       label: "Daily Tracking",
-      link: {type: "generated-index", slug: "/modules/production/daily-tracking/", description: "Parts, cycle times, unit profiles, downtime, quality and shift reports."},
+      link: {type: "generated-index", slug: "/modules/production/daily-tracking/", description: "Parts, cycle times, downtime, quality and shift reports."},
           items: [
             {type: "doc", id: "modules/production/part-tracking", label: "Part Tracking"},
             {type: "doc", id: "modules/production/cycle-time", label: "Cycle Time"},
-            {type: "doc", id: "modules/production/cycle-profiling", label: "Cycle Time Profiling"},
-            {type: "doc", id: "modules/production/unit-profiles", label: "Unit Profilers"},
             {type: "doc", id: "modules/production/downtime", label: "Downtime"},
             {type: "doc", id: "modules/production/quality-tracking", label: "Quality Tracking"},
             {type: "doc", id: "modules/production/shift-reporting", label: "Shift Reporting"}
@@ -229,10 +227,20 @@ const sidebars: SidebarsConfig = {
         {type: "doc", id: "modules/development/recipe-phase-adherence", label: "Recipe Phase Adherence"},
         {type: "doc", id: "modules/development/critical-parameter-ranking", label: "Critical Parameter Ranking"}
       ]
+    },
+    {
+      type: "category",
+      label: "Profiling",
+      link: {type: "generated-index", slug: "/modules/profiling/", description: "Mapping-free profiles of a machine from its raw PLC signals: cycles, stops, changeovers, start-ups, handshakes, orders, scrap, curves, settings and control loops."},
+      items: [
+        {type: "doc", id: "modules/profiling/cycle-profiling", label: "Cycle Time Profiling"},
+        {type: "doc", id: "modules/profiling/unit-profiles", label: "Unit Profilers"}
+      ]
     }
   ],
   project: [
     {type: "doc", id: "migration", label: "Migration and deprecations"},
+    {type: "doc", id: "deprecations", label: "Deprecated names"},
     {type: "doc", id: "changelog", label: "Changelog"},
     {type: "doc", id: "roadmap", label: "Roadmap"},
     {type: "doc", id: "contributing", label: "Contributing"},

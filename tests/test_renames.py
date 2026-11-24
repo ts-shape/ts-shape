@@ -9,6 +9,7 @@ import pytest
 import ts_shape
 from ts_shape.eventlog import taxonomy
 from ts_shape.eventlog.introspect import describe
+from ts_shape.utils.base import Base
 
 # Required constructor arguments beyond the DataFrame, per alias.
 DOMAIN_ARGS = {
@@ -59,11 +60,16 @@ def test_old_method_name_forwards(cls, old, new):
 
 
 def test_aliases_in_code_match_taxonomy_maps():
-    """Every deprecated alias defined in the code is known to the taxonomy."""
+    """Every deprecated detector alias defined in the code is known to the taxonomy.
+
+    Only detector classes (``Base`` subclasses) produce event-log rows, so only
+    their aliases need a taxonomy entry; a renamed result container such as
+    ``ProfileReport`` does not.
+    """
     found_classes, found_methods = {}, {}
     for name in dir(ts_shape):
         obj = getattr(ts_shape, name, None)
-        if not inspect.isclass(obj):
+        if not inspect.isclass(obj) or not issubclass(obj, Base):
             continue
         target = vars(obj).get("__deprecated_alias_of__")
         if target is not None:

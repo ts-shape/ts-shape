@@ -23,7 +23,7 @@ def test_core_runs_without_loader_backends():
         sys.meta_path.insert(0, Block())
         import ts_shape
         df = ts_shape.make_timeseries(["sensor:temp"], n_points=200, n_outliers=2)
-        ts_shape.profile(df)
+        ts_shape.check_signals(df)
         ts_shape.OutlierDetectionEvents(df, value_column="value_double").detect_outliers_zscore()
         try:
             ts_shape.S3ProxyDataAccess(start="2024-01-01", end="2024-01-02",

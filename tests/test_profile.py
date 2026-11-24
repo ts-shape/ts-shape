@@ -1,4 +1,4 @@
-"""Tests for ts_shape.profile()."""
+"""Tests for ts_shape.check_signals()."""
 
 import numpy as np
 import pandas as pd
@@ -37,7 +37,7 @@ def messy():
 
 
 def test_profile_finds_the_problems(messy):
-    report = ts_shape.profile(messy)
+    report = ts_shape.check_signals(messy)
     issues = {(r.uuid, r.issue) for r in report.issues().itertuples()}
     assert ("parts", "logging gaps") in issues
     assert ("parts", "counter resets") in issues
@@ -52,12 +52,12 @@ def test_profile_finds_the_problems(messy):
 
 
 def test_issues_sorted_by_severity_and_filterable(messy):
-    report = ts_shape.profile(messy)
+    report = ts_shape.check_signals(messy)
     order = {"error": 0, "warning": 1, "info": 2}
     ranks = [order[s] for s in report.issues()["severity"]]
     assert ranks == sorted(ranks)
     assert set(report.issues("warning")["severity"]) == {"warning"}
-    assert "ts-shape profile: 3 signal(s)" in report.summary()
+    assert "ts-shape signal check: 3 signal(s)" in report.summary()
 
 
 def test_profile_nat_and_mixed_columns():
@@ -69,24 +69,24 @@ def test_profile_nat_and_mixed_columns():
             "value_integer": [np.nan, np.nan, 3],
         }
     )
-    issues = set(ts_shape.profile(df).issues()["issue"])
+    issues = set(ts_shape.check_signals(df).issues()["issue"])
     assert {"unparseable timestamps", "mixed value columns"} <= issues
 
 
 def test_profile_accepts_overrides_and_specs(messy):
-    report = ts_shape.profile(messy, {"parts": {"unit": "pcs", "max_gap": "1h"}})
+    report = ts_shape.check_signals(messy, {"parts": {"unit": "pcs", "max_gap": "1h"}})
     assert report.specs["parts"].unit == "pcs"
     assert report.to_frame().set_index("uuid").loc["parts", "gap_count"] == 0
     fixed = SignalSpecs.from_dict({"temp": {"kind": "continuous", "max_gap": "1s"}})
-    again = ts_shape.profile(messy, fixed)
+    again = ts_shape.check_signals(messy, fixed)
     assert again.specs["temp"].max_gap == pd.Timedelta("1s")
 
 
 def test_profile_repeated_access_stays_callable():
     df = ts_shape.make_timeseries(["a"], n_points=20)
-    ts_shape.profile(df)
+    ts_shape.check_signals(df)
     assert callable(ts_shape.profile)
-    assert ts_shape.profile(df).issues().empty
+    assert ts_shape.check_signals(df).issues().empty
 
 
 def test_profile_reports_non_numeric_values():
@@ -97,7 +97,7 @@ def test_profile_reports_non_numeric_values():
             "value_double": pd.Series([1.0, "n/a", 3.0, "bad"], dtype=object),
         }
     )
-    issues = ts_shape.profile(df).issues()
+    issues = ts_shape.check_signals(df).issues()
     row = issues[issues["issue"] == "non-numeric values"]
     assert len(row) == 1
     assert "2 value(s)" in row["detail"].iloc[0]
