@@ -77,9 +77,9 @@ export function SpcChart(): ReactNode {
     const i = Math.round(Math.min(1, Math.max(0, frac)) * (d.points.length - 1));
     setHover(i);
   };
-  const ticks = Array.from({length: 13}, (_, i) => ({
+  const ticks = Array.from({length: 9}, (_, i) => ({
     h: i,
-    iso: new Date(t0 + i * 30 * 60e3).toISOString().slice(0, 19),
+    iso: new Date(t0 + i * 60 * 60e3).toISOString().slice(0, 19),
   })).filter((tk) => time(tk.iso) <= t1);
   const hp = hover === null ? null : d.points[hover];
 
@@ -87,13 +87,13 @@ export function SpcChart(): ReactNode {
     <figure className={styles.figure}>
       <Legend
         items={[
-          {label: 'Oven temperature', className: styles.mLine, shape: 'line'},
+          {label: 'Melt temperature (°C)', className: styles.mLine, shape: 'line'},
           {label: 'Beyond 3σ', className: styles.mCritical, shape: 'dot'},
           {label: 'Run rules flag a drift', className: styles.mBand},
         ]}
       />
       <div className={styles.plot}>
-        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Oven temperature with control limits and flagged points">
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Extruder melt temperature with control limits and flagged points">
           {d.run_spans.map(([a, b]) => (
             <rect
               key={a}
@@ -172,78 +172,114 @@ export function SpcChart(): ReactNode {
 
 /* ------------------------------------------------------- line timeline -- */
 
+const CAUSE_CLASS: Record<string, string> = {
+  'Die pressure alarm': styles.idle,
+  'Web break alarm': styles.run,
+  'No alarm before it': styles.cause3,
+};
+const CAUSE_MARK: Record<string, string> = {
+  'Die pressure alarm': styles.mIdle,
+  'Web break alarm': styles.mRun,
+  'No alarm before it': styles.mCause3,
+};
+
+const dayTime = (iso: string): string =>
+  `${new Date(`${iso}Z`).toLocaleDateString('en-US', {weekday: 'short', timeZone: 'UTC'})} ${hhmm(iso)}`;
+
 export function LineTimeline(): ReactNode {
   const d = data.line;
-  const H = 96;
-  const m = {l: 22, r: 22, t: 12, b: 28};
-  const t0 = time(d.intervals[0][0]);
-  const t1 = time(d.intervals[d.intervals.length - 1][1]);
+  const stops = d.stops as [string, string, string][];
+  const H = 84;
+  const m = {l: 30, r: 30, t: 8, b: 26};
+  const t0 = time(d.start);
+  const t1 = time(d.end);
   const x = (iso: string) => m.l + ((time(iso) - t0) / (t1 - t0)) * (W - m.l - m.r);
   const [hover, setHover] = useState<number | null>(null);
-  const ticks = Array.from({length: 10}, (_, i) => new Date(t0 + i * 2 * 3600e3).toISOString().slice(0, 19)).filter(
-    (iso) => time(iso) <= t1,
-  );
+  // shift changes: 06:00, 14:00, 22:00
+  const shifts = Array.from({length: 7}, (_, i) => new Date(t0 + i * 8 * 3600e3).toISOString().slice(0, 19));
   const minutes = (a: string, b: string) => (time(b) - time(a)) / 60e3;
-  const h = hover === null ? null : d.intervals[hover];
-  const barY = m.t + 8;
-  const barH = 28;
+  const h = hover === null ? null : stops[hover];
+  const barY = m.t + 4;
+  const barH = 30;
+  const top = d.causes[0];
+  // lost time per cause, as bars
+  const rowH = 30;
+  const cm = {l: 150, r: 150};
+  const maxLost = Math.max(...d.causes.map((c) => c.lost_hours));
+  const cx = (v: number) => cm.l + (v / maxLost) * (W - cm.l - cm.r);
+  const CH = d.causes.length * rowH + 4;
 
   return (
     <figure className={styles.figure}>
       <div className={styles.tiles}>
-        <div className={styles.tile}><span>OEE</span><strong>{fmt(d.oee_pct)}%</strong></div>
+        <div className={styles.tile}><span>OEE, 48 h</span><strong>{fmt(d.oee_pct)}%</strong><em>{d.days.filter((dd) => dd.hours >= 12).map((dd) => `${dd.day} ${fmt(dd.oee_pct)}%`).join(' · ')}</em></div>
         <div className={styles.tile}><span>Availability</span><strong>{fmt(d.availability_pct)}%</strong></div>
-        <div className={styles.tile}><span>Performance</span><strong>{fmt(d.performance_pct)}%</strong></div>
-        <div className={styles.tile}><span>Stops</span><strong>{d.stop_count}</strong><em>{Math.round(d.stopped_minutes)} min, longest {Math.round(d.longest_stop_minutes)}</em></div>
+        <div className={styles.tile}><span>Stops</span><strong>{d.stop_count}</strong><em>{fmt(d.lost_hours)} h lost</em></div>
+        <div className={styles.tile}><span>Top cause</span><strong>{top.share_pct}%</strong><em>{top.label.toLowerCase()}</em></div>
       </div>
-      <Legend
-        items={[
-          {label: 'Running', className: styles.mRun},
-          {label: 'Stopped', className: styles.mIdle},
-        ]}
-      />
+      <Legend items={d.causes.map((c) => ({label: c.label, className: CAUSE_MARK[c.label]}))} />
       <div className={styles.plot}>
-        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Line running and stopped over one day">
-          {d.intervals.map((iv, i) => {
-            const x0 = x(iv[0]);
-            const x1 = x(iv[1]);
-            return (
-              <rect
-                key={iv[0]}
-                x={x0 + 1}
-                y={barY}
-                width={Math.max(1, x1 - x0 - 2)}
-                height={barH}
-                rx={4}
-                className={`${iv[2] === 'run' ? styles.run : styles.idle} ${hover === i ? styles.active : ''}`}
-                tabIndex={0}
-                onPointerEnter={() => setHover(i)}
-                onPointerLeave={() => setHover(null)}
-                onFocus={() => setHover(i)}
-                onBlur={() => setHover(null)}
-              />
-            );
-          })}
-          {ticks.map((iso) => (
-            <text key={iso} x={x(iso)} y={H - 8} textAnchor="middle" className={styles.axisLabel}>
-              {hhmm(iso)}
-            </text>
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Film line 2 over two days, stops coloured by cause">
+          <rect x={m.l} y={barY} width={W - m.l - m.r} height={barH} rx={4} className={styles.track} />
+          {shifts.map((iso) => (
+            <g key={iso}>
+              <line x1={x(iso)} x2={x(iso)} y1={barY - 4} y2={barY + barH + 4} className={styles.shiftLine} />
+              <text x={x(iso)} y={H - 8} textAnchor="middle" className={styles.axisLabel}>{dayTime(iso)}</text>
+            </g>
+          ))}
+          {stops.map((st, i) => (
+            <rect
+              key={st[0]}
+              x={x(st[0])}
+              y={barY}
+              width={Math.max(3, x(st[1]) - x(st[0]))}
+              height={barH}
+              rx={2}
+              className={`${CAUSE_CLASS[st[2]]} ${hover === i ? styles.active : ''}`}
+              tabIndex={0}
+              onPointerEnter={() => setHover(i)}
+              onPointerLeave={() => setHover(null)}
+              onFocus={() => setHover(i)}
+              onBlur={() => setHover(null)}
+            />
           ))}
         </svg>
         {h && (
-          <Tooltip x={(((x(h[0]) + x(h[1])) / 2) / W) * 100} y={0}>
-            <strong>{fmt(minutes(h[0], h[1]), 0)} min</strong>
-            <span>{h[2] === 'run' ? 'Running' : 'Stopped'}, {hhmm(h[0])}–{hhmm(h[1])}</span>
+          <Tooltip x={(((x(h[0]) + x(h[1])) / 2) / W) * 100} y={-30}>
+            <strong>{fmt(minutes(h[0], h[1]), 0)} min stopped</strong>
+            <span>{h[2]}</span>
+            <span>{dayTime(h[0])}–{hhmm(h[1])}</span>
           </Tooltip>
         )}
       </div>
+      <div className={styles.plot}>
+        <svg viewBox={`0 0 ${W} ${CH}`} role="img" aria-label="Lost hours per stop cause">
+          {d.causes.map((c, i) => {
+            const cy = i * rowH + rowH / 2 + 2;
+            const w = Math.max(6, cx(c.lost_hours) - cm.l);
+            const bh = 16;
+            return (
+              <g key={c.label}>
+                <text x={cm.l - 10} y={cy + 4} textAnchor="end" className={styles.rowLabel}>{c.label}</text>
+                <path
+                  d={`M${cm.l},${cy - bh / 2} h${w - 4} a4,4 0 0 1 4,4 v${bh - 8} a4,4 0 0 1 -4,4 h${-(w - 4)} Z`}
+                  className={CAUSE_CLASS[c.label]}
+                />
+                <text x={cm.l + w + 8} y={cy + 4} className={styles.valueLabel}>
+                  {fmt(c.lost_hours)} h · {c.stops} stops
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
       <details className={styles.table}>
-        <summary>Data: {d.stop_count} stops</summary>
+        <summary>Data: {d.stop_count} stops with their cause</summary>
         <table>
-          <thead><tr><th>From</th><th>To</th><th>Minutes</th></tr></thead>
+          <thead><tr><th>From</th><th>To</th><th>Minutes</th><th>Cause (alarm rising before the stop)</th></tr></thead>
           <tbody>
-            {d.intervals.filter((iv) => iv[2] === 'idle').map((iv) => (
-              <tr key={iv[0]}><td>{hhmm(iv[0])}</td><td>{hhmm(iv[1])}</td><td>{fmt(minutes(iv[0], iv[1]))}</td></tr>
+            {stops.map((st) => (
+              <tr key={st[0]}><td>{dayTime(st[0])}</td><td>{hhmm(st[1])}</td><td>{fmt(minutes(st[0], st[1]), 0)}</td><td>{st[2]}</td></tr>
             ))}
           </tbody>
         </table>
@@ -285,7 +321,7 @@ export function LoopResponses(): ReactNode {
     <figure className={styles.figure}>
       <div className={styles.tiles}>
         <div className={styles.tile}><span>Loops found</span><strong>{d.loops.length}</strong><em>no tag mapping</em></div>
-        <div className={styles.tile}><span>Need tuning</span><strong>{needTuning}</strong><em>{d.loops.filter((l) => l.diagnosis !== 'ok').map((l) => l.name).join(', ')}</em></div>
+        <div className={styles.tile}><span>Need tuning</span><strong>{needTuning}</strong><em>{d.loops.filter((l) => l.diagnosis !== 'ok').map((l) => l.name.split(' ')[0]).join(', ')}</em></div>
         <div className={styles.tile}><span>Setpoint steps assessed</span><strong>{d.loops.reduce((a, l) => a + l.steps, 0)}</strong></div>
       </div>
       <Legend
@@ -455,7 +491,7 @@ export function EnergyPerPart(): ReactNode {
 export function DriversChart(): ReactNode {
   const d = data.drivers;
   const rowH = 36;
-  const m = {l: 150, r: 150, t: 4, b: 28};
+  const m = {l: 190, r: 140, t: 4, b: 28};
   const H = m.t + m.b + d.signals.length * rowH;
   const decades = [0, 1, 2, 3, 4, 5]; // F statistic on a log scale, 1 .. 100 000
   const x = (f: number) => m.l + (Math.log10(Math.max(1, f)) / 5) * (W - m.l - m.r);

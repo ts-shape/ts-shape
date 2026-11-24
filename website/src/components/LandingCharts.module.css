@@ -6,6 +6,7 @@
 .figure {
   --series-1: #2a78d6;
   --series-2: #eb6834;
+  --series-3: #1baf7a;
   --status-critical: #d03b3b;
   --status-serious: #ec835a;
   --ink-2: #52514e;
@@ -20,6 +21,7 @@
 :global([data-theme='dark']) .figure {
   --series-1: #3987e5;
   --series-2: #d95926;
+  --series-3: #199e70;
   --ink-2: #c3c2b7;
   --ink-muted: #9a9890;
   --grid: #2c2c2a;
@@ -230,6 +232,25 @@
 
 .mRun {
   fill: var(--series-1);
+}
+
+.cause3,
+.mCause3 {
+  fill: var(--series-3);
+}
+
+.cause3 {
+  cursor: pointer;
+  outline: none;
+}
+
+.track {
+  fill: var(--grid);
+}
+
+.shiftLine {
+  stroke: var(--axis);
+  stroke-width: 1;
 }
 
 .mIdle {

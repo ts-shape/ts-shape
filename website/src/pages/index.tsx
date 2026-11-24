@@ -128,18 +128,20 @@ function Examples(): ReactNode {
       <div className="container">
         <h2 className={styles.sectionTitle}>Questions from the plant, answered in a few lines</h2>
         <p className={styles.sectionLead}>
-          Every chart below is real ts-shape output on its simulated plant data; open the code to see the calls
-          that produced it.
+          Five everyday plant situations: a film extrusion line, dryer temperature loops, an extruder, an injection
+          moulding machine. The data comes from ts-shape's plant simulators, tagged and timed the way a historian
+          logs it; every chart is real ts-shape output, and the code is under each chart.
         </p>
         <Example
           kicker="Production · OEE"
-          question="Where did the day go?"
+          question="Why did film line 2 stop on Monday and Tuesday?"
           answer={
             <>
-              From one boolean run signal and a part counter: {line.stop_count} stops cost{' '}
-              {Math.round(line.stopped_minutes)} minutes, the longest {Math.round(line.longest_stop_minutes)}.
-              Availability {line.availability_pct}% and performance {line.performance_pct}% give an OEE of{' '}
-              {line.oee_pct}%.
+              Two days of one extrusion line, six shifts, from its run signal, part counter and alarm tags, with no
+              mapping of which alarm means what: {line.stop_count} stops cost {line.lost_hours} hours and OEE was{' '}
+              {line.oee_pct}%. ts-shape finds the alarm that rises before each stop: die-pressure alarms cause{' '}
+              {line.causes[0].share_pct}% of the lost time ({line.causes[0].mttr_minutes} min per stop), web breaks{' '}
+              {line.causes[1].share_pct}%.
             </>
           }
           code={exampleCode.line}
@@ -148,11 +150,12 @@ function Examples(): ReactNode {
         />
         <Example
           kicker="Engineering · control loops"
-          question="Which control loops need retuning?"
+          question="Which dryer temperature loops need retuning?"
           answer={
             <>
-              Hand it the raw PLC tags: it pairs setpoint, process value and output itself, measures every
-              setpoint step and diagnoses each loop. {bad.map((l) => `${l.name} ${l.diagnosis === 'oscillating' ? `overshoots by ${Math.round(l.overshoot_pct)}%` : `settles in only ${l.settled_pct}% of its steps`}`).join(', ')}.
+              Hand it the raw PLC tags of the dryer: it pairs setpoint, process value and controller output itself,
+              measures every setpoint change in the shift and diagnoses each loop.{' '}
+              {bad.map((l) => `${l.name.split(' ')[0]} ${l.diagnosis === 'oscillating' ? `overshoots by ${Math.round(l.overshoot_pct)}%` : `settles in only ${l.settled_pct}% of its setpoint changes`}`).join(', ')}.
             </>
           }
           code={exampleCode.loops}
@@ -161,12 +164,13 @@ function Examples(): ReactNode {
         />
         <Example
           kicker="Quality · SPC"
-          question="Is the oven drifting before parts go out of spec?"
+          question="Is the extruder melt temperature drifting before parts go out of spec?"
           answer={
             <>
-              Control limits come from an in-control reference run. As the temperature creeps up, the Nelson run
-              rules flag the drift ({spc.run_rules.length} readings, shaded), and {spc.out_of_limits.length}{' '}
-              readings cross the 3σ limit. One call returns both, ready to alarm on.
+              Last week's in-control shift sets the control limits ({spc.lcl.toFixed(1)}–{spc.ucl.toFixed(1)} °C).
+              Today the melt temperature creeps up through the shift: the Nelson run rules flag the shifted mean
+              (shaded), without a break from {spc.drift_from.slice(11, 16)} on, and {spc.out_of_limits.length}{' '}
+              readings end up beyond the upper limit. One call returns both, ready to alarm on.
             </>
           }
           code={exampleCode.spc}
@@ -175,13 +179,14 @@ function Examples(): ReactNode {
         />
         <Example
           kicker="Energy · kWh per part"
-          question="What does a part cost in energy, and when is it wasted?"
+          question="What does a moulded part cost in energy, and when is it wasted?"
           answer={
             <>
-              A cumulative kWh meter and the part counter give the specific energy per half hour: a median of{' '}
-              {energy.median_kwh_per_part.toFixed(2)} kWh per part, up to {energy.worst_kwh_per_part.toFixed(2)} when
-              the station waits while drawing idle power. Running every half hour at the best rate would save{' '}
-              {Math.round(energy.excess_kwh)} kWh this shift.
+              Injection moulding machine IMM-07 over two shifts, from its cumulative kWh meter and shot counter: a
+              median of {energy.median_kwh_per_part.toFixed(2)} kWh per part, up to{' '}
+              {energy.worst_kwh_per_part.toFixed(2)} in half hours with an interruption, while the machine keeps
+              drawing idle power. At the best half hour's rate the {energy.parts} parts would have needed{' '}
+              {Math.round(energy.excess_kwh)} kWh less.
             </>
           }
           code={exampleCode.energy}
@@ -190,11 +195,11 @@ function Examples(): ReactNode {
         />
         <Example
           kicker="Data science · causality"
-          question="Which signals actually drive the process temperature?"
+          question="What actually drives the dryer temperature?"
           answer={
             <>
-              A Granger test of every signal against the temperature, with a Bonferroni-corrected p-value:{' '}
-              {causal.map((sg) => sg.label).join(' and ')} drive it; the look-alikes (
+              A Granger test of every tag logged near the loop against its temperature, with a Bonferroni-corrected
+              p-value: {causal.map((sg) => sg.label).join(' and ')} drive it; the look-alikes (
               {drivers.signals.filter((sg) => !sg.causal).map((sg) => sg.label.toLowerCase()).join(', ')}) do not.
               Transfer entropy and lead-lag are in the same class.
             </>

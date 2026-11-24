@@ -30,12 +30,18 @@ import pandas as pd
 import ts_shape
 from ts_shape import StatisticalProcessControlEvents
 
+# extruder 3 melt temperature (°C, one reading a minute): last week's
+# in-control shift sets the limits, today's early shift is checked
 df = pd.concat([
-    ts_shape.make_timeseries(["oven:temp_ref"], n_points=200, seed=1),
-    ts_shape.make_timeseries(["oven:temp"], n_points=480, drift=1.5, seed=2),
+    ts_shape.make_timeseries(["extruder3:melt_temp_baseline"], n_points=480,
+        freq="1min", start="2026-03-02 06:00", baseline=230, noise=1.0, seed=1),
+    ts_shape.make_timeseries(["extruder3:melt_temp"], n_points=480,
+        freq="1min", start="2026-03-10 06:00", baseline=230, noise=1.0,
+        drift=2.5, seed=21),
 ])
 spc = StatisticalProcessControlEvents(df, value_column="value_double",
-    tolerance_uuid="oven:temp_ref", actual_uuid="oven:temp", event_uuid="oven:spc")
+    tolerance_uuid="extruder3:melt_temp_baseline",
+    actual_uuid="extruder3:melt_temp", event_uuid="extruder3:spc")
 limits = spc.control_limits()
 violations = spc.detect_violations()
 """
@@ -43,18 +49,24 @@ violations = spc.detect_violations()
 LINE = """\
 import ts_shape
 from ts_shape import MachineStateEvents, OEEEvents
+from ts_shape.events.profiling.stops import StopProfileEvents
 
-df, _ = ts_shape.make_line_stops(duration="18h", seed=3)
-states = MachineStateEvents(df, run_state_uuid="line:running").detect_run_idle()
-oee = OEEEvents(df).oee(run_state_uuid="line:running",
-    counter_uuid="line:produced_count", ideal_cycle_time=8.0)
+# film extrusion line 2, Monday 06:00 to Wednesday 06:00 (six shifts)
+df, _ = ts_shape.make_line_stops(duration="48h", start="2026-03-09 06:00",
+    prefix="film2", seed=3)
+states = MachineStateEvents(df, run_state_uuid="film2:running").detect_run_idle()
+oee = OEEEvents(df).oee(run_state_uuid="film2:running",
+    counter_uuid="film2:produced_count", ideal_cycle_time=8.0)   # per day
+stops = StopProfileEvents(df)        # no alarm mapping: finds what precedes stops
+causes = stops.stop_signatures()     # lost time per cause
 """
 
 LOOPS = """\
 import ts_shape
 from ts_shape import ControlLoopProfileEvents
 
-df, _ = ts_shape.make_control_loops(duration="8h", seed=1)
+# three dryer temperature loops, logged every 2 s over one shift
+df, _ = ts_shape.make_control_loops(duration="8h", start="2026-03-10 06:00", seed=1)
 loops = ControlLoopProfileEvents(df)   # finds the SP / PV / OP triples itself
 register = loops.loop_register()       # one row per loop, with a diagnosis
 """
@@ -64,18 +76,22 @@ import ts_shape
 from ts_shape import EnergyEfficiencyEvents
 from ts_shape.utils.counters import counter_increments
 
-df, _ = ts_shape.make_plc_cycles(n_cycles=700, seed=1, energy=True)
-meter = df["uuid"] == "plc:energy_kwh"   # a cumulative kWh meter
+# injection moulding machine IMM-07, early and late shift, two articles
+df, _ = ts_shape.make_plc_cycles(n_cycles=1000, start="2026-03-10 06:00",
+    prefix="imm07", articles=("housing", "cover"), energy=True, seed=1)
+meter = df["uuid"] == "imm07:energy_kwh"   # cumulative kWh meter
 df.loc[meter, "value_double"] = counter_increments(df.loc[meter, "value_double"])
 sec = EnergyEfficiencyEvents(df).specific_energy_consumption(
-    "plc:energy_kwh", "plc:part_counter", window="30min")
+    "imm07:energy_kwh", "imm07:part_counter", window="30min")
 """
 
 DRIVERS = """\
 import ts_shape
 from ts_shape import CrossSignalAnalytics
 
-df, _ = ts_shape.make_control_loops(loops=("good",), duration="8h", seed=1)
+# dryer zone 1: its temperature loop plus the other tags logged nearby
+df, _ = ts_shape.make_control_loops(loops=("good",), duration="8h",
+    start="2026-03-10 06:00", seed=1)
 signals = CrossSignalAnalytics(df)    # long format in, one column per signal
 tests = {c: signals.granger_causality(c, "plc:tic101_pv", max_lag=10)
          for c in signals.signals if c != "plc:tic101_pv"}
@@ -97,7 +113,7 @@ def _iso(ts: pd.Timestamp) -> str:
 def spc_example() -> dict:
     s = _run(SPC)
     df, limits, violations = s["df"], s["limits"].iloc[0], s["violations"]
-    series = df[df["uuid"] == "oven:temp"].sort_values("systime")
+    series = df[df["uuid"] == "extruder3:melt_temp"].sort_values("systime")
     points = [
         [_iso(t), round(float(v), 3)]
         for t, v in zip(series["systime"], series["value_double"], strict=True)
@@ -134,31 +150,80 @@ def spc_example() -> dict:
         ],
         "run_spans": [[_iso(a), _iso(b)] for a, b in spans],
         "first_run_rule": _iso(run_rules["systime"].min()),
+        # the first sustained stretch (30 min or more) the run rules flag
+        "drift_from": _iso(next(a for a, b in spans if b - a >= pd.Timedelta("30min"))),
+        "first_out": _iso(out_of_limits["systime"].min()),
         "rule_counts": {k: int(v) for k, v in hits["rule"].value_counts().items()},
     }
 
 
+def _cause_label(signature: str) -> str:
+    return {
+        "film2:alarm_pressure↑": "Die pressure alarm",
+        "film2:alarm_break↑": "Web break alarm",
+        "unexplained": "No alarm before it",
+    }.get(signature, signature)
+
+
 def line_example() -> dict:
     s = _run(LINE)
-    states, oee = s["states"], s["oee"].iloc[0]
-    idle = states[states["state"] == "idle"]
+    oee, stops = s["oee"], s["stops"]
+    causes = s["causes"]
+    records = stops.stop_records()
+    planned = oee["planned_seconds"].astype(float)
+
+    def weighted(col: str) -> float:  # per-day rows, weighted by planned time
+        return float((oee[col] * planned).sum() / planned.sum())
+
+    t0 = s["df"]["systime"].min()
     return {
         "code": LINE,
-        "intervals": [
-            [_iso(a), _iso(b), st]
-            for a, b, st in zip(
-                states["start"], states["end"], states["state"], strict=True
+        "start": _iso(t0),
+        "end": _iso(t0 + pd.Timedelta("48h")),
+        "stops": [
+            [
+                _iso(pd.Timestamp(a)),
+                _iso(pd.Timestamp(b)),
+                _cause_label(sig),
+            ]
+            for a, b, sig in zip(
+                records["start_ns"],
+                records["end_ns"],
+                records["signature"],
+                strict=True,
             )
-            if b > a
         ],
-        "oee_pct": round(float(oee["oee_pct"]), 1),
-        "availability_pct": round(float(oee["availability_pct"]), 1),
-        "performance_pct": round(float(oee["performance_pct"]), 1),
-        "quality_pct": round(float(oee["quality_pct"]), 1),
-        "stop_count": int(len(idle)),
-        "stopped_minutes": round(float(idle["duration_seconds"].sum()) / 60, 1),
-        "longest_stop_minutes": round(float(idle["duration_seconds"].max()) / 60, 1),
+        "causes": [
+            {
+                "label": _cause_label(r.signature),
+                "stops": int(r.stop_count),
+                "lost_hours": round(float(r.lost_seconds) / 3600, 2),
+                "share_pct": round(float(r.lost_share_ratio) * 100),
+                "mttr_minutes": round(float(r.mttr_median_seconds) / 60),
+            }
+            for r in causes.itertuples()
+        ],
+        "days": [
+            {
+                "day": pd.Timestamp(r.start).strftime("%a"),
+                "hours": round(float(r.planned_seconds) / 3600, 1),
+                "oee_pct": round(float(r.oee_pct), 1),
+            }
+            for r in oee.itertuples()
+        ],
+        "oee_pct": round(weighted("oee_pct"), 1),
+        "availability_pct": round(weighted("availability_pct"), 1),
+        "performance_pct": round(weighted("performance_pct"), 1),
+        "stop_count": int(len(records)),
+        "lost_hours": round(float(records["lost_seconds"].sum()) / 3600, 1),
     }
+
+
+_LOOP_NAMES = {
+    "plc:tic101_sp": "TIC-101 dryer zone 1",
+    "plc:tic102_sp": "TIC-102 dryer zone 2",
+    "plc:tic103_sp": "TIC-103 dryer zone 3",
+}
 
 
 def loops_example() -> dict:
@@ -188,7 +253,7 @@ def loops_example() -> dict:
         step = steps[(steps["loop"] == row.loop) & (steps["start"] == t)]
         loops.append(
             {
-                "name": row.loop.split(":", 1)[-1].removesuffix("_sp").upper(),
+                "name": _LOOP_NAMES[row.loop],
                 "diagnosis": row.diagnosis,
                 "steps": int(row.step_count),
                 "overshoot_pct": round(float(row.median_overshoot_pct), 1),
@@ -246,10 +311,10 @@ def energy_example() -> dict:
 def drivers_example() -> dict:
     s = _run(DRIVERS)
     names = {
-        "plc:tic101_op": "Valve output (OP)",
-        "plc:tic101_sp": "Setpoint (SP)",
-        "plc:ambient_temp": "Ambient temperature",
-        "plc:bypass_valve": "Bypass valve",
+        "plc:tic101_op": "Heating valve (TIC-101 OP)",
+        "plc:tic101_sp": "Setpoint (TIC-101 SP)",
+        "plc:ambient_temp": "Hall temperature",
+        "plc:bypass_valve": "Bypass damper",
         "plc:line_speed_set": "Line speed setting",
     }
     rows = [

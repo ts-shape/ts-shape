@@ -24,8 +24,13 @@ def test_examples_run_and_give_what_the_charts_need():
     assert list(data) == ["line", "loops", "spc", "energy", "drivers"]
     line, loops, spc = data["line"], data["loops"], data["spc"]
     energy, drivers = data["energy"], data["drivers"]
-    assert {iv[2] for iv in line["intervals"]} == {"run", "idle"}
-    assert line["stop_count"] > 0 and 0 < line["oee_pct"] <= 100
+    assert line["stop_count"] == len(line["stops"]) > 0
+    assert 0 < line["oee_pct"] <= 100
+    # the stops are explained by the alarms the simulator raises before them
+    assert {c["label"] for c in line["causes"][:2]} == {
+        "Die pressure alarm",
+        "Web break alarm",
+    }
     # the simulator's good / oscillating / sluggish loops are told apart
     assert [lp["diagnosis"] for lp in loops["loops"]] == [
         "ok",
@@ -35,6 +40,7 @@ def test_examples_run_and_give_what_the_charts_need():
     assert all(len(lp["response"]) > 50 for lp in loops["loops"])
     assert len(spc["points"]) == 480 and spc["lcl"] < spc["mean"] < spc["ucl"]
     assert spc["out_of_limits"] and spc["run_spans"]
+    assert spc["first_run_rule"] <= spc["drift_from"]
     assert energy["best_kwh_per_part"] < energy["median_kwh_per_part"]
     assert energy["median_kwh_per_part"] < energy["worst_kwh_per_part"]
     # only setpoint and valve output drive the process value, not the look-alikes
