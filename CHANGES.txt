@@ -1,7 +1,8 @@
-# November 24, 2026 (docs: landing page eyebrow)
+# November 24, 2026 (docs: landing page eyebrow and headline)
 docs: the line above the landing page headline reads "Timeseries ·
   Manufacturing · Continuous Improvement" instead of "Python · pandas ·
-  open source".
+  open source", and the headline reads "Turn machine signals into
+  continuous improvement."
 
 # November 24, 2026 (Python 3.13 to 3.15)
 python: ts-shape now needs Python 3.13 or later and is tested on 3.13,
