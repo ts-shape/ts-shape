@@ -1,3 +1,7 @@
+---
+tags: [iso-22400, iso-50001]
+---
+
 # PeriodSummaryEvents
 
 Weekly and monthly production summaries and a comparison of two date ranges from a production counter, or a weekly/monthly roll-up of any daily metrics table.

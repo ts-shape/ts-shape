@@ -6,6 +6,7 @@
 
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/jetbrains-mono';
+@import 'katex/dist/katex.min.css';
 
 :root {
   --ifm-color-primary: #c2410c;
@@ -408,4 +409,72 @@ table code {
     white-space: normal;
     overflow-wrap: anywhere;
   }
+}
+
+/* ---------- Math (KaTeX) ---------- */
+
+.markdown .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0 1.25rem;
+  border: 1px solid var(--ts-border);
+  border-radius: 0.5rem;
+  background: var(--ts-surface);
+}
+
+.markdown .katex {
+  font-size: 1.08em;
+}
+
+/* ---------- Diagrams (Mermaid) ---------- */
+
+.docusaurus-mermaid-container {
+  margin: 1rem 0 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--ts-border);
+  border-radius: 0.5rem;
+  background: var(--ts-surface);
+  text-align: center;
+  overflow-x: auto;
+}
+
+.docusaurus-mermaid-container .node rect,
+.docusaurus-mermaid-container .node circle,
+.docusaurus-mermaid-container .node polygon,
+.docusaurus-mermaid-container .node path {
+  fill: var(--ifm-background-color) !important;
+  stroke: var(--ifm-color-primary) !important;
+  stroke-width: 1.5px !important;
+}
+
+.docusaurus-mermaid-container .flowchart-link {
+  stroke: var(--ifm-color-emphasis-600) !important;
+}
+
+.docusaurus-mermaid-container marker path {
+  fill: var(--ifm-color-emphasis-600) !important;
+  stroke: var(--ifm-color-emphasis-600) !important;
+}
+
+.docusaurus-mermaid-container .edgeLabel,
+.docusaurus-mermaid-container .edgeLabel p,
+.docusaurus-mermaid-container .edgeLabel rect {
+  background-color: var(--ts-surface) !important;
+  fill: var(--ts-surface) !important;
+  color: var(--ifm-color-emphasis-700) !important;
+  font-size: 0.8rem;
+}
+
+.docusaurus-mermaid-container .nodeLabel,
+.docusaurus-mermaid-container .nodeLabel p {
+  color: var(--ifm-font-color-base) !important;
+}
+
+.docusaurus-mermaid-container .nodeLabel code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.85em;
+  color: var(--ifm-color-primary);
 }

@@ -1,3 +1,7 @@
+---
+tags: [ocel, xes]
+---
+
 # Adapters
 
 An adapter converts one detector's output frame into an

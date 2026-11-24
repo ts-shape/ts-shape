@@ -21,6 +21,14 @@ docs: API reference pages -- kind badges (class / method / classmethod /
   such, Parameters / Returns / Raises labels, inline types as code
   links, doctest examples fenced as code (they rendered as quotes), and
   undocumented members left out as before. Body text is 15px.
+docs: Mermaid diagrams (data model, event log, pipeline, OEE loss tree)
+  and KaTeX formulas (SPC sigma/EWMA/CUSUM, Cp/Cpk/Pp/Ppk/Cpm, Hotelling
+  T2 limits, MTBF/MTTR/Weibull, OEE, Little's law, GUM, setpoint decay);
+  overview pages with detector cards per module category; pages tagged by
+  standard (ISO 22400, ISO 50001, AIAG, Nelson, GUM, OCEL, XES, ...) with
+  /tags/; llms.txt and llms-full.txt; a redirect for the one old MkDocs
+  URL that no longer exists (/reference/SUMMARY/). Builds use Rspack/SWC
+  (about 85 s -> 32 s).
 build: the docs extra is griffe2md + black; mkdocs, mkdocs-material,
   mkdocs-gen-files, mkdocs-literate-nav and mkdocstrings are dropped.
 

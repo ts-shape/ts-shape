@@ -1,4 +1,6 @@
 import {themes as prismThemes} from 'prism-react-renderer';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
@@ -25,10 +27,22 @@ const config: Config = {
   onBrokenAnchors: 'throw',
   onDuplicateRoutes: 'throw',
 
+  // Rspack + SWC instead of webpack + Babel.
+  future: {
+    faster: true,
+    // Required by faster.ssgWorkerThreads. The other v4 flags stay off; CSS
+    // cascade layers would change the precedence of src/css/custom.css.
+    v4: {
+      removeLegacyPostBuildHeadAttribute: true,
+    },
+  },
+
   markdown: {
     // .md files are CommonMark, not MDX: braces and `<` in prose and
     // docstrings are text, not JSX.
     format: 'detect',
+    // ```mermaid fences render as diagrams.
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'throw',
     },
@@ -50,6 +64,13 @@ const config: Config = {
           editUrl: `${repo}/edit/main/docs/`,
           exclude: ['assets/**'],
           showLastUpdateTime: true,
+          // Tags are declared in docs/tags.yml; an unknown tag fails the build.
+          tags: 'tags.yml',
+          onInlineTags: 'throw',
+          // Only $$...$$ is math: "$input" in the pipeline docs and the
+          // changelog stays text.
+          remarkPlugins: [[remarkMath, {singleDollarTextMath: false}]],
+          rehypePlugins: [rehypeKatex],
         },
         blog: false,
         theme: {
@@ -60,6 +81,7 @@ const config: Config = {
   ],
 
   themes: [
+    '@docusaurus/theme-mermaid',
     [
       '@easyops-cn/docusaurus-search-local',
       {
@@ -68,6 +90,41 @@ const config: Config = {
         docsDir: '../docs',
         docsRouteBasePath: '/',
         highlightSearchTermsOnTargetPage: true,
+      },
+    ],
+  ],
+
+  plugins: [
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        // The only URL of the former MkDocs site that no longer exists
+        // (checked by comparing both builds' pages).
+        redirects: [{from: '/reference/SUMMARY', to: '/reference/'}],
+      },
+    ],
+    [
+      'docusaurus-plugin-llms',
+      {
+        // llms.txt (an index of every page) and llms-full.txt (all pages,
+        // the API reference included) for AI coding assistants.
+        docsDir: '../docs',
+        title: 'ts-shape',
+        description:
+          'Manufacturing time-series analytics for pandas: events, KPIs, SPC and event logs from long-format signal data.',
+        ignoreFiles: ['changelog.md', 'license.md', 'insiders/**', 'assets/**'],
+        includeOrder: [
+          'index.md',
+          'user_guide/**',
+          'concept.md',
+          'naming.md',
+          'guides/**',
+          'modules/**',
+          'reference/**',
+        ],
+        includeUnmatchedLast: true,
+        excludeImports: true,
+        removeDuplicateHeadings: true,
       },
     ],
   ],
@@ -125,6 +182,7 @@ const config: Config = {
             {label: 'Changelog', to: '/changelog/'},
             {label: 'Migration and deprecations', to: '/migration/'},
             {label: 'Contributing', to: '/contributing/'},
+            {label: 'Standards', to: '/tags/'},
           ],
         },
         {
@@ -132,6 +190,7 @@ const config: Config = {
           items: [
             {label: 'GitHub', href: repo},
             {label: 'PyPI', href: 'https://pypi.org/project/ts-shape/'},
+            {label: 'llms.txt', href: 'pathname:///llms.txt'},
           ],
         },
       ],
@@ -140,6 +199,13 @@ const config: Config = {
     tableOfContents: {
       minHeadingLevel: 2,
       maxHeadingLevel: 3,
+    },
+    mermaid: {
+      theme: {light: 'neutral', dark: 'dark'},
+      options: {
+        fontFamily: 'Inter Variable, system-ui, sans-serif',
+        flowchart: {curve: 'basis', padding: 12, wrappingWidth: 320},
+      },
     },
     prism: {
       theme: prismThemes.oneLight,

@@ -1,3 +1,7 @@
+---
+tags: [iso-50001]
+---
+
 # Energy
 
 How to get from a power signal to kWh, energy per part, idle waste and CO2e.

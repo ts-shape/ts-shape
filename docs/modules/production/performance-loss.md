@@ -1,3 +1,7 @@
+---
+tags: [iso-22400]
+---
+
 # PerformanceLossEvents
 
 Speed losses: performance against a target cycle time per shift, per window and over time, from a part counter or cycle trigger.

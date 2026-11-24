@@ -1,3 +1,7 @@
+---
+tags: [iso-22400]
+---
+
 # Production and OEE
 
 How to get machine states, downtime, OEE, shift figures and part traceability

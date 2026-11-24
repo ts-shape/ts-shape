@@ -38,6 +38,14 @@ print(sc.control_quality_metrics("temp_pv", tol=0.5, lookahead="15min").T)
 | `oscillation_frequency(actual_uuid, window='10min', deadband=0.0)` | `oscillation_freq_hz`, `period_seconds` |
 | `control_quality_metrics(actual_uuid, tol=0.0, settle_pct=None, deadband=None)` | all of the above per change |
 
+## Formulas
+
+`decay_rate` fits the control error after a setpoint step to an exponential decay:
+
+$$
+e(t) = A\, e^{-\lambda t}
+$$
+
 ## Notes
 
 - A step is a change of at least `min_delta` whose new level holds for `min_duration` (no further change within it); `detect_setpoint_changes` takes it as `min_step_duration`, since its `min_duration` is the ramp duration. The former name `min_hold` still works and warns. `filter_noise=True` drops changes below `noise_threshold`.

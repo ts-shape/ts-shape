@@ -1,3 +1,7 @@
+---
+tags: [ocel, xes]
+---
+
 # Event log (XES and OCEL)
 
 `ts_shape.eventlog` turns detector output into one canonical event log whose
@@ -13,6 +17,15 @@ OCEL objects), [Genealogy](genealogy.md) (where-used and where-from queries
 over the object relations), [Labeling and taxonomy](taxonomy.md) (activity
 names and standard attributes), [Adapters](adapters.md) (how a detector frame
 is converted, and custom adapters).
+
+```mermaid
+flowchart TB
+    D1["Detector output"] -->|"to_event_log"| L1["EventLog"]
+    D2["Detector output"] -->|"to_event_log + objects"| L2["EventLog"]
+    L1 & L2 -->|"concat"| L["EventLog<br/>events · objects · relations · o2o · object_changes"]
+    L -->|"to_event_log_ocel"| O[["OCEL 2.0 tables (pm4py)"]]
+    L -->|"to_event_log_xes"| X[["XES-style frame"]]
+```
 
 ## Quick start
 

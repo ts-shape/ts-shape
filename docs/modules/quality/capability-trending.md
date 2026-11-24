@@ -1,3 +1,7 @@
+---
+tags: [aiag, montgomery-sqc]
+---
+
 # CapabilityTrendingEvents
 
 Cp, Cpk, Pp and Ppk per time window, alerts when Cpk drops, a linear Cpk forecast, and estimated yield/DPMO/sigma level, for a numeric signal with specification limits.

@@ -1,0 +1,40 @@
+# Tags for docs pages, by the standard or method a page implements.
+# Pages list them in front matter (`tags: [iso-22400]`); a tag that is not
+# declared here fails the build (onInlineTags: 'throw').
+
+iso-22400:
+  label: ISO 22400
+  description: KPIs for manufacturing operations management (OEE, availability, MTBF, MTTR).
+iso-50001:
+  label: ISO 50001 / 50006
+  description: Energy management and energy performance indicators (EnPI) with baselines.
+iso-20816:
+  label: ISO 10816 / 20816
+  description: Evaluation of machine vibration by measurements on non-rotating parts.
+isa-18-2:
+  label: ISA-18.2
+  description: Management of alarm systems for the process industries (alarm rates, floods, chattering).
+aiag:
+  label: AIAG SPC / MSA
+  description: AIAG reference manuals for statistical process control, capability and measurement system analysis.
+montgomery-sqc:
+  label: Montgomery SQC
+  description: Control charts and capability as in Montgomery, Introduction to Statistical Quality Control.
+nelson-rules:
+  label: Nelson rules
+  description: Nelson (1984) / Western Electric run rules for control charts.
+gum:
+  label: GUM (JCGM 100)
+  description: Guide to the expression of uncertainty in measurement.
+weibull:
+  label: Weibull
+  description: Weibull life-data analysis for reliability.
+littles-law:
+  label: Little's law
+  description: WIP = throughput x lead time for flow metrics.
+ocel:
+  label: OCEL 2.0
+  description: Object-centric event logs for process mining.
+xes:
+  label: XES (IEEE 1849)
+  description: The eXtensible Event Stream format for process mining.

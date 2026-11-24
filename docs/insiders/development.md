@@ -52,6 +52,17 @@ Pages are plain Markdown (CommonMark, not MDX). Admonitions use
 `:::note` ... `:::`. The navigation is `website/sidebars.ts`; a new page
 must be added there.
 
+- Diagrams: a ` ```mermaid ` fence renders as a diagram (flowcharts with
+  `flowchart TB` stay readable; wide `LR` charts get scaled down).
+- Math: `$$...$$` is KaTeX, inline or on its own lines. A single `$` is
+  text, so `"$input"` needs no escaping.
+- Tags: a page lists the standards it implements in front matter
+  (`tags: [iso-22400]`); every tag must be declared in `docs/tags.yml`,
+  otherwise the build fails. `/tags/` lists them.
+- The build also writes `llms.txt` and `llms-full.txt` (all pages as
+  Markdown, for AI assistants) and a redirect from the old
+  `/reference/SUMMARY/` URL.
+
 ## Build
 
 ```bash

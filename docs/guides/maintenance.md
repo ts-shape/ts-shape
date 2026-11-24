@@ -1,3 +1,7 @@
+---
+tags: [weibull]
+---
+
 # Maintenance
 
 How to watch an asset wear out and plan the intervention: trends and health

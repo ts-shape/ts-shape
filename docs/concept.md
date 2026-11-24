@@ -42,6 +42,20 @@ profiling](guides/signals.md) describes how to declare this once as a
 | Detect | `ts_shape.events` | long frame | event or KPI table | `MachineStateEvents`, `OEEEvents`, `OutlierDetectionEvents` |
 | Event log | `ts_shape.eventlog` | detector output | OCEL 2.0 tables, XES-style frame | `to_event_log`, `to_event_log_xes`, `to_event_log_ocel` |
 
+Every arrow is a pandas DataFrame:
+
+```mermaid
+flowchart TB
+    L["Load<br/><code>ts_shape.loader</code>"]
+    L --> T["Transform<br/><code>ts_shape.transform</code>"]
+    T --> F["Features<br/><code>ts_shape.features</code>"]
+    T --> D["Detect<br/><code>ts_shape.events</code>"]
+    F -->|"cycles, segments"| D
+    D -->|"event table"| E["Event log<br/><code>ts_shape.eventlog</code>"]
+    D -->|"KPI table"| K[["Reports, dashboards"]]
+    E -->|"OCEL 2.0 / XES"| PM[["Process mining"]]
+```
+
 `ts_shape.Pipeline` chains transforms and detectors into one reusable
 definition ([Pipelines](guides/pipeline-builder.md)).
 

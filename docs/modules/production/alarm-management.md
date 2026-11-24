@@ -1,3 +1,7 @@
+---
+tags: [isa-18-2]
+---
+
 # AlarmManagementEvents
 
 Alarm frequency, alarm-on durations, chattering and standing alarms (ISA-18.2 style) from one boolean alarm signal (`value_bool`, True = active).

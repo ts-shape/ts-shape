@@ -1,3 +1,7 @@
+---
+tags: [aiag, montgomery-sqc]
+---
+
 # ToleranceDeviationEvents
 
 Samples of a measurement outside its specification limits, grouped into events with deviation size and severity, and the capability indices Cp, Cpk, Pp, Ppk and Cpm. The limits are signals in the same frame, so they can change over time.
@@ -30,6 +34,24 @@ capability = tdev.capability_indices(target_value=50.0)
 |---|---|
 | `detect_deviations()` | out-of-tolerance events: `systime`, the measured value, `deviation_abs`, `deviation_pct`, `severity` (`minor`/`major`/`critical`) |
 | `capability_indices(target_value=None, sigma_method='moving_range')` | one row: `cp`, `cpk`, `pp`, `ppk`, `cpm` (each after its deprecated upper-case twin), `mean`, `std`, `std_within`, `usl`, `lsl`, `target`, `sample_count` |
+
+## Formulas
+
+With $$\sigma_w = \overline{MR}/1.128$$ (within) and $$s$$ the overall sample standard deviation:
+
+$$
+C_p = \frac{USL - LSL}{6\,\sigma_w}, \qquad
+C_{pk} = \min\!\left(\frac{USL - \bar x}{3\,\sigma_w},\; \frac{\bar x - LSL}{3\,\sigma_w}\right)
+$$
+
+$$
+P_p = \frac{USL - LSL}{6\,s}, \qquad
+P_{pk} = \min\!\left(\frac{USL - \bar x}{3\,s},\; \frac{\bar x - LSL}{3\,s}\right)
+$$
+
+$$
+C_{pm} = \frac{USL - LSL}{6\sqrt{s^2 + (\bar x - T)^2}}
+$$
 
 ## Notes
 

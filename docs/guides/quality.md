@@ -1,3 +1,7 @@
+---
+tags: [aiag, montgomery-sqc, nelson-rules, gum]
+---
+
 # Quality and SPC
 
 How to find outliers, apply control-chart rules and compute process

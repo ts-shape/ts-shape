@@ -1,3 +1,7 @@
+---
+tags: [iso-50001]
+---
+
 # EnergyEfficiencyEvents
 
 Energy efficiency against production and machine state: output per kWh over time, energy used while the machine is idle, specific energy consumption (kWh per unit), and a comparison across shifts.

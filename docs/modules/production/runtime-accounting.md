@@ -1,3 +1,7 @@
+---
+tags: [iso-22400]
+---
+
 # RuntimeAccountingEvents
 
 Operating hours from one boolean run signal: run and idle time, utilization, start count, run time per window and a cumulative hour meter. Use it for hours since service, operating hours per machine or starts per day; for duty-cycle percentages and on/off cycle counts see [DutyCycleEvents](duty-cycle.md).
