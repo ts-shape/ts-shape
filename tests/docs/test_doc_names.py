@@ -22,7 +22,14 @@ from typing import Any
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-PAGES = sorted([ROOT / "README.md", *(ROOT / "docs").rglob("*.md")])
+# docs/reference/ts_shape is generated from the docstrings (scripts/gen_ref_pages.py).
+GENERATED = ROOT / "docs" / "reference" / "ts_shape"
+PAGES = sorted(
+    [
+        ROOT / "README.md",
+        *(p for p in (ROOT / "docs").rglob("*.md") if GENERATED not in p.parents),
+    ]
+)
 _BLOCK = re.compile(r"```python\n(.*?)```", re.S)
 _IMPORT = re.compile(
     r"^\s*from\s+(ts_shape[\w.]*)\s+import\s+\(?([\w\s,]+?)\)?\s*$", re.M

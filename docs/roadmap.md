@@ -73,7 +73,7 @@ removed.
   uncertainty (JCGM 100 §4.4.3); Weibull MLE (Lieblein–Zelen ball bearings,
   Lawless Ex. 5.2.2).
 - The docs are tested: every `ts_shape` name in a code block must import, and
-  CI builds the docs with `mkdocs build --strict`.
+  CI builds the docs site and fails on a broken link or anchor.
 
 ## W4: scale and lean install
 

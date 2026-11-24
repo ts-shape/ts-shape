@@ -173,9 +173,12 @@ before it) lower the confidence. A setting that only changes with the variant
 is a recipe parameter and is not tested. `setting_register()` gives the
 sensitivity (Theil–Sen) and the best value seen.
 
-!!! note
-    On a machine without a separate article signal the cycle profiler may
-    take a held setting for the variant signal; it is then not tested here.
+:::note
+
+On a machine without a separate article signal the cycle profiler may
+take a held setting for the variant signal; it is then not tested here.
+
+:::
 
 ```python
 from ts_shape import SettingImpactEvents

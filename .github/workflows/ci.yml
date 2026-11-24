@@ -71,10 +71,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install ".[docs]"
 
-      - name: Build MkDocs documentation (warnings are errors)
-        env:
-          DISABLE_MKDOCS_2_WARNING: 'true'
-        run: mkdocs build --strict
+      - name: Generate API reference pages
+        run: python scripts/gen_ref_pages.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Build Docusaurus site (broken links and anchors are errors)
+        working-directory: website
+        run: |
+          npm ci
+          npm run build
 
   test:
     name: Test (Python ${{ matrix.python-version }})

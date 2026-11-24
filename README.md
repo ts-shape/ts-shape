@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/ts-shape.svg)](https://pypi.org/project/ts-shape/)
 [![Release](https://github.com/ts-shape/ts-shape/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/ts-shape/ts-shape/actions/workflows/release.yml)
-[![Docs](https://img.shields.io/badge/docs-mkdocs-708FCC.svg)](https://ts-shape.github.io/ts-shape/)
+[![Docs](https://img.shields.io/badge/docs-docusaurus-708FCC.svg)](https://ts-shape.github.io/ts-shape/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/ts-shape/ts-shape/blob/main/LICENSE.txt)
 
 ts-shape is a pandas library for manufacturing and IIoT time series. It works
