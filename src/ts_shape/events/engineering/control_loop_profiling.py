@@ -35,14 +35,14 @@ import pandas as pd
 from ts_shape.events.engineering.control_loop_health import ControlLoopHealthEvents
 from ts_shape.events.engineering.setpoint_events import SetpointChangeEvents
 from ts_shape.events.production._unit_profile import (
+    MAD_SCALE,
     REASON_BELOW_RESOLUTION,
-    REASON_NO_CANDIDATE,
     REASON_OK,
     REASON_TOO_FEW,
+    _ProfilerBase,
     evaluation_frame,
+    memo,
 )
-from ts_shape.utils.base import Base
-from ts_shape.utils.frames import to_ns
 
 __all__ = ["ControlLoopProfileEvents"]
 
@@ -74,7 +74,7 @@ UNDERDAMPED_MIN_OVERSHOOT_PCT = 30.0
 RESOLUTION_SHARE = 0.1
 
 
-class ControlLoopProfileEvents(Base):
+class ControlLoopProfileEvents(_ProfilerBase):
     """Find the control loops among the signals and rank their health.
 
     Example:
@@ -84,6 +84,11 @@ class ControlLoopProfileEvents(Base):
         >>> dict(zip(loops["setpoint_uuid"], loops["diagnosis"]))["plc:tic102_sp"]
         'oscillating'
     """
+
+    PROFILE_KIND = "loops"
+    PROFILE_TABLES = ("loop_pairs", "loop_steps", "loop_register")
+    PROFILE_ORDER = 90
+    NEEDS_CYCLES = False
 
     def __init__(
         self,
@@ -109,68 +114,47 @@ class ControlLoopProfileEvents(Base):
             value_column: Numeric value column.
             event_uuid: ``uuid`` of the step records.
         """
-        super().__init__(dataframe, time_column=time_column)
-        self.time_column = time_column
-        self.uuid_column = uuid_column
+        super().__init__(
+            dataframe,
+            signal_uuids=signal_uuids,
+            time_column=time_column,
+            uuid_column=uuid_column,
+            event_uuid=event_uuid,
+        )
         self.value_column = value_column
-        self.event_uuid = event_uuid
-        self.signal_uuids = None if signal_uuids is None else list(signal_uuids)
         self.min_steps = int(min_steps)
         self.settle_pct = float(settle_pct)
-        self._cache: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # Common grid
     # ------------------------------------------------------------------
 
+    @memo
     def _grid(self) -> tuple[np.ndarray, dict[str, np.ndarray], float]:
         """Grid times (ns), every numeric signal on it (held), grid period (s)."""
-        if "grid" in self._cache:
-            cached: tuple[np.ndarray, dict[str, np.ndarray], float] = self._cache[
-                "grid"
-            ]
-            return cached
-        df = self.dataframe
-        if self.value_column not in df.columns or df.empty:
-            out: tuple[np.ndarray, dict[str, np.ndarray], float] = (
-                np.array([], dtype=np.int64),
-                {},
-                0.0,
-            )
-            self._cache["grid"] = out
-            return out
-        values = pd.to_numeric(df[self.value_column], errors="coerce")
-        ok = values.notna().to_numpy()
-        uuids = df[self.uuid_column].astype(str).to_numpy()[ok]
-        ns = np.asarray(to_ns(df[self.time_column]), dtype=np.int64)[ok]
-        vals = values.to_numpy(dtype=float)[ok]
-        keep = (
-            np.ones(len(uuids), dtype=bool)
-            if self.signal_uuids is None
-            else np.isin(uuids, self.signal_uuids)
+        empty: tuple[np.ndarray, dict[str, np.ndarray], float] = (
+            np.array([], dtype=np.int64),
+            {},
+            0.0,
         )
-        uuids, ns, vals = uuids[keep], ns[keep], vals[keep]
-        if len(ns) == 0:
-            out = (np.array([], dtype=np.int64), {}, 0.0)
-            self._cache["grid"] = out
-            return out
+        if self.value_column not in self.dataframe.columns:
+            return empty
+        signals = self._signals()
         series: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         steps = []
-        for uuid in np.unique(uuids):
-            sel = uuids == uuid
-            order = np.argsort(ns[sel], kind="stable")
-            t, v = ns[sel][order], vals[sel][order]
+        for uuid in sorted(signals.uuids):
+            v = signals.numeric(uuid, self.value_column)
+            ok = np.isfinite(v)
+            t, v = signals.ns(uuid)[ok], v[ok]
             if len(t) < 3:
                 continue
-            series[str(uuid)] = (t, v)
+            series[uuid] = (t, v)
             d = np.diff(t)
             d = d[d > 0]
             if len(d):
                 steps.append(float(np.median(d)) / 1e9)
         if not series:
-            out = (np.array([], dtype=np.int64), {}, 0.0)
-            self._cache["grid"] = out
-            return out
+            return empty
         t_min = min(int(t[0]) for t, _ in series.values())
         t_max = max(int(t[-1]) for t, _ in series.values())
         period = float(np.median(steps)) if steps else 1.0
@@ -179,11 +163,11 @@ class ControlLoopProfileEvents(Base):
         held = {}
         for uuid, (t, v) in series.items():
             pos = np.searchsorted(t, grid, side="right") - 1
-            g = np.where(pos >= 0, v[np.clip(pos, 0, None)], np.nan)
-            held[uuid] = g
-        out = (grid, held, period)
-        self._cache["grid"] = out
-        return out
+            held[uuid] = np.where(pos >= 0, v[np.clip(pos, 0, None)], np.nan)
+        return grid, held, period
+
+    def _resolution(self) -> float:
+        return self._grid()[2]
 
     def _roles(self) -> tuple[list[str], list[str]]:
         """Setpoint candidates and continuous signals."""
@@ -254,7 +238,7 @@ class ControlLoopProfileEvents(Base):
         idx = idx[(idx >= 1) & (idx + KICK_SAMPLES <= len(x))]
         if len(idx) < 2:
             return 0.0, 0.0
-        noise = float(np.nanmedian(np.abs(np.diff(x)))) * 1.4826 or 1e-9
+        noise = float(np.nanmedian(np.abs(np.diff(x)))) * MAD_SCALE or 1e-9
         delta = sp[idx] - sp[idx - 1]
         post = np.array([np.nanmean(x[k : k + KICK_SAMPLES]) for k in idx])
         move = post - x[idx - 1]
@@ -271,10 +255,8 @@ class ControlLoopProfileEvents(Base):
             abs(consistency),
         )
 
+    @memo
     def _pairs(self) -> pd.DataFrame:
-        if "pairs" in self._cache:
-            cached: pd.DataFrame = self._cache["pairs"]
-            return cached
         _, held, _ = self._grid()
         setpoints, continuous = self._roles()
         scores = []
@@ -328,7 +310,6 @@ class ControlLoopProfileEvents(Base):
                 "output_consistency_ratio",
             ],
         )
-        self._cache["pairs"] = out
         return out
 
     # ------------------------------------------------------------------
@@ -342,10 +323,8 @@ class ControlLoopProfileEvents(Base):
         median_gap = float(np.median(gaps)) if len(gaps) else 600.0
         return float(np.clip(0.8 * median_gap, 60.0, 1800.0))
 
+    @memo
     def _steps(self) -> pd.DataFrame:
-        if "steps" in self._cache:
-            cached: pd.DataFrame = self._cache["steps"]
-            return cached
         frames = []
         for row in self._pairs().itertuples(index=False):
             if row.step_count < self.min_steps:
@@ -381,13 +360,10 @@ class ControlLoopProfileEvents(Base):
                 ]
             )
         )
-        self._cache["steps"] = out
         return out
 
+    @memo
     def _register(self) -> pd.DataFrame:
-        if "register" in self._cache:
-            cached: pd.DataFrame = self._cache["register"]
-            return cached
         pairs = self._pairs()
         steps = self._steps()
         grid, held, period = self._grid()
@@ -478,7 +454,6 @@ class ControlLoopProfileEvents(Base):
                     "health_rank",
                 ]
             )
-            self._cache["register"] = out
             return out
         bad = pd.DataFrame(
             {
@@ -495,7 +470,6 @@ class ControlLoopProfileEvents(Base):
             out["health_score"].rank(method="min", ascending=True).astype(int)
         )
         out = out.sort_values("health_rank", kind="stable").reset_index(drop=True)
-        self._cache["register"] = out
         return out
 
     # ------------------------------------------------------------------
@@ -552,18 +526,11 @@ class ControlLoopProfileEvents(Base):
         _, _, period = self._grid()
         pairs = self._pairs()
         if pairs.empty:
-            return evaluation_frame(
-                [
-                    {
-                        "scope": "all",
-                        "unit_count": 0,
-                        "evaluable": False,
-                        "reason": f"{REASON_NO_CANDIDATE}: setpoint with a follower",
-                        "time_resolution_seconds": period,
-                        "lookahead_seconds": np.nan,
-                    }
-                ],
-                ["lookahead_seconds"],
+            return self._evaluation_row(
+                0,
+                self.min_steps,
+                missing="setpoint with a follower",
+                lookahead_seconds=np.nan,
             )
         rows = []
         for row in pairs.itertuples(index=False):
@@ -593,12 +560,9 @@ class ControlLoopProfileEvents(Base):
             ``evaluable`` (at least one loop is), ``reason``, ``loop_count``,
             ``diagnoses`` (count per diagnosis) and ``worst_loop``.
         """
-        window = self.evaluation_window()
         register = self._register()
-        evaluable = bool(window["evaluable"].any())
         return {
-            "evaluable": evaluable,
-            "reason": REASON_OK if evaluable else str(window["reason"].iloc[0]),
+            **self._summary_head(),
             "loop_count": int(len(register)),
             "diagnoses": {
                 str(k): int(v) for k, v in register["diagnosis"].value_counts().items()

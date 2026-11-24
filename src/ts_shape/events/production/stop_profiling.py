@@ -32,13 +32,15 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.events.production._unit_profile import (
+    INCREMENT,
     REASON_NO_ANCHOR,
     REASON_NO_CANDIDATE,
+    REASON_OK,
     _UnitProfiler,
     enrichment,
     evaluation_frame,
-    evaluation_reason,
     first_label,
+    memo,
     overlaps_any,
     potential_register,
     silent_gaps,
@@ -49,7 +51,6 @@ from ts_shape.events.production.cycle_profiling import (
     CycleProfileEvents,
 )
 from ts_shape.utils.coerce import run_mask
-from ts_shape.utils.frames import to_ns
 
 __all__ = ["StopProfileEvents"]
 
@@ -117,13 +118,6 @@ UNEXPLAINED = "unexplained"
 DATA_HOLE = "data_hole"
 
 
-def _frame_ns(frame: pd.DataFrame, column: str) -> np.ndarray:
-    """The time column as int64 nanoseconds (empty for an empty frame)."""
-    if frame.empty or column not in frame.columns:
-        return np.zeros(0, dtype=np.int64)
-    return np.asarray(to_ns(frame[column]), dtype=np.int64)
-
-
 def _drop_markers(evidence: pd.DataFrame) -> pd.DataFrame:
     """Mark events present at (almost) every stop as not significant.
 
@@ -149,6 +143,10 @@ class StopProfileEvents(_UnitProfiler):
         >>> bool(stops.evaluation_window()["evaluable"].iloc[0])
         True
     """
+
+    PROFILE_KIND = "stops"
+    PROFILE_TABLES = ("stop_records", "stop_signatures", "signature_evidence")
+    PROFILE_ORDER = 10
 
     def __init__(
         self,
@@ -202,7 +200,7 @@ class StopProfileEvents(_UnitProfiler):
     # ------------------------------------------------------------------
 
     def _holes(self, median_cycle: float) -> list[tuple[int, int]]:
-        ns = _frame_ns(self.dataframe, self.time_column)
+        ns = self._signals().all_ns
         limit = max(HOLE_MIN_SECONDS, HOLE_CYCLES * median_cycle)
         return silent_gaps(ns, min_gap_seconds=limit)
 
@@ -234,21 +232,18 @@ class StopProfileEvents(_UnitProfiler):
         counters = [u for u, s in specs.items() if s.kind == "counter"]
         if not counters:
             return None
-        increments = events[events["event"].str.endswith("+1")]
+        increments = events[events["event"].str.endswith(INCREMENT)]
         if increments.empty:
             return None
         busiest = increments["source_uuid"].value_counts().index[0]
         inc_ns = increments.loc[increments["source_uuid"] == busiest, "ns"].to_numpy()
-        frame = self.dataframe
+        signals = self._signals()
         best: tuple[float, str, Any] | None = None
         for uuid, spec in specs.items():
-            if spec.kind != "state" or uuid == busiest:
+            if spec.kind != "state" or uuid == busiest or uuid not in signals:
                 continue
-            rows = frame[frame[self.uuid_column].astype(str) == uuid]
-            values = rows[spec.value_column]
-            ns = to_ns(rows[self.time_column])
-            order = np.argsort(ns, kind="stable")
-            ns, values = ns[order], values.iloc[order]
+            values = signals.column(uuid, spec.value_column)
+            ns = signals.ns(uuid)
             for value in pd.unique(values.dropna()):
                 on = run_mask(values, run_states={value}, warn=False).fillna(False)
                 on = on.to_numpy(dtype=bool)
@@ -266,12 +261,10 @@ class StopProfileEvents(_UnitProfiler):
     def _stops_from_run_signal(self, run: tuple[str, Any]) -> pd.DataFrame:
         uuid, value = run
         spec = self._profile().signal_specs()[uuid]
-        rows = self.dataframe[self.dataframe[self.uuid_column].astype(str) == uuid]
-        ns = to_ns(rows[self.time_column])
-        order = np.argsort(ns, kind="stable")
-        ns = ns[order]
+        signals = self._signals()
+        ns = signals.ns(uuid)
         on = run_mask(
-            rows[spec.value_column].iloc[order], run_states={value}, warn=False
+            signals.column(uuid, spec.value_column), run_states={value}, warn=False
         )
         on = on.fillna(True).to_numpy(dtype=bool)
         records = []
@@ -302,10 +295,8 @@ class StopProfileEvents(_UnitProfiler):
             i = j
         return pd.DataFrame(records)
 
+    @memo
     def _compute(self) -> dict[str, Any]:
-        if "result" in self._cache:
-            result_cached: dict[str, Any] = self._cache["result"]
-            return result_cached
         profile = self._profile()
         cycles = self._units()
         resolution = profile.resolution_seconds()
@@ -337,7 +328,6 @@ class StopProfileEvents(_UnitProfiler):
         }
         if stops.empty:
             result.update(stops=stops, evidence=pd.DataFrame(), held=pd.DataFrame())
-            self._cache["result"] = result
             return result
 
         holes = self._holes(median_cycle if np.isfinite(median_cycle) else 0.0)
@@ -407,7 +397,6 @@ class StopProfileEvents(_UnitProfiler):
             ";".join(sorted(s & set(significant))) for s in unit_sets
         ]
         result.update(stops=stops, evidence=evidence, held=held)
-        self._cache["result"] = result
         return result
 
     def _pre_window_seconds(self, median_cycle: float) -> float:
@@ -439,7 +428,7 @@ class StopProfileEvents(_UnitProfiler):
         length = int((pre + STOP_POST_GRACE_SECONDS) * 1e9)
         if normal is None or len(normal) == 0:
             # Without cycles: windows at random times of the recording.
-            ns = _frame_ns(self.dataframe, self.time_column)
+            ns = self._signals().all_ns
             if len(ns) == 0:
                 return np.zeros(0, np.int64), np.zeros(0, np.int64)
             rng = np.random.default_rng(SEED)
@@ -477,28 +466,21 @@ class StopProfileEvents(_UnitProfiler):
         """
         stops = self._compute()["stops"]
         if stops.empty:
-            return pd.DataFrame(columns=_RECORD_COLUMNS)
-        out = pd.DataFrame(
-            {
-                "systime": self._times(stops["end_ns"].to_numpy()),
-                "uuid": self.event_uuid,
-                "source_uuid": self._compute()["source"],
-                "unit_uuid": stops["unit_uuid"].astype(str).to_numpy(),
-                "start_ns": stops["stop_start_ns"].to_numpy(dtype=np.int64),
-                "end_ns": stops["end_ns"].to_numpy(dtype=np.int64),
-                "duration_seconds": (
-                    stops["end_ns"] - stops["stop_start_ns"]
-                ).to_numpy()
-                / 1e9,
-                "stop_class": stops["stop_class"].to_numpy(),
-                "variant": stops["variant"].astype(str).to_numpy(),
-                "lost_seconds": stops["lost_seconds"].to_numpy(dtype=float),
-                "signature": stops["signature"].to_numpy(),
-                "signature_kind": stops["signature_kind"].to_numpy(),
-                "preceding_events": stops["preceding_events"].to_numpy(),
-            }
+            return self._empty(_RECORD_COLUMNS)
+        units = stops.assign(
+            start_ns=stops["stop_start_ns"], unit_uuid=stops["unit_uuid"].astype(str)
         )
-        return out[_RECORD_COLUMNS]
+        return self._point_records(
+            units,
+            columns=_RECORD_COLUMNS,
+            source=self._compute()["source"],
+            stop_class=stops["stop_class"],
+            variant=stops["variant"].astype(str),
+            lost_seconds=stops["lost_seconds"].to_numpy(dtype=float),
+            signature=stops["signature"],
+            signature_kind=stops["signature_kind"],
+            preceding_events=stops["preceding_events"],
+        )
 
     def stop_signatures(self) -> pd.DataFrame:
         """The stop register: what each signature costs.
@@ -644,13 +626,6 @@ class StopProfileEvents(_UnitProfiler):
         )
         durations = (real["end_ns"] - real["stop_start_ns"]) / 1e9 if len(real) else []
         median = float(np.median(durations)) if len(durations) else np.nan
-        evaluable, reason = evaluation_reason(
-            len(real),
-            self.min_stops,
-            resolution=result["resolution"],
-            median_seconds=median,
-            upstream=result["upstream"],
-        )
         unknown = (
             float(
                 ((stops["end_ns"] - stops["stop_start_ns"]) / 1e9)[
@@ -660,20 +635,16 @@ class StopProfileEvents(_UnitProfiler):
             if len(stops)
             else 0.0
         )
-        return evaluation_frame(
-            [
-                {
-                    "scope": "all",
-                    "unit_count": int(len(real)),
-                    "evaluable": evaluable,
-                    "reason": reason,
-                    "time_resolution_seconds": result["resolution"],
-                    "source": result["source"],
-                    "explained_share_ratio": explained / lost if lost > 0 else np.nan,
-                    "unknown_seconds": unknown,
-                }
-            ],
-            extra,
+        return self._evaluation_row(
+            len(real),
+            self.min_stops,
+            median_seconds=median,
+            # Stops are judged on their own duration (a line has no cycles).
+            upstream=result["upstream"] or REASON_OK,
+            resolution=result["resolution"],
+            source=result["source"],
+            explained_share_ratio=explained / lost if lost > 0 else np.nan,
+            unknown_seconds=unknown,
         )
 
     def summary(self) -> dict[str, Any]:
@@ -690,9 +661,7 @@ class StopProfileEvents(_UnitProfiler):
         top = explained.iloc[0] if len(explained) else None
         share = window["explained_share_ratio"]
         return {
-            "evaluable": bool(window["evaluable"]),
-            "reason": str(window["reason"]),
-            "stop_count": int(window["unit_count"]),
+            **self._summary_head("stop_count"),
             "lost_hours": (
                 float(register["lost_seconds"].sum() / 3600.0) if len(register) else 0.0
             ),
@@ -704,7 +673,5 @@ class StopProfileEvents(_UnitProfiler):
         }
 
     def _span_ns(self) -> int:
-        if self.dataframe.empty:
-            return 0
-        ns = _frame_ns(self.dataframe, self.time_column)
+        ns = self._signals().all_ns
         return int(np.amax(ns) - np.amin(ns)) if len(ns) else 0

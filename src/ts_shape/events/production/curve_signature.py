@@ -27,12 +27,13 @@ import pandas as pd
 from scipy.cluster import hierarchy
 
 from ts_shape.events.production._unit_profile import (
+    MAD_SCALE,
     _UnitProfiler,
     evaluation_frame,
     evaluation_reason,
+    memo,
 )
 from ts_shape.events.production.cycle_profiling import CycleProfileEvents
-from ts_shape.utils.frames import to_ns
 
 __all__ = ["CurveSignatureEvents"]
 
@@ -100,6 +101,10 @@ class CurveSignatureEvents(_UnitProfiler):
         True
     """
 
+    PROFILE_KIND = "curves"
+    PROFILE_TABLES = ("curve_golden", "curve_cycle_scores", "curve_patterns")
+    PROFILE_ORDER = 70
+
     def __init__(
         self,
         dataframe: pd.DataFrame,
@@ -154,13 +159,24 @@ class CurveSignatureEvents(_UnitProfiler):
         analog = [u for u, s in specs.items() if s.kind == "continuous"]
         if not analog:
             return []
-        counts = (
-            self.dataframe[self.dataframe[self.uuid_column].astype(str).isin(analog)]
-            .groupby(self.uuid_column, observed=True)
-            .size()
-            .sort_values(ascending=False)
+        signals = self._signals()
+        counts = sorted(
+            ((len(signals.ns(u)), u) for u in sorted(analog) if u in signals),
+            key=lambda k: -k[0],
         )
-        return [str(u) for u in counts.index[: self.max_signals]]
+        return [u for _, u in counts[: self.max_signals]]
+
+    @memo
+    def _discrete_times(self) -> dict[str, np.ndarray]:
+        """Sorted times of every discrete event label (one pass)."""
+        events = self._events()
+        # Only discrete milestones: an analog crossing moves with the curve's
+        # own shape (a late rise would be warped away).
+        events = events[events["signal_kind"] != "continuous"]
+        return {
+            str(label): np.sort(part["ns"].to_numpy(np.int64))
+            for label, part in events.groupby("event", sort=False)
+        }
 
     def _milestones(self, variant: str) -> list[tuple[float, np.ndarray]]:
         """``(template offset, sorted ns of the event)`` of the standard view."""
@@ -168,17 +184,13 @@ class CurveSignatureEvents(_UnitProfiler):
         if view.empty or "variant" not in view.columns:
             return []
         part = view[view["variant"].astype(str) == variant]
-        events = self._events()
-        # Only discrete milestones: an analog crossing moves with the curve's
-        # own shape (a late rise would be warped away).
-        events = events[events["signal_kind"] != "continuous"]
-        part = part[part["event"].isin(set(events["event"]))]
+        times = self._discrete_times()
         out = []
         for label, offset in zip(
             part["event"].astype(str), part["median_offset_seconds"], strict=True
         ):
-            ns = np.sort(events.loc[events["event"] == label, "ns"].to_numpy(np.int64))
-            if len(ns):
+            ns = times.get(label)
+            if ns is not None and len(ns):
                 out.append((float(offset), ns))
         return sorted(out, key=lambda k: k[0])
 
@@ -226,11 +238,10 @@ class CurveSignatureEvents(_UnitProfiler):
             phases.append((float(offsets[i]), f"{names[i]} → {nxt}"))
         return [p for p in phases if p[0] <= span] or [(0.0, "cycle")]
 
+    @memo
     def _compute(self) -> dict[str, Any]:
-        if "result" in self._cache:
-            cached: dict[str, Any] = self._cache["result"]
-            return cached
-        cycles = self._units().reset_index(drop=True)
+        cycles = self._cycles()
+        signals = self._signals()
         specs = self._profile().signal_specs()
         golden_rows: list[pd.DataFrame] = []
         score_rows: list[dict[str, Any]] = []
@@ -238,13 +249,8 @@ class CurveSignatureEvents(_UnitProfiler):
         evaluation: list[dict[str, Any]] = []
         use = cycles[cycles["cycle_class"] != "pause"]
         for uuid in self._signals_used():
-            rows = self.dataframe[self.dataframe[self.uuid_column].astype(str) == uuid]
-            ns = np.asarray(to_ns(rows[self.time_column]), dtype=np.int64)
-            order = np.argsort(ns, kind="stable")
-            ns = ns[order]
-            values = pd.to_numeric(
-                rows[specs[uuid].value_column], errors="coerce"
-            ).to_numpy(dtype=float)[order]
+            ns = signals.ns(uuid)
+            values = signals.numeric(uuid, specs[uuid].value_column)
             spread = float(np.nanpercentile(values, 90) - np.nanpercentile(values, 10))
             for variant, part in use.groupby(use["variant"].astype(str), sort=True):
                 normal = part[part["cycle_class"] == "normal"]
@@ -279,7 +285,7 @@ class CurveSignatureEvents(_UnitProfiler):
                         "unit_count": n_normal,
                         "evaluable": evaluable,
                         "reason": reason,
-                        "time_resolution_seconds": self._profile().resolution_seconds(),
+                        "time_resolution_seconds": self._resolution(),
                         "variant": variant,
                         "signal": uuid,
                     }
@@ -292,7 +298,7 @@ class CurveSignatureEvents(_UnitProfiler):
                 median = np.nanmedian(ref, axis=0)
                 p10 = np.nanpercentile(ref, 10, axis=0)
                 p90 = np.nanpercentile(ref, 90, axis=0)
-                mad = 1.4826 * np.nanmedian(np.abs(ref - median), axis=0)
+                mad = MAD_SCALE * np.nanmedian(np.abs(ref - median), axis=0)
                 scale = np.maximum(mad, SCALE_FLOOR * max(spread, 1e-9))
                 # A reading is known to one sample: an edge may sit one grid
                 # point early or late without being a different shape.
@@ -304,7 +310,9 @@ class CurveSignatureEvents(_UnitProfiler):
                     + np.nanpercentile(absr, PEAK_PERCENTILE, axis=1) / PEAK_WEIGHT
                 )
                 s_med = float(np.nanmedian(score[is_normal]))
-                s_mad = 1.4826 * float(np.nanmedian(np.abs(score[is_normal] - s_med)))
+                s_mad = MAD_SCALE * float(
+                    np.nanmedian(np.abs(score[is_normal] - s_med))
+                )
                 limit = max(s_med + self.n_sigma * max(s_mad, 1e-9), 2.0 * s_med)
                 anomaly = score > limit
                 phases = self._phases(variant, span)
@@ -364,7 +372,6 @@ class CurveSignatureEvents(_UnitProfiler):
             "evaluation": evaluation,
         }
         result["scores"] = self._cluster(result)
-        self._cache["result"] = result
         return result
 
     def _cluster(self, result: dict[str, Any]) -> pd.DataFrame:
@@ -426,14 +433,13 @@ class CurveSignatureEvents(_UnitProfiler):
         """Anomalous cycles of a warm-up: a run of off-band cycles of one
         signal that begins within ``RESTART_CYCLES`` after a pause or a
         variant change (the signal coming back to its running state)."""
-        units = self._units().reset_index(drop=True)
+        units = self._cycles()
         out = pd.Series(False, index=scores.index)
         if units.empty or scores.empty:
             return out
         pos = pd.Series(np.arange(len(units)), index=units["cycle_uuid"].astype(str))
-        variant = units["variant"].astype(str).to_numpy()
         pause = (units["cycle_class"] == "pause").to_numpy()
-        starts = np.flatnonzero(pause | np.r_[False, variant[1:] != variant[:-1]])
+        starts = self._restarts()["position"].to_numpy(dtype=np.int64)
         where = scores["cycle_uuid"].astype(str).map(pos)
         for _, part in scores[scores["is_anomaly"].astype(bool)].groupby("signal"):
             at = dict(zip(where[part.index].astype(int), part.index, strict=True))
@@ -471,7 +477,7 @@ class CurveSignatureEvents(_UnitProfiler):
             "median",
             "p90",
         ]
-        return golden[columns] if len(golden) else pd.DataFrame(columns=columns)
+        return golden[columns] if len(golden) else self._empty(columns)
 
     def curve_cycle_scores(self) -> pd.DataFrame:
         """How far every cycle's curve leaves the golden curve.
@@ -505,7 +511,7 @@ class CurveSignatureEvents(_UnitProfiler):
             "after_restart",
         ]
         if scores.empty:
-            return pd.DataFrame(columns=columns)
+            return self._empty(columns)
         out = scores.assign(
             systime=self._times(scores["end_ns"].to_numpy()).to_numpy(),
             uuid=self.event_uuid,
@@ -585,22 +591,9 @@ class CurveSignatureEvents(_UnitProfiler):
         """
         rows = self._compute()["evaluation"]
         if not rows:
-            reason = (
-                "no_candidate_signal: analog signal"
-                if not self._units().empty
-                else f"upstream_not_evaluable: {self._profile().evaluation_reason()}"
+            return self._evaluation_row(
+                0, self.min_cycles, missing="analog signal", variant=None, signal=None
             )
-            rows = [
-                {
-                    "scope": "all",
-                    "unit_count": 0,
-                    "evaluable": False,
-                    "reason": reason,
-                    "time_resolution_seconds": self._profile().resolution_seconds(),
-                    "variant": None,
-                    "signal": None,
-                }
-            ]
         return evaluation_frame(rows, ["variant", "signal"])
 
     def summary(self) -> dict[str, Any]:
@@ -612,13 +605,10 @@ class CurveSignatureEvents(_UnitProfiler):
             ``warmup_cycle_count`` (off the band right after a restart),
             ``pattern_count`` and ``top_pattern``.
         """
-        window = self.evaluation_window()
         scores = self.curve_cycle_scores()
         patterns = self.curve_patterns()
-        evaluable = bool(window["evaluable"].any())
         return {
-            "evaluable": evaluable,
-            "reason": "ok" if evaluable else str(window["reason"].iloc[0]),
+            **self._summary_head(),
             "anomalous_cycle_count": _count(scores, restart=False),
             "warmup_cycle_count": _count(scores, restart=True),
             "pattern_count": int(len(patterns)),

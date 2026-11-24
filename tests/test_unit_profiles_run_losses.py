@@ -19,7 +19,6 @@ from ts_shape.events.production._unit_profile import (
     effect_size,
     enrichment,
     potential_register,
-    robust_classes,
     window_labels,
 )
 from ts_shape.events.production.changeover_profiling import (
@@ -81,11 +80,7 @@ def _match(records: pd.DataFrame, truth: pd.DataFrame, column: str) -> pd.DataFr
 # ---------------------------------------------------------------------------
 
 
-def test_robust_classes_and_register() -> None:
-    d = np.array([10.0] * 20 + [10.5, 9.5, 30.0, 100.0])
-    labels, z, limits = robust_classes(d, np.array(["a"] * len(d)), pause_factor=5)
-    assert labels[-1] == "pause" and labels[-2] == "long"
-    assert limits["a"]["median"] == pytest.approx(10.0)
+def test_potential_register() -> None:
     table = pd.DataFrame(
         {"step": ["x"] * 10 + ["y"] * 10, "seconds": [*range(10), *[5] * 10]}
     )

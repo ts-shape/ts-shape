@@ -28,9 +28,14 @@ import pandas as pd
 from scipy import stats as sps
 
 from ts_shape.events.production._unit_profile import (
+    FALL,
+    REASON_OK,
+    RISE,
     _UnitProfiler,
+    assign_to_cycles,
     evaluation_frame,
     evaluation_reason,
+    memo,
     potential_register,
 )
 from ts_shape.events.production.cycle_profiling import (
@@ -58,6 +63,7 @@ DIRECT_SHARE = 0.8
 #: A delay whose (P90 - P10) / median is below this is a fixed delay.
 FIXED_DELAY_SPREAD = 0.15
 
+_RECORD_COLUMNS = ["start", "end", "duration_seconds", "uuid", "source_uuid", "pair"]
 _PAIR_COLUMNS = [
     "pair",
     "request",
@@ -133,6 +139,10 @@ class HandshakeProfileEvents(_UnitProfiler):
         True
     """
 
+    PROFILE_KIND = "handshakes"
+    PROFILE_TABLES = ("handshake_pairs", "handshake_records", "handshake_register")
+    PROFILE_ORDER = 60
+
     def __init__(
         self,
         dataframe: pd.DataFrame,
@@ -175,6 +185,7 @@ class HandshakeProfileEvents(_UnitProfiler):
         self.min_follow_ratio = float(min_follow_ratio)
         self.min_occurrences = int(min_occurrences)
 
+    @memo
     def _edges(self) -> dict[str, tuple[str, np.ndarray]]:
         """Candidate edge label -> (source uuid, sorted ns)."""
         events = self._events()
@@ -186,21 +197,22 @@ class HandshakeProfileEvents(_UnitProfiler):
             counts = counts[counts <= MAX_EVENTS_PER_CYCLE * len(cycles)]
         counts = counts.head(HANDSHAKE_MAX_LABELS)
         out = {}
+        keep = events[events["event"].isin(set(counts.index))]
+        groups = keep.groupby("event", sort=False)
         for label in counts.index:
-            part = events[events["event"] == label]
+            part = groups.get_group(label)
             out[str(label)] = (
                 str(part["source_uuid"].iloc[0]),
                 np.sort(part["ns"].to_numpy(dtype=np.int64)),
             )
         return out
 
+    @memo
     def _pairs(self) -> dict[str, Any]:
-        if "pairs" in self._cache:
-            cached: dict[str, Any] = self._cache["pairs"]
-            return cached
         edges = self._edges()
         # The next edge of each request, among the other signals' edges.
         labels = list(edges)
+        label_index = {x: i for i, x in enumerate(labels)}
         all_ns = (
             np.concatenate([edges[x][1] for x in labels])
             if labels
@@ -236,7 +248,7 @@ class HandshakeProfileEvents(_UnitProfiler):
             if np.percentile(delays, 90) > HANDSHAKE_MAX_DELAY_SHARE * interval:
                 continue
             direct = _direct_share(
-                ns_a, source_a, labels.index(b), all_ns, all_label, all_source
+                ns_a, source_a, label_index[b], all_ns, all_label, all_source
             )
             if direct < DIRECT_SHARE:
                 continue
@@ -258,14 +270,12 @@ class HandshakeProfileEvents(_UnitProfiler):
             ):
                 best[key] = (a, b)
         kept = {k: found[k] for k in best.values()}
-        result = {"found": found, "kept": kept}
-        self._cache["pairs"] = result
-        return result
+        return {"found": found, "kept": kept}
 
     def _kind(self, a: str, b: str) -> str:
         found = self._pairs()["found"]
-        if a.endswith("↑") and b.endswith("↑"):
-            a_fall, b_fall = a[:-1] + "↓", b[:-1] + "↓"
+        if a.endswith(RISE) and b.endswith(RISE):
+            a_fall, b_fall = a[: -len(RISE)] + FALL, b[: -len(RISE)] + FALL
             if (b, a_fall) in found and (a_fall, b_fall) in found:
                 return "four_phase"
         return "two_phase"
@@ -339,11 +349,11 @@ class HandshakeProfileEvents(_UnitProfiler):
                     }
                 )
             )
-        columns = ["start", "end", "duration_seconds", "uuid", "source_uuid", "pair"]
         if not frames:
-            return pd.DataFrame(columns=columns)
+            return self._empty(_RECORD_COLUMNS)
         out = pd.concat(frames, ignore_index=True)
-        return out.sort_values("start", kind="stable").reset_index(drop=True)[columns]
+        out = out.sort_values("start", kind="stable").reset_index(drop=True)
+        return out[_RECORD_COLUMNS]
 
     def handshake_register(self) -> pd.DataFrame:
         """What each handshake wait costs, linked to the cycle.
@@ -383,8 +393,7 @@ class HandshakeProfileEvents(_UnitProfiler):
                 rho.append(np.nan)
                 var_share.append(np.nan)
                 continue
-            pos = np.searchsorted(starts, ns_a[ok], side="right") - 1
-            inside = (pos >= 0) & (ns_a[ok] < ends[np.clip(pos, 0, None)])
+            pos, inside = assign_to_cycles(ns_a[ok], starts, ends)
             waits = (
                 pd.Series((nxt[ok] - ns_a[ok])[inside] / 1e9).groupby(pos[inside]).sum()
             )
@@ -411,7 +420,7 @@ class HandshakeProfileEvents(_UnitProfiler):
             ``reason`` (``below_resolution`` when the median wait is shorter
             than twice the time resolution) and ``time_resolution_seconds``.
         """
-        resolution = self._profile().resolution_seconds()
+        resolution = self._resolution()
         pairs = self.handshake_pairs()
         rows = []
         for r in pairs.itertuples(index=False):
@@ -432,14 +441,13 @@ class HandshakeProfileEvents(_UnitProfiler):
                 }
             )
         if not rows:
-            rows.append(
-                {
-                    "scope": "all",
-                    "unit_count": 0,
-                    "evaluable": False,
-                    "reason": "no_candidate_signal: request/answer pair",
-                    "time_resolution_seconds": resolution,
-                }
+            # Handshakes are edges of the signals: no cycle is needed.
+            return self._evaluation_row(
+                0,
+                self.min_occurrences,
+                missing="request/answer pair",
+                upstream=REASON_OK,
+                resolution=resolution,
             )
         return evaluation_frame(rows)
 
@@ -451,7 +459,6 @@ class HandshakeProfileEvents(_UnitProfiler):
             ``partner_pair_count`` and ``top_wait_pair`` (the partner pair
             with the largest total potential, four-phase pairs first).
         """
-        window = self.evaluation_window()
         pairs = self.handshake_pairs()
         register = self.handshake_register()
         partner = register[register["waits_on"] == "partner"].copy()
@@ -461,10 +468,8 @@ class HandshakeProfileEvents(_UnitProfiler):
             ["_four", "total_potential_seconds"], ascending=[False, False]
         )
         top = partner.iloc[0] if len(partner) else None
-        evaluable = bool(window["evaluable"].any())
         return {
-            "evaluable": evaluable,
-            "reason": "ok" if evaluable else str(window["reason"].iloc[0]),
+            **self._summary_head(),
             "pair_count": int(len(pairs)),
             "partner_pair_count": int((pairs["waits_on"] == "partner").sum()),
             "top_wait_pair": None if top is None else str(top["pair"]),

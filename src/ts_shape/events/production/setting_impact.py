@@ -33,18 +33,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sps
 
-from ts_shape.events.production._unit_profile import (
-    REASON_NO_CANDIDATE,
-    _UnitProfiler,
-    effect_size,
-    evaluation_frame,
-)
-from ts_shape.events.production.cycle_profiling import CycleProfileEvents, _bh_qvalues
-from ts_shape.events.production.order_profiling import (
-    _increments_per_cycle,
-    counter_roles,
-)
-from ts_shape.utils.frames import to_ns
+from ts_shape.events.production._counters import _CounterMixin
+from ts_shape.events.production._unit_profile import bh_qvalues, effect_size, memo
+from ts_shape.events.production.cycle_profiling import CycleProfileEvents
 
 __all__ = ["SettingImpactEvents"]
 
@@ -60,7 +51,7 @@ VARIANT_SPAN = 3
 FDR = 0.05
 
 
-class SettingImpactEvents(_UnitProfiler):
+class SettingImpactEvents(_CounterMixin):
     """Before/after effect of every change of a held setting.
 
     Example:
@@ -72,6 +63,14 @@ class SettingImpactEvents(_UnitProfiler):
         >>> bool(row["shift"] < 0), row["confidence"]
         (True, 'high')
     """
+
+    PROFILE_KIND = "settings"
+    PROFILE_TABLES = (
+        "setting_changes",
+        "setting_impact",
+        "setting_register",
+    )
+    PROFILE_ORDER = 80
 
     def __init__(
         self,
@@ -123,12 +122,11 @@ class SettingImpactEvents(_UnitProfiler):
     # Settings and their changes
     # ------------------------------------------------------------------
 
+    @memo
     def _settings(self) -> pd.DataFrame:
         """Held settings: uuid, change times and values."""
-        if "settings" in self._cache:
-            cached: pd.DataFrame = self._cache["settings"]
-            return cached
         cycles = self._units()
+        signals = self._signals()
         specs = self._profile().signal_specs()
         variant = self._profile().variant_signal()
         rows = []
@@ -143,13 +141,8 @@ class SettingImpactEvents(_UnitProfiler):
                 or spec.value_column not in ("value_double", "value_integer")
             ):
                 continue
-            part = self.dataframe[self.dataframe[self.uuid_column].astype(str) == uuid]
-            ns = np.asarray(to_ns(part[self.time_column]), dtype=np.int64)
-            order = np.argsort(ns, kind="stable")
-            values = pd.to_numeric(part[spec.value_column], errors="coerce").to_numpy(
-                dtype=float
-            )[order]
-            ns = ns[order]
+            ns = signals.ns(uuid)
+            values = signals.numeric(uuid, spec.value_column)
             ok = np.isfinite(values)
             ns, values = ns[ok], values[ok]
             if len(values) < 2:
@@ -163,7 +156,7 @@ class SettingImpactEvents(_UnitProfiler):
                 and np.median(holds) < SETTING_MIN_HOLD_CYCLES * median_cycle
             ):
                 continue
-            for k in change:
+            for k in change.tolist():
                 rows.append(
                     {
                         "setting": uuid,
@@ -172,18 +165,14 @@ class SettingImpactEvents(_UnitProfiler):
                         "after_value": float(values[k]),
                     }
                 )
-        out = pd.DataFrame(
+        return pd.DataFrame(
             rows, columns=["setting", "change_ns", "before_value", "after_value"]
         )
-        self._cache["settings"] = out
-        return out
 
+    @memo
     def _metrics(self) -> pd.DataFrame:
         """One row per cycle: start, class, variant and every metric."""
-        if "metrics" in self._cache:
-            cached: pd.DataFrame = self._cache["metrics"]
-            return cached
-        cycles = self._units().reset_index(drop=True)
+        cycles = self._cycles()
         out = cycles[
             ["cycle_uuid", "start_ns", "end_ns", "variant", "cycle_class"]
         ].copy()
@@ -198,26 +187,17 @@ class SettingImpactEvents(_UnitProfiler):
             )
             pivot.columns = [f"segment {c}" for c in pivot.columns]
             out = out.merge(pivot, left_on="cycle_uuid", right_index=True, how="left")
-        increments = _increments_per_cycle(
-            self.dataframe,
-            cycles,
-            self._profile().signal_specs(),
-            uuid_column=self.uuid_column,
-            time_column=self.time_column,
-        )
-        roles = counter_roles(increments)
+        increments = self._increments()
+        roles = self._roles()
         for uuid, role in zip(roles["uuid"], roles["role"], strict=True):
             if role == "bad":
                 out["bad_parts"] = increments[uuid].to_numpy(dtype=float)
             elif role == "energy_like":
                 out[f"energy {uuid}"] = increments[uuid].to_numpy(dtype=float)
-        self._cache["metrics"] = out
         return out
 
+    @memo
     def _compute(self) -> pd.DataFrame:
-        if "impact" in self._cache:
-            cached: pd.DataFrame = self._cache["impact"]
-            return cached
         changes = self._settings().sort_values("change_ns").reset_index(drop=True)
         metrics = self._metrics()
         columns = [
@@ -240,9 +220,7 @@ class SettingImpactEvents(_UnitProfiler):
             "confidence",
         ]
         if changes.empty or metrics.empty:
-            out = pd.DataFrame(columns=columns)
-            self._cache["impact"] = out
-            return out
+            return pd.DataFrame(columns=columns)
         starts = metrics["start_ns"].to_numpy(dtype=np.int64)
         variant = metrics["variant"].astype(str).to_numpy()
         variant_change_ns = metrics["start_ns"].to_numpy()[
@@ -348,7 +326,7 @@ class SettingImpactEvents(_UnitProfiler):
         q = np.full(len(p), np.nan)
         ok = np.isfinite(p)
         if ok.any():
-            q[ok] = _bh_qvalues(p[ok])
+            q[ok] = bh_qvalues(p[ok])
         out["q_value"] = q
         enough = (out["before_count"] >= self.min_window_cycles) & (
             out["after_count"] >= self.min_window_cycles
@@ -363,9 +341,7 @@ class SettingImpactEvents(_UnitProfiler):
             "high",
             np.where(significant & enough & ~variant_conf, "medium", "low"),
         )
-        out = out[columns]
-        self._cache["impact"] = out
-        return out
+        return out[columns]
 
     # ------------------------------------------------------------------
     # Public API
@@ -390,7 +366,7 @@ class SettingImpactEvents(_UnitProfiler):
             "recipe_parameter",
         ]
         if changes.empty:
-            return pd.DataFrame(columns=columns)
+            return self._empty(columns)
         recipe = (
             impact.groupby("change_ns")["recipe_parameter"].first()
             if len(impact)
@@ -491,37 +467,16 @@ class SettingImpactEvents(_UnitProfiler):
             without one), ``time_resolution_seconds``, ``setting_count`` and
             ``high_confidence_count`` (tests with ``high`` confidence).
         """
-        profile = self._profile()
         changes = self._settings()
         impact = self._compute()
-        if self._units().empty:
-            evaluable, reason = (
-                False,
-                f"upstream_not_evaluable: {profile.evaluation_reason()}",
-            )
-        elif changes.empty:
-            evaluable, reason = False, f"{REASON_NO_CANDIDATE}: held setting"
-        else:
-            evaluable, reason = True, "ok"
-        return evaluation_frame(
-            [
-                {
-                    "scope": "all",
-                    "unit_count": int(len(changes)),
-                    "evaluable": evaluable,
-                    "reason": reason,
-                    "time_resolution_seconds": profile.resolution_seconds(),
-                    "setting_count": (
-                        int(changes["setting"].nunique()) if len(changes) else 0
-                    ),
-                    "high_confidence_count": (
-                        int((impact["confidence"] == "high").sum())
-                        if len(impact)
-                        else 0
-                    ),
-                }
-            ],
-            ["setting_count", "high_confidence_count"],
+        return self._evaluation_row(
+            len(changes),
+            1,
+            missing="held setting" if changes.empty else None,
+            setting_count=int(changes["setting"].nunique()) if len(changes) else 0,
+            high_confidence_count=(
+                int((impact["confidence"] == "high").sum()) if len(impact) else 0
+            ),
         )
 
     def summary(self) -> dict[str, Any]:
@@ -543,9 +498,7 @@ class SettingImpactEvents(_UnitProfiler):
                 r = cand.iloc[0]
                 best = f"{r['setting']}: {r['before_value']:g} -> {r['after_value']:g}"
         return {
-            "evaluable": bool(window["evaluable"]),
-            "reason": str(window["reason"]),
-            "change_count": int(window["unit_count"]),
+            **self._summary_head("change_count"),
             "setting_count": int(window["setting_count"]),
             "best_cycle_time_change": best,
         }

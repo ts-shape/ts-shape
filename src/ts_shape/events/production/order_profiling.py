@@ -27,33 +27,38 @@ On top of the cycle profile of one PLC
 
 from __future__ import annotations
 
-import itertools
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from ts_shape.events.production._counters import (
+    COUNTER_ALIAS_SHARE,
+    COUNTER_MAX_LAG_CYCLES,
+    COUNTER_SUM_SHARE,
+    _CounterMixin,
+    counter_roles,
+)
 from ts_shape.events.production._unit_profile import (
-    REASON_NO_CANDIDATE,
-    _UnitProfiler,
+    assign_to_cycles,
     cycle_signal_stats,
+    cycles_since,
     enrichment,
-    evaluation_frame,
-    evaluation_reason,
+    memo,
     potential_register,
+    robust_center_scale,
 )
 from ts_shape.events.production.cycle_profiling import CycleProfileEvents
-from ts_shape.utils.counters import counter_increments
-from ts_shape.utils.frames import to_ns
 
-__all__ = ["OrderProfileEvents", "ScrapProfileEvents", "counter_roles"]
+__all__ = [
+    "COUNTER_ALIAS_SHARE",
+    "COUNTER_MAX_LAG_CYCLES",
+    "COUNTER_SUM_SHARE",
+    "OrderProfileEvents",
+    "ScrapProfileEvents",
+    "counter_roles",
+]
 
-#: ``good + bad = total`` must hold in this share of the cycles.
-COUNTER_SUM_SHARE = 0.98
-#: Lags (in cycles) tried between the counters of an identity.
-COUNTER_MAX_LAG_CYCLES = 3
-#: Two counters equal in this share of the cycles are aliases.
-COUNTER_ALIAS_SHARE = 0.98
 #: An identifier held this many median cycles (at least) is an order.
 ORDER_MIN_HOLD_CYCLES = 5.0
 #: A cycle this close after a stop / changeover is "after" it.
@@ -66,157 +71,52 @@ ANALOG_DEVIATION_Z = 4.0
 #: Scrap context needs this lift (it is rarer than a stop cause).
 SCRAP_MIN_LIFT = 2.0
 
-_ROLE_COLUMNS = [
+_ORDER_RECORDS = [
+    "systime",
     "uuid",
-    "role",
-    "rate_per_cycle",
-    "total_uuid",
-    "lag_cycles",
-    "identity_share_ratio",
-    "confidence",
+    "source_uuid",
+    "unit_uuid",
+    "start_ns",
+    "end_ns",
+    "duration_seconds",
+    "variant",
+    "cycle_count",
+    "run_seconds",
+    "stop_seconds",
+    "median_cycle_seconds",
+    "speed_ratio",
+    "loss_seconds",
+    "good_count",
+    "scrap_count",
+    "scrap_ratio",
+    "planned_quantity",
+    "attainment_ratio",
 ]
-
-
-def _increments_per_cycle(
-    frame: pd.DataFrame,
-    cycles: pd.DataFrame,
-    specs: dict[str, Any],
-    *,
-    uuid_column: str,
-    time_column: str,
-) -> pd.DataFrame:
-    """Reset-aware increments of every counter, summed per cycle."""
-    out = pd.DataFrame(index=cycles.index)
-    if cycles.empty:
-        return out
-    starts = cycles["start_ns"].to_numpy(dtype=np.int64)
-    ends = cycles["end_ns"].to_numpy(dtype=np.int64)
-    for uuid, spec in specs.items():
-        if spec.kind != "counter":
-            continue
-        rows = frame[frame[uuid_column].astype(str) == uuid]
-        rows = rows.iloc[np.argsort(to_ns(rows[time_column]), kind="stable")]
-        ns = np.asarray(to_ns(rows[time_column]), dtype=np.int64)
-        inc = counter_increments(rows[spec.value_column]).to_numpy(dtype=float)
-        # A count reported at a cycle boundary belongs to the cycle that just
-        # ended (the part is counted when it leaves): (start, end].
-        pos = np.searchsorted(starts, ns, side="left") - 1
-        ok = (pos >= 0) & np.isfinite(inc)
-        ok[ok] &= ns[ok] <= ends[pos[ok]]
-        sums = pd.Series(inc[ok]).groupby(pos[ok]).sum()
-        out[uuid] = sums.reindex(range(len(cycles)), fill_value=0.0).to_numpy()
-    return out
-
-
-def counter_roles(increments: pd.DataFrame) -> pd.DataFrame:
-    """Roles of the counters from their per-cycle increments.
-
-    Args:
-        increments: One row per cycle, one column per counter (see
-            :class:`ScrapProfileEvents` / :class:`OrderProfileEvents`, which
-            build it from the signals).
-
-    Returns:
-        One row per counter: ``uuid``, ``role`` (``total``, ``good``,
-        ``bad``, ``alias``, ``energy_like`` or ``counter``),
-        ``rate_per_cycle``, ``total_uuid`` (the total it adds up to),
-        ``lag_cycles``, ``identity_share_ratio`` and ``confidence``
-        (``high`` for an identity, ``low`` otherwise).
-    """
-    if increments.empty or increments.shape[1] == 0:
-        return pd.DataFrame(columns=_ROLE_COLUMNS)
-    data = increments.fillna(0.0)
-    rate = data.mean()
-    roles = {
-        u: {"role": "counter", "total_uuid": None, "lag_cycles": 0, "share": np.nan}
-        for u in data.columns
-    }
-    for u in data.columns:
-        v = data[u].to_numpy(dtype=float)
-        if len(v) and not np.allclose(v, np.round(v)):
-            roles[u]["role"] = "energy_like"
-    counters = [u for u in data.columns if roles[u]["role"] == "counter"]
-    for a, b in itertools.combinations(counters, 2):
-        share = float(np.mean(np.isclose(data[a], data[b])))
-        if share >= COUNTER_ALIAS_SHARE and rate[a] > 0:
-            roles[b].update(role="alias", total_uuid=a, share=share)
-    counters = [u for u in counters if roles[u]["role"] == "counter"]
-    best: tuple[float, str, str, str, int] | None = None
-    for total in counters:
-        for a, b in itertools.combinations([c for c in counters if c != total], 2):
-            for lag in range(-COUNTER_MAX_LAG_CYCLES, COUNTER_MAX_LAG_CYCLES + 1):
-                summed = data[a] + data[b].shift(lag).fillna(0.0)
-                share = float(np.mean(np.isclose(summed, data[total])))
-                if share >= COUNTER_SUM_SHARE and (best is None or share > best[0]):
-                    best = (share, total, a, b, lag)
-    if best is not None:
-        share, total, a, b, lag = best
-        good, bad = (a, b) if rate[a] >= rate[b] else (b, a)
-        roles[total].update(role="total", share=share)
-        roles[good].update(role="good", total_uuid=total, share=share)
-        roles[bad].update(role="bad", total_uuid=total, share=share, lag_cycles=lag)
-    rows = [
-        {
-            "uuid": u,
-            "role": r["role"],
-            "rate_per_cycle": float(rate[u]),
-            "total_uuid": r["total_uuid"],
-            "lag_cycles": int(r["lag_cycles"] or 0),
-            "identity_share_ratio": r["share"],
-            "confidence": "high" if r["role"] in ("total", "good", "bad") else "low",
-        }
-        for u, r in roles.items()
-    ]
-    return pd.DataFrame(rows, columns=_ROLE_COLUMNS)
-
-
-class _CounterMixin(_UnitProfiler):
-    """Per-cycle counter increments and roles, shared by orders and scrap."""
-
-    def _increments(self) -> pd.DataFrame:
-        if "increments" not in self._cache:
-            cycles = self._units().reset_index(drop=True)
-            self._cache["increments"] = _increments_per_cycle(
-                self.dataframe,
-                cycles,
-                self._profile().signal_specs(),
-                uuid_column=self.uuid_column,
-                time_column=self.time_column,
-            )
-        out: pd.DataFrame = self._cache["increments"]
-        return out
-
-    def counter_roles(self) -> pd.DataFrame:
-        """Roles of the counters (total, good, bad ...) learned from the data.
-
-        Returns:
-            See :func:`counter_roles`.
-        """
-        if "roles" not in self._cache:
-            self._cache["roles"] = counter_roles(self._increments())
-        out: pd.DataFrame = self._cache["roles"]
-        return out
-
-    def _role(self, role: str) -> str | None:
-        roles = self.counter_roles()
-        match = roles[roles["role"] == role]
-        return None if match.empty else str(match["uuid"].iloc[0])
-
-    def _parts_per_cycle(self) -> tuple[pd.Series, pd.Series]:
-        """``(good, bad)`` per cycle (bad 0 and good = total without roles)."""
-        inc = self._increments()
-        bad_uuid, good_uuid = self._role("bad"), self._role("good")
-        n = len(inc)
-        bad = inc[bad_uuid] if bad_uuid else pd.Series(0.0, index=range(n))
-        if good_uuid:
-            good = inc[good_uuid]
-        else:
-            anchor = self._profile().cycle_anchor()
-            source = anchor[1] if anchor else None
-            good = (
-                inc[source] if source in inc.columns else pd.Series(1.0, index=range(n))
-            )
-        return good.reset_index(drop=True), bad.reset_index(drop=True)
+_NOK_RECORDS = [
+    "systime",
+    "uuid",
+    "source_uuid",
+    "unit_uuid",
+    "start_ns",
+    "end_ns",
+    "duration_seconds",
+    "variant",
+    "cycle_class",
+    "bad_count",
+    "context",
+    "assigned_context",
+]
+_PARETO_COLUMNS = [
+    "context",
+    "nok_count",
+    "nok_share_ratio",
+    "rate_in_context_ratio",
+    "rate_outside_ratio",
+    "lift_factor",
+    "p_value",
+    "q_value",
+    "is_significant",
+]
 
 
 class OrderProfileEvents(_CounterMixin):
@@ -230,6 +130,11 @@ class OrderProfileEvents(_CounterMixin):
         >>> orders.evaluation_window()["order_uuid"].iloc[0]
         'plc:order_no'
     """
+
+    PROFILE_KIND = "orders"
+    PROFILE_TABLES = ("order_records", "order_register", "counter_roles")
+    PROFILE_OPTIONS = ("plan",)
+    PROFILE_ORDER = 40
 
     def __init__(
         self,
@@ -282,13 +187,11 @@ class OrderProfileEvents(_CounterMixin):
         self.order_uuid = order_uuid
         self.min_orders = int(min_orders)
 
+    @memo
     def _order_signal(self) -> tuple[str | None, str]:
         """``(uuid, how it was found)`` of the order signal."""
         if self.order_uuid is not None:
             return self.order_uuid, "given"
-        if "order_signal" in self._cache:
-            out: tuple[str | None, str] = self._cache["order_signal"]
-            return out
         from ts_shape.signals.identify import identify_objects
 
         cycles = self._units()
@@ -318,33 +221,24 @@ class OrderProfileEvents(_CounterMixin):
                 found = (str(ids["uuid"].iloc[0]), "identifier")
         if found[0] is None and self._profile().variant_signal() is not None:
             found = (self._profile().variant_signal(), "variant")
-        self._cache["order_signal"] = found
         return found
 
+    @memo
     def _orders(self) -> pd.DataFrame:
-        if "orders" in self._cache:
-            out: pd.DataFrame = self._cache["orders"]
-            return out
         uuid, _how = self._order_signal()
-        cycles = self._units().reset_index(drop=True)
+        cycles = self._cycles()
         columns = ["order_id", "start_ns", "end_ns", "first_cycle", "last_cycle"]
-        if uuid is None or cycles.empty:
-            out = pd.DataFrame(columns=columns)
-            self._cache["orders"] = out
-            return out
-        rows = self.dataframe[self.dataframe[self.uuid_column].astype(str) == uuid]
+        signals = self._signals()
+        if uuid is None or cycles.empty or uuid not in signals:
+            return pd.DataFrame(columns=columns)
         spec = self._profile().signal_specs().get(uuid)
         column = spec.value_column if spec is not None else "value_string"
-        ns = np.asarray(to_ns(rows[self.time_column]), dtype=np.int64)
-        order = np.argsort(ns, kind="stable")
-        ns = ns[order]
-        values = rows[column].iloc[order].astype(object).to_numpy()
+        ns = signals.ns(uuid)
+        values = signals.column(uuid, column).astype(object).to_numpy()
         keep = pd.notna(values)
         ns, values = ns[keep], values[keep]
         if len(ns) == 0:
-            out = pd.DataFrame(columns=columns)
-            self._cache["orders"] = out
-            return out
+            return pd.DataFrame(columns=columns)
         change = np.r_[True, values[1:] != values[:-1]]
         starts = ns[change]
         ids = values[change]
@@ -364,9 +258,7 @@ class OrderProfileEvents(_CounterMixin):
                     "last_cycle": int(inside[-1]),
                 }
             )
-        out = pd.DataFrame(records, columns=columns)
-        self._cache["orders"] = out
-        return out
+        return pd.DataFrame(records, columns=columns)
 
     def order_records(self) -> pd.DataFrame:
         """One record per order.
@@ -384,30 +276,9 @@ class OrderProfileEvents(_CounterMixin):
             ``attainment_ratio``.
         """
         orders = self._orders()
-        columns = [
-            "systime",
-            "uuid",
-            "source_uuid",
-            "unit_uuid",
-            "start_ns",
-            "end_ns",
-            "duration_seconds",
-            "variant",
-            "cycle_count",
-            "run_seconds",
-            "stop_seconds",
-            "median_cycle_seconds",
-            "speed_ratio",
-            "loss_seconds",
-            "good_count",
-            "scrap_count",
-            "scrap_ratio",
-            "planned_quantity",
-            "attainment_ratio",
-        ]
         if orders.empty:
-            return pd.DataFrame(columns=columns)
-        cycles = self._units().reset_index(drop=True)
+            return self._empty(_ORDER_RECORDS)
+        cycles = self._cycles()
         good, bad = self._parts_per_cycle()
         normal = cycles[cycles["cycle_class"] == "normal"]
         best = normal.groupby("variant")["duration_seconds"].quantile(0.1)
@@ -445,20 +316,29 @@ class OrderProfileEvents(_CounterMixin):
                     "scrap_ratio": b / (g + b) if g + b > 0 else np.nan,
                 }
             )
-        out = pd.DataFrame(rows)
-        out["duration_seconds"] = (out["end_ns"] - out["start_ns"]) / 1e9
-        out["systime"] = self._times(out["end_ns"].to_numpy())
-        out["uuid"] = self.event_uuid
-        out["source_uuid"] = self._order_signal()[0]
+        units = pd.DataFrame(rows)
+        extra = units.drop(columns=["unit_uuid", "start_ns", "end_ns"])
+        planned = pd.Series(np.nan, index=units.index)
         if self.plan is not None:
             plan = self.plan.assign(order_id=self.plan["order_id"].astype(str))
-            planned = plan.set_index("order_id")["planned_quantity"]
-            out["planned_quantity"] = out["unit_uuid"].map(planned).astype(float)
-            out["attainment_ratio"] = out["good_count"] / out["planned_quantity"]
-        else:
-            out["planned_quantity"] = np.nan
-            out["attainment_ratio"] = np.nan
-        return out[columns]
+            by_id = plan.set_index("order_id")["planned_quantity"]
+            planned = units["unit_uuid"].map(by_id).astype(float)
+        return self._point_records(
+            units,
+            columns=_ORDER_RECORDS,
+            source=self._order_signal()[0],
+            **{c: extra[c] for c in extra.columns},
+            planned_quantity=planned,
+            attainment_ratio=units["good_count"] / planned,
+        )
+
+    def counter_roles(self) -> pd.DataFrame:
+        """Roles of the counters (total, good, bad ...) learned from the data.
+
+        Returns:
+            See :func:`~ts_shape.events.production._counters.counter_roles`.
+        """
+        return self._roles().copy()
 
     def order_register(self) -> pd.DataFrame:
         """Orders ranked by lost time, per variant.
@@ -493,31 +373,14 @@ class OrderProfileEvents(_CounterMixin):
             or variant signal), ``time_resolution_seconds``, ``order_uuid``
             and ``order_source`` (``given``, ``identifier`` or ``variant``).
         """
-        profile = self._profile()
         uuid, how = self._order_signal()
-        orders = self._orders()
-        if self._units().empty:
-            evaluable, reason = (
-                False,
-                f"upstream_not_evaluable: {profile.evaluation_reason()}",
-            )
-        elif uuid is None:
-            evaluable, reason = False, f"{REASON_NO_CANDIDATE}: order id"
-        else:
-            evaluable, reason = evaluation_reason(len(orders), self.min_orders)
-        return evaluation_frame(
-            [
-                {
-                    "scope": "orders",
-                    "unit_count": int(len(orders)),
-                    "evaluable": evaluable,
-                    "reason": reason,
-                    "time_resolution_seconds": profile.resolution_seconds(),
-                    "order_uuid": uuid,
-                    "order_source": how,
-                }
-            ],
-            ["order_uuid", "order_source"],
+        return self._evaluation_row(
+            len(self._orders()),
+            self.min_orders,
+            missing=None if uuid is not None else "order id",
+            scope="orders",
+            order_uuid=uuid,
+            order_source=how,
         )
 
     def summary(self) -> dict[str, Any]:
@@ -527,14 +390,11 @@ class OrderProfileEvents(_CounterMixin):
             ``evaluable``, ``reason``, ``order_count``, ``order_uuid``,
             ``worst_order``, ``worst_order_loss_hours`` and ``scrap_count``.
         """
-        window = self.evaluation_window().iloc[0]
         records = self.order_records()
         worst = records.loc[records["loss_seconds"].idxmax()] if len(records) else None
         return {
-            "evaluable": bool(window["evaluable"]),
-            "reason": str(window["reason"]),
-            "order_count": int(window["unit_count"]),
-            "order_uuid": window["order_uuid"],
+            **self._summary_head("order_count"),
+            "order_uuid": self._order_signal()[0],
             "worst_order": None if worst is None else str(worst["unit_uuid"]),
             "worst_order_loss_hours": (
                 None if worst is None else float(worst["loss_seconds"] / 3600.0)
@@ -555,6 +415,10 @@ class ScrapProfileEvents(_CounterMixin):
         >>> scrap.evaluation_window()["bad_uuid"].iloc[0]
         'plc:bad_counter'
     """
+
+    PROFILE_KIND = "scrap"
+    PROFILE_TABLES = ("nok_records", "scrap_pareto", "counter_roles")
+    PROFILE_ORDER = 50
 
     def __init__(
         self,
@@ -603,56 +467,47 @@ class ScrapProfileEvents(_CounterMixin):
         uuid = self.bad_uuid or self._role("bad")
         if uuid is None or uuid not in inc.columns:
             return pd.Series(0.0, index=range(len(inc))), None, 0
-        roles = self.counter_roles().set_index("uuid")
+        roles = self._roles().set_index("uuid")
         lag = int(roles.at[uuid, "lag_cycles"]) if uuid in roles.index else 0
         bad = inc[uuid].reset_index(drop=True)
         # The bad count reported ``lag`` cycles late belongs to the earlier cycle.
         return bad.shift(-lag).fillna(0.0) if lag else bad, uuid, lag
 
+    @memo
     def _contexts(self) -> list[set[str]]:
         """The context labels of every cycle."""
-        if "contexts" in self._cache:
-            out: list[set[str]] = self._cache["contexts"]
-            return out
-        cycles = self._units().reset_index(drop=True)
+        cycles = self._cycles()
         n = len(cycles)
         contexts: list[set[str]] = [set() for _ in range(n)]
         if n == 0:
-            self._cache["contexts"] = contexts
             return contexts
         classes = cycles["cycle_class"].to_numpy(dtype=object)
-        variant = cycles["variant"].astype(str).to_numpy()
-        last_stop = -(10**9)
-        last_change = -(10**9)
+        restarts = self._restarts()
+        pause = classes == "pause"
+        since_stop = cycles_since(np.flatnonzero(pause), n)
+        since_change = cycles_since(
+            restarts.loc[restarts["trigger"] == "changeover", "position"], n
+        )
         for i in range(n):
-            if i > 0 and variant[i] != variant[i - 1]:
-                last_change = i
-            if classes[i] == "pause":
+            if pause[i]:
                 contexts[i].add("stop_in_cycle")
-                last_stop = i
-            elif 0 < i - last_stop <= AFTER_STOP_CYCLES:
+            elif 0 < since_stop[i] <= AFTER_STOP_CYCLES:
                 contexts[i].add("after_stop")
-            if 0 <= i - last_change <= AFTER_CHANGEOVER_CYCLES:
+            if 0 <= since_change[i] <= AFTER_CHANGEOVER_CYCLES:
                 contexts[i].add("after_changeover")
             if classes[i] == "long":
                 contexts[i].add("long_cycle")
             if classes[i] == "short":
                 contexts[i].add("short_cycle")
         stats = cycle_signal_stats(
-            self.dataframe,
-            cycles,
-            self._profile().signal_specs(),
-            uuid_column=self.uuid_column,
-            time_column=self.time_column,
+            self._signals(), cycles, self._profile().signal_specs()
         )
         normal = classes == "normal"
         for column in stats.columns:
             ref = stats.loc[normal, column].dropna()
             if len(ref) < 10:
                 continue
-            median = float(ref.median())
-            mad = 1.4826 * float((ref - median).abs().median())
-            scale = mad if mad > 0 else float(ref.std())
+            median, scale = robust_center_scale(ref.to_numpy())
             if not scale > 0:
                 continue
             z = ((stats[column] - median) / scale).to_numpy(dtype=float)
@@ -676,17 +531,15 @@ class ScrapProfileEvents(_CounterMixin):
         counts = events["event"].value_counts()
         rare = set(counts[counts <= RARE_EVENTS_PER_CYCLE * n].index)
         ev = events[events["event"].isin(rare)]
-        starts = cycles["start_ns"].to_numpy(dtype=np.int64)
-        ends = cycles["end_ns"].to_numpy(dtype=np.int64)
-        ns = ev["ns"].to_numpy(dtype=np.int64)
-        pos = np.searchsorted(starts, ns, side="right") - 1
-        ok = pos >= 0
-        ok[ok] &= ns[ok] < ends[pos[ok]]
+        pos, inside = assign_to_cycles(
+            ev["ns"].to_numpy(dtype=np.int64),
+            cycles["start_ns"].to_numpy(dtype=np.int64),
+            cycles["end_ns"].to_numpy(dtype=np.int64),
+        )
         for p, label in zip(
-            pos[ok], ev["event"].to_numpy(dtype=object)[ok], strict=True
+            pos[inside], ev["event"].to_numpy(dtype=object)[inside], strict=True
         ):
             contexts[int(p)].add(f"event {label}")
-        self._cache["contexts"] = contexts
         return contexts
 
     def _curve_anomalies(self, cycles: pd.DataFrame) -> list[tuple[int, str]]:
@@ -724,50 +577,36 @@ class ScrapProfileEvents(_CounterMixin):
             ``;``-joined) and ``assigned_context`` (the significant context
             with the highest lift, or ``unexplained``).
         """
-        columns = [
-            "systime",
-            "uuid",
-            "source_uuid",
-            "unit_uuid",
-            "start_ns",
-            "end_ns",
-            "duration_seconds",
-            "variant",
-            "cycle_class",
-            "bad_count",
-            "context",
-            "assigned_context",
-        ]
         bad, uuid, _lag = self._bad()
-        cycles = self._units().reset_index(drop=True)
+        cycles = self._cycles()
         if uuid is None or cycles.empty:
-            return pd.DataFrame(columns=columns)
+            return self._empty(_NOK_RECORDS)
         idx = np.flatnonzero(bad.to_numpy(dtype=float) > 0)
         contexts = self._contexts()
         pareto = self.scrap_pareto()
         significant = pareto[pareto["is_significant"].astype(bool)]
         order = significant["context"].tolist()  # highest lift first
-        part = cycles.iloc[idx]
-        out = pd.DataFrame(
-            {
-                "systime": self._times(part["end_ns"].to_numpy()),
-                "uuid": self.event_uuid,
-                "source_uuid": uuid,
-                "unit_uuid": part["cycle_uuid"].astype(str).to_numpy(),
-                "start_ns": part["start_ns"].to_numpy(dtype=np.int64),
-                "end_ns": part["end_ns"].to_numpy(dtype=np.int64),
-                "duration_seconds": part["duration_seconds"].to_numpy(dtype=float),
-                "variant": part["variant"].astype(str).to_numpy(),
-                "cycle_class": part["cycle_class"].to_numpy(),
-                "bad_count": bad.iloc[idx].to_numpy(dtype=float),
-                "context": [";".join(sorted(contexts[i])) for i in idx],
-                "assigned_context": [
-                    next((c for c in order if c in contexts[i]), "unexplained")
-                    for i in idx
-                ],
-            }
+        part = cycles.iloc[idx].assign(unit_uuid=lambda d: d["cycle_uuid"].astype(str))
+        return self._point_records(
+            part,
+            columns=_NOK_RECORDS,
+            source=uuid,
+            variant=part["variant"].astype(str),
+            cycle_class=part["cycle_class"],
+            bad_count=bad.iloc[idx].to_numpy(dtype=float),
+            context=[";".join(sorted(contexts[i])) for i in idx],
+            assigned_context=[
+                next((c for c in order if c in contexts[i]), "unexplained") for i in idx
+            ],
         )
-        return out[columns]
+
+    def counter_roles(self) -> pd.DataFrame:
+        """Roles of the counters (total, good, bad ...) learned from the data.
+
+        Returns:
+            See :func:`~ts_shape.events.production._counters.counter_roles`.
+        """
+        return self._roles().copy()
 
     def scrap_pareto(self) -> pd.DataFrame:
         """Scrap contexts ranked: where bad parts are over-represented.
@@ -783,20 +622,11 @@ class ScrapProfileEvents(_CounterMixin):
             ``q_value`` and ``is_significant`` (q < 0.05, lift >= 2),
             significant contexts first by lift.
         """
-        columns = [
-            "context",
-            "nok_count",
-            "nok_share_ratio",
-            "rate_in_context_ratio",
-            "rate_outside_ratio",
-            "lift_factor",
-            "p_value",
-            "q_value",
-            "is_significant",
-        ]
-        if "pareto" in self._cache:
-            cached: pd.DataFrame = self._cache["pareto"]
-            return cached
+        return self._pareto().copy()
+
+    @memo
+    def _pareto(self) -> pd.DataFrame:
+        columns = _PARETO_COLUMNS
         bad, uuid, _lag = self._bad()
         if uuid is None or bad.empty:
             return pd.DataFrame(columns=columns)
@@ -806,9 +636,7 @@ class ScrapProfileEvents(_CounterMixin):
         ok_sets = [c for c, b in zip(contexts, is_bad, strict=True) if not b]
         ev = enrichment(nok_sets, ok_sets, min_units=3, min_lift=SCRAP_MIN_LIFT)
         if ev.empty:
-            out = pd.DataFrame(columns=columns)
-            self._cache["pareto"] = out
-            return out
+            return pd.DataFrame(columns=columns)
         n_nok = max(len(nok_sets), 1)
         rows = []
         for r in ev.itertuples(index=False):
@@ -835,9 +663,7 @@ class ScrapProfileEvents(_CounterMixin):
         out = pd.DataFrame(rows, columns=columns).sort_values(
             ["is_significant", "lift_factor"], ascending=[False, False], kind="stable"
         )
-        out = out.reset_index(drop=True)
-        self._cache["pareto"] = out
-        return out
+        return out.reset_index(drop=True)
 
     def evaluation_window(self) -> pd.DataFrame:
         """Whether the scrap profile can be trusted, and why not.
@@ -849,37 +675,21 @@ class ScrapProfileEvents(_CounterMixin):
             and ``explained_share_ratio`` (bad cycles with a significant
             context).
         """
-        profile = self._profile()
         bad, uuid, _lag = self._bad()
         n = int((bad > 0).sum()) if len(bad) else 0
-        if self._units().empty:
-            evaluable, reason = (
-                False,
-                f"upstream_not_evaluable: {profile.evaluation_reason()}",
-            )
-        elif uuid is None:
-            evaluable, reason = False, f"{REASON_NO_CANDIDATE}: bad counter"
-        else:
-            evaluable, reason = evaluation_reason(n, self.min_nok)
         records = self.nok_records()
         explained = (
             float((records["assigned_context"] != "unexplained").mean())
             if len(records)
             else np.nan
         )
-        return evaluation_frame(
-            [
-                {
-                    "scope": "scrap",
-                    "unit_count": n,
-                    "evaluable": evaluable,
-                    "reason": reason,
-                    "time_resolution_seconds": profile.resolution_seconds(),
-                    "bad_uuid": uuid,
-                    "explained_share_ratio": explained,
-                }
-            ],
-            ["bad_uuid", "explained_share_ratio"],
+        return self._evaluation_row(
+            n,
+            self.min_nok,
+            missing=None if uuid is not None else "bad counter",
+            scope="scrap",
+            bad_uuid=uuid,
+            explained_share_ratio=explained,
         )
 
     def summary(self) -> dict[str, Any]:
@@ -891,16 +701,14 @@ class ScrapProfileEvents(_CounterMixin):
             and ``explained_share_ratio``.
         """
         window = self.evaluation_window().iloc[0]
-        pareto = self.scrap_pareto()
+        pareto = self._pareto()
         sig = pareto[pareto["is_significant"].astype(bool)] if len(pareto) else pareto
         top = (
             sig.sort_values("nok_count", ascending=False).iloc[0] if len(sig) else None
         )
         share = window["explained_share_ratio"]
         return {
-            "evaluable": bool(window["evaluable"]),
-            "reason": str(window["reason"]),
-            "nok_cycle_count": int(window["unit_count"]),
+            **self._summary_head("nok_cycle_count"),
             "bad_uuid": window["bad_uuid"],
             "top_context": None if top is None else str(top["context"]),
             "explained_share_ratio": None if pd.isna(share) else float(share),

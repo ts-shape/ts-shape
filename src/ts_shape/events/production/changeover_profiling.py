@@ -35,16 +35,14 @@ import numpy as np
 import pandas as pd
 
 from ts_shape.events.production._unit_profile import (
-    REASON_NO_CANDIDATE,
     _UnitProfiler,
+    cycle_signal_stats,
     enrichment,
-    evaluation_frame,
-    evaluation_reason,
+    memo,
     potential_register,
     window_labels,
 )
 from ts_shape.events.production.cycle_profiling import CycleProfileEvents
-from ts_shape.utils.frames import to_ns
 
 __all__ = ["ChangeoverProfileEvents", "StartupProfileEvents"]
 
@@ -132,6 +130,15 @@ class ChangeoverProfileEvents(_UnitProfiler):
         True
     """
 
+    PROFILE_KIND = "changeovers"
+    PROFILE_TABLES = (
+        "changeover_records",
+        "changeover_view",
+        "changeover_register",
+        "changeover_matrix",
+    )
+    PROFILE_ORDER = 20
+
     def __init__(
         self,
         dataframe: pd.DataFrame,
@@ -181,16 +188,17 @@ class ChangeoverProfileEvents(_UnitProfiler):
         self.min_changeovers = int(min_changeovers)
         self.external_share = float(external_share)
 
+    @memo
     def _changeovers(self) -> pd.DataFrame:
-        if "changeovers" in self._cache:
-            return self._cache["changeovers"]
-        cycles = self._units().reset_index(drop=True)
+        cycles = self._cycles()
         rows = []
         if len(cycles) > 1 and self._profile().variant_signal() is not None:
             variant = cycles["variant"].astype(str).to_numpy()
             classes = cycles["cycle_class"].to_numpy(dtype=object)
             z = cycles["z"].to_numpy(dtype=float)
-            for i in np.flatnonzero(variant[1:] != variant[:-1]) + 1:
+            restarts = self._restarts()
+            changes = restarts.loc[restarts["trigger"] == "changeover", "position"]
+            for i in changes.to_numpy(dtype=np.int64):
                 last_a = i - 1
                 while last_a >= 0 and classes[last_a] != "normal":
                     last_a -= 1
@@ -212,7 +220,7 @@ class ChangeoverProfileEvents(_UnitProfiler):
                         "ramp_up_cycle_count": int(max(first_b - i - 1, 0)),
                     }
                 )
-        out = pd.DataFrame(
+        return pd.DataFrame(
             rows,
             columns=[
                 "unit_uuid",
@@ -224,13 +232,9 @@ class ChangeoverProfileEvents(_UnitProfiler):
                 "ramp_up_cycle_count",
             ],
         )
-        self._cache["changeovers"] = out
-        return out
 
+    @memo
     def _steps(self) -> dict[str, Any]:
-        if "steps" in self._cache:
-            cached: dict[str, Any] = self._cache["steps"]
-            return cached
         units = self._changeovers()
         cycles = self._units()
         events = _step_labels(self._events())
@@ -242,7 +246,6 @@ class ChangeoverProfileEvents(_UnitProfiler):
             events = events[events["event"] != anchor[0]]
         result: dict[str, Any] = {"standard": [], "evidence": pd.DataFrame()}
         if units.empty:
-            self._cache["steps"] = result
             return result
         normal = cycles[cycles["cycle_class"] == "normal"]
         unit_sets = window_labels(events, units["start_ns"], units["change_end_ns"])
@@ -298,7 +301,6 @@ class ChangeoverProfileEvents(_UnitProfiler):
             "external": external,
             "offsets": offsets,
         }
-        self._cache["steps"] = result
         return result
 
     def changeover_records(self) -> pd.DataFrame:
@@ -313,36 +315,22 @@ class ChangeoverProfileEvents(_UnitProfiler):
             ``steps_seen`` (standard steps that occurred).
         """
         units = self._changeovers()
-        if units.empty:
-            return pd.DataFrame(columns=_CHANGEOVER_RECORDS)
         steps = self._steps()
         seen = [
             sum(1 for s in steps["standard"] if s in times)
             for times in steps.get("first_times", [{}] * len(units))
         ]
-        out = pd.DataFrame(
-            {
-                "systime": self._times(units["end_ns"].to_numpy()),
-                "uuid": self.event_uuid,
-                "source_uuid": self._profile().variant_signal(),
-                "unit_uuid": units["unit_uuid"].to_numpy(),
-                "start_ns": units["start_ns"].to_numpy(dtype=np.int64),
-                "end_ns": units["end_ns"].to_numpy(dtype=np.int64),
-                "duration_seconds": (units["end_ns"] - units["start_ns"]).to_numpy()
-                / 1e9,
-                "from_variant": units["from_variant"].to_numpy(),
-                "to_variant": units["to_variant"].to_numpy(),
-                "changeover_seconds": (
-                    units["change_end_ns"] - units["start_ns"]
-                ).to_numpy()
-                / 1e9,
-                "ramp_up_seconds": (units["end_ns"] - units["change_end_ns"]).to_numpy()
-                / 1e9,
-                "ramp_up_cycle_count": units["ramp_up_cycle_count"].to_numpy(),
-                "steps_seen": seen,
-            }
+        return self._point_records(
+            units,
+            columns=_CHANGEOVER_RECORDS,
+            source=self._profile().variant_signal(),
+            from_variant=units["from_variant"],
+            to_variant=units["to_variant"],
+            changeover_seconds=(units["change_end_ns"] - units["start_ns"]) / 1e9,
+            ramp_up_seconds=(units["end_ns"] - units["change_end_ns"]) / 1e9,
+            ramp_up_cycle_count=units["ramp_up_cycle_count"],
+            steps_seen=seen,
         )
-        return out[_CHANGEOVER_RECORDS]
 
     def changeover_view(self) -> pd.DataFrame:
         """The standard step sequence of a changeover.
@@ -480,39 +468,16 @@ class ChangeoverProfileEvents(_UnitProfiler):
             ``time_resolution_seconds``, ``variant_uuid`` and
             ``standard_step_count``.
         """
-        profile = self._profile()
-        resolution = profile.resolution_seconds()
         units = self._changeovers()
-        extra = ["variant_uuid", "standard_step_count"]
-        variant = profile.variant_signal()
-        if self._units().empty:
-            evaluable, reason = (
-                False,
-                f"upstream_not_evaluable: {profile.evaluation_reason()}",
-            )
-        elif variant is None:
-            evaluable, reason = False, f"{REASON_NO_CANDIDATE}: variant"
-        else:
-            durations = (units["end_ns"] - units["start_ns"]) / 1e9
-            evaluable, reason = evaluation_reason(
-                len(units),
-                self.min_changeovers,
-                resolution=resolution,
-                median_seconds=float(np.median(durations)) if len(units) else np.nan,
-            )
-        return evaluation_frame(
-            [
-                {
-                    "scope": "all",
-                    "unit_count": int(len(units)),
-                    "evaluable": evaluable,
-                    "reason": reason,
-                    "time_resolution_seconds": resolution,
-                    "variant_uuid": variant,
-                    "standard_step_count": len(self._steps()["standard"]),
-                }
-            ],
-            extra,
+        variant = self._profile().variant_signal()
+        durations = (units["end_ns"] - units["start_ns"]) / 1e9
+        return self._evaluation_row(
+            len(units),
+            self.min_changeovers,
+            median_seconds=float(np.median(durations)) if len(units) else np.nan,
+            missing="variant" if variant is None else None,
+            variant_uuid=variant,
+            standard_step_count=len(self._steps()["standard"]),
         )
 
     def summary(self) -> dict[str, Any]:
@@ -523,14 +488,11 @@ class ChangeoverProfileEvents(_UnitProfiler):
             ``median_changeover_seconds``, ``lost_hours`` (sum of changeover
             durations), ``top_segment`` and its ``top_segment_potential_seconds``.
         """
-        window = self.evaluation_window().iloc[0]
         records = self.changeover_records()
         register = self.changeover_register()
         top = register.iloc[0] if len(register) else None
         return {
-            "evaluable": bool(window["evaluable"]),
-            "reason": str(window["reason"]),
-            "changeover_count": int(window["unit_count"]),
+            **self._summary_head("changeover_count"),
             "median_changeover_seconds": (
                 float(records["duration_seconds"].median()) if len(records) else None
             ),
@@ -554,6 +516,10 @@ class StartupProfileEvents(_UnitProfiler):
         >>> bool(startups.evaluation_window()["evaluable"].iloc[0])
         True
     """
+
+    PROFILE_KIND = "startups"
+    PROFILE_TABLES = ("startup_records", "startup_signals", "startup_register")
+    PROFILE_ORDER = 30
 
     def __init__(
         self,
@@ -600,20 +566,23 @@ class StartupProfileEvents(_UnitProfiler):
         self.band_quantiles = (float(band_quantiles[0]), float(band_quantiles[1]))
         self.min_startups = int(min_startups)
 
+    @memo
     def _startups(self) -> pd.DataFrame:
-        if "startups" in self._cache:
-            return self._cache["startups"]
-        cycles = self._units().reset_index(drop=True)
+        cycles = self._cycles()
         rows = []
         if len(cycles):
             classes = cycles["cycle_class"].to_numpy(dtype=object)
             z = cycles["z"].to_numpy(dtype=float)
             variant = cycles["variant"].astype(str).to_numpy()
             limits = self._profile().variant_limits()
-            for i in range(len(cycles) - 1):
-                changeover = i > 0 and variant[i] != variant[i - 1]
-                if classes[i] != "pause" and not changeover:
-                    continue
+            restarts = self._restarts()
+            restarts = restarts[restarts["position"] < len(cycles) - 1]
+            for i, trigger in zip(
+                restarts["position"].to_numpy(dtype=np.int64),
+                restarts["trigger"],
+                strict=True,
+            ):
+                changeover = trigger == "changeover"
                 first = _normal_runs(classes, z, i + 1, self.ramp_cycles)
                 if first < 0:
                     continue
@@ -632,7 +601,7 @@ class StartupProfileEvents(_UnitProfiler):
                         "lost_seconds": lost,
                     }
                 )
-        out = pd.DataFrame(
+        return pd.DataFrame(
             rows,
             columns=[
                 "unit_uuid",
@@ -645,38 +614,23 @@ class StartupProfileEvents(_UnitProfiler):
                 "lost_seconds",
             ],
         )
-        self._cache["startups"] = out
-        return out
 
+    @memo
     def _cycle_means(self) -> pd.DataFrame:
         """Per-cycle mean of every continuous signal (cycles x signals)."""
-        if "means" in self._cache:
-            return self._cache["means"]
-        cycles = self._units().reset_index(drop=True)
         specs = self._profile().signal_specs()
-        analog = [u for u, s in specs.items() if s.kind == "continuous"]
-        frame = self.dataframe
-        means = pd.DataFrame(index=cycles.index)
-        if len(cycles) and analog:
-            starts = cycles["start_ns"].to_numpy(dtype=np.int64)
-            ends = cycles["end_ns"].to_numpy(dtype=np.int64)
-            for uuid in analog:
-                rows = frame[frame[self.uuid_column].astype(str) == uuid]
-                ns = to_ns(rows[self.time_column])
-                values = pd.to_numeric(rows[specs[uuid].value_column], errors="coerce")
-                pos = np.searchsorted(starts, ns, side="right") - 1
-                ok = (pos >= 0) & (ns < ends[np.clip(pos, 0, None)])
-                series = pd.Series(values.to_numpy()[ok]).groupby(pos[ok]).mean()
-                means[uuid] = series.reindex(cycles.index)
-        self._cache["means"] = means
-        return means
+        means = cycle_signal_stats(
+            self._signals(), self._cycles(), specs, stats=("mean",)
+        )
+        means.columns = [c.rsplit(":", 1)[0] for c in means.columns]
+        analog = [u for u, spec in specs.items() if spec.kind == "continuous"]
+        return means.reindex(columns=analog) if len(means) else means
 
+    @memo
     def _settling(self) -> pd.DataFrame:
-        if "settling" in self._cache:
-            return self._cache["settling"]
         startups = self._startups()
         means = self._cycle_means()
-        cycles = self._units().reset_index(drop=True)
+        cycles = self._cycles()
         rows = []
         if len(startups) and means.shape[1]:
             excluded = np.zeros(len(cycles), dtype=bool)
@@ -717,12 +671,10 @@ class StartupProfileEvents(_UnitProfiler):
                             "band_high": float(hi),
                         }
                     )
-        out = pd.DataFrame(
+        return pd.DataFrame(
             rows,
             columns=["unit_uuid", "signal", "settle_seconds", "band_low", "band_high"],
         )
-        self._cache["settling"] = out
-        return out
 
     def startup_records(self) -> pd.DataFrame:
         """One record per start-up.
@@ -736,8 +688,6 @@ class StartupProfileEvents(_UnitProfiler):
             signal that was last back in its running band).
         """
         startups = self._startups()
-        if startups.empty:
-            return pd.DataFrame(columns=_STARTUP_RECORDS)
         settling = self._settling()
         last = {}
         if len(settling):
@@ -745,26 +695,16 @@ class StartupProfileEvents(_UnitProfiler):
             for unit, part in valid.groupby("unit_uuid"):
                 last[unit] = str(part.loc[part["settle_seconds"].idxmax(), "signal"])
         anchor = self._profile().cycle_anchor()
-        out = pd.DataFrame(
-            {
-                "systime": self._times(startups["end_ns"].to_numpy()),
-                "uuid": self.event_uuid,
-                "source_uuid": None if anchor is None else anchor[1],
-                "unit_uuid": startups["unit_uuid"].to_numpy(),
-                "start_ns": startups["start_ns"].to_numpy(dtype=np.int64),
-                "end_ns": startups["end_ns"].to_numpy(dtype=np.int64),
-                "duration_seconds": (
-                    startups["end_ns"] - startups["start_ns"]
-                ).to_numpy()
-                / 1e9,
-                "trigger": startups["trigger"].to_numpy(),
-                "variant": startups["variant"].to_numpy(),
-                "startup_cycle_count": startups["startup_cycle_count"].to_numpy(),
-                "lost_seconds": startups["lost_seconds"].to_numpy(dtype=float),
-                "last_signal": [last.get(u) for u in startups["unit_uuid"]],
-            }
+        return self._point_records(
+            startups,
+            columns=_STARTUP_RECORDS,
+            source=None if anchor is None else anchor[1],
+            trigger=startups["trigger"],
+            variant=startups["variant"],
+            startup_cycle_count=startups["startup_cycle_count"],
+            lost_seconds=startups["lost_seconds"].to_numpy(dtype=float),
+            last_signal=[last.get(u) for u in startups["unit_uuid"]],
         )
-        return out[_STARTUP_RECORDS]
 
     def startup_signals(self) -> pd.DataFrame:
         """Which signals hold the restart back.
@@ -844,34 +784,13 @@ class StartupProfileEvents(_UnitProfiler):
             ``reason``, ``time_resolution_seconds`` and
             ``analog_signal_count``.
         """
-        profile = self._profile()
-        resolution = profile.resolution_seconds()
         startups = self._startups()
-        if self._units().empty:
-            evaluable, reason = (
-                False,
-                f"upstream_not_evaluable: {profile.evaluation_reason()}",
-            )
-        else:
-            durations = (startups["end_ns"] - startups["start_ns"]) / 1e9
-            evaluable, reason = evaluation_reason(
-                len(startups),
-                self.min_startups,
-                resolution=resolution,
-                median_seconds=float(np.median(durations)) if len(startups) else np.nan,
-            )
-        return evaluation_frame(
-            [
-                {
-                    "scope": "all",
-                    "unit_count": int(len(startups)),
-                    "evaluable": evaluable,
-                    "reason": reason,
-                    "time_resolution_seconds": resolution,
-                    "analog_signal_count": int(self._cycle_means().shape[1]),
-                }
-            ],
-            ["analog_signal_count"],
+        durations = (startups["end_ns"] - startups["start_ns"]) / 1e9
+        return self._evaluation_row(
+            len(startups),
+            self.min_startups,
+            median_seconds=float(np.median(durations)) if len(startups) else np.nan,
+            analog_signal_count=int(self._cycle_means().shape[1]),
         )
 
     def summary(self) -> dict[str, Any]:
@@ -881,13 +800,10 @@ class StartupProfileEvents(_UnitProfiler):
             ``evaluable``, ``reason``, ``startup_count``,
             ``median_startup_cycles``, ``lost_hours`` and ``slowest_signal``.
         """
-        window = self.evaluation_window().iloc[0]
         records = self.startup_records()
         signals = self.startup_signals()
         return {
-            "evaluable": bool(window["evaluable"]),
-            "reason": str(window["reason"]),
-            "startup_count": int(window["unit_count"]),
+            **self._summary_head("startup_count"),
             "median_startup_cycles": (
                 float(records["startup_cycle_count"].median()) if len(records) else None
             ),
