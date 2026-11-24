@@ -31,6 +31,64 @@ def _prepared(
     return df
 
 
+def _flatten(result: pd.DataFrame, *, time_column: str, has_uuid: bool) -> pd.DataFrame:
+    """Turn the MultiIndex/Index resample result into a long-format frame.
+
+    ``result`` is indexed either by ``(uuid, time_window)`` (grouped) or by
+    ``time_window`` (pooled). The returned frame moves those levels into
+    columns, naming the time level ``window_start`` to match the rest of the
+    library's canonical time-column vocabulary (see
+    ``tests/invariants/test_contract_transform_features.TIME_COLUMNS``) and
+    preserves ``uuid`` when the input had it. The stat columns keep their
+    names and dtypes.
+    """
+    if result.empty:
+        columns: list[str] = []
+        if has_uuid:
+            columns.append("uuid")
+        columns.append("window_start")
+        columns.extend(str(c) for c in result.columns)
+        out = pd.DataFrame({c: pd.Series(dtype="object") for c in columns})
+        if has_uuid:
+            out["uuid"] = out["uuid"].astype(object)
+        out["window_start"] = pd.to_datetime(out["window_start"])
+        return out
+    index = result.index
+    if has_uuid and isinstance(index, pd.MultiIndex):
+        flat = result.reset_index()
+        rename = {}
+        if "level_0" in flat.columns and "uuid" not in flat.columns:
+            rename["level_0"] = "uuid"
+        # The time level is the inner one; pandas names it after the time
+        # column (``systime``) or leaves it as ``level_1`` when unnamed.
+        time_level_name = index.names[-1]
+        time_source = (
+            time_level_name
+            if time_level_name in flat.columns
+            else ("level_1" if "level_1" in flat.columns else time_column)
+        )
+        if time_source in flat.columns:
+            rename[time_source] = "window_start"
+        if rename:
+            flat = flat.rename(columns=rename)
+        cols = [
+            "uuid",
+            "window_start",
+            *[c for c in flat.columns if c not in {"uuid", "window_start"}],
+        ]
+        return flat[cols]
+    flat = result.reset_index()
+    time_source = (
+        index.name
+        if index.name and index.name in flat.columns
+        else ("index" if "index" in flat.columns else time_column)
+    )
+    if time_source in flat.columns:
+        flat = flat.rename(columns={time_source: "window_start"})
+    cols = ["window_start", *[c for c in flat.columns if c != "window_start"]]
+    return flat[cols]
+
+
 class TimeGroupedStatistics(Base):
     """
     A class for calculating time-grouped statistics on numeric data, with class methods to apply various statistical functions.
@@ -48,6 +106,7 @@ class TimeGroupedStatistics(Base):
         *,
         group_by_uuid: bool = True,
         handle_resets: bool = True,
+        flat: bool = False,
     ) -> pd.DataFrame:
         """
         Calculate a specified statistic on the value column over the grouped time intervals.
@@ -75,6 +134,11 @@ class TimeGroupedStatistics(Base):
                 which is the right choice for a signal that is not a counter
                 (it goes negative across a counter reset). Ignored for the
                 other methods.
+            flat (bool): When ``True`` return a long-format frame with
+                ``window_start`` (and ``uuid`` when grouping by uuid) as
+                plain columns and no index of meaning, so the result composes
+                with the rest of the library's long-format API. Default
+                ``False`` keeps the historical MultiIndex/DatetimeIndex shape.
 
         Returns:
             pd.DataFrame: A DataFrame with the time intervals and the calculated statistics.
@@ -84,7 +148,8 @@ class TimeGroupedStatistics(Base):
             [time_column, value_column],
             where="TimeGroupedStatistics.calculate_statistic",
         )
-        if group_by_uuid and "uuid" in dataframe.columns:
+        has_uuid = group_by_uuid and "uuid" in dataframe.columns
+        if has_uuid:
             parts = {
                 uuid: cls.calculate_statistic(
                     group,
@@ -94,11 +159,12 @@ class TimeGroupedStatistics(Base):
                     stat_method,
                     group_by_uuid=False,
                     handle_resets=handle_resets,
+                    flat=False,
                 )
                 for uuid, group in dataframe.groupby("uuid", sort=True)
             }
             if not parts:
-                return cls.calculate_statistic(
+                nested = cls.calculate_statistic(
                     dataframe,
                     time_column,
                     value_column,
@@ -106,8 +172,19 @@ class TimeGroupedStatistics(Base):
                     stat_method,
                     group_by_uuid=False,
                     handle_resets=handle_resets,
+                    flat=False,
                 )
-            return pd.concat(parts, names=["uuid"])
+                return (
+                    _flatten(nested, time_column=time_column, has_uuid=False)
+                    if flat
+                    else nested
+                )
+            combined = pd.concat(parts, names=["uuid"])
+            return (
+                _flatten(combined, time_column=time_column, has_uuid=True)
+                if flat
+                else combined
+            )
 
         dataframe = _prepared(
             dataframe, time_column, value_column, "calculate_statistic"
@@ -116,8 +193,13 @@ class TimeGroupedStatistics(Base):
             series = dataframe.sort_values(time_column).set_index(time_column)[
                 value_column
             ]
-            return counter_per_window(series, window, handle_resets=True).to_frame(
+            result = counter_per_window(series, window, handle_resets=True).to_frame(
                 "difference"
+            )
+            return (
+                _flatten(result, time_column=time_column, has_uuid=False)
+                if flat
+                else result
             )
 
         # Set the DataFrame index to the time column and resample to the specified frequency
@@ -147,7 +229,11 @@ class TimeGroupedStatistics(Base):
                 "Invalid stat_method. Choose from 'mean', 'sum', 'min', 'max', 'diff', 'range'."
             )
 
-        return result
+        return (
+            _flatten(result, time_column=time_column, has_uuid=False)
+            if flat
+            else result
+        )
 
     @classmethod
     @renamed_kwargs(freq="window")
@@ -161,6 +247,7 @@ class TimeGroupedStatistics(Base):
         *,
         group_by_uuid: bool = True,
         handle_resets: bool = True,
+        flat: bool = False,
     ) -> pd.DataFrame:
         """
         Calculate multiple specified statistics on the value column over the grouped time intervals.
@@ -177,13 +264,16 @@ class TimeGroupedStatistics(Base):
                 Default ``['mean', 'min', 'max']``.
             group_by_uuid (bool): See :meth:`calculate_statistic`.
             handle_resets (bool): See :meth:`calculate_statistic`.
+            flat (bool): See :meth:`calculate_statistic`.
 
         Returns:
             pd.DataFrame: A DataFrame with the time intervals and the calculated statistics for each method.
         """
         if stat_methods is None:
             stat_methods = ["mean", "min", "max"]
-        # One column per statistic, aligned on the (uuid,) time-window index.
+        # Compute each statistic in the historical indexed shape, concat on
+        # the shared (uuid,) time index, and flatten once at the end so the
+        # stat columns line up by position regardless of ``flat``.
         frames = [
             cls.calculate_statistic(
                 dataframe,
@@ -193,12 +283,17 @@ class TimeGroupedStatistics(Base):
                 method,
                 group_by_uuid=group_by_uuid,
                 handle_resets=handle_resets,
+                flat=False,
             )
             for method in stat_methods
         ]
         if not frames:
             return pd.DataFrame()
-        return pd.concat(frames, axis=1)
+        combined = pd.concat(frames, axis=1)
+        if not flat:
+            return combined
+        has_uuid = group_by_uuid and "uuid" in dataframe.columns
+        return _flatten(combined, time_column=time_column, has_uuid=has_uuid)
 
     @classmethod
     @renamed_kwargs(freq="window")
@@ -211,6 +306,7 @@ class TimeGroupedStatistics(Base):
         func: Callable[[pd.Series], Any] | None = None,
         *,
         group_by_uuid: bool = True,
+        flat: bool = False,
     ) -> pd.DataFrame:
         """
         Apply a custom aggregation function on the value column over the grouped time intervals.
@@ -225,6 +321,7 @@ class TimeGroupedStatistics(Base):
                 Default ``"1h"``. ``freq`` is the deprecated name.
             func (callable): Custom function to apply to each group (required).
             group_by_uuid (bool): See :meth:`calculate_statistic`.
+            flat (bool): See :meth:`calculate_statistic`.
 
         Returns:
             pd.DataFrame: A DataFrame with the custom calculated statistics in
@@ -238,7 +335,8 @@ class TimeGroupedStatistics(Base):
             [time_column, value_column],
             where="TimeGroupedStatistics.calculate_custom_func",
         )
-        if group_by_uuid and "uuid" in dataframe.columns and not dataframe.empty:
+        has_uuid = group_by_uuid and "uuid" in dataframe.columns
+        if has_uuid and not dataframe.empty:
             parts = {
                 uuid: cls.calculate_custom_func(
                     group,
@@ -247,12 +345,22 @@ class TimeGroupedStatistics(Base):
                     window,
                     func,
                     group_by_uuid=False,
+                    flat=False,
                 )
                 for uuid, group in dataframe.groupby("uuid", sort=True)
             }
             if parts:
-                return pd.concat(parts, names=["uuid"])
+                combined = pd.concat(parts, names=["uuid"])
+                return (
+                    _flatten(combined, time_column=time_column, has_uuid=True)
+                    if flat
+                    else combined
+                )
         df = _prepared(dataframe, time_column, value_column, "calculate_custom_func")
         grouped_df = df.set_index(time_column).resample(window)
         result: pd.DataFrame = grouped_df[value_column].apply(func).to_frame("custom")
-        return result
+        return (
+            _flatten(result, time_column=time_column, has_uuid=False)
+            if flat
+            else result
+        )

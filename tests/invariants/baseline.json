@@ -3503,6 +3503,38 @@
   "single_row": "ok",
   "tz": "ok"
  },
+ "ParetoEvents.rank_by_count": {
+  "all_nan": "ok",
+  "determinism": "ok",
+  "dtypes": "ok",
+  "dtypes_nan": "ok",
+  "dup_ts": "ok",
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "no_mutation": "ok",
+  "output_sanity": "ok",
+  "shape": "ok",
+  "shuffle": "ok",
+  "single_row": "ok",
+  "tz": "ok"
+ },
+ "ParetoEvents.rank_by_sum": {
+  "all_nan": "ok",
+  "determinism": "ok",
+  "dtypes": "ok",
+  "dtypes_nan": "ok",
+  "dup_ts": "ok",
+  "empty": "ok",
+  "empty_schema": "ok",
+  "extra_uuid": "ok",
+  "no_mutation": "ok",
+  "output_sanity": "ok",
+  "shape": "ok",
+  "shuffle": "ok",
+  "single_row": "ok",
+  "tz": "ok"
+ },
  "PartProductionEvents.daily_production_summary": {
   "all_nan": "ok",
   "determinism": "ok",

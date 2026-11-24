@@ -1315,6 +1315,25 @@ REGISTRY: dict[tuple[str, str], LabelRule] = {
         ST,
         standard_attrs={"ts_shape:method": "top_reasons"},
     ),
+    ("ParetoEvents", "rank_by_count"): _r(
+        "production.pareto.by_count",
+        _PR,
+        ST,
+        standard_attrs={
+            "ts_shape:method": "rank_by_count",
+            "ts_shape:outcome": "category",
+            "ts_shape:sample_count": "total",
+        },
+    ),
+    ("ParetoEvents", "rank_by_sum"): _r(
+        "production.pareto.by_sum",
+        _PR,
+        ST,
+        standard_attrs={
+            "ts_shape:method": "rank_by_sum",
+            "ts_shape:outcome": "category",
+        },
+    ),
     ("DutyCycleEvents", "cycle_count"): _r(
         "production.duty_cycle.count",
         _PR,
