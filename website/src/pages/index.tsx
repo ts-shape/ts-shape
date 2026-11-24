@@ -58,7 +58,7 @@ function Hero(): ReactNode {
         <div className={styles.heroText}>
           <p className={styles.eyebrow}>Timeseries · Manufacturing · {'Continuous\u00a0Improvement'}</p>
           <h1 className={styles.title}>
-            Answers from your machine data, <span>not just plots.</span>
+            Turn machine signals into <span>continuous improvement.</span>
           </h1>
           <p className={styles.tagline}>{siteConfig.tagline}</p>
           <div className={styles.buttons}>
