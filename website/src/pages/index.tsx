@@ -1,11 +1,18 @@
 import type {ReactNode} from 'react';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import useBaseUrl from '@docusaurus/useBaseUrl';
 import Layout from '@theme/Layout';
 import CodeBlock from '@theme/CodeBlock';
-import ThemedImage from '@theme/ThemedImage';
 
+import {
+  DriversChart,
+  EnergyPerPart,
+  LineTimeline,
+  LoopResponses,
+  SpcChart,
+  exampleCode,
+  exampleFacts,
+} from '@site/src/components/LandingCharts';
 import styles from './index.module.css';
 
 type Domain = {title: string; to: string; description: string};
@@ -43,59 +50,176 @@ const DOMAINS: Domain[] = [
   },
 ];
 
-const EXAMPLE = `import ts_shape
-
-# Synthetic data in the standard long format; use a loader or pandas for your own
-df = ts_shape.make_timeseries(["press:temp"], n_points=2000, n_outliers=5)
-
-print(ts_shape.check_signals(df).summary())   # signal kinds, gaps, resets, duplicates
-
-outliers = ts_shape.OutlierDetectionEvents(df, value_column="value_double")
-events = outliers.detect_outliers_zscore(n_sigma=4.0)
-
-log = ts_shape.to_event_log(events, detector="OutlierDetectionEvents.detect_outliers_zscore")
-print(log.events[["ocel:activity", "ocel:timestamp", "ts_shape:value"]])`;
-
 function Hero(): ReactNode {
   const {siteConfig} = useDocusaurusContext();
   return (
     <header className={styles.hero}>
-      <div className="container">
-        <ThemedImage
-          className={styles.heroLogo}
-          alt="ts-shape"
-          sources={{
-            light: useBaseUrl('/img/logo-light.png'),
-            dark: useBaseUrl('/img/logo-dark.png'),
-          }}
-          width={342}
-          height={96}
-        />
-        <p className={styles.tagline}>{siteConfig.tagline}</p>
-        <div className={styles.install}>
-          <CodeBlock language="bash">pip install ts-shape</CodeBlock>
+      <div className={`container ${styles.heroInner}`}>
+        <div className={styles.heroText}>
+          <p className={styles.eyebrow}>Python · pandas · open source</p>
+          <h1 className={styles.title}>
+            Answers from your machine data, <span>not just plots.</span>
+          </h1>
+          <p className={styles.tagline}>{siteConfig.tagline}</p>
+          <div className={styles.buttons}>
+            <Link className="button button--primary button--lg" to="/user_guide/quick_start/">
+              Get started
+            </Link>
+            <Link className="button button--secondary button--lg" to="/modules/">
+              Browse detectors
+            </Link>
+          </div>
         </div>
-        <div className={styles.buttons}>
-          <Link className="button button--primary button--lg" to="/user_guide/quick_start/">
-            Get started
-          </Link>
-          <Link className="button button--secondary button--lg" to="/reference/">
-            API reference
-          </Link>
+        <div className={styles.heroInstall}>
+          <CodeBlock language="bash">pip install ts-shape</CodeBlock>
+          <ul className={styles.heroFacts}>
+            <li>
+              <strong>90+</strong> detectors for production, quality, engineering, maintenance and energy
+            </li>
+            <li>
+              <strong>Long-format</strong> signals in (<code>systime</code>, <code>uuid</code>,{' '}
+              <code>value_*</code>), plain DataFrames out
+            </li>
+            <li>
+              <strong>OCEL 2.0 / XES</strong> event logs from any result, for process mining
+            </li>
+          </ul>
         </div>
       </div>
     </header>
   );
 }
 
-function Domains(): ReactNode {
+type ExampleProps = {
+  kicker: string;
+  question: string;
+  answer: ReactNode;
+  code: string;
+  link: {to: string; label: string};
+  chart: ReactNode;
+};
+
+function Example({kicker, question, answer, code, link, chart}: ExampleProps): ReactNode {
+  return (
+    <article className={styles.example}>
+      <div className={styles.exampleText}>
+        <p className={styles.kicker}>{kicker}</p>
+        <h3 className={styles.question}>{question}</h3>
+        <p className={styles.answer}>{answer}</p>
+        <details className={styles.code}>
+          <summary>The code behind this chart</summary>
+          <CodeBlock language="python">{code.trimEnd()}</CodeBlock>
+        </details>
+        <Link to={link.to} className={styles.more}>
+          {link.label} →
+        </Link>
+      </div>
+      <div className={styles.exampleChart}>{chart}</div>
+    </article>
+  );
+}
+
+function Examples(): ReactNode {
+  const {line, loops, spc, energy, drivers} = exampleFacts;
+  const bad = loops.loops.filter((l) => l.diagnosis !== 'ok');
+  const causal = drivers.signals.filter((sg) => sg.causal);
   return (
     <section className={styles.section}>
       <div className="container">
+        <h2 className={styles.sectionTitle}>Questions from the plant, answered in a few lines</h2>
+        <p className={styles.sectionLead}>
+          Five everyday plant situations: a film extrusion line, dryer temperature loops, an extruder, an injection
+          moulding machine. The data comes from ts-shape's plant simulators, tagged and timed the way a historian
+          logs it; every chart is real ts-shape output, and the code is under each chart.
+        </p>
+        <Example
+          kicker="Production · OEE"
+          question="Why did film line 2 stop on Monday and Tuesday?"
+          answer={
+            <>
+              Two days of one extrusion line, six shifts, from its run signal, part counter and alarm tags, with no
+              mapping of which alarm means what: {line.stop_count} stops cost {line.lost_hours} hours and OEE was{' '}
+              {line.oee_pct}%. ts-shape finds the alarm that rises before each stop: die-pressure alarms cause{' '}
+              {line.causes[0].share_pct}% of the lost time ({line.causes[0].mttr_minutes} min per stop), web breaks{' '}
+              {line.causes[1].share_pct}%.
+            </>
+          }
+          code={exampleCode.line}
+          link={{to: '/modules/production/oee-calculator/', label: 'OEE and machine states'}}
+          chart={<LineTimeline />}
+        />
+        <Example
+          kicker="Engineering · control loops"
+          question="Which dryer temperature loops need retuning?"
+          answer={
+            <>
+              Hand it the raw PLC tags of the dryer: it pairs setpoint, process value and controller output itself,
+              measures every setpoint change in the shift and diagnoses each loop.{' '}
+              {bad.map((l) => `${l.name.split(' ')[0]} ${l.diagnosis === 'oscillating' ? `overshoots by ${Math.round(l.overshoot_pct)}%` : `settles in only ${l.settled_pct}% of its setpoint changes`}`).join(', ')}.
+            </>
+          }
+          code={exampleCode.loops}
+          link={{to: '/modules/engineering/control-loop-health/', label: 'Control loop health'}}
+          chart={<LoopResponses />}
+        />
+        <Example
+          kicker="Quality · SPC"
+          question="Is the extruder melt temperature drifting before parts go out of spec?"
+          answer={
+            <>
+              Last week's in-control shift sets the control limits ({spc.lcl.toFixed(1)}–{spc.ucl.toFixed(1)} °C).
+              Today the melt temperature creeps up through the shift: the Nelson run rules flag the shifted mean
+              (shaded), without a break from {spc.drift_from.slice(11, 16)} on, and {spc.out_of_limits.length}{' '}
+              readings end up beyond the upper limit. One call returns both, ready to alarm on.
+            </>
+          }
+          code={exampleCode.spc}
+          link={{to: '/modules/quality/spc/', label: 'Statistical process control'}}
+          chart={<SpcChart />}
+        />
+        <Example
+          kicker="Energy · kWh per part"
+          question="What does a moulded part cost in energy, and when is it wasted?"
+          answer={
+            <>
+              Injection moulding machine IMM-07 over two shifts, from its cumulative kWh meter and shot counter: a
+              median of {energy.median_kwh_per_part.toFixed(2)} kWh per part, up to{' '}
+              {energy.worst_kwh_per_part.toFixed(2)} in half hours with an interruption, while the machine keeps
+              drawing idle power. At the best half hour's rate the {energy.parts} parts would have needed{' '}
+              {Math.round(energy.excess_kwh)} kWh less.
+            </>
+          }
+          code={exampleCode.energy}
+          link={{to: '/modules/energy/efficiency-tracking/', label: 'Energy efficiency'}}
+          chart={<EnergyPerPart />}
+        />
+        <Example
+          kicker="Data science · causality"
+          question="What actually drives the dryer temperature?"
+          answer={
+            <>
+              A Granger test of every tag logged near the loop against its temperature, with a Bonferroni-corrected
+              p-value: {causal.map((sg) => sg.label).join(' and ')} drive it; the look-alikes (
+              {drivers.signals.filter((sg) => !sg.causal).map((sg) => sg.label.toLowerCase()).join(', ')}) do not.
+              Transfer entropy and lead-lag are in the same class.
+            </>
+          }
+          code={exampleCode.drivers}
+          link={{to: '/reference/ts_shape/features/cross_signal/', label: 'Cross-signal analytics'}}
+          chart={<DriversChart />}
+        />
+      </div>
+    </section>
+  );
+}
+
+function Domains(): ReactNode {
+  return (
+    <section className={`${styles.section} ${styles.sectionAlt}`}>
+      <div className="container">
         <h2 className={styles.sectionTitle}>One DataFrame in, one DataFrame out</h2>
         <p className={styles.sectionLead}>
-          Loaders, filters, feature extraction and event detectors for long-format signal data
-          (<code>systime</code>, <code>uuid</code>, <code>value_*</code>).
+          Loaders, filters, feature extraction and event detectors for long-format signal data. Pick a domain:
         </p>
         <div className={styles.grid}>
           {DOMAINS.map((d) => (
@@ -111,46 +235,14 @@ function Domains(): ReactNode {
   );
 }
 
-function Example(): ReactNode {
-  return (
-    <section className={styles.section}>
-      <div className="container">
-        <div className={styles.example}>
-          <div className={styles.exampleText}>
-            <h2 className={styles.sectionTitle}>From raw signals to an event log</h2>
-            <p>
-              Profile the signals, run a detector and hand the result to process mining, in a
-              few lines of pandas.
-            </p>
-            <ul>
-              <li>
-                <Link to="/concept/">Data model and layers</Link>
-              </li>
-              <li>
-                <Link to="/modules/">Module reference</Link>: one page per detector
-              </li>
-              <li>
-                <Link to="/examples/">Example scripts</Link>
-              </li>
-            </ul>
-          </div>
-          <div className={styles.exampleCode}>
-            <CodeBlock language="python">{EXAMPLE}</CodeBlock>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export default function Home(): ReactNode {
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout title="Manufacturing time-series analytics for pandas" description={siteConfig.tagline}>
       <Hero />
       <main>
+        <Examples />
         <Domains />
-        <Example />
       </main>
     </Layout>
   );

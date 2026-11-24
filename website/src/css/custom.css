@@ -1,7 +1,8 @@
 /*
  * ts-shape docs theme.
- * Brand orange from the logo (#FB8D49); a darker orange in light mode keeps
- * link text readable on white (WCAG AA).
+ * Brand green, as in the logo's chart line: green-700 (#15803d) in light mode
+ * keeps link text readable on white (WCAG AA, 5.0:1); green-400 (#4ade80) in
+ * dark mode.
  */
 
 @import '@fontsource-variable/inter';
@@ -9,13 +10,13 @@
 @import 'katex/dist/katex.min.css';
 
 :root {
-  --ifm-color-primary: #c2410c;
-  --ifm-color-primary-dark: #af3b0b;
-  --ifm-color-primary-darker: #a5370a;
-  --ifm-color-primary-darkest: #882e08;
-  --ifm-color-primary-light: #d5470d;
-  --ifm-color-primary-lighter: #df4a0e;
-  --ifm-color-primary-lightest: #f05a1d;
+  --ifm-color-primary: #15803d;
+  --ifm-color-primary-dark: #137337;
+  --ifm-color-primary-darker: #126d34;
+  --ifm-color-primary-darkest: #0f5a2b;
+  --ifm-color-primary-light: #178d43;
+  --ifm-color-primary-lighter: #189346;
+  --ifm-color-primary-lightest: #1ba64f;
 
   --ifm-font-family-base: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto,
     sans-serif;
@@ -41,13 +42,13 @@
 }
 
 [data-theme='dark'] {
-  --ifm-color-primary: #fb8d49;
-  --ifm-color-primary-dark: #fa782a;
-  --ifm-color-primary-darker: #fa6e1a;
-  --ifm-color-primary-darkest: #e05405;
-  --ifm-color-primary-light: #fca268;
-  --ifm-color-primary-lighter: #fcac78;
-  --ifm-color-primary-lightest: #fdcaa8;
+  --ifm-color-primary: #4ade80;
+  --ifm-color-primary-dark: #31d96e;
+  --ifm-color-primary-darker: #27d566;
+  --ifm-color-primary-darkest: #20af54;
+  --ifm-color-primary-light: #63e392;
+  --ifm-color-primary-lighter: #70e59a;
+  --ifm-color-primary-lightest: #95ecb5;
 
   --ifm-background-color: #15171c;
   --ifm-background-surface-color: #1b1e24;
@@ -298,8 +299,8 @@ table code {
 }
 
 .api-kind--class {
-  --api-kind-fg: #9a3412;
-  --api-kind-bg: #ffedd5;
+  --api-kind-fg: #166534;
+  --api-kind-bg: #dcfce7;
 }
 
 .api-kind--method,
@@ -316,13 +317,13 @@ table code {
 
 .api-kind--property,
 .api-kind--attribute {
-  --api-kind-fg: #166534;
-  --api-kind-bg: #dcfce7;
+  --api-kind-fg: #115e59;
+  --api-kind-bg: #ccfbf1;
 }
 
 [data-theme='dark'] .api-kind--class {
-  --api-kind-fg: #fdba74;
-  --api-kind-bg: rgba(251, 141, 73, 0.15);
+  --api-kind-fg: #86efac;
+  --api-kind-bg: rgba(34, 197, 94, 0.15);
 }
 
 [data-theme='dark'] .api-kind--method,
@@ -339,8 +340,8 @@ table code {
 
 [data-theme='dark'] .api-kind--property,
 [data-theme='dark'] .api-kind--attribute {
-  --api-kind-fg: #86efac;
-  --api-kind-bg: rgba(34, 197, 94, 0.15);
+  --api-kind-fg: #5eead4;
+  --api-kind-bg: rgba(20, 184, 166, 0.15);
 }
 
 .api-source {
@@ -477,4 +478,18 @@ table code {
   padding: 0;
   font-size: 0.85em;
   color: var(--ifm-color-primary);
+}
+
+/* Version dropdown in the navbar: a pill, so it reads as "which docs". */
+.navbar__link.navbar-version-dropdown {
+  border: 1px solid var(--ts-border);
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ifm-color-primary);
+}
+
+.navbar__link.navbar-version-dropdown:hover {
+  border-color: var(--ifm-color-primary);
 }

@@ -1,3 +1,27 @@
+# November 24, 2026 (docs: green, version dropdown)
+docs: the landing page leads with five real-world examples instead of a
+  big logo, one per domain, each set in an everyday plant situation with
+  plant tag names, units, shift times and dates: why film extrusion line 2
+  stopped over two days (stops attributed to the alarm that rises before
+  them, with no alarm mapping; OEE per day), which dryer temperature loops
+  need retuning (loops found and diagnosed from raw PLC tags, step
+  responses), extruder melt temperature drift caught by SPC run rules
+  against last week's in-control shift, energy per part of an injection
+  moulding machine per half hour from its kWh meter and shot counter, and
+  what drives a dryer temperature (Granger causality against look-alike
+  tags). The data comes from ts-shape's plant simulators; each chart is
+  ts-shape output (scripts/landing_examples.py runs the code shown under
+  the chart), interactive (hover), with a data table and a light and a
+  dark palette.
+docs: the site's main colour is green (green-700 in light mode, readable
+  on white; green-400 in dark mode); the logo's chart line, the social
+  card and the favicons of the site follow. API kind badges: classes
+  green, properties and attributes teal.
+docs: the version dropdown is always in the top bar (a pill next to the
+  GitHub icon): released versions newest first, Next, the changelog and
+  all GitHub releases; in pull-request and local builds it shows Next.
+  The light/dark switch stays (system, light, dark).
+
 # November 24, 2026 (deprecation policy and report)
 docs: deprecation policy (naming.md): deprecated names are removed only in
   1.0, after at least 3 months and one minor release of warnings, with a
